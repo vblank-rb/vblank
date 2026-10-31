@@ -94,6 +94,14 @@ static inline uint64_t rg_fastest_frame_ns(rg_pacing pacing) {
   return (uint64_t)(monitor_frame_ns * 100.0 / (100 + RG_FASTEST_PERCENT_OVER_MONITOR));
 }
 
+/* How long a picture is shown for where the monitor paces the game, in nanoseconds: the refreshes
+ * it is shown for, each a refresh of the monitor. A picture that is not drawn again because it is
+ * the one already up still takes this long, so a still screen runs the game at the same speed and
+ * makes sound at the same pace as a moving one. */
+static inline uint64_t rg_picture_ns(rg_pacing pacing) {
+  return (uint64_t)(1000000000.0 / (RG_CONSOLE_FRAMES_A_SECOND * pacing.speed) + 0.5);
+}
+
 /* The moment before which the next frame may not begin. +earliest+ is that moment as it stood a
  * frame ago (nought before the first) and +now+ is when this frame ended; the game waits for the
  * moment given back when it is still to come. Running slower than the limit earns no more than

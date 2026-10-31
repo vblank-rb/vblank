@@ -226,6 +226,19 @@ static int timing_frames;
 static Uint64 *shown_at_ns;
 static size_t shown_count, shown_room;
 static long frames_held_by_clock; /* frames the monitor was pacing and the window's own clock had to hold */
+
+/* THE PICTURE ALREADY UP. A picture the game finished that is the same as the one the window is
+ * showing is not uploaded and not drawn again: the window shows it as it is, and a still title
+ * screen costs the computer and its graphics card next to nothing. +texture_holds+ is the picture
+ * in the texture; +window_owed_a_drawing+ says something other than the picture asks for the
+ * window to be drawn (it was uncovered, resized, moved to another screen, or lost its drawing
+ * surface), and +picture_due_ns+ is, where the monitor paces the game, when the picture handed over
+ * last is due to be replaced. */
+static uint16_t texture_holds[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+static bool texture_has_picture;
+static bool window_owed_a_drawing = true;
+static Uint64 picture_due_ns;
+static long pictures_not_drawn; /* --frame-times: pictures that were the one already up */
 static long sound_frames_dropped; /* frames whose sound was thrown away because too much was waiting */
 static long sound_ran_dry;        /* times quiet was put in because almost none was */
 static int speaker_emptied_on_purpose;    /* the speaker was just emptied by a pause or fast forward, so quiet put in is not "ran dry" */
@@ -339,6 +352,7 @@ static void report_frame_times(void) {
     fprintf(stderr, "sound: %ld frames thrown away with too much waiting, %ld times quiet was put in with too little\n",
             sound_frames_dropped, sound_ran_dry);
   }
+  fprintf(stderr, "pictures shown that were the one already up, so not drawn again: %ld\n", pictures_not_drawn);
   if (shown_count < 2) return;
 
   /* The gaps between one picture and the next, in the order they came and sorted by length. */
@@ -573,6 +587,8 @@ static void choose_pacing(void) {
   if (pacing.waits_for_refresh && !SDL_SetRenderVSync(renderer, 1)) pacing = rg_pacing_for(0.0);
   if (!pacing.waits_for_refresh) SDL_SetRenderVSync(renderer, 0);
   earliest_next_ns = 0;
+  picture_due_ns = 0;
+  window_owed_a_drawing = true; /* a window on another screen is drawn there afresh */
 }
 
 /* --frame-times: the moment a picture was handed over is kept, for the report at the end. */
@@ -691,14 +707,25 @@ static void draw_words(const rg_menu_part *words) {
 
 static bool game_held(void) { return rg_window_paused() || rg_window_menu_is_open(); }
 
+/* The words the window puts in its corner when asked: the frame rate, and how long the game's own
+ * work took a frame. What was last drawn is kept, so a still picture is drawn again when the words
+ * change and not before (see something_is_drawn_over_the_picture). */
+static char drawn_rate[32], drawn_work[32];
+
+static void status_words(char rate[32], char work[32]) {
+  Uint64 now = SDL_GetTicksNS();
+  snprintf(rate, 32, "%.1f", rg_window_frames_a_second(now));
+  snprintf(work, 32, "%.2f", rg_window_frame_work_ms(now));
+}
+
 /* What the menu says to draw, in the window's own pixels: the picture was drawn through the
  * console's own size (the logical presentation, which scales it by a whole number with bars where
  * the window is the wrong shape), which is put aside while the menu draws and put back after. */
 static void draw_menu_and_status(void) {
-  Uint64 now = SDL_GetTicksNS();
   char rate[32], work[32];
-  snprintf(rate, sizeof rate, "%.1f", rg_window_frames_a_second(now));
-  snprintf(work, sizeof work, "%.2f", rg_window_frame_work_ms(now));
+  status_words(rate, work);
+  snprintf(drawn_rate, sizeof drawn_rate, "%s", rg_window_shows_frame_rate() ? rate : "");
+  snprintf(drawn_work, sizeof drawn_work, "%s", rg_window_shows_frame_time() ? work : "");
   int width = 0, height = 0;
   SDL_GetRenderOutputSize(renderer, &width, &height);
   double density = pixel_density();
@@ -740,16 +767,61 @@ static void watch_variables(void) {
   collecting_variables = 0;
 }
 
+/* Whether the window draws anything over the picture that moves or changes whether or not the
+ * picture does: the menu, the windows of keys and variables (Dear ImGui settles a hover or a click
+ * over several frames, so it is drawn every frame while one is up), what was wrong with the
+ * settings file, the speed fast forward puts in the corner, and the frame rate and frame time when
+ * the words they would say are not the words drawn last. */
+static bool something_is_drawn_over_the_picture(void) {
+  if (rg_window_menu_is_open() || rg_window_panel_shown(RG_PANEL_CONTROLS) || rg_window_panel_shown(RG_PANEL_VARIABLES) ||
+      rg_window_problems_unseen() || rg_window_fast_forwarding())
+    return true;
+  char rate[32], work[32];
+  status_words(rate, work);
+  return strcmp(rg_window_shows_frame_rate() ? rate : "", drawn_rate) != 0 ||
+         strcmp(rg_window_shows_frame_time() ? work : "", drawn_work) != 0;
+}
+
+/* A picture that is not drawn again still lasts as long as one that is. Where the monitor paces
+ * the game that time is the monitor's, and drawing is what waits for it, so without drawing the
+ * game waits it out here, from when the last picture went up. Leaning on keep_under_fastest alone
+ * would hold a still screen only to two parts in a hundred faster than the monitor, and the game
+ * and its sound would run that much faster for as long as the screen stood still. Where the
+ * console's clock paces the game, the wait at the end of the frame is all there is. */
+static void wait_out_a_picture_not_drawn(void) {
+  if (!pacing.refreshes) return;
+  Uint64 picture_ns = rg_picture_ns(pacing);
+  Uint64 now = SDL_GetTicksNS();
+  if (picture_due_ns == 0 || now > picture_due_ns + 2 * picture_ns) picture_due_ns = now; /* a start, or fell behind */
+  picture_due_ns += picture_ns;
+  if (picture_due_ns > now) SDL_DelayNS(picture_due_ns - now);
+}
+
 /* Shows the picture as it stands: once, or where the monitor paces the frames, once for each
- * refresh a picture is shown for, each waiting for its refresh. */
+ * refresh a picture is shown for, each waiting for its refresh. A picture that is the one already
+ * up, with nothing over it and nothing owed to the window, is neither uploaded nor drawn. */
 static void present(void) {
-  SDL_UpdateTexture(texture, NULL, rg_screen_shown(), RG_SCREEN_WIDTH * (int)sizeof(uint16_t));
+  const uint16_t *picture = rg_screen_shown();
+  bool same_picture = texture_has_picture && memcmp(picture, texture_holds, sizeof texture_holds) == 0;
+  if (same_picture && !window_owed_a_drawing && !something_is_drawn_over_the_picture()) {
+    pictures_not_drawn++;
+    wait_out_a_picture_not_drawn();
+    if (timing_frames) remember_picture_shown();
+    return;
+  }
+  if (!same_picture) {
+    SDL_UpdateTexture(texture, NULL, picture, RG_SCREEN_WIDTH * (int)sizeof(uint16_t));
+    memcpy(texture_holds, picture, sizeof texture_holds);
+    texture_has_picture = true;
+  }
   watch_variables();
   int times = pacing.refreshes ? pacing.refreshes : 1;
   for (int i = 0; i < times; i++) {
     draw_window();
     SDL_RenderPresent(renderer);
   }
+  window_owed_a_drawing = false;
+  picture_due_ns = SDL_GetTicksNS();
   if (timing_frames) remember_picture_shown();
 }
 
@@ -1009,13 +1081,29 @@ static void read_events(void) {
       pad_button_changed(&event.gbutton);
       break;
     case SDL_EVENT_WINDOW_RESIZED:
+      window_owed_a_drawing = true;
       rg_window_size_changed(event.window.data1, event.window.data2, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
       break;
     case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+      window_owed_a_drawing = true;
       rg_window_fullscreen_happened(1);
       break;
     case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+      window_owed_a_drawing = true;
       rg_window_fullscreen_happened(0);
+      break;
+    case SDL_EVENT_WINDOW_EXPOSED:
+    case SDL_EVENT_WINDOW_SHOWN:
+    case SDL_EVENT_WINDOW_RESTORED:
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+      window_owed_a_drawing = true;
+      break;
+    case SDL_EVENT_RENDER_TARGETS_RESET:
+    case SDL_EVENT_RENDER_DEVICE_RESET:
+      /* The picture in the texture went with the drawing surface. */
+      texture_has_picture = false;
+      window_owed_a_drawing = true;
       break;
     case SDL_EVENT_GAMEPAD_ADDED:
       open_pad(event.gdevice.which);

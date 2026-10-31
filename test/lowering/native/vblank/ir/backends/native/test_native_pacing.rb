@@ -85,6 +85,15 @@ class TestNativePacing < Minitest::Test
     assert_equal [0, 16], [late, then_free]
   end
 
+  # A picture lasts as long as the monitor shows it for, whatever number of refreshes that is: a
+  # sixtieth of a second on a monitor of sixty, a hundred and twenty, a hundred and eighty — and a
+  # shade longer where the monitor is a shade slow (59.94 a second is 16,683,350 nanoseconds).
+  def test_a_picture_lasts_as_long_as_the_monitor_shows_it_for
+    lasts = asked([60, 120, 180, 59.94].map { |rate| "picture #{rate}" }).flatten.map(&:to_i)
+
+    assert_equal [16_666_667, 16_666_667, 16_666_667, 16_683_350], lasts
+  end
+
   private
 
   # What the C answers for each rate, as { rate => [refreshes a picture, 1 when a picture waits

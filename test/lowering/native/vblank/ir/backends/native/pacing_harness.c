@@ -6,6 +6,9 @@
  *                  prints how many refreshes a picture is shown for, whether a picture waits for
  *                  a refresh, and how fast the game then runs
  *
+ *   picture RATE   how long a picture is shown for on such a monitor where it paces the game, in
+ *                  nanoseconds
+ *
  *   frames RATE LEGS GAP COUNT [GAP COUNT ...]
  *                  plays one run of frames on such a monitor, in LEGS legs one after another:
  *                  COUNT frames, each coming round GAP nanoseconds after the one before unless
@@ -24,6 +27,10 @@ int main(void) {
     rg_pacing pacing = rg_pacing_for(refreshes_a_second);
     if (strcmp(question, "monitor") == 0) {
       printf("%d %d %.9f\n", pacing.refreshes, pacing.waits_for_refresh, pacing.speed);
+      continue;
+    }
+    if (strcmp(question, "picture") == 0) {
+      printf("%" PRIu64 "\n", rg_picture_ns(pacing));
       continue;
     }
 
