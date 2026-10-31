@@ -9,6 +9,13 @@
  *   picture RATE   how long a picture is shown for on such a monitor where it paces the game, in
  *                  nanoseconds
  *
+ *   handover RATE INTERVAL ONE
+ *                  how the window is drawn for each picture on such a monitor, when the display
+ *                  has (1) or has not (0) accepted a wait for the picture's refreshes (INTERVAL)
+ *                  and a wait for one refresh (ONE): prints how many times it is drawn for a
+ *                  picture, how many refreshes the display waits at each, and whether it can be
+ *                  made to wait at all
+ *
  *   frames RATE LEGS GAP COUNT [GAP COUNT ...]
  *                  plays one run of frames on such a monitor, in LEGS legs one after another:
  *                  COUNT frames, each coming round GAP nanoseconds after the one before unless
@@ -31,6 +38,13 @@ int main(void) {
     }
     if (strcmp(question, "picture") == 0) {
       printf("%" PRIu64 "\n", rg_picture_ns(pacing));
+      continue;
+    }
+    if (strcmp(question, "handover") == 0) {
+      int took_interval, took_one;
+      if (scanf("%d %d", &took_interval, &took_one) != 2) return 1;
+      rg_handover handover = rg_handover_for(pacing, took_interval, took_one);
+      printf("%d %d %d\n", handover.draws, handover.refreshes_waited, handover.waits);
       continue;
     }
 

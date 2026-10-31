@@ -94,6 +94,22 @@ class TestNativePacing < Minitest::Test
     assert_equal [16_666_667, 16_666_667, 16_666_667, 16_683_350], lasts
   end
 
+  # A picture of two refreshes is drawn once when the display takes a wait for two, and twice, each
+  # waiting for one, when it takes only a wait for one; a display that takes neither cannot be
+  # waited for. [rate, takes a wait for the picture's refreshes, takes a wait for one] => [times
+  # drawn a picture, refreshes waited each time, 1 when the display can be waited for].
+  HANDOVERS = { [60, 1, 1] => [1, 1, 1], [120, 1, 1] => [1, 2, 1], [120, 0, 1] => [2, 1, 1], [180, 0, 1] => [3, 1, 1],
+                [180, 1, 0] => [1, 3, 1], [120, 0, 0] => [1, 0, 0], [144, 1, 1] => [1, 1, 1], [144, 0, 0] => [1, 0, 0],
+                [0, 1, 1] => [1, 0, 0] }.freeze
+
+  def test_a_picture_of_several_refreshes_is_drawn_once_where_the_display_waits_for_them_all
+    HANDOVERS.each do |(rate, took_interval, took_one), drawn|
+      answer = asked(["handover #{rate} #{took_interval} #{took_one}"]).first.map(&:to_i)
+
+      assert_equal drawn, answer, "a #{rate}Hz monitor, display takes a wait for the picture: #{took_interval}, for one: #{took_one}"
+    end
+  end
+
   private
 
   # What the C answers for each rate, as { rate => [refreshes a picture, 1 when a picture waits

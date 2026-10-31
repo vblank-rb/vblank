@@ -213,6 +213,8 @@ static uint32_t pad_buttons_down[MOST_PADS];
 static uint32_t pad_buttons_kept;
 
 static rg_pacing pacing = {0, 0, 1.0}; /* what paces the frames on the monitor the window is on */
+static int draws_a_picture = 1;        /* how many times the window is drawn and presented for each picture */
+static int display_waits_refreshes;    /* how many refreshes the display waits for each time it is presented; 0 for none */
 static Uint64 next_frame_ns;           /* when the next frame is due, on the console's clock */
 static Uint64 earliest_next_ns;        /* where the monitor paces: the moment before which the next may not begin */
 
@@ -343,6 +345,8 @@ static void report_frame_times(void) {
     fprintf(stderr, "pacing: the monitor, %d refreshes a picture, the game at %.4f of the console's speed\n",
             pacing.refreshes, pacing.speed);
     fprintf(stderr, "frames the window's own clock had to hold back: %ld\n", frames_held_by_clock);
+    fprintf(stderr, "drawing: each picture is drawn %d time%s, the display waiting for %d refresh%s each time\n", draws_a_picture,
+            draws_a_picture == 1 ? "" : "s", display_waits_refreshes, display_waits_refreshes == 1 ? "" : "es");
   } else {
     fprintf(stderr, "pacing: the console's clock, each picture %s\n",
             pacing.waits_for_refresh ? "waiting for a refresh" : "handed over as it is finished");
@@ -570,12 +574,15 @@ static void apply_window_changes(void) {
 }
 
 /* Works out what paces the frames from the monitor the window is on now, and tells the display
- * whether a picture is to wait for a refresh. The speaker follows the pacing as each frame's
- * sound is handed over (keep_sound_in_step).
+ * whether a picture is to wait for a refresh, and for how many. The speaker follows the pacing as
+ * each frame's sound is handed over (keep_sound_in_step).
  *
- * The display is only ever asked to wait for ONE refresh a picture. A picture meant for several
- * is handed over that many times instead (see present): every way SDL has of drawing can wait for
- * one refresh, and not all of them can be told to hold a picture for two. */
+ * A picture meant for several refreshes (a monitor of a hundred and twenty a second shows the
+ * console's sixty for two each) is drawn ONCE, with the display told to wait for as many refreshes
+ * as the picture is shown for: SDL's vsync takes that number. Not every driver takes every number,
+ * and it says so, so a driver that refuses is asked for one refresh and the picture is drawn once
+ * for each of its refreshes instead, which every driver can wait for. Worked out again whenever
+ * the window moves to another monitor, so the number follows the monitor. */
 static void choose_pacing(void) {
   double refreshes_a_second = pretended_refreshes_a_second;
   if (!(refreshes_a_second > 0.0)) {
@@ -583,9 +590,13 @@ static void choose_pacing(void) {
     refreshes_a_second = mode ? (double)mode->refresh_rate : 0.0;
   }
   pacing = rg_pacing_for(refreshes_a_second);
-  /* A display that cannot be made to wait is one that does not say its rate, as far as pacing goes. */
-  if (pacing.waits_for_refresh && !SDL_SetRenderVSync(renderer, 1)) pacing = rg_pacing_for(0.0);
+  bool took_interval = pacing.waits_for_refresh && pacing.refreshes > 1 && SDL_SetRenderVSync(renderer, pacing.refreshes);
+  bool took_one = pacing.waits_for_refresh && !took_interval && SDL_SetRenderVSync(renderer, 1);
+  rg_handover handover = rg_handover_for(pacing, took_interval, took_one);
+  if (pacing.waits_for_refresh && !handover.waits) pacing = rg_pacing_for(0.0); /* a display that cannot be made to wait */
   if (!pacing.waits_for_refresh) SDL_SetRenderVSync(renderer, 0);
+  draws_a_picture = handover.draws;
+  display_waits_refreshes = handover.refreshes_waited;
   earliest_next_ns = 0;
   picture_due_ns = 0;
   window_owed_a_drawing = true; /* a window on another screen is drawn there afresh */
@@ -815,8 +826,7 @@ static void present(void) {
     texture_has_picture = true;
   }
   watch_variables();
-  int times = pacing.refreshes ? pacing.refreshes : 1;
-  for (int i = 0; i < times; i++) {
+  for (int i = 0; i < draws_a_picture; i++) {
     draw_window();
     SDL_RenderPresent(renderer);
   }

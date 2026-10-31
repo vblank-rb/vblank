@@ -70,6 +70,26 @@ static inline rg_pacing rg_pacing_for(double refreshes_a_second) {
   return (rg_pacing){refreshes, 1, pictures_a_second / RG_CONSOLE_FRAMES_A_SECOND};
 }
 
+/* How many times the window is drawn and presented for each picture, and how many refreshes the
+ * display is told to wait each time. A picture shown for several refreshes is drawn ONCE where the
+ * display accepted a wait for that many (SDL's vsync takes the number, and not every driver takes
+ * every one); where it took only a wait for one refresh, the picture is drawn once for each of its
+ * refreshes. +took_interval+ and +took_one+ are whether the display accepted each. A display that
+ * accepted neither cannot be waited for, and a game on it is paced as for a monitor that does not
+ * say its rate (+waits+ is nought). */
+typedef struct {
+  int draws;            /* drawings of the window for each picture */
+  int refreshes_waited; /* refreshes the display waits for at each of them; 0 when it is not asked to wait */
+  int waits;            /* 0 when the display cannot be made to wait at all */
+} rg_handover;
+
+static inline rg_handover rg_handover_for(rg_pacing pacing, int took_interval, int took_one) {
+  if (!pacing.waits_for_refresh) return (rg_handover){1, 0, 0};
+  if (pacing.refreshes > 1 && took_interval) return (rg_handover){1, pacing.refreshes, 1};
+  if (took_one) return (rg_handover){pacing.refreshes > 1 ? pacing.refreshes : 1, 1, 1};
+  return (rg_handover){1, 0, 0};
+}
+
 /*
  * A CLOCK STANDS BEHIND THE MONITOR. Showing a picture comes straight back, without waiting for
  * a refresh, while the window is hidden or minimised, and a game must never run as fast as the
