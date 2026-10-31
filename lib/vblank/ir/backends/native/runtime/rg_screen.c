@@ -1856,6 +1856,9 @@ int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop)
     clear_to(backdrop);
     shown_count = 0;
     scenery_kept = 0;
+    /* What was under each sprite went with the old screen, so nothing is put back over the new
+     * one. A console that places its sprites at the end of a pass takes them off after this. */
+    memset(last_drawn, 0, sizeof last_drawn);
   } else {
     show_backdrop(new_backdrop);
   }

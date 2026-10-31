@@ -2015,6 +2015,9 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
     rg_clear_to(@rg_backdrop)
     @rg_shown_backgrounds = []
     @rg_scenery_kept = false
+    # What was under each sprite went with the old screen, so nothing is put back over the new
+    # one. A console that places its sprites at the end of a pass takes them off after this.
+    @rg_last_drawn.fill(nil)
   else
     rg_show_backdrop(new_backdrop)
   end
