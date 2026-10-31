@@ -191,7 +191,7 @@ module Dive
     scene :over do
       layer :over do
         draw_text "OUT OF AIR", :center, 64, :white
-        draw_text "PRESS START", :center, 88, :white, font: :tiny
+        draw_text "PRESS START", :center, 88, :white
       end
       if pressed(:start)
         fresh = true

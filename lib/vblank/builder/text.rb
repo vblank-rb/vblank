@@ -97,8 +97,9 @@ module VBlank
       # resolves `"score: #{n}"` at build time, before the game runs.
       #
       # The built-in font is 6px per character (a 5px glyph + a 1px gap) and 7px tall;
-      # text is uppercased and unknown characters are skipped. Another font may be
-      # proportional, so ask {#text_width} rather than multiplying.
+      # text is uppercased, and a character the font does not have is a friendly error,
+      # since the words are known while the game is built. Another font may be proportional,
+      # so ask {#text_width} rather than multiplying.
       #
       # TWO COLOURS, AND A TEST SAYING WHICH. Give the colour as a pair and `showing:`
       # the test that picks between them — the second while it holds, the first when it
@@ -131,6 +132,7 @@ module VBlank
         end
         colors = text_colors!(color, showing)
         chosen = IR::FontTable.of(@program).get(font) # fail early with a friendly error on an unknown font name
+        refuse_missing_characters!(text, chosen, font)
         x = column_for(x, chosen.text_width(text), within, "draw_text")
 
         # A tiled screen has no framebuffer to paint into, so text is drawn as little
@@ -223,6 +225,20 @@ module VBlank
       def text_height(font: :default) = IR::FontTable.of(@program).get(font).height
 
       private
+
+      # Words written in the game are known while it is built, so a character the font does not
+      # have is said here. Left alone it is a gap in the line that only a look at the picture finds.
+      def refuse_missing_characters!(text, chosen, font)
+        missing = chosen.missing_characters(text)
+        return if missing.empty?
+
+        names = missing.map(&:inspect).join(", ")
+        raise ArgumentError,
+              "draw_text #{text.inspect}: font :#{font} has no #{names}. The text cannot show " \
+              "#{missing.one? ? 'this character' : 'these characters'}. To fix this, use " \
+              "#{missing.one? ? 'a different character' : 'different characters'}, or give `font:` a font that has " \
+              "#{missing.one? ? 'it' : 'them'}. For an empty place, use a space."
+      end
 
       # Put a declared font in the tree, the same way a declared picture goes in, so it
       # belongs to the game that wrote it.

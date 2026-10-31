@@ -207,9 +207,9 @@ module Corridor
         end
 
         # The bar: how much gold, out of how much there is.
-        draw_text "GOLD", 8, VIEW_H + 10, :white, font: :tiny
+        draw_text "GOLD", 8, VIEW_H + 9, :white
         draw_number :score, 46, VIEW_H + 10, GOLD_C, digits: 2, font: :tiny
-        draw_text "OF", 66, VIEW_H + 10, :gray, font: :tiny
+        draw_text "OF", 66, VIEW_H + 9, :gray
         draw_number GOLD.length, 82, VIEW_H + 10, :white, digits: 2, font: :tiny
       end
     end

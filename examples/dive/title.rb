@@ -113,7 +113,7 @@ module Dive
 
       build.layer(:name) do
         build.draw_text "A DIVE", :center, 108, :white
-        build.draw_text "PRESS START", :center, 128, :white, font: :tiny
+        build.draw_text "PRESS START", :center, 128, :white
       end
 
       @swelling = build.var(:swelling, 1) # 1 while the disc is growing, 0 while it shrinks
