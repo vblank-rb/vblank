@@ -116,6 +116,11 @@ class TestSceneHandoverScenarios < Minitest::Test
                  console_frames: LOOK_BACK_FROM_BITMAP + 1),
     # Tiles and a map stood in the memory the painted screen shows, so a screen painted again after
     # a tiled one has only what it paints now, on the backdrop.
+    # The console's sprite layer is off while a painted screen is up, in a game whose view is
+    # rebuilt every frame and in one like this whose view is not.
+    Scenario.new(name: :sprite_every_screen_shows_is_off_while_a_painted_screen_is_up,
+                 program: :always_up_sprite_over_a_bitmap_screen, frames: LOOK_IN_BITMAP, probe: [120, 80],
+                 color: :blue, console_frames: LOOK_IN_BITMAP + 2),
     Scenario.new(name: :painted_screen_back_from_a_tiled_one_shows_nothing_of_it,
                  program: :painted_then_tiled_then_painted, frames: 18, probe: [120, 0], color: BACKDROP,
                  console_frames: 20),
@@ -458,6 +463,30 @@ class TestSceneHandoverScenarios < Minitest::Test
         case_var(:state) do
           when_val 0, :paint
           when_val 1, :play
+        end
+      end
+    end
+  end
+
+  # A sprite declared in no scene, over a tiled scene, in a game that scrolls nothing, and the bitmap
+  # screen cleared blue once.
+  private def always_up_sprite_over_a_bitmap_screen
+    built do
+      screen :tiled
+      red_and_blue_art
+      sprite :red_box, at: [112, 72]
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:tiled_screen) { state = 1 if tick == BITMAP_AWAY }
+      scene(:bitmap_screen) do
+        screen :bitmap
+        clear_screen :blue if tick == BITMAP_AWAY + 1
+      end
+      game_loop do
+        tick += 1
+        case_var(:state) do
+          when_val 0, :tiled_screen
+          when_val 1, :bitmap_screen
         end
       end
     end

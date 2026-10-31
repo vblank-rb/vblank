@@ -1694,6 +1694,8 @@ void rg_objects_end(void) {
     request_repaint();
     return;
   }
+  /* The sprite layer is off while a painted screen is up in a game with screens drawn from tiles. */
+  if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE]) return;
   for (int32_t i = 0; i < drawing_count; i++) {
     mix_as_sprite(drawing[i].sprite);
     draw_placed(&drawing[i]);

@@ -1859,6 +1859,8 @@ end
 def rg_objects_end
   @rg_sprite_layer = @rg_drawing.dup
   return rg_request_repaint if rg_rebuilt_whole?
+  # The sprite layer is off while a painted screen is up in a game with screens drawn from tiles.
+  return if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0
 
   @rg_drawing.each do |placed|
     rg_mix_as_sprite(placed.sprite)

@@ -2600,6 +2600,10 @@ module VBlank
             request_repaint
             return
           end
+          # The console's sprite layer is off while a painted screen is up, in a game that also
+          # has screens drawn from tiles, so they are counted as drawn and paint nothing here. A
+          # game with no such screens has sprites painted onto its picture, which this leaves.
+          return if @screen_mode == :bitmap && @changes_screen_kind
 
           scene = scene_framebuffer
           node.names.each do |name|
