@@ -11,6 +11,7 @@ require_relative "runtime/paint"
 require_relative "runtime/sound"
 require_relative "runtime/music"
 require_relative "runtime/effects"
+require_relative "runtime/effect_table"
 require_relative "runtime/clips"
 require_relative "runtime/rumble"
 require_relative "runtime/kept_sprites"
@@ -48,7 +49,7 @@ module VBlank
           # on the pass before is left as it is (Lowering::Picture#keeps_unchanged_sprites?).
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
-                      rumble: false, kept_sprites: false, holds_music: false)
+                      rumble: false, kept_sprites: false, holds_music: false, effect_table: false)
             Clips.reserve(memory, laps: clip_laps) if clips
             Rumble.reserve(memory) if rumble
             KeptSprites.reserve(memory) if kept_sprites
@@ -57,7 +58,7 @@ module VBlank
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, swells: swells, noise_swells: noise_swells,
-                                  banked: banked_songs, holds: holds_music)
+                                  banked: banked_songs, holds: holds_music, effect_table: effect_table)
           end
 
           # The runtime's sections: the processor's entry points, and everything else in one.

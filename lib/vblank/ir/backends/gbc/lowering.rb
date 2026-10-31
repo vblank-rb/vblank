@@ -151,6 +151,7 @@ module VBlank
           # +bank_pose_tables+ the tables of its sprites' poses in each list (Picture#picture_and_attributes_drawn),
           # and +bank_background_colors+ the tables of its backgrounds' colours (Picture#emit_background_colors_for_declaration).
           # +banked_table_bytes+ is how big one of the game's tables has to be to go to a bank (#banked_tables).
+          # +effects_in_banks+ keeps its sound effects there too (GBC::Music#effects_in_banks?).
           # +known+ holds what is worked out from +program+ alone, kept from one attempt at a build to
           # the next (GBC#build): nothing in it depends on how this one is built.
           # +scene_pictures+ says each scene brings its own sprite pictures in (Art::TooManySpriteTiles),
@@ -158,8 +159,9 @@ module VBlank
           # need rooms too.
           def initialize(program, memory:, lends_sprite_colors: false, tile_rooms: false, room_colors: false,
                          banked_songs: false, bank_pose_tables: false, bank_background_colors: false, known: {},
-                         scene_pictures: false, banked_table_bytes: BANKED_TABLE_BYTES)
+                         scene_pictures: false, banked_table_bytes: BANKED_TABLE_BYTES, effects_in_banks: false)
             @program = program
+            @effects_in_banks = effects_in_banks
             @banked_table_bytes = banked_table_bytes
             @known = known
             @plans_scene_pictures = scene_pictures

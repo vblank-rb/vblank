@@ -236,7 +236,9 @@ module VBlank
         fade_music_in: works,
         fade_music_out: works,
         songs: works("see `song` for recordings."),
-        sound_effects: works("see `song` for recordings."),
+        sound_effects: works("see `song` for recordings. A game can have as many effects as the " \
+                             "cartridge's banks hold. If the effects do not fit in the part of the " \
+                             "cartridge always in view, the build keeps them in the banks."),
         sample: works("it plays one recording at a time, on the wave voice. Each sample " \
                       "turns the voice full on or off, so the sound is rough, as a Color game's voice " \
                       "clips are. A play while a recording sounds is not heard. A recording can loop " \

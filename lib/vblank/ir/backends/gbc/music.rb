@@ -97,14 +97,17 @@ module VBlank
           EffectPart = Data.define(:voice, :tone, :label, :count)
 
           # +banked+ keeps each song's notes in the cartridge's banks rather than the part always in
-          # view (#sections).
-          def initialize(program, banked: false)
+          # view (#sections). +effects_in_banks+ keeps the sound effects' there too, each with a row
+          # that says what it is, and has them played from those rows (Runtime::EffectTable).
+          def initialize(program, banked: false, effects_in_banks: false)
             @songs = program.walk.select { |node| node.kind == :song }.uniq(&:name)
             @effect_names = Tunes.effects(program).uniq
-            @banked = banked
+            @effects_in_banks = effects_in_banks && !@effect_names.empty?
+            @banked = banked || @effects_in_banks
           end
 
           def banked? = @banked
+          def effects_in_banks? = @effects_in_banks
 
           # The number +name+ is played by.
           def number(name)
@@ -160,7 +163,56 @@ module VBlank
             waveforms.each { |shape| asm.data_bytes(packed_waveform(shape)) }
             asm.data_bytes(0) # a label has to be somewhere
             emit_effects(asm) unless effects.empty?
-            [asm.section, *parts.flatten]
+            [asm.section, *parts.flatten, *effect_sections]
+          end
+
+          # What a row of music_sfx_index says beside where the effect's row is: its group as a number
+          # from 1, nought for none.
+          def group_number(effect)
+            return 0 if effect.group.nil?
+
+            1 + effects.map(&:group).compact.uniq.index(effect.group)
+          end
+
+          # EACH EFFECT'S ROW AND NOTES IN A SECTION OF THEIR OWN in the banks, which the row names
+          # the notes from (Runtime::EffectTable says what a row holds).
+          def effect_sections
+            return [] unless effects_in_banks?
+
+            effects.map do |effect|
+              row = SM83.new("sfx #{effect.number}", home: :banked, holds: SONGS)
+              row.label("sfx_row_#{effect.number}")
+              row.data_bytes(effect.keeps_voices ? 1 : 0)
+              row.data_words(effect.total_frames)
+              row.data_bytes(effect.parts.length)
+              effect.parts.each do |part|
+                row.data_bytes(part.voice, part.tone)
+                row.data_words(part.count, part.label)
+              end
+              emit_effect_notes(row, effect)
+              row.section
+            end
+          end
+
+          def emit_effect_notes(asm, effect)
+            song = song_named(effect.name)
+            voices_of(song).zip(effect.parts) do |(part, voice), played|
+              asm.label(played.label)
+              part.events.each { |event| emit_note(asm, voice, part, event) }
+            end
+          end
+
+          # What stays in view of the effects kept in banks: where each one's row is, with its rank,
+          # group and priority, and the effects highest rank first, each with its rank.
+          def emit_effect_index(asm)
+            asm.label("music_sfx_index")
+            effects.each do |effect|
+              asm.data_words("sfx_row_#{effect.number}")
+              asm.data_bank_of("sfx_row_#{effect.number}")
+              asm.data_bytes(effect.rank, group_number(effect), effect.priority)
+            end
+            asm.label("music_sfx_by_rank")
+            effects_by_rank.each { |effect| asm.data_bytes(effect.number, effect.rank) }
           end
 
           # Every list of notes in the section, by its label: each note, in the order the list holds
@@ -291,13 +343,9 @@ module VBlank
             asm.data_bytes(@songs.map { |song| rank(Tunes.song_rank(song)) })
             asm.label("music_rank_effects")
             asm.data_bytes(ranks.map { |full| (full & Tunes::ORDER_MASK).zero? ? 0 : 1 })
-            effects.each do |effect|
-              song = song_named(effect.name)
-              voices_of(song).zip(effect.parts) do |(part, voice), played|
-                asm.label(played.label)
-                part.events.each { |event| emit_note(asm, voice, part, event) }
-              end
-            end
+            return emit_effect_index(asm) if effects_in_banks?
+
+            effects.each { |effect| emit_effect_notes(asm, effect) }
           end
 
           # Song number +i+ into +asm+: its entry, and its parts' notes after it — or, for songs kept

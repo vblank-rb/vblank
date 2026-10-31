@@ -107,4 +107,60 @@ class TestGBCMusic < Minitest::Test
 
     assert_operator voice_entries(program, 30), :>=, 12
   end
+
+  # +count+ short effects, each two notes of its own and all different, kept in a list the game
+  # plays from by number. The first four are one group, so a later one cuts an earlier one off.
+  private def many_effects_game(count, song: false, &loop_body)
+    score = VBlank::Audio::Score
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    pitches = PITCHES
+    b.instance_eval do
+      enable_sound
+      effects = (0...count).to_h do |n|
+        notes = [score::Note.new(at: 0, key: pitches[n % pitches.length], length: 3 + (n % 5)),
+                 score::Note.new(at: 8, key: pitches[(n * 5) % pitches.length], length: 3)]
+        [:"zap#{n}", score.new(tempo: 120, parts: [score::Part.new(notes: notes)])]
+      end
+      sfx = sound_effects :sfx, effects
+      if song
+        song(:tune) { tempo(240) && voice(:lead) { |v| 16.times { |n| v.note pitches[n % 12], :sixteenth } } }
+        play_song :tune
+      end
+      tick = var :tick, 0
+      game_loop do
+        tick.increase! 1
+        instance_exec(sfx, tick, &loop_body)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # SOUND EFFECTS BY THE DOZEN. Each effect written out in the part always in view takes more than
+  # its notes, so a game with many cannot fit. One that does not fit otherwise keeps every effect
+  # in the banks with one player, and they sound as the interpreter says.
+  def test_many_sound_effects_build_and_play_as_the_interpreter_plays_them
+    program = many_effects_game(60) do |sfx, tick|
+      sfx.play :zap3 if tick == 2
+      sfx.play :zap41 if tick == 3
+      sfx.play :zap59 if tick == 30
+    end
+
+    assert_operator voice_entries(program, 45), :>=, 4
+  end
+
+  def test_many_sound_effects_beside_a_song_take_its_voice_and_give_it_back
+    program = many_effects_game(60, song: true) do |sfx, tick|
+      sfx.play :zap7 if tick == 6
+    end
+
+    assert_operator voice_entries(program, 40), :>=, 8
+  end
+
+  def test_sound_effects_kept_in_the_banks_leave_the_part_always_in_view_alone
+    code = GBC.new.build(many_effects_game(60) { |sfx, tick| sfx.play :zap3 if tick == 2 }).built.code
+
+    assert_operator code.fetch("sfx_notes_0_0").bank, :>, 0
+    refute code.key?("rt_sfx_frame_0"), "one player for every effect, not a player each"
+  end
 end

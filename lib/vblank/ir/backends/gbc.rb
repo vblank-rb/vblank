@@ -164,13 +164,14 @@ module VBlank
         end
 
         def build_cartridge(program, title, lends:, tile_rooms:, room_colors:, banked_songs: false, bank_pose_tables: false,
-                            bank_background_colors: false, banked_table_bytes: Lowering::BANKED_TABLE_BYTES)
+                            bank_background_colors: false, banked_table_bytes: Lowering::BANKED_TABLE_BYTES,
+                            effects_in_banks: false)
           memory = Memory.new
           lowering = Lowering.new(program, memory: memory, lends_sprite_colors: lends, tile_rooms: tile_rooms,
                                            scene_pictures: @scene_pictures,
                                            room_colors: room_colors, banked_songs: banked_songs, bank_pose_tables: bank_pose_tables,
                                            bank_background_colors: bank_background_colors, banked_table_bytes: banked_table_bytes,
-                                           known: @known)
+                                           effects_in_banks: effects_in_banks, known: @known)
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
                                   bar_rows: lowering.bar_rows, slides: lowering.music.slides?,
@@ -180,7 +181,7 @@ module VBlank
                                   clip_laps: lowering.clips.loops?,
                                   dark: lowering.counts_dark_frames?, rumble: lowering.rumbles?,
                                   kept_sprites: lowering.keeps_unchanged_sprites?,
-                                  holds_music: lowering.holds_music?)
+                                  holds_music: lowering.holds_music?, effect_table: lowering.music.effects_in_banks?)
           game = lowering.sections
           runs = lowering.run_uploads
           clips = lowering.clips if lowering.clips.any?
@@ -196,18 +197,32 @@ module VBlank
           begin
             linked = Linker.new(runtime + game + data, fixed_from: Console::GBCHardware::HEADER_END,
                                                        clock: lowering.clock?).link
+          rescue Linker::FrameworkFillsView
+            raise if effects_in_banks || lowering.music.effects.empty?
+
+            # Nothing else here shrinks the framework's own code, so go straight to what does.
+            return build_cartridge(program, title, lends: lends, tile_rooms: tile_rooms, room_colors: room_colors,
+                                                   effects_in_banks: true)
           rescue Linker::TooBigForView
             # Its songs' notes into the banks first, then its sprites' pose tables too, then the
             # tables of what its backgrounds' palettes show at each step of a fade, and last its
-            # own smaller tables, which are the ones a game reads most.
+            # own smaller tables, which are the ones a game reads most. All of that failing, it
+            # starts again with its sound effects kept in the banks, which make the most room and
+            # play a little slower, and a game that fits without them keeps its bytes.
             smaller = Lowering::SMALLER_BANKED_TABLE_BYTES.find { |bytes| bytes < banked_table_bytes }
-            raise if bank_background_colors && !smaller
+            if bank_background_colors && !smaller
+              raise if effects_in_banks || lowering.music.effects.empty?
+
+              return build_cartridge(program, title, lends: lends, tile_rooms: tile_rooms, room_colors: room_colors,
+                                                     effects_in_banks: true)
+            end
 
             songs = lowering.music.any? && !banked_songs
             return build_cartridge(program, title, lends: lends, tile_rooms: tile_rooms, room_colors: room_colors,
                                                    banked_songs: banked_songs || songs, bank_pose_tables: bank_pose_tables || !songs,
                                                    bank_background_colors: bank_pose_tables,
-                                                   banked_table_bytes: bank_background_colors ? smaller : banked_table_bytes)
+                                                   banked_table_bytes: bank_background_colors ? smaller : banked_table_bytes,
+                                                   effects_in_banks: effects_in_banks)
           end
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)

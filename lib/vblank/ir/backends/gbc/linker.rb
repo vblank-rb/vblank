@@ -49,6 +49,10 @@ module VBlank
           # the banks, and then its sprites' tables of poses in each list (GBC#build).
           class TooBigForView < TooBig; end
 
+          # ...and too full with the framework's own code alone, which a game can mend only where
+          # that code grows with the game: its sound effects (GBC#build_cartridge).
+          class FrameworkFillsView < Error; end
+
           # Where each section went: its bank and the address of its first byte.
           Placed = Data.define(:section, :bank, :address)
 
@@ -138,7 +142,7 @@ module VBlank
           # framework fills by itself is the framework's fault, and stays an internal error.
           def refuse_too_big_for_view!(placed, needed)
             own = needed - placed.select { |p| p.section.holds }.sum { |p| p.section.size }
-            raise Error, "the part of the cartridge always in view is #{needed} bytes, over #{BANK_SIZE}" if own > BANK_SIZE
+            raise FrameworkFillsView, "the part of the cartridge always in view is #{needed} bytes, over #{BANK_SIZE}" if own > BANK_SIZE
 
             raise TooBigForView, "#{DOES_NOT_FIT} The part of the cartridge that is always in view holds #{BANK_SIZE} " \
                                  "bytes. The game needs #{needed} bytes there. Of those, " \

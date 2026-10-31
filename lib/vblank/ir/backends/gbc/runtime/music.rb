@@ -81,7 +81,7 @@ module VBlank
             def holds?(memory) = memory.reserved?(TUNE_HELD)
 
             def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, swells: false, noise_swells: false, banked: false,
-                        holds: false)
+                        holds: false, effect_table: false)
               memory.reserve(BANK_NOTED, 1) if banked
               memory.reserve(TUNE_HELD, 1) if holds
               reserve_song_player(memory, banked)
@@ -96,7 +96,7 @@ module VBlank
               memory.reserve(SHAPE_WALKS, SHAPE_BYTES * SHAPE_VOICES) if shapes
               memory.reserve(SWELLS, SWELL_BYTES * (noise_swells ? SWELL_VOICES.length : SQUARE_SWELLS.length)) if swells || noise_swells
               memory.reserve(SWELL_NOISE_TONE, 1) if noise_swells
-              Effects.reserve(memory, effects)
+              (effect_table ? EffectTable : Effects).reserve(memory, effects)
             end
 
             # A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, in a game that moves the music volume
@@ -221,7 +221,8 @@ module VBlank
               emit_set_speakers(asm, memory) if pans
               emit_shapes(asm, memory) if shapes?(memory)
               emit_swells(asm, memory) if swells?(memory)
-              Effects.emit(asm, memory, effects, by_rank, slides: slides, pans: pans, fades: fades, bytes: bytes) if sharing
+              player = EffectTable.in_use?(memory) ? EffectTable : Effects
+              player.emit(asm, memory, effects, by_rank, slides: slides, pans: pans, fades: fades, bytes: bytes) if sharing
             end
 
             # HL = HL × +bytes+, the bytes a note takes (GBC::Music.note_bytes), with DE its number too:

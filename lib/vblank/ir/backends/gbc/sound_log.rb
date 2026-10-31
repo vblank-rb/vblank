@@ -76,7 +76,17 @@ module VBlank
             # (Runtime::Effects#emit_finish), by where the processor reaches each.
             @effects_starting = {}
             @voices_let_go = {}
+            # Effects played from their rows (Runtime::EffectTable) share these two places, and the
+            # registers say which effect, and which voice. Their notes are known by their bank.
+            @effect_names = places.sound_effects
+            @effects_in_banks = code.key?("rt_sfx_started")
+            if @effects_in_banks
+              @routines[code.fetch("rt_sfx_started").address] = :table_effect_starting
+              @routines[code.fetch("rt_sfx_free").address] = :table_voice_let_go
+            end
             places.sound_effects.each_with_index do |name, n|
+              next if @effects_in_banks
+
               @effects_starting[code.fetch("rt_sfx_started_#{n}").address] = name
               (1..4).each do |voice|
                 label = "rt_sfx_#{n}_free_#{voice}"
@@ -131,9 +141,12 @@ module VBlank
               when *SWELLS_ON.keys
                 @music << [:loudness, SWELLS_ON.fetch(@routines[pc]), bc >> 8, VBlank::Audio::NoteFade.from_bits(bc & 0xFF)]
               when "rt_clip_came_round" then @music << [:sample, @recordings.fetch(af >> 8)] # a loop round again
-              when "rt_sfx_note" then effect_note(@notes.fetch(note_key(0, hl - 2))) # in view, past the note's frame
+              when "rt_sfx_note" # past the note's frame, in view or in the bank A holds
+                effect_note(@notes.fetch(note_key(@effects_in_banks ? af >> 8 : 0, hl - 2)))
               when :effect_starting then @music << [:sound_effect, @effects_starting.fetch(pc)]
               when :voice_let_go then voice_let_go(*@voices_let_go.fetch(pc))
+              when :table_effect_starting then @music << [:sound_effect, @effect_names.fetch(af >> 8)]
+              when :table_voice_let_go then voice_let_go(@effect_names.fetch(bc >> 8), bc & 0xFF)
               end
             end
             self

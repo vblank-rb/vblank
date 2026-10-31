@@ -53,7 +53,7 @@ module VBlank
 
             def prepare_sound
               @defined_sounds = @program.walk.select { |node| node.kind == :define_sound }.to_h { |node| [node.name, node.effect] }
-              @music = Music.new(@program, banked: @banked_songs)
+              @music = Music.new(@program, banked: @banked_songs, effects_in_banks: @effects_in_banks)
               @clips = Clips.new(@program)
               @sound_tables = {}
             end
@@ -131,11 +131,21 @@ module VBlank
                 @asm.load(:a, :e)
                 @asm.cp_a(i)
                 @asm.jump(:nz, other)
-                @asm.call("rt_sfx_#{node.this_frame ? 'now' : 'ask'}_#{numbers.fetch(name)}")
+                emit_effect_asked(node, numbers.fetch(name))
                 @asm.jump(past)
                 @asm.label(other)
               end
               @asm.label(past)
+            end
+
+            # The routine that asks for effect +number+: its own, or the one every effect shares,
+            # handed the number (Runtime::EffectTable).
+            def emit_effect_asked(node, number)
+              word = node.this_frame ? "now" : "ask"
+              return @asm.call("rt_sfx_#{word}_#{number}") unless @music.effects_in_banks?
+
+              @asm.load(:a, number)
+              @asm.call("rt_sfx_#{word}")
             end
 
             def effect_list(name)
