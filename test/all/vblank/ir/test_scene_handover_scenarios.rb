@@ -122,6 +122,9 @@ class TestSceneHandoverScenarios < Minitest::Test
     Scenario.new(name: :tear_free_screen_back_from_a_tiled_one_shows_nothing_of_it,
                  program: :tear_free_then_tiled_then_tear_free, frames: 18, probe: [120, 0], color: BACKDROP,
                  console_frames: 20),
+    Scenario.new(name: :tear_free_screen_draws_a_picture_declared_outside_it,
+                 program: :tear_free_picture_beside_tiles, frames: 3, probe: [44, 44], color: :blue,
+                 console_frames: 5),
     Scenario.new(name: :tear_free_screen_back_from_a_tiled_one_keeps_its_colors,
                  program: :tear_free_then_tiled_then_tear_free, frames: 18, probe: [4, 42], color: :blue,
                  console_frames: 21),
@@ -429,8 +432,35 @@ class TestSceneHandoverScenarios < Minitest::Test
     end
   end
 
-  private def tear_free_then_tiled_then_tear_free
-    painted_then_tiled_then_painted(tear_free: true, colors: %i[black red blue])
+  private def tear_free_then_tiled_then_tear_free = painted_then_tiled_then_painted(tear_free: true)
+
+  # A tear-free scene drawing a picture declared outside it, beside a tiled scene with tiles of
+  # another colour, which that screen's colours are never asked to hold.
+  private def tear_free_picture_beside_tiles
+    built do
+      red_and_blue_art
+      tiles :room_tiles, "#" => :red_art
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:paint) do
+        screen :bitmap, tear_free: true
+        blit :blue_art, 40, 40
+        state = 1 if tick == 5
+      end
+      scene(:play) do
+        screen :tiled
+        background :room, tiles: :room_tiles, map: Array.new(32) { "#" * 32 }
+        sprite :red_box, at: [40, 40]
+        state = 0 if tick == 11
+      end
+      game_loop do
+        tick += 1
+        case_var(:state) do
+          when_val 0, :paint
+          when_val 1, :play
+        end
+      end
+    end
   end
 
   # A tiled scene's red sprite, away to the bitmap screen and back.

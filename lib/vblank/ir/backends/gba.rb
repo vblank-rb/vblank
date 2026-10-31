@@ -1604,16 +1604,16 @@ module VBlank
         # Framebuffer#column_blob).
         #
         # Every picture the program declares, once it has a tear-free scene at all — rather than
-        # only the ones such a scene draws. A program with no tear-free scene ships nothing
-        # extra, and a picture used only on a direct-color scene stays as it was.
+        # only the ones such a scene draws — but for a picture no screen paints whose colors the
+        # table does not have, a tile of another screen. A program with no tear-free scene ships
+        # nothing extra, and a picture used only on a direct-color scene stays as it was.
         #
-        # Narrowing it to what is drawn would mean naming the verbs that draw a picture, and
-        # that list is now real (`blit`, and `blit_pose` through it), so the narrowing is worth
-        # doing — a game that declares a hundred pictures and draws two on its tear-free scene
-        # ships ninety-eight second copies nobody reads.
+        # Narrowing it to what is drawn is worth doing, since a game that declares a hundred
+        # pictures and draws two on its tear-free scene ships ninety-eight second copies nobody
+        # reads (Palette#pictures_drawn_in names them), and it changes such a game's bytes.
         def prepare_indexed_bitmaps(program)
           program.walk do |node|
-            next unless node.kind == :bitmap
+            next unless node.kind == :bitmap && @palette.covers?(node)
 
             bytes, clear = @palette.indices_for(node)
             @emit.data_blobs[indexed_blob_name(node.name)] = bytes

@@ -90,6 +90,17 @@ module VBlank
         [bytes.pack("C*"), marker]
       end
 
+      # Can #indices_for be asked about +bitmap+: does it draw on a painted screen, or hold only
+      # colors the table has? A picture that is only ever a tile, of a color no tear-free screen
+      # shows, has nothing to say to this table, and asking would refuse a color nobody put here.
+      def covers?(bitmap)
+        @drawn_pictures ||= @roots.flat_map { |root| pictures_drawn_in(root) }
+        return true if @drawn_pictures.include?(bitmap.name)
+
+        clear = bitmap.transparent
+        bitmap.pixels.unpack("v*").all? { |value| (clear && value == clear) || @slots.key?(value & 0x7FFF) }
+      end
+
       # A see-through pixel needs a number that is not any slot, since every slot is a real
       # color a drawer would paint. The first number past the end of the table is that, and it
       # exists only while the table has room — a full one leaves nothing to say it with.
@@ -117,6 +128,8 @@ module VBlank
 
       def initialize(program, scopes)
         roots = scopes || [program] # the subtrees to gather colors from
+        @program = program
+        @roots = roots
         given = given_entries(program)
         return use_given_palette!(given, roots) if given
 
@@ -179,6 +192,9 @@ module VBlank
       # definitions (whose pixels are already packed 15-bit values). Walks each
       # subtree WHOLE, not just its statement children, so a color used only in an
       # else-branch (held in an attr, not a child) still gets a slot.
+      #
+      # A picture declared outside those subtrees counts where one of them draws it. Its colors
+      # come after the rest, so a program whose pictures are all inside keeps its slots.
       def colors_drawn_in(roots)
         values = []
         roots.each do |root|
@@ -190,7 +206,21 @@ module VBlank
             end
           end
         end
+        drawn = roots.flat_map { |root| pictures_drawn_in(root) }
+        @program.walk { |node| collect_bitmap(node, values) if node.kind == :bitmap && drawn.include?(node.name) }
         values
+      end
+
+      # The pictures +root+ draws by name, on a screen that paints them.
+      def pictures_drawn_in(root)
+        names = []
+        root.walk do |node|
+          case node.kind
+          when :blit, :draw_column_at then names << node.name
+          when :blit_pose, :object then names.concat(node.poses)
+          end
+        end
+        names.uniq
       end
 
       # A bitmap's pixels are already resolved BGR555 halfwords. Its transparent
