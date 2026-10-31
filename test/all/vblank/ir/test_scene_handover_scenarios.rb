@@ -114,6 +114,17 @@ class TestSceneHandoverScenarios < Minitest::Test
     Scenario.new(name: :always_up_painted_sprite_across_a_bitmap_screen, program: :always_up_painted_sprite,
                  frames: LOOK_BACK_FROM_BITMAP, probe: [0, 0], color: :white,
                  console_frames: LOOK_BACK_FROM_BITMAP + 1),
+    # Tiles and a map stood in the memory the painted screen shows, so a screen painted again after
+    # a tiled one has only what it paints now, on the backdrop.
+    Scenario.new(name: :painted_screen_back_from_a_tiled_one_shows_nothing_of_it,
+                 program: :painted_then_tiled_then_painted, frames: 18, probe: [120, 0], color: BACKDROP,
+                 console_frames: 20),
+    Scenario.new(name: :tear_free_screen_back_from_a_tiled_one_shows_nothing_of_it,
+                 program: :tear_free_then_tiled_then_tear_free, frames: 18, probe: [120, 0], color: BACKDROP,
+                 console_frames: 20),
+    Scenario.new(name: :tear_free_screen_back_from_a_tiled_one_keeps_its_colors,
+                 program: :tear_free_then_tiled_then_tear_free, frames: 18, probe: [4, 42], color: :blue,
+                 console_frames: 21),
     Scenario.new(name: :bitmap_title_painted_once_stays_beside_a_room_that_scrolls,
                  program: :title_painted_once_then_a_scrolling_room,
                  frames: 5, probe: [120, 80], color: :blue, console_frames: 5 + 2),
@@ -388,6 +399,38 @@ class TestSceneHandoverScenarios < Minitest::Test
       end
       game_loop { case_var(:state) { when_val 0, :field } }
     end
+  end
+
+  # A painted scene that draws one blue bar each pass and clears nothing, a tiled scene of one
+  # red background for ticks 6 to 11, and the painted scene again.
+  private def painted_then_tiled_then_painted(**painted)
+    built do
+      red_and_blue_art
+      tiles :room_tiles, "#" => :red_art
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:paint) do
+        screen :bitmap, **painted
+        fill_rect 0, 40, 40, 8, :blue
+        state = 1 if tick == 5
+      end
+      scene(:play) do
+        screen :tiled
+        background :room, tiles: :room_tiles, map: Array.new(32) { "#" * 32 }
+        state = 0 if tick == 11
+      end
+      game_loop do
+        tick += 1
+        case_var(:state) do
+          when_val 0, :paint
+          when_val 1, :play
+        end
+      end
+    end
+  end
+
+  private def tear_free_then_tiled_then_tear_free
+    painted_then_tiled_then_painted(tear_free: true, colors: %i[black red blue])
   end
 
   # A tiled scene's red sprite, away to the bitmap screen and back.

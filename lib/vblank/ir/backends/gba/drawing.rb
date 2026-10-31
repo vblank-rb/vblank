@@ -383,14 +383,13 @@ module VBlank
             @emitter.write_reg16(REG_DISPCNT, base | held)
             @primitives.store_word_immediate(MODE_BUFFERED, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
-            # A scene that tints leaves its color table blended, and one that remembers a
-            # tint has to be able to trust what is in the table. In a program that crosses
-            # to the tiled screen, that screen's own colors have been in this table since —
-            # so put the originals back, which is also what makes the remembered tint true
-            # again. A plain bitmap screen's tint writes its color over this table's first
-            # entry, which is the other reason to.
-            if @palette_tint.moves_color_table? &&
-               (@layout.modes.crosses_display_systems? || @palette_tint.tint_crosses_screens?)
+            # In a program that crosses to the tiled screen, that screen's own colors have been in
+            # this table since, so every number this screen painted would mean another color. So
+            # put the originals back, which is also what makes a remembered tint true again. A
+            # scene that tints leaves its color table blended, and a plain bitmap screen's tint
+            # writes its color over this table's first entry, which are the other reasons to.
+            if @layout.modes.crosses_display_systems? ||
+               (@palette_tint.moves_color_table? && @palette_tint.tint_crosses_screens?)
               upload_palette
             end
             @effects.emit_kept_tint_on_entry(IR::Modes::BUFFERED)
@@ -639,8 +638,26 @@ module VBlank
           def emit_scene_mode(name)
             mode = scene_handover.arrival(name).mode
             @scene_entry.emit_unless_holds(MODE_STATE, mode_state_marker(mode)) do
+              emit_painted_screen_wiped(name, mode)
               enter_mode(mode)
               emit_always_up if IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(mode))
+            end
+          end
+
+          # A PAINTED SCREEN REACHED FROM ONE DRAWN FROM TILES STARTS AS THE BACKDROP. The picture
+          # of the painted screen and the tiled screen's tiles and maps are the same video memory,
+          # so what was tiles would show as coloured noise wherever the scene does not paint, on
+          # both of a tear-free screen's pages. One painted screen reached from the other keeps the
+          # picture, as the interpreter does (Reference#exec_screen). A game that never leaves its
+          # painted screens pays nothing, and one that does pays a fill on the pass it crosses.
+          def emit_painted_screen_wiped(scene, mode)
+            return unless @layout.modes.crosses_display_systems?
+            return unless [IR::Modes::DIRECT, IR::Modes::BUFFERED].include?(mode)
+
+            backdrop = scene_handover.arrival(scene).backdrop
+            direct = mode == IR::Modes::DIRECT
+            @scene_entry.emit_unless_holds(MODE_STATE, direct ? MODE_BUFFERED : MODE_DIRECT) do
+              direct ? emit_screen_filled(backdrop) : @buffered.emit_both_pages_filled(backdrop)
             end
           end
 
@@ -944,7 +961,11 @@ module VBlank
             # is already one way to fill one of those.
             return emit_fill_area(node.color) if @framebuffer.clipping?
 
-            color = Graphics::Color.resolve(node.color)
+            emit_screen_filled(Graphics::Color.resolve(node.color))
+          end
+
+          # The whole picture of the painted screen in +color+, a 15-bit colour.
+          def emit_screen_filled(color)
             word = (color << 16) | color
             count = SCREEN_WIDTH * SCREEN_HEIGHT / 2
             scratch = var_addr(Primitives::FILL_SCRATCH)

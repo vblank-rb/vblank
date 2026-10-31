@@ -70,6 +70,15 @@ module VBlank
             emit_start_copy_engine(from: scratch, to: in_register(ACC), control: @framebuffer.dma_fill_control(count))
           end
 
+          # Both pages in +color+, for a tear-free screen arriving over what another screen left.
+          def emit_both_pages_filled(color)
+            scratch = emit_index_fill_word(color)
+            count = SCREEN_WIDTH * SCREEN_HEIGHT / 4
+            [PAGE0, PAGE1].each do |page|
+              emit_start_copy_engine(from: scratch, to: page, control: @framebuffer.dma_fill_control(count))
+            end
+          end
+
           # A rectangle at a constant position/size, filled per row into the hidden
           # page. fill_rect and dma_fill_rect share this — in Mode 4 both are the same
           # packed block fill.
