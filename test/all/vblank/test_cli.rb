@@ -837,8 +837,10 @@ class TestCLI < Minitest::Test
   end
 
   # And when the game's tables are more than the part of the Color's cartridge always in view
-  # holds: the refusal names the tables, not the linker's sections. A big table is kept in banks,
-  # so it takes many small ones, which stay in view, to fill that part.
+  # holds: the refusal names the tables, not the linker's sections. A table of any size worth
+  # moving goes to a bank when the game does not fit, so it takes a great many of the shortest
+  # tables, each too short to move, to fill that part. Each starts with its own number, so no
+  # two are the same table.
   def test_build_refuses_a_game_too_big_for_the_colors_cartridge_without_a_backtrace
     Dir.mktmpdir do |dir|
       File.write(File.join(dir, "atlas.rb"), <<~GAME)
@@ -846,7 +848,7 @@ class TestCLI < Minitest::Test
         VBlank.game("ATLAS", consoles: %i[gba gbc]) do
           at = var :at, 0
           height = var :height, 0
-          heights = Array.new(20) { |n| table :"heights_\#{n}", Array.new(1000) { |i| (i + n) % 100 }, width: :byte }
+          heights = Array.new(1200) { |n| table :"heights_\#{n}", [n % 100, n / 100, *Array.new(13) { |i| i }], width: :byte }
           game_loop do
             heights.each { |t| height = t[at] }
             at += 1
