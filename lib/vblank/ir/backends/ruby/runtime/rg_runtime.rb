@@ -6,7 +6,7 @@
 # Every button a program can name (IR::Buttons), a bit each. That is the same ten on every
 # console: a console with fewer has a build that refuses the ones it lacks before there is a game
 # to play, so nothing here needs to know which console it is.
-RG_ALL_BUTTONS = 0x3FF
+RG_ALL_BUTTONS = 0xFFF
 RG_MAX_TIMERS = 32
 RG_SECONDS_A_DAY = 86400
 RG_UNDATED_FIRST_DAY = 10957 # 1 January 2000, in days from the start of 1970

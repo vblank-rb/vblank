@@ -165,8 +165,8 @@ module VBlank
         entry: refused("`entry` is raw ARM for the Advance's processor, which a Super Nintendo does not have."),
 
         # --- input ---
-        held: works("the ten buttons the Advance has: a Super Nintendo controller has them all, and X and " \
-                    "Y besides, which a game cannot read yet."),
+        held: works("the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has " \
+                    "twelve."),
         pressed: works("see `held`."),
         if_held: works("see `held`."),
         if_pressed: works("see `held`."),

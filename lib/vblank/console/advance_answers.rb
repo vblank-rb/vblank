@@ -67,7 +67,8 @@ module VBlank
         entry: works("raw ARM for the Advance's processor (`.claude/dsl/escape-hatch.md`)."),
 
         # --- input ---
-        held: works("the ten buttons a Game Boy Advance has, the shoulder buttons `:l` and `:r` among them."),
+        held: works("the ten buttons a Game Boy Advance has, the shoulder buttons `:l` and `:r` among them. " \
+                    "`:x` and `:y` are refused: it has no X or Y button."),
         pressed: works("see `held`."), if_held: works("see `held`."), if_pressed: works("see `held`."),
         rumble: works("nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, " \
                       "so the game plays the same without it."),

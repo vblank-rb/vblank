@@ -191,7 +191,7 @@ module VBlank
     # nothing that turns but one layer the build does not use, lists of sixteen colours. What each
     # verb does on it is Console::SNESAnswers's to say.
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
-                                     buttons: %i[a b select start right left up down r l].freeze, sprites: 128,
+                                     buttons: %i[a b select start right left up down r l x y].freeze, sprites: 128,
                                      sprite_places: 128,
                                      # A row of the screen shows at most 32 sprites and 34 of their
                                      # 8-pixel pieces; a piece is what this counts.

@@ -126,7 +126,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Game Boy Color has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Game Boy Color does not have.
-- `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons.
+- `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button.
 - `pressed` — works: see `held`.
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.

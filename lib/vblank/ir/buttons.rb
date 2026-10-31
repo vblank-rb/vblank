@@ -14,8 +14,10 @@ module VBlank
     # and one that would otherwise read as "never pressed" — so callers check
     # against this list and say so plainly.
     module Buttons
-      # The ten Game Boy Advance buttons, by the names a program uses.
-      NAMES = %i[a b select start right left up down r l].freeze
+      # Every button of any console, by the names a program uses: the ten Game Boy Advance
+      # buttons, then the two only a Super Nintendo controller has. Which a console has is its
+      # description's to say (Console::Description#buttons), and the build refuses the rest.
+      NAMES = %i[a b select start right left up down r l x y].freeze
 
       # ANY BUTTON AT ALL, which is not a button and so is not in NAMES: `held(:any)` holds
       # while one of them is down, and `pressed(:any)` on a frame one of them went down —
@@ -33,9 +35,9 @@ module VBlank
       # Whether `held` and `pressed` can ask about +name+: a button, or any of them.
       def readable?(name) = known?(name) || name == ANY
 
-      # +held+ buttons as one number, a bit each in the order NAMES lists them — the order the
-      # Advance's key register has them in, which the emulator's keys and the native lowering's
-      # runtime both read.
+      # +held+ buttons as one number, a bit each in the order NAMES lists them — for the first ten
+      # the order the Advance's key register has them in, which the emulator's keys and the native
+      # lowering's runtime both read.
       def mask(held) = Array(held).sum { |button| 1 << NAMES.index(button) }
     end
   end

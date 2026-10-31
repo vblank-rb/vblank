@@ -13,7 +13,7 @@
 
 const rg_driver *rg_active_driver;
 
-#define ALL_BUTTONS 0x3FFu
+#define ALL_BUTTONS 0xFFFu
 
 static uint32_t held;    /* buttons down now, a bit each */
 static uint32_t seen;    /* ...and at the last frame boundary, to tell a press from a hold */

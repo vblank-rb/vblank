@@ -125,7 +125,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Super Nintendo has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Super Nintendo does not have.
-- `held` — works: the ten buttons the Advance has: a Super Nintendo controller has them all, and X and Y besides, which a game cannot read yet.
+- `held` — works: the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has twelve.
 - `pressed` — works: see `held`.
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.

@@ -30,6 +30,11 @@ class TestConsoleAnswers < Minitest::Test
     game_loop { count += 1 if held(:l) }
   end
 
+  X_BUTTON = VBlank.game("XBUTTON", consoles: %i[gba gbc snes]) do
+    count = var :count, 0
+    game_loop { count += 1 if held(:x) }
+  end
+
   # Any button at all is not a button a console can lack.
   ANY_BUTTON = VBlank.game("ANYBUTTON", consoles: %i[gba gbc]) do
     count = var :count, 0
@@ -205,6 +210,18 @@ class TestConsoleAnswers < Minitest::Test
     assert_equal [:error], found.map(&:severity)
     assert_match(/:l button/, found.first.message)
     assert_match(/no shoulder buttons/, found.first.message)
+  end
+
+  # X and Y are the Super Nintendo's alone.
+  def test_x_and_y_are_refused_where_the_console_has_neither
+    [:gba, :gbc].each do |console|
+      found = findings(X_BUTTON, console)
+
+      assert_equal [:error], found.map(&:severity)
+      assert_match(/:x button/, found.first.message)
+      assert_match(/no X or Y button/, found.first.message)
+    end
+    assert_empty findings(X_BUTTON, :snes)
   end
 
   def test_any_button_is_not_refused
