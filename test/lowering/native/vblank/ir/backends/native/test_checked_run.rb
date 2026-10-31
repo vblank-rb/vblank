@@ -67,7 +67,11 @@ class TestCheckedRun < Minitest::Test
   end
 
   def test_a_disagreement_is_reported_with_only_the_library
-    out, err, status = Open3.capture3(RbConfig.ruby, "-I", LIB, "-", stdin_data: GAME_THAT_DISAGREES)
+    out, err, status = Tempfile.create(["game", ".rb"]) do |file|
+      file.write(GAME_THAT_DISAGREES)
+      file.flush
+      Open3.capture3(RbConfig.ruby, "-I", LIB, file.path)
+    end
 
     assert status.success?, "the game's own process failed:\n#{err}"
     said, minitest = out.lines(chomp: true)
