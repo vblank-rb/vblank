@@ -104,7 +104,14 @@ module VBlank
         end
 
         # `var :x, 0`, on anything: a part of a game is handed the builder and calls `build.var`.
-        def self.makes_variable?(value) = value.is_a?(Prism::CallNode) && %i[var save_var].include?(value.name)
+        # ...and a ternary whose two sides each do, of which a plain test runs one.
+        def self.makes_variable?(value)
+          return value.is_a?(Prism::CallNode) && %i[var save_var].include?(value.name) unless ternary?(value)
+
+          [value.statements, value.subsequent.statements].all? { |side| side.body.one? && makes_variable?(side.body.first) }
+        end
+
+        def self.ternary?(value) = value.is_a?(Prism::IfNode) && value.if_keyword_loc.nil?
 
         def self.number?(write)
           write.is_a?(Prism::LocalVariableWriteNode) &&

@@ -1401,6 +1401,18 @@ class TestPlainRuby < Minitest::Test
     assert_equal [1, 2], [player[:a], player[:seen]]
   end
 
+  # A plain test while setting up runs one side, so this is one declaration, as if it were written
+  # alone. Game code changing it changes that variable.
+  def test_a_declaration_picked_by_a_plain_test_is_one_variable
+    big = true
+    player = played(frames: 2, allow: %i[big]) do
+      hits = big ? var(:hits, 10) : var(:hits, 1)
+      game_loop { hits += 1 }
+    end
+
+    assert_operator player[:hits], :>, 10
+  end
+
   def test_a_picked_value_in_parentheses_is_kept
     player = played(frames: 2) do
       hp = 3
