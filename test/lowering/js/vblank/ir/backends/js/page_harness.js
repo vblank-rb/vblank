@@ -35,6 +35,12 @@
  *   play N              N of the browser's frames, each a console frame after the one before, so
  *                       the page plays one frame of the game on each; none come while hidden. A
  *                       file the page fetches (from beside it) arrives before the first of them.
+ *   skip N              N console frames of time go by with no browser frame: the page was busy,
+ *                       and its next frame finds the frames it owes
+ *   counts              prints "counts", how many frames the page has asked the browser for
+ *                       (frames=) and how many pictures it has put on a canvas (pictures=)
+ *   pixel ID X Y        prints "pixel" and the four bytes (red, green, blue, alpha) the canvas of that id
+ *                       holds at (X, Y), as the browser keeps them
  *   picture [ID]        prints "picture" and every pixel last put on the canvas of that id
  *                       ("screen" unless named), as the console's fifteen-bit colours
  *   js CODE             runs CODE in the page, and prints "js" and what it comes to, if anything:
@@ -92,6 +98,9 @@ function tell(target, type, more = {}) {
 }
 
 const waiting = [];
+/* What the page has asked of the browser: frames asked for, and pictures put on a canvas. */
+const asked = { frames: 0, pictures: 0 };
+let next_frame_id = 1;
 const stored = new Map();
 let now = 0;
 const shown = {};
@@ -114,7 +123,7 @@ function element(id) {
     id, textContent: "", hidden: id === "said", checked, ...listening(),
     getContext: () => ({
       createImageData: (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
-      putImageData: (image) => { shown[id] = Uint8ClampedArray.from(image.data); },
+      putImageData: (image) => { asked.pictures += 1; shown[id] = Uint8ClampedArray.from(image.data); },
     }),
     requestFullscreen() { document.fullscreenElement = this; return Promise.resolve(); },
     getBoundingClientRect: () => ({ left, top: 0, right: left + BOX, bottom: BOX, width: BOX, height: BOX }),
@@ -214,7 +223,16 @@ const browser = {
   AudioContext,
   navigator: { getGamepads: () => pads.slice() },
   performance: { now: () => now },
-  requestAnimationFrame: (callback) => { waiting.push(callback); },
+  requestAnimationFrame: (callback) => {
+    asked.frames += 1;
+    const id = next_frame_id++;
+    waiting.push({ id, callback });
+    return id;
+  },
+  cancelAnimationFrame: (id) => {
+    const at = waiting.findIndex((each) => each.id === id);
+    if (at >= 0) waiting.splice(at, 1);
+  },
   matchMedia: media,
   /* A web server holding the files beside the page: a name, or a file: URL to one of them. */
   fetch: async (url) => {
@@ -259,9 +277,14 @@ function visible(shown_now) {
 /* A browser gives a hidden page no frames; the time still passes. */
 function play(frames) {
   for (let i = 0; i < frames; i++) {
-    if (!document.hidden) for (const callback of waiting.splice(0)) callback(now);
+    if (!document.hidden) for (const { callback } of waiting.splice(0)) callback(now);
     now += FRAME_MS;
   }
+}
+
+/* The page was busy with something else: the time passes and no frame comes. */
+function skip(frames) {
+  now += Number(frames) * FRAME_MS;
 }
 
 function picture(id = "screen") {
@@ -272,6 +295,14 @@ function picture(id = "screen") {
     colors.push((pixels[i] >> 3) | ((pixels[i + 1] >> 3) << 5) | ((pixels[i + 2] >> 3) << 10));
   }
   return colors.join(",");
+}
+
+/* The four bytes (red, green, blue, alpha) the canvas of that id holds at (x, y), as the browser keeps them. */
+function bytes_at(id, x, y) {
+  const pixels = shown[id];
+  if (!pixels) throw new Error(`page_harness: nothing was drawn on a canvas of id ${id}`);
+  const at = (y * 240 + x) * 4;
+  return Array.from(pixels.slice(at, at + 4)).join(",");
 }
 
 function text(id) {
@@ -340,6 +371,9 @@ function steps() {
     else if (step === "pointer") pointer(what);
     else if (step === "check" || step === "uncheck") { element(what).checked = step === "check"; tell(element(what), "change"); }
     else if (step === "play") play(Number(what));
+    else if (step === "skip") skip(what);
+    else if (step === "pixel") printed.push(`pixel ${bytes_at(what, Number(rest[0]), Number(rest[1]))}`);
+    else if (step === "counts") printed.push(`counts frames=${asked.frames} pictures=${asked.pictures}`);
     else if (step === "picture") printed.push(`picture ${picture(what)}`);
     else if (step === "js") {
       const result = vm.runInThisContext(line.trim().slice(3));

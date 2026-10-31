@@ -232,4 +232,101 @@ class TestJSCreateGame < Minitest::Test
 
     assert_includes played_page(["play 3", 'js kept.join(",")'], html: html), "js vblank-save:SAVER"
   end
+
+  # --- the frames: what is drawn, and what is asked of the browser ---
+
+  private def ticking_page = page_of(ticking_game, %w[one], "window.games = [createGame({ canvas: #{canvas('one')} })];")
+
+  private def counted(lines, what) = lines.grep(/\Acounts/).map { |line| line[/#{what}=(\d+)/, 1].to_i }
+
+  # A page that was busy owes frames, plays every one of them so the game is where it should be, and
+  # puts only the last picture on the canvas: the others were never to be seen. Nine frames in all
+  # here, the last six of them owed at once.
+  def test_a_page_that_is_behind_plays_every_frame_it_owes_and_draws_only_the_last
+    lines = played_page(["play 3", "counts", "skip 5", "play 1", "counts", "picture one"], html: ticking_page)
+    before, after = counted(lines, "pictures")
+    steady = pictures_in(played_page(["play 9", "picture one"], html: ticking_page)).first
+
+    assert_equal 1, after - before, "six frames were owed and one picture was put on the canvas"
+    assert_same_picture steady, pictures_in(lines).first, "after nine frames, six of them played at once"
+  end
+
+  # A game that ends partway through the frames it owes still leaves its last picture up, though the
+  # frames before it were not drawn.
+  def test_a_game_that_ends_among_the_frames_it_owes_leaves_its_last_picture_up
+    ending = VBlank.game "ENDING", consoles: %i[gba] do
+      screen :bitmap
+      x = var :x, 0
+      game_loop do
+        x += 1
+        clear_screen :black
+        draw_rect_at x, 20, 4, 4, :green
+        halt if x == 4
+      end
+    end
+    html = page_of(ending, %w[one], "window.games = [createGame({ canvas: #{canvas('one')} })];")
+    lines = played_page(["play 1", "skip 10", "play 1", "picture one"], html: html)
+    last = Reference.new.run(ending.program, frames: 50).screen.shown
+
+    assert_same_picture last, pictures_in(lines).first, "of a game that ended on its fourth frame, with the first three owed at once"
+  end
+
+  # A game that stops leaves its last picture up, however it stops: by halting, or by running off
+  # its end.
+  def test_a_game_that_runs_off_its_end_among_the_frames_it_owes_leaves_its_last_picture_up
+    running_out = VBlank.game "RUNNINGOUT", consoles: %i[gba] do
+      screen :bitmap
+      x = var :x, 0
+      repeat(4) do
+        x += 1
+        clear_screen :black
+        draw_rect_at x, 20, 4, 4, :green
+        wait_vblank
+      end
+    end
+    html = page_of(running_out, %w[one], "window.games = [createGame({ canvas: #{canvas('one')} })];")
+    lines = played_page(["play 1", "skip 10", "play 1", "picture one"], html: html)
+    steady = pictures_in(played_page(["play 10", "picture one"], html: html)).first
+
+    assert_same_picture steady, pictures_in(lines).first, "of a game that ran off its end, with the frames before it owed at once"
+  end
+
+  # A picture that is the one already on the canvas is not put there again.
+  def test_a_picture_that_has_not_changed_is_not_put_on_the_canvas_again
+    still = VBlank.game "STILL", consoles: %i[gba] do
+      screen :bitmap
+      clear_screen :blue
+      game_loop {}
+    end
+    html = page_of(still, %w[one], "window.games = [createGame({ canvas: #{canvas('one')} })];")
+
+    assert_equal [1], counted(played_page(["play 20", "counts"], html: html), "pictures")
+  end
+
+  # A paused game asks the browser for no more frames, however long it is paused, and goes on from
+  # where it stood when the pause ends, however it ends: the page's own pause and resume, the
+  # keyboard going and coming back, and the page ceasing to pause for a window that has lost it.
+  def test_a_paused_game_asks_for_no_frames_and_goes_on_from_where_it_stood
+    {
+      "the page's own resume" => ["js games[0].pause()", "play 2", "counts", "play 30", "counts", "js games[0].resume()"],
+      "the keyboard coming back" => ["blur", "play 2", "counts", "play 30", "counts", "focus"],
+      "no longer pausing for the keyboard" => ["blur", "play 2", "counts", "play 30", "counts",
+                                              "js games[0].setPauseWhenUnfocused(false)"]
+    }.each do |how, steps|
+      lines = played_page(["play 4", *steps, "play 3", "picture one"], html: ticking_page)
+      at_two_frames, at_thirty_two = counted(lines, "frames")
+      steady = pictures_in(played_page(["play 7", "picture one"], html: ticking_page)).first
+
+      assert_equal at_two_frames, at_thirty_two, "no frame is asked for while it is paused (#{how})"
+      assert_same_picture steady, pictures_in(lines).first, "four frames, the pause, and three more (#{how})"
+    end
+  end
+
+  # A game that stops leaves nothing running: no frame is left asked for.
+  def test_a_stopped_game_leaves_no_frame_asked_for
+    lines = played_page(["play 3", "js games[0].stop()", "play 5", "counts", "play 20", "counts"], html: ticking_page)
+    stopped_at, later = counted(lines, "frames")
+
+    assert_equal stopped_at, later
+  end
 end

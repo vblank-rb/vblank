@@ -56,6 +56,44 @@ class TestJSPage < Minitest::Test
                                                  "pad stick 0.2 -0.2", "play 5", "picture"])
   end
 
+  # THE COLOURS ON THE PAGE ARE THE CONSOLE'S: each channel's five bits widened to eight by repeating
+  # the top bits (so the brightest is 255 and not 248), in the order the canvas keeps them. Bars of
+  # every channel alone, white, and one that is half of each, played in the page, are the
+  # interpreter's picture pixel for pixel, which a red and a blue swapped would not be.
+  def test_every_colour_on_the_page_is_the_colour_the_interpreter_draws
+    colours = VBlank.game "COLOURS", consoles: %i[gba] do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 30, 20, :red
+        fill_rect 30, 0, 30, 20, :green
+        fill_rect 60, 0, 30, 20, :blue
+        fill_rect 90, 0, 30, 20, :white
+        fill_rect 120, 0, 30, 20, rgb(16, 8, 24)
+      end
+    end
+    picture = pictures_in(played_page(["play 3", "picture"], colours)).first
+    interpreter = Reference.new.run(colours.program, frames: 3)
+
+    assert_same_picture interpreter.screen.shown, picture, "with a bar of each channel, white and a mixed colour"
+  end
+
+  # The widening, written out: a channel of 31 is 255 and not 248, 16 is 132 (10000 then 10), and
+  # nothing is 0. Alpha is always opaque. The canvas keeps a pixel's bytes red, green, blue, alpha.
+  def test_each_five_bit_channel_is_widened_to_eight_by_repeating_its_top_bits
+    colours = VBlank.game "WIDENED", consoles: %i[gba] do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 10, 10, rgb(31, 16, 0)
+        fill_rect 10, 0, 10, 10, rgb(1, 8, 31)
+      end
+    end
+    lines = played_page(["play 2", "pixel screen 5 5", "pixel screen 15 5", "pixel screen 100 100"], colours)
+
+    assert_equal ["pixel 255,132,0,255", "pixel 8,66,255,255", "pixel 0,0,0,255"], lines.grep(/\Apixel /)
+  end
+
   # Each of the controller's buttons is the console's button it is labelled as, and the keyboard
   # adds to the controller rather than taking turns with it.
   def test_each_controller_button_is_its_console_button_and_the_keyboard_adds_to_them
