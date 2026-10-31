@@ -326,6 +326,30 @@ module VBlank
               "make its map smaller."
       end
 
+      # ONE NAME IN SEVERAL SCENES IS A BACKGROUND OF EACH, and two things do not fit that. A
+      # declaration outside every scene is on screen in all of them, so beside a scene's own it
+      # would be two backgrounds up together under one name. And a bend or a turn is kept once for
+      # each name by every lowering, so a second scene's would be lost or would land on the first.
+      def refuse_name_in_two_places!(name, declared)
+        if declared.scene_gates.include?(nil) != @current_scene_gate.nil?
+          raise ArgumentError,
+                "background :#{name} is declared in a scene and also outside every scene. A background " \
+                "outside every scene shows in all of them, so two backgrounds show at one time with one " \
+                "name. To fix this, give one of them a different name."
+        end
+        return if declared.scene_gates.include?(@current_scene_gate)
+
+        refuse_changed_name_in_two_scenes!(name, "bends its rows with `scroll_each_row`") if declared.bends_rows
+        refuse_changed_name_in_two_scenes!(name, "turns or resizes") if declared.turns_each_frame?
+      end
+
+      def refuse_changed_name_in_two_scenes!(name, change)
+        raise ArgumentError,
+              "background :#{name} is declared in two scenes and #{change}. A name keeps one of these for " \
+              "the whole game, so one scene would show it wrong. To fix this, give each scene's background " \
+              "a different name."
+      end
+
       # The body of {#background}, and of {#status_bar}, which is a background with +bar_top+.
       def declare_background(name, tiles:, map: nil, from: nil, walls: nil, bar_top: nil)
         refuse_background_in_game_loop!(name)
@@ -359,6 +383,7 @@ module VBlank
         # that declares one name twice has already said things about the first one, and a
         # fresh record would drop them — a scroll it forgot would stop being moved to the
         # gap between frames and would tear where the author wrote it.
+        refuse_name_in_two_places!(name, @backgrounds[name]) if @backgrounds[name]
         declared = (@backgrounds[name] ||= DeclaredBackground.new)
         # Which map the game says is showing, and which one is really in the cells — and, for
         # a background drawn from several sets of tiles, which set is really in tile memory.
@@ -453,6 +478,7 @@ module VBlank
         background = declared_background(name)
         return [background.angle, background.scale] if background.turns_each_frame?
 
+        refuse_changed_name_in_two_scenes!(name, "turns or resizes") if background.scene_gates.length > 1
         refuse_turning_without_tile_screen!(name)
         refuse_streaming_turning_background!(name) if background.node.streams?
         refuse_turning_scrolled_background!(name)
@@ -500,6 +526,9 @@ module VBlank
                 "bigger than 64x64 cells, or maps that are not all one size. Such a background holds only " \
                 "the cells around the view, and a bent row can show cells outside them. To fix this, bend " \
                 "a different background, or make every map of :#{name} one size, 64x64 cells or smaller."
+        end
+        if declared_background(name).scene_gates.length > 1
+          refuse_changed_name_in_two_scenes!(name, "bends its rows with `scroll_each_row`")
         end
         declared_background(name).bends_rows = true # ...and the other order: turning it later is refused too
 

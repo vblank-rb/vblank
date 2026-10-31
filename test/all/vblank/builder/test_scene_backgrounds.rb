@@ -578,6 +578,58 @@ class TestSceneBackgrounds < Minitest::Test
 
   # --- one background name in two scenes ---
 
+  # What a name in two places cannot do. +block+ declares it, handed a one-row map.
+  private def refused_name(scenes: %i[one two], &block)
+    assert_raises(ArgumentError) do
+      program do
+        screen :tiled
+        image(:floor, "#" => :red) { SOLID_TILE }
+        tiles :world_tiles, "#" => :floor
+        state = var :state, 0
+        instance_exec(["#" * 32], &block)
+        game_loop do
+          state = 1 - state
+          case_var(:state) { scenes.each_with_index { |name, value| when_val value, name } }
+        end
+      end
+    end.message
+  end
+
+  def test_a_name_outside_every_scene_and_in_one_is_refused
+    message = refused_name(scenes: %i[one]) do |map|
+      background :world, tiles: :world_tiles, map: map
+      scene(:one) { background :world, tiles: :world_tiles, map: map }
+    end
+
+    assert_match(/in a scene and also outside every scene/, message)
+  end
+
+  def test_a_name_in_two_scenes_cannot_bend_its_rows_in_either_order
+    bent_first = refused_name do |map|
+      scene(:one) { background(:world, tiles: :world_tiles, map: map).scroll_each_row { |_row| 1 } }
+      scene(:two) { background :world, tiles: :world_tiles, map: map }
+    end
+    bent_last = refused_name do |map|
+      scene(:one) { background :world, tiles: :world_tiles, map: map }
+      scene(:two) { background(:world, tiles: :world_tiles, map: map).scroll_each_row { |_row| 1 } }
+    end
+
+    [bent_first, bent_last].each { |message| assert_match(/two scenes and bends its rows/, message) }
+  end
+
+  def test_a_name_in_two_scenes_cannot_turn_in_either_order
+    turned_first = refused_name do |map|
+      scene(:one) { background(:world, tiles: :world_tiles, map: Array.new(32) { map.first }).rotate(10) }
+      scene(:two) { background :world, tiles: :world_tiles, map: Array.new(32) { map.first } }
+    end
+    turned_last = refused_name do |map|
+      scene(:one) { background :world, tiles: :world_tiles, map: Array.new(32) { map.first } }
+      scene(:two) { background(:world, tiles: :world_tiles, map: Array.new(32) { map.first }).rotate(10) }
+    end
+
+    [turned_first, turned_last].each { |message| assert_match(/two scenes and turns or resizes/, message) }
+  end
+
   # ONE NAME, A DECLARATION IN EACH SCENE, the way a game writes its levels: each level is a
   # scene with a :world of its own, drawn from the same tiles in a different map, the second
   # with a tile of its own as well. Each scene shows its own declaration, the game changes a
