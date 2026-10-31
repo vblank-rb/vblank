@@ -1206,6 +1206,7 @@ module VBlank
               asm.load(:a, [:hli])
               asm.and_a(:a)
               asm.jump(:z, "rt_bank_back")
+              asm.load([memory[KeptSprites::PIECES_PLACED]], :a) if KeptSprites.any?(memory)
               asm.load(:c, :a) # how many pieces
               asm.label("rt_sprite_piece")
               asm.push(:bc)

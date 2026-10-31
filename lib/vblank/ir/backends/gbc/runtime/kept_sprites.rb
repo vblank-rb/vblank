@@ -35,11 +35,17 @@ module VBlank
           # pass, so one left as it is still asks for its list (rt_lend_list), which marks it worn
           # this pass, and is left as it is only when the answer is the one its entries already say.
           #
+          # Asked of a sprite whose place alone changed, it answers NZ, no carry and A =
+          # ANSWER_PLACE_ALONE, which rt_place_kept_sprite takes to rt_place_kept_sprite_moved. A
+          # sprite with its own placing code takes that for any other change and places itself.
+          #
           # rt_sprite_placed(HL = what the sprite keeps): the sprite has just been placed afresh:
           # where its entries ended, the round, and in a game whose sprites borrow, the list it wears
           # and which of the eight, from what rt_sprite was handed and what the lending made of it.
           module KeptSprites
             ROUND = "rt kept sprites round"
+            # How many pieces the picture just placed has, which rt_sprite notes as it reads them.
+            PIECES_PLACED = "rt kept sprites pieces placed"
             START = 0
             FINISH = 1
             DRAWN_BEFORE = 2
@@ -55,7 +61,17 @@ module VBlank
             # first (two bytes), for a sprite SAME_PIECE says was so drawn: a change of its pose alone
             # is the row that many rows on (rt_place_kept_sprite_pose).
             ROWS_AT = 9
-            BYTES = 11
+            # 1 when its last placing wrote an entry for every piece of its picture, none of them off
+            # the screen or past the table's end, so moving it is moving those entries
+            # (rt_place_kept_sprite_moved).
+            WHOLE = 11
+            BYTES = 12
+
+            # How far a sprite can move and have its entries moved where they are. A piece on the
+            # screen stays a byte from the screen's edge whichever way it goes by this much, so the
+            # table's places can be added to and asked about in a byte; and a game shaking its
+            # screen moves things a few pixels. A sprite that goes further is placed afresh.
+            MOST_MOVED_IN_PLACE = 8
 
             # PLACED's marks, each made nought by a write of a number it is about (Lowering::Picture
             # #emit_sprites_changed): whether it is on and its list (and its scene's being up) are as
@@ -68,6 +84,10 @@ module VBlank
             # ANSWER_POSE_ALONE to the SAME_PIECE it answers with (a value in A, not a mark's bit).
             POSE_CHANGED = AS_PLACED & ~(1 << POSE_AS_PLACED)
             ANSWER_POSE_ALONE = 2
+            # Every mark up but the place's, with its entries where they were: rt_sprite_kept answers
+            # NZ, no carry and this in A. Nothing it answers otherwise there is this number.
+            PLACE_CHANGED = AS_PLACED & ~(1 << PLACE_AS_PLACED)
+            ANSWER_PLACE_ALONE = 2
             # And one more, set by rt_place_kept_sprite with the others when the sprite was not
             # drawn — switched off, a pose none of its own, its scene not up — and left by the
             # writes. Not drawn and nothing of it changed since, nothing of it is in the table or the
@@ -92,11 +112,14 @@ module VBlank
 
             module_function
 
-            def reserve(memory) = memory.reserve(ROUND, 1)
+            def reserve(memory)
+              memory.reserve(ROUND, 1)
+              memory.reserve(PIECES_PLACED, 1)
+            end
 
             def any?(memory) = memory.reserved?(ROUND)
 
-            def emit(asm, memory, lends:)
+            def emit(asm, memory, lends:, tall_pieces: false)
               next_sprite = memory[Picture::NEXT_SPRITE]
               drawn = memory[Picture::DRAWN]
               asm.label("rt_sprite_kept")
@@ -145,6 +168,13 @@ module VBlank
               # ANSWER_POSE_ALONE added when its pose alone changed. Where its entries begin is noted
               # already, the same.
               asm.label("rt_sprite_kept_numbers")
+              asm.cp_a(PLACE_CHANGED)
+              asm.jump_relative(:nz, "rt_sprite_kept_other_numbers")
+              asm.pop(:hl) # its place alone: where its entries begin is what is noted already
+              asm.load(:a, ANSWER_PLACE_ALONE)
+              asm.and_a(:a) # NZ, and no carry
+              asm.ret
+              asm.label("rt_sprite_kept_other_numbers")
               asm.bit(PLACE_AS_PLACED, :a) # NZ: its place is as it was placed
               asm.jump_relative(:z, "rt_sprite_kept_changed")
               asm.cp_a(POSE_CHANGED) # Z: its pose alone
@@ -180,7 +210,7 @@ module VBlank
               asm.ret
 
               emit_posed(asm, memory, lends: lends)
-              emit_place_kept_sprite(asm, memory, lends: lends)
+              emit_place_kept_sprite(asm, memory, lends: lends, tall_pieces: tall_pieces)
             end
 
             # rt_sprite_posed(HL = the sprite's block, A = the bank it is in, nought for the part always
@@ -431,7 +461,7 @@ module VBlank
             # sprite whose numbers changed but not its place, whose every row is one piece in one place
             # and that was last placed so, with its piece's picture and list changed where it is in
             # the table (rt_sprite_reposed).
-            def emit_place_kept_sprite(asm, memory, lends:)
+            def emit_place_kept_sprite(asm, memory, lends:, tall_pieces:)
               args = SpriteArgs.new(memory, lends)
               asm.label("rt_place_kept_sprite")
               asm.push(:hl)
@@ -450,6 +480,9 @@ module VBlank
               asm.and_a(1)
               asm.jump_relative("rt_place_kept_sprite_asked")
               asm.label("rt_place_kept_sprite_unasked")
+              asm.cp_a(ANSWER_PLACE_ALONE)
+              asm.jump(:z, "rt_place_kept_sprite_moved")
+              asm.label("rt_place_kept_sprite_afresh")
               asm.xor_a(:a)
               asm.label("rt_place_kept_sprite_asked")
               asm.load_high(args.reposable, :a)
@@ -471,12 +504,15 @@ module VBlank
               asm.call("rt_sprite_args_set")
               asm.jump_relative("rt_place_kept_sprite_set")
               asm.label("rt_place_kept_sprite_one_piece")
+              asm.load(:a, 1)
+              asm.load([memory[PIECES_PLACED]], :a)
               asm.call("rt_sprite_one_piece")
               asm.label("rt_place_kept_sprite_set")
               asm.pop(:hl)
               asm.push(:hl)
               asm.call("rt_sprite_placed")
               asm.pop(:hl)
+              emit_whole_noted(asm, memory, args)
               asm.load(:de, SAME_PIECE)
               asm.add_hl(:de)
               asm.load_high(:a, args.same_piece)
@@ -484,6 +520,8 @@ module VBlank
               asm.load_high(:a, args.rows_at) # ROWS_AT, which follows
               asm.load([:hli], :a)
               asm.load_high(:a, args.rows_at + 1)
+              asm.load([:hli], :a)
+              asm.load_high(:a, args.whole) # WHOLE, which follows that
               asm.load([:hl], :a)
               asm.ret
               asm.label("rt_place_kept_sprite_hidden")
@@ -496,6 +534,9 @@ module VBlank
               asm.load(:de, SAME_PIECE - PLACED)
               asm.add_hl(:de)
               asm.xor_a(:a)
+              asm.load([:hl], :a)
+              asm.load(:de, WHOLE - SAME_PIECE)
+              asm.add_hl(:de)
               asm.load([:hl], :a)
               asm.ret
               asm.label("rt_place_kept_sprite_left")
@@ -515,6 +556,243 @@ module VBlank
               asm.jump("rt_sprite_reposed")
               emit_pose_alone(asm, args)
               emit_reposed(asm, memory, lends: lends)
+              emit_moved(asm, memory, lends: lends, tall_pieces: tall_pieces)
+            end
+
+            # args.whole = 1 when its placing just now wrote as many entries as its picture has
+            # pieces (HL = what it keeps, left there), the count rt_sprite noted as it read them.
+            def emit_whole_noted(asm, memory, args)
+              asm.load(:a, [memory[Picture::NEXT_SPRITE]])
+              asm.sub_a([:hl]) # less START: four bytes an entry
+              asm.jump_relative(:z, "rt_whole_noted_none")
+              asm.load(:b, :a)
+              asm.load(:a, [memory[PIECES_PLACED]])
+              2.times { asm.add_a(:a) }
+              asm.cp_a(:b)
+              asm.load(:a, 1)
+              asm.jump_relative(:z, "rt_whole_noted")
+              asm.label("rt_whole_noted_none")
+              asm.xor_a(:a)
+              asm.label("rt_whole_noted")
+              asm.load_high(args.whole, :a)
+            end
+
+            # rt_place_kept_sprite_moved: a sprite whose place alone changed since it was drawn (DE its
+            # block, B the block's bank, what it keeps on the stack). When every piece of it is in the
+            # table, it moved a little and every piece stays on the screen, its entries are moved
+            # where they are and its row of the list of what was drawn with them, which is about a
+            # tenth of placing it. Anything else is placed afresh as before, nothing written yet. Where
+            # it was is read from that row, which is why a sprite the list had no room for is afresh.
+            def emit_moved(asm, memory, lends:, tall_pieces:)
+              args = SpriteArgs.new(memory, lends)
+              emit_in_bank(asm, "rt_sprite_moved_place", "rt_sprite_moved_place_read")
+              asm.label("rt_sprite_moved_place_read")
+              asm.push(:de)
+              asm.load(:de, BLOCK_POSE + 3)
+              asm.add_hl(:de)
+              asm.pop(:de)
+              [args.x, args.y].each do |to|
+                asm.load(:a, [:hli])
+                asm.load(:c, :a)
+                asm.load(:a, [:hli])
+                asm.push(:hl)
+                asm.load(:h, :a)
+                asm.load(:l, :c)
+                asm.load(:a, [:hli])
+                asm.load_high(to, :a)
+                asm.load(:a, [:hl])
+                asm.load_high(to + 1, :a)
+                asm.pop(:hl)
+              end
+              asm.ret
+              asm.label("rt_place_kept_sprite_moved_back") # the block and its bank, kept on the stack
+              asm.pop(:bc)
+              asm.pop(:de)
+              asm.jump("rt_place_kept_sprite_afresh")
+              asm.label("rt_place_kept_sprite_moved")
+              asm.pop(:hl)
+              asm.push(:hl)
+              asm.push(:de)
+              asm.push(:bc)
+              emit_moved_eligible(asm, lends)
+              asm.pop(:bc)
+              asm.pop(:de)
+              asm.push(:de)
+              asm.push(:bc)
+              asm.load(:h, :d)
+              asm.load(:l, :e)
+              asm.load(:a, :b)
+              asm.call("rt_sprite_moved_place")
+              emit_moved_row(asm, memory, args)
+              emit_moved_delta(asm, args)
+              emit_moved_entries_fit(asm, tall_pieces)
+              emit_moved_entries_written(asm)
+              emit_moved_row_written(asm, args)
+              asm.pop(:bc)
+              asm.pop(:de)
+              asm.pop(:hl)
+              asm.inc(:hl)
+              asm.load(:a, [:hli]) # FINISH
+              asm.load([memory[Picture::NEXT_SPRITE]], :a)
+              asm.inc(:hl)
+              asm.load(:a, [:hli]) # DRAWN_AFTER
+              asm.load([memory[Picture::DRAWN]], :a)
+              asm.inc(:hl)
+              asm.load([:hl], AS_PLACED) # PLACED
+              asm.ret
+            end
+
+            # On to the fast way only for a sprite wholly in the table, with the list it borrowed
+            # still its own: asking is what marks it worn this pass, as a sprite left as it is.
+            # HL = what it keeps, kept at the stack's third place on.
+            def emit_moved_eligible(asm, lends)
+              asm.push(:hl)
+              asm.load(:de, WHOLE)
+              asm.add_hl(:de)
+              asm.load(:a, [:hl])
+              asm.and_a(:a)
+              asm.pop(:hl)
+              asm.jump(:z, "rt_place_kept_sprite_moved_back")
+              return unless lends
+
+              asm.load(:de, LENT_LIST)
+              asm.add_hl(:de)
+              asm.load(:c, [:hl])
+              asm.inc(:hl)
+              asm.load(:a, [:hl])
+              asm.push(:af)
+              asm.call("rt_lend_list")
+              asm.pop(:af)
+              asm.cp_a(:e)
+              asm.jump(:nz, "rt_place_kept_sprite_moved_back")
+            end
+
+            # HL = its row of the list of what was drawn, at its x, or back for one with no row. The
+            # stack here: the bank, the block, what it keeps.
+            def emit_moved_row(asm, memory, _args)
+              asm.load_hl_sp(4)
+              asm.load(:a, [:hli])
+              asm.load(:h, [:hl])
+              asm.load(:l, :a)
+              DRAWN_BEFORE.times { asm.inc(:hl) }
+              asm.load(:a, [:hli])
+              asm.load(:e, :a)
+              asm.cp_a([:hl]) # DRAWN_AFTER
+              asm.jump(:z, "rt_place_kept_sprite_moved_back")
+              asm.load(:l, :e)
+              asm.load(:h, 0)
+              3.times { asm.add_hl(:hl) }
+              asm.load(:a, :l) # × 8, less one: × 7
+              asm.sub_a(:e)
+              asm.load(:l, :a)
+              asm.load(:a, :h)
+              asm.sbc_a(0)
+              asm.load(:h, :a)
+              asm.load(:de, memory[Picture::DRAWN] + 4)
+              asm.add_hl(:de)
+            end
+
+            # C = how far across it moved and B how far down, each a byte, HL left at the row's x, or
+            # back for one that went too far.
+            def emit_moved_delta(asm, args)
+              asm.push(:hl)
+              [[args.x, :c], [args.y, :b]].each do |from, to|
+                asm.load_high(:a, from)
+                asm.sub_a([:hl])
+                asm.load(to, :a)
+                asm.inc(:hl)
+                asm.load_high(:a, from + 1)
+                asm.sbc_a([:hl])
+                asm.inc(:hl)
+                asm.load(:d, :a)
+                asm.load(:a, to) # the two bytes one number from -8 to 8: 8 up, 16 at most, and no high byte
+                asm.add_a(MOST_MOVED_IN_PLACE)
+                asm.load(:e, :a)
+                asm.load(:a, :d)
+                asm.adc_a(0)
+                asm.or_a(:a)
+                asm.jump_relative(:nz, "rt_sprite_moved_too_far")
+                asm.load(:a, :e)
+                asm.cp_a((MOST_MOVED_IN_PLACE * 2) + 1)
+                asm.jump_relative(:nc, "rt_sprite_moved_too_far")
+              end
+              asm.pop(:hl)
+              asm.jump_relative("rt_sprite_moved_near")
+              asm.label("rt_sprite_moved_too_far")
+              asm.pop(:hl)
+              asm.jump("rt_place_kept_sprite_moved_back")
+              asm.label("rt_sprite_moved_near")
+            end
+
+            # Every entry from START to FINISH asked whether it stays on the screen as
+            # rt_gbc_place_piece asks, or back. HL is kept, at the row's x. The stack here: the bank,
+            # the block, what it keeps.
+            def emit_moved_entries_fit(asm, tall_pieces)
+              asm.push(:hl)
+              emit_moved_entries(asm, 6, "rt_sprite_moved_fit") do
+                asm.load(:a, [:hl])
+                asm.add_a(:b)
+                asm.cp_a(tall_pieces ? 1 : 9)
+                asm.jump_relative(:c, "rt_sprite_moved_off")
+                asm.cp_a(160)
+                asm.jump_relative(:nc, "rt_sprite_moved_off")
+                asm.inc(:l)
+                asm.load(:a, [:hl])
+                asm.add_a(:c)
+                asm.jump_relative(:z, "rt_sprite_moved_off")
+                asm.cp_a(168)
+                asm.jump_relative(:nc, "rt_sprite_moved_off")
+                asm.inc(:l)
+              end
+              asm.pop(:hl)
+              asm.jump_relative("rt_sprite_moved_fits")
+              asm.label("rt_sprite_moved_off")
+              asm.pop(:hl)
+              asm.jump("rt_place_kept_sprite_moved_back")
+              asm.label("rt_sprite_moved_fits")
+            end
+
+            def emit_moved_entries_written(asm)
+              asm.push(:hl)
+              emit_moved_entries(asm, 6, "rt_sprite_moved_write") do
+                asm.load(:a, [:hl])
+                asm.add_a(:b)
+                asm.load([:hl], :a)
+                asm.inc(:l)
+                asm.load(:a, [:hl])
+                asm.add_a(:c)
+                asm.load([:hl], :a)
+                asm.inc(:l)
+              end
+              asm.pop(:hl)
+            end
+
+            # The block once for each entry of the sprite, HL at an entry in the table's copy and left
+            # two on by the block. +keeps_at+ is how far up the stack what it keeps is, on entry.
+            def emit_moved_entries(asm, keeps_at, tag)
+              asm.load_hl_sp(keeps_at)
+              asm.load(:a, [:hli])
+              asm.load(:h, [:hl])
+              asm.load(:l, :a)
+              asm.load(:a, [:hli]) # START
+              asm.load(:d, [:hl]) # FINISH
+              asm.load(:l, :a)
+              asm.load(:h, Memory::SHADOW_OAM >> 8)
+              asm.label("#{tag}_entry")
+              yield
+              asm.inc(:l)
+              asm.inc(:l)
+              asm.load(:a, :l)
+              asm.cp_a(:d)
+              asm.jump_relative(:nz, "#{tag}_entry")
+            end
+
+            # Where it stands now in its row of the list of what was drawn (HL at the x).
+            def emit_moved_row_written(asm, args)
+              [args.x, args.x + 1, args.y, args.y + 1].each do |from|
+                asm.load_high(:a, from)
+                asm.load([:hli], :a)
+              end
             end
 
             # rt_place_kept_sprite_pose: a sprite whose pose alone changed since it was last drawn,
@@ -643,6 +921,7 @@ module VBlank
               def reposable = piece + 5
               def repose = piece + 6
               def rows_at = piece + 7
+              def whole = piece + 9
             end
 
             # DE = HL rows of the block, ROW_BYTES each: eight times them, and once more.

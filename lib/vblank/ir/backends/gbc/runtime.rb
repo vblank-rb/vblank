@@ -109,7 +109,7 @@ module VBlank
             Saving.emit(asm, memory)
             Clips.emit(asm, memory, counts: clips.timer_counts, entry_bytes: clips.entry_bytes, lines: clips.rows_bent?) if shown
             Rumble.emit(asm, memory) if Rumble.any?(memory)
-            KeptSprites.emit(asm, memory, lends: art.lends?) if KeptSprites.any?(memory)
+            KeptSprites.emit(asm, memory, lends: art.lends?, tall_pieces: art.tall_pieces?) if KeptSprites.any?(memory)
             emit_start(asm)
             emit_main(asm, main)
             emit_frame_begins(asm, frame_begins)
