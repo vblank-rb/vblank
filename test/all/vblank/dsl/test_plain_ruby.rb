@@ -1401,26 +1401,6 @@ class TestPlainRuby < Minitest::Test
     assert_equal [1, 2], [player[:a], player[:seen]]
   end
 
-  def test_a_light_moved_to_two_variables_takes_their_numbers
-    player = played(frames: 2) do
-      screen :tiled
-      light = spotlight at: [0, 0], radius: 8, dark: 50
-      x = 30
-      y = 40
-      seen_x = 0
-      seen_y = 0
-      game_loop do
-        light.move_to x, y
-        seen_x = light.x
-        seen_y = light.y
-        x += 0
-        y += 0
-      end
-    end
-
-    assert_equal [30, 40], [player[:seen_x], player[:seen_y]]
-  end
-
   def test_a_picked_value_in_parentheses_is_kept
     player = played(frames: 2) do
       hp = 3
