@@ -121,6 +121,7 @@
 #include "rg_menu.h"
 #include "rg_menu_font.h"
 #include "rg_pacing.h"
+#include "rg_pause.h"
 #include "rg_runtime.h"
 #include "rg_save.h"
 #include "rg_screen.h"
@@ -778,15 +779,20 @@ static void watch_variables(void) {
   collecting_variables = 0;
 }
 
+/* Whether the menu or one of the windows over the picture is open: they answer the mouse and the
+ * keyboard, and Dear ImGui settles a hover or a click over several frames, so while one is up the
+ * window is drawn every frame. Also what was wrong with the settings file, which is a window of its
+ * own until it is answered. */
+static bool a_window_is_open_over_the_picture(void) {
+  return rg_window_menu_is_open() || rg_window_panel_shown(RG_PANEL_CONTROLS) || rg_window_panel_shown(RG_PANEL_VARIABLES) ||
+         rg_window_problems_unseen();
+}
+
 /* Whether the window draws anything over the picture that moves or changes whether or not the
- * picture does: the menu, the windows of keys and variables (Dear ImGui settles a hover or a click
- * over several frames, so it is drawn every frame while one is up), what was wrong with the
- * settings file, the speed fast forward puts in the corner, and the frame rate and frame time when
- * the words they would say are not the words drawn last. */
+ * picture does: a window open over it, the speed fast forward puts in the corner, and the frame
+ * rate and frame time when the words they would say are not the words drawn last. */
 static bool something_is_drawn_over_the_picture(void) {
-  if (rg_window_menu_is_open() || rg_window_panel_shown(RG_PANEL_CONTROLS) || rg_window_panel_shown(RG_PANEL_VARIABLES) ||
-      rg_window_problems_unseen() || rg_window_fast_forwarding())
-    return true;
+  if (a_window_is_open_over_the_picture() || rg_window_fast_forwarding()) return true;
   char rate[32], work[32];
   status_words(rate, work);
   return strcmp(rg_window_shows_frame_rate() ? rate : "", drawn_rate) != 0 ||
@@ -1074,10 +1080,12 @@ static void pad_button_changed(const SDL_GamepadButtonEvent *event) {
 
 /* Everything the window has to say: closing it ends the game, a key presses the keyboard's
  * gamepad, a gamepad plugged in or pulled out is taken up or let go, and a window moved to
- * another monitor, or a monitor set to another rate, is paced afresh. */
-static void read_events(void) {
+ * another monitor, or a monitor set to another rate, is paced afresh. Says whether there were any. */
+static bool read_events(void) {
+  bool any = false;
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
+    any = true;
     rg_menu_event(&event);
     switch (event.type) {
     case SDL_EVENT_QUIT:
@@ -1129,21 +1137,26 @@ static void read_events(void) {
       break;
     }
   }
+  return any;
 }
 
-/* The window's events read, and what they asked of the real window done to it. */
-static void read_and_apply_events(void) {
-  read_events();
+/* The window's events read, and what they asked of the real window done to it. Says whether there
+ * were any events. */
+static bool read_and_apply_events(void) {
+  bool any = read_events();
   apply_window_changes();
+  return any;
 }
 
-/* Waits for the next frame's moment on the console's clock. */
+/* Waits for the next frame's moment on the console's clock. The moment is an absolute one, so a
+ * sleep that runs a little over is made up on the next frame, and the sleep need not be a precise
+ * one, which spins the computer for the last part of it. */
 static void wait_on_console_clock(void) {
   Uint64 now = SDL_GetTicksNS();
   if (next_frame_ns == 0 || now > next_frame_ns + 4 * FRAME_NS) next_frame_ns = now; /* fell behind: start afresh */
   next_frame_ns += FRAME_NS;
   now = SDL_GetTicksNS();
-  if (next_frame_ns > now) SDL_DelayPrecise(next_frame_ns - now);
+  if (next_frame_ns > now) SDL_DelayNS(next_frame_ns - now);
 }
 
 /* Holds a game the monitor paces to the fastest it may go (rg_pacing.h), by a clock of the
@@ -1347,20 +1360,42 @@ static bool consume_step_outside_menu(void) { return !rg_window_menu_is_open() &
 
 /* A PAUSE, or the menu open: the game, its sound and its clock stop where they are and the picture
  * stays up, while the window goes on answering the menu, the hotkeys and the player's mouse. A step
- * lets the game run one frame and comes straight back here at the end of it. */
+ * lets the game run one frame and comes straight back here at the end of it.
+ *
+ * Nothing moves while a game is paused, so the window is drawn only when it has something new to
+ * show: after an event, for a few frames while it settles, and every frame while the menu or a
+ * window over the picture is open. Between those it SLEEPS until the window has an event
+ * (rg_pause.h), and does nothing else. A paused game being played from a script is held a frame at
+ * a time instead, since each time round it reads a line of the script, and is not drawn at all. */
 static void hold_while_paused(void) {
   if (!game_held()) return;
   silence_speaker(true);
+  int drawings_owed = 1;
+  Uint64 next_line_due_ns = SDL_GetTicksNS();
   while (game_held() && !consume_step_outside_menu()) {
     Uint64 began = SDL_GetTicksNS();
     if (scripted && !press_scripted_keys()) finish_script(); /* nothing left in the script could end the pause */
-    read_and_apply_events();
+    drawings_owed = rg_pause_drawings_owed(drawings_owed, read_and_apply_events());
     write_files_due();
-    present_still();
-    /* Showing a picture does not always wait (a window that is hidden, or a display that cannot be
-     * waited for), and a pause is not to spin the computer. */
+    bool window_open = a_window_is_open_over_the_picture();
+    if (!scripted && (drawings_owed > 0 || window_open)) {
+      present_still();
+      if (drawings_owed > 0) drawings_owed--;
+    }
     Uint64 spent = SDL_GetTicksNS() - began;
-    if (spent < FRAME_NS) SDL_DelayPrecise(FRAME_NS - spent);
+    if (scripted) {
+      /* A frame between one line of the script and the next, on a clock of its own so that a sleep
+       * that runs over is made up on the next. */
+      Uint64 now = SDL_GetTicksNS();
+      next_line_due_ns += FRAME_NS;
+      if (now > next_line_due_ns + 4 * FRAME_NS) next_line_due_ns = now;
+      if (next_line_due_ns > now) SDL_DelayNS(next_line_due_ns - now);
+      continue;
+    }
+    Uint64 frame_left = spent < FRAME_NS ? FRAME_NS - spent : 0;
+    bool owes_a_file = rg_save_unwritten() || rg_window_settings_unwritten();
+    /* An event cuts the sleep short, and is looked at at once. */
+    SDL_WaitEventTimeout(NULL, rg_pause_wait_ms(drawings_owed, window_open, owes_a_file, frame_left));
   }
   restart_clocks();
   if (!game_held()) silence_speaker(false);
