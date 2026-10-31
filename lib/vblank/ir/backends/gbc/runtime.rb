@@ -78,8 +78,8 @@ module VBlank
           # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +byte_fills+ says
           # it fills a list of bytes (Lists#emit_byte_fill).
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
-                       drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, clips: nil, count_at: nil,
-                       banked_colors: false, byte_fills: false)
+                       drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
+                       count_at: nil, banked_colors: false, byte_fills: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
             # recording writes down every bank put in view, for the timer to put back (Runtime::Clips).
@@ -96,7 +96,7 @@ module VBlank
             Picture.emit(asm, memory, sprite_tiles: art.sprite_tiles.length, background_tiles: art.background_tiles.length,
                                       runs: runs, drawn_palettes: drawn_palettes, lends: art.lending,
                                       palettes_in_use: art.palettes_in_use, groups: art.groups?, bar_rows: bar_rows,
-                                      rooms: art.rooms.any?, picture_rooms: art.rooms_bring_only_pictures?,
+                                      bar_maps: bar_maps, rooms: art.rooms.any?, picture_rooms: art.rooms_bring_only_pictures?,
                                       room_colors: art.room_colors?, lent_families: art.lent_families?,
                                       backdrop: art.first_screen_backdrop, banked_colors: banked_colors,
                                       first_kept_list: art.first_kept_list, tall_pieces: art.tall_pieces?)

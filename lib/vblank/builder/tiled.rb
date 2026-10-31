@@ -274,9 +274,10 @@ module VBlank
       #
       # @param name [Symbol] the bar's name
       # @param tiles [Symbol] a tileset defined with {#tiles}
-      # @param map [String, Array<String>, Array<Array>] the bar's grid, as a background's
+      # @param map [String, Array<String>, Array<Array>, Hash] the bar's grid, as a background's;
+      #   a Hash of names to grids gives it several, and `show_map` changes the whole bar at once
       # @param top [Integer] the screen row its top is at to begin with
-      # @return [DSL::StatusBar] a handle: move_to / top / set_tile
+      # @return [DSL::StatusBar] a handle: move_to / top / set_tile / show_map
       def status_bar(name, tiles:, map:, top:)
         refuse_unplaceable_status_bar!(name, tiles, map, top)
         background = declare_background(name, tiles: tiles, map: map, bar_top: top)
@@ -288,9 +289,9 @@ module VBlank
 
       private
 
-      # A status bar the console can keep where it is put: on a tiled screen, one map of one
-      # tileset, no bigger than the console's grid of 32 by 32 cells, its top a number written
-      # in the program.
+      # A status bar the console can keep where it is put: on a tiled screen, one tileset, every
+      # map no bigger than the console's grid of 32 by 32 cells, its top a number written in the
+      # program.
       def refuse_unplaceable_status_bar!(name, tiles, map, top)
         unless @screen_mode == :tiled
           raise ArgumentError,
@@ -303,18 +304,21 @@ module VBlank
                 "front of the backgrounds and behind the sprites, so it takes no layer. To fix this, " \
                 "declare it outside the `layer` block."
         end
-        unless tiles.is_a?(Symbol) && !map.is_a?(Hash)
+        unless tiles.is_a?(Symbol)
           raise ArgumentError,
-                "status_bar :#{name} shows one map, drawn from one tileset. To fix this, give `tiles:` " \
-                "the name of a tileset and `map:` one grid."
+                "status_bar :#{name} is drawn from one tileset. To fix this, give `tiles:` the name of " \
+                "a tileset."
         end
         unless top.is_a?(Integer)
           raise ArgumentError,
                 "status_bar :#{name}: `top:` is #{top.inspect}. It must be a whole number, the screen row " \
                 "the bar starts at. To move the bar as the game runs, use `move_to`."
         end
-        rows = background_rows(name, map)
-        return if rows.length <= IR::TileMap::BAR_CELLS && rows.all? { |row| row.length <= IR::TileMap::BAR_CELLS }
+        grids = map.is_a?(Hash) ? map.values : [map]
+        return if grids.all? do |grid|
+          rows = background_rows(name, grid)
+          rows.length <= IR::TileMap::BAR_CELLS && rows.all? { |row| row.length <= IR::TileMap::BAR_CELLS }
+        end
 
         raise ArgumentError,
               "status_bar :#{name} has a map of more than #{IR::TileMap::BAR_CELLS} cells across or down. A " \

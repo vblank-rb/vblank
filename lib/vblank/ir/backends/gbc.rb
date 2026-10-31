@@ -189,7 +189,7 @@ module VBlank
                                              music_level: lowering.music_level, songs: lowering.music.any?,
                                              music: lowering.music, runs: runs, drawn_palettes: lowering.drawn_palettes,
                                              big_maps: lowering.big_map_places, together: lowering.groups_up_together?,
-                                             bar_rows: lowering.bar_rows, clips: clips,
+                                             bar_rows: lowering.bar_rows, bar_maps: lowering.bar_shows_maps?, clips: clips,
                                              count_at: (lowering.variables[Frames::COUNT] if lowering.counts_dark_frames?),
                                              banked_colors: bank_background_colors && !lowering.drawn_palettes.nil?,
                                              byte_fills: lowering.fills_byte_lists?)

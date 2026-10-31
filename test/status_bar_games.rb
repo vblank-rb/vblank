@@ -48,7 +48,30 @@ module StatusBarGames
     end
   end
 
+  # The same field under a bar with two maps, all green and all blue. The game loop's body is
+  # handed the bar and a counter of the passes.
+  def bar_game_with_maps(&body)
+    program do
+      screen :tiled
+      image(:red_art, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:blue_art, "#" => :blue) { Minitest::Test::SOLID_TILE }
+      image(:green_art, "#" => :green) { Minitest::Test::SOLID_TILE }
+      tiles :field_tiles, "#" => :red_art
+      tiles :bar_tiles, "#" => :green_art, "o" => :blue_art
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      bar = status_bar :score, tiles: :bar_tiles, top: screen_height - BAR_HEIGHT,
+                               map: { green: ["#" * 32, "#" * 32], blue: ["o" * 32, "o" * 32] }
+      step = 0
+      game_loop do
+        instance_exec(bar, step, &body)
+        step += 1
+      end
+    end
+  end
+
   def screen_height = VBlank::Console.described(game_console).screen_height
+
+  def screen_width = VBlank::Console.described(game_console).screen_width
 
   def picture(prog, frames) = game_player.run(prog, frames: frames).screen
 end

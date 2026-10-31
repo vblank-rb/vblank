@@ -62,4 +62,61 @@ class TestStatusBarHandle < Minitest::Test
     (0..9).each { |column| assert_equal GREEN, seen.pixel((column * 8) + 4, row + 8), "the second row's column #{column}" }
     assert_backends_agree(prog, frames: 13, name: "BARBYTE")
   end
+
+  # A whole bar changes at once by showing another of its maps: more cells than a pass can change
+  # one at a time, the way a two-row message is cleared.
+  def test_show_map_changes_the_whole_bar_in_one_call
+    prog = bar_game_with_maps { |bar, step| bar.show_map :blue if step == 3 }
+    row = screen_height - 12
+
+    assert_equal GREEN, picture(prog, 2).pixel(28, row)
+    assert_equal BLUE, picture(prog, 6).pixel(28, row)
+    assert_equal BLUE, picture(prog, 6).pixel(screen_width - 4, screen_height - 4), "the second row too"
+    assert_backends_agree(prog, frames: 6, name: "BARMAP")
+  end
+
+  # A cell written in the pass the map changes shows over the new map, not under it: the game
+  # clears the bar and writes the first letter of the next message together.
+  def test_set_tile_in_the_pass_of_show_map_shows_over_the_new_map
+    prog = bar_game_with_maps do |bar, step|
+      if step == 2
+        bar.show_map :blue
+        bar.set_tile 3, 0, "#"
+      end
+    end
+    row = screen_height - 12
+
+    assert_equal GREEN, picture(prog, 6).pixel(28, row), "the cell written after the map"
+    assert_equal BLUE, picture(prog, 6).pixel(20, row), "the cell beside it"
+    assert_backends_agree(prog, frames: 6, name: "BARMAPCELL")
+  end
+
+  # A cell changed on the map that is showing is forgotten when another map goes up, and the first
+  # map comes back as it was declared. The cell here is changed in the very pass the map goes, so
+  # the new map must replace it even though the cell has not reached the screen yet.
+  def test_show_map_forgets_a_cell_changed_before_it
+    prog = bar_game_with_maps do |bar, step|
+      if step == 2
+        bar.set_tile 3, 0, "o"
+        bar.show_map :blue
+      end
+      bar.show_map :green if step == 5
+    end
+    row = screen_height - 12
+
+    assert_equal GREEN, picture(prog, 9).pixel(28, row)
+    assert_backends_agree(prog, frames: 9, name: "BARMAPBACK")
+  end
+
+  # Showing the map that is up leaves a cell the game changed on it alone.
+  def test_show_map_of_the_map_up_changes_nothing
+    prog = bar_game_with_maps do |bar, step|
+      bar.set_tile 3, 0, "o" if step == 2
+      bar.show_map :green if step == 3
+    end
+    row = screen_height - 12
+
+    assert_equal BLUE, picture(prog, 6).pixel(28, row)
+    assert_backends_agree(prog, frames: 6, name: "BARMAPSAME")
+  end
 end

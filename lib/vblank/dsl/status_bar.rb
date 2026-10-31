@@ -54,6 +54,16 @@ module VBlank
         @background.set_tile(col, row, tile)
         self
       end
+
+      # SHOW ANOTHER OF THE BAR'S MAPS, for a bar declared with several. The whole bar changes in
+      # one call, which is how a game clears a message that is too many cells to change with
+      # `set_tile` in one pass: give the bar an empty map and show it. Cells changed with
+      # `set_tile` before this are forgotten. Cells changed after it, in the same pass too, show
+      # over the new map. Showing the map that is up already changes nothing.
+      def show_map(which)
+        @background.show_map_now(which)
+        self
+      end
     end
   end
 end

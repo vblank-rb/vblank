@@ -151,6 +151,19 @@ module VBlank
         self
       end
 
+      # {#show_map} done where the game says it, not at the end of the frame, so a cell changed
+      # after it in the same pass stays over the new map. That suits a status bar: a few rows,
+      # cleared and written to together. A big background keeps {#show_map}, since showing half
+      # of each of two rooms is what the wait to the end of the frame is for.
+      def show_map_now(which)
+        refuse_with_one_map!
+        self.showing = resolve_map_number(which)
+        record(Build.if_(Build.binop(:!=, Build.var_ref(shown_map_var), Build.var_ref(live_map_var)),
+                         Build.show_map(@name, which: Build.var_ref(shown_map_var)),
+                         Build.set(live_map_var, Build.var_ref(shown_map_var))))
+        self
+      end
+
       # Which of this background's maps is showing, as a {Value} — 0 for the first declared.
       # Compare it against {#map_number} to ask which room the game is in.
       def showing

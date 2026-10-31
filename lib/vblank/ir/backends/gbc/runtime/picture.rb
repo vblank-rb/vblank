@@ -156,9 +156,11 @@ module VBlank
             # +lends+ is :by_scene when each scene numbers its own lists, and +first_kept_list+ is then
             # the number, one up, of the first list every scene keeps (Art#first_kept_list).
             # +tall_pieces+ says the console draws every sprite piece 8×16 (Art#tall_pieces?).
+            # +bar_maps+ says a status bar has several maps to show (#emit_bar_show).
             def emit(asm, memory, sprite_tiles:, background_tiles:, runs: [], drawn_palettes: nil, lends: false,
-                     palettes_in_use:, groups: false, bar_rows: nil, rooms: false, picture_rooms: false, room_colors: false,
-                     lent_families: false, backdrop: nil, banked_colors: false, first_kept_list: nil, tall_pieces: false)
+                     palettes_in_use:, groups: false, bar_rows: nil, bar_maps: false, rooms: false, picture_rooms: false,
+                     room_colors: false, lent_families: false, backdrop: nil, banked_colors: false, first_kept_list: nil,
+                     tall_pieces: false)
               emit_start(asm, memory, sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                                       drawn_palettes: drawn_palettes, bar: !bar_rows.nil?, backdrop: backdrop,
                                       tall_pieces: tall_pieces)
@@ -173,6 +175,7 @@ module VBlank
               paced = (memory[ROOMS] + ROOM_DISPLAY_OFF if picture_rooms)
               emit_background(asm, memory, bar: !bar_rows.nil?, paced: paced)
               emit_bar(asm, memory, bar_rows, paced: paced) if bar_rows
+              emit_bar_show(asm, memory) if bar_maps
               emit_choices(asm, memory)
               emit_overlap(asm, memory)
               emit_tint(asm, memory, drawn_palettes, palettes_in_use)
@@ -1732,6 +1735,7 @@ module VBlank
               asm.load([memory[BAR]], :a)
               asm.load_hl_sp(6)
               asm.load(:a, [:hl]) # the grid's number
+              asm.label("rt_bar_grid_in_a")
               asm.load(:hl, memory[BAR] + BAR_UP)
               asm.cp_a([:hl])
               asm.jump_relative(:z, "rt_bar_on")
@@ -1798,6 +1802,51 @@ module VBlank
 
               emit_map_job(asm, memory[BAR_JOB], "rt_bar_map_job", "rt_bar_map_rows")
               emit_map_rows(asm, memory[BAR_JOB], "rt_bar_map_rows", paced: paced)
+            end
+
+            # rt_bar_show(grid), for a bar with several maps (Reference#exec_show_map): the whole bar
+            # is another map, its top left where it is. The copy waits for the blank, as a bar's
+            # always does, and the cells kept for that blank go in after it (rt_upload), so a cell
+            # changed AFTER this shows over the new map. A cell changed BEFORE this in the same pass
+            # is one the new map replaces, and it is still in that list: it is taken out here, or it
+            # would land on the new map.
+            def emit_bar_show(asm, memory)
+              h = Console::GBCHardware
+              asm.label("rt_bar_show")
+              asm.load(:hl, memory[CELLS])
+              asm.load(:a, [:hl])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_bar_show_grid")
+              asm.load(:b, :a)
+              asm.load(:c, 0) # how many stay
+              asm.xor_a(:a)
+              asm.load([:hli], :a)
+              asm.load(:d, :h)
+              asm.load(:e, :l)
+              asm.label("rt_bar_show_cell")
+              # A cell's place is two bytes, low first: the window's grid is the last in video memory.
+              asm.inc(:hl)
+              asm.load(:a, [:hld])
+              asm.cp_a(h::TILE_MAP1 >> 8)
+              asm.jump_relative(:nc, "rt_bar_show_drop")
+              CELL_BYTES.times do
+                asm.load(:a, [:hli])
+                asm.load([:de], :a)
+                asm.inc(:de)
+              end
+              asm.inc(:c)
+              asm.jump_relative("rt_bar_show_next")
+              asm.label("rt_bar_show_drop")
+              CELL_BYTES.times { asm.inc(:hl) }
+              asm.label("rt_bar_show_next")
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_bar_show_cell")
+              asm.load(:a, :c)
+              asm.load([memory[CELLS]], :a)
+              asm.label("rt_bar_show_grid")
+              asm.load_hl_sp(2)
+              asm.load(:a, [:hl])
+              asm.jump("rt_bar_grid_in_a")
             end
 
             # CHOOSING BY NUMBER. rt_place_of_choice(which, others) is which list of colours a

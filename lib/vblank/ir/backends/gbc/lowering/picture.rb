@@ -54,8 +54,11 @@ module VBlank
             # them, or nil for a game with none (Runtime::Picture#emit_bar).
             def bar_rows
               bars = @backgrounds.each_value.select(&:bar?)
-              bars.map { |bar| TileMap.size_of(bar.map).last }.max unless bars.empty?
+              bars.flat_map(&:every_map).map { |map| TileMap.size_of(map).last }.max unless bars.empty?
             end
+
+            # Has a status bar of the game more than one map to show (Runtime::Picture#emit_bar_show)?
+            def bar_shows_maps? = @backgrounds.each_value.any? { |bg| bg.bar? && bg.every_map.length > 1 }
 
             # Where a game that draws a background with other colours keeps the colours its pictures
             # are drawn in now, every palette's (Runtime::Picture#emit_background_colors), or nil for
@@ -1141,7 +1144,10 @@ module VBlank
 
               emit_area_room(bg, node.which) if bg.several_sets? && @plans_background_rooms
 
-              routine = big?(bg) ? "rt_big_show" : "rt_background_put_up"
+              routine = if bg.bar? then "rt_bar_show"
+                        elsif big?(bg) then "rt_big_show"
+                        else "rt_background_put_up"
+                        end
               grids = bg.every_map.each_index.map { |which| big?(bg) ? big_map_of(bg, which) : grid_of(bg, which) }
               known = folded(node.which)
               return (runtime_call(routine, [Build.int(grids.fetch(known))]) if known.between?(0, grids.length - 1)) if known
