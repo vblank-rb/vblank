@@ -21,7 +21,8 @@
  *
  * At the end it prints "end", every variable and every sprite the same way, and the picture as
  * shown: "picture" and every pixel, row by row, as four hex digits — and then the same page as
- * it is stored ("stored"), with no window moved over it and no fade mixed in, and how many pages
+ * it is stored ("stored"), with no window moved over it and no fade mixed in, how many times the
+ * whole view was built again ("repaints"), and how many pages
  * the screen has ("pages", 2 for a tear-free one). A frame's moment carries only a check number
  * of its picture ("picture-crc"), or with --every-picture the whole picture, for a test that
  * compares every frame pixel by pixel. Without it a frame is a few lines rather than a hundred
@@ -223,7 +224,7 @@ static void print_moment(const char *heading, int with_picture) {
 static _Noreturn void finish(void) {
   print_moment("end", !picture_out);
   if (!picture_out) print_pixels("stored", rg_screen_stored());
-  printf("pages %d\n", rg_screen_two_pages() ? 2 : 1);
+  printf("repaints %d\npages %d\n", (int)rg_screen_repaints_painted(), rg_screen_two_pages() ? 2 : 1);
   fflush(stdout);
   if (sound_out) fclose(sound_out);
   if (picture_out) fclose(picture_out);

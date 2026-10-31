@@ -279,6 +279,10 @@ const uint16_t *rg_screen_stored(void);
 /* 1 while the screen is tear-free, and so two pages. */
 int32_t rg_screen_two_pages(void);
 
+/* How many times the whole view has been built again from its scenery and sprites since the game
+ * began. A test reads it to see that a screen standing still is not rebuilt every frame. */
+int32_t rg_screen_repaints_painted(void);
+
 /* The sprites the game last said are on screen (Reference#sprites), back to front: how many, and
  * each by its place among them. A row says whose the sprite is and which picture it shows, both
  * as the number of a name (rg_game_sprite_names, rg_game_image_pictures), and where it is. They

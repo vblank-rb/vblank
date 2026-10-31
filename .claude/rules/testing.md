@@ -89,6 +89,7 @@ again in another language is held to), `runtime_sounds.rb` (the sound such a run
 to, sample for sample against the native one's), `midpoint_circle.rb` (the answer key for a light's
 rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped by room),
 `status_bar_games.rb` (small games with a status bar, for the verb's and its handle's tests),
+`repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),
 `clock_tests.rb` (the clock's tests, played by each console that has one),
 `song_instrument_tests.rb` (a song part playing a recorded instrument, played by each console that mixes them),
 `note_envelope_tests.rb` (recorded notes with a loudness shape falling away on their voices, played by each console that mixes them),

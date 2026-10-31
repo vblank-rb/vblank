@@ -62,6 +62,12 @@ static int32_t held;            /* switched off until the first frame (Framebuff
 static int32_t frames_begun;    /* a frame boundary has been reached (Reference @uses_frames) */
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
 static int32_t owed;            /* a rebuild of the whole view is owed (Reference#request_repaint) */
+static int32_t repaints_painted;   /* how many times the whole view was built again (rg_screen_repaints_painted) */
+/* A change of screen wiped the picture, and nothing has said since that it is built again. The
+ * interpreter builds a picture that is rebuilt whole every frame, so it is built again as soon as
+ * the scroll or the sprites are said; here a frame that moved nothing builds nothing, so the first
+ * of those says it is owed whatever it finds. */
+static int32_t picture_wiped;
 static int32_t backdrop;        /* the colour shown wherever nothing is drawn (Reference @backdrop) */
 static int32_t current_scene = -1;
 
@@ -437,6 +443,7 @@ static int32_t showing(int32_t background);
 static int32_t bar_showing(void);
 static void request_repaint(void);
 static void repaint_view(void);
+static int32_t rebuilt_whole(void);
 
 static int32_t see_through_layers(void) { return rg_game_picture_sizes[RG_SIZE_SEE_THROUGH]; }
 
@@ -724,12 +731,17 @@ static background_scroll scroll_shown(int32_t background) {
   return from_corner[keeper] ? (background_scroll){0, 0} : scrolls[keeper];
 }
 
-/* Reference#forget_expired_corners */
+/* Reference#forget_expired_corners. The interpreter builds a picture that is rebuilt whole every
+ * frame, so a background that stops being shown from its corner is drawn from its scroll on the
+ * next one without anything asking. Here a frame that moved nothing builds nothing, so the
+ * corners going is itself a change to the picture, and asks for it. */
 static void forget_expired_corners(void) {
   if (!corners_expired) return;
+  int32_t were_shown_from_corners = any_from_corner;
   corners_expired = 0;
   memset(from_corner, 0, sizeof from_corner);
   any_from_corner = 0;
+  if (were_shown_from_corners && rebuilt_whole()) request_repaint();
 }
 
 /* Reference#mark_from_corner */
@@ -1014,11 +1026,19 @@ static int32_t placing_at_pass_end;
 
 void rg_screen_placing_at_pass_end(int32_t on) { placing_at_pass_end = on; }
 
-/* Reference#exec_scroll_background */
+/* Reference#exec_scroll_background. The interpreter builds the view again every time; this builds
+ * it again only when the scroll the picture shows is not the one it was built with, so a frame
+ * that says the same scroll again costs nothing. What the picture shows is what scroll_shown
+ * answers, which for a background put up this pass is its corner, so a scroll said over a corner
+ * is a change even where the number written is the one already stored. */
 void rg_background_scroll(int32_t background, int32_t x, int32_t y) {
+  int32_t wiped = picture_wiped;
+  picture_wiped = 0;
+  background_scroll before = scroll_shown(background);
   scrolls[keeper_of(background)] = (background_scroll){x, y};
   if (!placing_at_pass_end) from_corner[keeper_of(background)] = 0;
-  request_repaint();
+  background_scroll after = scroll_shown(background);
+  if (wiped || after.x != before.x || after.y != before.y) request_repaint();
 }
 
 /* Where each status bar was last placed, by the entry that keeps its name, and whether it has
@@ -1691,15 +1711,21 @@ void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, 
 }
 
 /* The rest of Reference#exec_present_objects. On a picture that is rebuilt whole, the sprites on
- * screen now are kept (#snapshot_object_layer) and the rebuild is owed. On one that is not, each
- * is drawn where it is now, and where that was is remembered for taking it off again. */
+ * screen now are kept (#snapshot_object_layer) and the rebuild is owed, unless they are the
+ * sprites, in the same places, that the last rebuild painted: the interpreter builds it every
+ * time, and this only when something moved. On one that is not, each is drawn where it is now,
+ * and where that was is remembered for taking it off again. */
 void rg_objects_end(void) {
   /* Kept whichever way the picture is made: a scene taking over later in this pass builds the
-   * picture again from it (rg_scene_redraw_sprites). */
+   * picture again from it (rg_scene_redraw_sprites). Compared as they are laid down, field by
+   * field, so nothing is worked out for a frame where nothing moved. */
+  int32_t moved = rebuilt_whole() && (picture_wiped || drawing_count != sprite_layer_count ||
+                  memcmp(sprite_layer, drawing, (size_t)drawing_count * sizeof drawing[0]) != 0);
   for (int32_t i = 0; i < drawing_count; i++) sprite_layer[i] = drawing[i];
   sprite_layer_count = drawing_count;
   if (rebuilt_whole()) {
-    request_repaint();
+    picture_wiped = 0;
+    if (moved) request_repaint();
     return;
   }
   /* The sprite layer is off while a painted screen is up in a game with screens drawn from tiles. */
@@ -1779,6 +1805,7 @@ static void fade_unless_left_as_drawn(int32_t fade_place) {
 static void fade_nothing(void) { fading_what_is_painted = 0; }
 
 static void repaint_view(void) {
+  repaints_painted++;
   mix_nothing();
   fade_unless_left_as_drawn(RG_NO_LAYER);
   clear_to(backdrop);
@@ -1879,6 +1906,7 @@ int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop)
     /* What was under each sprite went with the old screen, so nothing is put back over the new
      * one. A console that places its sprites at the end of a pass takes them off after this. */
     memset(last_drawn, 0, sizeof last_drawn);
+    picture_wiped = 1;
   } else {
     show_backdrop(new_backdrop);
   }
@@ -1943,6 +1971,8 @@ void rg_scene_redraw_sprites(int32_t brings_scenery) {
 /* --- reading it back --- */
 
 int32_t rg_screen_two_pages(void) { return pixels != viewed; }
+
+int32_t rg_screen_repaints_painted(void) { return repaints_painted; }
 
 /* Framebuffer#to_a: the page a viewer is looking at as it is STORED, with no window moved over
  * it and no fade or tint mixed in. */

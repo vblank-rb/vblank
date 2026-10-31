@@ -110,6 +110,11 @@ module VBlank
           # Whether the screen the run ended on is tear-free, as the interpreter answers it.
           attr_reader :buffered
 
+          # How many times the run built the whole view again from its scenery and sprites.
+          # The interpreter has no such count: it is what a test reads to see that a screen
+          # standing still is not rebuilt every frame.
+          attr_reader :repaints_painted
+
           # The save memory the run was handed, holding what the last run left in it.
           attr_reader :save
 
@@ -460,6 +465,7 @@ module VBlank
             read_state_from(rows)
             @screen = picture_now
             @buffered = rows.include?("pages 2")
+            @repaints_painted = Integer(rows.find { |row| row.start_with?("repaints ") }.split(" ").last)
             @moments << Moment.new(frame: :end, variables: @vars, picture: self.class.picture_check(@screen.shown),
                                    sounds: @audio_played.size, sprites: @sprites, collections: game_state.except(:vars),
                                    sounding: active_samples, motor: motor_on?)

@@ -18,7 +18,8 @@
 #
 # At the end it prints "end", every variable and every sprite the same way, and the picture as
 # shown: "picture" and every pixel, row by row, as four hex digits — and then the same page as it
-# is stored ("stored"), with no window moved over it and no fade mixed in, and how many pages the
+# is stored ("stored"), with no window moved over it and no fade mixed in, how many times the whole
+# view was built again ("repaints"), and how many pages the
 # screen has ("pages", 2 for a tear-free one). A frame's moment carries only a check number of its
 # picture ("picture-crc"), or with --every-picture the whole picture. Each line of the sound log is
 # printed as "sound" and the line, as it happens, among the frames.
@@ -200,6 +201,7 @@ end
 def rg_headless_finish
   rg_headless_print_moment("end", !@rg_picture_out)
   rg_headless_print_pixels("stored", rg_screen_stored) unless @rg_picture_out
+  $stdout.write("repaints #{rg_screen_repaints_painted}\n")
   $stdout.write("pages #{rg_screen_two_pages != 0 ? 2 : 1}\n")
   $stdout.flush
   @rg_picture_out&.close

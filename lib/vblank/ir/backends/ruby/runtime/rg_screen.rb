@@ -193,6 +193,12 @@ def rg_screen_setup
   @rg_frames_begun = false # a frame boundary has been reached (Reference @uses_frames)
   @rg_kind = -1 # the kind of screen up; none before the first `screen`
   @rg_rebuild_pending = false # a rebuild of the whole view is owed (Reference#request_repaint)
+  @rg_repaints_painted = 0 # how many times the whole view was built again (rg_screen_repaints_painted)
+  # A change of screen wiped the picture, and nothing has said since that it is built again. The
+  # interpreter builds a picture that is rebuilt whole every frame, so it is built again as soon as
+  # the scroll or the sprites are said; here a frame that moved nothing builds nothing, so the first
+  # of those says it is owed whatever it finds.
+  @rg_picture_wiped = false
   @rg_scene = -1
   # What a display does to the finished picture: one effect at a time (Framebuffer#fade_to).
   @rg_fade_white = 0
@@ -810,13 +816,18 @@ def rg_scroll_shown(background)
   @rg_from_corner[keeper] ? [0, 0] : @rg_scrolls[keeper]
 end
 
-# Reference#forget_expired_corners
+# Reference#forget_expired_corners. The interpreter builds a picture that is rebuilt whole every
+# frame, so a background that stops being shown from its corner is drawn from its scroll on the
+# next one without anything asking. Here a frame that moved nothing builds nothing, so the corners
+# going is itself a change to the picture, and asks for it.
 def rg_forget_expired_corners
   return unless @rg_corners_expired
 
+  were_shown_from_corners = @rg_any_from_corner
   @rg_corners_expired = false
   @rg_from_corner.fill(false)
   @rg_any_from_corner = false
+  rg_request_repaint if were_shown_from_corners && rg_rebuilt_whole?
 end
 
 # Reference#mark_from_corner
@@ -1077,11 +1088,22 @@ def rg_screen_placing_at_pass_end(on)
 end
 
 # Reference#exec_scroll_background
+# The interpreter builds the view again every time; this builds it again only when the scroll the
+# picture shows is not the one it was built with, so a frame that says the same scroll again costs
+# nothing. What the picture shows is what rg_scroll_shown answers, which for a background put up
+# this pass is its corner, so a scroll said over a corner is a change even where the number written
+# is the one already stored.
 def rg_background_scroll(background, x, y)
   keeper = rg_keeper_of(background)
+  wiped = @rg_picture_wiped
+  @rg_picture_wiped = false
+  before = rg_scroll_shown(background)
+  before_x = before[0]
+  before_y = before[1]
   @rg_scrolls[keeper] = [x, y]
   @rg_from_corner[keeper] = false unless @rg_placing_at_pass_end
-  rg_request_repaint
+  after = rg_scroll_shown(background)
+  rg_request_repaint if wiped || after[0] != before_x || after[1] != before_y
 end
 
 # Whether a background is a status bar (RG_BG_BAR_TOP).
@@ -1860,12 +1882,20 @@ def rg_objects_add_turned(sprite, image, x, y, level, angle, size, resizes)
 end
 
 # The rest of Reference#exec_present_objects. On a picture that is rebuilt whole, the sprites on
-# screen now are kept (#snapshot_object_layer) and the rebuild is owed. On one that is not, each is
-# drawn where it is now, and where that was is remembered for taking it off again. Kept whichever
-# way the picture is made: a scene taking over later in this pass builds the picture again from it.
+# screen now are kept (#snapshot_object_layer) and the rebuild is owed, unless they are the sprites,
+# in the same places, that the last rebuild painted: the interpreter builds it every time, and this
+# only when something moved. On one that is not rebuilt whole, each is drawn where it is now, and
+# where that was is remembered for taking it off again. Kept whichever way the picture is made: a
+# scene taking over later in this pass builds the picture again from it.
 def rg_objects_end
+  kept = @rg_sprite_layer
   @rg_sprite_layer = @rg_drawing.dup
-  return rg_request_repaint if rg_rebuilt_whole?
+  if rg_rebuilt_whole?
+    wiped = @rg_picture_wiped
+    @rg_picture_wiped = false
+    rg_request_repaint if wiped || @rg_drawing != kept
+    return
+  end
   # The sprite layer is off while a painted screen is up in a game with screens drawn from tiles.
   return if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0
 
@@ -1945,6 +1975,7 @@ def rg_fade_nothing
 end
 
 def rg_repaint_view
+  @rg_repaints_painted += 1
   rg_mix_nothing
   rg_fade_unless_left_as_drawn(RG_NO_LAYER)
   rg_clear_to(@rg_backdrop)
@@ -2039,6 +2070,7 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
     # What was under each sprite went with the old screen, so nothing is put back over the new
     # one. A console that places its sprites at the end of a pass takes them off after this.
     @rg_last_drawn.fill(nil)
+    @rg_picture_wiped = true
   else
     rg_show_backdrop(new_backdrop)
   end
@@ -2109,6 +2141,8 @@ end
 # --- reading it back ---
 
 def rg_screen_two_pages = @rg_pixels.equal?(@rg_viewed) ? 0 : 1
+
+def rg_screen_repaints_painted = @rg_repaints_painted
 
 # Framebuffer#to_a: the page a viewer is looking at as it is STORED, with no window moved over it
 # and no fade or tint mixed in.
