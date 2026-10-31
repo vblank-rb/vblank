@@ -71,7 +71,11 @@ module VBlank
         GameRoutine = Data.define(:addresses, :routine)
 
         # +program+ as a cartridge (Cartridge::SNESROM), carrying its Places.
-        def build(program, title: "VBLANK")
+        #
+        # A sprite's squares of 16×16 keep their four tiles together, so they share fewer than 8×8
+        # pieces do and a game that only just fits its sprite tiles can run out. It is built again
+        # in 8×8 pieces, which fits, and takes more of the sprite table.
+        def build(program, title: "VBLANK", sprite_squares: true)
           board = board_for(program)
           memory = Memory.new
           painted = Lowering::Paint.painted?(program)
@@ -88,8 +92,14 @@ module VBlank
           Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
                                   bends: bends, tile_runs: tile_runs, holds_music: Lowering::Sound.holds_music?(program))
-          lowering = Lowering.new(program, memory: memory)
-          game = lowering.sections + lowering.art_sections
+          lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares)
+          begin
+            game = lowering.sections + lowering.art_sections
+          rescue Art::TooMuch
+            raise unless sprite_squares
+
+            return build(program, title: title, sprite_squares: false)
+          end
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins, painted: painted,
                                              board: board, saves: saves, sound: sound,
                                              sound_waves: lowering.sound_waves,
@@ -101,7 +111,8 @@ module VBlank
                                              see_through: lowering.see_through_layers, big_tiles: lowering.big_tile_layers,
                                              recorded_parts: songs && lowering.recorded_parts?,
                                              colors_shown: lowering.colors_shown,
-                                             sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?)
+                                             sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
+                                             sprite_squares: lowering.sprite_squares?)
           linked = Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)

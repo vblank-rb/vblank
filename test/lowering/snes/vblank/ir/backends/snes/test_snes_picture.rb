@@ -380,6 +380,83 @@ class TestSNESPicture < Minitest::Test
     SNES::CheckedRun.new.run(two_halves_game, frames: 12)
   end
 
+  # A square of 16×16 takes one row of the console's table of 128, so a hundred of them show. As
+  # 8×8 pieces they would be four hundred, and the last would not be drawn.
+  def test_a_hundred_big_sprites_all_show
+    checked(frames: 3) do
+      screen :tiled
+      image(:ball, "#" => :red, "o" => :yellow, "." => :blue) { (["##oo....##oo...."] * 16).join("\n") }
+      10.times { |row| 10.times { |column| sprite :ball, at: [column * 20, row * 20] } }
+      game_loop { }
+    end
+  end
+
+  # A picture wider and taller than 16 is squares of 16 and 8×8 pieces round them, each in its own
+  # place, and half a square left blank is still the square.
+  def test_a_big_picture_shows_its_squares_and_its_edges
+    checked(frames: 3) do
+      screen :tiled
+      rows = Array.new(8) { "rrrrrrrrggggggggbbbbbbbb" } + Array.new(8) { "........yyyyyyyywwwwwwww" } +
+             Array.new(8) { "mmmmmmmm........cccccccc" }
+      image(:patch, "r" => :red, "g" => :green, "b" => :blue, "y" => :yellow, "w" => :white,
+                    "m" => :magenta, "c" => :cyan, "." => :transparent) { rows.join("\n") }
+      sprite :patch, at: [40, 40]
+      game_loop { }
+    end
+  end
+
+  # A hundred squares all different: their tiles run past the console's first page of 256, where a
+  # square's lower half would come round to the top of the page if it were laid out across it.
+  def test_squares_past_the_first_page_of_tiles_show_their_own_lower_halves
+    checked(frames: 3) do
+      screen :tiled
+      100.times do |number|
+        rows = Array.new(16) { |row| (0...16).map { |column| number[(row + column) % 7] == 1 ? "#" : "o" }.join }
+        rows[0] = format("%016b", number).tr("01", "o#")
+        image(:"ball_#{number}", "#" => :red, "o" => :yellow) { rows.join("\n") }
+        sprite :"ball_#{number}", at: [(number % 10) * 20, (number / 10) * 20]
+      end
+      game_loop { }
+    end
+  end
+
+  # Two hundred squares made of four 8×8 tiles fit as 8×8 pieces and not as squares, so the game
+  # is built that way rather than refused.
+  def test_squares_that_only_fit_as_small_pieces_still_build
+    program = program_of do
+      screen :tiled
+      inks = %w[r g b w]
+      names = Array.new(200) do |number|
+        corners = [number % 4, (number / 4) % 4, (number / 16) % 4, number / 64].map { |ink| inks[ink] * 8 }
+        rows = Array.new(8) { corners[0] + corners[1] } + Array.new(8) { corners[2] + corners[3] }
+        image(:"ball_#{number}", "r" => :red, "g" => :green, "b" => :blue, "w" => :white) { rows.join("\n") }
+        :"ball_#{number}"
+      end
+      flipper = sprite :flipper, frames: names, rate: 1, at: [40, 40]
+      game_loop { flipper }
+    end
+    tight = SNES::Art.new
+    pictures = program.walk.select { |node| node.kind == :bitmap }.map { |node| VBlank::IR::Assets::Image.of(node) }
+    assert_raises(SNES::Art::TooMuch) { pictures.each_with_index { |image, name| tight.sprite_picture(name, image) } }
+
+    SNES::CheckedRun.new.run(program, frames: 6)
+  end
+
+  # A big square that hangs off each edge shows the part on the screen, and nothing comes round
+  # to the other side.
+  def test_big_sprites_hanging_off_every_edge_show_their_parts
+    checked(frames: 3) do
+      screen :tiled
+      image(:ball, "#" => :red, "o" => :yellow) { (["##oo##oo##oo##oo"] * 16).join("\n") }
+      sprite :ball, at: [-12, 40]
+      sprite :ball, at: [248, 40]
+      sprite :ball, at: [60, -12]
+      sprite :ball, at: [100, 216]
+      sprite :ball, at: [-15, -15]
+      game_loop { }
+    end
+  end
+
   # Each way of comparing the row turns on a row of its own, and a band that started one row out
   # would show here as one row of bars in the wrong place.
   def test_a_band_starts_on_the_row_each_comparison_turns_on

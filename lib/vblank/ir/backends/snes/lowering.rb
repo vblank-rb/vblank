@@ -122,9 +122,11 @@ module VBlank
           # each routine's section, by its label, beside what that routine is to the author.
           attr_reader :variables, :lists, :frame_begins, :section_routines
 
-          def initialize(program, memory:)
+          # +sprite_squares+ draws sprites' squares of 16×16 as one row of the table each (Art).
+          def initialize(program, memory:, sprite_squares: true)
             @program = program
             @memory = memory
+            @sprite_squares = sprite_squares
             # What the program is before any instruction is made, worked out as the Color's is
             # (LoweringPlan), and kept here under the names the rest of the lowering reads.
             @plan = LoweringPlan.new(program, console: Console::SUPER_NINTENDO, error: LoweringError)

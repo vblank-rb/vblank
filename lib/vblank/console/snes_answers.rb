@@ -97,8 +97,10 @@ module VBlank
         mirror: works,
         upside_down: works,
         blit: works,
-        sprite: works("a sprite is made of the console's 8×8 pieces, 128 sprites at once and 34 pieces on " \
-                      "any one row of the screen. `scale`, `face_angle` and `turn` are refused: a Super " \
+        sprite: works("a sprite is made of the console's pieces, 128 pieces at once and 34 pieces of 8×8 on " \
+                      "any one row of the screen. A square of 16×16 in a picture is one piece, so a screen of " \
+                      "big sprites fits. Past 128 pieces, a sprite is not drawn and no error shows. " \
+                      "`scale`, `face_angle` and `turn` are refused: a Super " \
                       "Nintendo cannot turn or resize a sprite. Draw the turns as poses."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),

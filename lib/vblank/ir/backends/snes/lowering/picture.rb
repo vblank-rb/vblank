@@ -55,9 +55,12 @@ module VBlank
               @objects.empty? ? [[0, @painted_art.colors_painted]] : [[0, 256]]
             end
 
+            # Whether any sprite picture is drawn with squares of 16×16 (Art::Piece#big).
+            def sprite_squares? = !painted? && @art.sprite_squares?
+
             def prepare_picture
               refuse_backdrops_of_its_own!
-              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop)
+              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares)
               @pictures = by_kind(:bitmap)
               @objects = by_kind(:object)
               @backgrounds = by_kind(:background)
@@ -218,6 +221,7 @@ module VBlank
                 picture.pieces.each do |piece|
                   data.data_words(piece.dx, piece.dy,
                                   piece.tile | (piece.palette << 9) | SPRITE_IN_FRONT)
+                  data.data_words(piece.big ? Runtime::Picture::SPRITE_SIZE_BIT : 0) if sprite_squares?
                 end
               end
               data.label("art grids")

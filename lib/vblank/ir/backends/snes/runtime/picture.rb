@@ -76,6 +76,9 @@ module VBlank
             BG_TILES = 0x0000
             LAYER_MAPS = [0x4000, 0x5000].freeze
             SPRITE_TILES = 0x6000
+            # A row of the sprite table's size, in its two bits of the upper table: the larger of the
+            # two sizes OBSEL names.
+            SPRITE_SIZE_BIT = 2
 
             # The sprite table's shadow (544 bytes: 128 rows of four, then 32 bytes of each row's two
             # top bits), and the sprites the game placed in its last pass, for a reader: how many,
@@ -181,11 +184,12 @@ module VBlank
             # layers behind them] a bit each, or nil (Lowering::Picture#refuse_unmade_see_through!).
             # +sprite_depths+ for a game with a sprite behind a background: rt_sprite_place takes a
             # sixth number then (Lowering::Picture#sprite_depths). +big_tiles+ is BGMODE's size bits for the
-            # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers).
+            # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers). +sprite_squares+ for a
+            # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], tile_runs: 0, run_scratch: nil,
-                     see_through: nil, sprite_depths: false, big_tiles: 0)
+                     see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false)
               emit_start(asm, memory, painted, see_through, big_tiles)
-              emit_sprites(asm, memory, work, sprite_depths)
+              emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
               emit_backgrounds(asm, memory, work)
               emit_bar(asm, memory) if bar
               emit_bends_prepare(asm, memory, work, bent) unless bent.empty?
@@ -324,7 +328,13 @@ module VBlank
             # edge, and one at -3 down as 253, which it draws with its top three rows above the
             # screen. So a piece that reaches the screen is written as its place's low bits, and one
             # that does not is not written at all, where coming round would show it somewhere else.
-            def emit_sprites(asm, memory, work, depths = false)
+            #
+            # A SQUARE OF 16×16 reaches eight pixels further, so with +squares+ every piece is asked
+            # about that reach. A small piece just off an edge then takes a row and draws nothing,
+            # which is a few rows at worst for what the squares save. Each piece carries its own
+            # size bit, and a row's two bits in the upper table are that and across's ninth bit.
+            def emit_sprites(asm, memory, work, depths = false, squares = false)
+              reach = (squares ? Art::SQUARE : 8) - 1
               r = ->(n) { Memory.register(n) }
               # How many pieces are left: R5, or R6 where R5 is the sixth number, the priority bits
               # flipped in each piece's attributes (in front of every background, 3, made 2 or 1).
@@ -433,16 +443,16 @@ module VBlank
               asm.dec(asm.direct(count))
               asm.lda(asm.abs(memory[NEXT_ROW]))
               asm.beq("rt_sprite_place_off") # the table is full
-              # Across: -7 to 255 reaches the screen.
+              # Across: from the piece's reach left of the screen to 255 reaches the screen.
               asm.lda(asm.ind_long_y(pointer))
               asm.clc
               asm.adc(asm.direct(r.call(2)))
               asm.sta(asm.direct(piece_x))
               asm.clc
-              asm.adc(7)
-              asm.cmp(256 + 7)
+              asm.adc(reach)
+              asm.cmp(256 + reach)
               asm.bcs("rt_sprite_place_skip")
-              # Down: -7 to 223.
+              # Down: from its reach above to 223.
               asm.iny
               asm.iny
               asm.lda(asm.ind_long_y(pointer))
@@ -450,8 +460,8 @@ module VBlank
               asm.adc(asm.direct(r.call(3)))
               asm.sta(asm.direct(piece_y))
               asm.clc
-              asm.adc(7)
-              asm.cmp(224 + 7)
+              asm.adc(reach)
+              asm.cmp(224 + reach)
               asm.bcs("rt_sprite_place_skip_down")
               # The row: the next free, counting down.
               asm.dec(asm.abs(memory[NEXT_ROW]))
@@ -472,16 +482,20 @@ module VBlank
               asm.sta(asm.long_x(oam, 2))
               asm.iny
               asm.iny
-              # Across's ninth bit, for a piece left of the screen: in the row's two bits, in the
-              # byte of the 32 that holds four rows' each.
-              asm.lda(asm.direct(piece_x))
-              asm.bpl("rt_sprite_place_piece")
-              asm.lda(asm.abs(memory[NEXT_ROW]))
-              asm.and_a(3)
-              asm.tax
-              asm.lda(asm.long_x("rt_sprite_top_bit"))
-              asm.and_a(0x00FF)
-              asm.sta(asm.direct(piece_y))
+              if squares
+                emit_sprite_row_bits(asm, memory, pointer, piece_x, piece_y)
+              else
+                # Across's ninth bit, for a piece left of the screen: in the row's two bits, in the
+                # byte of the 32 that holds four rows' each.
+                asm.lda(asm.direct(piece_x))
+                asm.bpl("rt_sprite_place_piece")
+                asm.lda(asm.abs(memory[NEXT_ROW]))
+                asm.and_a(3)
+                asm.tax
+                asm.lda(asm.long_x("rt_sprite_top_bit"))
+                asm.and_a(0x00FF)
+                asm.sta(asm.direct(piece_y))
+              end
               asm.lda(asm.abs(memory[NEXT_ROW]))
               asm.lsr
               asm.lsr
@@ -496,13 +510,45 @@ module VBlank
               asm.iny
               asm.iny
               asm.label("rt_sprite_place_skip_down")
-              asm.iny
-              asm.iny
-              asm.iny
-              asm.iny
+              (squares ? 3 : 2).times do
+                asm.iny
+                asm.iny
+              end
               asm.brl("rt_sprite_place_piece")
-              asm.label("rt_sprite_top_bit")
-              asm.data_bytes(0x01, 0x04, 0x10, 0x40)
+              if squares
+                asm.label("rt_sprite_row_bits")
+                4.times { |row| asm.data_bytes(*(0..3).map { |bits| bits << (row * 2) }) }
+              else
+                asm.label("rt_sprite_top_bit")
+                asm.data_bytes(0x01, 0x04, 0x10, 0x40)
+              end
+            end
+
+            # This piece's two bits for its row of the upper table, its size and across's ninth,
+            # left in +bits_at+ shifted to the row's place in its byte, or on to the next piece with
+            # both clear. +pointer+ with Y is at the piece's size.
+            def emit_sprite_row_bits(asm, memory, pointer, piece_x, bits_at)
+              asm.lda(asm.ind_long_y(pointer))
+              asm.sta(asm.direct(bits_at))
+              asm.iny
+              asm.iny
+              asm.lda(asm.direct(piece_x))
+              asm.bpl("rt_sprite_place_on_screen")
+              asm.inc(asm.direct(bits_at))
+              asm.label("rt_sprite_place_on_screen")
+              asm.lda(asm.direct(bits_at))
+              asm.bne("rt_sprite_place_row_bits")
+              asm.brl("rt_sprite_place_piece")
+              asm.label("rt_sprite_place_row_bits")
+              asm.lda(asm.abs(memory[NEXT_ROW]))
+              asm.and_a(3)
+              asm.asl
+              asm.asl
+              asm.ora(asm.direct(bits_at))
+              asm.tax
+              asm.lda(asm.long_x("rt_sprite_row_bits"))
+              asm.and_a(0x00FF)
+              asm.sta(asm.direct(bits_at))
             end
 
             # BACKGROUNDS. rt_background_put_up(layer, grid, from_corner): the grid numbered +grid+

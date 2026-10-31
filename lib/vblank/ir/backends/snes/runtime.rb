@@ -75,11 +75,12 @@ module VBlank
           # game with a sprite behind a background, whose sprites are placed with their priority (Picture);
           # +colors_shown+ the runs of the colour memory a picture can show, which a fade moves (Tint); +big_tiles+
           # the size bits of the layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers); +recorded_parts+
-          # for a game whose songs have parts that play recordings (Lowering::Sound#recorded_parts?).
+          # for a game whose songs have parts that play recordings (Lowering::Sound#recorded_parts?);
+          # +sprite_squares+ for a game with sprites' squares of 16×16 (Art::Piece#big).
           def sections(memory, main:, frame_begins: nil, painted: false, board: Cartridge::SNESROM::PLAIN, saves: false,
                        sound: false, sound_waves: [], music: nil, music_level_at: nil, effects: 0, recordings: [],
                        plays: nil, bar: false, bent: [], tile_runs: 0, see_through: nil, sprite_depths: false, big_tiles: 0,
-                       colors_shown: [[0, 256]], recorded_parts: false)
+                       colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false)
             chip = board.name == :super_fx
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
@@ -92,7 +93,8 @@ module VBlank
             Lists.emit(asm, memory, Lists.scratch(memory))
             Picture.emit(asm, memory, work: memory.scratch(8), painted: painted, bar: bar, bent: bent, tile_runs: tile_runs,
                                       run_scratch: (Picture.run_scratch(memory) if tile_runs.positive?),
-                                      see_through: see_through, sprite_depths: sprite_depths, big_tiles: big_tiles)
+                                      see_through: see_through, sprite_depths: sprite_depths, big_tiles: big_tiles,
+                                      sprite_squares: sprite_squares)
             Paint.emit(asm, memory, Paint.scratch(memory), chip: chip) if painted
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: colors_shown)
             Collide.emit(asm, memory, Collide.scratch(memory))

@@ -44,10 +44,28 @@ module VBlank
           # high, BG2 high, sprites of 2, BG1 low, BG2 low, sprites of 1).
           CELL_IN_FRONT = 0x2000
 
-          # A sprite's picture, cut into 8×8 pieces: each piece where it sits in the picture, its
-          # tile and its palette. +number+ is what the runtime knows it by.
-          Piece = Data.define(:dx, :dy, :tile, :palette)
+          # A sprite's picture, cut into pieces: each piece where it sits in the picture, its tile
+          # and its palette. A +big+ piece is a whole square of 16×16, which the console draws from
+          # four tiles as one row of its table of 128. +number+ is what the runtime knows it by.
+          Piece = Data.define(:dx, :dy, :tile, :palette, :big) do
+            def initialize(dx:, dy:, tile:, palette:, big: false) = super
+          end
           SpritePicture = Data.define(:name, :number, :width, :height, :pieces)
+
+          # THE TABLE OF SPRITES HAS 128 ROWS, and a character is often bigger than one 8×8 tile, so
+          # a screen of big sprites cut into 8×8 pieces runs out of rows the console's own games do
+          # not. The console can be told a row is the larger of its two sprite sizes, 16×16 here.
+          # It then draws four tiles from one row: the one the row names, the one beside it, and the
+          # two under those. Under means sixteen on, since the console keeps its sprite tiles in
+          # rows of sixteen, and within one page of 256: the row after the last of a page is that
+          # page's first, not the next page's. So a square's four tiles have to be laid out in that
+          # shape, which is why this class places tiles rather than only listing them.
+          SQUARE = 16
+          TILES_ACROSS = 16
+          TILE_ROWS_IN_PAGE = 16
+
+          # A square with one piece drawn saves no row and costs four tiles.
+          SQUARE_LEAST_PIECES = 2
 
           # A grid of map cells, as the console's video memory holds it: +columns+ and +rows+ of
           # 32 or 64, and the bytes, two a cell, laid out in screens of 32×32 cells — the left top
@@ -68,8 +86,12 @@ module VBlank
           BACKDROP = 0
 
           # +backdrop+ is the colour the game shows wherever nothing is drawn (`screen ... backdrop:`),
-          # a 15-bit colour, or nil for black.
-          def initialize(backdrop: nil)
+          # a 15-bit colour, or nil for black. +sprite_squares+ draws a sprite's squares of 16×16 as
+          # one row each. A square keeps its four tiles together, so it shares them less often than
+          # 8×8 pieces do, and a game that only just fits is built without (SNES#build).
+          def initialize(backdrop: nil, sprite_squares: true)
+            @sprite_squares = sprite_squares
+            @sprite_square_numbers = {}
             @backdrop = (backdrop || BACKDROP) & 0x7FFF
             @background_tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
             @background_tile_numbers = { blank_tile => 0 }
@@ -180,13 +202,18 @@ module VBlank
                 i = (y * image.width) + x
                 image.drawn_at?(i) ? @sprite_palettes[palette].index(image.color_at(i)) + 1 : 0
               end
-              pieces = cut.map do |across, down, places|
+              squares = cut.to_h { |across, down, places| [[across, down], places] }
+              pieces = @sprite_squares ? square_pieces(squares, image, palette) : []
+              pieces += squares.map do |(across, down), places|
                 Piece.new(dx: across, dy: down, tile: sprite_tile_number(tile_bytes(places)), palette: palette)
               end
               SpritePicture.new(name: name, number: @sprite_pictures.length, width: image.width, height: image.height,
                                 pieces: pieces)
             end
           end
+
+          # Whether any picture has a square of 16×16, which the runtime then reads off each piece.
+          def sprite_squares? = @sprite_pictures.each_value.any? { |picture| picture.pieces.any?(&:big) }
 
           # --- tiles a game paints from a list (a run: Builder::TileRuns) ---
           #
@@ -210,11 +237,12 @@ module VBlank
           def sprite_run_picture(name, width, height, colors)
             palette = run_palette(@sprite_palettes, colors, "sprites", @sprite_palettes_for.fetch(false))
             across = width / 8
-            first = @sprite_tiles.length
-            refuse_too_many!(first + (across * (height / 8)) - 1, MOST_SPRITE_TILES, "sprites")
+            count = across * (height / 8)
+            first = first_free_tiles(count)
+            refuse_too_many!(first + count - 1, MOST_SPRITE_TILES, "sprites")
             pieces = (0...(height / 8)).flat_map do |down|
               (0...across).map do |left|
-                @sprite_tiles << blank_tile
+                @sprite_tiles[first + (down * across) + left] = blank_tile
                 Piece.new(dx: left * 8, dy: down * 8, tile: first + (down * across) + left, palette: palette)
               end
             end
@@ -243,7 +271,7 @@ module VBlank
             runs
           end
 
-          def sprite_tile_data = @sprite_tiles.join
+          def sprite_tile_data = @sprite_tiles.map { |bytes| bytes || blank_tile }.join
           def background_tile_data = @background_tiles.map { |bytes| bytes || blank_tile }.join
 
           private
@@ -252,11 +280,59 @@ module VBlank
 
           def sprite_tile_number(bytes)
             @sprite_tile_numbers[bytes] ||= begin
-              refuse_too_many!(@sprite_tiles.length, MOST_SPRITE_TILES, "sprites")
-              @sprite_tiles << bytes
-              @sprite_tiles.length - 1
+              number = first_free_tiles(1)
+              refuse_too_many!(number, MOST_SPRITE_TILES, "sprites")
+              @sprite_tiles[number] = bytes
+              number
             end
           end
+
+          # The first of +count+ free tiles in a row, or past the last where there are none. Tiles
+          # a game paints are written one after the other, so they stay together.
+          def first_free_tiles(count)
+            (0..(MOST_SPRITE_TILES - count)).find { |at| @sprite_tiles[at, count].to_a.none? } || MOST_SPRITE_TILES
+          end
+
+          # The picture's squares of 16×16 with SQUARE_LEAST_PIECES or more drawn, taken out of
+          # +cut+ and given back as pieces. What is left of +cut+ stays 8×8, and so does a square
+          # there is no place for.
+          def square_pieces(cut, image, palette)
+            downs = (0..(image.height - SQUARE)).step(SQUARE).to_a
+            acrosses = (0..(image.width - SQUARE)).step(SQUARE).to_a
+            downs.product(acrosses).filter_map do |down, across|
+              parts = [[across, down], [across + 8, down], [across, down + 8], [across + 8, down + 8]]
+              next if parts.count { |part| cut.key?(part) } < SQUARE_LEAST_PIECES
+
+              tile = sprite_square_number(parts.map { |part| cut[part] ? tile_bytes(cut[part]) : blank_tile })
+              next unless tile
+
+              parts.each { |part| cut.delete(part) }
+              Piece.new(dx: across, dy: down, tile: tile, palette: palette, big: true)
+            end
+          end
+
+          # The first of the four tiles of the square +tiles+ (left top, right top, left bottom,
+          # right bottom), laid out as the console reads them, or nil with no place for them. Two
+          # squares alike share their tiles.
+          def sprite_square_number(tiles)
+            @sprite_square_numbers.fetch(tiles.join) do |same|
+              first = (0...MOST_SPRITE_TILES).find { |at| square_fits_at?(at) }
+              next unless first
+
+              square_tiles_from(first).zip(tiles) { |at, bytes| @sprite_tiles[at] = bytes }
+              @sprite_square_numbers[same] = first
+            end
+          end
+
+          def square_fits_at?(first)
+            column = first % TILES_ACROSS
+            row = first / TILES_ACROSS
+            return false if column.odd? || row % TILE_ROWS_IN_PAGE == TILE_ROWS_IN_PAGE - 1
+
+            square_tiles_from(first).all? { |at| at < MOST_SPRITE_TILES && @sprite_tiles[at].nil? }
+          end
+
+          def square_tiles_from(first) = [first, first + 1, first + TILES_ACROSS, first + TILES_ACROSS + 1]
 
           # The palette of +palettes+ that holds every one of +colors+, adding them to one with
           # room where none does, or starting another — of the palettes +within+. +what+ names
