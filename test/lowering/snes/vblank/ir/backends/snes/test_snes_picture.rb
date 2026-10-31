@@ -352,6 +352,47 @@ class TestSNESPicture < Minitest::Test
     assert_operator (2..6).map { |pass| run.frames_took(pass) }.max, :<=, 2
   end
 
+  # A title arriving in two halves: a dear block, a table read and a divide on each side, picked
+  # by one line. Row by row that is more than a frame's work; a band at a time it is a pass a frame.
+  private def two_halves_game
+    program_of do
+      screen :tiled
+      image(:bars, "." => :blue, "#" => :white) { "##......\n" * 8 }
+      tiles :set, "#" => :bars
+      logo = background :logo, tiles: :set, map: Array.new(32) { "#" * 32 }
+      steps = table :steps, (0...64).map { |i| i * 3 }
+      at = 0
+      logo.scroll_each_row { |row| row >= 68 ? steps[at & 63] / 3 : 0 - (steps[at & 63] / 3) }
+      game_loop do
+        at += 1
+        logo.scroll_by 1, 0
+      end
+    end
+  end
+
+  def test_a_bend_split_at_a_line_costs_a_pass_a_frame
+    run = SNES::HeadlessRun.new.run(two_halves_game, frames: 12)
+
+    assert_equal [1], (2..12).map { |pass| run.frames_took(pass) }.uniq
+  end
+
+  def test_a_bend_split_at_a_line_shows_each_half_where_the_interpreter_does
+    SNES::CheckedRun.new.run(two_halves_game, frames: 12)
+  end
+
+  # Each way of comparing the row turns on a row of its own, and a band that started one row out
+  # would show here as one row of bars in the wrong place.
+  def test_a_band_starts_on_the_row_each_comparison_turns_on
+    checked(frames: 3) do
+      screen :tiled
+      image(:bars, "." => :blue, "#" => :white) { "##......\n" * 8 }
+      tiles :set, "#" => :bars
+      field = background :field, tiles: :set, map: Array.new(32) { "#" * 32 }
+      field.scroll_each_row { |row| row <= 9 ? 0 : row > 20 ? 1 : row == 15 ? 2 : row != 16 ? 3 : 4 }
+      game_loop { }
+    end
+  end
+
   # A scene's own background is on a layer another scene's background takes in turn, so bending
   # one row by row is not made yet.
   def test_a_bent_background_that_a_scene_puts_up_is_refused_in_plain_words

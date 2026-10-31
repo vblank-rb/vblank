@@ -955,7 +955,7 @@ module VBlank
     # is which line of Diagnostics::HiddenVariables tells the author about it.
     def hidden_variable(why, like: nil)
       @hidden_variables += 1
-      name = :"__kept_#{@hidden_variables}"
+      name = :"#{Build::KEPT_VARIABLE_PREFIX}#{@hidden_variables}"
       ensure_var(name)
       @fraction_vars[name] = like.fraction_bits if like&.fraction?
       @hidden_variable_notes << HiddenVariableNote.new(name:, source: Messages::AuthorSource.author_source, why:)

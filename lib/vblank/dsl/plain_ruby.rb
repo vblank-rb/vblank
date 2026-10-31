@@ -26,6 +26,9 @@ module VBlank
       # What opens a scope of its own, whose jumps and locals stay in it.
       OWN_SCOPES = [Prism::BlockNode, Prism::LambdaNode, Prism::DefNode].freeze
 
+      # The verbs that use what their block's last line gives back as a number the game works out.
+      ANSWERING_BLOCK_VERBS = %i[scroll_each_row].freeze
+
       module_function
 
       # +block+ again, as a proc that runs the rewritten source. It closes over what +block+
@@ -279,6 +282,7 @@ module VBlank
         end
 
         def call_text(node)
+          note_tail_of_answering_block(node)
           return "#{STEPS}.opposite(#{argument(node.receiver)})" if node.name == :! && node.receiver
           return index_write_text(node) if node.name == :[]= && node.receiver
           return attribute_write_text(node) if node.attribute_write? && node.receiver
@@ -287,6 +291,24 @@ module VBlank
           return "self.#{copied_text(node)}" if node.receiver.nil? && @outer_locals.include?(node.name)
 
           copied_text(node)
+        end
+
+        # A verb that reads a number off its block's last line takes a ternary there as the
+        # number, as a method's answer does. Any other block's last line is left as a statement,
+        # since nothing reads it and keeping its value would add to the cartridge.
+        def note_tail_of_answering_block(node)
+          return unless ANSWERING_BLOCK_VERBS.include?(node.name) && node.block.is_a?(Prism::BlockNode)
+
+          body = node.block.body
+          note_tail_ternaries(body.body.last) if body.is_a?(Prism::StatementsNode)
+        end
+
+        # ...and so is a ternary ending a side of that one: `a ? 1 : b ? 2 : 3` picks from three.
+        def note_tail_ternaries(node)
+          return unless node.is_a?(Prism::IfNode) && node.if_keyword_loc.nil?
+
+          @tail_ternaries[node] = true
+          [node.statements, node.subsequent&.statements].compact.each { |side| note_tail_ternaries(side.body.last) }
         end
 
         def bits_text(node)

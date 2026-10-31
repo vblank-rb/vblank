@@ -97,6 +97,24 @@ class TestRowBend < Minitest::Test
     assert_equal "RR......RR..", row_picture(i, 8), "the sawtooth restarts every 8 rows"
   end
 
+  # A block that picks between numbers by the row: the top of the screen sits one way and the
+  # bottom another, which is a title arriving in two halves.
+  def test_a_block_picks_between_two_numbers_by_the_row
+    program = bars_program { |water| water.scroll_each_row { |row| row >= 10 ? 2 : 0 } }
+    i = game_player.run(program)
+    assert_equal "RR......RR..", row_picture(i, 9), "above the line the bars sit as drawn"
+    assert_equal "......RR....", row_picture(i, 10), "from the line down they slid two"
+    assert_equal "......RR....", row_picture(i, 100)
+  end
+
+  def test_a_block_picks_between_three_numbers_by_the_row
+    program = bars_program { |water| water.scroll_each_row { |row| row < 4 ? 0 : row < 8 ? 1 : 2 } }
+    i = game_player.run(program)
+    assert_equal "RR......RR..", row_picture(i, 3)
+    assert_equal "R......RR...", row_picture(i, 4)
+    assert_equal "......RR....", row_picture(i, 8)
+  end
+
   # A program that never waits for the screen has no gap between frames to work its rows out
   # in, and the console then works each row out as it draws it, so the bend shows all the same.
   def test_a_program_with_no_frame_is_bent_too

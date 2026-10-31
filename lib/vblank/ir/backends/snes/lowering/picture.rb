@@ -655,9 +655,41 @@ module VBlank
             # in the bend's variable, the bend's own steps, and how far along the row sits kept in the
             # layer's rows (Runtime::Picture.bend_offsets) for the frame after; the first row of each
             # bend, then the rest of each, leaving each variable at the screen's height.
+            #
+            # A game all of whose bends say a thing about whole bands of rows has each band worked
+            # out once (RowBands). All of them or none: a block asked every row can change a number
+            # another block reads, and then that one's rows are not bands at all.
             def emit_bends
+              bands = bends.map { |bend| RowBands.firsts(bend, Runtime::Picture::SCREEN_HEIGHT) }
+              return bends.zip(bands).each { |bend, firsts| emit_bend_bands(bend, firsts) } if bands.all?
+
               bends.each { |bend| emit_bend_rows(bend, 0...1) }
               bends.each { |bend| emit_bend_rows(bend, 1...Runtime::Picture::SCREEN_HEIGHT) }
+            end
+
+            # Each band of +bend+ from its first row, whose answer goes in all the band's rows.
+            def emit_bend_bands(bend, firsts)
+              height = Runtime::Picture::SCREEN_HEIGHT
+              firsts.zip(firsts.drop(1) + [height]).each do |first, past|
+                statement(Build.set(bend.row, first))
+                bend.children.each { |child| statement(child) }
+                emit_band_offset(bend, first...past)
+              end
+              statement(Build.set(bend.row, height))
+            end
+
+            def emit_band_offset(bend, rows)
+              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend)))]
+              value(bend.offset)
+              @asm.lda(@asm.direct(R0))
+              @asm.ldx(rows.begin * 2)
+              top = fresh("bend_band")
+              @asm.label(top)
+              @asm.sta(@asm.long_x(offsets))
+              @asm.inx
+              @asm.inx
+              @asm.cpx(rows.end * 2)
+              @asm.bne(top)
             end
 
             # Rows +rows+ (a range short of its end) of +bend+.

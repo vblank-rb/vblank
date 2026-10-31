@@ -32,6 +32,10 @@ module VBlank
       # nothing to convert. A test pins the two together.
       SCALE_ONE = 1 << 16
 
+      # How a variable the builder made to hold a number between two statements starts, such as
+      # the number a ternary picked. Nothing but those two statements reads it.
+      KEPT_VARIABLE_PREFIX = "__kept_"
+
       module_function
 
       # --- program root ---
