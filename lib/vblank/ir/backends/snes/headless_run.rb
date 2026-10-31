@@ -214,20 +214,43 @@ module VBlank
           # vertical blank, and the blank's interrupt reads the controller as it starts — so a first
           # pass that ends late in a frame finds that frame's interrupt, frame 1's, taken before the
           # emulator stops and the pass is seen to be over: frame 1 read the buttons held from
-          # power-on. Until the pass is shown (SHOWN still nought) the game has not taken its buttons
-          # for the next pass from what the interrupt read (Runtime::Frame's rt_read_buttons), so what
-          # frame 1's interrupt would have read is written in its place. No interrupt came before
-          # it, so nothing was seen or pressed before.
-          def first_pass_ended
-            return unless @deciding && word(runtime_place(Runtime::Frame::FRAMES)) == 1 && shown_pass.zero?
+          # power-on. Writing the right ones into the game's memory afterwards would hide a fault in
+          # the very routine that reads them, so the frame is found first: a copy of the game is
+          # played as far as the end of its first pass, on a console of its own, and the real one
+          # is handed frame 1's buttons before that frame runs. Only a game told its buttons a frame
+          # at a time needs the copy: any other holds the same ones from power-on. The block saying
+          # them is asked for a frame's once, and only when that frame comes, since a test's block
+          # can count from the first frame it is asked about.
+          def play(frames)
+            @frames_played = 0
+            @frame_one_at = @input_script ? frame_first_pass_ended : nil
+            super
+          end
 
-            @decided = 1
-            buttons = (@input_script ? Array(@input_script.call(1)) : @held).map(&:to_sym) - [Buttons::ANY]
-            bits = buttons.sum { |name| 1 << Buttons::NAMES.index(name) }
-            [Runtime::Frame::PAD_HELD, Runtime::Frame::PAD_PRESSED, Runtime::Frame::SEEN].each do |name|
-              @core.wram_write8(runtime_place(name), bits & 0xFF)
-              @core.wram_write8(runtime_place(name) + 1, bits >> 8)
+          # How many emulated frames the game takes to be found waiting at the end of its first
+          # pass, played on a copy of the save memory, so the real run starts from what this one did.
+          def frame_first_pass_ended
+            Diagnostics::Emulator.with_cartridge(@rom, file_name: "game#{kit.description.extension}",
+                                                       save: (@save.dup if SaveLayout.named_by?(@rom.built.source_program))) do |core|
+              @core = core
+              power_on
+              ended_at = (1..LONGEST_PASS_FRAMES).find do
+                core.run_frame
+                state != Runtime::Frame::RUNNING || (waiting? && passes >= 1)
+              end
+              ended_at if frame_one_read_early?
+            ensure
+              @core = nil
             end
+          end
+
+          # Has the blank that reads frame 1 come, with the first pass ended and nothing shown? A
+          # game that takes several frames to set up has not read frame 1 yet at all.
+          def frame_one_read_early? = word(runtime_place(Runtime::Frame::FRAMES)) == 1 && shown_pass.zero?
+
+          # Frame 1 was handed over in time, so it is not decided again.
+          def first_pass_ended
+            @decided = 1 if @deciding && frame_one_read_early?
           end
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+
@@ -362,6 +385,8 @@ module VBlank
           end
 
           def play_frame
+            @frames_played += 1
+            set_buttons(Array(@input_script.call(1))) if @frames_played == @frame_one_at
             decide_buttons
             @core.run_frame
             @loudest_each_frame << (@core.take_audio.map(&:abs).max || 0)
