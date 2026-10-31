@@ -430,6 +430,10 @@ module VBlank
               @shade_steps.zero?
           end
 
+          # Was a see-through layer mixed into cell +at+? A checked run asks, since the console's
+          # mix can round a step from this one's where nothing else may (SNES::HeadlessRun::NearPicture).
+          def mixed_at?(at) = !mixed_sides(at).nil?
+
           protected
 
           # The two colors cell +at+ was mixed from and the weights they were mixed at, or nil

@@ -166,7 +166,12 @@ module VBlank
           # (HeadlessRun.moment_picture).
           def picture_check(screen, width, height)
             shown = (0...height).flat_map { |y| (0...width).map { |x| screen.pixel(x, y) || 0 } }
-            HeadlessRun.moment_picture(shown, @near)
+            HeadlessRun.moment_picture(shown, @near, (mixed_cells(screen, width, height) if @near))
+          end
+
+          # A byte a pixel: 1 where the interpreter's screen mixed a see-through layer into it.
+          def mixed_cells(screen, width, height)
+            (0...(width * height)).map { |at| screen.mixed_at?(at) ? 1 : 0 }
           end
         end
       end

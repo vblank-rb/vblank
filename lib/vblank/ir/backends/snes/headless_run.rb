@@ -17,12 +17,16 @@ module VBlank
           # layer half see-through (Lowering::Picture#refuse_unmade_see_through!). The console adds
           # the two sides' 5-bit channels and halves the sum; the interpreter widens both to eight
           # bits, mixes them and narrows the mix back, which comes out a step higher for some pairs
-          # (31 over 30 among them). So such a game's pictures are held to each other within a step
-          # of every channel of every pixel. A layer shown whole where it should be halved, a pixel
-          # out of place or a wrong colour is many steps out. The pixels are kept packed, two bytes
-          # each, as a check number reads them (RunComparison.picture_check).
-          NearPicture = Data.define(:packed) do
-            def self.of(shown) = new(packed: shown.pack("v*"))
+          # (31 over 30 among them). So a pixel the interpreter mixed is held within a step of each
+          # channel, and every other pixel exactly: the step belongs to the mix, and a fade or a
+          # colour a step out anywhere else is a fault. A layer shown whole where it should be
+          # halved, a pixel out of place or a wrong colour is many steps out. The pixels are kept
+          # packed, two bytes each, as a check number reads them (RunComparison.picture_check).
+          # +mixed+, on the interpreter's side only, is a byte a pixel: 1 where it mixed.
+          #
+          # Two pictures a step apart are equal, so all that #hash can say of a picture is its size.
+          NearPicture = Data.define(:packed, :mixed) do
+            def self.of(shown, mixed = nil) = new(packed: shown.pack("v*"), mixed: mixed&.pack("C*"))
 
             # Whether two 15-bit colours are within a step of each other in each channel.
             def self.within_one_step?(mine, theirs) = [0, 5, 10].all? { |at| (((mine >> at) & 31) - ((theirs >> at) & 31)).abs <= 1 }
@@ -31,16 +35,26 @@ module VBlank
               return false unless other.is_a?(NearPicture) && other.packed.bytesize == packed.bytesize
               return true if other.packed == packed
 
-              packed.unpack("v*").zip(other.packed.unpack("v*")).all? { |mine, theirs| NearPicture.within_one_step?(mine, theirs) }
+              near = mixed || other.mixed
+              return false unless near
+
+              packed.unpack("v*").zip(other.packed.unpack("v*"), near.bytes).all? do |mine, theirs, was_mixed|
+                mine == theirs || (was_mixed == 1 && NearPicture.within_one_step?(mine, theirs))
+              end
             end
+
+            alias_method :eql?, :==
+
+            def hash = packed.bytesize.hash
 
             # The check number the picture has held exactly, for #torn_frames.
             def check = Zlib.crc32(packed)
           end
 
           # What a Moment holds of the picture +shown+: its check number, or for a game with a
-          # see-through layer (+near+) the picture itself, held within a step (NearPicture).
-          def self.moment_picture(shown, near) = near ? NearPicture.of(shown) : RunComparison.picture_check(shown)
+          # see-through layer (+near+) the picture itself (NearPicture), with which pixels were
+          # +mixed+ where the interpreter says.
+          def self.moment_picture(shown, near, mixed = nil) = near ? NearPicture.of(shown, mixed) : RunComparison.picture_check(shown)
 
           # Whether +program+'s pictures are held within a step (NearPicture).
           def self.near_pictures?(program) = !SeeThrough.layers(program).empty?
