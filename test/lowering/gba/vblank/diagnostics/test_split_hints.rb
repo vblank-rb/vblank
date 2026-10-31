@@ -88,6 +88,42 @@ class TestSplitHints < Minitest::Test
     assert(hints.all? { |hint| hint.fits == (hint.bytes <= hint.room) })
   end
 
+  # HOW LONG THE CONSOLE SPENT IN A SPAN is the time at every address the span covers. A span
+  # written with two dots covers its end and one with three leaves it out; an address exactly on
+  # the first edge is in; and a span with nothing in it is no time at all.
+  def test_time_in_a_span_counts_the_addresses_it_covers
+    cycles = VBlank::Diagnostics::SplitHints::CycleTable.new({ 100 => 7, 104 => 11, 108 => 13, 112 => 17 })
+
+    assert_equal 24, cycles.time_in(104...112), "a span of three dots leaves out its end"
+    assert_equal 41, cycles.time_in(104..112), "one of two dots has it"
+    assert_equal 11, cycles.time_in(104...105), "an address on the first edge is in"
+    assert_equal 7, cycles.time_in(96..100), "an address on the last edge of a closed span is in"
+    assert_equal 0, cycles.time_in(101...104), "a gap between two addresses holds nothing"
+    assert_equal 0, cycles.time_in(104...104), "a span with no room holds nothing"
+    assert_equal 0, cycles.time_in(200...300), "a span past every address holds nothing"
+    assert_equal 48, cycles.time_in(0...1000), "a span round everything holds the lot"
+  end
+
+  # A run's counts need not come sorted, and may name an address more than once: they add up.
+  def test_time_in_a_span_adds_an_address_listed_twice_whatever_the_order
+    cycles = VBlank::Diagnostics::SplitHints::CycleTable.new([[112, 17], [100, 7], [108, 13], [100, 3], [104, 11]])
+
+    assert_equal 10, cycles.time_in(100...101)
+    assert_equal 24, cycles.time_in(104...112)
+    assert_equal 51, cycles.time_in(0...1000)
+  end
+
+  # THE BUILD'S OWN RUN OF EACH SCENE only wants the routines' work, and nothing it warns from
+  # reads a split hint; only the printed report says them. Working them out is a walk of every
+  # address the run touched, so a scene played to measure it comes back without them.
+  def test_a_scene_played_to_measure_it_comes_back_without_split_hints
+    program, = big_loop_with_a_busy_part
+    survey = VBlank::Diagnostics::Profiler.survey_scenes(assemble_rom(program, name: "SPLIT"), frames: 10)
+
+    assert_equal 1, survey.scenes.size
+    assert_empty survey.scenes.values.first.split_hints
+  end
+
   # A game whose routines all fit has nothing to split, and says nothing about it.
   def test_a_game_whose_routines_all_fit_gets_no_hint
     builder = Builder.new

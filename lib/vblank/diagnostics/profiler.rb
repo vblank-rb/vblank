@@ -174,8 +174,12 @@ module VBlank
       # state it reaches only in play (see FullCollections). nil starts the game from power-on;
       # a list, even an empty one, starts it the way a held game is started, so two held runs
       # compare like with like.
+      # +split_hints+ says whether to work out which parts of the routines that missed the quick
+      # memory are worth a `func` (see SplitHints). Only the printed report says so, and working
+      # it out reads every address the run touched, so the build's own runs of each scene leave
+      # it off.
       def self.run(rom, frames: FRAMES, settle: SETTLE, keys: [], scene: nil, from: nil,
-                   picture: true, holding: nil, starting: [], clock: nil)
+                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true)
         routines = rom.built.routines
         loaded_sets = 0 # which scenes' own routines were in the quick memory; read as the run ends
         held = Array(keys)
@@ -227,7 +231,8 @@ module VBlank
         build_result(profile, routines, held, reached, tearing, flicker,
                      tick_rates_in(profile, rom.built.timer_handlers), lost,
                      video_copies_in(profile, rom.built.video_copies, loaded_sets))
-          .with(split_hints: SplitHints.of(profile, rom), list_touches: touches_by_list(profile.touches, rom.built.lists),
+          .with(split_hints: split_hints ? SplitHints.of(profile, rom) : [],
+                list_touches: touches_by_list(profile.touches, rom.built.lists),
                 late_hand_overs: picture ? HandOvers.late(rom, keys: held) : [],
                 pages_shown_at_once: shown_at_once,
                 pages_shown_part_way: count_at_sites(profile, late_pages.select { |site| site[:tears] }, loaded_sets),
@@ -586,9 +591,9 @@ module VBlank
           # ...and once more with a save running, for a scene that saves (see SaveStarts).
           starting = name ? SaveStarts.words(rom.built, name) : []
           unless starting.empty?
-            saving[name] = run(rom, frames: frames, keys: keys, picture: false, holding: holding, starting: starting)
+            saving[name] = run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: holding, starting: starting)
           end
-          [name, run(rom, frames: frames, keys: keys, picture: false, holding: holding)]
+          [name, run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: holding)]
         end
         collections = FullCollections.of(rom.built)
         growths = scenes.filter_map do |name, writes|
@@ -651,7 +656,7 @@ module VBlank
       def self.growth_in(rom, scene, writes, now, collections, frames:, keys:)
         return nil if collections.empty? || now.frames.zero? || now.dropping_frames?
 
-        full = run(rom, frames: frames, keys: keys, picture: false, holding: writes + collections.flat_map(&:writes))
+        full = run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: writes + collections.flat_map(&:writes))
         return nil unless full.dropping_frames?
 
         Growth.new(scene: scene, reading: full,
@@ -744,14 +749,25 @@ module VBlank
       # fill a list (see IR::Backends::GBA#setting_up_addresses), so the narrowest span that covers
       # an address is the one it is counted to. Returns the routines and, separately, what fell
       # outside them grouped by the memory it ran in.
+      #
+      # THE SPANS' EDGES CUT THE ADDRESSES INTO CELLS, and every address in one cell is covered by
+      # the same spans, so which routine a cell belongs to is worked out once — by the narrowest
+      # span that covers it — and an address finds its cell by binary search. Looking through
+      # every routine for every address cost most of a measured build of a big game. The tally is
+      # filled in the order the addresses first reach each routine, as it always was.
       def self.tally_by_routine(counts, routines)
-        spans = routines.sort_by { |_, span| [span.size, span.begin] }
+        narrowest_first = routines.sort_by { |_, span| [span.size, span.begin] }
+        edges = routines.values.flat_map { |span| [span.begin, span.exclude_end? ? span.end : span.end + 1] }.uniq.sort
+        owners = {}
         tally = Hash.new(0)
         outside = Hash.new(0)
         counts.each do |address, seen|
-          hit = spans.find { |_, span| span.cover?(address) }
-          if hit
-            tally[hit.first] += seen
+          cell_end = edges.bsearch_index { |edge| edge > address } # the edge that ends this address's cell
+          owner = if cell_end&.positive?
+                    owners.fetch(cell_end) { owners[cell_end] = narrowest_first.find { |_, span| span.cover?(address) }&.first }
+                  end
+          if owner
+            tally[owner] += seen
           else
             outside[address < 0x0100_0000 ? :bios : :unmapped] += seen
           end

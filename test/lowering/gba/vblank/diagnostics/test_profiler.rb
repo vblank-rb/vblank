@@ -605,6 +605,23 @@ class TestProfiler < Minitest::Test
     end
   end
 
+  # WHERE AN ADDRESS GOES WHEN ROUTINES NEST. The setting up before the game loop holds the loops
+  # that fill a list, so one span can sit inside another and the narrowest that covers an address
+  # takes it. A span leaves out its end; what no span covers is the console's own code below the
+  # cartridge's memory and "somewhere else" above it; and the tally lists routines in the order
+  # the counts first reached them.
+  def test_a_routine_inside_another_takes_the_addresses_it_covers
+    routines = { outer: 100...200, inner: 120...130, apart: 300...310 }
+    counts = { 100 => 1, 125 => 2, 130 => 4, 199 => 8, 200 => 16, 305 => 32, 50 => 64, 0x0200_0000 => 128 }
+
+    tally, outside = VBlank::Diagnostics::Profiler.tally_by_routine(counts, routines)
+
+    assert_equal({ outer: 13, inner: 2, apart: 32 }, tally)
+    assert_equal({ bios: 80, unmapped: 128 }, outside)
+    assert_equal %i[outer inner apart], tally.keys
+    assert_equal %i[bios unmapped], outside.keys
+  end
+
   # A cartridge assembled straight from machine code has no record of where its routines
   # ended up, and they cannot be recovered from the bytes — a routine kept in the console's
   # quick memory was copied there at boot and runs nowhere near where it sits.

@@ -46,13 +46,16 @@ module VBlank
         # would make a few instructions look like most of it.
         frame = profile.frames * profile.cycles_per_frame
         return [] if frame.zero?
+        # Making the table is a sort of the whole run, so a build that missed nothing never does.
+        return [] if built.missed_routine_parts.empty?
 
+        cycles = CycleTable.new(profile.cycles)
         built.missed_routine_parts.flat_map do |routine, parts|
           span = built.routines[routine] or next []
-          total = time_in(profile, span)
+          total = cycles.time_in(span)
           next [] if total.zero?
 
-          busiest_parts(profile, built, routine, parts, total, frame)
+          busiest_parts(cycles, built, routine, parts, total, frame)
         end.sort_by { |hint| -hint.frame_share }
       end
 
@@ -60,12 +63,12 @@ module VBlank
       # (or, where none fits, the most of all), then the same again among the parts that do not
       # overlap it. Where two hold the same time, the smaller — a block and the one statement it
       # holds are the same time, and the statement is what to cut out.
-      def busiest_parts(profile, built, routine, parts, total, frame)
+      def busiest_parts(cycles, built, routine, parts, total, frame)
         # Each part with its time and the room a `func` that busy could have — worked out once,
         # so the part picked because it fits is the part said to fit.
-        timed = parts.map { |part| [part, time_in(profile, part[:at])] }
+        timed = parts.map { |part| [part, cycles.time_in(part[:at])] }
                      .select { |_, time| 100.0 * time / total >= WORTH_NAMING && 100.0 * time / frame >= WORTH_A_FRAME }
-                     .map { |part, time| [part, time, room_for(profile, built, time, routine)] }
+                     .map { |part, time| [part, time, room_for(cycles, built, time, routine)] }
         chosen = []
         MOST_PARTS.times do
           free = timed.reject { |part, _, _| chosen.any? { |taken, _, _| taken[:at].overlap?(part[:at]) } }
@@ -81,11 +84,34 @@ module VBlank
         end
       end
 
-      # How long the console spent running code in +span+, in cycles.
-      def time_in(profile, span)
-        profile.cycles.sum { |at, spent| span.cover?(at) ? spent : 0 }
-      end
+      # THE CYCLES A RUN SPENT AT EACH ADDRESS, kept so that the time in any span is two lookups
+      # instead of a walk of every address the run touched. A report asks about every part of
+      # every routine that missed, and about every routine kept in the quick memory for each of
+      # those parts, so the walks add up to most of a measured build of a big game.
+      #
+      # The addresses are sorted once, with the running total of the cycles up to each. The time
+      # in a span is then the total at the span's end less the total at its start, and finding
+      # those two places is a binary search each. A run's counts need not come sorted and may
+      # name an address more than once; both come out the same.
+      class CycleTable
+        def initialize(cycles)
+          counted = cycles.sort_by(&:first)
+          @addresses = counted.map(&:first)
+          @running = counted.each_with_object([0]) { |(_, spent), sums| sums << sums.last + spent }
+        end
 
+        # How long the console spent running code in +span+, in cycles. A span written with three
+        # dots leaves out its end address and one with two dots has it.
+        def time_in(span)
+          first = place_of_first_address { |at| at >= span.begin }
+          past = place_of_first_address { |at| span.exclude_end? ? at >= span.end : at > span.end }
+          past > first ? @running[past] - @running[first] : 0
+        end
+
+        # Where in the sorted addresses the first one is that +reached+ answers true for, which is
+        # past the last when none is.
+        private def place_of_first_address(&reached) = @addresses.bsearch_index(&reached) || @addresses.size
+      end
 
       # The bytes a `func` that spends +time+ in +routine+ could have: what is spare, every
       # routine kept for the whole game that the run spent less time in — and, for a scene's own
@@ -93,22 +119,22 @@ module VBlank
       # the room that scene's set leaves in the place the sets share, and every routine in its
       # set the run spent less time in. Other scenes' sets are never in at the same moment, so
       # nothing of theirs is in the way.
-      def room_for(profile, built, time, routine)
+      def room_for(cycles, built, time, routine)
         placement = built.placement
         given_up = placement.funcs.sum do |name|
           span = built.routines[name]
-          span && time_in(profile, span) < time ? placement.sizes.fetch(name, 0) : 0
+          span && cycles.time_in(span) < time ? placement.sizes.fetch(name, 0) : 0
         end
-        placement.free_bytes + given_up + room_in_scene_set(profile, built, time, routine)
+        placement.free_bytes + given_up + room_in_scene_set(cycles, built, time, routine)
       end
 
-      def room_in_scene_set(profile, built, time, routine)
+      def room_in_scene_set(cycles, built, time, routine)
         sets = built.scene_sets or return 0
         number = sets.scenes[routine.to_s.delete_prefix("_scene_").to_sym] or return 0
 
         own = sets.routines.fetch(number, {})
         biggest = sets.routines.values.map { |set| set.values.sum(&:size) }.max.to_i
-        less_busy = own.values.sum { |span| time_in(profile, span) < time ? span.size : 0 }
+        less_busy = own.values.sum { |span| cycles.time_in(span) < time ? span.size : 0 }
         biggest - own.values.sum(&:size) + less_busy
       end
     end
