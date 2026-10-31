@@ -152,6 +152,6 @@ class TestSpriteBorrowedColors < Minitest::Test
       end
     end
 
-    [3, 6, 10].each { |frames| assert_backends_agree(stepping, frames: frames) }
+    (2..16).each { |frames| assert_backends_agree(stepping, frames: frames) }
   end
 end
