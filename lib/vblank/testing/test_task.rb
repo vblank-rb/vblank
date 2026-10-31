@@ -6,6 +6,7 @@ require "rake/testtask"
 require_relative "../console/description"
 require_relative "../console/kit" # which names its parts and loads none of them
 require_relative "lowering"
+require_relative "watched_run"
 
 module VBlank
   module Testing
@@ -99,7 +100,19 @@ module VBlank
         return say_nothing_played(run) if other_console_named?
 
         print_heading(run)
-        sh(run_settings, [FileUtils::RUBY, *yjit_switch, *args].join(" "), **options, &block)
+        command = [FileUtils::RUBY, *yjit_switch, *args].join(" ")
+        return sh(run_settings, command, **options, &block) unless in_ractors?
+
+        play_watched(command, &block)
+      end
+
+      # A run in Ractors can crash and never exit, so it is watched (WatchedRun). A crash fails the
+      # run the way failing tests do, so a whole run goes on to the next lowering's.
+      def play_watched(command)
+        result = WatchedRun.new(run_settings, command).call
+        raise result.message if result.stopped?
+
+        yield(result.ok?, result.status)
       end
 
       # A ruled-off line naming the run and what it plays, so a glance at a long output says which

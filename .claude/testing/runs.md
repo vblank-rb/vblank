@@ -43,6 +43,14 @@ ahead beside a run elsewhere; the two share the cores and each takes about twice
 runs in one checkout still wait. Set it in the environment of a session working in a worktree.
 The lowerings' runs inside `rake test:all` go one after the other, each with all the cores.
 
+## A run in Ractors cannot hang the lock
+
+Ruby crashing in a Ractor can print `[BUG]` and never exit, which would hold the lock with nothing
+moving. So the GBA run is played through `Testing::WatchedRun`: 30 seconds after a crash report
+starts, or after 600 seconds with nothing printed, the run is ended by force and fails, naming the
+test file and the folder that keeps its last output and, on macOS, a sample of the stuck process.
+`rake test:all` goes on to the next lowering's run. The crash itself is a Ruby bug.
+
 ## The native run uses processes, not Ractors
 
 A Ractor cannot start the child processes a native test needs, so
