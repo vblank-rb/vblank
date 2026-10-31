@@ -17,7 +17,8 @@ module VBlank
       def console_settings = []
       def refuse_unusable_settings!(_said) = nil
 
-      # The cartridge for +request+ (a Cartridge::BuildRequest). The findings are left as they were.
+      # The cartridge for +request+ (a Cartridge::BuildRequest). What the lowering had to say about
+      # what it decided joins the findings, so it is printed with the rest.
       def build(request)
         dumps = request.evaluated.dump_requests
         unless dumps.empty?
@@ -27,7 +28,12 @@ module VBlank
         end
 
         request.progress.step("lowering for the #{kit.title}")
-        cartridge_for(request.program, title: request.title)
+        lowering = kit.lowering.new
+        cartridge = lowering.build(request.program, title: request.title)
+        if request.findings
+          request.findings = request.findings.with(findings: request.findings.findings + lowering.findings)
+        end
+        cartridge
       end
 
       # The cartridge for +program+ alone, titled +title+. What a test that plays a cartridge

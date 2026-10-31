@@ -58,6 +58,32 @@ module VBlank
             # Whether any sprite picture is drawn with squares of 16×16 (Art::Piece#big).
             def sprite_squares? = !painted? && @art.sprite_squares?
 
+            # What the build can say about the table of 128 rows. A sprite past the last row is not
+            # drawn, with no error from the console, and only here is it known how many rows each
+            # picture came to. A pool's sprites and letters of text are left out of the count: how
+            # many show at once is decided as the game runs, so this counts what is certain, the
+            # sprites a screen declares, each at its largest pose.
+            def sprite_table_findings
+              return [] if painted?
+
+              screen = IR::SpriteRows.plan(@program) { |node| rows_of_declared_sprite(node) }.busiest
+              return [] if screen.nil? || screen.count <= Runtime::Picture::MOST_SPRITES
+
+              [Guardrails::Finding.new(
+                check: :snes_sprite_table, severity: :warning, node: :program,
+                message: "The sprites of one screen take #{screen.count} rows of the sprite table. A Super " \
+                         "Nintendo has #{Runtime::Picture::MOST_SPRITES}, and a sprite past the last row is not " \
+                         "drawn. Each piece of a picture takes one row. To fix this, use fewer sprites, or make " \
+                         "their pictures of fewer pieces."
+              )]
+            end
+
+            def rows_of_declared_sprite(node)
+              return 0 if node.declared.nil? || Guardrails::SpriteWords.pool?(node)
+
+              @objects.fetch(node.name).poses.map { |pose| @art.sprite_pictures.fetch(pose).pieces.length }.max.to_i
+            end
+
             def prepare_picture
               refuse_backdrops_of_its_own!
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares)
@@ -154,6 +180,7 @@ module VBlank
               def height = image.height
               def drawn_at?(at) = image.drawn_at?(at)
               def color_at(at) = recolor.color_for(at, image.color_at(at))
+              def pieces = nil # cut from its swapped pixels, since its pieces name the first list's colours
             end
 
             def color_list_named(name)

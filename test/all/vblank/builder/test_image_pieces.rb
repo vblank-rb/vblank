@@ -209,10 +209,68 @@ class TestImagePieces < Minitest::Test
     assert_match(/poses are of different sizes \(16x8, 8x8\)/, error.message)
   end
 
+  # 256 places all +place+: a piece of 16×16.
+  def self.big_solid(place) = Array.new(256, place)
+
+  # A piece of 16×16 with its left half +left+ and its right half +right+, and its lower half
+  # see-through where +hollow+.
+  def self.big_halves(left, right, hollow: false)
+    Array.new(256) { |i| hollow && i >= 128 ? 0 : (i % 16 < 8 ? left : right) }
+  end
+
+  # A piece of 16×16 shows as one picture beside and under pieces of 8×8, off the 8-pixel grid.
+  def test_a_big_piece_overlaps_small_ones_in_the_order_given
+    screen = shown(built([[4, 2, TestImagePieces.solid(1)], [8, 5, TestImagePieces.big_solid(2)],
+                          [24, 5, TestImagePieces.solid(1)]]))
+
+    assert_equal RED, screen.pixel(49, 46), "the small piece in front of the big one"
+    assert_equal BLUE, screen.pixel(53, 46), "the big piece past the small one"
+    assert_equal BLUE, screen.pixel(63, 60), "the big piece's far corner"
+    assert_equal RED, screen.pixel(65, 46), "the small piece past it"
+  end
+
+  # A big piece stands between two small ones in the order, so a console that split it would
+  # still have to keep it in its place.
+  def test_a_big_piece_in_the_middle_of_the_order_keeps_its_place
+    screen = shown(built([[0, 0, TestImagePieces.solid(1)], [4, 0, TestImagePieces.big_solid(2)],
+                          [16, 4, TestImagePieces.solid(1)]]))
+
+    assert_equal RED, screen.pixel(45, 43), "the first piece over the big one"
+    assert_equal BLUE, screen.pixel(58, 45), "the big piece over the last one"
+    assert_equal RED, screen.pixel(60, 45), "the last piece past the big one"
+  end
+
+  # Turned either way, a big piece moves by its own size and its pixels turn with it.
+  def test_a_big_piece_turns
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image :frame, colors: %i[transparent red blue],
+                    pieces: [[0, 0, TestImagePieces.big_halves(1, 2, hollow: true)], [16, 0, TestImagePieces.solid(1)]]
+      sprite mirror(:frame), at: [40, 40]
+      sprite upside_down(:frame), at: [100, 40]
+      game_loop {}
+    end
+    b.finalize_program
+    screen = shown(b.program)
+
+    assert_equal RED, screen.pixel(44, 44), "the small piece, turned to the left"
+    assert_equal BLUE, screen.pixel(52, 44), "the big piece's blue half is next, turned"
+    assert_equal RED, screen.pixel(60, 44), "and its red half last"
+    assert_equal RED, screen.pixel(104, 52), "upside down, the big piece's drawn half is low"
+    assert_equal BLUE, screen.pixel(112, 52), "with its blue half still on the right"
+  end
+
+  def test_a_big_piece_that_passes_the_edge_of_a_picture_is_a_friendly_error
+    error = assert_raises(ArgumentError) { built([[240, 0, TestImagePieces.big_solid(1)]]) }
+
+    assert_match(/from 0 to 239/, error.message)
+  end
+
   def test_a_piece_of_the_wrong_size_is_a_friendly_error
     error = assert_raises(ArgumentError) { built([[0, 0, Array.new(60, 1)]]) }
 
-    assert_match(/give it 64 places/, error.message)
+    assert_match(/give it 64 or 256 places/, error.message)
   end
 
   # Turned left to right, the row is still its pieces, each moved to the other side and turned.

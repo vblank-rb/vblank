@@ -130,6 +130,9 @@ module VBlank
         #
         # A game whose sprite pictures between them need more tiles than the console holds is built
         # again with each scene bringing its own pictures in, as its own tiles (Art::TooManySpriteTiles).
+        # What the build found to say about what it decided (Cartridge::LoweredBuild): nothing yet.
+        def findings = []
+
         def build(program, title: "RUBYGBA")
           @known = {}
           @scene_pictures = false

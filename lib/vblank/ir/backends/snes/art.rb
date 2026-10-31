@@ -92,6 +92,7 @@ module VBlank
           def initialize(backdrop: nil, sprite_squares: true)
             @sprite_squares = sprite_squares
             @sprite_square_numbers = {}
+            @square_tile_numbers = {}
             @backdrop = (backdrop || BACKDROP) & 0x7FFF
             @background_tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
             @background_tile_numbers = { blank_tile => 0 }
@@ -194,6 +195,8 @@ module VBlank
           # height is not a multiple of 8 has its last pieces' extra pixels left undrawn.
           # +mixed+ draws it from a see-through sprite's palettes (#split_sprite_palettes!).
           def sprite_picture(name, image, mixed: false)
+            return @sprite_pictures[name] ||= pieced_sprite_picture(name, image, mixed) if image.pieces
+
             @sprite_pictures[name] ||= begin
               drawn = (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }
               palette = palette_for(@sprite_palettes, drawn.map { |at| image.color_at(at) }.uniq, "sprites",
@@ -311,6 +314,45 @@ module VBlank
             end
           end
 
+          # A PICTURE THE GAME MADE OF PIECES (Assets::Image#pieces) is shown from those pieces, each
+          # where the game put it and in its order, the first in front, and each ONE row of the
+          # table: not cut again on a grid, which would turn a letter of 16×16 sitting off the grid
+          # into several rows. A cartridge's own pieces overlap and sit anywhere, and a screen lifted
+          # from one fits the table only as the rows it was made of. A piece that draws nothing takes
+          # no row. Without squares (SNES#build) a big piece is its four quarters.
+          #
+          # Its colours are read from the pieces rather than the composed pixels: all of a piece can
+          # lie under another, and its tile still needs them.
+          def pieced_sprite_picture(name, image, mixed)
+            given = (@sprite_squares ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
+            colors = given.flat_map { |_, _, own| own.bytes }.uniq.reject(&:zero?).map { |place| image.colors.fetch(place) & 0x7FFF }
+            palette = palette_for(@sprite_palettes, colors, "sprites", @sprite_palettes_for.fetch(mixed))
+            # Last given first: sprites go into the table back-most first (Lowering::Picture
+            # #emit_present_objects), so the piece placed last is the one in front.
+            pieces = given.map { |dx, dy, own| sprite_piece_from_places(dx, dy, own, image, palette) }.reverse
+            SpritePicture.new(name: name, number: @sprite_pictures.length, width: image.width, height: image.height,
+                              pieces: pieces)
+          end
+
+          # One piece of a game's own, of 8×8 or 16×16, its tiles shared with any piece alike. A big
+          # piece with no place for its four tiles raises, and the game is built again without
+          # squares (SNES#build).
+          def sprite_piece_from_places(dx, dy, own, image, palette)
+            ours = own.bytes.map { |place| place.zero? ? 0 : @sprite_palettes[palette].index(image.colors.fetch(place) & 0x7FFF) + 1 }
+                      .pack("C*")
+            if Assets::Image.side(own) == Assets::PIECE_SIZE
+              return Piece.new(dx: dx, dy: dy, tile: shared_sprite_tile_number(tile_bytes(ours.bytes)), palette: palette)
+            end
+
+            tile = sprite_square_number(Assets::Image.quarters(ours).map { |_, _, quarter| tile_bytes(quarter.bytes) })
+            raise TooMuch, "The sprites use more squares of 16×16 than a Super Nintendo has room for." unless tile
+
+            Piece.new(dx: dx, dy: dy, tile: tile, palette: palette, big: true)
+          end
+
+          # The number of a tile of 8×8, which may be one of a square's four.
+          def shared_sprite_tile_number(bytes) = @square_tile_numbers[bytes] || sprite_tile_number(bytes)
+
           # The first of the four tiles of the square +tiles+ (left top, right top, left bottom,
           # right bottom), laid out as the console reads them, or nil with no place for them. Two
           # squares alike share their tiles.
@@ -319,7 +361,10 @@ module VBlank
               first = (0...MOST_SPRITE_TILES).find { |at| square_fits_at?(at) }
               next unless first
 
-              square_tiles_from(first).zip(tiles) { |at, bytes| @sprite_tiles[at] = bytes }
+              square_tiles_from(first).zip(tiles) do |at, bytes|
+                @sprite_tiles[at] = bytes
+                @square_tile_numbers[bytes] ||= at
+              end
               @sprite_square_numbers[same] = first
             end
           end

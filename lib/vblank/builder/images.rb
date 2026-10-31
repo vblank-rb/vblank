@@ -542,13 +542,15 @@ module VBlank
         refuse_bad_pieces!(name, pieces, colors)
         # Out to a multiple of a piece each way, see-through past the pieces: a console that cuts a
         # picture into pieces itself takes one of whole pieces.
-        reach = ->(far) { (far + PIECE_SIZE + PIECE_SIZE - 1) / PIECE_SIZE * PIECE_SIZE }
-        width = reach.call(pieces.map { |dx, _, _| dx }.max)
-        height = reach.call(pieces.map { |_, dy, _| dy }.max)
+        side = ->(own) { Integer.sqrt(own.length) }
+        reach = ->(far) { (far + PIECE_SIZE - 1) / PIECE_SIZE * PIECE_SIZE }
+        width = reach.call(pieces.map { |dx, _, own| dx + side.call(own) }.max)
+        height = reach.call(pieces.map { |_, dy, own| dy + side.call(own) }.max)
         places = Array.new(width * height, 0)
         pieces.each do |dx, dy, own|
+          across = side.call(own)
           own.each_with_index do |place, i|
-            at = ((dy + (i / PIECE_SIZE)) * width) + dx + (i % PIECE_SIZE)
+            at = ((dy + (i / across)) * width) + dx + (i % across)
             places[at] = place if places[at].zero?
           end
         end
@@ -558,6 +560,8 @@ module VBlank
       end
 
       PIECE_SIZE = IR::Assets::PIECE_SIZE
+      BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE
+      PICTURE_REACH = 255 # a pose table says where a piece sits as a byte each way
 
       def refuse_bad_pieces!(name, pieces, colors)
         unless pieces.is_a?(Array) && !pieces.empty?
@@ -566,13 +570,15 @@ module VBlank
         end
         pieces.each_with_index do |piece, n|
           dx, dy, own = piece if piece.is_a?(Array)
-          unless piece.is_a?(Array) && piece.length == 3 && [dx, dy].all? { |at| at.is_a?(Integer) && at.between?(0, 247) }
+          big = own.is_a?(Array) && own.length == BIG_PIECE_SIZE * BIG_PIECE_SIZE
+          most = PICTURE_REACH - (big ? BIG_PIECE_SIZE : PIECE_SIZE)
+          unless piece.is_a?(Array) && piece.length == 3 && [dx, dy].all? { |at| at.is_a?(Integer) && at.between?(0, most) }
             raise ArgumentError, "piece #{n} of image :#{name} is #{piece.inspect}. A piece is [dx, dy, places]: " \
-                                 "dx and dy are whole numbers from 0 to 247, where the piece's top left is in the picture."
+                                 "dx and dy are whole numbers from 0 to #{most}, where the piece's top left is in the picture."
           end
-          unless own.is_a?(Array) && own.length == PIECE_SIZE * PIECE_SIZE
+          unless own.is_a?(Array) && (big || own.length == PIECE_SIZE * PIECE_SIZE)
             raise ArgumentError, "piece #{n} of image :#{name} has #{own.is_a?(Array) ? own.length : 'no'} places. " \
-                                 "A piece is 8x8, so give it 64 places, row by row."
+                                 "A piece is 8x8 or 16x16, so give it 64 or 256 places, row by row."
           end
           next if Array(colors).empty? # said by refuse_bad_places!, which asks for the list
 

@@ -481,7 +481,7 @@ module VBlank
           # big it is matters only to a test of its pixels against another's (Lowering::Picture
           # #picture_collided); how many pieces it has, to the forty the console shows.
           def pieced_sprite_picture(name, image)
-            drawn = drawn_pieces(image.pieces)
+            drawn = drawn_pieces(image.small_pieces)
             if drawn.length > Console::GBCHardware::SPRITES
               raise LoweringError, "the sprite picture #{name.inspect} is made of #{drawn.length} pieces, and a " \
                                    "Game Boy Color shows #{Console::GBCHardware::SPRITES} at once. To fix this, " \

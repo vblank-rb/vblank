@@ -442,6 +442,103 @@ class TestSNESPicture < Minitest::Test
     SNES::CheckedRun.new.run(program, frames: 6)
   end
 
+  # The rows of the table a picture of pieces takes, in a game of +pieces+.
+  private def rows_of_pieces(pieces)
+    program = program_of do
+      screen :tiled
+      image :word, colors: %i[transparent red blue], pieces: pieces
+      sprite :word, at: [40, 40]
+      game_loop { }
+    end
+    image = VBlank::IR::Assets::Image.of(program.walk.find { |node| node.kind == :bitmap })
+    SNES::Art.new.sprite_picture(:word, image).pieces
+  end
+
+  # Letters of 16×16 twelve pixels apart, overlapping, off every grid, as a cartridge keeps its
+  # menu: one row each, and four tiles each, where cutting the picture would take many of both.
+  def test_a_big_piece_takes_one_row_however_it_sits
+    letter = Array.new(256) { |i| i.odd? ? 1 : 2 }
+    pieces = rows_of_pieces(Array.new(10) { |n| [(n * 12) + 1, 5, letter] })
+
+    assert_equal 10, pieces.length
+    assert(pieces.all?(&:big))
+    assert_equal 1, pieces.map(&:tile).uniq.length, "ten letters alike share their tiles"
+  end
+
+  # A small piece alike to a quarter of a big one is drawn from that quarter's tile.
+  def test_a_small_piece_shares_a_tile_with_a_big_piece
+    quarter = Array.new(64) { |i| (i % 3) + 1 > 2 ? 2 : 1 }
+    big = Array.new(256) { |i| i % 16 < 8 && i < 128 ? quarter[((i / 16) * 8) + (i % 16)] : 2 }
+    pieces = rows_of_pieces([[0, 0, big], [20, 0, quarter]])
+
+    assert_equal pieces.first.tile, pieces.last.tile
+  end
+
+  # What a build of +block+ for the Super Nintendo prints.
+  private def said_by_build(&block)
+    err = StringIO.new
+    VBlank.build("WORDS", console: :snes, out: StringIO.new, err: err, &block)
+    err.string
+  end
+
+  # Three sprites of fifty pieces each: every picture fits, and one screen needs 150 rows of 128.
+  def test_a_build_says_when_a_screen_passes_the_sprite_table
+    said = said_by_build do
+      screen :tiled
+      image :wide, colors: %i[transparent red], pieces: Array.new(50) { |n| [n, 0, Array.new(64, 1)] }
+      3.times { |n| sprite :wide, at: [n * 20, 40] }
+      game_loop { }
+    end
+
+    assert_match(/150 rows of the sprite table/, said)
+  end
+
+  def test_a_build_that_fits_the_sprite_table_says_nothing_of_it
+    said = said_by_build do
+      screen :tiled
+      image :wide, colors: %i[transparent red], pieces: Array.new(50) { |n| [n, 0, Array.new(64, 1)] }
+      sprite :wide, at: [20, 40]
+      game_loop { }
+    end
+
+    refute_match(/sprite table/, said)
+  end
+
+  # The game of the test above that only fits as small pieces, and now says that it did.
+  def test_a_build_says_when_it_gives_up_squares
+    said = said_by_build do
+      screen :tiled
+      inks = %w[r g b w]
+      names = Array.new(200) do |number|
+        corners = [number % 4, (number / 4) % 4, (number / 16) % 4, number / 64].map { |ink| inks[ink] * 8 }
+        rows = Array.new(8) { corners[0] + corners[1] } + Array.new(8) { corners[2] + corners[3] }
+        image(:"ball_#{number}", "r" => :red, "g" => :green, "b" => :blue, "w" => :white) { rows.join("\n") }
+        :"ball_#{number}"
+      end
+      flipper = sprite :flipper, frames: names, rate: 1, at: [40, 40]
+      game_loop { flipper }
+    end
+
+    assert_match(/built from pieces of 8×8/, said)
+  end
+
+  # A piece that draws nothing takes no row.
+  def test_a_piece_that_draws_nothing_takes_no_row
+    assert_equal 1, rows_of_pieces([[0, 0, Array.new(64, 0)], [8, 0, Array.new(64, 1)]]).length
+  end
+
+  # The game as played: letters of 16×16 over a small piece, a row each, on the console.
+  def test_big_pieces_off_the_grid_show_as_the_interpreter_shows_them
+    letter = Array.new(256) { |i| (i / 16) % 16 < 3 || i % 16 < 3 ? 1 : 2 }
+    checked(frames: 3) do
+      screen :tiled
+      image :word, colors: %i[transparent red blue],
+                   pieces: [[3, 2, Array.new(64, 2)], *Array.new(5) { |n| [(n * 13) + 1, 5, letter] }]
+      sprite :word, at: [40, 40]
+      game_loop { }
+    end
+  end
+
   # A big square that hangs off each edge shows the part on the screen, and nothing comes round
   # to the other side.
   def test_big_sprites_hanging_off_every_edge_show_their_parts

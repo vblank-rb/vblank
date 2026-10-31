@@ -32,13 +32,15 @@ module VBlank
       # starts with every list white — so a background told to draw each of its lists with
       # another tells them apart by #list_drawn_from, the name and the colours together.
       #
-      # +pieces+ is, for a picture the game made of 8x8 pieces (`image ..., pieces:`), each piece
-      # front-most first as [dx, dy, its 64 places]: where its top left is in the picture, and its
-      # pixels as places in the picture's list, row by row. The picture's own pixels are those pieces
-      # laid over each other, so a console that draws sprites from pieces can draw it from the same
-      # ones; nil for any other picture.
-      # The side of a piece of a picture made of pieces (Image#pieces).
+      # +pieces+ is, for a picture the game made of pieces (`image ..., pieces:`), each piece
+      # front-most first as [dx, dy, its places]: where its top left is in the picture, and its
+      # pixels as places in the picture's list, row by row, 64 of them for a piece of 8x8 and 256
+      # for one of 16x16. The picture's own pixels are those pieces laid over each other, so a
+      # console that draws sprites from pieces can draw it from the same ones; nil for any other
+      # picture. A console with no piece of 16x16 reads #small_pieces.
+      # The side of a piece of a picture made of pieces (Image#pieces), and of the larger kind.
       PIECE_SIZE = 8
+      BIG_PIECE_SIZE = 16
 
       Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces) do
         def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil) = super
@@ -106,7 +108,7 @@ module VBlank
             bytes << pixels.byteslice(row * width * 2, width * 2).unpack("v*").reverse.pack("v*")
           end
           with(pixels: turned, places: places && mirrored_places,
-               pieces: pieces&.map { |dx, dy, own| [width - dx - PIECE_SIZE, dy, Image.rows(own).map(&:reverse).join.b] })
+               pieces: pieces&.map { |dx, dy, own| [width - dx - Image.side(own), dy, Image.rows(own).map(&:reverse).join.b] })
         end
 
         # THE SAME PICTURE TURNED TOP TO BOTTOM — its rows in the other order. The other
@@ -115,12 +117,38 @@ module VBlank
           rows = (0...height).map { |row| pixels.byteslice(row * width * 2, width * 2) }
           upended = places && (0...height).map { |row| places.byteslice(row * width, width) }.reverse.join.b
           with(pixels: rows.reverse.join.b, places: upended,
-               pieces: pieces&.map { |dx, dy, own| [dx, height - dy - PIECE_SIZE, Image.rows(own).reverse.join.b] })
+               pieces: pieces&.map { |dx, dy, own| [dx, height - dy - Image.side(own), Image.rows(own).reverse.join.b] })
         end
 
+        # The picture's pieces, every one 8x8: a piece of 16x16 is the four of it, in its place in
+        # the order, less any of the four that draws nothing.
+        def small_pieces
+          pieces&.flat_map do |dx, dy, own|
+            next [[dx, dy, own]] if Image.side(own) == PIECE_SIZE
 
-        # A piece's 64 places, a row of eight at a time.
-        def self.rows(own) = (0...PIECE_SIZE).map { |row| own.byteslice(row * PIECE_SIZE, PIECE_SIZE) }
+            Image.quarters(own).filter_map do |across, down, quarter|
+              [dx + across, dy + down, quarter] if quarter.bytes.any?(&:positive?)
+            end
+          end
+        end
+
+        # How many pixels a side a piece's places are.
+        def self.side(own) = own.bytesize > PIECE_SIZE * PIECE_SIZE ? BIG_PIECE_SIZE : PIECE_SIZE
+
+        # A piece's places, a row at a time.
+        def self.rows(own)
+          across = side(own)
+          (0...across).map { |row| own.byteslice(row * across, across) }
+        end
+
+        # A piece of 16x16 as its four quarters, each [across, down, its 64 places]: left top, right
+        # top, left bottom, right bottom.
+        def self.quarters(own)
+          rows = rows(own)
+          [0, PIECE_SIZE].product([0, PIECE_SIZE]).map do |down, across|
+            [across, down, rows[down, PIECE_SIZE].map { |row| row.byteslice(across, PIECE_SIZE) }.join.b]
+          end
+        end
 
         private
 

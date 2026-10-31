@@ -70,11 +70,25 @@ module VBlank
         # and what it is to the author.
         GameRoutine = Data.define(:addresses, :routine)
 
+        # What the build found to say about what it decided (Cartridge::LoweredBuild).
+        def findings = (@findings ||= [])
+
+        def small_pieces_finding
+          Guardrails::Finding.new(
+            check: :snes_small_sprite_pieces, severity: :warning, node: :program,
+            message: "The sprites have too many different tiles to keep their squares of 16×16, so this " \
+                     "game is built from pieces of 8×8. Each sprite now takes more rows of the sprite table " \
+                     "of #{Runtime::Picture::MOST_SPRITES}, and a sprite past the last row is not drawn. To " \
+                     "fix this, use fewer different pictures."
+          )
+        end
+
         # +program+ as a cartridge (Cartridge::SNESROM), carrying its Places.
         #
         # A sprite's squares of 16×16 keep their four tiles together, so they share fewer than 8×8
         # pieces do and a game that only just fits its sprite tiles can run out. It is built again
-        # in 8×8 pieces, which fits, and takes more of the sprite table.
+        # in 8×8 pieces, which fits, and takes more of the sprite table, which it says, since a
+        # game that needed the squares to fit the table has now lost sprites with no error.
         def build(program, title: "VBLANK", sprite_squares: true)
           board = board_for(program)
           memory = Memory.new
@@ -98,8 +112,10 @@ module VBlank
           rescue Art::TooMuch
             raise unless sprite_squares
 
+            findings << small_pieces_finding
             return build(program, title: title, sprite_squares: false)
           end
+          findings.concat(lowering.sprite_table_findings)
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins, painted: painted,
                                              board: board, saves: saves, sound: sound,
                                              sound_waves: lowering.sound_waves,
