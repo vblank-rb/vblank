@@ -31,8 +31,12 @@ module VBlank
           game = tests.any?(&:game?)
           return yield(value) if second_name && !game
           return write_plain_place(current, value, game, label, needs_slot) { |given| yield given } unless Steps.variable?(current)
-          return yield(value) if moves && Steps.variable?(value) && !current.own_to_its_name
           return current if value.equal?(current)
+
+          if moves && Steps.variable?(value) && !current.own_to_its_name
+            refuse_move_in_game_code!(label, current, value)
+            return yield(value)
+          end
           return store_and_keep(current, value) if number_kept?(value)
           return store_and_keep(current, value) unless current.truth || current.unwritten || game
 
@@ -201,6 +205,35 @@ module VBlank
           own.start_truth_as_nil! if may_stay_nil && value.nil?
           store_in_variable(own, value) unless value.nil?
           own
+        end
+
+        # `@a = @b` in code the game runs, where @a was only handed its variable. Copying into it
+        # would change a variable that belongs to something else, and moving it would leave a line
+        # that looks like a copy recording nothing, so the author says which.
+        def refuse_move_in_game_code!(label, current, value)
+          return unless Builder.in_use&.recording_game_code?
+
+          Steps.refuse_game_code!("`#{label}` was handed the game variable :#{current.name}, and this line gives it " \
+                                  ":#{value.name}. The game would see no change. To fix this, give `#{label}` a " \
+                                  "variable of its own with `#{label} = var :#{label.to_s.delete('@')}, 0`, and the " \
+                                  "line then copies the number.")
+        end
+
+        # A name in code the game runs, holding a variable it was handed, is about to be given
+        # +value+. The line moves the name and leaves the variable as it was, so the build says so.
+        # A hidden copy (`left = hp`) is the name's own number, and changing it is the point.
+        def note_handed_name_written(current, value, label)
+          return unless Steps.variable?(current) && !value.equal?(current) && handed?(current)
+
+          builder = Builder.in_use
+          builder.record_handed_name_write(label, current.name) if builder&.recording_game_code?
+        end
+
+        # A handle with no name is a field of a pool or the like, which the library's own code
+        # works on and an author never wrote.
+        def handed?(variable)
+          name = variable.name.to_s
+          !name.empty? && !name.start_with?(IR::Build::KEPT_VARIABLE_PREFIX)
         end
 
         def refuse_change_in_block!(name, tests)

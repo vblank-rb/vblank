@@ -196,6 +196,7 @@ module VBlank
                 IR::Guardrails::Checks::OrphanedExpression.new(evaluated.expressions),
                 IR::Guardrails::Checks::DroppedFrameSync.new(evaluated.dropped_syncs),
                 IR::Guardrails::Checks::EstimateDoesNothing.new(evaluated.estimate_lines),
+                IR::Guardrails::Checks::HandedNameWritten.new(evaluated.handed_name_writes),
                 IR::Guardrails::Checks::LayerHoldsNothing.new(evaluated.sprites),
                 IR::Guardrails::Checks::StackNotHonored.new(evaluated.sprites)]
       findings = IR::Guardrails::Validator.new(checks: checks, progress: progress)

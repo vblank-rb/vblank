@@ -237,6 +237,12 @@ module VBlank
 
         def first_write?(write) = @locals_by_node[write]&.first_write_of?(write) || false
 
+        # Could the name hold something as this line writes it? An argument always does.
+        def holds_before_write?(write)
+          local = @locals_by_node[write]
+          !local.nil? && (local.parameter? || !local.first_write_of?(write))
+        end
+
         # Is this write's name a game variable?
         def variable_write?(write) = @locals_by_node[write]&.variable? || false
 

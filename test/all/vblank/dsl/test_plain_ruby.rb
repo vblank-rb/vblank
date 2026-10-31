@@ -1382,14 +1382,16 @@ class TestPlainRuby < Minitest::Test
     assert_equal [1, 1, 1], [player[:left_held], player[:left_failed], player[:distance]]
   end
 
-  def test_an_ivar_given_another_variable_moves_to_it
+  # While setting up a name can still be pointed anywhere. In game code that is refused, in
+  # TestPlainRubyRefusals, since it would record nothing.
+  def test_an_ivar_given_another_variable_while_setting_up_moves_to_it
     player = played(frames: 2) do
       a = var :a, 1
       b = var :b, 2
       @focus = a
+      @focus = b
       seen = 0
       game_loop do
-        @focus = b
         seen = @focus
         a += 0
         b += 0

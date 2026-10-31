@@ -100,6 +100,9 @@ module VBlank
     # One variable the build added for the author: its name, the line that needed it, and why.
     HiddenVariableNote = Data.define(:name, :source, :why)
 
+    # A line of game code that gave a name a new number while it held a game variable.
+    HandedNameWrite = Data.define(:name, :variable, :source)
+
     # @param options [Cartridge::Options] how the game is built; the Builder reads its frame
     #   pacing and the save memory it named
     # @param progress [VBlank::Messages::Progress] what a build says it is doing (see {#progress})
@@ -136,6 +139,7 @@ module VBlank
       @game_whiles = 0         # how many game `while` loops are open now
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @hidden_variable_notes = []
+      @handed_name_writes = []
       @variables_with_no_var_line = []
       Ractor.current[:vblank_builder_in_use] = self
       @boolean_variables = {}   # the variables started with `true` or `false`
@@ -975,6 +979,19 @@ module VBlank
 
     # What the build added for the author that the author never wrote, for `rom.profile`.
     def hidden_variable_notes = @hidden_variable_notes
+
+    # Game code gave a new number to +name+, which held the game +variable+ it was handed, so the
+    # variable stayed as it was (PlainRuby::Writes.note_handed_name_written). One warning for each
+    # line, however many items a `each` around it recorded it for.
+    def record_handed_name_write(name, variable)
+      source = Messages::AuthorSource.author_source
+      return if @handed_name_writes.any? { |write| write.name == name && write.source == source }
+
+      @handed_name_writes << HandedNameWrite.new(name:, variable:, source:)
+    end
+
+    # The lines #record_handed_name_write kept, for the warning.
+    attr_reader :handed_name_writes
 
     # The names normal Ruby made variables of with no `var` line.
     attr_reader :variables_with_no_var_line

@@ -402,8 +402,18 @@ module VBlank
           # The line that makes a variable in game code sets it on every pass, as Ruby would.
           when :start then "#{prefix}#{start_text(node)}"
           when :assign then "#{prefix}#{assign_text(node.name, "(#{value_text(node.value)})")}"
-          else "#{prefix}#{kept_value_text(node.value, node)}"
+          else "#{prefix}#{noted_if_handed(node, kept_value_text(node.value, node))}"
           end
+        end
+
+        # A write to a plain name that already holds something, which may turn out to be a game
+        # variable it was handed (Writes.note_handed_name_written). The name's first line holds
+        # nothing yet, unless it is an argument, whose first write comes after it was given one.
+        def noted_if_handed(node, value)
+          return value unless @names.holds_before_write?(node)
+
+          held = fresh_name
+          "(#{held} = #{value}; #{WRITES}.note_handed_name_written(#{node.name}, #{held}, :#{node.name}); #{held})"
         end
 
         def start_text(node)
@@ -594,7 +604,9 @@ module VBlank
 
         def change_text(node)
           return "#{node.name} = #{change_call(node, ', second_name: true')}" if promoted?(node)
-          return copied_text(node) if @names.plain_name_write?(node)
+          if @names.plain_name_write?(node)
+            return "(#{WRITES}.note_handed_name_written(#{node.name}, nil, :#{node.name}); #{copied_text(node)})"
+          end
 
           "#{node.name} = #{change_call(node)}"
         end

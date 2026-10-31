@@ -36,6 +36,35 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_refused("`Minitest`") { game_loop { Minitest::Test } }
   end
 
+  # Copying one game number into another keeps two numbers. A name only handed its variable has
+  # no number of its own to copy into, so the line stops rather than move the name with no word.
+  def test_an_instance_variable_handed_a_variable_is_refused_a_move_in_game_code
+    assert_refused("`@shown` was handed") do
+      score = var :score, 0
+      lives = var :lives, 3
+      @shown = score
+      game_loop { @shown = lives }
+    end
+  end
+
+  def test_an_instance_variable_handed_a_variable_can_move_while_setting_up
+    built do
+      score = var :score, 0
+      lives = var :lives, 3
+      @shown = score
+      @shown = lives
+      game_loop { halt }
+    end
+  end
+
+  def test_an_instance_variable_written_with_itself_in_game_code_is_left_alone
+    built do
+      score = var :score, 0
+      @shown = score
+      game_loop { @shown = @shown }
+    end
+  end
+
   def test_game_code_changing_a_local_from_outside_the_block_is_refused
     lives = 3
 
