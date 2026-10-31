@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 
 # WHAT HAPPENED WHILE THAT FRAME RAN.
 #
@@ -19,8 +19,8 @@ class TestFrameEvents < Minitest::Test
       screen :bitmap
       tick = var :tick, 0
       game_loop do
-        tick.add! 1
-        held(:right).then { tick.add! 1 }
+        tick += 1
+        tick += 1 if held(:right)
       end
     end
 
@@ -175,10 +175,10 @@ class TestFrameEvents < Minitest::Test
   # inside the frame it moved, and cannot say what it moved from. For a port chasing "what
   # is knocking the player's health down", those are the whole question.
   def test_a_probe_reports_every_change_to_a_watched_address
-    rom = VBlank.build("WATCH", validate: false) do
+    rom = VBlank.build("WATCH", console: :gba, validate: false) do
       screen :bitmap
       hp = var :hp, 100
-      game_loop { hp.sub! 7 }
+      game_loop { hp -= 7 }
     end
     address = rom.var_addresses.fetch(:hp)
     path = write_rom(rom, "watch")
@@ -198,10 +198,10 @@ class TestFrameEvents < Minitest::Test
 
   # The block form: what to do with a change sits next to the asking.
   def test_a_watcher_can_be_handed_a_block_to_run_on_each_change
-    rom = VBlank.build("WATCHBLK", validate: false) do
+    rom = VBlank.build("WATCHBLK", console: :gba, validate: false) do
       screen :bitmap
       hp = var :hp, 50
-      game_loop { hp.sub! 5 }
+      game_loop { hp -= 5 }
     end
     path = write_rom(rom, "watchblk")
 
@@ -218,10 +218,10 @@ class TestFrameEvents < Minitest::Test
   # spread over sixty frames fit easily. What does not fit is one frame that moves an address
   # thousands of times, and a truncated list that does not say so reads like the whole story.
   def test_a_single_frame_that_moves_an_address_too_often_says_what_was_missed
-    rom = VBlank.build("BUSY", validate: false) do
+    rom = VBlank.build("BUSY", console: :gba, validate: false) do
       screen :bitmap
       hp = var :hp, 0
-      game_loop { repeat(6000) { hp.add! 1 } }
+      game_loop { repeat(6000) { hp += 1 } }
     end
     path = write_rom(rom, "busywatch")
 
@@ -494,11 +494,11 @@ class TestFrameEvents < Minitest::Test
   # The framework's own build record is the answer key here: the search is told nothing but
   # the numbers, and has to arrive at the address the build already knows.
   def counting_rom
-    rom = VBlank.build("COUNTDOWN", validate: false) do
+    rom = VBlank.build("COUNTDOWN", console: :gba, validate: false) do
       screen :bitmap
       clear_screen :black
       hp = var :hp, 31_337
-      game_loop { hp.sub! 1 }
+      game_loop { hp -= 1 }
     end
     [rom, write_rom(rom, "countdown")]
   end
@@ -507,11 +507,11 @@ class TestFrameEvents < Minitest::Test
   # asking the build anything — which is the position somebody is in with a cartridge they
   # did not write: they can see the number, and nothing else.
   def jumping_rom
-    rom = VBlank.build("JUMPER", validate: false) do
+    rom = VBlank.build("JUMPER", console: :gba, validate: false) do
       screen :bitmap
       clear_screen :black
       hp = var :hp, 31_337
-      game_loop { held(:a).then { hp.set! 4_242 } }
+      game_loop { hp = 4_242 if held(:a) }
     end
     [rom, write_rom(rom, "jumper")]
   end
@@ -527,11 +527,11 @@ class TestFrameEvents < Minitest::Test
   # checked against: the counter is the last thing in the body, so it says how many passes
   # FINISHED, while an arrival marks one beginning.
   def self_counting_rom
-    rom = VBlank.build("ARRIVE", code: "TARV", validate: false) do
+    rom = VBlank.build("ARRIVE", code: "TARV", console: :gba, validate: false) do
       screen :bitmap
       clear_screen :black
       passes = var :passes, 0
-      game_loop { passes.add! 1 }
+      game_loop { passes += 1 }
     end
     [rom, write_rom(rom, "arrive")]
   end
@@ -554,7 +554,7 @@ class TestFrameEvents < Minitest::Test
   # The trap the pad-read count falls into, which this does not: a loop that never asks for
   # input goes round just the same, and nothing about its passes reaches the pad.
   def test_a_loop_that_never_asks_for_buttons_is_counted_all_the_same
-    rom = VBlank.build("NOASK", code: "TNAS", validate: false) do
+    rom = VBlank.build("NOASK", code: "TNAS", console: :gba, validate: false) do
       screen :bitmap
       game_loop { clear_screen :blue }
     end

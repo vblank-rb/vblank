@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 
 # Tests for Probe#sound_feed — where each sample the recorded-sound channel played came from.
 #

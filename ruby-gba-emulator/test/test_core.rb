@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 
 # Tests for the native RubyGBAEmulator::Core surface — the thin libmgba mCore wrapper
 # defined in the C extension. These assert the binding itself: dimensions,

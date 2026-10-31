@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 
 # Tests for the cost/timing probe — measuring the CPU cycles a ROM actually
 # burns per frame, the signal used to calibrate VBlank's cost model against
@@ -25,9 +25,9 @@ class TestRubyGBAEmulatorTiming < Minitest::Test
     build_rom("WORK", code: "TWRK") do
       screen :bitmap
       clear_screen :black
-      var :x, 0
+      x = var :x, 0
       game_loop do
-        repeat(500) { add! :x, 1 }
+        repeat(500) { x += 1 }
       end
     end
   end
@@ -134,9 +134,9 @@ class TestRubyGBAEmulatorTiming < Minitest::Test
     build_rom("HELD", code: "THLD") do
       screen :bitmap
       clear_screen :black
-      var :x, 0
+      x = var :x, 0
       game_loop do
-        held(:left).then { repeat(500) { add! :x, 1 } }
+        repeat(500) { x += 1 } if held(:left)
       end
     end
   end

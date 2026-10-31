@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 require "tmpdir"
 
 # Tests for RubyGBAEmulator::Probe — the dev-facing wrapper that returns plain data
@@ -85,9 +85,9 @@ class TestRubyGBAEmulatorProbe < Minitest::Test
     mover = lambda do
       build_rom("MOVER", code: "TMOV") do
         screen :bitmap
-        var :x, 20
+        x = var :x, 20
         game_loop do
-          held(:right).then { add! :x, 2 }
+          x += 2 if held(:right)
           clear_screen :black
           draw_rect_at :x, 78, 8, 8, :white
         end
@@ -180,7 +180,7 @@ class TestRubyGBAEmulatorProbe < Minitest::Test
   end
 
   def test_a_stretch_read_as_words_is_the_same_as_asking_for_each
-    rom = VBlank.build("BULK", validate: false) do
+    rom = VBlank.build("BULK", console: :gba, validate: false) do
       screen :bitmap
       var :a, 11
       var :b, 22
@@ -300,13 +300,13 @@ class TestRubyGBAEmulatorProbe < Minitest::Test
   # appear. Yields [directory, rom path]; the directory goes when the block ends.
   def in_a_directory_of_its_own
     Dir.mktmpdir("probe-save") do |dir|
-      rom = VBlank.build("SAVER", code: "TSAV", maker: "01") do
+      rom = VBlank.build("SAVER", console: :gba, code: "TSAV", maker: "01") do
         screen :bitmap
         high = save_var :high_score, 0
         s = var :s, 0
         game_loop do
-          s.set! 7
-          (s > high).then { high.set! s }
+          s = 7
+          high = s if s > high
         end
       end
       path = File.join(dir, "saver.gba")

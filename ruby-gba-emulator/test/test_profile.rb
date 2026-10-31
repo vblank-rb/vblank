@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 
 # Tests for the profiler — where a ROM's frames actually went.
 #
@@ -19,8 +19,8 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
     build_rom(name, code: code) do
       screen :bitmap
       clear_screen :black
-      var :x, 0
-      game_loop { repeat(passes) { add! :x, 1 } }
+      x = var :x, 0
+      game_loop { repeat(passes) { x += 1 } }
     end
   end
 
@@ -38,8 +38,8 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
     build_rom("PHLD", code: "PHLD") do
       screen :bitmap
       clear_screen :black
-      var :x, 0
-      game_loop { held(:left).then { repeat(500) { add! :x, 1 } } }
+      x = var :x, 0
+      game_loop { repeat(500) { x += 1 } if held(:left) }
     end
   end
 
@@ -231,11 +231,11 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
   # They agree exactly, which neither could establish alone.
   def test_the_measured_rate_agrees_with_counting_the_game_loop_passes
     [[500, 60.0], [40_000, 30.0], [60_000, 20.0]].each do |passes, expected|
-      program = VBlank.game("PFXC", code: "PFXC", maker: "01") do
+      program = VBlank.game("PFXC", consoles: %i[gba], code: "PFXC", maker: "01") do
         screen :bitmap
         clear_screen :black
-        var :x, 0
-        game_loop { repeat(passes) { add! :x, 1 } }
+        x = var :x, 0
+        game_loop { repeat(passes) { x += 1 } }
       end.program
 
       counted = VBlank::Diagnostics::Analyzer.measure_fps(program)
@@ -254,10 +254,10 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
   def test_the_time_a_copy_takes_is_charged_to_the_instruction_that_started_it
     clearing = build_rom("PCYC", code: "PCYC") do
       screen :bitmap
-      var :x, 0
+      x = var :x, 0
       game_loop do
         clear_screen :black
-        repeat(50) { add! :x, 1 }
+        repeat(50) { x += 1 }
       end
     end
     with_probe(clearing) do |probe|
@@ -285,17 +285,17 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
     build_rom(name, code: name) do
       extend VBlank::Builder::Debug
       screen :bitmap
-      var :spin, 0
+      spin = var :spin, 0
       if busy_timer
         ticks = var :ticks, 0
         busy = timer :busy, per_second: 15_000
-        busy.on_tick { repeat(40) { ticks.add! 1 } }
+        busy.on_tick { repeat(40) { ticks += 1 } }
       end
       game_loop do
-        repeat(100_000, stop_when: read_scanline < 160) { add! :spin, 1 }
+        repeat(100_000, stop_when: read_scanline < 160) { spin += 1 }
         lines.each do |line|
-          repeat(100_000, stop_when: read_scanline < line) { add! :spin, 1 } if line < 160
-          repeat(100_000, stop_when: read_scanline >= line) { add! :spin, 1 }
+          repeat(100_000, stop_when: read_scanline < line) { spin += 1 } if line < 160
+          repeat(100_000, stop_when: read_scanline >= line) { spin += 1 }
         end
       end
     end
@@ -350,13 +350,13 @@ class TestRubyGBAEmulatorProfile < Minitest::Test
   # not in the count at all. This is what lets a build weigh keeping a list in the quick memory
   # against keeping a routine there.
   def test_each_word_a_frame_reads_is_counted_once_a_read
-    rom = VBlank.build("PTCH", code: "PTCH", maker: "01") do
+    rom = VBlank.build("PTCH", console: :gba, code: "PTCH", maker: "01") do
       screen :bitmap
       clear_screen :black
-      var :x, 0
+      x = var :x, 0
       step = var :step, 3
       var :unread, 9
-      game_loop { repeat(300) { add! :x, step } }
+      game_loop { repeat(300) { x += step } }
     end
     with_probe(write_rom(rom, "touches")) do |probe|
       touches = probe.profile(settle: 10).touches

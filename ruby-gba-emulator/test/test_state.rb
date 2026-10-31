@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 require "tmpdir"
 require "zlib"
 
@@ -22,8 +22,8 @@ class TestRubyGBAEmulatorState < Minitest::Test
     build_rom(name, code: code) do
       screen :bitmap
       clear_screen :black
-      var :x, 0
-      game_loop { add! :x, bump }
+      x = var :x, 0
+      game_loop { x += bump }
     end
   end
 

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 
 # Tests for RubyGBAEmulator::Screen — the questions a test asks of a whole screen, answered
 # in the extension. Each answer is held to what going through the pixels in Ruby gives,

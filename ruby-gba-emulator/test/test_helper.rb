@@ -19,7 +19,7 @@ module RubyGBAEmulatorTestSupport
   #   path = build_rom("RED") { screen :bitmap; clear_screen :red; game_loop {} }
   #   probe = RubyGBAEmulator.open(path)
   def build_rom(name = "TEST", code: "TEST", maker: "01", &block)
-    rom = VBlank.build(name, code: code, maker: maker, &block)
+    rom = VBlank.build(name, console: :gba, code: code, maker: maker, &block)
     tf = Tempfile.new([name.downcase, ".gba"])
     tf.binmode
     rom.write(tf.path)

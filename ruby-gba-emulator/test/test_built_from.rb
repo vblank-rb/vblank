@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 require "tmpdir"
 
 # A checkout's build has to come from the C source beside it.
