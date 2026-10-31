@@ -1118,16 +1118,65 @@ static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
   if (sprites_seen_through()) picture_without_sprites[py * RG_SCREEN_WIDTH + px] = *into;
 }
 
-/* The map's pixel at (mx, my), neither below nought, put on the picture at (px, py). Where the
- * map has no cell or no tile, or the tile is see-through, what is behind stays. */
-static void paint_map_pixel(int32_t background, int64_t mx, int64_t my, int64_t px, int64_t py) {
+/* ONE ROW OF THE SCREEN FROM ONE ROW OF A BACKGROUND'S MAP: the screen's pixel px shows map column
+ * off_x + px, taken round at +wrap_w+ where the map wraps, or not at all (0) where it does not.
+ * +my+ is not below nought. Where the map has no cell or no tile, or the tile is see-through,
+ * what is behind stays.
+ *
+ * A tile is the same for every pixel of its row, so the cell is looked up once for each tile the
+ * row crosses, not once for each pixel, and the pixels are read from the tile's row in turn. Where
+ * the map wraps it wraps at a whole number of tiles, so a tile is never cut by the wrap. A painted
+ * tile (one whose pixels the game paints while it runs) is read the slow way, since where its
+ * pixels are depends on the cell.
+ *
+ * With no fade painted in and no see-through layer being mixed, lay_scenery comes to storing the
+ * colour, marking the cell as no mix, and keeping it in the picture without sprites where that is
+ * kept; so that is done here, and anything else goes through lay_scenery. */
+static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t wrap_w, int64_t py) {
   int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
-  int32_t cell = map_cell(background, my / tile_h, mx / tile_w);
-  if (cell < 0) return;
-  uint16_t color = tile_pixel(background, cell, mx % tile_w, my % tile_h);
-  if (color == RG_SEE_THROUGH) return;
-  if (onto_sheet) sheet[py * RG_SCREEN_WIDTH + px] = color;
-  else lay_scenery(px, py, color);
+  const int32_t *map = map_now(background);
+  int32_t cols = map[RG_MAP_COLS];
+  int64_t row = my / tile_h;
+  if (row >= map[RG_MAP_ROWS]) return;
+  const int16_t *own = cells_now[keeper_of(background)].cells;
+  const int16_t *row_cells = (own ? own : rg_game_map_cells + map[RG_MAP_CELLS]) + row * cols;
+  int64_t ty = my % tile_h;
+  int32_t painted = background_field(background, RG_BG_PAINTED);
+  int64_t set_start = background_field(background, RG_BG_TILES_START) +
+                      (int64_t)tile_set_now(background) * background_field(background, RG_BG_TILES) * tile_w * tile_h +
+                      ty * tile_w;
+  int32_t plain = !fading_what_is_painted && !mixing;
+  int32_t keeps_picture_without_sprites = sprites_seen_through();
+  for (int64_t px = 0; px < RG_SCREEN_WIDTH;) {
+    int64_t mx = off_x + px;
+    if (wrap_w) mx %= wrap_w;
+    if (mx < 0) { /* only where the map does not wrap: nothing until the map's left edge */
+      px -= mx;
+      continue;
+    }
+    int64_t col = mx / tile_w, tx = mx - col * tile_w, run = tile_w - tx;
+    if (run > RG_SCREEN_WIDTH - px) run = RG_SCREEN_WIDTH - px;
+    int32_t cell = col < cols ? row_cells[col] : RG_CELL_EMPTY;
+    if (cell >= 0) {
+      int32_t slow = painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
+      int64_t from = set_start + (int64_t)cell * tile_w * tile_h + tx;
+      for (int64_t i = 0; i < run; i++) {
+        uint16_t color = slow ? tile_pixel(background, cell, tx + i, ty) : rg_game_tile_pixels[from + i];
+        if (color == RG_SEE_THROUGH) continue;
+        int64_t at = py * RG_SCREEN_WIDTH + px + i;
+        if (onto_sheet) {
+          sheet[at] = color;
+        } else if (plain) {
+          pixels[at] = color;
+          picture_mixes.is_mixed[at] = 0;
+          if (keeps_picture_without_sprites) picture_without_sprites[at] = color;
+        } else {
+          lay_scenery(px + i, py, color);
+        }
+      }
+    }
+    px += run;
+  }
 }
 
 /* The row of the picture that screen row +py+ is drawn from: its own, or the row at the top of
@@ -1196,10 +1245,7 @@ static void paint_window_without_wrapping(int32_t background) {
     int64_t my = (int64_t)scroll.y + row_drawn_from(py);
     if (my < 0 || my >= map_h) continue;
     int64_t off_x = (int64_t)scroll.x + bend_at(background, py);
-    for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) {
-      int64_t mx = off_x + px;
-      if (mx >= 0) paint_map_pixel(background, mx, my, px, py);
-    }
+    paint_map_row(background, my, off_x, 0, py);
   }
 }
 
@@ -1218,8 +1264,7 @@ static void paint_window(int32_t background) {
   int64_t off_y = floor_mod(scroll.y, map_h);
   for (int64_t py = 0, rows = scenery_rows(); py < rows; py++) {
     int64_t off_x = floor_mod((int64_t)scroll.x + bend_at(background, py), map_w);
-    for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++)
-      paint_map_pixel(background, (off_x + px) % map_w, (off_y + row_drawn_from(py)) % map_h, px, py);
+    paint_map_row(background, (off_y + row_drawn_from(py)) % map_h, off_x, map_w, py);
   }
 }
 
@@ -1306,8 +1351,7 @@ static void paint_scenery_in_blocks(int32_t background) {
  * corner, never scrolled; past the end of its map the backdrop stays. */
 static void paint_status_bar(int32_t bar) {
   int64_t top = bar_top_shown(bar);
-  for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++)
-    for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) paint_map_pixel(bar, px, py - top, px, py);
+  for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++) paint_map_row(bar, py - top, 0, 0, py);
 }
 
 /* Reference#paint_scenery */
@@ -2023,18 +2067,52 @@ static int32_t shade_off;
 void rg_shade_switch(int32_t on) { shade_off = on == 0; }
 
 /* Framebuffer#lit?: is (x, y) inside its row's span? */
+static int32_t every_pixel_lit(void) { return shade_steps == 0 || shade_off; }
+
 static int32_t lit(int32_t x, int32_t y) {
-  if (shade_steps == 0 || shade_off) return 1;
+  if (every_pixel_lit()) return 1;
   int32_t left = shade_spans[y][0], right = shade_spans[y][1];
   return left <= right ? (x >= left && x < right) : (x >= left || x < right);
+}
+
+/* rg_screen_shown with nothing over the picture: each row is the stored row the window sits over,
+ * moved as one piece, and off the edge of the picture the backdrop shows, which is nought here
+ * (faded_where with nothing in force). With the picture read in blocks of one the column a pixel
+ * shows is its own (block_corner_across). Where the window is moved sideways only the part of the
+ * row that stays on the picture is copied, and the rest is cleared. */
+static void shown_plain(void) {
+  int64_t first = camera_x < 0 ? -(int64_t)camera_x : 0; /* the first screen column on the picture */
+  int64_t past = camera_x > 0 ? RG_SCREEN_WIDTH - (int64_t)camera_x : RG_SCREEN_WIDTH; /* the one after the last */
+  if (first > RG_SCREEN_WIDTH) first = RG_SCREEN_WIDTH;
+  if (past < first) past = first;
+  for (int32_t y = 0; y < RG_SCREEN_HEIGHT; y++) {
+    uint16_t *row = &shown[y * RG_SCREEN_WIDTH];
+    int64_t from_y = (int64_t)y + camera_y;
+    if (from_y < 0 || from_y >= RG_SCREEN_HEIGHT) {
+      memset(row, 0, RG_SCREEN_WIDTH * sizeof row[0]);
+      continue;
+    }
+    const uint16_t *stored = &viewed[from_y * RG_SCREEN_WIDTH];
+    memset(row, 0, (size_t)first * sizeof row[0]);
+    if (past > first) memcpy(row + first, stored + first + camera_x, (size_t)(past - first) * sizeof row[0]);
+    memset(row + past, 0, (size_t)(RG_SCREEN_WIDTH - past) * sizeof row[0]);
+  }
 }
 
 /* Framebuffer#shown and #pixel: the page a viewer is looking at, read through the window — off
  * the edge of the picture the backdrop shows — with the fade or tint in force mixed in, in blocks
  * when a painted screen is shown in them, and darkened outside a light's span. A switched-off
- * display shows plain white. */
+ * display shows plain white.
+ *
+ * With the display on and no tint, no fade, no blocks and no light darkening any of it, none of
+ * that touches a colour, and every row is copied (shown_plain), which is most frames of most
+ * games. Anything else is worked out a pixel at a time. */
 const uint16_t *rg_screen_shown(void) {
   rg_screen_paint_owed_rebuild();
+  if (!held && tint_mode == TINT_NONE && fade_steps == 0 && read_block == 1 && every_pixel_lit()) {
+    shown_plain();
+    return shown;
+  }
   for (int32_t y = 0; y < RG_SCREEN_HEIGHT; y++)
     for (int32_t x = 0; x < RG_SCREEN_WIDTH; x++) {
       int64_t from_x = block_corner_across(x) + camera_x, from_y = (int64_t)(y - y % read_block) + camera_y;
