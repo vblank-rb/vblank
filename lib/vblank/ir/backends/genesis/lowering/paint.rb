@@ -41,7 +41,7 @@ module VBlank
 
             def prepare_paint
               @painted = Paint.painted?(@program)
-              @painted_art = PaintedArt.new
+              @painted_art = PaintedArt.new(exact: self.class.fading?(@program))
               @picture_lists = [] # each a list of PaintedArt pictures' numbers
               @patches = {} # a backing buffer's name -> [its place, its width, its height]
             end

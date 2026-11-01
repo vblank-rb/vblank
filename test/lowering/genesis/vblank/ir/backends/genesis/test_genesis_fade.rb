@@ -98,6 +98,31 @@ class TestGenesisFade < Minitest::Test
     Genesis::CheckedRun.new.run(program, frames: 30)
   end
 
+  # Forty-eight colours in use, in twelve tiles of four: more than the blank has time to work out, so they are
+  # worked out as the pass ends (Runtime::Tint), and the four of a tile are a step apart, which the console
+  # shows as one colour and a fade moves apart.
+  def test_forty_eight_colours_fading_and_lifting_agree_on_every_pass
+    pixels = Array.new(12) do |n|
+      Array.new(64) { |at| VBlank::Graphics::Color.rgb(8 * (n % 4) + (at % 4), 8 * (n / 4) + 2, 5 + (n * 2)) }
+    end
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      pixels.each_with_index { |data, n| image :"art#{n}", width: 8, height: 8, data: data }
+      tiles :set, **(0...12).to_h { |n| [(97 + n).chr, :"art#{n}"] }
+      background :field, tiles: :set, map: Array.new(20) { ("a".."l").to_a.cycle.first(30).join }
+      frame = var :frame, 0
+      game_loop do
+        frame += 1
+        fade :black, 50 if frame == 2
+        fade :white, 20 if frame == 4
+        fade :black, 0 if frame == 6
+      end
+    end
+    builder.finalize_program
+    Genesis::CheckedRun.new.run(builder.program.copy.tap { |program| program.console = :genesis }, frames: 9)
+  end
+
   def test_a_fade_placed_in_a_layer_is_refused_in_words
     error = assert_raises(Genesis::LoweringError) do
       Genesis.new.build(program_of do

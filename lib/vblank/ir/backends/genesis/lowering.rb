@@ -174,6 +174,10 @@ module VBlank
           # (#sections makes the table).
           def register_count = VIDEO_REGISTERS.length
 
+          # Whether the game fades or tints, which is when two colours of its own that the console shows alike
+          # are kept apart (Art#initialize's +exact+).
+          def self.fading?(program) = program.walk.any? { |node| %i[fade tint].include?(node.kind) }
+
           # Whether the game changes its colours as it runs: it fades, tints, or has a list of sprite colours
           # told to hold others, which is when its cartridge carries Runtime::Tint.
           def self.changing_colors?(program)

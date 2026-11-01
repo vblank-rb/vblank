@@ -29,7 +29,10 @@ module VBlank
 
           attr_reader :pictures
 
-          def initialize
+          # +exact+ keeps two colours that the console shows as one in two places, for a game that fades or tints
+          # (Art#initialize).
+          def initialize(exact: false)
+            @exact = exact
             @colors = [BLACK]
             @originals = { BLACK => 0 }
             @pictures = []
@@ -38,7 +41,7 @@ module VBlank
 
           # The place of +color+ (15-bit) in the colour list, added there the first time.
           def place_of(color)
-            word = Console::GenesisHardware.color_word(color)
+            word = @exact ? color & 0x7FFF : Console::GenesisHardware.color_word(color)
             @originals[word] ||= color & 0x7FFF
             at = @colors.index(word)
             return at if at
@@ -63,7 +66,9 @@ module VBlank
           end
 
           # The colour list as the console's colour memory takes it: sixteen words, in its layout.
-          def colors_as_words = @colors.dup.fill(BLACK, @colors.length...COLORS)
+          def colors_as_words
+            @colors.map { |held| @exact ? Console::GenesisHardware.color_word(held) : held }.fill(BLACK, @colors.length...COLORS)
+          end
 
           # The colour list as the game's own colours, 15-bit, for the runtime to fade and tint (Runtime::Tint).
           def colors_as_15bit = @colors.map { |word| @originals.fetch(word) }.fill(BLACK, @colors.length...COLORS)

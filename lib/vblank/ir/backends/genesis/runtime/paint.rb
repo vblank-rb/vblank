@@ -128,7 +128,8 @@ module VBlank
               asm.label("rt_picture_prepare")
               asm.rts
               asm.label("rt_tint_prepare")
-              asm.rts
+              asm.jmp(asm.abs_l("rt_colors_prepared")) if colors
+              asm.rts unless colors
             end
 
             # Where plane A's map is in video RAM, and how many cells across it is (64, whatever shows).

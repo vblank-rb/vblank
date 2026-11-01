@@ -35,7 +35,7 @@ module VBlank
             PLANES = 2
 
             def prepare_picture
-              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop)
+              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, exact: self.class.fading?(@program))
               @objects = by_kind(:object)
               @backgrounds = @program.walk.select { |node| node.kind == :background }
               @sprite_names = SpriteNames.new(@program)

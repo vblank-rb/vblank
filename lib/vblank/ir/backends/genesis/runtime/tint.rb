@@ -24,14 +24,18 @@ module VBlank
           #   toward white   c + ((31 - c) × steps ÷ 256)
           #   toward a tint  (c × (256 - steps) + tint × steps) ÷ 256
           #
-          # Nothing is written to the colour memory at once. A change says it is owed (DIRTY), and the blank
-          # that follows writes every place the game uses (USED says how many of each palette, and the
-          # backdrop is always one), so the colours change on the frame the game said, with the sprite
-          # table and the scroll. A colour that is not changed is not worked out again.
+          # Nothing is written to the colour memory at once. A change says it is owed (DIRTY), and as the pass
+          # ends (rt_colors_prepared, before the wait) every place the game uses is worked out into a copy of the
+          # colour memory in work RAM (CRAM; USED says how many places of each palette, and the backdrop is
+          # always one) — worked out then because a sum for each of the sixty colours takes longer than the
+          # blank does, and a colour written after it is on the screen for a frame. The blank only copies
+          # the whole of it (rt_colors_written), so the colours change on the frame the game said, with the
+          # sprite table and the scroll. A colour that is not changed is not worked out again.
           #
           #   rt_tint_to(mode, steps, color)         D0 = 1 black, 2 white, 3 the colour in D2; D1 the 256ths
           #   rt_colors_hold(table, which, palette)  a list's other colours, see Runtime::Tiles's tables
-          #   rt_colors_written                      the blank's work: the colour memory made to say it
+          #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to say it
+          #   rt_colors_written                      the blank's work: the copy written to the colour memory
           module Tint
             MODE = "rt tint" # the fade or tint in force: its mode, its steps, 256 less its steps, and the
             STEPS = 2 #           tint colour's three channels, a word each
@@ -41,6 +45,8 @@ module VBlank
             COLORS = "rt colors" # the game's colours, a word for each of the 64 places of the colour memory
             USED = "rt colors used" # how many places of each palette the game uses, a word each
             DIRTY = "rt colors dirty"
+            CRAM = "rt cram" # the colour memory as it is to be, a word for each of its 64 places
+            OWED = "rt cram owed" # 1 while CRAM is not yet in the colour memory
             SETS = "rt colors sets" # for each palette, the set of a list it holds now (a long), or nought
 
             NONE = 0
@@ -55,6 +61,8 @@ module VBlank
               memory.reserve(COLORS, Art::PALETTES * Art::PLACES * 2)
               memory.reserve(USED, Art::PALETTES * 2)
               memory.reserve(DIRTY, 2)
+              memory.reserve(CRAM, Art::PALETTES * Art::PLACES * 2)
+              memory.reserve(OWED, 2)
               memory.reserve(SETS, Art::PALETTES * 4)
             end
 
@@ -64,6 +72,7 @@ module VBlank
               emit_tint_to(asm, at)
               emit_tinted(asm, at)
               emit_hold(asm, memory, at)
+              emit_prepared(asm, memory, at)
               emit_written(asm, memory, at)
             end
 
@@ -83,6 +92,7 @@ module VBlank
               asm.label("rt_colors_start_used")
               asm.move(:w, asm.post(0), asm.post(1))
               asm.dbra(asm.d(0), "rt_colors_start_used")
+              asm.move(:w, asm.imm(1), asm.disp(5, memory.displacement(DIRTY)))
               asm.rts
             end
 
@@ -186,38 +196,61 @@ module VBlank
               asm.rts
             end
 
-            # rt_colors_written, in the blank: if the colours are owed, the backdrop and then each palette's used
-            # places are worked out and written. Each palette is its own run of the colour memory, so its
-            # address is set once and the words follow.
-            def emit_written(asm, memory, at)
-              h = Console::GenesisHardware
-              asm.label("rt_colors_written")
+            # rt_colors_prepared, as a pass ends: if the colours are owed, the backdrop and then each palette's
+            # used places are worked out into CRAM, every other place nothing, and CRAM is owed to the colour
+            # memory.
+            def emit_prepared(asm, memory, at)
+              asm.label("rt_colors_prepared")
               asm.tst(:w, at.call(DIRTY))
-              asm.branch(:ne, "rt_colors_written_owed")
+              asm.branch(:ne, "rt_colors_prepared_owed")
               asm.rts
-              asm.label("rt_colors_written_owed")
+              asm.label("rt_colors_prepared_owed")
               asm.clr(:w, at.call(DIRTY))
+              asm.move(:w, asm.imm(1), at.call(OWED))
+              asm.lea(asm.abs_l(memory[CRAM]), asm.a(3))
+              asm.moveq((Art::PALETTES * Art::PLACES / 2) - 1, asm.d(7))
+              asm.label("rt_colors_prepared_clear")
+              asm.clr(:l, asm.post(3))
+              asm.dbra(asm.d(7), "rt_colors_prepared_clear")
               asm.lea(asm.abs_l(memory[COLORS]), asm.a(1))
               asm.lea(asm.abs_l(memory[USED]), asm.a(2))
-              asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, 0)), asm.abs_l(h::VDP_CONTROL))
               asm.move(:w, asm.ind(1), asm.d(0))
               asm.jsr(asm.abs_l("rt_tinted"))
-              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+              asm.move(:w, asm.d(0), asm.abs_l(memory[CRAM]))
               Art::PALETTES.times do |palette|
-                skip = "rt_colors_written_palette_#{palette}"
+                skip = "rt_colors_prepared_palette_#{palette}"
+                first = ((palette * Art::PLACES) + 1) * 2
                 asm.moveq(0, asm.d(7))
                 asm.move(:w, asm.post(2), asm.d(7))
                 asm.branch(:eq, skip)
-                asm.lea(asm.abs_l(memory[COLORS], ((palette * Art::PLACES) + 1) * 2), asm.a(1))
-                asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, ((palette * Art::PLACES) + 1) * 2)), asm.abs_l(h::VDP_CONTROL))
+                asm.lea(asm.abs_l(memory[COLORS], first), asm.a(1))
+                asm.lea(asm.abs_l(memory[CRAM], first), asm.a(3))
                 asm.subq(:w, 1, asm.d(7))
                 asm.label("#{skip}_place")
                 asm.move(:w, asm.post(1), asm.d(0))
                 asm.jsr(asm.abs_l("rt_tinted"))
-                asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+                asm.move(:w, asm.d(0), asm.post(3))
                 asm.dbra(asm.d(7), "#{skip}_place")
                 asm.label(skip)
               end
+              asm.rts
+            end
+
+            # rt_colors_written, in the blank: CRAM, if it is owed, written whole to the colour memory.
+            def emit_written(asm, memory, at)
+              h = Console::GenesisHardware
+              asm.label("rt_colors_written")
+              asm.tst(:w, at.call(OWED))
+              asm.branch(:ne, "rt_colors_written_owed")
+              asm.rts
+              asm.label("rt_colors_written_owed")
+              asm.clr(:w, at.call(OWED))
+              asm.lea(asm.abs_l(memory[CRAM]), asm.a(1))
+              asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, 0)), asm.abs_l(h::VDP_CONTROL))
+              asm.moveq((Art::PALETTES * Art::PLACES / 2) - 1, asm.d(7))
+              asm.label("rt_colors_written_word")
+              asm.move(:l, asm.post(1), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(7), "rt_colors_written_word")
               asm.rts
             end
           end

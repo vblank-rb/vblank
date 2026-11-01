@@ -62,7 +62,11 @@ module VBlank
 
           # +backdrop+ is the colour the game shows wherever nothing is drawn (`screen ... backdrop:`),
           # a 15-bit colour, or nil for black.
-          def initialize(backdrop: nil)
+          # +exact+ keeps two colours of the game's that the console shows as one in two places, for a game that
+          # fades or tints: a fade moves the colours the game named, and two that are one to the console can be
+          # two, a step apart, when they have moved.
+          def initialize(backdrop: nil, exact: false)
+            @exact = exact
             @backdrop_color = (backdrop || BACKDROP) & 0x7FFF
             @backdrop = Console::GenesisHardware.color_word(@backdrop_color)
             @tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
@@ -70,7 +74,7 @@ module VBlank
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
             @held = {} # whose list => the palette it keeps to itself (#held_sprite_palette)
             @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
-            @originals = {} # a colour word => the 15-bit colour of the game's it was first made from
+            @originals = {} # what a place holds (a colour word, or the colour itself when exact) => the 15-bit colour it was first made from
             @sprite_pictures = {}
             @grids = []
           end
@@ -187,7 +191,7 @@ module VBlank
           def cgram
             colors = Array.new(PALETTES * PLACES, 0)
             colors[0] = @backdrop
-            @palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = c } }
+            @palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = colour_word(c) } }
             colors
           end
 
@@ -221,12 +225,16 @@ module VBlank
           # see-through, however it is written in a list, as Assets::Recolor reads it.
           def first_place(image, color) = (1...image.colors.length).find { |place| (image.colors[place] & 0x7FFF) == color }
 
-          # The word of the console's a colour of the game's is, kept with the colour it came from.
+          # What a palette's place holds for a colour of the game's: its word of the console's, or the colour
+          # itself when two that make one word are told apart. Kept with the colour it came from.
           def word_of(color)
-            word = Console::GenesisHardware.color_word(color)
-            @originals[word] ||= color & 0x7FFF
-            word
+            held = @exact ? color & 0x7FFF : Console::GenesisHardware.color_word(color)
+            @originals[held] ||= color & 0x7FFF
+            held
           end
+
+          # The word of the colour memory a place's contents are.
+          def colour_word(held) = @exact ? Console::GenesisHardware.color_word(held) : held
 
           def tile_number(bytes)
             @tile_numbers[bytes] ||= begin

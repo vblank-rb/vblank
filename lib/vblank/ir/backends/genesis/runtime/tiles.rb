@@ -114,7 +114,8 @@ module VBlank
               asm.label("rt_picture_prepare")
               asm.rts
               asm.label("rt_tint_prepare")
-              asm.rts
+              asm.jmp(asm.abs_l("rt_colors_prepared")) if colors
+              asm.rts unless colors
 
               # rt_vram_write_at: the chip pointed at the video RAM address in D0, to be written. D1 is used.
               asm.label("rt_vram_write_at")
@@ -326,13 +327,14 @@ module VBlank
 
             # rt_upload (and rt_upload_whole, which is the same, the screen being off): the maps noted
             # are copied onto their planes, the cells changed after them written, then the sprite table
-            # and the scroll.
+            # and the scroll. The colours are first, being the shortest, since a map's copy can run past the end of the
+            # blank and what is written after it is on the screen a frame late.
             def emit_upload(asm, memory, at, columns, colors: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
+              asm.jsr(asm.abs_l("rt_colors_written")) if colors
               [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
               emit_cells_written(asm, memory, at)
-              asm.jsr(asm.abs_l("rt_colors_written")) if colors
               emit_sprite_table_written(asm, memory, at)
               emit_scroll_written(asm, memory)
               asm.rts
