@@ -93,7 +93,7 @@ module VBlank
               asm.load([:hli], :a)
               asm.load(:b, :a)
               asm.load(:a, :h)
-              asm.cp_a(h::WRAMX >> 8 | 0x10) # 0xE0: past bank 1
+              asm.cp_a((h::WRAMX >> 8) + 0x10) # 0xE0: past bank 1
               asm.load(:a, :b)
               asm.jump_relative(:nz, "rt_boot_clear_work")
               asm.load(:hl, Memory::QUICK_FIRST)
