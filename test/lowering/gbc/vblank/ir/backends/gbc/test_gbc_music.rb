@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "stringio"
 
 # A COLOR GAME'S SONGS IN THE CARTRIDGE'S BANKS (GBC::Music). The part of a Color cartridge that is
 # always in view holds 16384 bytes, the framework's own code among them, and every song is kept
@@ -110,17 +111,21 @@ class TestGBCMusic < Minitest::Test
 
   # +count+ short effects, each two notes of its own and all different, kept in a list the game
   # plays from by number. The first four are one group, so a later one cuts an earlier one off.
-  private def many_effects_game(count, song: false, &loop_body)
+  private def many_effects(count)
     score = VBlank::Audio::Score
+    (0...count).to_h do |n|
+      notes = [score::Note.new(at: 0, key: PITCHES[n % PITCHES.length], length: 3 + (n % 5)),
+               score::Note.new(at: 8, key: PITCHES[(n * 5) % PITCHES.length], length: 3)]
+      [:"zap#{n}", score.new(tempo: 120, group: (:first_four if n < 4), parts: [score::Part.new(notes: notes)])]
+    end
+  end
+
+  private def many_effects_game(count, song: false, &loop_body)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     pitches = PITCHES
+    effects = many_effects(count)
     b.instance_eval do
       enable_sound
-      effects = (0...count).to_h do |n|
-        notes = [score::Note.new(at: 0, key: pitches[n % pitches.length], length: 3 + (n % 5)),
-                 score::Note.new(at: 8, key: pitches[(n * 5) % pitches.length], length: 3)]
-        [:"zap#{n}", score.new(tempo: 120, parts: [score::Part.new(notes: notes)])]
-      end
       sfx = sound_effects :sfx, effects
       if song
         song(:tune) { tempo(240) && voice(:lead) { |v| 16.times { |n| v.note pitches[n % 12], :sixteenth } } }
@@ -162,5 +167,91 @@ class TestGBCMusic < Minitest::Test
 
     assert_operator code.fetch("sfx_notes_0_0").bank, :>, 0
     refute code.key?("rt_sfx_frame_0"), "one player for every effect, not a player each"
+  end
+
+  # EFFECTS ASKED FOR IN ANY ORDER still play highest rank first, since whoever writes a voice first
+  # on a frame keeps it.
+  def test_sound_effects_asked_for_out_of_rank_order_play_highest_rank_first
+    program = many_effects_game(60) do |sfx, tick|
+      if tick == 2
+        sfx.play :zap30
+        sfx.play :zap59
+        sfx.play :zap41
+        sfx.play :zap5
+      end
+    end
+
+    assert_operator voice_entries(program, 30), :>=, 4
+  end
+
+  # An effect asked for twice before it starts plays once.
+  def test_a_sound_effect_asked_for_twice_on_a_pass_plays_once
+    program = many_effects_game(60) do |sfx, tick|
+      if tick == 2
+        sfx.play :zap9
+        sfx.play :zap9
+      end
+    end
+
+    assert_operator voice_entries(program, 30), :>=, 2
+  end
+
+  # Cut off by the next of its group where that is asked for, an effect is over at once, and it can
+  # be asked for again on the same pass and play from its start, once.
+  def test_a_sound_effect_cut_off_on_a_pass_can_be_asked_for_again_on_that_pass
+    program = many_effects_game(60) do |sfx, tick|
+      sfx.play :zap0 if tick == 2
+      if tick == 6
+        sfx.play :zap1, this_frame: true
+        sfx.play :zap0, this_frame: true
+      end
+    end
+
+    assert_operator voice_entries(program, 30), :>=, 4
+  end
+
+  # An effect played to its end is asleep again, and can start again.
+  def test_a_sound_effect_played_to_its_end_plays_again
+    program = many_effects_game(60) do |sfx, tick|
+      sfx.play :zap9 if tick == 2
+      sfx.play :zap9 if tick == 60
+    end
+
+    assert_operator voice_entries(program, 80), :>=, 4
+  end
+
+  # What the player's routines took of each frame, with +count+ effects in the banks.
+  private def share_of_frame_in_effect_player(count, &loop_body)
+    effects = many_effects(count)
+    game = VBlank.game("EFFECTS #{count}", consoles: %i[gbc]) do
+      enable_sound
+      sfx = sound_effects :sfx, effects
+      tick = var :tick, 0
+      game_loop do
+        tick.increase! 1
+        instance_exec(sfx, tick, &loop_body)
+      end
+    end
+    result = game.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
+                 .profile(out: StringIO.new, frames: 30)
+    result.runtime.select { |spent| spent.routine.start_with?("rt_sfx") }.sum(&:share)
+  end
+
+  # Quiet effects cost a frame almost nothing, however many a game has.
+  def test_quiet_sound_effects_cost_a_frame_almost_nothing
+    share = share_of_frame_in_effect_player(120) { |sfx, tick| sfx.play :zap9 if tick == 100_000 }
+
+    assert_operator share, :<, 0.002
+  end
+
+  # One effect sounding costs the same in a game of twice as many: the player visits only what is
+  # awake.
+  def test_one_sound_effect_sounding_costs_the_same_with_more_effects_asleep
+    sounding = proc { |sfx, tick| sfx.play :zap9 if (tick & 7) == 1 }
+    few = share_of_frame_in_effect_player(60, &sounding)
+    many = share_of_frame_in_effect_player(120, &sounding)
+
+    assert_operator few, :>, 0
+    assert_operator many, :<, few * 1.25
   end
 end

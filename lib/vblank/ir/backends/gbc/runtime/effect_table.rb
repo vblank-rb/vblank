@@ -22,11 +22,20 @@ module VBlank
           #
           # What each effect keeps while it plays is Effects' STATE_BYTES and two for each part, in
           # STATE_STRIDE bytes of STATES, so where is a shift of its number.
+          #
+          # WHAT IS AWAKE. A frame has only so many cycles and most effects are quiet on most of
+          # them, so a frame does not look at every effect to find that out. AWAKE lists the effects
+          # asked for or sounding, highest rank first: how many, then for each its rank and its
+          # number. An effect joins as it is asked for (rt_sfx_wake) and leaves when it has nothing
+          # more to do (rt_sfx_sweep), so a frame's work follows what is sounding and not how many
+          # effects the game has, and with nothing sounding a frame reads one byte.
           module EffectTable
             STATES = "rt sfx states"
             STATE_STRIDE = 16
             STATE_SHIFT = 4
             NOW = "rt sfx now"
+            AWAKE = "rt sfx awake"
+            AWAKE_ENTRY_BYTES = 2
 
             # What NOW holds: the effect being played and what is read of it often.
             NUMBER = 0
@@ -63,20 +72,23 @@ module VBlank
               memory.reserve(Effects::TUNE_RANK, 1)
               memory.reserve(STATES, STATE_STRIDE * effects.length)
               memory.reserve(NOW, NOW_BYTES)
+              memory.reserve(AWAKE, 1 + (AWAKE_ENTRY_BYTES * effects.length))
             end
 
-            def emit(asm, memory, effects, by_rank, slides: false, pans: false, fades: false, bytes: GBC::Music::NOTE_BYTES)
+            # +_by_rank+ is what Runtime::Effects takes in the same place: here AWAKE keeps the order.
+            def emit(asm, memory, effects, _by_rank, slides: false, pans: false, fades: false, bytes: GBC::Music::NOTE_BYTES)
               keeps = effects.any?(&:keeps_voices)
               Effects.emit_claim(asm, memory, fades)
               Effects.emit_claim_keeping(asm, memory) if keeps
               Effects.emit_tune_rank(asm, memory)
               Effects.emit_note(asm, memory, slides, pans)
               emit_places(asm, memory)
-              emit_sides(asm, memory, by_rank)
+              emit_sides(asm, memory)
+              emit_sweep(asm, memory)
               emit_frame(asm, memory)
               emit_part(asm, memory, keeps, bytes)
               emit_finish(asm, memory, effects)
-              emit_ask(asm, memory, effects, by_rank)
+              emit_ask(asm, memory, effects)
             end
 
             # The routines that say where things are, which everything below leans on.
@@ -100,6 +112,18 @@ module VBlank
               STATE_SHIFT.times { asm.add_hl(:hl) }
               asm.load(:de, memory[STATES])
               asm.add_hl(:de)
+              asm.ret
+
+              # rt_sfx_asleep(A = an effect): Z when it is not asked for, stopping or running, and
+              # HL left at its ASKED. Keeps BC.
+              asm.label("rt_sfx_asleep")
+              asm.call("rt_sfx_state")
+              asm.load(:a, [:hli]) # ASKED
+              asm.or_a([:hl]) # STOPPING
+              asm.inc(:hl)
+              asm.or_a([:hl]) # RUNNING
+              asm.dec(:hl)
+              asm.dec(:hl) # which touches no flag
               asm.ret
 
               asm.label("rt_sfx_state_now") # HL at what the effect being played keeps
@@ -164,18 +188,22 @@ module VBlank
               asm.ret
             end
 
-            # rt_sfx_above and rt_sfx_below, as Runtime::Effects says them, a walk over the effects
-            # highest rank first (music_sfx_by_rank, two bytes each: the effect and its rank).
-            def emit_sides(asm, memory, by_rank)
+            # rt_sfx_above and rt_sfx_below, as Runtime::Effects says them, a walk over AWAKE. The
+            # walk leaves the list as it is, and rt_sfx_below goes on into rt_sfx_sweep, which clears
+            # it of whatever the two walks finished.
+            def emit_sides(asm, memory)
               { "above" => :nc, "below" => :c }.each do |side, skip|
                 asm.label("rt_sfx_#{side}")
-                asm.load(:hl, "music_sfx_by_rank")
-                asm.load(:b, by_rank.length)
+                asm.load(:hl, memory[AWAKE])
+                asm.load(:a, [:hli])
+                asm.and_a(:a)
+                asm.ret(:z)
+                asm.load(:b, :a)
                 asm.label("rt_sfx_#{side}_each")
                 asm.load(:a, [:hli])
-                asm.load(:e, :a)
-                asm.load(:a, [:hli])
                 asm.load(:c, :a)
+                asm.load(:a, [:hli])
+                asm.load(:e, :a)
                 asm.load(:a, [memory[Effects::TUNE_RANK]])
                 asm.cp_a(:c)
                 asm.jump_relative(skip, "rt_sfx_#{side}_past")
@@ -188,27 +216,51 @@ module VBlank
                 asm.label("rt_sfx_#{side}_past")
                 asm.dec(:b)
                 asm.jump_relative(:nz, "rt_sfx_#{side}_each")
-                asm.ret
+                asm.ret if side == "above"
               end
             end
 
-            # rt_sfx_frame(A = an effect): one frame of it, Runtime::Effects#emit_frame's, and its
-            # bank put in view only for one with something to do. Most effects are asleep on most
-            # frames. A run of the cartridge reads the effect starting at rt_sfx_started, in A.
+            # rt_sfx_sweep: AWAKE closed up over every effect with nothing left to do, which keeps
+            # the rest in their order. It is only reached with something in the list.
+            def emit_sweep(asm, memory)
+              asm.label("rt_sfx_sweep")
+              asm.load(:hl, memory[AWAKE])
+              asm.load(:a, [:hli])
+              asm.load(:b, :a)
+              asm.load(:c, 0) # how many stay
+              asm.load(:d, :h) # DE = where the next to stay goes
+              asm.load(:e, :l)
+              asm.label("rt_sfx_sweep_each")
+              asm.push(:de)
+              asm.push(:hl)
+              asm.inc(:hl)
+              asm.load(:a, [:hl])
+              asm.call("rt_sfx_asleep")
+              asm.pop(:hl)
+              asm.pop(:de)
+              asm.jump_relative(:z, "rt_sfx_sweep_gone")
+              asm.inc(:c)
+              AWAKE_ENTRY_BYTES.times do
+                asm.load(:a, [:hli])
+                asm.load([:de], :a)
+                asm.inc(:de)
+              end
+              asm.jump_relative("rt_sfx_sweep_past")
+              asm.label("rt_sfx_sweep_gone")
+              AWAKE_ENTRY_BYTES.times { asm.inc(:hl) }
+              asm.label("rt_sfx_sweep_past")
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_sfx_sweep_each")
+              asm.load(:a, :c)
+              asm.load([memory[AWAKE]], :a)
+              asm.ret
+            end
+
+            # rt_sfx_frame(A = an effect in AWAKE): one frame of it, Runtime::Effects#emit_frame's.
+            # A run of the cartridge reads the effect starting at rt_sfx_started, in A.
             def emit_frame(asm, memory)
               now = memory[NOW]
               asm.label("rt_sfx_frame")
-              asm.push(:af)
-              asm.call("rt_sfx_state")
-              asm.load(:a, [:hli]) # ASKED
-              asm.or_a([:hl]) # STOPPING
-              asm.inc(:hl)
-              asm.or_a([:hl]) # RUNNING
-              asm.jump_relative(:nz, "rt_sfx_frame_awake")
-              asm.pop(:af)
-              asm.ret
-              asm.label("rt_sfx_frame_awake")
-              asm.pop(:af)
               asm.call("rt_sfx_load")
               asm.call("rt_sfx_frame_in_view")
               asm.jump("rt_sfx_bank_back")
@@ -445,7 +497,7 @@ module VBlank
             # rt_sfx_ask(A = an effect) and rt_sfx_now, Runtime::Effects#emit_ask's, in the
             # frame's interrupt held off. rt_sfx_decide sees to the effect's group and, unless it
             # is not to be played, answers with no carry and the effect marked asked for.
-            def emit_ask(asm, memory, effects, by_rank)
+            def emit_ask(asm, memory, effects)
               now = memory[NOW]
               asm.label("rt_sfx_ask")
               asm.di
@@ -462,7 +514,8 @@ module VBlank
               asm.reti
 
               emit_decide(asm, now, effects)
-              emit_start_here(asm, now, by_rank)
+              emit_wake(asm, memory)
+              emit_start_here(asm, memory)
             end
 
             def emit_decide(asm, now, effects)
@@ -523,22 +576,68 @@ module VBlank
               asm.load([:hl], :a) # STOPPING
               asm.label("rt_sfx_decide_asked")
               asm.load(:a, [now + ASKED_FOR])
-              asm.call("rt_sfx_state")
+              asm.call("rt_sfx_asleep")
+              asm.load(:c, :a)
               asm.load(:a, 1)
               asm.load([:hl], :a) # ASKED
+              asm.load(:a, :c)
               asm.and_a(:a) # no carry
-              asm.ret
+              asm.ret(:nz) # it was awake, so it is in AWAKE
+              # ...and on into rt_sfx_wake, which keeps carry clear.
             end
 
-            # Runtime::Effects#emit_start_here: every effect in rank order, the one asked for taking
-            # its first frame and every other waiting to be stopped stopped.
-            def emit_start_here(asm, now, by_rank)
-              asm.label("rt_sfx_start_here")
-              asm.load(:hl, "music_sfx_by_rank")
-              asm.load(:b, by_rank.length)
-              asm.label("rt_sfx_start_each")
-              asm.load(:a, [:hli])
+            # rt_sfx_wake: the effect asked for joins AWAKE in its place by rank. The new entry walks
+            # down the list, changing places with each entry of lower rank it meets, and the entry
+            # it is carrying at the end takes the free place. No two effects share a rank.
+            def emit_wake(asm, memory)
+              now = memory[NOW]
+              asm.load(:a, [now + ASKED_FOR])
+              asm.call("rt_sfx_index")
+              asm.load(:de, INDEX_RANK)
+              asm.add_hl(:de)
+              asm.load(:e, [:hl]) # D, E = the entry being carried: its number and rank
+              asm.load(:a, [now + ASKED_FOR])
+              asm.load(:d, :a)
+              asm.load(:hl, memory[AWAKE])
+              asm.load(:b, [:hl])
+              asm.inc([:hl])
               asm.inc(:hl)
+              asm.label("rt_sfx_wake_each")
+              asm.load(:a, :b)
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_sfx_wake_place")
+              asm.load(:a, [:hl])
+              asm.cp_a(:e)
+              asm.jump_relative(:nc, "rt_sfx_wake_past")
+              asm.load([:hl], :e)
+              asm.load(:e, :a)
+              asm.inc(:hl)
+              asm.load(:a, [:hl])
+              asm.load([:hl], :d)
+              asm.load(:d, :a)
+              asm.dec(:hl)
+              asm.label("rt_sfx_wake_past")
+              AWAKE_ENTRY_BYTES.times { asm.inc(:hl) }
+              asm.dec(:b)
+              asm.jump_relative("rt_sfx_wake_each")
+              asm.label("rt_sfx_wake_place")
+              asm.load([:hl], :e)
+              asm.inc(:hl)
+              asm.load([:hl], :d)
+              asm.ret # A is 0, carry clear
+            end
+
+            # Runtime::Effects#emit_start_here: every effect awake in rank order, the one asked for
+            # taking its first frame and every other waiting to be stopped stopped.
+            def emit_start_here(asm, memory)
+              now = memory[NOW]
+              asm.label("rt_sfx_start_here")
+              asm.load(:hl, memory[AWAKE])
+              asm.load(:a, [:hli])
+              asm.load(:b, :a)
+              asm.label("rt_sfx_start_each")
+              asm.inc(:hl)
+              asm.load(:a, [:hli])
               asm.push(:hl)
               asm.push(:bc)
               asm.load(:hl, now + ASKED_FOR)
@@ -564,7 +663,7 @@ module VBlank
               asm.pop(:hl)
               asm.dec(:b)
               asm.jump_relative(:nz, "rt_sfx_start_each")
-              asm.ret
+              asm.jump("rt_sfx_sweep")
             end
           end
         end

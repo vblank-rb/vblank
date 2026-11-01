@@ -203,7 +203,7 @@ module VBlank
           end
 
           # What stays in view of the effects kept in banks: where each one's row is, with its rank,
-          # group and priority, and the effects highest rank first, each with its rank.
+          # group and priority.
           def emit_effect_index(asm)
             asm.label("music_sfx_index")
             effects.each do |effect|
@@ -211,8 +211,6 @@ module VBlank
               asm.data_bank_of("sfx_row_#{effect.number}")
               asm.data_bytes(effect.rank, group_number(effect), effect.priority)
             end
-            asm.label("music_sfx_by_rank")
-            effects_by_rank.each { |effect| asm.data_bytes(effect.number, effect.rank) }
           end
 
           # Every list of notes in the section, by its label: each note, in the order the list holds
