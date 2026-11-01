@@ -292,6 +292,38 @@ module VBlank
                            picture: write_picture_of_frame)
         end
 
+        # Ask the block what to press, a frame at a time, until it says it is done. The block is
+        # asked before each frame, so what it sees is the frame just played, and what it answers
+        # is down for the next one. Every frame goes on the tape, which is why a tape of a steered
+        # script needs no block. After +within+ frames it gives up (see GaveUp).
+        def steer(words, within)
+          within.times do
+            answer = yield(@game)
+            return hold([], 1) if answer == Steer::DONE && @taping.frames.zero? # a moment names a frame
+            return if answer == Steer::DONE
+
+            refuse_unusable_steering!(words, answer)
+            hold(answer, 1)
+          end
+          raise GaveUp.new(title: @title, words: words, waited: within, frame: @taping.frames,
+                           picture: write_picture_of_frame, tried: "tried to #{words}")
+        end
+
+        def refuse_unusable_steering!(words, answer)
+          unless answer.is_a?(Array)
+            raise ArgumentError,
+                  "The block of `steer #{words.inspect}`, in playthrough #{@title.inspect}, answered #{answer.inspect}. " \
+                  "It must answer a list of the buttons to hold, like `[:up, :b]` or `[]` for none, " \
+                  "or `#{Steer::DONE.inspect}` when the step is over."
+          end
+          unknown = (answer - Playthrough.pressable_buttons).first or return
+
+          raise ArgumentError,
+                "The block of `steer #{words.inspect}`, in playthrough #{@title.inspect}, answered #{unknown.inspect}, " \
+                "a button the console does not have. The buttons are " \
+                "#{Playthrough.pressable_buttons.map(&:inspect).join(', ')}."
+        end
+
         # The screen as it is now, written where a person can open it.
         #
         # In a folder of its own that nothing takes away, unlike everything else a playing
@@ -379,6 +411,17 @@ module VBlank
       Watch = Data.define(:buttons, :words, :within, :condition) do
         def play(playing) = playing.hold_until(buttons, words, within, &condition)
         def names = []
+      end
+
+      # Buttons chosen a frame at a time from the running game. +words+ say what the step is for,
+      # +chooser+ answers each frame's buttons or DONE, and +within+ is how many frames it can take.
+      Steer = Data.define(:words, :within, :chooser) do
+        def play(playing) = playing.steer(words, within, &chooser)
+        def names = []
+      end
+
+      class Steer
+        DONE = :done
       end
 
       # A name for the frame that has just been played. As a line of a tape it plays no frames,
@@ -470,6 +513,30 @@ module VBlank
           refuse_missing_buttons!(:hold_until, buttons, otherwise: "wait_until")
           refuse_unknown_buttons!(:hold_until, buttons)
           add_watch_step(:hold_until, Watch.new(buttons: buttons, words: words, within: within, condition: condition))
+        end
+
+        # CHOOSE EACH FRAME'S BUTTONS FROM WHAT THE GAME IS DOING, for a game whose enemies, ball or
+        # opponent move for themselves, which no list of presses written beforehand can answer. The
+        # block is handed the running cartridge before each frame and answers the buttons to hold
+        # for that frame (`[:up, :b]`, or `[]` for none), or `:done` to end the step. Nothing here
+        # knows what the game is: whatever decides the buttons is the block's.
+        #
+        #   steer "reach the lift", within: 20_000 do |game|
+        #     next :done if game.var(:floor) == 2
+        #     game.var(:x) < 100 ? [:right] : [:up]
+        #   end
+        #
+        # Every frame goes on the tape, so the tape plays back with no block and no reader.
+        def steer(words, within: LONGEST_WAIT, &chooser)
+          refuse_watch_without_words!(:steer, words)
+          unless chooser
+            raise ArgumentError,
+                  "`steer(#{words.inspect})` in playthrough #{@title.inspect} has no block. Give it a block that reads " \
+                  "the game and answers the buttons to hold, like `{ |game| game.var(:x) < 100 ? [:right] : :done }`."
+          end
+          refuse_invalid_frame_count!(:steer, within, keyword: "within:")
+          @steps << Steer.new(words: words, within: within, chooser: chooser)
+          self
         end
 
         # Name the frame that has just been played, so it can be asked for afterwards.
@@ -565,11 +632,11 @@ module VBlank
       attr_reader :words, :frame, :picture
 
       # The picture's path gets a line of its own, so it can be copied whole.
-      def initialize(title:, words:, waited:, frame:, picture:)
+      def initialize(title:, words:, waited:, frame:, picture:, tried: "waited until #{words}")
         @words = words
         @frame = frame
         @picture = picture
-        super("Playthrough #{title.inspect} waited until #{words}. That did not happen in #{waited} frames. " \
+        super("Playthrough #{title.inspect} #{tried}. That did not happen in #{waited} frames. " \
               "It stopped on frame #{frame}. Look at the screen on that frame first:\n#{picture}\n" \
               "If the game is where you expect and needs longer, give the step a bigger `within:`.")
       end
