@@ -248,13 +248,8 @@ module VBlank
 
             # The number the cartridge's sound log keeps +entry+ as, the next one the first time.
             def sound_entry_number(entry)
-              number = @sound_entries.index(entry) || (@sound_entries << entry).size - 1
-              if number >= Runtime::Sound::LOG_LENGTH
-                raise LoweringError, "This game makes more than #{Runtime::Sound::LOG_LENGTH} different sounds. The Super " \
-                                     "Nintendo build can tell #{Runtime::Sound::LOG_LENGTH} apart. To fix this, make " \
-                                     "fewer different sounds."
-              end
-              number
+              @sound_entry_numbers ||= {}
+              @sound_entry_numbers[entry] ||= (@sound_entries << entry).size - 1
             end
           end
         end

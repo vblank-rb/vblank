@@ -125,7 +125,7 @@ module VBlank
               memory.reserve(SENT, 2)
               memory.reserve(DROPPED, 2)
               memory.reserve(LOGGED, 2)
-              memory.reserve(LOG, LOG_LENGTH)
+              memory.reserve(LOG, LOG_LENGTH * 2)
               memory.reserve(LOGGED_BY_PASS, Frame::STEPS_KEPT * LOGGED_SLOT_BYTES)
               memory.reserve(TICKS_LEFT, 2)
             end
@@ -241,16 +241,15 @@ module VBlank
               asm.rtl
             end
 
-            # rt_sound_log: entry number R0 (one byte) into the ring, and one more counted.
+            # rt_sound_log: entry number R0 (a word) into the ring, and one more counted.
             def emit_log(asm, memory)
               asm.label("rt_sound_log")
               asm.lda(asm.abs(memory[LOGGED]))
               asm.and_a(LOG_LENGTH - 1)
+              asm.asl
               asm.tax
-              asm.sep(0x20)
               asm.lda(asm.direct(R0))
               asm.sta(asm.abs_x(memory[LOG]))
-              asm.rep(0x20)
               asm.inc(asm.abs(memory[LOGGED]))
               asm.rtl
             end

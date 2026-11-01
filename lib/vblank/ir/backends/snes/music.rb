@@ -106,6 +106,7 @@ module VBlank
           SWELL_HOLDS = 34
           SWELL_ONWARDS = 66
           SLIDE_END = 0xFFFF # ends a slide's record (#slide_record)
+          LEVEL_VOLUMES = (IR::Tunes::FULL_LEVEL + 1) * 2 # a recorded note's voice volumes, after its log groups (#recorded_level_record)
           SLIDING_CHANNEL = 1 # the one voice that slides, a song's first square part
           COMMAND_FIRST = 2
           COMMAND_SECOND = 4
@@ -258,6 +259,7 @@ module VBlank
             @shape_records = [] # every note's shapes' record, each once
             @swell_records = [] # every swell's record, each once
             @slide_records = [] # every slide's record, each once
+            @level_records = [] # every recorded note's loudnesses by level, each once
             # A tune stopping logs its own stop (Music.stop_entry); the voices it lets go of are worked
             # out as it stops, since a sound effect may hold some of them (Runtime::Music's rt_music_quiet).
             tunes = @songs.map do |song|
@@ -288,6 +290,11 @@ module VBlank
             @slide_records.each do |record|
               places[record] = table.size * 2
               table.concat(record.map { |commands| commands ? places.fetch(commands) : 0 } << SLIDE_END)
+            end
+            @level_records.each do |record|
+              places[record] = table.size * 2
+              logs, volumes = record.partition { |word| word.is_a?(Array) }
+              table.concat([*logs.map { |commands| places.fetch(commands) }, *volumes])
             end
             lay_out_lists(table, LISTS_AT, @lists.map { |list| list.songs.map { |name| number(name) } })
             table[SONGS_AT / 2] = table.size * 2
@@ -418,7 +425,7 @@ module VBlank
               end
             end
             layout = { lists: lists, holds: IR::Tunes.part_kind(part) != :noise, channel: channel }
-            return layout unless follows_level?
+            return layout if !follows_level? || self.class.recorded?(channel) # a recorded note's are its own (#recorded_level_record)
 
             sides = part.events.any? { |event| event[1].positive? && IR::Tunes.note_side(part, event) } ? [nil, :left, :right] : [nil]
             layout.merge(loudness: sides.flat_map do |side|
@@ -439,7 +446,7 @@ module VBlank
           # One note of +song+'s +part+ on +channel+ (an +event+ of its list), with +between+ its head
           # and its tail, and +lasts+ the frames until the part's next note.
           def note_layout(song, part, channel, event, between, voicing, lasts: 0, &number_of)
-            return recorded_note_layout(song, part, event, &number_of) if self.class.recorded?(channel)
+            return recorded_note_layout(song, part, channel, event, between.any?, &number_of) if self.class.recorded?(channel)
 
             frame, frequency, _, volume = event
             volume ||= part.volume
@@ -557,13 +564,27 @@ module VBlank
           # voice of the console's own; its row of "recording_plays" (#recording_row, one up), nought
           # for a note that sounds nothing — a rest, or one at a volume of nought — which gives the
           # part's place back as a rest does.
-          def recorded_note_layout(song, part, event, &number_of)
+          def recorded_note_layout(song, part, channel, event, follows, &number_of)
             frame, frequency, instrument, volume, envelope = event
             volume ||= part.volume
             sounds = IR::Tunes.note_sounds?(:recorded, frequency, volume, nil)
             head = keep_group([[GROUP_LOG, number_of.call([:note, song.name, frequency]), 0]])
             row = sounds ? @recording_row.call(instrument || part.instrument, frequency, volume, envelope || part.envelope) + 1 : 0
-            [frame, head, keep_group([]), frequency.zero? ? 0 : volume, sounds, row]
+            levels = recorded_level_record(channel, sounds ? IR::Tunes.mix_loudness(volume) : 0, &number_of) if follows
+            [frame, head, keep_group([]), frequency.zero? ? 0 : volume, sounds, row, levels]
+          end
+
+          # A RECORDED NOTE UNDER THE MUSIC VOLUME, at every level there is: the group that logs its
+          # loudness there, and the voice's volume for it. Whole numbers worked out here, so the player
+          # only looks one up. The note's own NOTE_WOBBLE word says where, a recorded note having
+          # no wobble.
+          def recorded_level_record(channel, loudness)
+            lane = channel - RECORDED_CHANNEL
+            scaled = (0..IR::Tunes::FULL_LEVEL).map { |level| IR::Tunes.scaled_volume(loudness, level) }
+            logs = scaled.map { |value| keep_group([[GROUP_LOG, yield([:loudness, [:mixer, lane], value]), 0]]) }
+            record = [*logs, *scaled.map { |value| (value * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round }]
+            @level_records << record unless @level_records.include?(record)
+            record
           end
 
           # What the table holds for one sound effect (Reference::Player#play_effect_frame): its rank,
@@ -676,13 +697,11 @@ module VBlank
             recorded = song.voices.select { |part| IR::Tunes.part_kind(part) == :recorded }
             return if recorded.empty?
 
-            unmade = if follows_level? then "a part that plays a recording in a game that sets its music volume"
-                     elsif recorded.size > RECORDED_PARTS then "more than #{RECORDED_PARTS} parts that play recordings"
-                     end
-            return unless unmade
+            return unless recorded.size > RECORDED_PARTS
 
             raise Lowering::NotMadeYet.new(
-              "The song #{song.name.inspect} has #{unmade}. The Super Nintendo build does not make that yet. To fix " \
+              "The song #{song.name.inspect} has more than #{RECORDED_PARTS} parts that play recordings. The Super " \
+              "Nintendo build does not make that yet. To fix " \
               "this, build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the sound"
             )
           end

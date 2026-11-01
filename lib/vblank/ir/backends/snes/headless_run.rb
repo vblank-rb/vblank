@@ -371,7 +371,7 @@ module VBlank
 
             ring = runtime_place(Runtime::Sound::LOG)
             (@logged_entries.size...logged).each do |count|
-              @logged_entries << @places.sound_entries.fetch(byte(ring + (count % Runtime::Sound::LOG_LENGTH)))
+              @logged_entries << @places.sound_entries.fetch(half(ring + ((count % Runtime::Sound::LOG_LENGTH) * 2)))
             end
           end
 

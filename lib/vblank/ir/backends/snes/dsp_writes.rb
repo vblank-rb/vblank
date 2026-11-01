@@ -193,7 +193,7 @@ module VBlank
             when :note, :sound_effect, :sample, :stop_sample, :wobble, :duty then [] # a recording's voice is the count's (Runtime::Recordings), and a wobble's or a shape's note is #each_entry_writes's to know
             when :voice then song_note(*entry[1, 4], voicing.parts, fade: entry[FADE_OF_VOICE_ENTRY], duty: entry[DUTY_OF_VOICE_ENTRY])
             when :stop_music then key_off(voicing.song_voices(entry.fetch(1)) & ~effect_voices & 0xFF)
-            when :loudness then loudness_at(entry[1], entry[2], voicing, song)
+            when :loudness then entry[1].is_a?(Array) ? [] : loudness_at(entry[1], entry[2], voicing, song) # a recording's is Runtime::Recordings'
             else raise ArgumentError, "the Super Nintendo build does not play #{entry.first.inspect} yet"
             end
           end

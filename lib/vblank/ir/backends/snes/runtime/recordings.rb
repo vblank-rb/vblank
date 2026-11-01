@@ -383,6 +383,39 @@ module VBlank
               asm.lda(0)
               asm.rtl
 
+              # rt_recordings_loud(volume): the place just taken, at PLACE, sounding at +volume+, as the
+              # music volume says (Reference::Player#song_loudness).
+              asm.label("rt_recordings_loud")
+              asm.ldy(at.call(PLACE))
+              asm.lda(asm.direct(Sound::R0))
+              asm.sta(place.call(LOUD))
+              asm.jsr(asm.abs("rt_recordings_heard_volume"))
+              asm.rtl
+
+              # rt_recordings_rescale(owner, volume): the note +owner+'s part sounds now, at +volume+;
+              # A = 1, or nought when it has none (Reference::Mixer#rescale_music).
+              asm.label("rt_recordings_rescale")
+              asm.lda(asm.direct(Sound::R0))
+              asm.sta(at.call(NOTE_OWNER))
+              asm.jsr(asm.abs("rt_recordings_sounding"))
+              asm.bcs("rt_recordings_note_release_none")
+              asm.sty(at.call(PLACE))
+              asm.lda(asm.direct(Sound::R1))
+              asm.sta(place.call(LOUD))
+              asm.jsr(asm.abs("rt_recordings_heard_volume"))
+              asm.lda(1)
+              asm.rtl
+
+              # rt_recordings_heard_volume: the place at PLACE's voice told its volume, if it has a voice.
+              asm.label("rt_recordings_heard_volume")
+              asm.lda(at.call(PLACE))
+              asm.cmp(VOICES_HEARD * PLACE_BYTES)
+              asm.bcs("rt_recordings_heard_volume_done")
+              emit_registers(asm, at)
+              asm.jsr(asm.abs("rt_recordings_volume"))
+              asm.label("rt_recordings_heard_volume_done")
+              asm.rts
+
               asm.label("rt_recordings_release_music")
               each_place(asm, "rt_recordings_release_music") do |next_place|
                 asm.lda(place.call(HELD))
