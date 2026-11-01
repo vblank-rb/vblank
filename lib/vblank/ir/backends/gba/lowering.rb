@@ -52,6 +52,10 @@ module VBlank
             @attribution.measure_node(node) { @values.fetch(node.kind) { unknown_value(node) }.call(node) }
           end
 
+          # For a node the caller lowers its own way rather than through #value: a test branched
+          # on, an operand loaded straight into a register. It is charged as #value charges one.
+          def measure_value(node, &) = @attribution.measure_node(node, &)
+
           # Every statement in the program is lowered through here, nested ones included, so
           # this is where the pass says it is still going. One report per STATEMENT, not per
           # instruction: an instruction is what a statement turns into, and a build that

@@ -433,7 +433,7 @@ module VBlank
                                      scene_arrival_pass: method(:emit_return_on_arrival_pass),
                                      scene_late_pages: method(:emit_scene_late_pages))
           @statements = Statements.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
-                                       placement: self, functions: @functions)
+                                       expressions: @expressions, placement: self, functions: @functions)
           @framebuffer = Framebuffer.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                          divide: @divide)
           @raster = Raster.new(emitter: @emit, primitives: @primitives, memory: @memory,

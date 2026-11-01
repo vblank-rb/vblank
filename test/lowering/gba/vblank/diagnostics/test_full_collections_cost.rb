@@ -34,7 +34,14 @@ class TestFullCollectionsCost < Minitest::Test
       lists = Array.new(6) { |i| list :"walked_#{i}", capacity: 448 }
       total = 0
       lists.each { |xs| xs.push 1 }
-      game_loop { lists.each { |xs| xs.each { |x| total += (x * 7) / (total + 3) } } }
+      game_loop do
+        lists.each do |xs|
+          xs.each do |x|
+            total += (x * 7) / (total + 3)
+            total += (x * 5) / (total + 7)
+          end
+        end
+      end
     end
 
     growths = nil

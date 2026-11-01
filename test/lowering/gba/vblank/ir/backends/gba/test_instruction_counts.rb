@@ -50,7 +50,7 @@ class TestInstructionCounts < Minitest::Test
     statement = find(program, :set)
     whole = statement.walk.sum { |node| emitted[node]&.instructions || 0 }
 
-    assert_equal 6, whole, "a store, an operator, a variable read and a number"
+    assert_equal 3, whole, "a variable read, an add that carries its number, and a store"
   end
 
   # THE ONE THAT BITES. A `Value` handle held in a Ruby variable and written into many

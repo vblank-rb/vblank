@@ -158,9 +158,9 @@ class TestAddressRegister < Minitest::Test
       func(:body) { if a > 0 then b = 1 else b = 2 end }
       game_loop { call :body }
     end
-    assert_equal 3, loads,
-                 "the test at the top, and then each arm again — an arm is jumped to, so it " \
-                 "cannot lean on what the code before the branch left behind"
+    assert_equal 2, loads,
+                 "the test at the top, and the arm that is jumped to, which cannot lean on what the " \
+                 "code before the branch left behind; the other arm follows straight on and can"
   end
 
   def test_a_call_makes_what_follows_it_name_the_base_again
@@ -315,8 +315,9 @@ class TestAddressRegister < Minitest::Test
       func(:body) { xs[0] = 1; if a > 0 then xs[1] = 2 else xs[2] = 3 end }
       game_loop { call :body }
     end
-    assert_equal 3, runs.length,
-                 "an arm is jumped to, so it cannot lean on what the code before the branch left"
+    assert_equal 2, runs.length,
+                 "the arm that is jumped to cannot lean on what the code before the branch left; " \
+                 "the arm that follows straight on can"
   end
 
   def test_a_call_makes_a_collection_name_its_base_again

@@ -26,7 +26,8 @@ module VBlank
 
           # A chance is "the random draw is below the threshold" — evaluate it as
           # exactly that comparison.
-          def eval_chance(node) = @lowering.value(Build.binop(:<, node.draw, Build.int(node.percent)))
+          def eval_chance(node) = @lowering.value(chance_comparison(node))
+          def chance_comparison(node) = Build.binop(:<, node.draw, Build.int(node.percent))
           def eval_held_node(node) = eval_held(node.button)
           def eval_pressed_node(node) = eval_pressed(node.button)
           # Read VCOUNT — the scanline being drawn right now (0..227) — into the
@@ -95,39 +96,190 @@ module VBlank
             @emitter.place_label(keep_high)
           end
 
-          # Evaluate lhs and rhs, holding lhs on the stack while rhs is computed, then
-          # combine. Using the stack for the intermediate keeps arbitrarily nested
-          # expressions correct without a register allocator.
+          # Evaluate lhs and rhs and combine them, the two sides in r0 and r1. Which side is in
+          # which makes no difference to an operation that gives the same answer either way
+          # round; what must have them in order goes through #emit_sides_in_order.
           def eval_binop(node)
             node = constant_on_right(node)
             return if emit_constant_binop(node)
 
-            @lowering.value(node.lhs)
-            @emitter.emit(ASM.push(ACC))
-            @lowering.value(node.rhs)
-            @emitter.emit(ASM.pop(TMP))             # r1 = lhs, r0 = rhs
+            case node.op
+            when :- then emit_subtract(node)
+            when :<<, :>>, :/, :% then emit_operation_in_order(node)
+            when *COMPARISONS.keys then emit_comparison(node)
+            else emit_either_way_round(node)
+            end
+          end
 
-            op = node.op
-            case op
-            when :+ then @emitter.emit(ASM.add_reg(ACC, TMP, ACC))
-            when :- then @emitter.emit(ASM.sub_reg(ACC, TMP, ACC))
-            when :* then @emitter.emit(ASM.mul(ACC, TMP, ACC))
-            # Condition composition: both sides are already 0/1, so a bitwise
-            # and/or gives the combined 0/1 the branch tests for.
-            when :and then @emitter.emit(ASM.and_reg(ACC, TMP, ACC))
-            when :or then @emitter.emit(ASM.orr_reg(ACC, TMP, ACC))
-            # The program's own bit operations. The chip does each in one
-            # instruction, which is why reading packed data costs what it reads.
-            when :& then @emitter.emit(ASM.and_reg(ACC, TMP, ACC))
-            when :| then @emitter.emit(ASM.orr_reg(ACC, TMP, ACC))
-            when :^ then @emitter.emit(ASM.eor_reg(ACC, TMP, ACC))
+          # The shifts and the divide routine take the left side in r1 and the right in r0.
+          def emit_operation_in_order(node)
+            emit_sides_in_order(node)
+            case node.op
             when :<< then emit_shift_by_value(:left)
             when :>> then emit_shift_by_value(:right)
             when :/ then emit_division
-            when :% then emit_modulo
-            else emit_comparison(op)
+            else emit_modulo
             end
           end
+
+          # An operation that gives the same answer whichever side is in which register.
+          def emit_either_way_round(node)
+            emit_sides(node)
+            @emitter.emit(case node.op
+                          when :+ then ASM.add_reg(ACC, TMP, ACC)
+                          when :* then ASM.mul(ACC, TMP, ACC)
+                          # Both sides of a join are already 0/1, so a bitwise and/or gives the
+                          # combined 0/1.
+                          when :and, :& then ASM.and_reg(ACC, TMP, ACC)
+                          when :or, :| then ASM.orr_reg(ACC, TMP, ACC)
+                          when :^ then ASM.eor_reg(ACC, TMP, ACC)
+                          else raise LoweringError, "unknown operator #{node.op.inspect}"
+                          end)
+          end
+
+          def emit_subtract(node)
+            left, right = emit_sides(node)
+            @emitter.emit(ASM.sub_reg(ACC, left, right))
+          end
+
+          # WHAT A SIDE COSTS IS MOSTLY WHERE THE OTHER ONE WAITS. A side that is a variable or a
+          # number is one load, which touches nothing but the register it loads, so the other side
+          # can stay in r0 while it happens. Only two sides that each have to be worked out need
+          # the stack, since working one out can use every scratch register. The stack keeps
+          # arbitrarily nested expressions correct without a register allocator, at two
+          # instructions for each pair.
+          #
+          # A left side that is one load is read after the right has been worked out, the
+          # opposite of the order the game wrote, so the right must be a side that changes nothing.
+          #
+          # @return [Array(Integer, Integer)] the register holding the left side, then the right
+          def emit_sides(node)
+            lhs = node.lhs
+            rhs = node.rhs
+            if one_load?(rhs)
+              @lowering.value(lhs)
+              emit_one_load(TMP, rhs)
+              [ACC, TMP]
+            elsif one_load?(lhs) && Expressions.changes_nothing?(rhs)
+              @lowering.value(rhs)
+              emit_one_load(TMP, lhs)
+              [TMP, ACC]
+            else
+              @lowering.value(lhs)
+              @emitter.emit(ASM.push(ACC))
+              @lowering.value(rhs)
+              @emitter.emit(ASM.pop(TMP))
+              [TMP, ACC]
+            end
+          end
+
+          # #emit_sides, with the left side always in r1 and the right in r0.
+          def emit_sides_in_order(node)
+            return emit_sides(node) unless one_load?(node.rhs)
+
+            @lowering.value(node.lhs)
+            @emitter.emit(ASM.mov_reg(TMP, ACC))
+            emit_one_load(ACC, node.rhs)
+          end
+
+          def one_load?(node) = node.kind == :var_ref || !@primitives.const_int(node).nil?
+
+          def emit_one_load(reg, node)
+            @lowering.measure_value(node) do
+              fixed = @primitives.const_int(node)
+              fixed ? @emitter.emit_number(reg, fixed) : @primitives.load_var(reg, node.name)
+            end
+          end
+
+          # THE VALUES THAT CAN BE LEFT UNREAD, OR READ LATER, with no difference to the game. A
+          # value not named here might draw a random number, or stop the game over a list index
+          # out of range, and the interpreter does those on both sides of a join every time
+          # (see Reference#eval_binop), so they cannot be skipped.
+          UNCHANGING_READS = Ractor.make_shareable(%i[var_ref held pressed])
+          UNCHANGING_WORK = Ractor.make_shareable(%i[neg bit_not absolute])
+
+          def self.changes_nothing?(node)
+            return true if Primitives.const_int(node) || UNCHANGING_READS.include?(node.kind)
+            return changes_nothing?(node.lhs) && changes_nothing?(node.rhs) if node.kind == :binop
+
+            UNCHANGING_WORK.include?(node.kind) && changes_nothing?(node.operand)
+          end
+
+          # TEST +cond+ AND BRANCH TO +label+ UNLESS IT HOLDS, with no 0 or 1 made on the way. A
+          # compare leaves its answer in the chip's flags, and a branch reads them, so working the
+          # answer into a register to test it again costs five instructions and tells the branch
+          # nothing it did not know.
+          #
+          # A JOIN OF TWO TESTS IS TWO TESTS, when the second can go unread. The first that decides
+          # the answer branches, and the rest does not run.
+          def emit_branch_unless(cond, label)
+            @lowering.measure_value(cond) do
+              cond = plain_test(cond)
+              if comparison?(cond)
+                emit_compare(cond)
+                @emitter.emit_branch(:bcond, label, cond: COMPARISONS.fetch(cond.op).last)
+              elsif join_of?(cond, :and)
+                emit_branch_unless(cond.lhs, label)
+                emit_branch_unless(cond.rhs, label)
+              elsif join_of?(cond, :or)
+                held = @emitter.gensym
+                emit_branch_if(cond.lhs, held)
+                emit_branch_unless(cond.rhs, label)
+                @emitter.place_label(held)
+              else
+                emit_test_of_value(cond, label, :eq)
+              end
+            end
+          end
+
+          # ...and to +label+ when it holds.
+          def emit_branch_if(cond, label)
+            @lowering.measure_value(cond) do
+              cond = plain_test(cond)
+              if comparison?(cond)
+                emit_compare(cond)
+                @emitter.emit_branch(:bcond, label, cond: COMPARISONS.fetch(cond.op).first)
+              elsif join_of?(cond, :or)
+                emit_branch_if(cond.lhs, label)
+                emit_branch_if(cond.rhs, label)
+              elsif join_of?(cond, :and)
+                failed = @emitter.gensym
+                emit_branch_unless(cond.lhs, failed)
+                emit_branch_if(cond.rhs, label)
+                @emitter.place_label(failed)
+              else
+                emit_test_of_value(cond, label, :ne)
+              end
+            end
+          end
+
+          def comparison?(node) = node.kind == :binop && COMPARISONS.key?(node.op)
+
+          # A chance is a comparison in all but name (see #eval_chance), and branches as one.
+          def plain_test(cond) = cond.kind == :chance ? chance_comparison(cond) : cond
+
+          def join_of?(node, op) = node.kind == :binop && node.op == op && Expressions.changes_nothing?(node.rhs)
+
+          def emit_test_of_value(node, label, branch_on)
+            @lowering.value(node)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, label, cond: branch_on)
+          end
+
+          # Set the flags from lhs - rhs. A small number on the right rides inside the compare.
+          def emit_compare(node)
+            fixed = @primitives.const_int(node.rhs)
+            if fixed && SMALL_NUMBERS.cover?(fixed)
+              @lowering.value(node.lhs)
+              @lowering.measure_value(node.rhs) { @emitter.emit(ASM.cmp_imm(ACC, fixed)) }
+            else
+              left, right = emit_sides(node)
+              @emitter.emit(ASM.cmp_reg(left, right))
+            end
+          end
+
+          # What an instruction can carry inside itself in every case.
+          SMALL_NUMBERS = (0..0xFF)
 
           # Shift by a count the game works out. r1 holds the number, r0 the count.
           #
@@ -210,6 +362,7 @@ module VBlank
             return false unless value
 
             case node.op
+            when :+, :- then emit_constant_add(node, value)
             when :/ then emit_constant_divide(node.lhs, value)
             when :* then emit_constant_multiply(node.lhs, value)
             when :% then emit_constant_modulo(node.lhs, value)
@@ -218,6 +371,17 @@ module VBlank
             when :>> then emit_constant_shift_right(node.lhs, value)
             else false
             end
+          end
+
+          # x + n and x - n for a small n, which rides inside the instruction.
+          def emit_constant_add(node, value)
+            return false unless SMALL_NUMBERS.cover?(value)
+
+            @lowering.value(node.lhs)
+            @lowering.measure_value(node.rhs) do
+              @emitter.emit(node.op == :+ ? ASM.add_imm(ACC, ACC, value) : ASM.sub_imm(ACC, ACC, value))
+            end
+            true
           end
 
           # `&`, `|` and `^` give the same answer whichever way round they are written,
@@ -592,16 +756,14 @@ module VBlank
             @emitter.place_label(done)
           end
 
-          # A comparison yields 1 or 0. Compare, default the result to 0, and set it
-          # to 1 only when the comparison holds.
-          def emit_comparison(op)
-            _true_cond, false_cond = COMPARISONS.fetch(op) do
-              raise LoweringError, "unknown operator #{op.inspect}"
-            end
-            @emitter.emit(ASM.cmp_reg(TMP, ACC))          # lhs - rhs
+          # A comparison kept as a number yields 1 or 0: what a game stores or adds up. A test
+          # that only decides a branch does not come here (see #emit_branch_unless). Compare,
+          # default the result to 0, and set it to 1 only when the comparison holds.
+          def emit_comparison(node)
+            emit_compare(node)
             done = @emitter.gensym
             @emitter.emit_number(ACC, 0)
-            @emitter.emit_branch(:bcond, done, cond: false_cond)
+            @emitter.emit_branch(:bcond, done, cond: COMPARISONS.fetch(node.op).last)
             @emitter.emit_number(ACC, 1)
             @emitter.place_label(done)
           end

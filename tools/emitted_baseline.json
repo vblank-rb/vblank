@@ -2,15 +2,15 @@
   "version": 1,
   "examples": {
     "animate": {
-      "code": 48644,
+      "code": 48260,
       "data": 0
     },
     "bird": {
-      "code": 7476,
+      "code": 7316,
       "data": 0
     },
     "breakout": {
-      "code": 76796,
+      "code": 67180,
       "data": 0
     },
     "breakout@gbc": {
@@ -18,15 +18,15 @@
       "data": 48036
     },
     "buffered_bounce": {
-      "code": 5326,
+      "code": 4942,
       "data": 0
     },
     "cave": {
-      "code": 42500,
+      "code": 39168,
       "data": 0
     },
     "chip_band": {
-      "code": 37832,
+      "code": 36824,
       "data": 0
     },
     "chip_band@gbc": {
@@ -34,19 +34,19 @@
       "data": 13928
     },
     "clock": {
-      "code": 149506,
+      "code": 148498,
       "data": 0
     },
     "corridor": {
-      "code": 10906,
+      "code": 10538,
       "data": 0
     },
     "dive": {
-      "code": 59380,
+      "code": 55692,
       "data": 0
     },
     "floating_digits": {
-      "code": 12936,
+      "code": 11656,
       "data": 0
     },
     "font_styles": {
@@ -62,31 +62,31 @@
       "data": 0
     },
     "hero": {
-      "code": 95636,
+      "code": 80456,
       "data": 0
     },
     "jukebox": {
-      "code": 71834,
+      "code": 70610,
       "data": 0
     },
     "lake": {
-      "code": 5530,
+      "code": 5198,
       "data": 0
     },
     "level": {
-      "code": 6156,
+      "code": 4004,
       "data": 0
     },
     "maze": {
-      "code": 4796,
+      "code": 3348,
       "data": 0
     },
     "meadow": {
-      "code": 33888,
+      "code": 32908,
       "data": 0
     },
     "pacman": {
-      "code": 16328,
+      "code": 14524,
       "data": 0
     },
     "pacman@gbc": {
@@ -98,7 +98,7 @@
       "data": 0
     },
     "piano": {
-      "code": 28328,
+      "code": 26420,
       "data": 0
     },
     "pixels": {
@@ -106,7 +106,7 @@
       "data": 0
     },
     "pong": {
-      "code": 46880,
+      "code": 43532,
       "data": 0
     },
     "pong_gbc@gbc": {
@@ -114,15 +114,15 @@
       "data": 28000
     },
     "raycaster": {
-      "code": 6364,
+      "code": 6172,
       "data": 0
     },
     "rotozoom_bg": {
-      "code": 3780,
+      "code": 3588,
       "data": 0
     },
     "scoreboard": {
-      "code": 3316,
+      "code": 3152,
       "data": 0
     },
     "scoreboard@gbc": {
@@ -134,35 +134,35 @@
       "data": 0
     },
     "sheet": {
-      "code": 6156,
+      "code": 4004,
       "data": 0
     },
     "shmup": {
-      "code": 41792,
+      "code": 37292,
       "data": 0
     },
     "snake": {
-      "code": 41788,
+      "code": 38764,
       "data": 0
     },
     "snake_buffered": {
-      "code": 42892,
+      "code": 40384,
       "data": 0
     },
     "sparks": {
-      "code": 3860,
+      "code": 3356,
       "data": 0
     },
     "sprite_mover": {
-      "code": 13156,
+      "code": 12964,
       "data": 0
     },
     "tiles": {
-      "code": 7876,
+      "code": 7848,
       "data": 0
     },
     "tower": {
-      "code": 20692,
+      "code": 15676,
       "data": 0
     },
     "tower@gbc": {

@@ -29,10 +29,11 @@ module VBlank
         class Statements
           include Console::Hardware
 
-          def initialize(emitter:, primitives:, lowering:, placement:, functions:)
+          def initialize(emitter:, primitives:, lowering:, expressions:, placement:, functions:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
+            @expressions = expressions
             @placement = placement
             @functions = functions
             @loop_shapes = {}
@@ -105,14 +106,12 @@ module VBlank
           # false condition jumps past the body. With an else, a false condition
           # jumps to the else-body, and the then-body jumps over it to the end.
           def emit_if(node)
-            @lowering.value(node.cond)
-            @emitter.emit(ASM.cmp_imm(ACC, 0))
             else_node = node.else
 
             if else_node
               else_label = @emitter.gensym
               end_label = @emitter.gensym
-              @emitter.emit_branch(:bcond, else_label, cond: :eq) # false => run the else
+              @expressions.emit_branch_unless(node.cond, else_label) # false => run the else
               node.children.each { |stmt| @lowering.statement(stmt) }
               @emitter.emit_branch(:b, end_label)                 # then done => skip the else
               @emitter.place_label(else_label)
@@ -120,7 +119,7 @@ module VBlank
               @emitter.place_label(end_label)
             else
               skip = @emitter.gensym
-              @emitter.emit_branch(:bcond, skip, cond: :eq) # zero => condition false => skip
+              @expressions.emit_branch_unless(node.cond, skip) # false => skip
               # A block of the game loop that runs for one scene alone is that scene's routine
               # (see SceneQuickMemory#prepare_scene_loop_work), and only called from here.
               routine = @placement.scene_loop_routine_for(node)
@@ -237,9 +236,7 @@ module VBlank
           def emit_stop_test(node, done)
             return unless LoopForm.stops_early?(node)
 
-            @lowering.value(node.stop_when)
-            @emitter.emit(ASM.cmp_imm(ACC, 0))
-            @emitter.emit_branch(:bcond, done, cond: :ne)
+            @expressions.emit_branch_if(node.stop_when, done)
           end
 
           # ...and counting down, when nothing reads the index. The passes left are kept in the
