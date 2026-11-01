@@ -263,6 +263,15 @@ module VBlank
             lists.any?(&:full_of) || @program.walk.any? { |node| node.kind == :list_fill && names.include?(node.name) }
           end
 
+          # Whether the game pushes bytes or takes from a list's front, so wants the routines that do
+          # those quickly (Runtime::Lists#emit_queue_routines).
+          def keeps_queues?
+            bytes = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }.map(&:name)
+            @program.walk.any? do |node|
+              (node.kind == :list_push && bytes.include?(node.name)) || (node.kind == :list_drop && node.from == :front)
+            end
+          end
+
           private
 
           # --- refusals ---
@@ -844,8 +853,25 @@ module VBlank
             list_call("rt_list_at_capacity", node)
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
           end
-          def emit_list_push(node) = list_call("rt_list_push", node, node.value)
-          def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
+
+          # A push onto a list of bytes, with its value already in registers (Runtime::Lists says why).
+          def emit_list_push(node)
+            place, _capacity, width = list_placed(node)
+            return list_call("rt_list_push", node, node.value) unless width == 1
+
+            value(node.value)
+            @asm.load(:hl, place)
+            @asm.call("rt_byte_list_push")
+          end
+
+          def emit_list_drop(node)
+            return list_call("rt_list_drop", node, Build.int(0)) unless node.from == :front
+
+            place, = list_placed(node)
+            @asm.load(:hl, place + Runtime::Lists::LENGTH)
+            @asm.call("rt_list_shift")
+          end
+
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its
@@ -870,7 +896,10 @@ module VBlank
             place, capacity, width = list_placed(node)
             if front_dropped_lists.include?(node.name)
               value(node.index)
-              return list_get_through_routine(place)
+              return list_get_through_routine(place) unless width == 1
+
+              @asm.load(:hl, place + Runtime::Lists::LENGTH)
+              return @asm.call("rt_byte_list_item")
             end
 
             out_of_range = fresh("list_index_out_of_range")
@@ -965,7 +994,15 @@ module VBlank
             end
           end
 
-          def value_of_list_len(node) = list_call("rt_list_length", node)
+          # The length, read straight from the header: BCDE, its top half nought.
+          def value_of_list_len(node)
+            place, = list_placed(node)
+            @asm.load(:hl, place + Runtime::Lists::LENGTH)
+            @asm.load(:a, [:hli])
+            @asm.load(:e, :a)
+            @asm.load(:d, [:hl])
+            @asm.load(:bc, 0)
+          end
 
           # The runtime's list routine +routine+ on the list +node+ names, the list's place first.
           def list_call(routine, node, *args)

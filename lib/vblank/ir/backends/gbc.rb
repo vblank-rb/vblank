@@ -198,7 +198,7 @@ module VBlank
                                              bar_rows: lowering.bar_rows, bar_maps: lowering.bar_shows_maps?, clips: clips,
                                              count_at: (lowering.variables[Frames::COUNT] if lowering.counts_dark_frames?),
                                              banked_colors: bank_background_colors && !lowering.drawn_palettes.nil?,
-                                             byte_fills: lowering.fills_byte_lists?)
+                                             byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           begin
             linked = Linker.new(runtime + game + data, fixed_from: Console::GBCHardware::HEADER_END,

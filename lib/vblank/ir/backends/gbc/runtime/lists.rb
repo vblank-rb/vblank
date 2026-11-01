@@ -29,11 +29,13 @@ module VBlank
 
             module_function
 
-            # +byte_fills+ says the game fills a list of bytes (Lowering#fills_byte_lists?).
-            def emit(asm, memory, byte_fills: false)
+            # +byte_fills+ says the game fills a list of bytes (Lowering#fills_byte_lists?), and
+            # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?).
+            def emit(asm, memory, byte_fills: false, queues: false)
               q = Quick.for(memory)
               emit_helpers(asm, memory, q)
               emit_routines(asm, memory, q, byte_fills)
+              emit_queue_routines(asm, memory, q) if queues
               emit_start(asm)
             end
 
@@ -52,6 +54,9 @@ module VBlank
             # The same for rt_list_set_taken, whose third number, the value, a caller with an index
             # out of range never needs: the routine stops the game before it reads it.
             def set_places(memory) = [arg(memory, 0, 3), arg(memory, 1, 3)]
+
+            # The same for rt_list_push_taken and rt_list_drop_taken, [list, second number].
+            def push_places(memory) = [arg(memory, 0, 2), arg(memory, 1, 2)]
 
             # The low byte of where argument +i+ of +n+ is: the routines find it with LDH (C).
             def arg_at(memory, i, n) = arg(memory, i, n) & 0xFF
@@ -308,6 +313,7 @@ module VBlank
               # rt_list_push(list, value)
               asm.label("rt_list_push")
               take_args(asm, 2)
+              asm.label("rt_list_push_taken") # the list and the value already where it takes them
               asm.load(:a, arg_at(memory, 0, 2))
               asm.call("rt_list_open")
               asm.load_high(:a, q.length) # full when the length has reached the capacity
@@ -343,6 +349,7 @@ module VBlank
               # rt_list_drop(list, from_the_front)
               asm.label("rt_list_drop")
               take_args(asm, 2)
+              asm.label("rt_list_drop_taken") # the list and which end already where it takes them
               asm.load(:a, arg_at(memory, 0, 2))
               asm.call("rt_list_open")
               asm.load_high(:a, q.length)
@@ -373,6 +380,186 @@ module VBlank
 
               emit_fill(asm, memory, q, byte_fills)
               emit_copy(asm, memory, q)
+            end
+
+            # A QUEUE OF BYTES is the commonest list on a machine this small, and the routines above
+            # are slow for it: each copies its numbers off the stack and the list's whole header into
+            # quick memory, then writes the header back. These three work on the header where it is,
+            # with the list's place in HL and the value in registers already, about a quarter of the
+            # instructions, and the game's every push or shift is a place to load and a call.
+            #
+            # They only know the way when nothing is wrong. A full list, an empty one or an index out
+            # of range puts its numbers where the routines above take them and goes there, so the
+            # game stops in the same words with the same numbers.
+            def emit_queue_routines(asm, memory, q)
+              emit_byte_push(asm, memory, q)
+              emit_shift(asm, memory)
+              emit_byte_item(asm, memory)
+            end
+
+            # rt_byte_list_push: E, the low byte of the value, into the list at HL.
+            def emit_byte_push(asm, memory, q)
+              asm.label("rt_byte_list_push")
+              asm.load(:a, :e)
+              asm.load_high(q.entry, :a)
+              asm.push(:hl)
+              read_number(asm, :c, :b) # BC = the capacity
+              2.times { asm.inc(:hl) }
+              read_number(asm, :e, :d) # DE = the front, and HL at the length
+              asm.load(:a, [:hli])
+              asm.sub_a(:c)
+              asm.load(:a, [:hld])
+              asm.sbc_a(:b)
+              asm.jump_relative(:nc, "rt_byte_list_push_full")
+              asm.load(:a, [:hli]) # DE = the front + the length, the slot past the last item
+              asm.add_a(:e)
+              asm.load(:e, :a)
+              asm.load(:a, [:hld])
+              asm.adc_a(:d)
+              asm.load(:d, :a)
+              asm.inc([:hl]) # one more item
+              asm.jump_relative(:nz, "rt_byte_list_push_counted")
+              asm.inc(:hl)
+              asm.inc([:hl])
+              asm.label("rt_byte_list_push_counted")
+              asm.load(:a, :e) # HL = that slot, come round past the capacity
+              asm.sub_a(:c)
+              asm.load(:l, :a)
+              asm.load(:a, :d)
+              asm.sbc_a(:b)
+              asm.load(:h, :a)
+              asm.jump_relative(:nc, "rt_byte_list_push_slot")
+              asm.load(:h, :d)
+              asm.load(:l, :e)
+              asm.label("rt_byte_list_push_slot")
+              asm.pop(:bc)
+              asm.add_hl(:bc)
+              asm.load(:bc, HEADER)
+              asm.add_hl(:bc)
+              asm.load_high(:a, q.entry)
+              asm.load([:hl], :a)
+              asm.ret
+              asm.label("rt_byte_list_push_full") # stops the game, which never reads the value
+              asm.pop(:hl)
+              store_list_place(asm, push_places(memory).first, 0)
+              asm.jump("rt_list_push_taken")
+            end
+
+            # rt_list_shift: the first item taken from the list whose length is at HL.
+            def emit_shift(asm, memory)
+              asm.label("rt_list_shift")
+              asm.load(:a, [:hli])
+              asm.or_a([:hl])
+              asm.jump_relative(:z, "rt_list_shift_empty")
+              asm.dec(:hl) # one item fewer
+              asm.load(:a, [:hl])
+              asm.sub_a(1)
+              asm.load([:hli], :a)
+              asm.load(:a, [:hl])
+              asm.sbc_a(0)
+              asm.load([:hld], :a)
+              asm.dec(:hl)
+              asm.load(:a, [:hld]) # DE = the front, moved on one
+              asm.load(:d, :a)
+              asm.load(:a, [:hld])
+              asm.load(:e, :a)
+              asm.inc(:de)
+              2.times { asm.dec(:hl) }
+              asm.load(:a, [:hld]) # BC = the capacity, and HL at the list
+              asm.load(:b, :a)
+              asm.load(:c, [:hl])
+              asm.load(:a, :e) # a front that has reached the capacity comes round to the first slot
+              asm.cp_a(:c)
+              asm.jump_relative(:nz, "rt_list_shift_front")
+              asm.load(:a, :d)
+              asm.cp_a(:b)
+              asm.jump_relative(:nz, "rt_list_shift_front")
+              asm.load(:de, 0)
+              asm.label("rt_list_shift_front")
+              FRONT.times { asm.inc(:hl) }
+              asm.load(:a, :e)
+              asm.load([:hli], :a)
+              asm.load([:hl], :d)
+              asm.ret
+              asm.label("rt_list_shift_empty")
+              list_at, end_at = push_places(memory)
+              store_list_place(asm, list_at, LENGTH + 1)
+              asm.xor_a(:a)
+              4.times { |i| asm.load_high(end_at + i, :a) }
+              asm.inc(:a) # from the front
+              asm.load_high(end_at, :a)
+              asm.jump("rt_list_drop_taken")
+            end
+
+            # rt_byte_list_item: BCDE = the item BCDE places along the list whose length is at HL.
+            def emit_byte_item(asm, memory)
+              asm.label("rt_byte_list_item")
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_byte_list_item_past_16_bits")
+              asm.load(:a, :e)
+              asm.sub_a([:hl])
+              asm.inc(:hl)
+              asm.load(:a, :d)
+              asm.sbc_a([:hl])
+              asm.jump_relative(:nc, "rt_byte_list_item_missing")
+              2.times { asm.dec(:hl) }
+              asm.load(:a, [:hld]) # DE = the front + the index
+              asm.load(:b, :a)
+              asm.load(:a, [:hld])
+              asm.add_a(:e)
+              asm.load(:e, :a)
+              asm.load(:a, :b)
+              asm.adc_a(:d)
+              asm.load(:d, :a)
+              2.times { asm.dec(:hl) }
+              asm.load(:a, [:hld]) # BC = the capacity, and HL at the list
+              asm.load(:b, :a)
+              asm.load(:c, [:hl])
+              asm.load(:a, :e) # past the capacity, the slot comes round
+              asm.sub_a(:c)
+              asm.load(:c, :a)
+              asm.load(:a, :d)
+              asm.sbc_a(:b)
+              asm.jump_relative(:c, "rt_byte_list_item_slot")
+              asm.load(:d, :a)
+              asm.load(:e, :c)
+              asm.label("rt_byte_list_item_slot")
+              asm.add_hl(:de)
+              asm.load(:de, HEADER)
+              asm.add_hl(:de)
+              asm.jump("rt_read_int8") # a slot reads back with its top bit as the sign
+              asm.label("rt_byte_list_item_past_16_bits")
+              asm.inc(:hl)
+              asm.label("rt_byte_list_item_missing")
+              list_at, index_at = get_places(memory)
+              store_list_place(asm, list_at, LENGTH + 1)
+              %i[e d c b].each_with_index do |reg, i|
+                asm.load(:a, reg)
+                asm.load_high(index_at + i, :a)
+              end
+              asm.jump("rt_list_get_taken")
+            end
+
+            # The 16-bit number at HL into two registers, HL left past it.
+            def read_number(asm, low, high)
+              asm.load(:a, [:hli])
+              asm.load(low, :a)
+              asm.load(:a, [:hli])
+              asm.load(high, :a)
+            end
+
+            # The place of the list HL is +past+ bytes into, as a 32-bit number at quick-memory +at+.
+            def store_list_place(asm, at, past)
+              asm.load(:a, :l)
+              asm.sub_a(past)
+              asm.load_high(at, :a)
+              asm.load(:a, :h)
+              asm.sbc_a(0)
+              asm.load_high(at + 1, :a)
+              asm.xor_a(:a)
+              asm.load_high(at + 2, :a)
+              asm.load_high(at + 3, :a)
             end
 
             # The first and second numbers of the fault's record from quick memory: each [address,
