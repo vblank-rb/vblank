@@ -45,10 +45,10 @@ module VBlank
           # from lists the bytes of each run (+tile_runs+) staged for the blank (Picture).
           def reserve(memory, painted: false, chip: false, sound: false, songs: false, music_follows_level: false,
                       effects: 0, samples: false, bar: false, bends: false, tile_runs: [], holds_music: false,
-                      changing_colors: false)
+                      changing_colors: false, math_turns: false)
             Paint.reserve(memory, chip: chip) if painted
             Frame.reserve(memory)
-            Picture.reserve(memory, bar: bar, bends: bends, tile_runs: tile_runs)
+            Picture.reserve(memory, bar: bar, bends: bends, tile_runs: tile_runs, math_turns: math_turns)
             Tint.reserve(memory, changing_colors: changing_colors)
             Chip.reserve(memory) if chip
             Sound.reserve(memory) if sound
@@ -79,12 +79,13 @@ module VBlank
           # for a game whose songs have parts that play recordings (Lowering::Sound#recorded_parts?);
           # +sprite_squares+ for a game with sprites' squares of 16×16 (Art::Piece#big); +changing_colors+
           # for a game that changes colours as it runs (Tint's rt_colors_hold); +extra_buttons+ for a
-          # game that can ask about X and Y (Frame.reads_extra_buttons?).
+          # game that can ask about X and Y (Frame.reads_extra_buttons?); +math_turns+ for a game that
+          # turns a see-through layer solid (Picture's rt_see_through_math).
           def sections(memory, main:, frame_begins: nil, painted: false, board: Cartridge::SNESROM::PLAIN, saves: false,
                        sound: false, sound_waves: [], music: nil, music_level_at: nil, effects: 0, recordings: [],
                        plays: nil, bar: false, bent: [], tile_runs: 0, see_through: nil, sprite_depths: false, big_tiles: 0,
                        colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
-                       extra_buttons: false)
+                       extra_buttons: false, math_turns: false)
             chip = board.name == :super_fx
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
@@ -98,7 +99,8 @@ module VBlank
             Picture.emit(asm, memory, work: memory.scratch(8), painted: painted, bar: bar, bent: bent, tile_runs: tile_runs,
                                       run_scratch: (Picture.run_scratch(memory) if tile_runs.positive?),
                                       see_through: see_through, sprite_depths: sprite_depths, big_tiles: big_tiles,
-                                      sprite_squares: sprite_squares, changing_colors: changing_colors)
+                                      sprite_squares: sprite_squares, changing_colors: changing_colors,
+                                      math_turns: math_turns)
             Paint.emit(asm, memory, Paint.scratch(memory), chip: chip) if painted
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: colors_shown, changing_colors: changing_colors)
             Collide.emit(asm, memory, Collide.scratch(memory))

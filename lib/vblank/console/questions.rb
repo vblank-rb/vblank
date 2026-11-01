@@ -43,7 +43,8 @@ module VBlank
         # ...and the step that tells the console again how see-through a layer is, before each
         # frame, for an amount the game works out. Only a console that blends by any amount can.
         when :see_through
-          Question.new(:layers, "This game changes how much one layer shows through another as the game runs", console.blends)
+          Question.new(:layers, "This game changes how much one layer shows through another as the game runs",
+                       console.blends || (console.mixes_by_half && node.added == true))
         when :held, :pressed
           Question.new(:held, "This line reads the #{node.button.inspect} button", button?(node.button, console))
         when :fade

@@ -25,7 +25,8 @@ module VBlank
                                                  place_bar: :emit_place_bar, scroll_rows: :emit_scroll_rows,
                                                  copy_tiles: :emit_copy_tiles, copy_owed_tiles: :emit_copy_owed_tiles,
                                                  background_colors: :emit_background_colors,
-                                                 color_list_holds: :emit_color_list_holds
+                                                 color_list_holds: :emit_color_list_holds,
+                                                 see_through: :emit_see_through_amount
                                                })
 
             # Whether +program+ has a status bar, which the runtime then carries what places
@@ -730,18 +731,51 @@ module VBlank
               unless (seen_through + behind).all? { |bg| always.any? { |up| up.equal?(bg) } }
                 refuse_unmade!("a see-through layer over a background that a scene puts up")
               end
-              raise LoweringError, see_through_uncovered_message(layer) unless behind.any? { |bg| covers_screen?(bg) }
+              # Adding, an empty sub screen adds the fixed colour, nothing: the layer whole, as the
+              # interpreter shows it over the black backdrop. Only halving needs something behind.
+              adds = added_to_what_is_behind?(layer)
+              raise LoweringError, see_through_uncovered_message(layer) unless adds || behind.any? { |bg| covers_screen?(bg) }
 
               bits = ->(bgs) { bgs.sum { |bg| 1 << layer_of(bg) } }
-              @see_through_layers = if seen_through.empty?
-                                      # The sprites' pixels mixed, with the scenery alone behind them.
-                                      [SPRITES_BIT, bits.call(behind)]
-                                    else
-                                      # The backgrounds' pixels mixed, with the scenery and the
-                                      # sprites behind them; a sprite in front is not on top of a
-                                      # mixed pixel anywhere it is drawn, so has no say.
-                                      [bits.call(seen_through), bits.call(behind) | SPRITES_BIT]
-                                    end
+              mixed, under = if seen_through.empty?
+                               # The sprites' pixels mixed, with the scenery alone behind them.
+                               [SPRITES_BIT, bits.call(behind)]
+                             else
+                               # The backgrounds' pixels mixed, with the scenery and the
+                               # sprites behind them; a sprite in front is not on top of a
+                               # mixed pixel anywhere it is drawn, so has no say.
+                               [bits.call(seen_through), bits.call(behind) | SPRITES_BIT]
+                             end
+              @see_through_layers = [adds ? mixed : mixed | Runtime::Picture::MATH_HALVES, under]
+            end
+
+            # Whether +layer+ shows the whole of itself over the whole of what is behind it, which the
+            # console's colour math does with no halving. What is behind may be a number the game
+            # works out, for a layer it turns solid: that is the one amount it can change, and it is
+            # 100 or 0 (#emit_see_through_amount).
+            def added_to_what_is_behind?(layer)
+              return false if layer.split || layer.shows.kind != :int
+
+              whole = SeeThrough::STEPS
+              SeeThrough.nearest_steps(layer.shows.value) == whole &&
+                (layer.behind.kind != :int || SeeThrough.nearest_steps(layer.behind.value) == whole)
+            end
+
+            # Whether +program+ turns a see-through layer solid as it runs, which the runtime then keeps
+            # what the colour math is told in (Runtime::Picture's rt_see_through_math).
+            def self.see_through_turns_solid?(program)
+              SeeThrough.layers(program).any? { |layer| !layer.split && layer.behind.kind != :int }
+            end
+
+            # Reference#exec_see_through: the colour math on while what is behind shows, and off, the
+            # layer solid, at nought. An amount between shows as 100 does: the console adds or it does
+            # not. It is told in the next blank, with the frame's sprites.
+            def emit_see_through_amount(node)
+              layer = SeeThrough.layer(@program, node.layer)
+              return unless @see_through_layers
+
+              on = Build.binop(:!=, layer.behind.copy, Build.int(0))
+              runtime_call("rt_see_through_math", [Build.binop(:*, on, Build.int(@see_through_layers.first))])
             end
 
             # The sprites' bit of the colour math's registers (TS, CGADSUB).
@@ -766,6 +800,8 @@ module VBlank
             end
 
             def refuse_see_through_amount!(layer)
+              return if added_to_what_is_behind?(layer)
+
               worked_out = [layer.shows, layer.behind].any? { |amount| amount.kind != :int }
               raise LoweringError, SEE_THROUGH_WORKED_OUT if worked_out
               return if SeeThrough.weights(layer, layer.shows.value, layer.behind.value) == HALF
@@ -773,7 +809,8 @@ module VBlank
               said = layer.split ? "`transparency: #{layer.behind.value}`" : "`shows: #{layer.shows.value}, shows_behind: #{layer.behind.value}`"
               raise LoweringError, "Layer :#{layer.name} is see-through by #{said}. A Super Nintendo can show a layer " \
                                    "half see-through only: `transparency:` from 50 to 56, or `shows: 50, shows_behind: " \
-                                   "50`. To fix this, use one of those amounts for the Super Nintendo, for example " \
+                                   "50`. It can also add a layer to what is behind it: `shows: 100, shows_behind: 100`. " \
+                                   "To fix this, use one of those amounts for the Super Nintendo, for example " \
                                    "`transparency: console.name == :snes ? 50 : 40`."
             end
 

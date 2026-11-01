@@ -158,7 +158,14 @@ module VBlank
 
             # +bar+ for a game with a status bar, +bends+ for one with a background bent row by row,
             # +tile_runs+ the bytes of each run of tiles a game paints from a list.
-            def reserve(memory, bar: false, bends: false, tile_runs: [])
+            # What CGADSUB is told in the blank, in a game that turns a see-through layer solid.
+            MATH = "rt see-through math"
+
+            # CGADSUB's bit that halves the sum.
+            MATH_HALVES = 0x40
+
+            def reserve(memory, bar: false, bends: false, tile_runs: [], math_turns: false)
+              memory.reserve(MATH, 2) if math_turns
               memory.reserve(TILE_RUNS_OWED, tile_runs.length * 2) unless tile_runs.empty?
               tile_runs.each_with_index { |bytes, number| memory.reserve_far(tile_run_staging(number), bytes) }
               memory.reserve(BAR, BAR_BYTES) if bar
@@ -187,14 +194,16 @@ module VBlank
             # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers). +sprite_squares+ for a
             # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], tile_runs: 0, run_scratch: nil,
-                     see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false)
-              emit_start(asm, memory, painted, see_through, big_tiles, changing_colors)
+                     see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
+                     math_turns: false)
+              emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns)
+              emit_see_through_math(asm, memory) if math_turns
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
               emit_backgrounds(asm, memory, work)
               emit_bar(asm, memory) if bar
               emit_bends_prepare(asm, memory, work, bent) unless bent.empty?
               emit_tile_run_copy(asm, memory, run_scratch) if tile_runs.positive?
-              emit_upload(asm, memory, work, painted, bar, bent, tile_runs)
+              emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns)
               asm.label("rt_picture_prepare")
               if painted
                 asm.jml(asm.long("rt_paint_prepare"))
@@ -207,7 +216,7 @@ module VBlank
 
             # The registers, then the tiles and the colours copied in while the screen is off — or,
             # for a +painted+ screen, Runtime::Paint's.
-            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0, changing_colors = false)
+            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0, changing_colors = false, math_turns = false)
               h = Console::SNESHardware
               asm.label("rt_picture_start")
               # WRIO's top bit lets a read of SLHV latch the line the picture is on, which the copy
@@ -235,7 +244,7 @@ module VBlank
               end
               asm.lda(0x13) # BG1, BG2 and the sprites on the main screen
               asm.sta(asm.abs(h::TM))
-              emit_see_through(asm, see_through) if see_through
+              emit_see_through(asm, memory, see_through, math_turns) if see_through
               asm.rep(0x20)
               emit_dma_to_vram(asm, BG_TILES, "art background tiles", "art background tiles bytes")
               emit_dma_to_vram(asm, SPRITE_TILES, "art sprite tiles", "art sprite tiles bytes")
@@ -256,15 +265,28 @@ module VBlank
             # so a sprite in front stays solid. Where the sub screen shows nothing the console adds
             # the fixed colour unhalved, which is why the build wants a background covering the
             # screen behind the layer.
-            def emit_see_through(asm, see_through)
+            #
+            # A LAYER ADDED TO WHAT IS BEHIND IT is the same with bit 6 clear. A game can turn that
+            # off and on again: CGADSUB takes the number it was last told, from the blank, so the
+            # layer turns solid between two pictures (+math_turns+, rt_see_through_math).
+            def emit_see_through(asm, memory, see_through, math_turns)
               h = Console::SNESHardware
               mixed, behind = see_through
               asm.lda(behind)
               asm.sta(asm.abs(h::TS))
               asm.lda(0x02)
               asm.sta(asm.abs(h::CGWSEL))
-              asm.lda(0x40 | mixed)
+              asm.lda(mixed)
               asm.sta(asm.abs(h::CGADSUB))
+              asm.sta(asm.abs(memory[MATH])) if math_turns
+            end
+
+            # rt_see_through_math(math): what CGADSUB is told in the next blank.
+            def emit_see_through_math(asm, memory)
+              asm.label("rt_see_through_math")
+              asm.lda(asm.direct(Memory.register(0)))
+              asm.sta(asm.abs(memory[MATH]))
+              asm.rtl
             end
 
             # A scroll register written with the 16-bit number in A: its low byte, then its high.
@@ -1014,7 +1036,7 @@ module VBlank
             # register and its scroll; then the cells changed, each when the blank has a line left
             # for it. A painted screen's copy is Paint's rt_paint_upload. With the screen still off,
             # before the first pass is shown, everything goes at once.
-            def emit_upload(asm, memory, work, painted, bar, bent, tile_runs)
+            def emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns = false)
               h = Console::SNESHardware
               layers = memory[LAYERS]
               # The first pass's, with the screen off (Frame switches it on), and every other's.
@@ -1097,6 +1119,12 @@ module VBlank
               emit_dma(asm, h::DMA_TO_ONE_PORT, h::OAMDATA, asm.imm(memory[SHADOW_OAM] & 0xFFFF),
                        memory[SHADOW_OAM] >> 16, 544)
               asm.jsr(asm.abs("rt_tint_upload"))
+              if math_turns
+                asm.sep(0x20)
+                asm.lda(asm.abs(memory[MATH]))
+                asm.sta(asm.abs(h::CGADSUB))
+                asm.rep(0x20)
+              end
               LAYER_MAPS.each_with_index do |at, layer|
                 state = layers + (layer * LAYER_STATE_BYTES)
                 kept = "rt_upload_layer#{layer}_register_kept"

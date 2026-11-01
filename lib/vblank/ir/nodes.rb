@@ -736,12 +736,13 @@ module VBlank
       # out as the game runs, so the display is told again before the frame is drawn — and
       # for every see-through layer in a game with more than one, since which of them is
       # on screen changes as the screens take turns. The amounts are on the layer's own
-      # SeeThroughLayer.
+      # SeeThroughLayer. +added+ marks a layer that shows the whole of itself, written as a number,
+      # with only how much of what is behind it worked out: all a display that can only add can do.
       class SeeThrough
         include Node
         kind :see_through
         category :draw
-        operands layer: :name
+        operands layer: :name, added: :flag
       end
 
       class ListDrop

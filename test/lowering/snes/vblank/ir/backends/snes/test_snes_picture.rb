@@ -784,6 +784,55 @@ class TestSNESPicture < Minitest::Test
     assert_equal 10, run[:t]
   end
 
+  # Letters added to what is behind them, as a title brings its menu up: the whole of each, the sum
+  # held at the brightest. A sprite in another layer stays solid, and a pixel of nought in a letter
+  # shows what is behind it, since adding nothing changes nothing.
+  private def glowing_letters(behind)
+    program_of do
+      screen :tiled
+      image(:sky, "#" => rgb(0, 0, 31)) { "########\n" * 8 }
+      image(:letter, "o" => rgb(31, 31, 0), "." => :transparent) { "oooo....\n" * 8 }
+      image(:hero, "#" => :green) { "########\n" * 8 }
+      tiles :world_tiles, "#" => :sky
+      layers :world, :actors, :letters
+      layer(:world) { background :world, tiles: :world_tiles, map: Array.new(32) { "#" * 32 } }
+      layer(:actors) { sprite :hero, at: [40, 40] }
+      layer(:letters, shows: 100, shows_behind: behind) { sprite :letter, at: [20, 36] }
+      game_loop { }
+    end
+  end
+
+  def test_a_layer_of_sprites_added_to_the_scenery_behind_it
+    run = SNES::CheckedRun.new.run(glowing_letters(100), frames: 6)
+
+    assert_equal 0x7FFF, run.screen.pixel(21, 37), "yellow added to blue"
+    assert_equal 0x7C00, run.screen.pixel(26, 37), "the letter's see-through pixels"
+    assert_equal VBlank::Graphics::Color.resolve(:green), run.screen.pixel(44, 44), "a sprite in another layer"
+  end
+
+  # What a title does on the frame it settles: the letters turn solid in one frame, by a number the
+  # game changes from 100 to 0.
+  def test_a_layer_added_to_what_is_behind_it_turns_solid_on_a_frame_the_game_picks
+    yellow = 0x03FF
+    run = checked(frames: 12) do
+      screen :tiled
+      image(:sky, "#" => rgb(0, 0, 31)) { "########\n" * 8 }
+      image(:letter, "o" => yellow, "." => :transparent) { "oooo....\n" * 8 }
+      tiles :world_tiles, "#" => :sky
+      layers :world, :letters
+      layer(:world) { background :world, tiles: :world_tiles, map: Array.new(32) { "#" * 32 } }
+      glow = 100
+      layer(:letters, shows: 100, shows_behind: glow) { sprite :letter, at: [20, 36] }
+      t = 0
+      game_loop do
+        t += 1
+        glow = 0 if t == 6
+      end
+    end
+
+    assert_equal yellow, run.screen.pixel(21, 37), "solid at the end"
+  end
+
   # The console mixes a layer with what is behind it only by half: other amounts, and amounts the
   # game works out as it runs, are refused in plain words, and so is a see-through layer with
   # nothing that covers the whole screen behind it, where the console would show it whole.

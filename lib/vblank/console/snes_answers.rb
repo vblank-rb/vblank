@@ -126,8 +126,11 @@ module VBlank
         canvas: works,
         layers: works("a layer holds a background or sprites. A layer of backgrounds can be half " \
                       "see-through, over a background that covers the whole screen: `transparency:` " \
-                      "from 50 to 56, or `shows: 50, shows_behind: 50`. A Super Nintendo mixes one " \
-                      "layer into another only by half, never by the Advance's sixteen steps, so other " \
+                      "from 50 to 56, or `shows: 50, shows_behind: 50`. It can also be added to what is " \
+                      "behind it: `shows: 100, shows_behind: 100`, and there `shows_behind:` can be a " \
+                      "number the game changes between 100 and 0, which turns the layer solid in one " \
+                      "frame. A number between shows as 100. A Super Nintendo mixes one layer into " \
+                      "another only by half or by adding, never by the Advance's sixteen steps, so other " \
                       "amounts are refused."),
         layer: works("see `layers`."),
 

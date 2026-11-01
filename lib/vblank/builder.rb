@@ -1413,7 +1413,8 @@ module VBlank
         next unless at
 
         told.each_with_index do |layer, i|
-          node = Build.see_through(layer.name)
+          added = !layer.split && layer.shows.kind == :int && layer.shows.value == 100
+          node = Build.see_through(layer.name, added: added || nil)
           container.children.insert(at + 1 + i, node)
           node.parent = container
         end

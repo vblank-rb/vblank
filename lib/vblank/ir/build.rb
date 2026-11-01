@@ -629,8 +629,8 @@ module VBlank
       end
 
       # Say again how see-through +layer+ is, just before a frame is drawn.
-      def see_through(layer)
-        Nodes.build(:see_through, layer: layer)
+      def see_through(layer, added: nil)
+        Nodes.build(:see_through, layer: layer, added: added)
       end
 
       # A tiled background: a whole grid drawn from a small set of reusable tiles.

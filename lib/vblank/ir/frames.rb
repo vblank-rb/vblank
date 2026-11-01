@@ -39,7 +39,7 @@ module VBlank
       # moves every such write out of the game's own lines to put it there, so a statement of the
       # loop holding one of these is one of the boundary's.
       PLACED_AT_BOUNDARY = %i[scroll_background place_bar show_map background_colors affine_background
-                              copy_owed_tiles color_list_holds present_objects].freeze
+                              copy_owed_tiles color_list_holds see_through present_objects].freeze
 
       # ...and the routines that put the frame's sprites in order for it (a pool's things, a
       # `draw_in_order`), by the kind of name the builder makes for each (Messages::MadeNames).
