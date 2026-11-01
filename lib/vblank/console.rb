@@ -13,9 +13,11 @@ require_relative "console/description" # what a game can tell about a console: i
 require_relative "console/variant" # hardware some copies of a console have: a cartridge chip, a model
 require_relative "console/gbc_hardware" # the Game Boy Color's register addresses, flags and memory map
 require_relative "console/snes_hardware" # the Super Nintendo's register addresses, flags and memory map
+require_relative "console/genesis_hardware" # the Sega Genesis's ports, registers, header and memory map
 require_relative "console/questions" # what a line of a game asks of the console it runs on
 require_relative "console/answers" # what an answer to "what does this verb do here?" is
 require_relative "console/advance_answers" # ...the Game Boy Advance's: every verb works
 require_relative "console/color_answers" # ...and the Game Boy Color's: works or refused
 require_relative "console/snes_answers" # ...and the Super Nintendo's: works or refused
+require_relative "console/genesis_answers" # ...and the Sega Genesis's: works or refused
 require_relative "console/kit" # ...and which parts of the library serve each console
