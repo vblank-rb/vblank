@@ -55,11 +55,51 @@ module VBlank
             # rt_mul32: R0 × R1, the low 32 bits — which are the same whether the two are read as
             # signed or not, so no signs are looked at. R0 is shifted left a place for every bit of R1,
             # and added to the product where that bit is one.
+            #
+            # THE CONSOLE MULTIPLIES TWO BYTES BY ITSELF, in eight cycles, against a dozen
+            # instructions a bit here. Most sums a game does are a small number by a byte, a row
+            # by its width, so when one number is a byte and the other fits 16 bits it is two of
+            # those: the byte by each half of the other, the second a byte up.
             def emit_mul(asm, s)
               p = s.wide
+              h = Console::SNESHardware
               asm.label("rt_mul32")
               asm.stz(asm.direct(p))
               asm.stz(asm.direct(p + 2))
+              asm.lda(asm.direct(R0 + 2))
+              asm.ora(asm.direct(R1 + 2))
+              asm.bne("rt_mul32_bit")
+              asm.lda(asm.direct(R1))
+              asm.cmp(0x100)
+              asm.bcc("rt_mul32_bytes")
+              asm.lda(asm.direct(R0))
+              asm.cmp(0x100)
+              asm.bcs("rt_mul32_bit")
+              asm.ldx(asm.direct(R1)) # the byte in R1, the other in R0
+              asm.sta(asm.direct(R1))
+              asm.stx(asm.direct(R0))
+              asm.label("rt_mul32_bytes")
+              asm.sep(0x20)
+              asm.lda(asm.direct(R1))
+              asm.sta(asm.abs(h::WRMPYA))
+              asm.lda(asm.direct(R0))
+              asm.sta(asm.abs(h::WRMPYB))
+              4.times { asm.nop }
+              asm.rep(0x20)
+              asm.lda(asm.abs(h::RDMPYL))
+              asm.sta(asm.direct(p))
+              asm.sep(0x20)
+              asm.lda(asm.direct(R1))
+              asm.sta(asm.abs(h::WRMPYA))
+              asm.lda(asm.direct(R0 + 1))
+              asm.sta(asm.abs(h::WRMPYB))
+              4.times { asm.nop }
+              asm.rep(0x20)
+              asm.lda(asm.abs(h::RDMPYL))
+              asm.clc
+              asm.adc(asm.direct(p + 1))
+              asm.sta(asm.direct(p + 1))
+              asm.bra("rt_mul32_done")
               asm.label("rt_mul32_bit")
               asm.lda(asm.direct(R1))
               asm.ora(asm.direct(R1 + 2))
