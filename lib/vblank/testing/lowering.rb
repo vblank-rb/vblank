@@ -87,6 +87,10 @@ module VBlank
       # What a run's test processes are told of it, by TestTask: FAIL_FAST is the person's choice and
       # is not handed on, as CONSOLE is not, or a test that starts a rake of its own would stop early.
       STOPS_AT_FAILURE_SETTING = "VBLANK_STOPS_AT_FAILURE"
+      # Set to anything, `rake test:all` picks up where FAIL_FAST stopped it (RunProgress).
+      RESUME_SETTING = "RESUME"
+      # The file a run's test process adds its results to and reads what passed from, by TestTask.
+      RECORD_SETTING = "VBLANK_RUN_RECORD"
       NAMES = Ractor.make_shareable(RUNS.map(&:name))
 
       module_function

@@ -5,6 +5,7 @@ require "rake/tasklib"
 require_relative "../console/description"
 require_relative "../console/kit" # which names its parts and loads none of them
 require_relative "lowering"
+require_relative "run_progress"
 require_relative "test_task"
 
 module VBlank
@@ -26,6 +27,9 @@ module VBlank
     #   rake test:lowering:js        the game built as JavaScript, checked the same way (needs node)
     #   rake test:lowering:ruby      the game built as Ruby, checked the same way
     #   rake test TEST=<file>        one file, on each lowering whose run loads it
+    #
+    # FAIL_FAST=1 rake test:all stops at the first failing test and keeps a record of what passed.
+    # With the fault fixed, RESUME=1 rake test:all plays that test, then the rest (RunProgress).
     #
     # Each lowering's run starts with a heading naming it. `rake test` with no TEST= plays nothing
     # and lists these, since the whole suite is long and should be asked for by name.
@@ -59,7 +63,9 @@ module VBlank
     # not want this whole set: it makes the runs it wants out of TestTask, which defines nothing
     # but the task it is asked for.
     class RakeTasks < Rake::TaskLib
-      OUTCOMES = { passed: "passed", failed: "FAILED", not_played: "does not play this file" }.freeze
+      OUTCOMES = { passed: "passed", failed: "FAILED", not_played: "does not play this file",
+                   passed_earlier: "passed earlier" }.freeze
+      RESUMED_NOTE = "This run was resumed, so it does not stand in for one clean rake test:all."
       # The list `rake test:golden` plays, a short run of a tenth of the tests or less. A game that
       # keeps no such file has no such task.
       GOLDEN_LIST = "test/golden.txt"
@@ -122,7 +128,7 @@ module VBlank
       def define_test_task
         namespace :test do
           desc "Run the tests on every lowering, one after the other (CONSOLE= for one console)"
-          task(:all) { play_runs(plays) }
+          task(:all) { play_all_runs }
           desc "Run the golden path: the files #{GOLDEN_LIST} names, on every lowering that plays each"
           task(:golden) { play_runs(plays, golden: Lowering.golden_files(GOLDEN_LIST)) } if File.file?(GOLDEN_LIST)
         end
@@ -143,23 +149,94 @@ module VBlank
          "  CONSOLE=gbc rake test:all           only the runs that play games as one console"].join("\n")
       end
 
+      # `rake test:all`, which FAIL_FAST and RESUME turn into a run that keeps a record. Without
+      # either it keeps none. RESUME stops at a failure too, so the record stays good for the next.
+      def play_all_runs
+        resuming = ENV[Lowering::RESUME_SETTING]
+        return play_runs(plays) unless resuming || ENV[Lowering::FAIL_FAST_SETTING]
+
+        ENV[Lowering::FAIL_FAST_SETTING] ||= "1"
+        progress = RunProgress.new(plays, lowering_folders: lowering_folders, console_folders: console_folders)
+        resumed = resuming && progress.stored?
+        resumed ? progress.apply_changes.each { |line| puts line } : progress.start
+        puts "There is no stopped run to pick up, so every run is played." if resuming && !resumed
+        play_runs(plays, progress: progress)
+        progress.finish
+        puts RESUMED_NOTE if resumed
+      end
+
       # The runs of +chosen+ that CONSOLE leaves, one after the other, ending with a line for each.
-      # With +golden+, a list of files, each run plays those of them it loads.
-      def play_runs(chosen, golden: nil)
+      # With +golden+, a list of files, each run plays those of them it loads. With +progress+, a
+      # run plays what that record says is left of it.
+      def play_runs(chosen, golden: nil, progress: nil)
         chosen = chosen_by_console(chosen)
         labels = chosen.map { |lowering, console| label(lowering, console) }
         results = []
         chosen.zip(labels).each do |(lowering, console), name|
           ENV["TEST"] = (golden & files(lowering, console)).join(",") if golden
-          results << play_run(lowering, console, name, golden: !golden.nil?)
+          results << if progress then play_recorded_run(progress, lowering, console, name)
+                     else play_run(lowering, console, name, listed: !golden.nil?)
+                     end
           break if ENV[Lowering::FAIL_FAST_SETTING] && results.last[1] == :failed
         end
         puts
         results.each do |name, outcome, seconds|
           puts format("%-*s %s%s", labels.map(&:length).max, name, OUTCOMES.fetch(outcome),
-                      outcome == :not_played ? "" : format(" in %ds", seconds))
+                      %i[not_played passed_earlier].include?(outcome) ? "" : format(" in %ds", seconds))
         end
         abort "rake test: a lowering's run failed" if results.any? { |_, outcome| outcome == :failed }
+      end
+
+      # What the record says is left of one run. The test that stopped it is played first and alone,
+      # which starts in seconds where the whole run takes minutes to load, and then the rest.
+      def play_recorded_run(progress, lowering, console, name)
+        left = progress.left_in(lowering, console)
+        return [name, :passed_earlier, 0] if left.nil?
+
+        only = left.only && (left.only & files(lowering, console))
+        return finish_recorded_run(progress, lowering, console, [name, :passed_earlier, 0]) if only&.empty?
+
+        with_settings(Lowering::RECORD_SETTING => left.record, "TESTOPTS" => seeded_options(left.seed), "TEST" => nil) do
+          first = play_failed_test_alone(left, lowering, console, name)
+          next finish_recorded_run(progress, lowering, console, first) if first && first[1] == :failed
+
+          ENV["TEST"] = only.join(",") if only
+          finish_recorded_run(progress, lowering, console, play_run(lowering, console, name, listed: !only.nil?))
+        end
+      end
+
+      def finish_recorded_run(progress, lowering, console, result)
+        result[1] == :failed ? progress.mark_failed(lowering, console) : progress.mark_finished(lowering, console)
+        result
+      end
+
+      # Nil when the test's file has gone, or its name would not survive a shell.
+      def play_failed_test_alone(left, lowering, console, name)
+        file, test = left.failed&.split("\t", 2)
+        return unless file && File.file?(file) && test.match?(/\A[\w:]+#\w+\z/)
+
+        options = "#{ENV.fetch('TESTOPTS', nil)} --name=/#{test}$/".strip
+        result = with_settings("TEST" => file, "TESTOPTS" => options) do
+          play_run(lowering, console, name, listed: true)
+        end
+        Rake::Task[task_name(lowering, console)].reenable
+        result
+      end
+
+      # The test options with the seed added. Nil when there are none, since rake reads an empty
+      # TESTOPTS in place of the options a task was given.
+      def seeded_options(seed)
+        given = ENV.fetch("TESTOPTS", nil)
+        seed ? "#{given} --seed=#{seed}".strip : given
+      end
+
+      # Runs the block with +settings+ in the environment (nil takes one out), and puts them back.
+      def with_settings(settings)
+        before = settings.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+        ENV.update(settings)
+        yield
+      ensure
+        ENV.update(before)
       end
 
       # Of +chosen+, the runs playing games as the console CONSOLE names; all of them when it names none.
@@ -177,9 +254,9 @@ module VBlank
 
       # One run: whether it passed and how long it took. Every one is played whatever the one
       # before found, unless FAIL_FAST says otherwise (#play_runs).
-      def play_run(lowering, console, name, golden: false)
+      def play_run(lowering, console, name, listed: false)
         named = ENV["TEST"]&.delete_prefix("./")
-        return [name, :not_played, 0] if golden ? named.to_s.empty? : named && !files(lowering, console).include?(named)
+        return [name, :not_played, 0] if listed ? named.to_s.empty? : named && !files(lowering, console).include?(named)
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         passed = begin

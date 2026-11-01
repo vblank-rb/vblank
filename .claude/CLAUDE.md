@@ -138,7 +138,14 @@ CONSOLE=gbc rake test:all                                       # only the runs 
 rake test:playthroughs                                          # one module's tests: every file in test/lowering/gba/vblank/playthroughs/
 VBLANK_SUITE_LOCK=checkout rake test                            # in a worktree: go ahead beside another checkout's run
 FAIL_FAST=1 rake test:all                                       # stop at the first failing test; no later run starts
+RESUME=1 rake test:all                                          # after a FAIL_FAST stop: the failed test alone, then what was left
 ```
+
+`RESUME=1` keeps what the stopped run passed unless a change undoes it: a file every run reads
+starts everything again and says which, a file one lowering owns redoes that lowering's runs, and
+a changed test file is played again alone on the runs that had finished. Its last line says it does
+not stand in for one clean `rake test:all`. The record is `.test_progress/`
+(`Testing::RunProgress`), and a whole run that passes removes it.
 
 **One whole run at a time on the machine**, across every checkout: a second waits for the first and
 says where it is. A run in a worktree that should not queue behind the main checkout's sets

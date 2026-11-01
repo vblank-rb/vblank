@@ -60,6 +60,69 @@ class TestGameSuite < Minitest::Test
     refute_match(/test:lowering:gbc/, rake("-T").first)
   end
 
+  # A copy of the game with one test more, which fails on the native run until a file exists.
+  private def game_with_a_fault
+    Dir.mktmpdir do |folder|
+      game = File.join(folder, "game")
+      FileUtils.cp_r(GAME, game)
+      mended = File.join(folder, "mended")
+      File.write(File.join(game, "test/fault_test.rb"), <<~RUBY)
+        require "vblank/testing"
+        class FaultTest < Minitest::Test
+          def test_native_run_fails_until_it_is_mended
+            assert VBlank::Testing.lowering != :native || File.file?(#{mended.inspect})
+          end
+        end
+      RUBY
+      yield game, mended
+    end
+  end
+
+  def test_a_run_stopped_at_a_failure_picks_up_after_it_is_mended
+    game_with_a_fault do |game, mended|
+      stopped, passed, played = rake("test:all", env: { "FAIL_FAST" => "1" }, game: game)
+
+      refute passed, stopped
+      assert_includes played, "gba"
+      refute_includes played, "js"
+      assert_match(/FaultTest#test_native_run_fails_until_it_is_mended/, stopped)
+
+      FileUtils.touch(mended)
+      resumed, passed, played = rake("test:all", env: { "RESUME" => "1" }, game: game)
+
+      assert passed, resumed
+      # The native run stopped at a place the seed picks, so it may have tests of its own left.
+      assert_empty %w[js ruby] - played
+      refute_includes played, "gba"
+      assert_match(/^GBA lowering\s+passed earlier/, resumed)
+      assert_match(/^native lowering\s+passed in/, resumed)
+      assert_match(/does not stand in for one clean/, resumed)
+      refute File.exist?(File.join(game, VBlank::Testing::RunProgress::FOLDER)), "a finished run keeps no record"
+    end
+  end
+
+  def test_a_change_every_run_reads_starts_a_resumed_run_again
+    game_with_a_fault do |game, mended|
+      rake("test:all", env: { "FAIL_FAST" => "1" }, game: game)
+      FileUtils.touch(mended)
+      File.write(File.join(game, "test/one_pixel_off.rb"), "\n", mode: "a")
+      resumed, passed, played = rake("test:all", env: { "RESUME" => "1" }, game: game)
+
+      assert passed, resumed
+      assert_equal %w[gba js native ruby], played
+      assert_match(%r{test/one_pixel_off\.rb changed}, resumed)
+    end
+  end
+
+  def test_a_plain_run_keeps_no_record
+    game_with_a_fault do |game, mended|
+      FileUtils.touch(mended)
+      rake("test:lowering:gba", "test:all", game: game)
+
+      refute File.exist?(File.join(game, VBlank::Testing::RunProgress::FOLDER))
+    end
+  end
+
   # The whole suite is long, so it is asked for by name: plain `rake test` plays nothing and says
   # what to type. Each run that does play starts with a heading naming its lowering.
   def test_plain_rake_test_lists_the_choices_and_each_run_has_a_heading

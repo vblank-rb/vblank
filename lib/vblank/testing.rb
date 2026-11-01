@@ -156,6 +156,19 @@ if ENV["CI"]
   Minitest.extensions << "progress_lines"
 end
 
+# FAIL_FAST=1 and RESUME=1: a run keeps a record of what passed, and leaves that out when it picks up.
+# Ahead of the stop below, since FailFast can end the process and the failure must be in the record.
+require_relative "testing/run_progress"
+if (run_record = ENV.delete(VBlank::Testing::Lowering::RECORD_SETTING))
+  VBlank::Testing::RunProgress.leave_out_passed_tests(run_record)
+  module Minitest
+    def self.plugin_run_record_init(options)
+      reporter << VBlank::Testing::RunProgress::Recorder.new(VBlank::Testing::RunProgress.record, options[:seed])
+    end
+  end
+  Minitest.extensions << "run_record"
+end
+
 # FAIL_FAST=1: stop at the first failing test.
 require_relative "testing/fail_fast"
 # Taken out of the environment as it is read: it is for this process, and a test that starts a run

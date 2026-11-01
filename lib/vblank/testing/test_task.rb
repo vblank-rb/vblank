@@ -149,7 +149,7 @@ module VBlank
       def run_settings
         shared = { "RUBY_YJIT_ENABLE" => yjit? ? "1" : nil, Lowering::PLAYED_AS_SETTING => console.to_s,
                    Lowering::CONSOLE_SETTING => nil, Lowering::FAIL_FAST_SETTING => nil,
-                   Lowering::STOPS_AT_FAILURE_SETTING => ENV.fetch(Lowering::FAIL_FAST_SETTING, nil) }
+                   Lowering::RESUME_SETTING => nil, Lowering::STOPS_AT_FAILURE_SETTING => ENV.fetch(Lowering::FAIL_FAST_SETTING, nil) }
         return { Lowering::SETTING => "gba", **shared } unless checked?
 
         { Lowering::SETTING => lowering.to_s, "MT_RACTOR" => nil, "MT_CPU" => "1", **shared,
