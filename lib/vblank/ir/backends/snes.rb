@@ -61,7 +61,7 @@ module VBlank
         # recordings by the number a place playing one keeps (Runtime::Recordings), and each sprite
         # picture's number as SpriteNames numbers the picture it shows (Lowering::Picture#sprite_picture_names).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
-                             :sound_voicing, :recording_names, :sprite_picture_names) do
+                             :sound_voicing, :recording_names, :sprite_picture_names, :console_voice_bits) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -138,6 +138,7 @@ module VBlank
             return build(program, title: title, sprite_squares: false)
           end
           findings.concat(lowering.sprite_table_findings)
+          recording_voices = Music.recording_voices(program)
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins, painted: painted,
                                              board: board, saves: saves, sound: sound,
                                              sound_waves: lowering.sound_waves,
@@ -152,8 +153,9 @@ module VBlank
                                              sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
                                              sprite_squares: lowering.sprite_squares?, changing_colors: changing_colors, dims: dims,
                                              extra_buttons: Runtime::Frame.reads_extra_buttons?(program),
-                                             math_turns: math_turns, scene_bars: lowering.scene_bars?)
-          linked = Linker.new(runtime + game, most_banks: board.most_banks).link
+                                             math_turns: math_turns, scene_bars: lowering.scene_bars?,
+                                             recording_voices: recording_voices)
+          linked =Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
             GameRoutine.new(addresses: placed.address...(placed.address + placed.section.size), routine: routine)
@@ -163,7 +165,8 @@ module VBlank
                              source_program: program, code: linked.places, routines: routines,
                              sound_entries: lowering.sound_entries, sound_voicing: lowering.sound_voicing,
                              recording_names: lowering.recording_names,
-                             sprite_picture_names: lowering.sprite_picture_names)
+                             sprite_picture_names: lowering.sprite_picture_names,
+                             console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - recording_voices))
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }

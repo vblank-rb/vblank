@@ -89,7 +89,8 @@ module VBlank
                        sound: false, sound_waves: [], music: nil, music_level_at: nil, effects: 0, recordings: [],
                        plays: nil, bar: false, bent: [], tile_runs: 0, see_through: nil, sprite_depths: false, big_tiles: 0,
                        colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
-                       dims: false, extra_buttons: false, math_turns: false, scene_bars: false)
+                       dims: false, extra_buttons: false, math_turns: false, scene_bars: false,
+                       recording_voices: DSPWrites::RECORDING_VOICES)
             chip = board.name == :super_fx
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
@@ -114,7 +115,7 @@ module VBlank
               Sound.emit(asm, memory, sound_waves, recordings: recordings, songs: !music.nil?, samples: !plays.nil?)
             end
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
-            Recordings.emit(asm, memory) if plays
+            Recordings.emit(asm, memory, voices: recording_voices) if plays
             emit_start(asm, chip: chip, sound: sound)
             emit_frame_begins(asm, frame_begins)
             [vectors.section, asm.section] + (sound ? Sound.sections(sound_waves, recordings: recordings) : []) +

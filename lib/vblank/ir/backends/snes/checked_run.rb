@@ -141,6 +141,7 @@ module VBlank
           def dsp_difference
             voicing = @cartridge.rom.built.sound_voicing
             recordings = !@cartridge.rom.built.recording_names.empty?
+            console_bits = @cartridge.rom.built.console_voice_bits
             # Only as far as the interpreter's log goes: past it, nothing held the cartridge's entries.
             logged_entries = @cartridge.audio_as_logged.take(@interpreter_sounds.size)
             stop = DSPWrites.misnamed_stop(logged_entries, voicing)
@@ -148,10 +149,10 @@ module VBlank
 
             @cartridge.dsp_reads.each_with_index do |(logged, held), i|
               expected = DSPWrites.after(logged_entries.take(logged), voicing)
-              expected = DSPWrites.console_voices_only(expected) if recordings
+              expected = DSPWrites.console_voices_only(expected, console_bits) if recordings
               wrong = expected.filter_map do |register, value|
                 got = held.getbyte(register)
-                got &= DSPWrites::CONSOLE_VOICE_BITS if recordings && register == DSPWrites::KEY_OFF
+                got &= console_bits if recordings && register == DSPWrites::KEY_OFF
                 format("$%<register>02X holds $%<got>02X, the log says $%<value>02X", register: register, got: got,
                                                                                        value: value) if got != value
               end

@@ -94,13 +94,14 @@ class TestSNESSamples < Minitest::Test
     assert_equal [0xF0, 0x1F], [dsp.getbyte(VOICE + 2), dsp.getbyte(VOICE + 3)], "the pitch"
   end
 
-  # Five recordings at once: the first four on voices 4 to 7, the fifth counted and not heard.
-  def test_a_fifth_recording_is_counted_and_not_heard
+  # Five recordings at once: the first four on voices 4 to 7, and the fifth on the first voice this
+  # game leaves free, the one a song's first square part would have had.
+  def test_a_fifth_recording_sounds_on_a_voice_the_game_left_free
     run = game(*Array.new(5) { Build.play_sample(:clip, loop: true) }, frames: 2)
-    sounding = (4..7).map { |voice| run.dsp_registers.getbyte((voice << 4) + ENVX) }
+    sounding = [4, 5, 6, 7, 0].map { |voice| run.dsp_registers.getbyte((voice << 4) + ENVX) }
 
     assert_equal [:clip] * 5, run.active_samples
-    assert_equal [0x7F] * 4, sounding
+    assert_equal [0x7F] * 5, sounding
   end
 
   # stop_sample with no name stops every recording.

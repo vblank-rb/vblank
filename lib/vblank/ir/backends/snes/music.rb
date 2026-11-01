@@ -178,6 +178,31 @@ module VBlank
               %i[square noise].include?(IR::Tunes.part_kind(part))
           end
 
+          # THE SOUND CHIP'S VOICES RECORDINGS PLAY ON in +program+, the first place's first: the four
+          # past the square, wave and noise parts', and then each of those four the game never
+          # sounds, so a game with no use for them has all eight. Asked of the whole program, since
+          # a voice is either kept for those sounds everywhere or free everywhere.
+          def self.recording_voices(program)
+            kept = program.walk.flat_map { |node| console_voices_used_by(node) }.uniq
+            DSPWrites::RECORDING_VOICES + (DSPWrites::CONSOLE_VOICES.to_a - kept)
+          end
+
+          def self.console_voices_used_by(node)
+            case node.kind
+            when :song
+              kinds = node.voices.map { |part| IR::Tunes.part_kind(part) }
+              squares = DSPWrites::SQUARE_VOICES.values.first(kinds.count(:square))
+              squares + (kinds.include?(:wave) ? [DSPWrites::WAVE_VOICE] : []) + (kinds.include?(:noise) ? [DSPWrites::NOISE_VOICE] : [])
+            when :beep then [DSPWrites::CHANNEL_VOICES.fetch(Reference::Player::BEEP_CHANNEL)]
+            when :wave, :stop_wave then [DSPWrites::WAVE_VOICE]
+            when :noise then [DSPWrites::NOISE_VOICE]
+            else []
+            end
+          end
+
+          # The bits of +voices+ in KON and KOFF.
+          def self.voice_bits(voices) = voices.sum { |voice| 1 << voice }
+
           # Whether any note of +program+'s songs slides its pitch, and so the player walks its pitches.
           def self.slides?(program) = any_note?(program) { |part, event| Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event)) }
 

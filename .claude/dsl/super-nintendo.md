@@ -153,7 +153,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `fade_music_out` — works: the same as on the Advance.
 - `songs` — works: see `song`.
 - `sound_effects` — works: see `song`.
-- `sample` — works: each recording plays on a voice of the sound chip. The sound chip has four voices for recordings. If four recordings play, a fifth recording is not heard. It still ends or loops as on the Advance.
+- `sample` — works: each recording plays on a voice of the sound chip. The sound chip has eight voices. Four always play recordings, and each of the other four does when the game never uses it for a beep, a wave, noise or a song's own part. If every one of those plays a recording, the next recording is not heard. It still ends or loops as on the Advance.
 - `instrument` — works: see `sample`.
 
 ## Not made yet
