@@ -356,10 +356,14 @@ module VBlank
         # costs a blend per declared color on each frame the fade moves, so a game whose
         # fades are all short keeps the display's fade, which costs nothing.
         #
+        # A DISPLAY THAT DIMS (Console::Description#fades_by_brightness) always takes the fraction. Its
+        # brightness is a level of sixteen that a whole percentage, gone through the seventeen
+        # levels of a blend first, would not land on evenly.
+        #
         # Asked when the routine's body is built, after the whole game is written, so every
         # fade the game asks for is counted.
         def fade_amount(level)
-          longest_fade_frames > DISPLAY_LEVELS ? level : level.to_i
+          longest_fade_frames > DISPLAY_LEVELS || console.fades_by_brightness ? level : level.to_i
         end
 
         # The most frames any fade in this game can take.

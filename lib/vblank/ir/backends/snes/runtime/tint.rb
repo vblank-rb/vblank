@@ -301,12 +301,7 @@ module VBlank
               4.times { asm.asl }
               asm.sec
               asm.sbc(asm.direct(R.call(2)))
-              asm.clc
-              asm.adc(128)
               emit_over_256(asm)
-              asm.cmp(15)
-              asm.bcc("rt_tint_dims_kept")
-              asm.lda(14)
               asm.label("rt_tint_dims_kept")
               asm.sta(asm.abs(memory[DIMMED]))
               asm.stz(asm.direct(R.call(2)))

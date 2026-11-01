@@ -75,9 +75,11 @@ module VBlank
 
         # A DISPLAY THAT DIMS (Console::Description#fades_by_brightness) has sixteen brightnesses and
         # no more, so a fade to black of +steps+ 256ths is the nearest of them: how many levels down
-        # from full, 0 to 15. Rounded, so a fade over fifteen frames is one level a frame, but for
-        # black, the lowest, which is for a fade all the way and no other.
-        def dimmed_levels(steps) = steps >= WALK ? 15 : [((steps * 15) + 128) / WALK, 14].min
+        # from full, 0 to 15. Rounded down, so each level is the same share of the fade: fifteen levels
+        # of a fade over fifteen frames is one a frame, and black, the lowest, is for a fade all the
+        # way and no other. Rounded to the nearest, the levels fall a half out of step with the
+        # frames, and one is skipped and another held wherever the two cross.
+        def dimmed_levels(steps) = steps >= WALK ? 15 : (steps * 15) / WALK
 
         # A channel of +value+ at +dimmed+ levels down: the display keeps level fifteenths of it,
         # to the nearest, so the lowest level is black.
