@@ -115,6 +115,10 @@ module VBlank
             # whose it is, its rank, and the best place found to take and its rank and ticket.
             TICKETS = "rt recordings tickets"
             NOTE_OWNER = "rt recordings note owner"
+            # The place each song part's last note took, for the parts numbered below LAST_PLACE_OWNERS:
+            # only ever where to look first, since the place itself is what says whose it is.
+            LAST_PLACES = "rt recordings last places"
+            LAST_PLACE_OWNERS = 16
             NOTE_RANK = "rt recordings note rank"
             BEST = "rt recordings best"
             BEST_RANK = "rt recordings best rank"
@@ -146,6 +150,7 @@ module VBlank
               [ROW, PLACE, REGISTERS, STOP_NAME, STOP_LOGGED, TICKETS, NOTE_OWNER, NOTE_RANK, BEST, BEST_RANK,
                BEST_TICKET, DROPS, DROPS_MUSIC].each { |name| memory.reserve(name, 2) }
               memory.reserve(PLACES_STATE, PLACES * PLACE_BYTES)
+              memory.reserve(LAST_PLACES, LAST_PLACE_OWNERS * 2)
               memory.reserve(KEPT_BY_PASS, Frame::STEPS_KEPT * PLACES)
               memory.reserve(LEVELS_BY_PASS, Frame::STEPS_KEPT * PLACES)
             end
@@ -280,6 +285,20 @@ module VBlank
               asm.lda(1)
               asm.rtl
               asm.label("rt_recordings_play_heard")
+              asm.lda(at.call(PLACE))
+              asm.sta(asm.direct(Sound::R0))
+              asm.lda(at.call(ROW))
+              asm.sta(asm.direct(Sound::R1))
+              asm.lda(Sound::START_NOTE)
+              asm.jsl(asm.long("rt_sound_command"))
+              asm.lda(1)
+              asm.rtl
+
+              # rt_recordings_voice_start (JSL), with PLACE and ROW set: the place's voice told all
+              # about its note, in Sound::NOTE_START_WRITES writes, key-on last. What the sound unit
+              # hears of a note is only this, so it waits in the sound queue as one entry and is worked
+              # out while the game waits for the screen (Sound's rt_sound_send_queued).
+              asm.label("rt_recordings_voice_start")
               emit_registers(asm, at)
               dsp = DSPWrites
               asm.jsr(asm.abs("rt_recordings_volume")) # the volume its level scales it to
@@ -305,7 +324,6 @@ module VBlank
               asm.lda(dsp::KEY_ON)
               asm.sta(asm.direct(Sound::R0))
               asm.jsl(asm.long("rt_sound_write")) # ...then key-on
-              asm.lda(1)
               asm.rtl
             end
 
@@ -375,6 +393,13 @@ module VBlank
               asm.label("rt_recordings_note_found")
               asm.lda(at.call(NOTE_OWNER))
               asm.sta(place.call(OWNER))
+              asm.cmp(LAST_PLACE_OWNERS)
+              asm.bcs("rt_recordings_note_found_kept")
+              asm.asl
+              asm.tax
+              asm.tya
+              asm.sta(asm.abs_x(memory[LAST_PLACES]))
+              asm.label("rt_recordings_note_found_kept")
               asm.lda(at.call(NOTE_RANK))
               asm.sta(place.call(RANK))
               asm.lda(0)
@@ -459,8 +484,27 @@ module VBlank
               asm.rts
 
               # rt_recordings_sounding: Y = the place NOTE_OWNER's part sounds a note in now — held, its
-              # own, and not falling away — with carry clear; carry set when it has none.
+              # own, and not falling away — with carry clear; carry set when it has none. A part has one
+              # such note at most, so the place its last note took is tried first (LAST_PLACES), and
+              # the note after a note does not walk every place to find it.
               asm.label("rt_recordings_sounding")
+              asm.lda(at.call(NOTE_OWNER))
+              asm.cmp(LAST_PLACE_OWNERS)
+              asm.bcs("rt_recordings_sounding_walk")
+              asm.asl
+              asm.tax
+              asm.ldy(asm.abs_x(memory[LAST_PLACES]))
+              asm.lda(place.call(HELD))
+              asm.beq("rt_recordings_sounding_walk")
+              asm.lda(place.call(OWNER))
+              asm.cmp(at.call(NOTE_OWNER))
+              asm.bne("rt_recordings_sounding_walk")
+              asm.lda(place.call(PHASE))
+              asm.cmp(FALLING)
+              asm.bcs("rt_recordings_sounding_walk")
+              asm.clc
+              asm.rts
+              asm.label("rt_recordings_sounding_walk")
               each_place(asm, "rt_recordings_sounding") do |next_place|
                 asm.lda(place.call(HELD))
                 asm.beq(next_place)

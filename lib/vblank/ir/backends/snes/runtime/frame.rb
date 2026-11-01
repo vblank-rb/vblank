@@ -215,7 +215,11 @@ module VBlank
               asm.label("rt_sleep_until_vblank")
               asm.stz(at.call(VBLANK))
               asm.label("rt_sleep_until_vblank_wait")
-              asm.wai
+              if memory.reserved?(Sound::QUEUE)
+                asm.jsl(asm.long("rt_sound_send_queued")) # this wait's time is the sound unit's
+              else
+                asm.wai
+              end
               asm.lda(at.call(VBLANK))
               asm.beq("rt_sleep_until_vblank_wait")
               asm.rts
@@ -359,7 +363,11 @@ module VBlank
               asm.sta(at.call(SHOWN))
               asm.sta(at.call(SHOWN, 2))
               asm.label("rt_stopped")
-              asm.wai
+              if memory.reserved?(Sound::QUEUE)
+                asm.jsl(asm.long("rt_sound_send_queued"))
+              else
+                asm.wai
+              end
               asm.bra("rt_stopped")
 
               asm.label("rt_fault")

@@ -38,6 +38,15 @@ module VBlank
           # (PATIENCE tries); a sound unit that has not answered by then has its write dropped and
           # counted in DROPPED, and the game goes on.
           #
+          # A NOTE IS ABOUT TEN WRITES, and each still waits for the one before, so eight parts
+          # starting a note on one frame take nearly half of the game's time. So a game with music
+          # queues its writes (QUEUE) and the queue is sent while the game waits for the screen, one
+          # write each time the sound unit has answered (Frame's rt_sleep_until_vblank). A recorded
+          # note is one entry until it reaches the front. Queueing takes a few instructions, and the
+          # waiting comes out of time the game was not using. A note then starts later in the frame
+          # than the wait it follows, never more than a frame late while the game has time to
+          # spare, and always in the order it was asked.
+          #
           # Every routine is reached with JSL and leaves A, X and Y 16 bits wide. Mailboxes 0 and 1
           # are written a byte at a time, since a 16-bit write to $2140 can spoil $2143 on some
           # cartridges (fullsnes); mailboxes 2 and 3 take a 16-bit write, as fullsnes's uploader
@@ -85,6 +94,26 @@ module VBlank
             SENT = "rt sound sent" # the number of the last command sent, in mailbox 0
             DROPPED = "rt sound dropped" # writes dropped because the sound unit had not answered
 
+            # THE WRITES WAITING TO GO, in a game with music: a ring of entries, the oldest at
+            # QUEUE_HEAD and the next free at QUEUE_TAIL, both as offsets into it, so the two are equal
+            # when it is empty. One entry is left free so that full and empty differ. A power of two.
+            QUEUE = "rt sound queue"
+            QUEUE_HEAD = "rt sound queue head"
+            QUEUE_TAIL = "rt sound queue tail"
+            QUEUE_ENTRIES = 128
+            ENTRY_BYTES = 8
+            QUEUE_MASK = (QUEUE_ENTRIES * ENTRY_BYTES) - 1
+            ENTRY_COMMAND = 0
+            ENTRY_REGISTER = 2
+            ENTRY_VALUE = 4
+            # An entry that is a whole note, for a voice: its register is the place's offset and its
+            # value the recording's row, and it becomes NOTE_START_WRITES entries where it stood.
+            START_NOTE = 4
+            NOTE_START_WRITES = 9
+            # The room a write leaves in the queue, so a note at the front can always become its writes.
+            QUEUE_ROOM = (NOTE_START_WRITES + 1) * ENTRY_BYTES
+            QUEUE_TAIL_KEPT = "rt sound queue tail kept"
+
             # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the
             # number the lowering gave its entry of the interpreter's log (Lowering::Sound), the
             # last LOG_LENGTH of them in a ring, and how many there have been (16 bits).
@@ -120,7 +149,13 @@ module VBlank
               [SET_BITS_COMMANDS.fetch(target), mask, bits]
             end
 
-            def reserve(memory)
+            def reserve(memory, queued: false)
+              if queued
+                memory.reserve(QUEUE, QUEUE_ENTRIES * ENTRY_BYTES)
+                memory.reserve(QUEUE_HEAD, 2)
+                memory.reserve(QUEUE_TAIL, 2)
+                memory.reserve(QUEUE_TAIL_KEPT, 2)
+              end
               memory.reserve(LIVE, 2)
               memory.reserve(SENT, 2)
               memory.reserve(DROPPED, 2)
@@ -207,7 +242,7 @@ module VBlank
             # +samples+ for one that plays recordings (Recordings), whose count of each moves on there.
             def emit(asm, memory, waves, recordings: [], songs: false, samples: false)
               emit_start(asm, memory, image(waves, recordings: recordings).size)
-              emit_write(asm, memory)
+              emit_write(asm, memory, samples)
               emit_log(asm, memory)
               emit_frame(asm, memory, songs, samples)
             end
@@ -330,8 +365,7 @@ module VBlank
             # rt_sound_flag_bits: FLG's bits R0 set to R1's, the rest as they are, sent the same way;
             # rt_sound_key_off_bits the same for KOFF's. rt_sound_command: command A, with its two
             # numbers in R0 and R1.
-            def emit_write(asm, memory)
-              h = Console::SNESHardware
+            def emit_write(asm, memory, samples)
               asm.label("rt_sound_key_off_bits")
               asm.lda(SET_KEY_OFF_BITS)
               asm.bra("rt_sound_command")
@@ -344,6 +378,15 @@ module VBlank
               asm.sta(asm.direct(R2))
               asm.lda(asm.abs(memory[LIVE]))
               asm.beq("rt_sound_write_done")
+              memory.reserved?(QUEUE) ? emit_queued_write(asm, memory) : emit_write_at_once(asm, memory)
+              asm.label("rt_sound_write_done")
+              asm.rtl
+              emit_queue_sending(asm, memory, samples) if memory.reserved?(QUEUE)
+            end
+
+            # The command sent as soon as the one before it has been answered, or dropped and counted.
+            def emit_write_at_once(asm, memory)
+              h = Console::SNESHardware
               asm.ldx(PATIENCE)
               asm.sep(0x20)
               asm.label("rt_sound_write_wait")
@@ -370,7 +413,150 @@ module VBlank
               asm.sta(asm.abs(memory[SENT]))
               asm.sta(asm.abs(h::APUIO0))
               asm.rep(0x20)
-              asm.label("rt_sound_write_done")
+            end
+
+            # The command at the end of the queue, for #emit_queue_sending's rt_sound_send_queued to send.
+            def emit_queued_write(asm, memory)
+              asm.lda(asm.abs(memory[QUEUE_TAIL]))
+              emit_next_entry(asm)
+              asm.pha
+              emit_queue_room_left(asm, memory, 1)
+              asm.bcs("rt_sound_queue_has_room")
+              asm.jsr(asm.abs("rt_sound_queue_make_room"))
+              asm.label("rt_sound_queue_has_room")
+              asm.ldx(asm.abs(memory[QUEUE_TAIL]))
+              asm.pla
+              asm.sta(asm.abs(memory[QUEUE_TAIL]))
+              asm.lda(asm.direct(R2))
+              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.lda(asm.direct(R0))
+              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.lda(asm.direct(R1))
+              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_VALUE))
+            end
+
+            # A = the place in the queue after the place A holds, round from its end to its start.
+            def emit_next_entry(asm)
+              asm.clc
+              asm.adc(ENTRY_BYTES)
+              asm.and_a(QUEUE_MASK)
+            end
+
+            # Carry set when the queue has QUEUE_ROOM left past the place at stack offset +past_end+.
+            def emit_queue_room_left(asm, memory, past_end)
+              asm.lda(asm.abs(memory[QUEUE_HEAD]))
+              asm.sec
+              asm.sbc(asm.stack(past_end))
+              asm.and_a(QUEUE_MASK)
+              asm.cmp(QUEUE_ROOM)
+            end
+
+            # rt_sound_send_queued (JSL): the oldest entry sent if the one before it has been answered,
+            # with no waiting at all, or, for a whole note, made into its writes. Y stays as it was.
+            #
+            # rt_sound_queue_make_room, with the queue nearly full and the place past its end on the
+            # stack: the oldest sent, however long the sound unit takes, up to PATIENCE tries, or
+            # dropped and counted. A game that never waits for the screen goes on this way, a command
+            # at a time, as it would have with no queue.
+            def emit_queue_sending(asm, memory, samples)
+              h = Console::SNESHardware
+              asm.label("rt_sound_queue_make_room")
+              asm.phy
+              asm.ldy(PATIENCE)
+              asm.label("rt_sound_queue_make_room_try")
+              asm.jsl(asm.long("rt_sound_send_queued"))
+              emit_queue_room_left(asm, memory, 5) # the Y kept, then this routine's way back
+              asm.bcs("rt_sound_queue_room_made")
+              asm.dey
+              asm.bne("rt_sound_queue_make_room_try")
+              asm.inc(asm.abs(memory[DROPPED]))
+              asm.lda(asm.abs(memory[QUEUE_HEAD]))
+              emit_next_entry(asm)
+              asm.sta(asm.abs(memory[QUEUE_HEAD]))
+              asm.label("rt_sound_queue_room_made")
+              asm.ply
+              asm.rts
+
+              asm.label("rt_sound_send_queued")
+              asm.ldx(asm.abs(memory[QUEUE_HEAD]))
+              asm.cpx(asm.abs(memory[QUEUE_TAIL]))
+              asm.beq("rt_sound_send_queued_done")
+              if samples
+                asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+                asm.cmp(START_NOTE)
+                asm.bne("rt_sound_send_queued_write")
+                asm.jmp(asm.abs("rt_sound_note_into_writes"))
+                asm.label("rt_sound_send_queued_write")
+              end
+              asm.sep(0x20)
+              asm.lda(asm.abs(h::APUIO0))
+              asm.cmp(asm.abs(memory[SENT]))
+              asm.bne("rt_sound_send_queued_unanswered")
+              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.sta(asm.abs(h::APUIO2))
+              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_VALUE))
+              asm.sta(asm.abs(h::APUIO3))
+              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.sta(asm.abs(h::APUIO1))
+              asm.lda(asm.abs(memory[SENT]))
+              asm.inc
+              asm.sta(asm.abs(memory[SENT]))
+              asm.sta(asm.abs(h::APUIO0))
+              asm.rep(0x20)
+              asm.txa
+              emit_next_entry(asm)
+              asm.sta(asm.abs(memory[QUEUE_HEAD]))
+              asm.rtl
+              asm.label("rt_sound_send_queued_unanswered")
+              asm.widths(a16: false, xy16: true) # reached by the branch above, with A still 8 bits wide
+              asm.rep(0x20)
+              asm.label("rt_sound_send_queued_done")
+              asm.rtl
+              emit_note_into_writes(asm, memory) if samples
+            end
+
+            # THE WHOLE NOTE AT THE FRONT OF THE QUEUE BECOMES ITS WRITES, in the place it stood and
+            # before anything queued after it: the front of the queue moves back by as many entries
+            # as there are writes, its end is put there for as long as they take to queue, and then
+            # goes back to where it was. QUEUE_ROOM is what keeps those entries free. What the routine
+            # uses is the game's, if the game is in the middle of queueing a write, so it is kept.
+            def emit_note_into_writes(asm, memory)
+              kept = [Recordings::PLACE, Recordings::ROW, Recordings::REGISTERS, Recordings::BEST]
+              scratch = [R0, R1, R2]
+              asm.label("rt_sound_note_into_writes")
+              asm.phy
+              scratch.each do |register|
+                asm.lda(asm.direct(register))
+                asm.pha
+              end
+              kept.each do |name|
+                asm.lda(asm.abs(memory[name]))
+                asm.pha
+              end
+              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.sta(asm.abs(memory[Recordings::PLACE]))
+              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_VALUE))
+              asm.sta(asm.abs(memory[Recordings::ROW]))
+              asm.lda(asm.abs(memory[QUEUE_TAIL]))
+              asm.sta(asm.abs(memory[QUEUE_TAIL_KEPT]))
+              asm.txa
+              asm.sec
+              asm.sbc((NOTE_START_WRITES - 1) * ENTRY_BYTES)
+              asm.and_a(QUEUE_MASK)
+              asm.sta(asm.abs(memory[QUEUE_HEAD]))
+              asm.sta(asm.abs(memory[QUEUE_TAIL]))
+              asm.jsl(asm.long("rt_recordings_voice_start"))
+              asm.lda(asm.abs(memory[QUEUE_TAIL_KEPT]))
+              asm.sta(asm.abs(memory[QUEUE_TAIL]))
+              kept.reverse_each do |name|
+                asm.pla
+                asm.sta(asm.abs(memory[name]))
+              end
+              scratch.reverse_each do |register|
+                asm.pla
+                asm.sta(asm.direct(register))
+              end
+              asm.ply
               asm.rtl
             end
           end

@@ -293,11 +293,18 @@ module VBlank
 
             logged = half(runtime_place(Runtime::Sound::LOGGED))
             read_sound_entries(logged)
-            @dsp_reads << [logged, @core.dsp_registers]
+            @dsp_reads << [logged, @core.dsp_registers] unless sound_writes_waiting?
             logged
           end
 
           def sound? = @places.runtime.key?(Runtime::Sound::LOGGED)
+
+          # Whether writes the log already counts are still queued for the sound unit, when its
+          # registers cannot be held to the log yet.
+          def sound_writes_waiting?
+            sound = Runtime::Sound
+            @places.runtime.key?(sound::QUEUE) && half(runtime_place(sound::QUEUE_HEAD)) != half(runtime_place(sound::QUEUE_TAIL))
+          end
 
           # The recordings the cartridge's places held at the moment of +frame+, each [name, level], in
           # the order of their places: as the pass's wait ended (Runtime::Recordings::KEPT_BY_PASS and

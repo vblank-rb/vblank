@@ -34,6 +34,8 @@ module VBlank
             AGAIN = "rt music again" # 1 once the tune has come round
             SONG = "rt music song" # where the playing tune's record is in the table
             CURSORS = "rt music cursors" # each part's next note
+            NEXT_NOTE_FRAME = "rt music next note frame" # the frame the next of those is due
+            NO_NOTE_DUE = 0xFFFF # ...when no part has a note left this time round
             PART = "rt music part" # the part being played...
             PARTS_IN = "rt music parts in" # ...of how many
             COUNT = "rt music count" # how many notes the part has this time round...
@@ -116,7 +118,7 @@ module VBlank
                 [WOBBLE_RECORD, WOBBLE_WAIT, WOBBLE_LEFT, WOBBLE_RISING].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
                 memory.reserve(WOBBLE_AT, 2)
               end
-              [NAMED, PLAYING, STOPS, STOPS_SEEN, ENDED, FRAME, AGAIN, SONG, PART, PARTS_IN, COUNT, LIST,
+              [NAMED, PLAYING, STOPS, STOPS_SEEN, ENDED, FRAME, NEXT_NOTE_FRAME, AGAIN, SONG, PART, PARTS_IN, COUNT, LIST,
                ENTRY, NOTE].each { |name| memory.reserve(name, 2) }
               memory.reserve(CURSORS, SNES::Music::PARTS * 2)
               Effects.reserve(memory, effects) if effects.positive?
@@ -740,6 +742,8 @@ module VBlank
 
               asm.label("rt_music_from_the_top")
               SNES::Music::PARTS.times { |p| asm.stz(at.call(CURSORS, p * 2)) }
+              asm.lda(at.call(FRAME)) # a walk now, to find where each part's notes begin
+              asm.sta(at.call(NEXT_NOTE_FRAME))
               asm.rts
 
               # THE PLAYING TUNE STOPS (Reference::Player#silence_song; SONG is still the tune's): the
@@ -872,6 +876,12 @@ module VBlank
                 asm.lda(at.call(TUNE_HELD))
                 asm.branch_long(:bne, "rt_music_song_frame_done")
               end
+              # Most frames start no note, so the parts are walked only on the frame the next is due.
+              asm.lda(at.call(FRAME))
+              asm.cmp(at.call(NEXT_NOTE_FRAME))
+              asm.branch_long(:bne, "rt_music_parts_done")
+              asm.lda(NO_NOTE_DUE)
+              asm.sta(at.call(NEXT_NOTE_FRAME))
               asm.stz(at.call(PART))
               asm.label("rt_music_part")
               asm.lda(at.call(PART))
@@ -898,7 +908,13 @@ module VBlank
               asm.tax
               asm.lda(asm.long_x("music_data", m::NOTE_FRAME))
               asm.cmp(at.call(FRAME))
-              asm.branch_long(:bne, "rt_music_part_next")
+              asm.beq("rt_music_part_note_due")
+              asm.branch_long(:bcc, "rt_music_part_next")
+              asm.cmp(at.call(NEXT_NOTE_FRAME))
+              asm.branch_long(:bcs, "rt_music_part_next")
+              asm.sta(at.call(NEXT_NOTE_FRAME))
+              asm.brl("rt_music_part_next")
+              asm.label("rt_music_part_note_due")
               asm.stx(at.call(NOTE))
               if recorded # a part that plays a recording: its note in Recordings' places
                 asm.ldx(at.call(ENTRY))
@@ -932,6 +948,7 @@ module VBlank
               asm.asl
               asm.tax
               asm.inc(asm.abs_x(memory[CURSORS]))
+              asm.brl("rt_music_part") # the part again, for the frame of its note after this one
               asm.label("rt_music_part_next")
               asm.inc(at.call(PART))
               asm.brl("rt_music_part")

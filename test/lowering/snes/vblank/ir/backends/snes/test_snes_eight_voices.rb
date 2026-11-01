@@ -57,6 +57,31 @@ class TestSNESEightVoices < Minitest::Test
     assert_equal 8, voices_sounding(b.program, frames: 6), "the square, and seven recordings"
   end
 
+  # Eight notes start together every half a second over a pass with most of its frame in use. What
+  # each note asks of the sound chip goes while the game waits for the screen, so no pass runs long.
+  def test_notes_starting_together_take_no_frame_from_a_busy_pass
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      instrument :piano, pcm: [60, -60] * 4000, rate: 8000, note: :C4, holds_from: 100
+      song(:title) do
+        8.times { |part| voice(:"part#{part}", plays: :piano) { 64.times { |i| note(i.even? ? :C4 : :E4, :quarter) } } }
+      end
+      play_song :title
+      work = var :work, 0
+      shown = var :shown, 0
+      game_loop do
+        repeat(250) { work += 1 }
+        shown = frames_since_power_on
+      end
+    end
+    b.finalize_program
+    frames = [60, 180].map { |passes| SNES::HeadlessRun.new.run(b.program, frames: passes)[:shown] }
+
+    assert_equal 120, frames.last - frames.first
+  end
+
   def test_a_sound_effect_cuts_in_over_a_full_song
     program = recorded_song_game(7) do
       score = VBlank::Audio::Score
