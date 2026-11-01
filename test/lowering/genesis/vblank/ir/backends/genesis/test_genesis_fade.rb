@@ -98,6 +98,24 @@ class TestGenesisFade < Minitest::Test
     Genesis::CheckedRun.new.run(program, frames: 30)
   end
 
+  # The fades of test_screen_fade.rb, over a screen painted once: there a game clears it every pass,
+  # which takes this build many frames a pass, so those skip here.
+  def test_flashes_and_a_fade_there_and_back_agree_on_every_pass
+    program = program_of(screen_kind: :bitmap) do
+      clear_screen :red
+      frame = var :frame, 0
+      game_loop do
+        frame += 1
+        flash_screen :green, frames: 4 if frame == 2
+        flash_screen :blue, frames: 4 if frame == 10
+        flash_screen :black, frames: 4 if frame == 18
+        fade_out :white, frames: 6 if frame == 26
+        fade_in if frame == 40
+      end
+    end
+    Genesis::CheckedRun.new.run(program, frames: 60)
+  end
+
   # Forty-eight colours in use, in twelve tiles of four: more than the blank has time to work out, so they are
   # worked out as the pass ends (Runtime::Tint), and the four of a tile are a step apart, which the console
   # shows as one colour and a fade moves apart.

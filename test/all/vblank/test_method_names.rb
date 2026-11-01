@@ -21,10 +21,14 @@ class TestMethodNames < Minitest::Test
   MOST_WORDS = 6
 
   # Two letters is an abbreviation unless it is one of these, which every reader already knows.
-  # `bx` is the ARM instruction of that name, `lm` and `sm` the Super FX's (SNES::GSU), `d` and `a`
-  # the 68000's data and address registers, as every listing of it spells them (Genesis::M68000),
-  # and `ok?` is plain English.
-  SHORT_NAMES = %w[x y w h id at of to io op ok bx lm sm d a].freeze
+  # `bx` is the ARM instruction of that name, `lm` and `sm` the Super FX's (SNES::GSU), and `ok?`
+  # is plain English.
+  SHORT_NAMES = %w[x y w h id at of to io op ok bx lm sm].freeze
+
+  # `d` and `a` are the 68000's data and address registers, as every listing of it spells them, so
+  # they are let through in its encoder alone. Anywhere else one letter names nothing.
+  M68000_ENCODER = "vblank/ir/backends/genesis/m68000.rb"
+  M68000_REGISTERS = %w[d a].freeze
 
   private def defined_methods
     Dir.glob("#{LIB}/**/*.rb").flat_map do |path|
@@ -39,6 +43,8 @@ class TestMethodNames < Minitest::Test
     defined_methods.select { |name, _| rule.call(name.delete_suffix("?").delete_suffix("!").delete_suffix("=")) }
                    .map { |name, where| "#{where}  #{name}" }
   end
+
+  private def m68000_register?(name, where) = M68000_REGISTERS.include?(name) && where.start_with?(M68000_ENCODER)
 
   private def assert_none(found, why)
     assert_empty found, "#{why}\n#{found.join("\n")}"
@@ -61,7 +67,11 @@ class TestMethodNames < Minitest::Test
   end
 
   def test_no_method_name_is_a_two_letter_abbreviation
-    assert_none offenders { |name| name.length <= 2 && !SHORT_NAMES.include?(name) },
-                "These names are abbreviations. Spell out what they hold or do:"
+    found = offenders { |name| name.length <= 2 && !SHORT_NAMES.include?(name) }
+    found.reject! do |offender|
+      where, name = offender.split
+      m68000_register?(name, where)
+    end
+    assert_none found, "These names are abbreviations. Spell out what they hold or do:"
   end
 end

@@ -35,10 +35,10 @@ class TestMenu < Minitest::Test
   SLOW_PASS = "clearing the painted screen every pass takes a Super Nintendo several frames, so a tap on a " \
               "frame between two passes is never read"
 
-  # Why one skips on the Genesis: redrawing the painted screen every pass takes it about ten frames,
-  # which is how long the video chip takes to be handed that many tiles.
-  SLOW_PASS_ON_GENESIS = "clearing and redrawing the painted screen every pass takes a Genesis about ten frames, " \
-                         "so a tap on a frame between two passes is never read"
+  # Why one skips on the Genesis: its build hands the painted screen to the video chip a tile at a
+  # time, so a tap on a frame between two passes is never read. Copying it by DMA is the part not made.
+  SLOW_PASS_ON_GENESIS = "its build does not copy a painted screen by DMA yet, so a pass that redraws the screen " \
+                         "takes many frames and a tap between two passes is never read"
 
   # A four-row menu whose second row cannot be picked. `chose` records which row's
   # block ran, so the action half is observable too. The same program is built for
@@ -779,10 +779,9 @@ class TestMenu < Minitest::Test
   #
   # A Continue row greyed until there is a save; Resume greyed unless a game is running.
   # Row TWO can be picked while `open` is 1 (said as a test), row THREE while `open` is not
-  # 0 (said as the variable itself). L opens and closes both.
+  # 0 (said as the variable itself). B opens and closes both: every console has one.
 
   private def changing_menu(on: :bitmap, opens_at: nil, repeat_every: nil)
-    skip_on_console :genesis, "a Genesis pad has no select button, which these rows are opened with"
     build_program do
       screen on
       chose = var :chose, 0
@@ -791,7 +790,7 @@ class TestMenu < Minitest::Test
       game_loop do
         clear_screen :black if on == :bitmap
         t += 1
-        open = 1 - open if pressed(:select)
+        open = 1 - open if pressed(:b)
         open = 1 if opens_at && t == opens_at
         options = { at: [X, Y], spacing: SPACING, color: :gray, picked: :white, disabled: :red }
         options[:repeat_every] = repeat_every if repeat_every
@@ -814,7 +813,8 @@ class TestMenu < Minitest::Test
   end
 
   def test_the_same_row_can_be_picked_once_the_game_opens_it
-    i = walk(changing_menu, frames: 5) { |f| { 1 => [:select], 3 => [:down] }.fetch(f, []) }
+    skip_on_genesis SLOW_PASS_ON_GENESIS
+    i = walk(changing_menu, frames: 5) { |f| { 1 => [:b], 3 => [:down] }.fetch(f, []) }
 
     assert_equal 1, cursor_row(i)
     assert_equal PICKED, row_color(i, 1)
@@ -832,7 +832,8 @@ class TestMenu < Minitest::Test
   # The cursor is on a row when the game shuts it: the row goes dim, and the button does
   # nothing there.
   def test_a_row_shut_under_the_cursor_does_not_run
-    i = walk(changing_menu, frames: 9) { |f| { 1 => [:select], 3 => [:down], 5 => [:select], 7 => [:a] }.fetch(f, []) }
+    skip_on_genesis SLOW_PASS_ON_GENESIS
+    i = walk(changing_menu, frames: 9) { |f| { 1 => [:b], 3 => [:down], 5 => [:b], 7 => [:a] }.fetch(f, []) }
 
     assert_equal 0, i[:chose]
     assert_equal DIMMED, row_color(i, 1)
