@@ -219,6 +219,30 @@ class TestSNESSongs < Minitest::Test
     assert_operator dsp.getbyte(NOISE + 1), :>, 0, "and on the right"
   end
 
+  # A NOTE THAT FADES AND ONE THAT SWELLS: the sound chip counts the envelope by itself, so the
+  # first voice's falls with nothing more written, and the second's climbs from nought.
+  def test_a_note_that_fades_falls_and_one_that_swells_climbs
+    game = VBlank.game("FADES", consoles: %i[gba snes]) do
+      enable_sound
+      song(:tune) do
+        tempo 150
+        voice(:lead) { |v| v.decay 2; v.note :C5, :whole }
+        voice(:harmony) { |v| v.volume 0; v.swell 2; v.note :E4, :whole }
+      end
+      play_song :tune
+      game_loop {}
+    end
+    envelopes = [4, 20].map do |frames|
+      dsp = SNES::CheckedRun.new.run(game.program(console: :snes), frames: frames).dsp_registers
+      [dsp.getbyte(FIRST + ENVX), dsp.getbyte(SECOND + ENVX)]
+    end
+    (fading_early, swelling_early), (fading_late, swelling_late) = envelopes
+
+    assert_operator fading_late, :<, fading_early
+    assert_operator swelling_late, :>, swelling_early
+    assert_operator swelling_early, :<, 0x7F, "it starts low"
+  end
+
   # The wave part, after its rest, sounds again as the tune comes round (frame 12): its key-off
   # cleared before its key-on.
   def test_a_wave_part_sounds_again_after_its_rest

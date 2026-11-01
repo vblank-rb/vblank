@@ -191,7 +191,7 @@ module VBlank
             when :wave then wave(entry.last, voicing.waves)
             when :stop_wave then key_off(1 << WAVE_VOICE)
             when :note, :sound_effect, :sample, :stop_sample then [] # a recording's voice is the count's (Runtime::Recordings)
-            when :voice then song_note(*entry[1, 4], voicing.parts)
+            when :voice then song_note(*entry[1, 4], voicing.parts, fade: entry[FADE_OF_VOICE_ENTRY])
             when :stop_music then key_off(voicing.song_voices(entry.fetch(1)) & ~effect_voices & 0xFF)
             when :loudness then loudness_at(entry[1], entry[2], voicing, song)
             else raise ArgumentError, "the Super Nintendo build does not play #{entry.first.inspect} yet"
@@ -201,8 +201,10 @@ module VBlank
           # Whether a song's or an effect's note on +channel+ makes a sound (Reference::Player#sounds?):
           # not a rest, not at volume nought, nor on the wave voice at a volume whose nearest of that
           # voice's loudnesses is none.
-          def sounds?(channel, frequency, volume)
-            return false unless frequency.positive? && volume.positive?
+          def sounds?(channel, frequency, volume, fade = nil)
+            return false unless frequency.positive?
+            return true if fade&.swells_by_itself?
+            return false unless volume.positive?
 
             CHANNEL_VOICES.fetch(channel) != WAVE_VOICE || VBlank::Audio::Sound.wave_level(volume) != :mute
           end
@@ -228,19 +230,61 @@ module VBlank
 
           # A song's note on channel +channel+: on a square voice, the note held at a fixed gain, or
           # the voice let go for a rest or a note at volume nought; on the wave or noise voice,
-          # nothing, since the entry after it is the note.
-          def song_note(channel, song, frequency, volume, parts)
+          # nothing, since the entry after it is the note. +fade+ is an Audio::NoteFade the note said.
+          def song_note(channel, song, frequency, volume, parts, fade: nil)
             voice = SQUARE_VOICES[channel] or return []
-            return key_off(1 << voice) if frequency.zero? || volume.zero?
+            return key_off(1 << voice) unless sounds?(channel, frequency, volume, fade)
 
             duty = parts.fetch([song, channel]) { raise ArgumentError, "no part of #{song.inspect} on #{channel}" }.duty
             base = voice << 4
             wave = wave_for(frequency)
             pitch = pitch_for(frequency, wave)
             level = volume * VOLUME_STEP
-            [[base + VOLUME_LEFT, level], [base + VOLUME_RIGHT, level], [base + PITCH_LOW, pitch & 0xFF],
-             [base + PITCH_HIGH, pitch >> 8], [base + SOURCE, Samples.source(duty, wave)], [base + ADSR1, ADSR_OFF],
-             [base + GAIN, FIXED_TOP]] + key_on(voice)
+            note_envelope([[base + VOLUME_LEFT, level], [base + VOLUME_RIGHT, level], [base + PITCH_LOW, pitch & 0xFF],
+                           [base + PITCH_HIGH, pitch >> 8], [base + SOURCE, Samples.source(duty, wave)],
+                           [base + ADSR1, ADSR_OFF], [base + GAIN, FIXED_TOP]], volume, fade) + key_on(voice)
+          end
+
+          # Where a [:voice ...] entry says its fade (IR::Tunes.voice_entry).
+          FADE_OF_VOICE_ENTRY = 5
+
+          # GAIN's mode that climbs a step at a time, 32 of the envelope's 0x7FF at each.
+          GAIN_RISES = 0xC0
+          GAIN_RISE_STEPS = 64
+
+          # A NOTE THAT CHANGES ITS OWN LOUDNESS. The sound chip counts a voice's envelope by itself,
+          # as the Advance's voice counts its volume, so a fade is one write: the envelope's rate. A
+          # fade goes down the way a beep's does (#fade_rate). A swell climbs from nought to the top
+          # of the envelope, with the voice's volume at the top, in the time the Advance's voice
+          # takes to climb all fifteen steps; a note the Advance starts part way up starts at the
+          # bottom here. +writes+ are a voice's, with its envelope said.
+          def note_envelope(writes, volume, fade)
+            return writes if fade.nil? || fade.step.zero?
+            return swelling_envelope(writes, fade) if fade.swells?
+
+            writes.flat_map do |write|
+              register = write.first
+              next [write] unless write.length == 2 && (register & 0x0F) == ADSR1
+
+              [[register, ATTACK], [register - ADSR1 + ADSR2, SUSTAIN_AT_TOP | rate_to_silence(volume, fade.step)]]
+            end.reject { |write| write.length == 2 && (write.first & 0x0F) == GAIN }
+          end
+
+          def swelling_envelope(writes, fade)
+            whole = fade.step * 15 * DSP_RATE / 64.0
+            rate = nearest_rate(whole / GAIN_RISE_STEPS)
+            top = writes.any? { |write| write.first == (NOISE_VOICE << 4) } ? (15 * VOLUME_STEP * HISS_SCALE).round : 15 * VOLUME_STEP
+            writes.filter_map do |write|
+              register = write.first
+              next write unless write.length == 2
+
+              case register & 0x0F
+              when VOLUME_LEFT, VOLUME_RIGHT then [register, top]
+              when ADSR1 then [register, ADSR_OFF]
+              when ADSR2 then nil
+              else write
+              end
+            end + [[(writes.first.first & 0xF0) + GAIN, GAIN_RISES | rate]]
           end
 
           # The wave voice playing +params+ ({shape:, frequency:, volume:}, as the interpreter logs a
@@ -338,10 +382,15 @@ module VBlank
           # Advance's time for it; nought, which never steps, for :none.
           def fade_rate(volume, decay)
             step = VBlank::Audio::Sound::FADE_STEP_SIXTY_FOURTHS.fetch(decay)
-            return 0 if step.zero?
+            step.zero? ? 0 : rate_to_silence(volume, step)
+          end
 
-            wanted = volume * step * DSP_RATE / 64.0 / steps_to_silence
-            (1...RATE_SAMPLES.size).min_by { |rate| (Math.log(RATE_SAMPLES[rate]) - Math.log([wanted, 1].max)).abs }
+          # ...for a fade whose step is +step+ 64ths of a second.
+          def rate_to_silence(volume, step) = nearest_rate(volume * step * DSP_RATE / 64.0 / steps_to_silence)
+
+          # The envelope rate nearest a step every +samples+ of the DSP's.
+          def nearest_rate(samples)
+            (1...RATE_SAMPLES.size).min_by { |rate| (Math.log(RATE_SAMPLES[rate]) - Math.log([samples, 1].max)).abs }
           end
 
           # How many steps the sustain mode takes the envelope from the top to where ENVX reads nought:
@@ -383,15 +432,20 @@ module VBlank
             previous = nil
             effect_voices = 0 # the voices a sound effect holds, a bit each
             side = nil # the speaker the note just logged plays from, nil for both
+            fade = nil # the fade it said
             entries.each do |entry|
               song = entry[1] if entry.first == :note && !voicing.effects.include?(entry[1])
               effect_voices = held_by_effects(effect_voices, entry, voicing) if entry.first == :voice
               played = note_volume && wave_or_noise_note?(entry) ? [entry.first, entry.last.merge(volume: note_volume)] : entry
               note_volume = entry[4] if entry.first == :voice && !SQUARE_VOICES.key?(entry[1])
               note_volume = nil unless %i[voice loudness].include?(entry.first)
-              side = entry[SIDE_OF_VOICE_ENTRY] if entry.first == :voice
+              if entry.first == :voice
+                side = entry[SIDE_OF_VOICE_ENTRY]
+                fade = entry[FADE_OF_VOICE_ENTRY]
+              end
               writes = for_entry(played, voicing, song: song, effect_voices: effect_voices)
               writes = writes.reject { |register, *| loudness.include?(register) } if voice_own_entry?(entry)
+              writes = note_envelope(writes, entry.first == :noise ? entry.last[:volume] : 0, fade) if fade && noise_note?(entry)
               writes = heard_from_one_side(writes, side) if side && (entry.first == :voice || voice_own_entry?(entry))
               # A note's loudness follows its [:voice ...]; one that does not is a held note's, at a new level.
               loudness = entry.first == :loudness && previous == :voice ? writes.map(&:first) : []
@@ -399,6 +453,9 @@ module VBlank
               yield entry, writes
             end
           end
+
+          # A [:noise ...] entry that plays a note: a drum's fade is said in the [:voice ...] before it.
+          def noise_note?(entry) = entry.first == :noise && entry.last.is_a?(Hash)
 
           # Where a [:voice ...] entry says its side (IR::Tunes.voice_entry).
           SIDE_OF_VOICE_ENTRY = 8
@@ -415,9 +472,9 @@ module VBlank
           # (Reference::Player#claim_channel) — so a sound effect's sounding note holds it for the
           # effect, and anything else lets it go from one.
           def held_by_effects(voices, entry, voicing)
-            _, channel, who, frequency, volume = entry
+            _, channel, who, frequency, volume, fade = entry
             bit = 1 << CHANNEL_VOICES.fetch(channel)
-            voicing.effects.include?(who) && sounds?(channel, frequency, volume) ? voices | bit : voices & ~bit
+            voicing.effects.include?(who) && sounds?(channel, frequency, volume, fade) ? voices | bit : voices & ~bit
           end
 
           # A [:wave ...] or [:noise ...] entry that plays a note, not a rest.
