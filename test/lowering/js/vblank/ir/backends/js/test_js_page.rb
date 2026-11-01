@@ -210,11 +210,11 @@ class TestJSPage < Minitest::Test
   # frames, as a quick finger is — still counts for the next frame.
   def test_a_tap_on_each_pad_button_presses_its_console_button
     on_cross = { right: "1 0", left: "-1 0", up: "0 -1", down: "0 1" }
-    taps = VBlank::IR::Buttons::NAMES.flat_map do |button|
+    taps = advance_buttons.flat_map do |button|
       ["finger 1 #{on_cross.key?(button) ? "pad-cross #{on_cross[button]}" : "pad-#{button}"}", "lift 1"]
     end
     picture = pictures_in(played_page([*taps, "play 2", "picture"], buttons_game)).first
-    interpreter = Reference.new.input_each_frame { |frame| frame == 2 ? VBlank::IR::Buttons::NAMES : [] }
+    interpreter = Reference.new.input_each_frame { |frame| frame == 2 ? advance_buttons : [] }
                            .run(buttons_game.program, frames: 2)
 
     assert_same_picture interpreter.screen.shown, picture, "on the frame after every button was tapped"

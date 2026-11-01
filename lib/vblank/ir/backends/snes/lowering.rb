@@ -161,7 +161,9 @@ module VBlank
             assign_background_layers unless painted?
             make_sprite_art
             reserve_patches
-            Reach.variables(@program).each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
+            # ...and the ones a game loop keeps of its own in the console's order (IR::Frames::ConsoleLoop).
+            loops = @plan.game_loops.flat_map { |node| console_loop(node).variables }
+            (Reach.variables(@program) | loops).each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
               place = @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
@@ -169,6 +171,8 @@ module VBlank
             end
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
+            keep_corner_notes
+            keep_loop_running
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
               routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
@@ -530,10 +534,34 @@ module VBlank
           end
 
           def emit_loop(node)
+            console_loop(node).before.each { |child| statement(child) }
+            statement(Build.set(@loop_running, (loops_ending_passes.index(node) || -1) + 1)) if @loop_running
             top = fresh("loop")
             @asm.label(top)
             children_of(node).first.each { |child| statement(child) }
             @asm.brl(top)
+          end
+
+          def console_loop(node) = @plan.console_loop(node)
+
+          # Is +node+ one of the boundary's writes a game loop places at the end of its pass, or in
+          # one (IR::Frames::ConsoleLoop#placed)?
+          def placed_at_pass_end?(node)
+            @placed_at_pass_end ||= @plan.game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
+                                         .to_h { |write| [write.object_id, true] }
+            @placed_at_pass_end.key?(node.object_id)
+          end
+
+          # The game loops that end each pass by placing the display's writes
+          # (IR::Frames::ConsoleLoop#pass_end), which a halt has to end as the running one does.
+          def loops_ending_passes
+            @loops_ending_passes ||= @plan.game_loops.select { |node| console_loop(node).pass_end.any? }
+          end
+
+          # Which of those is running, counted from 1, and nought for none, in a game with any: a
+          # halt can be anywhere, in a routine called from any loop or from none (#emit_halt).
+          def keep_loop_running
+            @loop_running = keep_local(:loop_running) if loops_ending_passes.any?
           end
 
           # Reference#exec_repeat: the count worked out once, before the first pass; the index
@@ -651,7 +679,18 @@ module VBlank
             emit_scene_arrival(@scenes.key(number))
           end
 
-          def emit_halt(_node) = @asm.jml(@asm.long("rt_halt"))
+          # A pass that halts ends as every pass does, with its sprites and scroll placed
+          # (IR::Frames::ConsoleLoop#pass_end), as the interpreter ends it
+          # (Reference#place_pass_end_before_halt), and nothing before any runs.
+          def emit_halt(_node)
+            loops_ending_passes.each_with_index do |ending, i|
+              other = fresh("not_this_loop")
+              jump_unless(Build.binop(:==, Build.var_ref(@loop_running), Build.int(i + 1)), other)
+              console_loop(ending).pass_end.each { |child| statement(child) }
+              @asm.label(other)
+            end
+            @asm.jml(@asm.long("rt_halt"))
+          end
 
           # The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame
           # counters the program can read move on, where the interpreter moves them
@@ -660,6 +699,7 @@ module VBlank
           # each background bent row by row, for the frame after (Reference#work_out_bends).
           def emit_wait_vblank(_node)
             call_routine("rt_wait_vblank")
+            emit_corners_forgotten
             count = place_of(Frames::COUNT)
             @asm.clc
             @asm.lda(@asm.abs(count))

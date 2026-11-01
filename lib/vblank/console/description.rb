@@ -228,10 +228,9 @@ module VBlank
                                      # take some of it first (see Backends::SNES::Memory).
                                      work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 2048,
                                      roomier_memory_bytes: 120 * 1024,
-                                     # The sprite table and the scroll are sent from a copy in the
-                                     # gap after the wait, from the pass just ended, as the Advance's
-                                     # are written.
-                                     sprites_placed_before_wait: false,
+                                     # The wait sends the sprite table and the scroll from a copy, so
+                                     # a pass places them in it before its wait, as the Color's does.
+                                     sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
                                      rumbles: false, extension: ".sfc")
 

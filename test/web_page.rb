@@ -69,10 +69,13 @@ module WebPage
     end
   end
 
+  # The Advance's buttons, the one console these pages are built as.
+  private def advance_buttons = VBlank::Console.described(:gba).buttons
+
   # A square lit along the top of the screen for each of the console's buttons held, in
   # IR::Buttons::NAMES order, so one picture says which are held.
   private def buttons_game
-    buttons = VBlank::IR::Buttons::NAMES
+    buttons = advance_buttons
     VBlank.game "BUTTONS", consoles: %i[gba] do
       screen :bitmap
       game_loop do

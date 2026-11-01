@@ -477,6 +477,41 @@ module VBlank
               runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
               # A status bar put up shows from the top it was declared with (Reference#bar_top_shown).
               runtime_call("rt_bar_place", [Build.int(layer_of(bg)), Build.int(bg.bar_top)]) if bg.bar?
+              [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
+            end
+
+            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
+            # (Reference#put_up_background), and the place the game keeps for its view, or the top it
+            # keeps for a status bar, is written at the end of the pass (IR::Frames
+            # .loop_in_console_order), after the put-up. So a put-up notes itself for the rest of its
+            # pass, a note for each layer, and the write at the end of it leaves the background or bar
+            # where it was put up. The wait forgets the notes (#emit_corners_forgotten), and the next
+            # pass's write moves it.
+            def keep_corner_notes
+              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && placed_at_pass_end?(node) } }
+              if placed.call(:scroll_background)
+                @put_up_this_pass = LAYERS.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
+              end
+              @bar_up_this_pass = keep_local(:bar_up_this_pass) if placed.call(:place_bar)
+            end
+
+            # The two layers a background can be on.
+            LAYERS = [0, 1].freeze
+
+            # The notes forgotten at a wait: the pass that put a background up has ended.
+            def emit_corners_forgotten
+              [*@put_up_this_pass&.values, @bar_up_this_pass].compact.each { |note| statement(Build.set(note, 0)) }
+            end
+
+            # +node+'s write, unless it is written at the end of a pass that put its background or bar
+            # up (+note+, #keep_corner_notes).
+            def emit_unless_put_up(node, note)
+              return yield unless note && placed_at_pass_end?(node)
+
+              held = fresh("held_at_corner")
+              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
+              yield
+              @asm.label(held)
             end
 
             # WHICH OF THE TWO LAYERS EACH BACKGROUND IS ON (#assign_background_layers). A scene's own
@@ -602,7 +637,9 @@ module VBlank
             def emit_scroll_background(node) = for_background(node) { |bg| emit_scroll_background_on(node, bg) }
 
             def emit_scroll_background_on(node, bg)
-              runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
+              emit_unless_put_up(node, @put_up_this_pass&.fetch(layer_of(bg))) do
+                runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
+              end
             end
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
@@ -634,7 +671,9 @@ module VBlank
             # Reference#exec_place_bar: a background that is not a status bar has no top to place.
             def emit_place_bar(node)
               for_background(node) do |bg|
-                runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) if bg.bar?
+                next unless bg.bar?
+
+                emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) }
               end
             end
 

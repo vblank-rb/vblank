@@ -42,7 +42,11 @@ class TestJSCheckedRun < Minitest::Test
   end
 
   def test_a_disagreement_is_reported_with_only_the_library
-    out, err, status = Open3.capture3(RbConfig.ruby, "-I", LIB, "-", stdin_data: GAME_THAT_DISAGREES)
+    out, err, status = Dir.mktmpdir do |dir| # a game block is read from its file, so it needs one
+      file = File.join(dir, "disagrees.rb")
+      File.write(file, GAME_THAT_DISAGREES)
+      Open3.capture3(RbConfig.ruby, "-I", LIB, file)
+    end
 
     assert status.success?, "the game's own process failed:\n#{err}"
     assert_match(/the JavaScript lowering and the interpreter disagree at frame 1: the picture differs/, out)

@@ -154,7 +154,7 @@ and on real hardware:
 - **What the framework draws for you** (a sprite, a tiled text glyph, a background's scroll) is
   painted in the gap before the next frame, from the variables then. So on the Advance the
   picture shows the pass before: `v.var(:n)` is 5 while the sprite stands where 4 put it. The
-  Color sends them from a copy as the gap ends, so each pass places them before its wait and the
+  Color and the Super Nintendo send them from a copy as the gap ends, so each pass places them before its wait and the
   picture shows the pass just ended (`Console::Description#sprites_placed_before_wait`). A test
   that plays on both says how far behind with `framework_drawing_lag` (one, or none).
 - **A picture painted from a list and said `changed now: true`** is the exception: it is
