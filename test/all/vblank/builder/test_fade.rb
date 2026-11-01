@@ -94,6 +94,30 @@ module FadeGames
   private def a_red_wall_faded(amount) = a_wall_faded(:red, :black, amount)
 end
 
+# The steps of a fade on a console that walks or blends: each console that fades that way plays
+# these. A Super Nintendo's fade to black is its display's sixteen brightnesses, and has tests of
+# its own (test/console/snes/vblank/builder/test_fade_on_the_super_nintendo.rb).
+module FadeShareTests
+  include FadeGames
+
+  def test_a_fade_takes_a_share_away_at_every_level
+    EVERY_LEVEL.each_with_index do |percent, step|
+      shown = game_player.run(a_red_wall_faded(percent), frames: 2).screen.pixel(8, 8)
+
+      assert_equal RED_FADED_TO_BLACK[step], shown & 0x1F,
+                   "red #{percent}% of the way to black, which is #{step} sixteenths"
+    end
+  end
+
+  def test_a_fraction_on_a_tiled_screen_fades_in_thirty_two_steps
+    EVERY_FINE_LEVEL.each_with_index do |percent, step|
+      shown = game_player.run(a_red_wall_faded(percent), frames: 2).screen.pixel(8, 8)
+
+      assert_equal RED_FADED_FINELY[step], shown & 0x1F, "red #{percent}% of the way to black"
+    end
+  end
+end
+
 # Fading the whole screen toward black or white.
 #
 # Like the camera, this changes what the display SHOWS and not what was drawn — the
@@ -235,15 +259,6 @@ class TestFade < Minitest::Test
 
   # --- the rule a channel follows, at every step there is ---
 
-  def test_a_fade_takes_a_share_away_at_every_level
-    EVERY_LEVEL.each_with_index do |percent, step|
-      shown = game_player.run(a_red_wall_faded(percent), frames: 2).screen.pixel(8, 8)
-
-      assert_equal RED_FADED_TO_BLACK[step], shown & 0x1F,
-                   "red #{percent}% of the way to black, which is #{step} sixteenths"
-    end
-  end
-
   # A screenful of one flat colour whose three channels are all different — full red, half
   # green, a little blue — so a rule that treated one channel unlike the others, or rounded
   # a channel kept at five bits unlike one widened to eight, lands on a different colour.
@@ -286,14 +301,6 @@ class TestFade < Minitest::Test
 
     assert_equal game_player.run(faded(:black, 50)).screen.pixel(120, 80),
                  game_player.run(halved).screen.pixel(120, 80)
-  end
-
-  def test_a_fraction_on_a_tiled_screen_fades_in_thirty_two_steps
-    EVERY_FINE_LEVEL.each_with_index do |percent, step|
-      shown = game_player.run(a_red_wall_faded(percent), frames: 2).screen.pixel(8, 8)
-
-      assert_equal RED_FADED_FINELY[step], shown & 0x1F, "red #{percent}% of the way to black"
-    end
   end
 
   # An amount the game works out far past 100 is a fade all the way, as one of 100 is: eight

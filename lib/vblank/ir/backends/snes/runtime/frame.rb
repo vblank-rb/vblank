@@ -119,7 +119,7 @@ module VBlank
             # +pad+ is two words of the direct page, the same on the game's page and the
             # interrupt's, that reading the controller works in. +sound+ for a game that makes sound,
             # whose wait ends in Sound's rt_sound_frame.
-            def emit(asm, memory, pad:, sound: false, extra_buttons: false)
+            def emit(asm, memory, pad:, sound: false, extra_buttons: false, dims: false)
               h = Console::SNESHardware
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
@@ -188,16 +188,23 @@ module VBlank
               asm.bne("rt_show_pass_on")
               asm.jsl(asm.long("rt_upload_whole"))
               asm.jsr(asm.abs("rt_sleep_until_vblank"))
-              asm.sep(0x20)
-              asm.lda(h::FULL_BRIGHTNESS)
-              asm.sta(asm.abs(h::INIDISP))
-              asm.rep(0x20)
+              if dims
+                Tint.emit_brightness(asm, memory)
+              else
+                asm.sep(0x20)
+                asm.lda(h::FULL_BRIGHTNESS)
+                asm.sta(asm.abs(h::INIDISP))
+                asm.rep(0x20)
+              end
               asm.lda(1)
               asm.sta(at.call(DISPLAY_ON))
               asm.bra("rt_show_pass_shown")
               asm.label("rt_show_pass_on")
               asm.jsr(asm.abs("rt_sleep_until_vblank"))
               asm.jsl(asm.long("rt_upload"))
+              # After it, since a big change takes several blanks and the brightness belongs to
+              # the picture it arrives with, as the colours do.
+              Tint.emit_brightness(asm, memory) if dims
               asm.label("rt_show_pass_shown")
               asm.lda(at.call(PASSES))
               asm.sta(at.call(SHOWN))

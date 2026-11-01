@@ -37,6 +37,9 @@ module VBlank
             # (Runtime::Tint's rt_colors_hold).
             def self.changing_colors?(program) = program.walk.any? { |node| %i[background_colors color_list_holds].include?(node.kind) }
 
+            # Does the game fade to black, which the display's brightness does (Runtime::Tint)?
+            def self.fades_to_black?(program) = program.walk.any? { |node| node.kind == :fade && node.toward != :white }
+
             # Whether +program+ bends a background row by row, which the runtime then keeps the rows
             # and line tables of (Runtime::Picture's rt_bends_prepare).
             def self.bends?(program) = program.walk.any? { |node| node.kind == :scroll_rows }

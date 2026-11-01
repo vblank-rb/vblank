@@ -343,9 +343,8 @@ module VBlank
 
           @console = node.described_console
           width, height = @console.screen_size
-          return if [@screen.width, @screen.height] == [width, height]
-
-          @screen = Framebuffer.new(width: width, height: height)
+          @screen = Framebuffer.new(width: width, height: height) unless [@screen.width, @screen.height] == [width, height]
+          @screen.dims = @console.fades_by_brightness
         end
 
         # A picture the size of the screen, for painting part of the scene onto by itself.

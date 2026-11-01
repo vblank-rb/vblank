@@ -62,7 +62,8 @@ module VBlank
         keep_showing: works("a painted screen is always shown whole, so a picture kept showing never tears."),
 
         # --- fades, tints and screen effects ---
-        fade: works("`fade` and `tint` change the colours the console shows, not the picture. " \
+        fade: works("`fade` to black is the display's own brightness, in sixteen levels, and costs no time. " \
+                    "`tint`, and `fade` to white, change the colours the console shows, not the picture. " \
                     "`inside:`, `outside:` and `under:` are refused: the build cannot fade part of the " \
                     "screen on a Super Nintendo."),
         tint: works,

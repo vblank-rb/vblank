@@ -23,6 +23,14 @@ module VBlank
           # moves each colour by looking its three channels up. Colour 0 is moved too: it is what
           # shows where nothing is drawn, so it fades with the picture.
           #
+          # A FADE TO BLACK IS THE DISPLAY'S OWN. The console has a master brightness, sixteen levels
+          # in the low bits of INIDISP, which dims the finished picture as it goes out: nothing in
+          # memory moves, so it costs a store in the blank however much is on the screen. A game's
+          # own fades are done with it, so a game that fades to black (+dims+) notes how far down
+          # the display is (DIMMED) and walks no colours for it, and the colours stay as they are,
+          # free to be changed under the fade. Toward white or a colour there is no such thing, and
+          # those still walk.
+          #
           #   rt_tint(toward, color, steps)   the fade in force noted, or nothing when nothing changed
           #                                   (most frames of a game that says its fade every frame)
           #   rt_tint_prepare                 as a pass ends (JSL): the colours moved, if the fade changed
@@ -67,10 +75,26 @@ module VBlank
             # A palette's colours past the one every palette keeps for see-through.
             PALETTE_COLORS = 15
 
-            def reserve(memory, changing_colors: false)
+            # How many of the sixteen levels the display is down from full (FadeSteps.dimmed_levels).
+            # Nought at power-on, which is full, so it needs no setting up.
+            DIMMED = "rt tint dimmed"
+
+            def reserve(memory, changing_colors: false, dims: false)
               memory.reserve_far(SHADOW, 512)
               memory.reserve(STATE, STATE_BYTES)
               memory.reserve_far(COLORS_NOW, 512) if changing_colors
+              memory.reserve(DIMMED, 2) if dims
+            end
+
+            # In the blank: the display at the brightness the fade says. Leaves A wide.
+            def emit_brightness(asm, memory)
+              h = Console::SNESHardware
+              asm.lda(h::FULL_BRIGHTNESS)
+              asm.sec
+              asm.sbc(asm.abs(memory[DIMMED]))
+              asm.sep(0x20)
+              asm.sta(asm.abs(h::INIDISP))
+              asm.rep(0x20)
             end
 
             def scratch(memory)
@@ -82,8 +106,8 @@ module VBlank
             # (Lowering::Picture#colors_shown): the colours the fade moves.
             # +changing_colors+ for a game that changes colours as it runs, which then fades from
             # COLORS_NOW and carries rt_colors_start and rt_colors_hold.
-            def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false)
-              emit_tint(asm, memory, s)
+            def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false, dims: false)
+              emit_tint(asm, memory, s, dims)
               emit_table(asm, memory, s)
               emit_apply(asm, memory, colors_shown, changing_colors ? memory[COLORS_NOW] : "art colors")
               emit_upload(asm, memory)
@@ -180,7 +204,7 @@ module VBlank
             end
 
             # The steps held to 0..256 and, when the fade is not the one in force, the colours moved.
-            def emit_tint(asm, memory, s)
+            def emit_tint(asm, memory, s, dims)
               state = memory[STATE]
               asm.label("rt_tint")
               asm.lda(asm.direct(R.call(2) + 2))
@@ -196,6 +220,7 @@ module VBlank
               asm.lda(0)
               asm.label("rt_tint_held")
               asm.sta(asm.direct(R.call(2)))
+              emit_dimming(asm, memory) if dims
               # The same as before: nothing to do. No steps at all is the colours as they are,
               # whatever they were moved toward.
               asm.cmp(asm.abs(state + STEPS_AT))
@@ -255,6 +280,38 @@ module VBlank
               asm.rep(0x20)
               asm.lda(asm.abs(Console::SNESHardware::RDMPYL))
               asm.rts
+            end
+
+            # In rt_tint, A the steps: toward black they become how far down the display is
+            # (FadeSteps.dimmed_levels), and no steps are left for the colours to walk. Anything
+            # else leaves the display at full. Leaves A the steps left.
+            def emit_dimming(asm, memory)
+              asm.lda(asm.direct(R.call(0)))
+              asm.cmp(TOWARD_BLACK)
+              asm.beq("rt_tint_dims")
+              asm.stz(asm.abs(memory[DIMMED]))
+              asm.lda(asm.direct(R.call(2)))
+              asm.bra("rt_tint_dimmed")
+              asm.label("rt_tint_dims")
+              asm.lda(15) # all the way down is for all the way alone
+              asm.ldx(asm.direct(R.call(2)))
+              asm.cpx(STEPS)
+              asm.bcs("rt_tint_dims_kept")
+              asm.lda(asm.direct(R.call(2)))
+              4.times { asm.asl }
+              asm.sec
+              asm.sbc(asm.direct(R.call(2)))
+              asm.clc
+              asm.adc(128)
+              emit_over_256(asm)
+              asm.cmp(15)
+              asm.bcc("rt_tint_dims_kept")
+              asm.lda(14)
+              asm.label("rt_tint_dims_kept")
+              asm.sta(asm.abs(memory[DIMMED]))
+              asm.stz(asm.direct(R.call(2)))
+              asm.lda(0)
+              asm.label("rt_tint_dimmed")
             end
 
             # A divided by 256: its high byte, swapped down and the low one dropped.

@@ -24,7 +24,8 @@ module VBlank
             { "RG_SCREEN_WIDTH" => console.screen_width, "RG_SCREEN_HEIGHT" => console.screen_height,
               "RG_CONSOLE_TICKS_A_SECOND" => console.cycles_a_second,
               "RG_CONSOLE_TICKS_A_FRAME" => console.cycles_a_frame,
-              "RG_CONSOLE_BLENDS" => console.blends, "RG_CONSOLE_RUMBLES" => console.rumbles,
+              "RG_CONSOLE_BLENDS" => console.blends, "RG_CONSOLE_DIMS" => console.fades_by_brightness,
+              "RG_CONSOLE_RUMBLES" => console.rumbles,
               "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date }
           end
 

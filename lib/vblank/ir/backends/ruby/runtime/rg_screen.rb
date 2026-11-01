@@ -647,10 +647,14 @@ end
 def rg_walked_toward(color, white, steps)
   return color if steps == 0
 
+  # FadeSteps.dimmed_levels, on a display that dims
+  level = steps >= RG_WALK_STEPS ? 0 : 15 - [((steps * 15) + 128) / RG_WALK_STEPS, 14].min
   out = 0
   3.times do |channel|
     c = (color >> (5 * channel)) & 0x1F
-    c = white != 0 ? c + (((31 - c) * steps) / RG_WALK_STEPS) : c - ((c * steps) / RG_WALK_STEPS)
+    c = if RG_CONSOLE_DIMS && white == 0 then ((2 * c * level) + 15) / 30
+        else white != 0 ? c + (((31 - c) * steps) / RG_WALK_STEPS) : c - ((c * steps) / RG_WALK_STEPS)
+        end
     out |= c << (5 * channel)
   end
   out

@@ -562,10 +562,13 @@ static void mix_nothing(void) {
  * moved a truncated share of the way to black or white. */
 static uint16_t walked_toward(uint16_t color, int32_t white, int32_t steps) {
   if (steps == 0) return color;
+  int32_t down = (steps * 15 + 128) / WALK_STEPS; /* FadeSteps.dimmed_levels, on a display that dims */
+  int32_t level = steps >= WALK_STEPS ? 0 : 15 - (down < 14 ? down : 14);
   int32_t out = 0;
   for (int32_t channel = 0; channel < 3; channel++) {
     int32_t c = (color >> (5 * channel)) & 0x1F;
-    c = white ? c + ((31 - c) * steps) / WALK_STEPS : c - (c * steps) / WALK_STEPS;
+    if (RG_CONSOLE_DIMS && !white) c = (2 * c * level + 15) / 30;
+    else c = white ? c + ((31 - c) * steps) / WALK_STEPS : c - (c * steps) / WALK_STEPS;
     out |= c << (5 * channel);
   }
   return (uint16_t)out;

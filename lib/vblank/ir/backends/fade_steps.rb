@@ -72,6 +72,16 @@ module VBlank
         end
 
         def sixteenths(percent) = ((percent * DISPLAY) / 100).clamp(0, DISPLAY)
+
+        # A DISPLAY THAT DIMS (Console::Description#fades_by_brightness) has sixteen brightnesses and
+        # no more, so a fade to black of +steps+ 256ths is the nearest of them: how many levels down
+        # from full, 0 to 15. Rounded, so a fade over fifteen frames is one level a frame, but for
+        # black, the lowest, which is for a fade all the way and no other.
+        def dimmed_levels(steps) = steps >= WALK ? 15 : [((steps * 15) + 128) / WALK, 14].min
+
+        # A channel of +value+ at +dimmed+ levels down: the display keeps level fifteenths of it,
+        # to the nearest, so the lowest level is black.
+        def dimmed(value, dimmed) = ((2 * value * (15 - dimmed)) + 15) / 30
       end
     end
   end

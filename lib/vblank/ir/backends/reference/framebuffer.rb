@@ -28,6 +28,9 @@ module VBlank
           WALK_PER_DISPLAY = FadeSteps::WALK / FadeSteps::DISPLAY
 
           # @param fill [Integer] the color every cell starts as (0 reads as black)
+          # Whether a fade to black is the display's brightness (Console::Description#fades_by_brightness).
+          attr_writer :dims
+
           def initialize(width:, height:, fill: 0)
             @width = width
             @height = height
@@ -687,7 +690,9 @@ module VBlank
 
             channels = [color & 0x1F, (color >> 5) & 0x1F, (color >> 10) & 0x1F]
             blended = channels.map do |c|
-              if toward == :white
+              if @dims && toward != :white
+                FadeSteps.dimmed(c, FadeSteps.dimmed_levels(steps))
+              elsif toward == :white
                 c + (((CHANNEL_MAX - c) * steps) / TINT_STEPS)
               else
                 c - ((c * steps) / TINT_STEPS)

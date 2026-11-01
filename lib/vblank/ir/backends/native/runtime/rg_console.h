@@ -34,6 +34,9 @@
 /* Whether the console's display can mix the finished picture toward a colour as it draws it. One
  * that cannot has every fade and tint mixed into its colour tables instead
  * (Console::Description#blends). */
+#ifndef RG_CONSOLE_DIMS
+#define RG_CONSOLE_DIMS 0
+#endif
 #ifndef RG_CONSOLE_BLENDS
 #define RG_CONSOLE_BLENDS 1
 #endif

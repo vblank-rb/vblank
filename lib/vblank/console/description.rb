@@ -29,7 +29,8 @@ module VBlank
     # sprite of the console is drawn at.
     # +blends+ says whether its display can mix colours as it draws —
     # fade the finished picture, mix one layer into another — rather than only change the colours
-    # in its lists. +mixes_by_half+ says whether, without blending by degrees, it can still show a
+    # in its lists. +fades_by_brightness+ says whether a fade to black is its display's own brightness,
+    # in the sixteen levels Backends::FadeSteps.dimmed says. +mixes_by_half+ says whether, without blending by degrees, it can still show a
     # layer half see-through — the Super Nintendo's colour math adds what is behind a layer to it
     # and halves the sum — which an amount the build rounds to an even half asks for, and nothing
     # else. +list_colors+ is how many places a list of colours holds. +painted_pages+ is
@@ -82,7 +83,7 @@ module VBlank
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :sprites, :sprite_places,
                               :sprites_a_row, :turning_sprites, :cuts_sprites, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
-                              :blends, :mixes_by_half, :list_colors, :painted_pages,
+                              :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
                               :recording_voice_hz,
@@ -130,7 +131,7 @@ module VBlank
                               # A status bar is one of those layers.
                               bar_is_a_background: true,
                               changes_cells_while_drawing: true,
-                              blends: true, mixes_by_half: false, list_colors: 16, painted_pages: 2, clock_keeps_date: true,
+                              blends: true, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, painted_pages: 2, clock_keeps_date: true,
                               # 228 lines of 1232 cycles: 160 drawn, and 68 the gap after.
                               cycles_a_second: 16_777_216, cycles_a_frame: 280_896,
                               # The sound copy moves four 32-bit words at a time: sixteen 8-bit samples.
@@ -163,7 +164,7 @@ module VBlank
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false,
                             changes_cells_while_drawing: true,
-                            blends: false, mixes_by_half: false, list_colors: 4, painted_pages: 1, clock_keeps_date: false,
+                            blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 4, painted_pages: 1, clock_keeps_date: false,
                             # 154 lines of 456 cycles: the Advance's frame exactly, on a clock a
                             # quarter as fast. Double speed doubles the cycles, not the frames.
                             cycles_a_second: 4_194_304, cycles_a_frame: 70_224,
@@ -212,7 +213,7 @@ module VBlank
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
                                      changes_cells_while_drawing: false,
-                                     blends: false, mixes_by_half: true, list_colors: 16,
+                                     blends: false, fades_by_brightness: true, mixes_by_half: true, list_colors: 16,
                                      # A painted screen is copied whole to the console before it
                                      # is shown, as the Color's is.
                                      painted_pages: 1, clock_keeps_date: false,

@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "all/vblank/builder/test_fade"
 
 # The tests of test_fade.rb about how the Advance's display fades: at eight bits a channel, which
 # rounds a share the other way for some channels. A Game Boy Color walks the colours of its lists
 # instead, at five bits, so these play on the Advance's runs alone.
 class TestFadeOnTheAdvance < Minitest::Test
+  include FadeShareTests
+
   private def program(&block)
     b = Builder.new
     b.instance_eval(&block)
