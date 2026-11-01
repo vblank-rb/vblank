@@ -909,10 +909,7 @@ module VBlank
               asm.lda(asm.long_x("music_data", m::NOTE_FRAME))
               asm.cmp(at.call(FRAME))
               asm.beq("rt_music_part_note_due")
-              asm.branch_long(:bcc, "rt_music_part_next")
-              asm.cmp(at.call(NEXT_NOTE_FRAME))
-              asm.branch_long(:bcs, "rt_music_part_next")
-              asm.sta(at.call(NEXT_NOTE_FRAME))
+              emit_next_note_frame_kept(asm, at)
               asm.brl("rt_music_part_next")
               asm.label("rt_music_part_note_due")
               asm.stx(at.call(NOTE))
@@ -948,7 +945,17 @@ module VBlank
               asm.asl
               asm.tax
               asm.inc(asm.abs_x(memory[CURSORS]))
-              asm.brl("rt_music_part") # the part again, for the frame of its note after this one
+              asm.lda(asm.abs_x(memory[CURSORS])) # the part's note after this one: its frame, if it has one
+              asm.cmp(at.call(COUNT))
+              asm.bcs("rt_music_part_next")
+              emit_times(asm, m::NOTE_BYTES)
+              asm.clc
+              asm.adc(at.call(LIST))
+              asm.tax
+              asm.lda(asm.long_x("music_data", m::NOTE_FRAME))
+              asm.cmp(at.call(FRAME))
+              asm.beq("rt_music_part_next") # one note a part a frame, as Reference::Player#play_song_frame
+              emit_next_note_frame_kept(asm, at)
               asm.label("rt_music_part_next")
               asm.inc(at.call(PART))
               asm.brl("rt_music_part")
@@ -986,6 +993,17 @@ module VBlank
               asm.jsr(asm.abs("rt_music_from_the_top"))
               asm.label("rt_music_song_frame_done")
               asm.rts
+            end
+
+            # With a note's frame in A and the carry from comparing it with FRAME: kept in
+            # NEXT_NOTE_FRAME if it is ahead of FRAME and sooner than the one kept.
+            def emit_next_note_frame_kept(asm, at)
+              kept = asm.here
+              asm.bcc("rt_music_next_note_kept_#{kept}")
+              asm.cmp(at.call(NEXT_NOTE_FRAME))
+              asm.bcs("rt_music_next_note_kept_#{kept}")
+              asm.sta(at.call(NEXT_NOTE_FRAME))
+              asm.label("rt_music_next_note_kept_#{kept}")
             end
 
             # A NOTE'S LOUDNESS, between its head and its tail (SNES::Music#part_layout): its volume as

@@ -60,26 +60,67 @@ class TestSNESEightVoices < Minitest::Test
   # Eight notes start together every half a second over a pass with most of its frame in use. What
   # each note asks of the sound chip goes while the game waits for the screen, so no pass runs long.
   def test_notes_starting_together_take_no_frame_from_a_busy_pass
+    assert_keeps_a_frame_a_pass(busy_song_game(steps: 250))
+  end
+
+  # A note with a loudness shape tells its voice a new loudness on every frame.
+  def test_notes_with_a_shape_take_no_frame_from_a_busy_pass
+    shape = VBlank::Audio::Envelope.new(attack: 16, decay: 250, sustain: 100, release: 250)
+
+    assert_keeps_a_frame_a_pass(busy_song_game(steps: 200, envelope: shape))
+  end
+
+  # A part has one note a frame, however short its notes are.
+  def test_a_part_plays_one_note_a_frame
+    run = SNES::CheckedRun.new.run(short_notes_game, frames: 12)
+
+    assert_operator run.audio.size, :>, 1
+  end
+
+  private def assert_keeps_a_frame_a_pass(program)
+    frames = [60, 180].map { |passes| SNES::HeadlessRun.new.run(program, frames: passes)[:shown] }
+
+    assert_equal 120, frames.last - frames.first
+  end
+
+  private def busy_song_game(steps:, envelope: nil)
+    score = VBlank::Audio::Score
+    notes = Array.new(8) { |i| score::Note.new(at: i * 30, key: i.even? ? :C4 : :E4, length: 29) }
+    parts = Array.new(8) { score::Part.new(plays: :piano, envelope: envelope, notes: notes) }
+    tune = score.new(parts: parts, tempo: 150, ticks_per_beat: 24, length: 240)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      instrument :piano, pcm: [60, -60] * 4000, rate: 8000, note: :C4, holds_from: 100
+      music = songs :music, [tune]
+      music.play 0
+      work = var :work, 0
+      shown = var :shown, 0
+      game_loop do
+        repeat(steps) { work += 1 }
+        shown = frames_since_power_on
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  private def short_notes_game
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
     b.instance_eval do
       screen :bitmap
       enable_sound
       instrument :piano, pcm: [60, -60] * 4000, rate: 8000, note: :C4, holds_from: 100
       song(:title) do
-        8.times { |part| voice(:"part#{part}", plays: :piano) { 64.times { |i| note(i.even? ? :C4 : :E4, :quarter) } } }
+        tempo 2000
+        voice(:lead, plays: :piano) { 32.times { note :C4, :sixteenth } }
       end
       play_song :title
-      work = var :work, 0
-      shown = var :shown, 0
-      game_loop do
-        repeat(250) { work += 1 }
-        shown = frames_since_power_on
-      end
+      game_loop { wait_vblank }
     end
     b.finalize_program
-    frames = [60, 180].map { |passes| SNES::HeadlessRun.new.run(b.program, frames: passes)[:shown] }
-
-    assert_equal 120, frames.last - frames.first
+    b.program
   end
 
   def test_a_sound_effect_cuts_in_over_a_full_song

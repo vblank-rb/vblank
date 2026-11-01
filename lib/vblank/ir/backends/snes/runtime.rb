@@ -53,7 +53,7 @@ module VBlank
                                     bar_covers: bar_covers)
             Tint.reserve(memory, changing_colors: changing_colors, dims: dims)
             Chip.reserve(memory) if chip
-            Sound.reserve(memory, queued: songs || samples) if sound
+            Sound.reserve(memory, queued: songs) if sound
             Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
                                   steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides) if songs
             Recordings.reserve(memory) if samples
