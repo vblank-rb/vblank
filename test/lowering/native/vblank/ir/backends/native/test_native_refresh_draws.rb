@@ -50,9 +50,9 @@ class TestNativeRefreshDraws < Minitest::Test
     end
   end
 
-  # A monitor that is not a whole number of the console's rate does not pace the game, and a
-  # picture is drawn once, waiting for one refresh.
-  def test_a_monitor_that_does_not_pace_the_game_has_each_picture_drawn_once
+  # A monitor that is not a whole number of the console's rate does not pace the game, so nothing
+  # is handed over to it to wait for.
+  def test_a_monitor_that_does_not_pace_the_game_leaves_it_to_the_consoles_clock
     refreshes, drawn, = drawing_for(144)
 
     assert_nil refreshes, "a 144Hz monitor leaves the pacing to the console's clock"

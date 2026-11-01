@@ -90,4 +90,13 @@ class TestNativeStillPicture < Minitest::Test
 
     assert_operator played.not_drawn, :<=, 4, played.said
   end
+
+  # Taking a window away is a change to what is on screen, though the game's picture is the same:
+  # the first picture after it is drawn too, or the window stays up over a still game.
+  def test_a_window_taken_away_is_drawn_away
+    open_for_three = ["0", "0", "0 panel:variables", "0", "0", "0 panel:variables"]
+    with_a_window = play(STILL, lines: open_for_three).not_drawn
+
+    assert_equal play(STILL).not_drawn - 4, with_a_window
+  end
 end

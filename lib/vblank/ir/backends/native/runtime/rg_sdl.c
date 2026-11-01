@@ -214,7 +214,7 @@ static uint32_t pad_buttons_down[MOST_PADS];
 static uint32_t pad_buttons_kept;
 
 static rg_pacing pacing = {0, 0, 1.0}; /* what paces the frames on the monitor the window is on */
-static int draws_a_picture = 1;        /* how many times the window is drawn and presented for each picture */
+static int draws_per_picture = 1;        /* how many times the window is drawn and presented for each picture */
 static int display_waits_refreshes;    /* how many refreshes the display waits for each time it is presented; 0 for none */
 static Uint64 next_frame_ns;           /* when the next frame is due, on the console's clock */
 static Uint64 earliest_next_ns;        /* where the monitor paces: the moment before which the next may not begin */
@@ -346,8 +346,8 @@ static void report_frame_times(void) {
     fprintf(stderr, "pacing: the monitor, %d refreshes a picture, the game at %.4f of the console's speed\n",
             pacing.refreshes, pacing.speed);
     fprintf(stderr, "frames the window's own clock had to hold back: %ld\n", frames_held_by_clock);
-    fprintf(stderr, "drawing: each picture is drawn %d time%s, the display waiting for %d refresh%s each time\n", draws_a_picture,
-            draws_a_picture == 1 ? "" : "s", display_waits_refreshes, display_waits_refreshes == 1 ? "" : "es");
+    fprintf(stderr, "drawing: each picture is drawn %d time%s, the display waiting for %d refresh%s each time\n", draws_per_picture,
+            draws_per_picture == 1 ? "" : "s", display_waits_refreshes, display_waits_refreshes == 1 ? "" : "es");
   } else {
     fprintf(stderr, "pacing: the console's clock, each picture %s\n",
             pacing.waits_for_refresh ? "waiting for a refresh" : "handed over as it is finished");
@@ -596,7 +596,7 @@ static void choose_pacing(void) {
   rg_handover handover = rg_handover_for(pacing, took_interval, took_one);
   if (pacing.waits_for_refresh && !handover.waits) pacing = rg_pacing_for(0.0); /* a display that cannot be made to wait */
   if (!pacing.waits_for_refresh) SDL_SetRenderVSync(renderer, 0);
-  draws_a_picture = handover.draws;
+  draws_per_picture = handover.draws;
   display_waits_refreshes = handover.refreshes_waited;
   earliest_next_ns = 0;
   picture_due_ns = 0;
@@ -783,7 +783,7 @@ static void watch_variables(void) {
  * keyboard, and Dear ImGui settles a hover or a click over several frames, so while one is up the
  * window is drawn every frame. Also what was wrong with the settings file, which is a window of its
  * own until it is answered. */
-static bool a_window_is_open_over_the_picture(void) {
+static bool window_open_over_picture(void) {
   return rg_window_menu_is_open() || rg_window_panel_shown(RG_PANEL_CONTROLS) || rg_window_panel_shown(RG_PANEL_VARIABLES) ||
          rg_window_problems_unseen();
 }
@@ -792,7 +792,7 @@ static bool a_window_is_open_over_the_picture(void) {
  * picture does: a window open over it, the speed fast forward puts in the corner, and the frame
  * rate and frame time when the words they would say are not the words drawn last. */
 static bool something_is_drawn_over_the_picture(void) {
-  if (a_window_is_open_over_the_picture() || rg_window_fast_forwarding()) return true;
+  if (window_open_over_picture() || rg_window_fast_forwarding()) return true;
   char rate[32], work[32];
   status_words(rate, work);
   return strcmp(rg_window_shows_frame_rate() ? rate : "", drawn_rate) != 0 ||
@@ -805,7 +805,7 @@ static bool something_is_drawn_over_the_picture(void) {
  * would hold a still screen only to two parts in a hundred faster than the monitor, and the game
  * and its sound would run that much faster for as long as the screen stood still. Where the
  * console's clock paces the game, the wait at the end of the frame is all there is. */
-static void wait_out_a_picture_not_drawn(void) {
+static void wait_out_undrawn_picture(void) {
   if (!pacing.refreshes) return;
   Uint64 picture_ns = rg_picture_ns(pacing);
   Uint64 now = SDL_GetTicksNS();
@@ -820,9 +820,10 @@ static void wait_out_a_picture_not_drawn(void) {
 static void present(void) {
   const uint16_t *picture = rg_screen_shown();
   bool same_picture = texture_has_picture && memcmp(picture, texture_holds, sizeof texture_holds) == 0;
-  if (same_picture && !window_owed_a_drawing && !something_is_drawn_over_the_picture()) {
+  bool drawn_over = something_is_drawn_over_the_picture();
+  if (same_picture && !window_owed_a_drawing && !drawn_over) {
     pictures_not_drawn++;
-    wait_out_a_picture_not_drawn();
+    wait_out_undrawn_picture();
     if (timing_frames) remember_picture_shown();
     return;
   }
@@ -832,11 +833,11 @@ static void present(void) {
     texture_has_picture = true;
   }
   watch_variables();
-  for (int i = 0; i < draws_a_picture; i++) {
+  for (int i = 0; i < draws_per_picture; i++) {
     draw_window();
     SDL_RenderPresent(renderer);
   }
-  window_owed_a_drawing = false;
+  window_owed_a_drawing = drawn_over; /* what is over the picture now needs drawing away once it goes */
   picture_due_ns = SDL_GetTicksNS();
   if (timing_frames) remember_picture_shown();
 }
@@ -847,6 +848,7 @@ static void present_still(void) {
   watch_variables();
   draw_window();
   SDL_RenderPresent(renderer);
+  window_owed_a_drawing = true; /* it may say PAUSED, which must go when the game goes on */
 }
 
 /* The window as the last picture drew it, menu and all, saved as a BMP: a test's way to see it. */
@@ -1377,7 +1379,7 @@ static void hold_while_paused(void) {
     if (scripted && !press_scripted_keys()) finish_script(); /* nothing left in the script could end the pause */
     drawings_owed = rg_pause_drawings_owed(drawings_owed, read_and_apply_events());
     write_files_due();
-    bool window_open = a_window_is_open_over_the_picture();
+    bool window_open = window_open_over_picture();
     if (!scripted && (drawings_owed > 0 || window_open)) {
       present_still();
       if (drawings_owed > 0) drawings_owed--;

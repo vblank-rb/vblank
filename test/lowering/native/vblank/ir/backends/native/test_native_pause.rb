@@ -29,11 +29,9 @@ class TestNativePause < Minitest::Test
     assert_equal [17, 17, 17, 4, 0], answers.flatten.map(&:to_i)
   end
 
-  private
-
   # The harness's answers to +questions+, a line each, split into words — at both of the settings
   # the backend is built at, which have to agree.
-  def asked(*questions)
+  private def asked(*questions)
     checked, fast = %i[checked fast].map do |mode|
       exe = Zig.compile_without_sdl([HARNESS], mode: mode)
       Zig.run_program(exe, input: questions.map { |question| "#{question}\n" }.join).lines.map(&:split)

@@ -419,11 +419,11 @@ async function main() {
   await steps();
 }
 
-/* Every step read from the input, in order, and then what was printed. */
 /* Between steps the page's promises settle (a worklet loaded, a sound device suspended), as they
  * would in the time between a person's key presses. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+/* Every step read from the input, in order, and then what was printed. */
 async function steps() {
   const printed = [];
   for (const line of fs.readFileSync(0, "utf8").split("\n")) {
