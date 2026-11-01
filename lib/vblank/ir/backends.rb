@@ -19,6 +19,7 @@ require_relative "backends/js"
 require_relative "backends/ruby"
 require_relative "backends/gbc"
 require_relative "backends/snes"
+require_relative "backends/genesis"
 
 module VBlank
   module IR
