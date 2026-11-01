@@ -702,7 +702,14 @@ module VBlank
           end
 
           # The note of the scene running now, set to +number+.
-          def emit_scene_number(number) = store_number(@scene, number)
+          def emit_scene_number(number)
+            return store_number(@scene, number) if painted? || @scene_layers.zero?
+
+            before = keep_local(:scene_before)
+            statement(Build.set(before, Build.var_ref(@scene)))
+            store_number(@scene, number)
+            emit_scene_arrival(@scenes.key(number), before)
+          end
 
           # A pass that halts ends as every pass does, with its sprites and scroll placed
           # (IR::Frames::ConsoleLoop#pass_end), as the interpreter ends it

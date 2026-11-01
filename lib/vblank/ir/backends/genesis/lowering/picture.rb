@@ -104,8 +104,6 @@ module VBlank
                   refuse_unmade!("a background drawn with other colours")
                 end
               end
-              refuse_unmade!("a scene's own background") if @scenes.keys.any? { |scene| !@handover.arrival(scene).scenery.empty? }
-              refuse_unmade!("more than two backgrounds on the screen at once") if @backgrounds.length > PLANES
               sizes = @backgrounds.map { |bg| TileMap.grid(bg.every_map.first) }.uniq
               refuse_unmade!("backgrounds of different sizes on one screen") if sizes.length > 1
               @plane_size = sizes.first
@@ -126,9 +124,30 @@ module VBlank
               end
             end
 
-            # The layers the backgrounds are on: plane A for the one painted last, B for the one before.
+            # WHICH OF THE TWO PLANES EACH BACKGROUND IS ON. A scene's own scenery is in front of the scenery every
+            # screen shows, as the interpreter paints it over what is up already, and within each the one drawn
+            # last is in front (IR::Stacking, which IR::SceneHandover hands the scenery over in the order of): so
+            # the scenes' own take the front planes, A first, as many as the scene with the most has, and the
+            # scenery every screen shows the planes behind those. So a stack that puts a scene's own background
+            # behind one every screen shows is not made yet.
             def assign_background_layers
-              @backgrounds.each_with_index { |bg, i| @layers[bg] = @backgrounds.length - 1 - i }
+              always = @handover.always_up.scenery
+              own = @scenes.keys.map { |scene| @handover.arrival(scene).scenery }
+              @scene_layers = own.map(&:length).max || 0
+              refuse_unmade_stacking!(always)
+              always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
+              own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
+            end
+
+            # A stack the planes' order cannot show: a scene's own background behind one every screen shows.
+            def refuse_unmade_stacking!(always)
+              @scenes.each_key do |scene|
+                own = @handover.arrival(scene).scenery
+                drawn = @handover.showing(scene).select { |bg| (always + own).any? { |up| up.equal?(bg) } }
+                next if drawn.map(&:object_id) == (always + own).map(&:object_id)
+
+                refuse_unmade!("a scene's own background in a layer behind a background every screen shows")
+              end
             end
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no plane" }
@@ -310,8 +329,13 @@ module VBlank
 
             # --- the screen and the backgrounds ---
 
-            # Reference#exec_background: put up, showing from its corner (Reference#put_up_background).
-            def emit_background(node) = emit_put_up(node, 0, reset_view: 1)
+            # Reference#exec_background: put up, showing from its corner (Reference#put_up_background). A scene's
+            # own goes up as the scene takes over instead (#emit_scene_arrival).
+            def emit_background(node)
+              return if @handover.on_arrival?(node)
+
+              emit_put_up(node, 0, reset_view: 1)
+            end
 
             def emit_put_up(bg, which, reset_view:)
               runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, which).number), Build.int(reset_view)])
@@ -347,24 +371,52 @@ module VBlank
               @asm.label(held)
             end
 
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names.
+            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names: the one by that name,
+            # or — where several scenes each declare their own by one name — the one of the scene whose routine
+            # is being lowered, or the one every screen shows. Nil where which it is cannot be told while the
+            # game is built (#for_background).
             def background_declared_for(node)
-              @backgrounds.find { |bg| bg.name == node.name } ||
-                raise(LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}")
+              declared = @backgrounds.select { |bg| bg.name == node.name }
+              raise LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}" if declared.empty?
+              return declared.first if declared.length == 1
+
+              own = @lowering_scene && @handover.arrival(@lowering_scene).scenery.find { |bg| bg.name == node.name }
+              own || @handover.always_up.scenery.find { |bg| bg.name == node.name }
+            end
+
+            # +node+'s change made to the background it names (#background_declared_for), yielded to the block.
+            # Where that is not known while the game is built — a change outside every scene's routine, to a
+            # name several scenes declare — the change is made to the one of the scene up when it runs, each
+            # scene's its own branch.
+            def for_background(node)
+              bg = background_declared_for(node)
+              return yield(bg) if bg
+
+              @scenes.each do |scene, number|
+                own = @handover.arrival(scene).scenery.find { |declared| declared.name == node.name }
+                next unless own
+
+                other = fresh("not_scene")
+                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
+                yield own
+                @asm.label(other)
+              end
             end
 
             # Reference#exec_scroll_background.
             def emit_scroll_background(node)
-              bg = background_declared_for(node)
-              emit_unless_put_up(node, @put_up_this_pass&.fetch(layer_of(bg))) do
-                runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
+              for_background(node) do |bg|
+                emit_unless_put_up(node, @put_up_this_pass&.fetch(layer_of(bg))) do
+                  runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
+                end
               end
             end
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
             # does a place outside its map.
-            def emit_set_tile(node)
-              bg = background_declared_for(node)
+            def emit_set_tile(node) = for_background(node) { |bg| emit_set_tile_of(bg, node) }
+
+            def emit_set_tile_of(bg, node)
               return if node.tile && node.tile >= bg.tiles.length
 
               columns, rows = TileMap.size_of(bg.every_map.first)
@@ -388,8 +440,9 @@ module VBlank
 
             # Reference#exec_show_map: a number naming no map leaves the cells alone; the view stays
             # where it was.
-            def emit_show_map(node)
-              bg = background_declared_for(node)
+            def emit_show_map(node) = for_background(node) { |bg| emit_show_map_of(bg, node) }
+
+            def emit_show_map_of(bg, node)
               which = keep_local(:map)
               value(node.which)
               store(which)
@@ -402,6 +455,37 @@ module VBlank
                 @asm.label(other)
               end
               @asm.label(done)
+            end
+
+            # A scene taking over (Lowering#emit_scene): what it shows of its own goes up from its corner, as
+            # declared, with every map it chooses back at the first; and the planes its own scenery does not
+            # use, which the scene before may have used, come down (IR::SceneHandover). The scenery every
+            # screen shows stays as it is.
+            # +before+ is the number of the scene up until now, -1 at power-on, when the planes are empty already and
+            # an empty map's copy would only run the blank out for the sprites.
+            def emit_scene_arrival(scene, before)
+              return if painted? || @scene_layers.zero?
+
+              arrival = @handover.arrival(scene)
+              arrival.map_choices.each { |var| store_number(var, 0) }
+              arrival.scenery.each { |bg| emit_put_up(bg, 0, reset_view: 1) }
+              unused = (0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }
+              return if unused.empty?
+
+              first = fresh("scene_first")
+              jump_unless(Build.binop(:!=, Build.var_ref(before), Build.int(-1)), first)
+              unused.each do |plane|
+                runtime_call("rt_background_put_up", [Build.int(plane), Build.int(empty_grid.number), Build.int(1)])
+              end
+              @asm.label(first)
+            end
+
+            # A grid of nothing, put up on a plane to take down what was there.
+            def empty_grid
+              @empty_grid ||= begin
+                columns, rows = plane_size
+                @art.grid(Array.new(rows) { Array.new(columns) }, columns, rows)
+              end
             end
 
             # --- sprites ---

@@ -660,7 +660,7 @@ class TestSceneBackgrounds < Minitest::Test
   def test_scenes_whose_colours_together_are_more_than_the_console_holds_each_show_their_own
     prog = two_scenes_of_six_lists_each
     played = ->(frames) { game_player.run(prog, frames: frames).screen }
-    one, two = [0, 6].map { |n| VBlank::Graphics::Color.rgb(31, 31 - n, 2 * n) }
+    one, two = [0, 6].map { |n| VBlank::Testing.shown(VBlank::Graphics::Color.rgb(31, 31 - n, 2 * n)) }
 
     assert_equal one, played.call(2).pixel(0, 0), "the first scene's first list"
     assert_equal two, played.call((COLORS_SWITCH_AT * 2) + 1).pixel(0, 0), "the second scene's"
@@ -675,7 +675,7 @@ class TestSceneBackgrounds < Minitest::Test
             VBlank::Graphics::Color.rgb(3, 20, 3), VBlank::Graphics::Color.rgb(31, 31, 31)]
     prog = two_scenes_of_six_lists_each(dusk: dusk)
 
-    assert_equal dusk[1], game_player.run(prog, frames: (COLORS_SWITCH_AT * 3) + 3).screen.pixel(0, 0)
+    assert_equal VBlank::Testing.shown(dusk[1]), game_player.run(prog, frames: (COLORS_SWITCH_AT * 3) + 3).screen.pixel(0, 0)
   end
 
   # --- one background name in two scenes ---
