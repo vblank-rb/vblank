@@ -243,6 +243,35 @@ class TestSNESSongs < Minitest::Test
     assert_operator swelling_early, :<, 0x7F, "it starts low"
   end
 
+  # A SWELL UNDER THE MUSIC VOLUME is heard. The envelope climbs with the voice's volume at the top,
+  # whatever the level, until the player's count reaches the level: there the volume says the level
+  # and the envelope stops at its top. When the music comes back the note climbs on from there.
+  def test_a_note_that_swells_is_heard_and_stops_at_the_music_volume
+    game = VBlank.game("HELD SWELL", consoles: %i[gba snes]) do
+      enable_sound
+      song(:tune) { voice(:pad) { |v| v.volume 0; v.swell :fast; v.note :G4, :whole } }
+      play_song :tune
+      count = 0
+      game_loop do
+        count += 1
+        music_volume 50 if count == 1
+        music_volume 100 if count == 40
+        wait_vblank
+      end
+    end
+    top = 15 * SNES::DSPWrites::VOLUME_STEP
+    climbing, held, climbing_on = [4, 30, 44].map do |frames|
+      dsp = SNES::CheckedRun.new.run(game.program(console: :snes), frames: frames).dsp_registers
+      [dsp.getbyte(FIRST), dsp.getbyte(FIRST + ENVX)]
+    end
+
+    assert_equal top, climbing.first, "the voice is at full volume while it climbs"
+    assert_includes 1...0x7F, climbing.last, "and the envelope is on its way up"
+    assert_equal [7 * SNES::DSPWrites::VOLUME_STEP, 0x7F], held, "held at 7 of 15"
+    assert_equal top, climbing_on.first, "full volume again"
+    assert_includes (7 * 0x7F / 15)...0x7F, climbing_on.last, "the envelope climbing on from where it was held"
+  end
+
   # The wave part, after its rest, sounds again as the tune comes round (frame 12): its key-off
   # cleared before its key-on.
   def test_a_wave_part_sounds_again_after_its_rest

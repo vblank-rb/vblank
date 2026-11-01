@@ -290,9 +290,8 @@ module VBlank
           end
 
           def swelling_envelope(writes, fade)
-            whole = fade.step * 15 * DSP_RATE / 64.0
-            rate = nearest_rate(whole / GAIN_RISE_STEPS)
-            top = writes.any? { |write| write.first == (NOISE_VOICE << 4) } ? (15 * VOLUME_STEP * HISS_SCALE).round : 15 * VOLUME_STEP
+            top = swell_top(writes.first.first >> 4)
+            rate = swell_rate(fade)
             writes.filter_map do |write|
               register = write.first
               next write unless write.length == 2
@@ -304,6 +303,29 @@ module VBlank
               else write
               end
             end + [[(writes.first.first & 0xF0) + GAIN, GAIN_RISES | rate]]
+          end
+
+          def swell_rate(fade) = nearest_rate(fade.step * 15 * DSP_RATE / 64.0 / GAIN_RISE_STEPS)
+
+          # The volume of +voice+ while its note swells: the most there is, as it climbs.
+          def swell_top(voice) = voice == NOISE_VOICE ? (15 * VOLUME_STEP * HISS_SCALE).round : 15 * VOLUME_STEP
+
+          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count says it is
+          # (Reference::Player#step_swells): an +entry+ of [:loudness, channel, volume], with the
+          # swell after it if it climbs on. Holding, the envelope stops at its top and the voice's
+          # volume says the loudness, as any held note's does; the volume goes first, since the other
+          # order is full volume for a moment. Climbing on, the envelope is put where the loudness
+          # is and the voice's volume back at the top. The sound chip reads a register once a sample,
+          # so the volume between the envelope's two writes is what gives it time to see the first.
+          def swell_strike(entry, voicing, song)
+            _, channel, volume, swelling = entry
+            voice = CHANNEL_VOICES.fetch(channel)
+            base = voice << 4
+            return loudness_at(channel, volume, voicing, song) + [[base + GAIN, FIXED_TOP]] unless swelling
+
+            top = swell_top(voice)
+            [[base + GAIN, volume * FIXED_TOP / 15], [base + VOLUME_LEFT, top], [base + VOLUME_RIGHT, top],
+             [base + GAIN, GAIN_RISES | swell_rate(swelling)]]
           end
 
           # The wave voice playing +params+ ({shape:, frequency:, volume:}, as the interpreter logs a
@@ -453,8 +475,17 @@ module VBlank
             side = nil # the speaker the note just logged plays from, nil for both
             fade = nil # the fade it said
             sounding = {} # what each channel's last note is, for a wobble of it
+            rising = {} # whether each channel's last note is a song's that swells
             entries.each do |entry|
               sounding[entry[1]] = entry[3] if entry.first == :voice
+              rising[entry[1]] = swelling_note?(entry, voicing) if entry.first == :voice
+              if entry.first == :loudness && rising[entry[1]]
+                # A swell's own start writes nothing: the voice stays at its full volume, climbing.
+                yield entry, previous == :voice ? [] : swell_strike(entry, voicing, song)
+                loudness = []
+                previous = entry.first
+                next
+              end
               if entry.first == :wobble
                 yield entry, wobble(entry[1], sounding.fetch(entry[1]), entry[2])
                 next
@@ -482,6 +513,12 @@ module VBlank
               previous = entry.first
               yield entry, writes
             end
+          end
+
+          # Whether a [:voice ...] +entry+ is a song's note the player holds at the music volume.
+          def swelling_note?(entry, voicing)
+            _, channel, who, frequency, _, fade = entry
+            frequency.positive? && fade&.swells_by_itself? && CHANNEL_VOICES.fetch(channel) != WAVE_VOICE && !voicing.effects.include?(who)
           end
 
           # A [:noise ...] entry that plays a note: a drum's fade is said in the [:voice ...] before it.

@@ -76,13 +76,29 @@ module VBlank
             # in 0..7 so nought is the note's first frame alone.
             SHAPE_RECORD = "rt music shape record"
             SHAPE_FRAME = "rt music shape frame"
+            # A NOTE THAT SWELLS UNDER THE MUSIC VOLUME (SNES::Music#swell_record), in a game with one:
+            # each console voice's record, nought for no such note, and its count as the
+            # interpreter keeps it (IR::Tunes::Swell). SWELL_AT is the voice being stepped, and the
+            # rest are what stepping it works with.
+            SWELL_RECORD = "rt music swell record"
+            SWELL_VOLUME = "rt music swell volume"
+            SWELL_COUNTED = "rt music swell counted"
+            SWELL_RISING = "rt music swell rising"
+            SWELL_AT = "rt music swell at"
+            SWELL_CEILING = "rt music swell ceiling"
+            SWELL_NEEDS = "rt music swell needs"
+            SWELL_GROUPS = "rt music swell groups"
 
             module_function
 
             # +follows_level+ for a game that sets the music volume (SNES::Music.follows_level?);
             # +effects+ how many sound effects the game has (Effects).
-            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false)
+            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false)
               memory.reserve(TUNE_HELD, 2) if holds
+              if swells
+                [SWELL_RECORD, SWELL_VOLUME, SWELL_COUNTED, SWELL_RISING].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
+                [SWELL_AT, SWELL_CEILING, SWELL_NEEDS, SWELL_GROUPS].each { |name| memory.reserve(name, 2) }
+              end
               if steps_shapes
                 [SHAPE_RECORD, SHAPE_FRAME].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
                 memory.reserve(WOBBLE_AT, 2) unless wobbles
@@ -114,6 +130,7 @@ module VBlank
               emit_frames(asm, at, sharing, memory)
               emit_wobbles(asm, at, memory) if wobbles?(memory)
               emit_shapes(asm, at, memory) if steps_shapes?(memory)
+              emit_swells(asm, at, memory) if swells?(memory)
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
               emit_level(asm, at, memory, level_at) if level_at
@@ -129,6 +146,140 @@ module VBlank
 
             # Whether the game has a note that steps its shapes (SHAPE_RECORD).
             def steps_shapes?(memory) = memory.reserved?(SHAPE_RECORD)
+
+            # Whether the game has a note that swells under the music volume (SWELL_RECORD).
+            def swells?(memory) = memory.reserved?(SWELL_RECORD)
+
+            # rt_music_swells: every swelling note held under the music volume, the voices in order,
+            # before the wobbles (Reference::Player#step_swells): struck where IR::Tunes::Swell#held_under
+            # says, then counted on a frame as Swell#stepped does. The sound chip does the climbing; this
+            # only knows how far it has got.
+            def emit_swells(asm, at, memory)
+              m = SNES::Music
+              loudest = IR::Tunes::LOUDEST
+              volume = asm.abs_y(memory[SWELL_VOLUME])
+              counted = asm.abs_y(memory[SWELL_COUNTED])
+              rising = asm.abs_y(memory[SWELL_RISING])
+              record = asm.abs_y(memory[SWELL_RECORD])
+              asm.label("rt_music_swells")
+              asm.lda(loudest)
+              asm.jsr(asm.abs("rt_music_scaled"))
+              asm.sta(at.call(SWELL_CEILING))
+              asm.stz(at.call(SWELL_AT))
+              asm.label("rt_music_swell_voice")
+              asm.ldy(at.call(SWELL_AT))
+              asm.lda(record)
+              asm.branch_long(:beq, "rt_music_swell_next")
+              asm.lda(rising)
+              asm.beq("rt_music_swell_kept")
+              # Climbing: held once it reaches the ceiling, unless that is full, where the voice stops by itself.
+              asm.lda(at.call(SWELL_CEILING))
+              asm.cmp(loudest)
+              asm.bcs("rt_music_swell_count")
+              asm.lda(volume)
+              asm.cmp(at.call(SWELL_CEILING))
+              asm.bcc("rt_music_swell_count")
+              asm.bra("rt_music_swell_hold")
+              # Held: struck lower if the ceiling came down, and let climb if it went up.
+              asm.label("rt_music_swell_kept")
+              asm.lda(volume)
+              asm.cmp(at.call(SWELL_CEILING))
+              asm.branch_long(:beq, "rt_music_swell_next")
+              asm.bcs("rt_music_swell_hold")
+              asm.lda(0)
+              asm.sta(counted)
+              asm.lda(1)
+              asm.sta(rising)
+              asm.lda(m::SWELL_ONWARDS)
+              asm.bra("rt_music_swell_strike")
+              asm.label("rt_music_swell_hold")
+              asm.lda(at.call(SWELL_CEILING))
+              asm.sta(volume)
+              asm.lda(0)
+              asm.sta(counted)
+              asm.sta(rising)
+              asm.lda(m::SWELL_HOLDS)
+              asm.label("rt_music_swell_strike") # A = which list of the record's
+              asm.clc
+              asm.adc(record)
+              asm.sta(at.call(SWELL_GROUPS))
+              asm.lda(volume)
+              asm.asl
+              asm.clc
+              asm.adc(at.call(SWELL_GROUPS))
+              asm.tax
+              asm.lda(asm.long_x("music_data"))
+              asm.tax
+              asm.jsr(asm.abs("rt_sound_group"))
+              asm.ldy(at.call(SWELL_AT))
+              asm.label("rt_music_swell_count")
+              asm.lda(rising)
+              asm.beq("rt_music_swell_next")
+              asm.lda(volume)
+              asm.cmp(loudest)
+              asm.bcs("rt_music_swell_next")
+              asm.lda(record)
+              asm.tax
+              asm.lda(asm.long_x("music_data", m::SWELL_STEP))
+              asm.sta(at.call(SWELL_NEEDS))
+              asm.lda(counted)
+              asm.clc
+              asm.adc(IR::Tunes::COUNTED_A_FRAME)
+              asm.sta(counted)
+              asm.label("rt_music_swell_climb")
+              asm.lda(counted)
+              asm.cmp(at.call(SWELL_NEEDS))
+              asm.bcc("rt_music_swell_next")
+              asm.sec
+              asm.sbc(at.call(SWELL_NEEDS))
+              asm.sta(counted)
+              asm.lda(volume)
+              asm.inc
+              asm.sta(volume)
+              asm.cmp(loudest)
+              asm.bcc("rt_music_swell_climb")
+              asm.label("rt_music_swell_next")
+              asm.inc(at.call(SWELL_AT))
+              asm.inc(at.call(SWELL_AT))
+              asm.lda(at.call(SWELL_AT))
+              asm.cmp(SNES::Music::CONSOLE_PARTS * 2)
+              asm.branch_long(:bne, "rt_music_swell_voice")
+              asm.rts
+
+              # rt_music_stop_swell(channel): the game's own sound took the voice
+              # (Reference::Player#game_sound_on).
+              asm.label("rt_music_stop_swell")
+              asm.lda(asm.direct(Sound::R0))
+              asm.dec
+              asm.asl
+              asm.tay
+              asm.lda(0)
+              asm.sta(record)
+              asm.rtl
+
+              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE says,
+              # from its loudness at the level, or holding no swell (Reference::Player#hold_swell_under_level).
+              asm.label("rt_music_note_swell")
+              asm.ldx(at.call(ENTRY))
+              asm.lda(asm.long_x("music_data", m::CHANNEL))
+              asm.dec
+              asm.asl
+              asm.tay
+              asm.ldx(at.call(NOTE))
+              asm.lda(asm.long_x("music_data", m::NOTE_SWELL))
+              asm.sta(record)
+              asm.beq("rt_music_note_swell_done")
+              asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              asm.and_a(m::RINGS_ALONE - 1)
+              asm.jsr(asm.abs("rt_music_scaled"))
+              asm.sta(volume)
+              asm.lda(0)
+              asm.sta(counted)
+              asm.lda(1)
+              asm.sta(rising)
+              asm.label("rt_music_note_swell_done")
+              asm.rts
+            end
 
             # rt_music_shapes: every square note that steps its shapes given the shape of the frame it
             # is on, the voices in order, after the wobbles (Reference::Player#step_shapes). The
@@ -383,6 +534,7 @@ module VBlank
               asm.jsr(asm.abs("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
               asm.jsr(asm.abs("rt_sfx_below")) if sharing
+              asm.jsr(asm.abs("rt_music_swells")) if swells?(memory)
               asm.jsr(asm.abs("rt_music_wobbles")) if wobbles?(memory)
               asm.jsr(asm.abs("rt_music_shapes")) if steps_shapes?(memory)
               asm.rts
@@ -455,6 +607,7 @@ module VBlank
               asm.jsl(asm.long("rt_recordings_release_music")) if recorded # the places its parts hold
               SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[WOBBLE_RECORD], voice * 2)) } if wobbles?(memory)
               SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[SHAPE_RECORD], voice * 2)) } if steps_shapes?(memory)
+              SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[SWELL_RECORD], voice * 2)) } if swells?(memory)
               if level_at
                 SNES::Music::PARTS.times do |p|
                   asm.stz(asm.abs(memory[HELD], p * 2))
@@ -581,6 +734,7 @@ module VBlank
               asm.jsr(asm.abs("rt_sound_group"))
               asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
               asm.jsr(asm.abs("rt_music_note_shapes")) if steps_shapes?(memory)
+              asm.jsr(asm.abs("rt_music_note_swell")) if swells?(memory)
               asm.label("rt_music_part_passed")
               asm.lda(at.call(PART))
               asm.asl
@@ -664,7 +818,30 @@ module VBlank
               asm.stx(at.call(HELD_END))
               asm.label("rt_music_note_not_held")
               asm.pla
+              if swells?(memory)
+                # A note that swells logs its loudness and writes nothing: it stays at full volume, climbing.
+                asm.sta(at.call(LOUDNESS))
+                asm.ldx(at.call(NOTE))
+                asm.lda(asm.long_x("music_data", m::NOTE_SWELL))
+                asm.beq("rt_music_note_plain")
+                asm.sta(at.call(SWELL_GROUPS))
+                asm.lda(at.call(LOUDNESS))
+                asm.jsr(asm.abs("rt_music_scaled"))
+                asm.asl
+                asm.clc
+                asm.adc(at.call(SWELL_GROUPS))
+                asm.clc
+                asm.adc(m::SWELL_STARTS)
+                asm.tax
+                asm.lda(asm.long_x("music_data"))
+                asm.tax
+                asm.jsr(asm.abs("rt_sound_group"))
+                asm.bra("rt_music_note_loud")
+                asm.label("rt_music_note_plain")
+                asm.lda(at.call(LOUDNESS))
+              end
               asm.jsr(asm.abs("rt_music_loudness"))
+              asm.label("rt_music_note_loud") if swells?(memory)
             end
 
             # THE MUSIC VOLUME MOVED (Reference::Player#apply_music_volume): at the start of a frame

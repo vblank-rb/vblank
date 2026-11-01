@@ -82,6 +82,7 @@ module VBlank
           RINGS_ALONE = 0x100 # in a note's volume word: it fades by itself, and is not held for a new level
           NOTE_SOUNDS = 8
           NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
+          NOTE_SWELL = 10 # the same word, on a console voice: where its swell's record is, nought for none
           NOTE_WOBBLE = 12 # where its wobble's record is, nought for a note that holds its pitch
           NOTE_SHAPES = 14 # where its shapes' record is, nought for a note that holds its shape
           NOTE_BYTES = 16
@@ -91,6 +92,12 @@ module VBlank
           WOBBLE_SPEED = 2
           WOBBLE_UP = 4
           WOBBLE_DOWN = 6
+          # A SWELL'S RECORD (#swell_record), in bytes: how much the count must reach for a step of
+          # loudness, and where each of three lists of groups is, one for each of VOLUMES.
+          SWELL_STEP = 0
+          SWELL_STARTS = 2
+          SWELL_HOLDS = 34
+          SWELL_ONWARDS = 66
           COMMAND_FIRST = 2
           COMMAND_SECOND = 4
           COMMAND_BYTES = 6
@@ -148,6 +155,19 @@ module VBlank
 
           # Whether any note of +program+'s songs steps through shapes.
           def self.steps_shapes?(program) = any_note?(program) { |part, event| IR::Tunes.said_duty(part, event)&.steps? }
+
+          # Whether a note of +program+'s songs swells under a music volume, and so the player
+          # counts along with the sound chip to stop it there (Runtime::Music's rt_music_swells).
+          def self.swells_under_level?(program)
+            follows_level?(program) && any_note?(program) { |part, event| swell_held_under_level?(part, event) }
+          end
+
+          # Whether +event+ of +part+ is a note held at the music volume
+          # (Reference::Player#hold_swell_under_level): a square note or drum hit that swells, not sliding.
+          def self.swell_held_under_level?(part, event)
+            event[1].positive? && IR::Tunes.said_fade(part, event)&.swells_by_itself? &&
+              %i[square noise].include?(IR::Tunes.part_kind(part)) && !Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event))
+          end
 
           def self.any_note?(program)
             program.walk.select { |node| node.kind == :song }.any? do |song|
@@ -219,6 +239,7 @@ module VBlank
             @groups = [] # every group's commands, each once, in the order first met
             @wobble_records = [] # every wobble's record, each once
             @shape_records = [] # every note's shapes' record, each once
+            @swell_records = [] # every swell's record, each once
             # A tune stopping logs its own stop (Music.stop_entry); the voices it lets go of are worked
             # out as it stops, since a sound effect may hold some of them (Runtime::Music's rt_music_quiet).
             tunes = @songs.map do |song|
@@ -240,6 +261,10 @@ module VBlank
             @shape_records.each do |groups|
               places[groups] = table.size * 2
               table.concat(groups.map { |commands| commands ? places.fetch(commands) : 0 })
+            end
+            @swell_records.each do |record|
+              places[record] = table.size * 2
+              table.concat([record.first, *record.drop(1).map { |commands| places.fetch(commands) }])
             end
             lay_out_lists(table, LISTS_AT, @lists.map { |list| list.songs.map { |name| number(name) } })
             table[SONGS_AT / 2] = table.size * 2
@@ -342,9 +367,9 @@ module VBlank
 
           # A note's words: its frame, its two groups' places, its volume as written, whether it sounds.
           def note_words(note, places)
-            frame, head, tail, written, sounds, recording, wobble, shapes = note
-            [frame, places.fetch(head), places.fetch(tail), written, sounds ? 1 : 0, recording || 0, wobble ? places.fetch(wobble) : 0,
-             shapes ? places.fetch(shapes) : 0]
+            frame, head, tail, written, sounds, recording, wobble, shapes, swell = note
+            [frame, places.fetch(head), places.fetch(tail), written, sounds ? 1 : 0, swell ? places.fetch(swell) : recording || 0,
+             wobble ? places.fetch(wobble) : 0, shapes ? places.fetch(shapes) : 0]
           end
 
           # What the table holds for one part: its two lists of notes, the first time round and every
@@ -391,8 +416,30 @@ module VBlank
             shapes = shape_record(channel, frequency, duty, &number_of) if duty&.steps?
             written = frequency.zero? ? 0 : volume
             written |= RINGS_ALONE if frequency.positive? && follows_level? && IR::Tunes.changes_by_itself?(part, event)
+            swell = swell_record(song, channel, fade.step, voicing, &number_of) if between.any? && self.class.swell_held_under_level?(part, event)
             [frame, keep_group(commands.take(2).flatten(1)), keep_group(commands.drop(2 + between.size).flatten(1)),
-             written, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes]
+             written, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes, swell]
+          end
+
+          # A NOTE THAT SWELLS UNDER THE MUSIC VOLUME. The sound chip climbs by itself, as far as the
+          # top, whatever the level is, so the player counts along with it (Runtime::Music's
+          # rt_music_swells, IR::Tunes::Swell) and strikes it at the level. Worked out here, at every
+          # loudness the count can be at: what its start logs, which writes nothing, since the voice
+          # must stay at its full volume to be heard climbing; the note held there; and the note
+          # climbing on from there (DSPWrites.swell_strike).
+          def swell_record(song, channel, step, voicing, &number_of)
+            starts = VOLUMES.map { |volume| keep_group([[GROUP_LOG, yield([:loudness, channel, volume]), 0]]) }
+            holds = VOLUMES.map { |volume| swell_strike_group([:loudness, channel, volume], song, voicing, &number_of) }
+            swelling = Audio::NoteFade.swelling(step)
+            onwards = VOLUMES.map { |volume| swell_strike_group([:loudness, channel, volume, swelling], song, voicing, &number_of) }
+            record = [step * 256, *starts, *holds, *onwards]
+            @swell_records << record unless @swell_records.include?(record)
+            record
+          end
+
+          def swell_strike_group(entry, song, voicing)
+            writes = DSPWrites.swell_strike(entry, voicing, song.name).map { |write| Runtime::Sound.command_for(write) }
+            keep_group(writes + [[GROUP_LOG, yield(entry), 0]])
           end
 
           # A NOTE THAT STEPS ITS SHAPES: a group for each of its four frames, its source written and
@@ -562,8 +609,8 @@ module VBlank
           # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet:
           # a slide, shapes that step, and a wobble that carries from note to note, is in a sound
           # effect, or shares a game with sound effects, which take a voice from under it. In a game
-          # that sets its music volume, a note that swells or plays from one speaker is not made yet
-          # either; a note that fades is, and the level reaches its next note (RINGS_ALONE).
+          # that sets its music volume, a note from one speaker is not made yet either, nor a swell
+          # beside sound effects; a note that fades is, and the level reaches its next note (RINGS_ALONE).
           def refuse_note_changes!(song)
             sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
             changing = sounding.any? do |part, event|
@@ -581,7 +628,7 @@ module VBlank
             return unless follows_level?
 
             sounding.each do |part, event|
-              said = if IR::Tunes.said_fade(part, event)&.swells_by_itself? then "that swells"
+              said = if IR::Tunes.said_fade(part, event)&.swells_by_itself? && effects? then "that swells beside sound effects"
                      elsif IR::Tunes.note_side(part, event) then "from one speaker"
                      end
               next unless said

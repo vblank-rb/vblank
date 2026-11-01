@@ -216,6 +216,7 @@ module VBlank
             def emit_game_sound_on(channel)
               runtime_call("rt_music_stop_wobble", [Build.int(channel)]) if Music.wobbles?(@program)
               runtime_call("rt_music_stop_shapes", [Build.int(channel)]) if Music.steps_shapes?(@program)
+              runtime_call("rt_music_stop_swell", [Build.int(channel)]) if Music.swells_under_level?(@program)
             end
 
             # Reference#exec_enable_sound.

@@ -110,6 +110,7 @@ module VBlank
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
                                   bends: bends, tile_runs: tile_runs, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
+                                  swells: Music.swells_under_level?(program),
                                   changing_colors: changing_colors, dims: dims, math_turns: math_turns,
                                   bar_covers: Lowering::Picture.bar_covers_sprites?(program))
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares)
