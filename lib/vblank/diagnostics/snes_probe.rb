@@ -41,6 +41,12 @@ module VBlank
       # and right by turns, at SoundRecording's rate for this console.
       def audio_by_frame = @last_audio.dup
 
+      # This probe takes the mix bsnes hands over, with no way to leave one of the eight voices out.
+      def hearing(**)
+        raise ArgumentError, "This reader cannot play one voice alone on a Super Nintendo cartridge. It records all " \
+                             "eight voices together. To fix this, remove `only:` and `without:`."
+      end
+
       def read8(address) = @core.wram_read8(work_ram_offset(address))
       def read16(address) = @core.wram_read16(work_ram_offset(address))
       def read32(address) = @core.wram_read32(work_ram_offset(address))

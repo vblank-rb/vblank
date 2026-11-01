@@ -100,6 +100,14 @@ class TestSNESVerifier < Minitest::Test
     assert_operator heard.frames.last.loudest, :>, 0
   end
 
+  # The eight voices are not the other consoles' four, so one voice alone is refused in plain
+  # words rather than heard as the wrong thing.
+  def test_hearing_one_voice_alone_says_it_cannot
+    error = assert_raises(ArgumentError) { Verifier.new(beeper, frames: 2).hearing(only: :noise) }
+
+    assert_match(/one voice alone/, error.message)
+  end
+
   private def beeper
     VBlank.build("BEEPER", console: :snes, out: StringIO.new, err: StringIO.new) do
       screen :bitmap
