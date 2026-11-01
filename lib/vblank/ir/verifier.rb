@@ -57,6 +57,7 @@ module VBlank
         # What the wave voice plays: one of the named shapes, or the steps of a waveform itself.
         waveform: ->(v) { v.is_a?(Symbol) || (v.is_a?(Array) && v.all?(Integer)) },
         branch:  ->(v) { v.is_a?(Node) && v.kind == :else },   # an if's else-branch node
+        maybe_value: ->(v) { v.is_a?(Node) && v.value? },      # a value operand a game can leave out
         flag:    ->(v) { v == true || v == false },            # an on/off switch (e.g. double buffering)
         shape:   ->(v) { v.is_a?(Audio::Envelope) },                  # how a note starts and how it ends
       })

@@ -114,6 +114,9 @@ module VBlank
             BAR_CHANGED = 4
             BAR_TABLE = 6
             BAR_BYTES = BAR_TABLE + 8
+            # In a game that tells its bar to cover sprites: whether it does. The table then leaves
+            # the sprites out of TM from the bar down, so the console draws none on those lines.
+            BAR_COVERS = "rt bar covers"
             BAR_CHANNEL = 0x10 # channel 1's registers, past channel 0's
             # Which layers TM shows on a tiled screen: BG1 and BG2 (a bit each) and the sprites.
             LAYERS_SHOWN = 0x13
@@ -164,7 +167,8 @@ module VBlank
             # CGADSUB's bit that halves the sum.
             MATH_HALVES = 0x40
 
-            def reserve(memory, bar: false, bends: false, tile_runs: [], math_turns: false)
+            def reserve(memory, bar: false, bends: false, tile_runs: [], math_turns: false, bar_covers: false)
+              memory.reserve(BAR_COVERS, 2) if bar_covers
               memory.reserve(MATH, 2) if math_turns
               memory.reserve(TILE_RUNS_OWED, tile_runs.length * 2) unless tile_runs.empty?
               tile_runs.each_with_index { |bytes, number| memory.reserve_far(tile_run_staging(number), bytes) }
@@ -717,6 +721,15 @@ module VBlank
               asm.lda(1)
               asm.sta(asm.abs(bar + BAR_CHANGED))
               asm.rtl
+              return unless memory.reserved?(BAR_COVERS)
+
+              # rt_bar_covers(covers): whether the sprites show from the bar's top down.
+              asm.label("rt_bar_covers")
+              asm.lda(asm.direct(r.call(0)))
+              asm.sta(asm.abs(memory[BAR_COVERS]))
+              asm.lda(1)
+              asm.sta(asm.abs(bar + BAR_CHANGED))
+              asm.rtl
             end
 
             # In the blank, if the bar moved: its table of lines made again, and channel 1 set to
@@ -728,7 +741,13 @@ module VBlank
               table = bar + BAR_TABLE
               channel = h::DMA_BASE + BAR_CHANNEL
               asm.lda(asm.abs(bar + BAR_CHANGED))
-              asm.beq("rt_bar_table_kept")
+              if memory.reserved?(BAR_COVERS) # the table's code is past a short branch's reach then
+                asm.bne("rt_bar_table_changed")
+                asm.brl("rt_bar_table_kept")
+                asm.label("rt_bar_table_changed")
+              else
+                asm.beq("rt_bar_table_kept")
+              end
               asm.stz(asm.abs(bar + BAR_CHANGED))
               asm.lda(asm.abs(bar + BAR_LAYER))
               asm.inc # BG1's bit is 1, BG2's 2
@@ -739,6 +758,13 @@ module VBlank
               asm.lda(asm.direct(work))
               asm.ora(SPRITES_SHOWN)
               asm.sta(asm.direct(work + 4))
+              if memory.reserved?(BAR_COVERS)
+                asm.lda(asm.abs(memory[BAR_COVERS]))
+                asm.beq("rt_bar_table_sprites_kept")
+                asm.lda(asm.direct(work))
+                asm.sta(asm.direct(work + 4))
+                asm.label("rt_bar_table_sprites_kept")
+              end
               # The lines above the bar, in one step or two; none for a bar at the top.
               asm.ldx(0)
               asm.lda(asm.abs(bar + BAR_TOP))

@@ -108,7 +108,8 @@ module VBlank
           Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
                                   bends: bends, tile_runs: tile_runs, holds_music: Lowering::Sound.holds_music?(program),
-                                  changing_colors: changing_colors, math_turns: math_turns)
+                                  changing_colors: changing_colors, math_turns: math_turns,
+                                  bar_covers: Lowering::Picture.bar_covers_sprites?(program))
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares)
           begin
             game = lowering.sections + lowering.art_sections

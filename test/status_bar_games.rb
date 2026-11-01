@@ -10,6 +10,7 @@ module StatusBarGames
   RED = VBlank::Graphics::Color.resolve(:red)
   BLUE = VBlank::Graphics::Color.resolve(:blue)
   GREEN = VBlank::Graphics::Color.resolve(:green)
+  WHITE = VBlank::Graphics::Color.resolve(:white)
   BLACK = VBlank::Graphics::Color.resolve(:black)
 
   # How tall a bar's picture is in these games: two rows of tiles.
@@ -61,6 +62,27 @@ module StatusBarGames
       background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
       bar = status_bar :score, tiles: :bar_tiles, top: screen_height - BAR_HEIGHT,
                                map: { green: ["#" * 32, "#" * 32], blue: ["o" * 32, "o" * 32] }
+      step = 0
+      game_loop do
+        instance_exec(bar, step, &body)
+        step += 1
+      end
+    end
+  end
+
+  # A white sprite eight rows tall standing half over the top of a bar two rows tall, on a field.
+  # The game loop's body is handed the bar and a counter of the passes.
+  def bar_game_under_a_sprite(&body)
+    program do
+      screen :tiled
+      image(:red_art, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:green_art, "#" => :green) { Minitest::Test::SOLID_TILE }
+      image(:ball, "#" => :white) { Minitest::Test::SOLID_TILE }
+      tiles :field_tiles, "#" => :red_art
+      tiles :bar_tiles, "#" => :green_art
+      background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 }
+      bar = status_bar :score, tiles: :bar_tiles, map: ["#" * 32, "#" * 32], top: screen_height - BAR_HEIGHT
+      sprite :ball, at: [40, screen_height - BAR_HEIGHT - 4]
       step = 0
       game_loop do
         instance_exec(bar, step, &body)

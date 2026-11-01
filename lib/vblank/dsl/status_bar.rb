@@ -44,6 +44,23 @@ module VBlank
         self
       end
 
+      # HIDE THE SPRITES UNDER THE BAR, or show them again: for a menu brought up over the field,
+      # where the score bar in play lets the ball show over it. With +covers+ true no sprite shows
+      # from the bar's top to the bottom of the screen, and a sprite partly above the top shows
+      # its part above. Like a move, it is shown from the gap between frames, so a bar moved and
+      # told to cover in one pass does both on one frame.
+      def covers_sprites=(covers)
+        unless [true, false].include?(covers)
+          raise ArgumentError, "`covers_sprites =` was given #{covers.inspect}. It must be true or false."
+        end
+
+        covers_var = @builder.bar_covers_var(@name)
+        @builder.record_statement(Build.set(covers_var, Build.int(covers ? 1 : 0)))
+        @builder.record_inline_bar_node(@builder.record_statement(
+                                          Build.place_bar(@name, top: Build.var_ref(@top_var), covers: Build.var_ref(covers_var))
+                                        ))
+      end
+
       # The row the bar's top is at, as the game last said it, as a {Value}.
       def top = Value.new(@builder, Build.var_ref(@top_var), name: @top_var)
 

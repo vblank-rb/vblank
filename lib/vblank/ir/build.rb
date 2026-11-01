@@ -655,8 +655,8 @@ module VBlank
       end
 
       # The status bar +name+'s top at row +top+ (see Nodes::PlaceBar).
-      def place_bar(name, top:)
-        Nodes.build(:place_bar, name: name, top: to_value_node(top))
+      def place_bar(name, top:, covers: nil)
+        Nodes.build(:place_bar, name: name, top: to_value_node(top), covers: covers && to_value_node(covers))
       end
 
       # The same idea for a background drawn from several sets of tiles: one drawn from a single

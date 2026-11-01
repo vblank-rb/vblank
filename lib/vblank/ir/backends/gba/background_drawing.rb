@@ -126,6 +126,11 @@ module VBlank
             bg = @layout.screen.backgrounds[node.name]
             return if bg.nil? || @layout.screen.picture.scenery.none? { |each| each.name == node.name && each.bar? }
 
+            emit_bar_top(node, bg)
+            emit_bar_covers(bg, node.covers) if node.covers
+          end
+
+          def emit_bar_top(node, bg)
             known = const_int(node.top)
             return emit_bar_registers(bg, top: known) if known
 
@@ -135,6 +140,19 @@ module VBlank
             emit(ASM.cmp_imm(ACC, SCREEN_HEIGHT))
             emit(ASM.mov_imm_cond(:gt, ACC, SCREEN_HEIGHT))
             emit_bar_registers(bg, top: nil)
+          end
+
+          # A BAR THAT COVERS SPRITES (StatusBar#covers_sprites=): the sprites are left out of the
+          # layers shown inside the bar's window, which the display reads pixel by pixel, so a
+          # sprite across the bar's top shows its part above.
+          def emit_bar_covers(bg, covers)
+            @lowering.value(covers)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit(ASM.mov_imm_cond(:ne, ACC, 0))
+            emit(ASM.mov_imm_cond(:eq, ACC, WIN_OBJ))
+            emit(ASM.orr_imm(ACC, ACC, (1 << bg.bg) | WIN_EFFECT))
+            emit(ASM.lsl_imm(ACC, ACC, WIN1_SHIFT))
+            store_halfword_acc(REG_WININ)
           end
 
           # A STATUS BAR ON THE ADVANCE is one of its background layers, read from its own map's

@@ -629,7 +629,8 @@ module VBlank
           def lower_place_bar(node)
             return [] if @stacking.scenery.none? { |bg| bg.name == node.name && bg.bar? } # no top to place
 
-            [eval_call("rg_place_bar", background_number(node), value(node.top))]
+            covers = node.covers && eval_call("rg_bar_covers", background_number(node), value(node.covers))
+            [covers, eval_call("rg_place_bar", background_number(node), value(node.top))].compact
           end
 
           def lower_scroll_background(node)

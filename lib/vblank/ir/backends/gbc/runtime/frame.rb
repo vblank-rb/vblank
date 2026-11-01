@@ -165,6 +165,7 @@ module VBlank
               # while this one runs, and the switches are put back as it ends.
               asm.label("rt_vblank_interrupt")
               %i[af bc de hl].each { |pair| asm.push(pair) }
+              asm.call("rt_bar_sprites_back") if memory.reserved?(Picture::BAR_COVERS)
               if clips
                 asm.load_high(:a, h::IE)
                 asm.push(:af)

@@ -32,6 +32,53 @@ class TestStatusBarHandle < Minitest::Test
     assert_backends_agree(prog, frames: 4, name: "BARTOP")
   end
 
+  # A MENU RAISED OVER THE FIELD HIDES THE SPRITES UNDER IT. A sprite half over the bar shows only
+  # its part above the bar while the bar covers sprites, and all of itself again after.
+  def test_a_bar_covering_sprites_hides_the_part_of_a_sprite_under_it
+    prog = bar_game_under_a_sprite do |bar, step|
+      bar.covers_sprites = true if step == 3
+      bar.covers_sprites = false if step == 8
+    end
+    top = screen_height - BAR_HEIGHT
+
+    assert_equal WHITE, picture(prog, 2).pixel(42, top + 2), "drawn over the bar at first"
+    assert_equal GREEN, picture(prog, 6).pixel(42, top + 2), "the bar in front of it"
+    assert_equal WHITE, picture(prog, 6).pixel(42, top - 2), "its part above the bar still shows"
+    assert_equal WHITE, picture(prog, 12).pixel(42, top + 2), "drawn over the bar again"
+    assert_backends_agree(prog, frames: [2, 6, 12], name: "BARCOVER")
+  end
+
+  # Moved and covering in one pass, the menu comes up whole: no frame shows the bar at its new row
+  # with a sprite over it. The run checks every pass's picture.
+  def test_a_bar_raised_and_covering_in_one_pass_hides_the_sprites_on_that_frame
+    prog = bar_game_under_a_sprite do |bar, step|
+      if step == 3
+        bar.move_to screen_height - 32
+        bar.covers_sprites = true
+      end
+    end
+
+    assert_equal GREEN, picture(prog, 6).pixel(42, screen_height - BAR_HEIGHT - 2)
+  end
+
+  # A bar raised to the top covers every sprite.
+  def test_a_bar_at_the_top_of_the_screen_covering_sprites_hides_them_all
+    prog = bar_game_under_a_sprite do |bar, step|
+      if step == 3
+        bar.move_to 0
+        bar.covers_sprites = true
+      end
+    end
+
+    refute_equal WHITE, picture(prog, 6).pixel(42, screen_height - BAR_HEIGHT - 2)
+  end
+
+  def test_covers_sprites_takes_true_or_false
+    error = assert_raises(ArgumentError) { bar_game_under_a_sprite { |bar, _step| bar.covers_sprites = :yes } }
+
+    assert_match(/must be true or false/, error.message)
+  end
+
   # One cell of the bar changes, the way a digit of a score does.
   def test_set_tile_changes_a_cell_of_the_bar
     prog = bar_game { |bar, step| bar.set_tile 3, 0, "o" if step == 2 }

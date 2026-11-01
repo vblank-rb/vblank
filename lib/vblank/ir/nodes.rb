@@ -128,6 +128,7 @@ module VBlank
 
         # The variable a status bar's top row is kept in, which the gap between frames shows.
         def self.bar_top_var(name) = :"__bar_#{name}_top"
+        def self.bar_covers_var(name) = :"__bar_#{name}_covers"
       end
 
       # WHERE A STATUS BAR'S TOP IS, in screen rows: the bar covers the screen from there to the
@@ -135,11 +136,14 @@ module VBlank
       # the top. Written in the gap between frames, as a scroll is, so the picture shows it from
       # the frame after; until a bar is first placed after it is put up, it shows at the row it
       # was declared with. Placing a background that is not a status bar changes nothing.
+      #
+      # +covers+, in a game that says so, is whether the bar hides the sprites from its top down
+      # (nought shows them), written in the same gap; nil is a bar nobody told, which shows them.
       class PlaceBar
         include Node
         kind :place_bar
         category :draw
-        operands name: :name, top: :value
+        operands name: :name, top: :value, covers: :maybe_value
       end
 
       # A background's tiles all draw from a different list of colours — the whole layer at

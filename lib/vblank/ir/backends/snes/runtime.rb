@@ -45,10 +45,11 @@ module VBlank
           # from lists the bytes of each run (+tile_runs+) staged for the blank (Picture).
           def reserve(memory, painted: false, chip: false, sound: false, songs: false, music_follows_level: false,
                       effects: 0, samples: false, bar: false, bends: false, tile_runs: [], holds_music: false,
-                      changing_colors: false, math_turns: false)
+                      changing_colors: false, math_turns: false, bar_covers: false)
             Paint.reserve(memory, chip: chip) if painted
             Frame.reserve(memory)
-            Picture.reserve(memory, bar: bar, bends: bends, tile_runs: tile_runs, math_turns: math_turns)
+            Picture.reserve(memory, bar: bar, bends: bends, tile_runs: tile_runs, math_turns: math_turns,
+                                    bar_covers: bar_covers)
             Tint.reserve(memory, changing_colors: changing_colors)
             Chip.reserve(memory) if chip
             Sound.reserve(memory) if sound

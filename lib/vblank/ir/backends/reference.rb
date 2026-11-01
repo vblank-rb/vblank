@@ -208,6 +208,7 @@ module VBlank
           @repaints = false        # must the whole view be rebuilt every frame? (decided in collect_definitions)
           @bg_scroll = {}          # background name -> [x, y] its window is currently offset to
           @bar_top = {}            # status bar name -> the screen row its top was last placed at
+          @bar_covers = {}         # status bar name -> whether it hides the sprites from its top down
           @bg_maps = {}            # ...and this run's own copy of its cells, once any of them has changed
           @bg_from_corner = Set.new # backgrounds put up this pass, shown unscrolled (see #put_up_background)
           @bg_corners_expired = false # ...once their pass has ended, until its picture is painted
@@ -1792,6 +1793,7 @@ module VBlank
           return unless bar.bar? # a background that is not a status bar has no top to place
 
           @bar_top[node.name] = eval_value(node.top).clamp(0, @screen.height)
+          @bar_covers[node.name] = eval_value(node.covers) != 0 if node.covers
           # ...and placed after it was put up, this is where the display reads it from, but not
           # placed at the end of the pass that put it up (#exec_scroll_background).
           @bg_from_corner.delete(node.name) unless @placing_at_pass_end
@@ -2220,8 +2222,20 @@ module VBlank
               paint_snapshot_object(obj)
             end
           end
+          paint_bar_over_sprites(bar, kept) if bar && @bar_covers[bar.name]
           @screen.set_paint_fade(nil, nil)
           @screen.set_paint_see_through(nil)
+        end
+
+        # A STATUS BAR THAT COVERS SPRITES (StatusBar#covers_sprites=): its rows painted again over
+        # everything, from the backdrop up, so a sprite under it is gone and its see-through pixels
+        # show the backdrop as they always do.
+        def paint_bar_over_sprites(bar, kept)
+          top = bar_top_shown(bar)
+          set_blend_for(nil, kept)
+          @screen.fill_rect(0, top, @screen.width, @screen.height - top, @backdrop)
+          set_blend_for(bar.name, kept)
+          paint_status_bar(bar)
         end
 
         # A fade, over the whole screen or placed in the stack.

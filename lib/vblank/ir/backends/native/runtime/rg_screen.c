@@ -1034,6 +1034,14 @@ void rg_place_bar(int32_t background, int32_t top) {
   request_repaint();
 }
 
+/* Which status bars hide the sprites from their top down, by the same entry (Reference @bar_covers). */
+static uint8_t bar_covers[RG_MAX_BACKGROUNDS];
+
+void rg_bar_covers(int32_t background, int32_t covers) {
+  bar_covers[keeper_of(background)] = covers != 0;
+  request_repaint();
+}
+
 /* Reference#bar_top_shown */
 static int32_t bar_top_shown(int32_t bar) {
   int32_t declared = clamp32(background_field(bar, RG_BG_BAR_TOP), 0, RG_SCREEN_HEIGHT);
@@ -1796,6 +1804,16 @@ static void repaint_view(void) {
       fade_unless_left_as_drawn(rg_game_sprite_fade_places[sprite_layer[i].sprite]);
       paint_kept_sprite(&sprite_layer[i]);
     }
+  }
+  /* Reference#paint_bar_over_sprites */
+  if (bar >= 0 && bar_covers[keeper_of(bar)]) {
+    int32_t top = bar_top_shown(bar);
+    mix_nothing();
+    fade_unless_left_as_drawn(RG_NO_LAYER);
+    fill_cells(0, top, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT - top, backdrop);
+    mix_as_layer(background_field(bar, RG_BG_SEE_THROUGH));
+    fade_unless_left_as_drawn(background_field(bar, RG_BG_FADE_PLACE));
+    paint_status_bar(bar);
   }
   mix_nothing();
   fade_nothing();

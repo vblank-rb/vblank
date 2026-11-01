@@ -94,6 +94,10 @@ module VBlank
             BAR = "rt picture bar"
             BAR_UP = 1
             BAR_PENDING = 2
+            # In a game that tells its bar to cover sprites: whether it does, and whether the frame
+            # being drawn has had the sprites switched off under it (#emit_bar_covers).
+            BAR_COVERS = "rt picture bar covers"
+            BAR_HID_SPRITES = 1
             BAR_JOB = "rt picture bar job"
             # The window's left edge, which the console counts from seven pixels left of the screen.
             WINDOW_LEFT = 7
@@ -109,6 +113,9 @@ module VBlank
 
             # The display's switch that raises its interrupt as each line ends (STAT's mode-0 bit).
             STAT_HBLANK = 0x08
+            # ...and the one that raises it as the display starts the line LYC names.
+            STAT_LINE_MATCH = 0x40
+            STAT_MODE = 0x03 # STAT's low two bits: nought between the lines' drawing
 
             # How many of the grid's 32 rows are copied in one blank: their tiles and their cells'
             # colours, 512 bytes, which the console's own copy does in about a quarter of the blank.
@@ -116,8 +123,10 @@ module VBlank
 
             module_function
 
-            def reserve(memory, lends: false, groups: false, bar_rows: nil, rooms: false, cells_shown_now: false)
+            def reserve(memory, lends: false, groups: false, bar_rows: nil, rooms: false, cells_shown_now: false,
+                        bar_covers: false)
               memory.reserve(ROOMS, 3) if rooms
+              memory.reserve(BAR_COVERS, 2) if bar_covers
               memory.reserve(CELL_SHOWN_NOW, CELL_SHOWN_NOW_BYTES) if cells_shown_now
               if bar_rows
                 memory.reserve(BAR, 3)
@@ -183,6 +192,7 @@ module VBlank
               paced = (memory[ROOMS] + ROOM_DISPLAY_OFF if picture_rooms)
               emit_background(asm, memory, bar: !bar_rows.nil?, paced: paced)
               emit_bar(asm, memory, bar_rows, paced: paced) if bar_rows
+              emit_bar_covers(asm, memory) if memory.reserved?(BAR_COVERS)
               emit_bar_show(asm, memory) if bar_maps
               emit_choices(asm, memory)
               emit_overlap(asm, memory)
@@ -923,6 +933,7 @@ module VBlank
                 asm.and_a(:c)
               end
               asm.load_high(h::LCDC, :a)
+              asm.call("rt_bar_covers_first_row") if memory.reserved?(BAR_COVERS)
               asm.call("rt_tile_runs_upload")
               # The cells a big map's view brought in (Runtime::BigMaps).
               asm.call("rt_big_view")
@@ -1043,6 +1054,8 @@ module VBlank
               # first, for the frame after the blank — which a pass running late leaves to this.
               asm.label("rt_hblank_interrupt")
               %i[af de hl].each { |pair| asm.push(pair) }
+              covers = memory.reserved?(BAR_COVERS)
+              emit_line_before_bar(asm, memory) if covers
               asm.load_high(:a, h::LY)
               asm.inc(:a)
               asm.cp_a(Console::GBCHardware::SCREEN_HEIGHT)
@@ -1050,12 +1063,14 @@ module VBlank
               asm.xor_a(:a)
               asm.label("rt_hblank_interrupt_row")
               asm.load(:e, :a)
+              emit_bent_line_before_bar(asm, memory) if covers
               asm.load(:d, 0)
               asm.load(:hl, memory[BENDS])
               asm.add_hl(:de)
               asm.load(:a, [memory[BEND_BASE]])
               asm.add_a([:hl])
               asm.load_high(h::SCX, :a)
+              asm.label("rt_hblank_interrupt_done")
               %i[hl de af].each { |pair| asm.pop(pair) }
               asm.reti
 
@@ -1821,6 +1836,122 @@ module VBlank
 
               emit_map_job(asm, memory[BAR_JOB], "rt_bar_map_job", "rt_bar_map_rows")
               emit_map_rows(asm, memory[BAR_JOB], "rt_bar_map_rows", paced: paced)
+            end
+
+            # A BAR THAT COVERS SPRITES (StatusBar#covers_sprites=). The Color's window has no say over
+            # the sprites: they are drawn over it, or under the background's own tiles, and that is
+            # all. But the display reads its switches as it goes, so the switch for the whole sprite
+            # layer can be turned off partway down a frame, which is what the console's own games
+            # do for a menu. Everything from that line down has no sprites, and a sprite across the
+            # line shows its part above.
+            #
+            # The line before the bar's top raises the display's interrupt, and it waits for the
+            # end of that line so the switch goes over between the two. A screen with bent rows
+            # has that interrupt on every line already, and asks there instead.
+            #
+            # rt_bar_covers_first_row, in the blank after the switches are written, sets that up
+            # for the frame about to be drawn. rt_bar_sprites_back, in the frame's interrupt, turns
+            # the sprites on again, for a pass running late, whose blank writes no switches.
+            def emit_bar_covers(asm, memory)
+              h = Console::GBCHardware
+              covers = memory[BAR_COVERS]
+              asm.label("rt_bar_covers_first_row")
+              asm.load(:a, [covers])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_bar_covers_none")
+              asm.load(:a, [memory[LCDC_WANTED]])
+              asm.and_a(h::LCDC_WINDOW_ON)
+              asm.jump_relative(:z, "rt_bar_covers_none")
+              asm.load(:a, [memory[BAR]])
+              asm.and_a(:a)
+              asm.call(:z, "rt_bar_hide_sprites") # a bar at the top covers the whole frame
+              asm.load(:a, [memory[BAR]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_bar_covers_none")
+              asm.load(:b, :a)
+              asm.load(:a, [memory[BENDING]])
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_bar_covers_bent")
+              asm.load(:a, :b)
+              asm.dec(:a)
+              asm.load_high(h::LYC, :a)
+              asm.load_high(:a, h::STAT)
+              asm.and_a(~STAT_HBLANK & 0xFF)
+              asm.or_a(STAT_LINE_MATCH)
+              asm.load_high(h::STAT, :a)
+              asm.load_high(:a, h::IF)
+              asm.and_a(~h::INT_STAT & 0xFF)
+              asm.load_high(h::IF, :a)
+              asm.load_high(:a, h::IE)
+              asm.or_a(h::INT_STAT)
+              asm.load_high(h::IE, :a)
+              asm.ret
+              asm.label("rt_bar_covers_none")
+              asm.load(:a, [memory[BENDING]])
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_bar_covers_bent")
+              asm.load_high(:a, h::STAT)
+              asm.and_a(~STAT_LINE_MATCH & 0xFF)
+              asm.load_high(h::STAT, :a)
+              asm.ret
+              asm.label("rt_bar_covers_bent")
+              asm.load_high(:a, h::STAT)
+              asm.and_a(~STAT_LINE_MATCH & 0xFF)
+              asm.or_a(STAT_HBLANK)
+              asm.load_high(h::STAT, :a)
+              asm.ret
+
+              asm.label("rt_bar_hide_sprites")
+              asm.load(:a, [memory[LCDC_WANTED]])
+              asm.and_a(h::LCDC_WINDOW_ON)
+              asm.ret(:z)
+              asm.load_high(:a, h::LCDC)
+              asm.and_a(~h::LCDC_SPRITES_ON & 0xFF)
+              asm.load_high(h::LCDC, :a)
+              asm.load(:a, 1)
+              asm.load([covers + BAR_HID_SPRITES], :a)
+              asm.ret
+
+              asm.label("rt_bar_sprites_back")
+              asm.load(:a, [covers + BAR_HID_SPRITES])
+              asm.and_a(:a)
+              asm.ret(:z)
+              asm.xor_a(:a)
+              asm.load([covers + BAR_HID_SPRITES], :a)
+              asm.load(:a, [memory[LCDC_WANTED]])
+              asm.and_a(h::LCDC_SPRITES_ON)
+              asm.load(:b, :a)
+              asm.load_high(:a, h::LCDC)
+              asm.or_a(:b)
+              asm.load_high(h::LCDC, :a)
+              asm.ret
+            end
+
+            # In the display's interrupt, on a screen with no bent rows: the line before the bar's
+            # top has begun, so wait for its end and switch the sprites off.
+            def emit_line_before_bar(asm, memory)
+              h = Console::GBCHardware
+              asm.load(:a, [memory[BENDING]])
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_hblank_interrupt_bent")
+              asm.label("rt_hblank_interrupt_wait")
+              asm.load_high(:a, h::STAT)
+              asm.and_a(STAT_MODE)
+              asm.jump_relative(:nz, "rt_hblank_interrupt_wait")
+              asm.call("rt_bar_hide_sprites")
+              asm.jump_relative("rt_hblank_interrupt_done")
+              asm.label("rt_hblank_interrupt_bent")
+            end
+
+            # ...and on a screen with them, E the line coming next: the bar's top, on a bar covering.
+            def emit_bent_line_before_bar(asm, memory)
+              asm.load(:a, [memory[BAR_COVERS]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_hblank_interrupt_uncovered")
+              asm.load(:a, [memory[BAR]])
+              asm.cp_a(:e)
+              asm.call(:z, "rt_bar_hide_sprites")
+              asm.label("rt_hblank_interrupt_uncovered")
             end
 
             # rt_bar_show(grid), for a bar with several maps (Reference#exec_show_map): the whole bar

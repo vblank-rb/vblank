@@ -186,6 +186,7 @@ module VBlank
       @inline_map_nodes = []     # show_map nodes recorded at their call site, dropped once a frame boundary exists
       @inline_color_nodes = []   # background_colors nodes, the same, for a layer drawn with other colours
       @inline_bar_nodes = []     # place_bar nodes, the same, for a status bar the game moves
+      @bars_covering = {}        # the status bars the game tells to cover sprites, by name
       @per_frame_routines = []   # func names `once_a_frame` declared, called at every frame boundary
       @per_pass_routines = []    # func names the framework calls once a pass, after the frame boundary
       @pass_jobs = {}            # each_pass jobs by name (or their routine's, when unnamed)
@@ -671,6 +672,12 @@ module VBlank
     # there is a frame boundary to move it to, as a scroll's is (see #finalize_status_bars).
     def record_inline_bar_node(node)
       @inline_bar_nodes << node
+    end
+
+    # The variable that says whether the status bar +name+ covers sprites, made the first time a
+    # game says so: a bar nobody tells keeps no such variable.
+    def bar_covers_var(name)
+      @bars_covering[name] ||= IR::Nodes::Background.bar_covers_var(name).tap { |var| ensure_var(var) }
     end
 
     # Remember that +name+ can be handed a whole different map, so the copy is made once a
@@ -1202,8 +1209,10 @@ module VBlank
     # or not, since its top is a variable (see Tiled#status_bar).
     def finalize_status_bars
       write_between_frames(@inline_bar_nodes, backgrounds_that { |background| background.node.bar? }) do |name, background|
+        covers = @bars_covering[name]
         while_any_scene_up(background.scene_gates,
-                       Build.place_bar(name, top: Build.var_ref(IR::Nodes::Background.bar_top_var(name))))
+                           Build.place_bar(name, top: Build.var_ref(IR::Nodes::Background.bar_top_var(name)),
+                                                 covers: covers && Build.var_ref(covers)))
       end
     end
 

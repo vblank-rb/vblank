@@ -674,6 +674,7 @@ module VBlank
               for_background(node) do |bg|
                 next unless bg.bar?
 
+                runtime_call("rt_bar_covers", [node.covers]) if node.covers
                 emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) }
               end
             end
@@ -759,6 +760,11 @@ module VBlank
               whole = SeeThrough::STEPS
               SeeThrough.nearest_steps(layer.shows.value) == whole &&
                 (layer.behind.kind != :int || SeeThrough.nearest_steps(layer.behind.value) == whole)
+            end
+
+            # Whether +program+ tells a status bar to cover sprites (Runtime::Picture's rt_bar_covers).
+            def self.bar_covers_sprites?(program)
+              program.walk.any? { |node| node.kind == :place_bar && node.covers }
             end
 
             # Whether +program+ turns a see-through layer solid as it runs, which the runtime then keeps

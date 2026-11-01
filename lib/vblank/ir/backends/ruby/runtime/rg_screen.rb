@@ -239,6 +239,7 @@ def rg_screen_setup
   @rg_from_corner = Array.new(RG_MAX_BACKGROUNDS, false)
   @rg_bar_tops = Array.new(RG_MAX_BACKGROUNDS, 0) # where each status bar was last placed
   @rg_bar_placed = Array.new(RG_MAX_BACKGROUNDS, false) # ...and whether it has been
+  @rg_bar_covers = Array.new(RG_MAX_BACKGROUNDS, false) # ...and whether it hides the sprites under it
   @rg_any_from_corner = false
   @rg_corners_expired = false
   @rg_colors_told = Array.new(RG_MAX_BACKGROUNDS, 0) # one more than the step of colors last named, 0 for none
@@ -1092,6 +1093,12 @@ def rg_place_bar(background, top)
   @rg_bar_tops[keeper] = rg_clamp_wide(top, 0, RG_SCREEN_HEIGHT)
   @rg_bar_placed[keeper] = true
   @rg_from_corner[keeper] = false unless @rg_placing_at_pass_end
+  rg_request_repaint
+end
+
+# Reference#exec_place_bar's covers
+def rg_bar_covers(background, covers)
+  @rg_bar_covers[rg_keeper_of(background)] = covers != 0
   rg_request_repaint
 end
 
@@ -1964,8 +1971,20 @@ def rg_repaint_view
       rg_paint_kept_sprite(placed)
     end
   end
+  rg_paint_bar_over_sprites(bar) if bar && @rg_bar_covers[rg_keeper_of(bar)]
   rg_mix_nothing
   rg_fade_nothing
+end
+
+# Reference#paint_bar_over_sprites
+def rg_paint_bar_over_sprites(bar)
+  top = rg_bar_top_shown(bar)
+  rg_mix_nothing
+  rg_fade_unless_left_as_drawn(RG_NO_LAYER)
+  rg_fill_cells(0, top, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT - top, @rg_backdrop)
+  rg_mix_as_layer(rg_background_field(bar, RG_BG_SEE_THROUGH))
+  rg_fade_unless_left_as_drawn(rg_background_field(bar, RG_BG_FADE_PLACE))
+  rg_paint_status_bar(bar)
 end
 
 # Reference#paint_owed_repaint. Named as the program calls it: every lowering that prints the same

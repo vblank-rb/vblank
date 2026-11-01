@@ -57,6 +57,9 @@ module VBlank
               bars.flat_map(&:every_map).map { |map| TileMap.size_of(map).last }.max unless bars.empty?
             end
 
+            # Does the game tell a status bar to cover sprites (Runtime::Picture#emit_bar_covers)?
+            def bar_covers_sprites? = @reachable.any? { |node| node.kind == :place_bar && node.covers }
+
             # Does the game ask for a cell on the frame being drawn (`now: true`)?
             def cells_shown_now? = @reachable.any? { |node| node.kind == :set_tile && node.now }
 
@@ -1091,6 +1094,10 @@ module VBlank
             def emit_place_bar(node)
               return unless declared_background!(node).bar? # one that is not a status bar has no top to place
 
+              if node.covers
+                emit_low_byte_in_a(node.covers)
+                @asm.load([@memory[Runtime::Picture::BAR_COVERS]], :a)
+              end
               emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_place_bar", [node.top]) }
             end
 

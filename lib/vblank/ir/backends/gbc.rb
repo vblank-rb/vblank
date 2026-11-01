@@ -185,7 +185,8 @@ module VBlank
                                   dark: lowering.counts_dark_frames?, rumble: lowering.rumbles?,
                                   kept_sprites: lowering.keeps_unchanged_sprites?,
                                   holds_music: lowering.holds_music?, effect_table: lowering.music.effects_in_banks?,
-                                  cells_shown_now: lowering.cells_shown_now?)
+                                  cells_shown_now: lowering.cells_shown_now?,
+                                  bar_covers: lowering.bar_covers_sprites?)
           game = lowering.sections
           runs = lowering.run_uploads
           clips = lowering.clips if lowering.clips.any?
