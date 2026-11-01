@@ -10,7 +10,7 @@ module VBlank
     #     rule for resolving a beep's tone + overrides into concrete musical values —
     #     a frequency in Hz, a wave shape, a fade, a volume — and what each kind of
     #     voice can actually do, which every backend has to honour whether or not it
-    #     writes a register (SQUARE_LOWEST_HZ, wave_level). This layer is hardware-free,
+    #     writes a register (wave_level). This layer is hardware-free,
     #     so a headless interpreter can use it to say "an 880 Hz blip played" without
     #     any notion of registers.
     #
@@ -163,14 +163,6 @@ module VBlank
         WAVE_LEVEL_STEPS[((volume.clamp(0, 15) * (WAVE_LEVEL_STEPS.size - 1)) / 15.0).round]
       end
 
-      # THE LOWEST PITCH A SQUARE VOICE REACHES, 64 Hz — just under C2. The console tunes those
-      # voices by a period value that cannot go past its own bottom, so a lower note does not
-      # play low, it plays AT 64 Hz: a different note, quietly wrong rather than silent. That is
-      # what the guardrail warns about before the cartridge exists, so the number has to be
-      # readable without a register in sight. (The wave voice tunes by a sample rate instead and
-      # reaches an octave lower, which is most of why a tune puts its bass there.)
-      SQUARE_LOWEST_HZ = 131_072 / 2048
-
       # WHAT A SQUARE VOICE SOUNDS LIKE, for a backend that has to make the sound itself rather
       # than tell a chip to: the pitch it really plays, how thin its tone is, and how fast it
       # fades. A cartridge writes these to the sound chip as bit patterns (Registers, below); a
@@ -179,7 +171,9 @@ module VBlank
       # THE PITCH IS A WHOLE NUMBER OF TICKS, not any frequency at all. The voice counts a clock
       # of 131,072 ticks a second and one wave lasts a whole number of them, 1 to 2048 — so 440 Hz
       # is played as 298 ticks a wave, a hair under 440. Every backend has to round the same way
-      # or two voices in tune on one are a beat apart on the other.
+      # or two voices in tune on one are a beat apart on the other. 2048 ticks is the bottom, 64 Hz,
+      # which each console says for itself (Console::Description#lowest_square_hz). (The wave voice
+      # reaches an octave lower, which is most of why a tune puts its bass there.)
       SQUARE_CLOCK_HZ = 131_072
       SQUARE_LONGEST_WAVE = 2048
 

@@ -49,13 +49,31 @@ class TestSquareNoteTooLowGuardrail < Minitest::Test
 
   private def warnings(&program)
     err = StringIO.new
-    VBlank.build("LOWNOTE", console: :gba, code: "ZLOW", maker: "01", out: StringIO.new, err: err) do
+    VBlank.build("LOWNOTE", console: :gba, out: StringIO.new, err: err) do
       screen :bitmap
       enable_sound
       instance_exec(&program)
       game_loop { wait_vblank }
     end
     err.string
+  end
+
+  # A square on the Super Nintendo is a recording read more slowly, so nothing plays at a bottom.
+  def test_a_console_with_no_bottom_says_nothing
+    findings = %i[gba snes].to_h do |console|
+      builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+      low = VBlank::Audio::Score.new(parts: [Part.new(notes: [Note.new(at: 0, key: 24)])])
+      builder.instance_eval do
+        enable_sound
+        songs(:music, { forest: low }).play :forest
+        game_loop { wait_vblank }
+      end
+      builder.finalize_program
+      [console, Check.new.detect(builder.program)]
+    end
+
+    assert_equal 1, findings[:gba].length
+    assert_empty findings[:snes]
   end
 
   def test_a_score_names_the_part_by_its_index

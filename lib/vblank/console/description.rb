@@ -58,7 +58,11 @@ module VBlank
     # often it hands its sound chip's voices on to the speaker, which matters to the noise voice alone:
     # a hiss can step faster than that, and what is heard of one that does is whichever way it
     # stood at each of those moments, a hiss of its own and a lower one. A backend that makes the
-    # sound itself looks at the hiss at the same moments to make the same one. +largest_memory_bytes+ is how
+    # sound itself looks at the hiss at the same moments to make the same one. +lowest_square_hz+ is
+    # the bottom of a square voice, or nil where it has none: a chip that tunes one by a number of
+    # clock ticks a wave runs out of ticks, and plays a lower note AT its bottom, a different note
+    # with nothing to say so. A console whose square is a recording reads it more slowly and has no
+    # such place. +largest_memory_bytes+ is how
     # many bytes the largest memory a game's lists and pools are kept in holds: one pool is kept
     # whole in one memory, so no pool can be bigger.
     #
@@ -86,7 +90,7 @@ module VBlank
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
-                              :recording_voice_hz,
+                              :recording_voice_hz, :lowest_square_hz,
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :sprites_placed_before_wait, :rumbles, :extension) do
       def screen_size = [screen_width, screen_height]
@@ -142,7 +146,7 @@ module VBlank
                               recordings_at_once: 16, mixes_recordings: true,
                               # The voices are mixed into the speaker's output at the rate the
                               # sound's bias register starts at, which no cartridge built here changes.
-                              recording_voice_hz: nil, voice_output_hz: 32_768,
+                              recording_voice_hz: nil, lowest_square_hz: 64, voice_output_hz: 32_768,
                               # The 256K of roomier memory beside the 32K quick one.
                               largest_memory_bytes: 256 * 1024,
                               # The 32K quick memory, 4K of it the stack and the framework's own.
@@ -179,7 +183,7 @@ module VBlank
                             # (Audio::Sound::NOISE_CLOCK_HZ) at the most. The emulator the tests
                             # play in takes a sample every 32 cycles instead and averages the hiss
                             # over each, which is its own approximation of the same thing.
-                            recording_voice_hz: nil, voice_output_hz: 524_288,
+                            recording_voice_hz: nil, lowest_square_hz: 64, voice_output_hz: 524_288,
                             # The 8K of work memory in view at once (see Backends::GBC::Memory),
                             # and nothing beside. The stack, the copy of the sprite table and the
                             # runtime's own state are in it before any variable, which the Color
@@ -227,7 +231,7 @@ module VBlank
                                      recordings_at_once: 8, mixes_recordings: true,
                                      # The sound chip's voices are mixed 32000 times a second, and
                                      # each plays a recording of its own at that rate.
-                                     recording_voice_hz: 32_000, voice_output_hz: 32_000,
+                                     recording_voice_hz: 32_000, lowest_square_hz: nil, voice_output_hz: 32_000,
                                      # Lists and pools go in the 120K of work RAM past the first 8K,
                                      # 64K of it to one.
                                      largest_memory_bytes: 64 * 1024,
