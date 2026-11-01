@@ -194,11 +194,14 @@ def rg_screen_setup
   @rg_kind = -1 # the kind of screen up; none before the first `screen`
   @rg_rebuild_pending = false # a rebuild of the whole view is owed (Reference#request_repaint)
   @rg_repaints_painted = 0 # how many times the whole view was built again (rg_screen_repaints_painted)
-  # A change of screen wiped the picture, and nothing has said since that it is built again. The
-  # interpreter builds a picture that is rebuilt whole every frame, so it is built again as soon as
-  # the scroll or the sprites are said; here a frame that moved nothing builds nothing, so the first
-  # of those says it is owed whatever it finds.
-  @rg_picture_wiped = false
+  # The interpreter asks for a rebuild every time the scroll or the sprites are said. Here a saying
+  # that moved nothing asks for nothing and only notes that it would have (@rg_rebuild_skipped),
+  # since the picture is the one a rebuild would paint. That stops being so once the picture is
+  # touched: something else has written to it, or the pages have changed over. So when the rebuild
+  # would be painted, a skipped one with the picture touched is painted after all, whichever came
+  # first.
+  @rg_rebuild_skipped = false
+  @rg_picture_touched = false
   @rg_scene = -1
   # What a display does to the finished picture: one effect at a time (Framebuffer#fade_to).
   @rg_fade_white = 0
@@ -418,6 +421,7 @@ def rg_keeps_picture_without_sprites? = !@rg_target.equal?(@rg_scenery) && rg_sp
 def rg_set_pixel(x, y, color)
   return unless rg_paintable?(x, y)
 
+  @rg_picture_touched = true
   at = (y * RG_SCREEN_WIDTH) + x
   kept = rg_keeps_picture_without_sprites?
   under = kept && @rg_painting_sprite ? @rg_picture_without_sprites : @rg_target
@@ -451,6 +455,7 @@ def rg_clear_to(color)
   area = @rg_area
   return rg_fill_cells(area.left, area.top, area.right - area.left, area.bottom - area.top, color) if area.in_force
 
+  @rg_picture_touched = true
   painted = rg_faded_as_painted(color)
   @rg_target.fill(painted)
   kept = rg_mixes_of(@rg_target)
@@ -1095,15 +1100,20 @@ end
 # is the one already stored.
 def rg_background_scroll(background, x, y)
   keeper = rg_keeper_of(background)
-  wiped = @rg_picture_wiped
-  @rg_picture_wiped = false
   before = rg_scroll_shown(background)
-  before_x = before[0]
-  before_y = before[1]
   @rg_scrolls[keeper] = [x, y]
   @rg_from_corner[keeper] = false unless @rg_placing_at_pass_end
   after = rg_scroll_shown(background)
-  rg_request_repaint if wiped || after[0] != before_x || after[1] != before_y
+  return rg_request_repaint if after[0] != before[0] || after[1] != before[1]
+
+  rg_skip_repaint
+end
+
+# A rebuild that rg_request_repaint would have owed, left out because nothing moved.
+def rg_skip_repaint
+  return if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0
+
+  @rg_rebuild_skipped = true
 end
 
 # Whether a background is a status bar (RG_BG_BAR_TOP).
@@ -1891,10 +1901,9 @@ def rg_objects_end
   kept = @rg_sprite_layer
   @rg_sprite_layer = @rg_drawing.dup
   if rg_rebuilt_whole?
-    wiped = @rg_picture_wiped
-    @rg_picture_wiped = false
-    rg_request_repaint if wiped || @rg_drawing != kept
-    return
+    return rg_skip_repaint if @rg_drawing == kept
+
+    return rg_request_repaint
   end
   # The sprite layer is off while a painted screen is up in a game with screens drawn from tiles.
   return if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0
@@ -2005,6 +2014,7 @@ def rg_repaint_view
   rg_paint_bar_over_sprites(bar) if bar && @rg_bar_covers[rg_keeper_of(bar)]
   rg_mix_nothing
   rg_fade_nothing
+  @rg_picture_touched = false
 end
 
 # Reference#paint_bar_over_sprites
@@ -2021,7 +2031,9 @@ end
 # Reference#paint_owed_repaint. Named as the program calls it: every lowering that prints the same
 # program calls this name.
 def rg_screen_paint_owed_rebuild
-  return rg_forget_expired_corners unless @rg_rebuild_pending
+  skipped_and_touched = @rg_rebuild_skipped && @rg_picture_touched
+  @rg_rebuild_skipped = false
+  return rg_forget_expired_corners unless @rg_rebuild_pending || skipped_and_touched
 
   @rg_rebuild_pending = false
   rg_repaint_view
@@ -2054,6 +2066,7 @@ def rg_screen_frame_ended
   @rg_pixels = @rg_viewed
   @rg_viewed = finished
   @rg_target = @rg_pixels
+  @rg_picture_touched = true # the page handed over was built before the one just shown
 end
 
 # Reference#exec_screen. Every kind of screen is a display of its own, so any change of kind wipes
@@ -2070,7 +2083,6 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
     # What was under each sprite went with the old screen, so nothing is put back over the new
     # one. A console that places its sprites at the end of a pass takes them off after this.
     @rg_last_drawn.fill(nil)
-    @rg_picture_wiped = true
   else
     rg_show_backdrop(new_backdrop)
   end

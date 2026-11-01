@@ -63,11 +63,13 @@ static int32_t frames_begun;    /* a frame boundary has been reached (Reference 
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
 static int32_t owed;            /* a rebuild of the whole view is owed (Reference#request_repaint) */
 static int32_t repaints_painted;   /* how many times the whole view was built again (rg_screen_repaints_painted) */
-/* A change of screen wiped the picture, and nothing has said since that it is built again. The
- * interpreter builds a picture that is rebuilt whole every frame, so it is built again as soon as
- * the scroll or the sprites are said; here a frame that moved nothing builds nothing, so the first
- * of those says it is owed whatever it finds. */
-static int32_t picture_wiped;
+/* The interpreter asks for a rebuild every time the scroll or the sprites are said. Here a saying
+ * that moved nothing asks for nothing and only notes that it would have (rebuild_skipped), since
+ * the picture is the one a rebuild would paint. That stops being so once the picture is touched:
+ * something else has written to it, or the pages have changed over. So when the rebuild would be
+ * painted, a skipped one with the picture touched is painted after all, whichever came first. */
+static int32_t rebuild_skipped;
+static int32_t picture_touched;
 static int32_t backdrop;        /* the colour shown wherever nothing is drawn (Reference @backdrop) */
 static int32_t current_scene = -1;
 
@@ -312,6 +314,7 @@ static int32_t keeps_picture_without_sprites(void) { return target != scenery &&
  * already in the cell. */
 static void set_pixel(int64_t x, int64_t y, int32_t color) {
   if (!paintable(x, y)) return;
+  picture_touched = 1;
   int64_t at = y * RG_SCREEN_WIDTH + x;
   int32_t kept = keeps_picture_without_sprites();
   const uint16_t *under = kept && painting_sprite ? picture_without_sprites : target;
@@ -337,6 +340,7 @@ static void clear_to(int32_t color) {
     fill_cells(area.left, area.top, area.right - area.left, area.bottom - area.top, color);
     return;
   }
+  picture_touched = 1;
   uint16_t painted = faded_as_painted(color);
   for (int32_t i = 0; i < CELLS; i++) target[i] = painted;
   mixed_sides *kept = mixes_of(target);
@@ -442,6 +446,7 @@ void rg_screen_digit(int32_t value, int32_t x, int32_t y, int32_t color, const i
 static int32_t showing(int32_t background);
 static int32_t bar_showing(void);
 static void request_repaint(void);
+static void skip_repaint(void);
 static void repaint_view(void);
 static int32_t rebuilt_whole(void);
 
@@ -876,6 +881,12 @@ static void request_repaint(void) {
   keep_shares_for_owed_rebuild();
 }
 
+/* A rebuild that request_repaint would have owed, left out because nothing moved. */
+static void skip_repaint(void) {
+  if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE]) return;
+  rebuild_skipped = 1;
+}
+
 /* Reference#exec_scroll_rows, and anything else that changes the picture without painting it:
  * all only ask. */
 void rg_screen_request_rebuild(void) { request_repaint(); }
@@ -1032,13 +1043,12 @@ void rg_screen_placing_at_pass_end(int32_t on) { placing_at_pass_end = on; }
  * answers, which for a background put up this pass is its corner, so a scroll said over a corner
  * is a change even where the number written is the one already stored. */
 void rg_background_scroll(int32_t background, int32_t x, int32_t y) {
-  int32_t wiped = picture_wiped;
-  picture_wiped = 0;
   background_scroll before = scroll_shown(background);
   scrolls[keeper_of(background)] = (background_scroll){x, y};
   if (!placing_at_pass_end) from_corner[keeper_of(background)] = 0;
   background_scroll after = scroll_shown(background);
-  if (wiped || after.x != before.x || after.y != before.y) request_repaint();
+  if (after.x != before.x || after.y != before.y) request_repaint();
+  else skip_repaint();
 }
 
 /* Where each status bar was last placed, by the entry that keeps its name, and whether it has
@@ -1763,13 +1773,13 @@ void rg_objects_end(void) {
   /* Kept whichever way the picture is made: a scene taking over later in this pass builds the
    * picture again from it (rg_scene_redraw_sprites). Compared as they are laid down, field by
    * field, so nothing is worked out for a frame where nothing moved. */
-  int32_t moved = rebuilt_whole() && (picture_wiped || drawing_count != sprite_layer_count ||
+  int32_t moved = rebuilt_whole() && (drawing_count != sprite_layer_count ||
                   memcmp(sprite_layer, drawing, (size_t)drawing_count * sizeof drawing[0]) != 0);
   for (int32_t i = 0; i < drawing_count; i++) sprite_layer[i] = drawing[i];
   sprite_layer_count = drawing_count;
   if (rebuilt_whole()) {
-    picture_wiped = 0;
     if (moved) request_repaint();
+    else skip_repaint();
     return;
   }
   /* The sprite layer is off while a painted screen is up in a game with screens drawn from tiles. */
@@ -1888,11 +1898,14 @@ static void repaint_view(void) {
   }
   mix_nothing();
   fade_nothing();
+  picture_touched = 0;
 }
 
 /* Reference#paint_owed_repaint */
 void rg_screen_paint_owed_rebuild(void) {
-  if (!owed) {
+  int32_t skipped_and_touched = rebuild_skipped && picture_touched;
+  rebuild_skipped = 0;
+  if (!owed && !skipped_and_touched) {
     forget_expired_corners();
     return;
   }
@@ -1923,6 +1936,7 @@ void rg_screen_frame_ended(void) {
   pixels = viewed;
   viewed = finished;
   target = pixels;
+  picture_touched = 1; /* the page handed over was built before the one just shown */
 }
 
 /* Reference#show_backdrop: the colour wherever nothing is drawn becomes +color+, the picture painted
@@ -1950,7 +1964,6 @@ int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop)
     /* What was under each sprite went with the old screen, so nothing is put back over the new
      * one. A console that places its sprites at the end of a pass takes them off after this. */
     memset(last_drawn, 0, sizeof last_drawn);
-    picture_wiped = 1;
   } else {
     show_backdrop(new_backdrop);
   }
@@ -2066,9 +2079,10 @@ void rg_screen_work_out_shade(void) {
 static int32_t shade_off;
 void rg_shade_switch(int32_t on) { shade_off = on == 0; }
 
-/* Framebuffer#lit?: is (x, y) inside its row's span? */
+/* Whether no light is darkening any of the picture. */
 static int32_t every_pixel_lit(void) { return shade_steps == 0 || shade_off; }
 
+/* Framebuffer#lit?: is (x, y) inside its row's span? */
 static int32_t lit(int32_t x, int32_t y) {
   if (every_pixel_lit()) return 1;
   int32_t left = shade_spans[y][0], right = shade_spans[y][1];

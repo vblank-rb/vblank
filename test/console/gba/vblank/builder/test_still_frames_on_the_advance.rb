@@ -12,6 +12,7 @@ require "all/vblank/builder/test_still_frames"
 class TestStillFramesOnTheAdvance < Minitest::Test
   include StillFrameGames
 
+  WHITE = VBlank::Graphics::Color.resolve(:white)
   STRIPES = Ractor.make_shareable(Array.new(32) { ("#" * 16) + ("o" * 16) })
   CHECKERS = Ractor.make_shareable(Array.new(32) { |row| (row.even? ? "#o" : "o#") * 16 })
 
@@ -263,5 +264,94 @@ class TestStillFramesOnTheAdvance < Minitest::Test
     end
 
     assert_picture_changes prog
+  end
+
+  # --- what changes the picture without saying so: each is a write to the picture that is not
+  # the rebuild, so the picture is no longer the one the last rebuild painted ---
+
+  # A new backdrop with no scenery up is laid straight over the whole picture, sprites and all.
+  def test_a_scene_changing_the_backdrop_keeps_a_still_sprite
+    prog = still_game do
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:first) { screen :tiled, backdrop: :black }
+      scene(:second) { screen :tiled, backdrop: :blue }
+      scene(:never) { background(:cover, tiles: :set, map: RED_FIELD).scroll_to(*SCROLL) }
+      game_loop do
+        tick += 1
+        state = 1 if tick == CHANGE_AT
+        case_var(:state) do
+          when_val 0, :first
+          when_val 1, :second
+          when_val 2, :never
+        end
+      end
+    end
+    screen = game_player.run(prog, frames: FRAMES).screen
+
+    assert_equal [WHITE, BLUE], [screen.pixel(*BALL_PIXEL), screen.pixel(*CELL_PIXEL)]
+  end
+
+  # Taking a scene's scenery down lays what stays up back from its corner. With no sprite up
+  # nothing else asks, and the scroll said next is the number already stored.
+  def test_scenery_left_by_a_scene_going_shows_where_it_is_scrolled
+    prog = still_game do |ball|
+      ball.hide
+      field = background :field, tiles: :set, map: COLUMNS
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:covered) { background(:cover, tiles: :set, map: RED_FIELD) }
+      scene(:bare) {}
+      game_loop do
+        field.scroll_to(*SCROLL)
+        tick += 1
+        state = 1 if tick == CHANGE_AT
+        case_var(:state) do
+          when_val 0, :covered
+          when_val 1, :bare
+        end
+      end
+    end
+
+    assert_equal BLUE, shown_at_the_end(prog, COLUMN_PIXEL)
+  end
+
+  # What a pass draws is gone once the picture is rebuilt, so a box drawn further along each
+  # frame over a still field leaves no trail.
+  def test_what_a_pass_draws_on_a_still_screen_leaves_no_trail
+    prog = still_game do
+      field = background :field, tiles: :set, map: RED_FIELD
+      x = var :x, 0
+      game_loop do
+        field.scroll_to(*SCROLL)
+        draw_rect_at x, 20, 4, 4, :green
+        x += 8
+      end
+    end
+
+    assert_equal RED, shown_at_the_end(prog, [1, 21])
+  end
+
+  # A tear-free screen is two pages shown in turn, and a rebuild paints only one of them. A sprite
+  # that moves once and stops must end up moved on both, or it jumps back on every other frame.
+  def test_a_sprite_that_stops_on_a_tear_free_screen_stands_in_one_place_on_both_pages
+    tile = SOLID_TILE
+    prog = program do
+      screen :bitmap, tear_free: true
+      image(:red_art, "#" => :red) { tile }
+      image(:ball, "#" => :white) { tile }
+      tiles :set, "#" => :red_art
+      field = background :field, tiles: :set, map: RED_FIELD
+      ball = sprite :ball, at: [120, 90]
+      tick = var :tick, 0
+      game_loop do
+        field.scroll_to(*SCROLL)
+        tick += 1
+        ball.x += 8 if tick == CHANGE_AT
+      end
+    end
+    last_two = [FRAMES, FRAMES + 1].map { |frames| game_player.run(prog, frames: frames).screen.pixel(*BALL_PIXEL) }
+
+    assert_equal [RED, RED], last_two
   end
 end
