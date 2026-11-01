@@ -397,7 +397,7 @@ module VBlank
           end
 
           def console_loop(node)
-            (@console_loops ||= {})[node.object_id] ||= Frames.loop_in_console_order(node.children, @program.described_console)
+            (@console_loops ||= {})[node.object_id] ||= Frames.console_order_of(node, @program.described_console)
           end
 
           # The game loops that end each pass by placing the frame's writes

@@ -61,7 +61,52 @@ class TestGBCPressToPicture < Minitest::Test
     b.program
   end
 
-  # A red status bar along the bottom. On a press of Down one cell of it turns blue where the game
+  # A white square sprite moved 16 pixels right on a press of Down, in a game loop the block writes.
+  private def sprite_moved_in_a_loop(**options, &loop_written)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc, **options))
+    b.instance_eval do
+      screen :tiled
+      image(:ball, "#" => :white) { "########\n" * 8 }
+      ball = sprite :ball, at: [40, 100]
+      instance_exec(ball, &loop_written)
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A game that places its own wait, partway down the loop.
+  private def loop_with_the_wait_written_in_it
+    sprite_moved_in_a_loop(frame_sync: :manual) do |ball|
+      game_loop do
+        ball.x += 16 if pressed(:down)
+        wait_vblank
+      end
+    end
+  end
+
+  # A scene handed over from inside an `if`, which the sprite moves in.
+  private def scene_dispatched_from_an_if
+    sprite_moved_in_a_loop do |ball|
+      var :state, 0
+      on = var :on, 1
+      scene(:title) { ball.x += 16 if pressed(:down) }
+      game_loop { case_var(:state) { when_val 0, :title } if on == 1 }
+    end
+  end
+
+  # A press that moves the sprite and walks into a loop of its own.
+  private def loop_entered_on_a_press
+    sprite_moved_in_a_loop do |ball|
+      game_loop do
+        if pressed(:down)
+          ball.x += 16
+          game_loop { ball.y += 0 }
+        end
+      end
+    end
+  end
+
+  # The red status bar along the bottom. On a press of Down one cell of it turns blue where the game
   # says now, and another as a change does, in the blank after the pass.
   private def bar_answering_a_press
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
@@ -113,6 +158,19 @@ class TestGBCPressToPicture < Minitest::Test
     frame = first_frame_where(cursor_in_a_scene) { |v| v.pixel_gba(60, 104) == white && v.pixel_gba(44, 104) != white }
 
     assert_equal PRESS + 1, frame
+  end
+
+  # EVERY SHAPE OF GAME LOOP shows a press on the frame after it, and plays as the interpreter does.
+  def test_a_press_shows_on_the_frame_after_it_in_every_shape_of_game_loop
+    white = 0x7FFF
+    moved = ->(v, _frame) { v.pixel_gba(60, 104) == white && v.pixel_gba(44, 104) != white }
+
+    { "the wait written in the loop" => loop_with_the_wait_written_in_it,
+      "a scene handed over from an if" => scene_dispatched_from_an_if,
+      "a loop entered on the press" => loop_entered_on_a_press }.each do |shape, program|
+      assert_equal PRESS + 1, first_frame_where(program, &moved), shape
+      game_player.input_each_frame { |frame| frame == 5 ? [:down] : [] }.run(program, frames: 10)
+    end
   end
 
   # A MENU IN THE BAR ANSWERS A PRESS ON THE FRAME THE PASS RUNS, since the screen has not reached the

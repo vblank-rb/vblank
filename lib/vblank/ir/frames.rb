@@ -80,30 +80,76 @@ module VBlank
       # so at the end of the pass the number already names the next scene, while the frame still
       # shows this one. So each scene dispatch of the loop notes the number it read, and the
       # boundary's writes are placed with the number put back to that for as long as they run.
-      def self.loop_in_console_order(statements, console)
+      #
+      # A SCENE HANDED OVER DEEPER IN THE LOOP, inside an `if`, has its number noted as the pass
+      # starts instead, since nothing can be put in beside it.
+      #
+      # A WAIT THE GAME WRITES PARTWAY DOWN ITS LOOP splits the pass there: what comes before it is
+      # the pass that shows after it, so the boundary's writes go in just before it. A wait written
+      # deeper than the loop's own statements, in a scene or an `if`, stays as written, and what it
+      # places shows a frame later (Console::ColorAnswers says so).
+      #
+      # A LOOP ENTERED FROM INSIDE ANOTHER PASS (+nested+) places before its first wait, which ends
+      # that pass. A loop at the top of the program has nothing before it to place.
+      def self.loop_in_console_order(statements, console, nested: false)
         as_written = ConsoleLoop.new(before: [], each_time: statements, placed: [], variables: [], pass_end: [])
-        return as_written unless console.sprites_placed_before_wait && statements.first&.kind == :wait_vblank
+        return as_written unless console.sprites_placed_before_wait
 
-        wait = statements.first
-        placed, body = statements.drop(1).partition { |node| placed_at_boundary?(node) }
+        wait_at = statements.index { |node| node.kind == :wait_vblank }
+        return as_written if wait_at.nil?
+
+        wait = statements[wait_at]
+        placed, body = statements.reject { |node| node.equal?(wait) }.partition { |node| placed_at_boundary?(node) }
         return as_written if placed.empty?
 
-        scene_numbers = body.select { |node| scene_dispatch?(node) }.map(&:var).uniq
+        ahead = statements.first(wait_at)
+        top_level = body.select { |node| scene_dispatch?(node) }
+        deeper = body.flat_map { |node| dispatches_inside(node) }.reject { |node| top_level.any? { |top| top.equal?(node) } }
+        scene_numbers = (top_level + deeper).map(&:var).uniq
         read = ->(number) { :"__scene_read_#{number}" }
         held = ->(number) { :"__scene_held_#{number}" }
-        noted = body.flat_map { |node| scene_dispatch?(node) ? [Build.set(read.call(node.var), Build.var_ref(node.var)), node] : [node] }
+        note = ->(number) { Build.set(read.call(number), Build.var_ref(number)) }
+        noted = ->(nodes) { nodes.flat_map { |node| scene_dispatch?(node) ? [note.call(node.var), node] : [node] } }
         put_back = scene_numbers.flat_map do |number|
           [Build.set(held.call(number), Build.var_ref(number)), Build.set(number, Build.var_ref(read.call(number)))]
         end
         restored = scene_numbers.map { |number| Build.set(number, Build.var_ref(held.call(number))) }
         pass_end = [*put_back, *placed, *restored]
-        ConsoleLoop.new(before: [wait], each_time: [*noted, *pass_end, wait], placed: placed, pass_end: pass_end,
-                        variables: scene_numbers.flat_map { |number| [read.call(number), held.call(number)] })
+        variables = scene_numbers.flat_map { |number| [read.call(number), held.call(number)] }
+        noted_at_start = deeper.map(&:var).uniq.map(&note)
+        if wait_at.zero?
+          first_wait = nested ? [*scene_numbers.map(&note), *pass_end, wait] : [wait]
+          return ConsoleLoop.new(before: first_wait, each_time: [*noted_at_start, *noted.call(body), *pass_end, wait],
+                                 placed: placed, pass_end: pass_end, variables: variables)
+        end
+
+        written_ahead, written_after = body.partition { |node| ahead.any? { |early| early.equal?(node) } }
+        ConsoleLoop.new(before: [], each_time: [*noted_at_start, *noted.call(written_ahead), *pass_end, wait, *noted.call(written_after)],
+                        placed: placed, pass_end: pass_end, variables: variables)
+      end
+
+      # A game loop's order, knowing whether +node+ runs inside another pass: in another loop, or in
+      # a routine or scene one calls.
+      def self.console_order_of(node, console)
+        loop_in_console_order(node.children, console, nested: nested_in_pass?(node))
+      end
+
+      def self.nested_in_pass?(node)
+        at = node.parent
+        at = at.parent until at.nil? || %i[loop func].include?(at.kind)
+        !at.nil?
       end
 
       # A `case` that hands the screen to a scene: one whose clauses call scenes. A game's own
       # dispatch on a number of its own is left as it is.
       def self.scene_dispatch?(node) = node.kind == :case && node.clauses.any? { |_, target| Modes.scene_func?(target) }
+
+      # Every scene dispatch under +statement+, or +statement+ itself, short of a loop of its own.
+      def self.dispatches_inside(statement)
+        return [] if statement.kind == :loop
+
+        [(statement if scene_dispatch?(statement)), *statement.children.flat_map { |child| dispatches_inside(child) }].compact
+      end
 
       # THE STATEMENTS A BEAT MEANS — `every` and `after` (Reference#exec_every, #exec_after) —
       # said as the plain ones every lowering already makes, so none of them writes the rule

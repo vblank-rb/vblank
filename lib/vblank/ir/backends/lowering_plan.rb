@@ -147,7 +147,7 @@ module VBlank
         # that sends its sprites and scroll from a copy as the wait ends, the frame's are placed
         # before its wait; on another, as written.
         def console_loop(node)
-          (@console_loops ||= {})[node.object_id] ||= Frames.loop_in_console_order(node.children, @console)
+          (@console_loops ||= {})[node.object_id] ||= Frames.console_order_of(node, @console)
         end
 
         # A step a run can reach that only means something on the Advance, refused by name. A step in

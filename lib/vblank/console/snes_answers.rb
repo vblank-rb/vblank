@@ -34,7 +34,8 @@ module VBlank
         setting: works,
         screen_width: works("256 on a Super Nintendo."),
         screen_height: works("224 on a Super Nintendo."),
-        wait_vblank: works,
+        wait_vblank: works("in a game loop, the sprites and scroll of a pass show on the frame after the wait. " \
+                           "If a game writes the wait in a scene or an `if`, they show a frame later than that."),
         halt: works,
         debug_halt: works("the game stops there, as `halt` does; the cartridge is not cut short."),
         game_loop: works,

@@ -837,7 +837,7 @@ module VBlank
         # A boundary write placed at the end of a pass leaves a background that pass put up at its
         # corner (#exec_scroll_background, #exec_place_bar).
         def exec_loop(node)
-          order = IR::Frames.loop_in_console_order(node.children, @console)
+          order = IR::Frames.console_order_of(node, @console)
           order.before.each { |child| exec(child) }
           @loops_running << order
           loop { order.each_time.each { |child| exec_in_loop(child, order) } }
