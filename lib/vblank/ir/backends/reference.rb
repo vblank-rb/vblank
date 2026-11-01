@@ -1780,15 +1780,38 @@ module VBlank
           tile_h = node.tile_h
           swapped = background_swap(node)
           set_see_through_for(node.name)
-          map_of(node).each_with_index do |row, r|
-            row.each_with_index do |index, c|
-              next if index.nil?
+          map = map_of(node)
+          across, down = grid_repeats(node, map)
+          down.times do |round_down|
+            across.times do |round_across|
+              map.each_with_index do |row, r|
+                row.each_with_index do |index, c|
+                  next if index.nil?
 
-              stamp_tile(tiles, index, c * tile_w, r * tile_h, tile_w, tile_h, swapped)
+                  stamp_tile(tiles, index, (round_across * across_px(node, map)) + (c * tile_w),
+                             (round_down * down_px(node, map)) + (r * tile_h), tile_w, tile_h, swapped)
+                end
+              end
             end
           end
           @screen.set_paint_see_through(nil)
         end
+
+        # HOW MANY TIMES THE GRID IS SEEN ACROSS THE SCREEN AND DOWN IT, as [across, down]. A background
+        # is a torus (see #paint_background_window): its grid of 32 or 64 cells comes round, so on a
+        # screen wider or taller than the grid — a Genesis's 320 across is wider than 32 cells of 8
+        # pixels — the map is seen again past the grid's edge, whether it is stamped as it is put up or
+        # painted as it is scrolled. A background that is brought into view a strip at a time does not
+        # come round, and is seen once; so is every one on a screen no wider than its grid, which is every
+        # screen of the Advance, the Color and the Super Nintendo.
+        def grid_repeats(node, map)
+          return [1, 1] if node.streams?
+
+          [(@screen.width.to_f / across_px(node, map)).ceil, (@screen.height.to_f / down_px(node, map)).ceil]
+        end
+
+        def across_px(node, map) = IR::TileMap.grid(map).first * node.tile_w
+        def down_px(node, map) = IR::TileMap.grid(map).last * node.tile_h
 
         # +nodes+ in the order the declared stack asks for (see IR::Stacking).
         def in_stack_order(nodes)
