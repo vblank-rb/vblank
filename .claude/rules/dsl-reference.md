@@ -77,7 +77,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Variables & math — `.claude/dsl/variables.md`
 
-- `hp = 10` — a game variable, if game code changes it. `var :name, init` → `Value`; `var :mode, :title` holds a name, and `call mode` runs it.
+- `hp = 10` — a game variable, if game code changes it. `var :name, init` → `Value` (`width: :byte` or `:half` to keep it narrow); `var :mode, :title` holds a name, and `call mode` runs it.
 - `save_var :name, default`; `save_data :file do keep … end` → save records; `saves_keep_everything except:`.
 - `x = 5`, `x += 1`, `x -= 1`, `flags |= 4`, `x = y` — change a variable.
 - `negate!`/`flip!`, `abs!`, `negate_abs!`, `clamp!`, `approach!` — words of their own that change a variable.

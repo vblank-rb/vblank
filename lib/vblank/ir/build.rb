@@ -46,7 +46,7 @@ module VBlank
       # pairs.
       def program(*statements, console: nil, variant: nil, sprite_piece_sizes: [])
         Nodes.build(:program, children: statements, console: console, variant: variant,
-                              sprite_piece_sizes: sprite_piece_sizes)
+                              sprite_piece_sizes: sprite_piece_sizes, kept_widths: [])
       end
 
       # A font the program declares for itself. Draws nothing; it is there to be named by

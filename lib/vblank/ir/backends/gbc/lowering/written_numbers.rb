@@ -182,7 +182,7 @@ module VBlank
             def low_value(operand, bytes)
               return value(operand) if bytes > 2 || folded(operand)
 
-              name = variable_named(operand)
+              name = variable_kept_at_least(operand, bytes)
               return emit_low_bytes_at(place_of(name), bytes) if name
               return value(operand) unless operand.is_a?(Node) && operand.kind == :binop
 
@@ -199,7 +199,7 @@ module VBlank
             # instruction a step, and an AND with 0xFF is nothing at all; anything else is worked
             # out by #low_value.
             def emit_low_byte_in_a(operand)
-              name = variable_named(operand)
+              name = variable_kept_at_least(operand, 1)
               return @asm.load(:a, [place_of(name)]) if name && !folded(operand)
 
               if operand.is_a?(Node) && operand.kind == :binop && LOW_SUMS.key?(operand.op)
@@ -254,7 +254,7 @@ module VBlank
               left, right = node.lhs, node.rhs
               left, right = right, left if node.op != :- && folded(left)
               number = folded(right)
-              name = variable_named(right)
+              name = variable_kept_at_least(right, bytes)
               unless number || name
                 low_value(right, bytes)
                 @asm.push(:de)
@@ -312,6 +312,8 @@ module VBlank
             # with the top bytes' sign bits turned over so the negative numbers come below the rest.
             # A variable's bytes are read where it is kept. A clobbers HL.
             def emit_carry_when_below(operand, number)
+              return emit_carry_when_kept_below(kept_variable_named(operand), number) if number_fits_kept?(operand, number)
+
               if byte_valued?(operand) && number.between?(1, 0xFF)
                 # A byte from 0 to 255 is below a number up to 255 when its one byte is: one compare.
                 emit_low_byte_in_a(operand)

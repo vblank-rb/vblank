@@ -1955,6 +1955,8 @@ module VBlank
               return nil if on.nil? || lists.any?(Symbol) || obj.poses.length > 0xFF || lists.length > 0xFF
               return nil if (folded(on) && folded(on) != 1) ||
                             [obj.pose, obj.x, obj.y, *(obj.recolor unless lists.empty?)].any? { |number| folded(number) }
+              # The runtime reads each of these as a whole number where it is kept.
+              return nil if [on, obj.pose, obj.x, obj.y, obj.recolor].compact.any? { |number| kept_variable_named(value_node(number)) }
 
               pieces = single_pieces(obj)
               rows = pose_rows(obj, sprite_level(obj)).each_slice(obj.poses.length).flat_map do |list_rows|
@@ -2052,7 +2054,7 @@ module VBlank
             def emit_sprites_changed(name)
               sprites_placed_from(name).uniq.each do |sprite|
                 obj = @objects.fetch(sprite)
-                names = ->(*numbers) { numbers.compact.map { |number| variable_named(value_node(number)) } }
+                names = ->(*numbers) { numbers.compact.map { |number| any_variable_named(value_node(number)) } }
                 bits = []
                 bits << Runtime::KeptSprites::PLACE_AS_PLACED if names.call(obj.x, obj.y).include?(name)
                 bits << Runtime::KeptSprites::NUMBERS_AS_PLACED if names.call(*showing_numbers(obj), obj.recolor).include?(name)

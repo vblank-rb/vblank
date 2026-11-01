@@ -77,6 +77,7 @@ module VBlank
           include TileRuns
           include Clock
           include WrittenNumbers
+          include KeptVariables
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
           # day the Color does it; test_gbc_kind_coverage.rb holds the list and the tables above to
@@ -210,7 +211,9 @@ module VBlank
             refuse_rumble_beside_clock!
             # ...and the ones a game loop keeps of its own in the Color's order (IR::Frames::ConsoleLoop).
             loops = game_loops.flat_map { |node| console_loop(node).variables }
-            (Reach.variables(@program) | loops).each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
+            (Reach.variables(@program) | loops).each do |name|
+              @variables[name] = @memory.reserve("the variable #{name.inspect}", kept_bytes(name) || 4)
+            end
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
               # Named as the game names it, since running out of room says which list asked.
@@ -518,6 +521,7 @@ module VBlank
           # (Runtime::KeptSprites) — when the number is another than the one there, so a pose said
           # again every pass leaves the sprite as it is.
           def store(name)
+            return store_kept_bytes(name) if kept_bytes(name)
             return emit_store_number(name) if sprites_placed_from(name).empty?
 
             # Compared a byte at a time, lowest first, and written from the first that differs: the
@@ -556,6 +560,7 @@ module VBlank
           # A variable set to itself changes nothing, so nothing is made for one.
           def emit_set(node)
             return if node.value.is_a?(Node) && node.value.kind == :var_ref && node.value.name == node.var
+            return emit_set_kept(node) if kept_bytes(node.var)
 
             value(node.value)
             store(node.var)
@@ -568,29 +573,41 @@ module VBlank
           # added to where they are, a dozen instructions and no call.
           def emit_sum(name, op, operand)
             amount = folded(operand)
+            kept = kept_bytes(name)
             if amount
-              add_in_place(place_of(name), op == :- ? Int32.neg(amount) : amount)
+              add_in_place(place_of(name), op == :- ? Int32.neg(amount) : amount, kept || 4)
               emit_sprites_changed(name) unless amount.zero?
               return
+            end
+            if kept
+              low_value(Build.binop(op, Build.var_ref(name), operand), kept)
+              return store(name)
             end
 
             sum_of_two(Build.var_ref(name), operand, SUMS.fetch(op))
             store(name)
           end
 
-          def add_in_place(address, amount)
+          def add_in_place(address, amount, bytes = 4)
             amount &= 0xFFFF_FFFF
-            @asm.load(:hl, address)
-            4.times do |i|
+            @asm.load(:hl, address) if bytes > 1
+            bytes.times do |i|
               byte = (amount >> (8 * i)) & 0xFF
-              @asm.load(:a, [:hl])
-              i.zero? ? @asm.add_a(byte) : @asm.adc_a(byte)
-              @asm.load(i == 3 ? [:hl] : [:hli], :a)
+              if bytes == 1
+                @asm.load(:a, [address])
+                @asm.add_a(byte)
+                @asm.load([address], :a)
+              else
+                @asm.load(:a, [:hl])
+                i.zero? ? @asm.add_a(byte) : @asm.adc_a(byte)
+                @asm.load(i == bytes - 1 ? [:hl] : [:hli], :a)
+              end
             end
           end
 
           def emit_copy(node)
             return if node.dest == node.src
+            return emit_set_kept(Build.set(node.dest, Build.var_ref(node.src))) if kept_bytes(node.dest)
 
             value(node.src)
             store(node.dest)
@@ -1232,11 +1249,17 @@ module VBlank
             if (equal = equality_with_number(condition))
               compare_with_number(*equal)
               @asm.jump(condition.op == :== ? :nz : :z, label)
+            elsif (equal = equality_of_kept(condition))
+              compare_kept_with_number(*equal)
+              @asm.jump(condition.op == :== ? :nz : :z, label)
             elsif (name = sign_tested_variable(condition))
               # A variable at or above nought, or below it, is its top bit, where it is kept.
-              @asm.load(:a, [place_of(name) + 3])
+              @asm.load(:a, [place_of(name) + (kept_bytes(name) || 4) - 1])
               @asm.bit(7, :a)
               @asm.jump(condition.op == :>= ? :nz : :z, label)
+            elsif (ordered = ordering_of_two_kept(condition))
+              emit_carry_when_kept_below_kept(*ordered.first(2))
+              @asm.jump(ordered.last ? :nc : :c, label)
             elsif (ordered = ordering_with_number(condition))
               other, number, below = ordered
               if number
@@ -1270,7 +1293,7 @@ module VBlank
           def sign_tested_variable(condition)
             return nil unless (binop?(condition, :>=) || binop?(condition, :<)) && folded(condition.rhs)&.zero?
 
-            variable_named(condition.lhs)
+            variable_named(condition.lhs) || kept_variable_named(condition.lhs)
           end
 
           # A variable said to equal (or not) a number written in the program: [its place, the
@@ -1287,7 +1310,14 @@ module VBlank
             [place_of(name), number & 0xFFFF_FFFF]
           end
 
+          # The whole-number variable +node+ names, read where it is kept. One kept narrow is not one:
+          # everything asking here reads four bytes, and falls back on working the value out.
           def variable_named(node)
+            name = any_variable_named(node)
+            name unless name && kept_bytes(name)
+          end
+
+          def any_variable_named(node)
             return node if node.is_a?(Symbol)
 
             node.name if node.is_a?(Node) && node.kind == :var_ref
@@ -1583,6 +1613,8 @@ module VBlank
 
           # The four bytes read where they are, as #emit_store_number writes them.
           def load_variable(name)
+            return load_kept_variable(name) if kept_bytes(name)
+
             @asm.load(:hl, place_of(name))
             BCDE_LOW_FIRST.each_with_index do |register, i|
               next @asm.load(register, [:hl]) if i == 3

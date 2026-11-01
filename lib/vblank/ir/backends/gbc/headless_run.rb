@@ -205,6 +205,20 @@ module VBlank
 
           # The Color's memory, read and written over its bus.
           def byte(address) = @core.bus_read8(address)
+
+          # Every variable as the interpreter holds it: one kept narrow (Lowering::KeptVariables) has
+          # only its own bytes read, and is sign-extended as the game reads it.
+          def read_variables
+            @places.variables.to_h do |name, address|
+              width = @places.source_program.kept_width_of(name)
+              [name, width ? kept_number(address, KeptWidths::BYTES.fetch(width)) : word(address)]
+            end
+          end
+
+          def kept_number(address, bytes)
+            number = (0...bytes).sum { |i| byte(address + i) << (8 * i) }
+            number >= 1 << ((bytes * 8) - 1) ? number - (1 << (bytes * 8)) : number
+          end
           def read32(address) = @core.bus_read32(address)
           def write32(address, value) = @core.bus_write32(address, value)
 

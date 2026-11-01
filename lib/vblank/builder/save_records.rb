@@ -547,6 +547,10 @@ module VBlank
                                "saves itself each time it changes. To fix this, declare it with `var`, " \
                                "or leave it out of the record."
         end
+        if (width = @port.handle.kept_width_of(item.name))
+          raise ArgumentError, "save_data :#{record} keeps :#{item.name}, which says `width: :#{width}`. " \
+                               "A save record keeps whole numbers. To fix this, remove `width:`, or leave it out of the record."
+        end
 
         @save_data_kept[item.name] = record
         item

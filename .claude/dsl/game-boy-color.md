@@ -88,7 +88,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `text_width` — works: the same as on the Advance.
 - `text_height` — works: the same as on the Advance.
 - `menu` — works: see `draw_text` for what its rows are made of.
-- `var` — works: a variable is the same 32-bit whole number as on the Advance.
+- `var` — works: a variable is the same 32-bit whole number as on the Advance. One that says `width: :byte` or `width: :half` is kept in that many bytes here, which makes reading, testing and writing it much quicker.
 - `save_var` — works: kept in the cartridge's battery-backed memory.
 - `save_data` — works: kept in the cartridge's battery-backed memory.
 - `clock` — works: read from a clock chip in the cartridge, as Pokémon Gold, Silver and Crystal had. This chip counts days and keeps no date. So `clock.set?` is false and every reading is 0 until the game sets the clock with `clock.set_to`, from a screen of its own that asks the player. After that, the time moves on with the chip, and the save keeps it.

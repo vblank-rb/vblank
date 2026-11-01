@@ -39,19 +39,62 @@ module VBlank
       # `(mode == :playing)` read as they look, and `call mode` runs the routine of that name.
       #
       # @param name [Symbol] variable name
+      # A VARIABLE THAT ONLY EVER HOLDS A SMALL NUMBER can say so: `var :flag, 0, width: :byte` keeps
+      # it in a byte and `width: :half` in two, as a list's `width:` does, and a number too big
+      # keeps its low bits and reads back with their sign (see {IR::KeptWidths}). It reads and works
+      # the same everywhere, and a Game Boy Color spends much less time on it.
+      #
+      # @param name [Symbol] variable name
       # @param value [Integer, Symbol, Value] the starting value, or the first of its names
+      # @param width [Symbol] :byte or :half to keep it narrow; :word, the default, keeps the whole number
       # @return [Value] a handle to the variable
-      def var(name, value)
+      def var(name, value, width: :word)
         if [true, false].include?(value)
           remember_boolean_variable(name)
           value = value ? 1 : 0
         end
-        refuse_conflicting_declaration!(name, value)
+        refuse_conflicting_declaration!(name, value, width: width)
         ensure_var(name)
+        keep_narrow(name, width, value)
         @name_vars[name] ||= DSL::NameSet.new("the variable :#{name}") if value.is_a?(Symbol)
         at_boot(Build.set(name, stored_node(name, value)))
         value_handle_for(name)
       end
+
+      # Note +name+ as kept at +width+, refusing a width that is not one and a start it cannot hold.
+      def keep_narrow(name, width, start)
+        return if width == :word
+        unless IR::KeptWidths::BYTES.key?(width)
+          raise ArgumentError, "The variable :#{name} says `width: #{width.inspect}`. A width is :byte, :half or " \
+                               ":word. To fix this, give one of those."
+        end
+        if start.is_a?(Float)
+          raise ArgumentError, "The variable :#{name} is a fraction and says `width: :#{width}`. A fraction needs the " \
+                               "whole number. To fix this, remove `width:`."
+        end
+
+        refuse_number_too_wide!(name, width, start) if start.is_a?(Integer) && !start.between?(IR::KeptWidths.lowest(width), IR::KeptWidths.highest(width))
+        @kept_widths[name] = width
+      end
+
+      # The width the game keeps variable +name+ at, or nil for the whole number.
+      def kept_width_of(name) = @kept_widths[name]
+
+      def refuse_number_too_wide!(name, width, number)
+        raise ArgumentError, "The variable :#{name} is kept as a #{width} (`width: :#{width}`), but the game sets it to " \
+                             "#{number}. A #{width} holds #{IR::KeptWidths.lowest(width)} to #{IR::KeptWidths.highest(width)}. " \
+                             "To fix this, use a number in that range, or give the variable a bigger width."
+      end
+
+      # Every change of a narrow variable followed by its wrap (see {IR::KeptWidths}): last of all,
+      # once the framework's own statements are in the tree too.
+      def finalize_kept_widths
+        return if @kept_widths.empty?
+
+        @program.kept_widths = @kept_widths.to_a
+        IR::KeptWidths.add_wraps(@program, @kept_widths) { |name, width, number| refuse_number_too_wide!(name, width, number) }
+      end
+      private :keep_narrow, :refuse_number_too_wide!, :finalize_kept_widths
 
       # A variable started with `true` or `false` holds a yes or no, kept as 1 or 0. It is the one
       # kind a game can test on its own, `if alive`, as a Ruby value can be.
@@ -297,9 +340,9 @@ module VBlank
       # the first case and pass; two that start the variable differently (a fraction and a
       # whole number, or two different numbers) can only be the second. So can a `save_var`
       # and a `var` of one name: the plain one would quietly be saved and loaded too.
-      def refuse_conflicting_declaration!(name, value, saved: false)
+      def refuse_conflicting_declaration!(name, value, saved: false, width: :word)
         start = value.is_a?(DSL::Value) ? value.node : value
-        here = Declaration.new(start: start, saved: saved, at: Messages::AuthorSource.author_file_and_line)
+        here = Declaration.new(start: start, saved: saved, width: width, at: Messages::AuthorSource.author_file_and_line)
         first = (@var_declarations[name] ||= here)
         return if first.agrees_with?(here)
 
@@ -313,11 +356,11 @@ module VBlank
 
       # One `var` or `save_var`: what it started the variable at, whether it is kept across
       # power-off, and the line of the game that said it.
-      Declaration = Data.define(:start, :saved, :at) do
+      Declaration = Data.define(:start, :saved, :width, :at) do
         # Ruby says 0.0 == 0, and a fraction and a whole number are exactly the two kinds
         # that must not pass as the same, so the class has to match as well as the value.
         def agrees_with?(other)
-          saved == other.saved && start.instance_of?(other.start.class) && start == other.start
+          saved == other.saved && width == other.width && start.instance_of?(other.start.class) && start == other.start
         end
 
         # "At hero.rb:12 it starts at 0.0, a fraction." — for the message above.
@@ -329,6 +372,7 @@ module VBlank
                  else "a value the game works out"
                  end
           kept = saved ? " and is kept when the power is off" : ""
+          kept += " and is kept as a #{width}" unless width == :word
           "#{at ? "At #{at}" : "In the #{which} place"} it starts at #{what}#{kept}."
         end
       end

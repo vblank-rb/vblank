@@ -984,11 +984,18 @@ module VBlank
       # is kept by console, not for the console the program is built for, so a test's unbound
       # program carries it to whichever console a run plays it as. What a sprite shows is the same
       # at every size; only how a console's build cuts it up differs.
+      #
+      # +kept_widths+ is each variable the game said is narrow, as [name, :byte or :half] pairs. Every
+      # write to one is followed by the wrap to that width (IR::KeptWidths), so what it holds
+      # needs nothing more from any backend; a console may keep it in fewer bytes.
       class Program
         include Node
         kind :program
         category :root
-        operands console: :name, variant: :name, sprite_piece_sizes: :list
+        operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list
+
+        # The width variable +name+ is kept at, or nil for the whole number.
+        def kept_width_of(name) = (kept_widths || []).to_h[name]
 
         # What the console this program was built for can do: its screen, buttons, sprites.
         def described_console = console ? Console.described(console, variant: variant) : Program.unbound_console

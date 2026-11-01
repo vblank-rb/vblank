@@ -176,6 +176,7 @@ module VBlank
       @pool_animations = []    # ...and posed pools, which step every instance on their own beat
       @prng_used = false       # whether the program draws random numbers (seeds the stream once)
       @boot_inits = []         # statements hoisted to program start (hidden state that must start known)
+      @kept_widths = {}        # the variables kept a byte or two wide, and at which (see Builder::Variables#keep_narrow)
       @pending_conditions = [] # Conditions built but not yet used; leftovers are orphans
       @expressions = []        # every expression Value built; the unparented ones are orphans
       @present_nodes = []      # every frame's present-objects node, filled with the full object list at finalize
@@ -605,6 +606,7 @@ module VBlank
       declare_save_memory
       resolve_save_data_peeks
       swap_save_stores_for_change_flags
+      finalize_kept_widths
     end
 
     # A routine the framework writes whose body depends on every line of the game, built only
