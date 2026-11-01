@@ -207,11 +207,17 @@ module VBlank
             end
 
             # SPRITES. rt_sprites_begin forgets the sprites of the last pass. rt_sprite_place(poses, pose,
-            # x, y, whose) places one: +poses+ is the place of the sprite's table of pictures (how many,
-            # then each picture's number), +pose+ which of them it shows — none for a number outside the
-            # table — and +whose+ the sprite's number for a reader (SpriteNames). Each piece of the
+            # x, y, whose, which, palettes) places one: +poses+ is the place of the sprite's table of pictures
+            # (how many, then each picture's number), +pose+ which of them it shows — none for a number outside
+            # the table — and +whose+ the sprite's number for a reader (SpriteNames). Each piece of the
             # picture is a row of the table, at the sprite's place plus the piece's own; a piece wholly
             # off the screen is not written, and nor is any piece once the table's 80 rows are used.
+            #
+            # A sprite DRAWN IN A LIST OF COLOURS (`draw_with`) names, in +palettes+, a table of how many lists
+            # it can be drawn with and the palette of each, in the bits of a piece's word that name it; +which+
+            # is the one the game says now. Every piece is then drawn from that palette, and a +which+ the
+            # table has no list for draws it from the palette its own picture names. A sprite drawn with
+            # none has nought for +palettes+.
             def emit_sprites(asm, memory, at)
               asm.label("rt_sprites_begin")
               asm.clr(:w, at.call(SPRITE_COUNT))
@@ -219,6 +225,7 @@ module VBlank
               asm.rts
 
               asm.label("rt_sprite_place")
+              emit_palette_chosen(asm)
               asm.movea(:l, asm.d(0), asm.a(0))
               asm.moveq(0, asm.d(5))
               asm.move(:w, asm.post(0), asm.d(5))
@@ -243,10 +250,34 @@ module VBlank
               asm.move(:w, asm.post(0), asm.d(1))
               asm.add(:l, asm.d(3), asm.d(1)) # its top
               asm.move(:w, asm.post(0), asm.d(0)) # its tile and palette
+              asm.move(:l, asm.a(4), asm.d(6))
+              asm.branch(:mi, "rt_sprite_place_own_palette")
+              asm.and(:w, asm.imm(0x9FFF), asm.d(0))
+              asm.or(:w, asm.d(6), asm.d(0))
+              asm.label("rt_sprite_place_own_palette")
               emit_piece_written(asm, memory, at)
               asm.dbra(asm.d(5), "rt_sprite_place_piece")
               asm.label("rt_sprite_place_done")
               asm.rts
+            end
+
+            # A4: the palette the sprite is drawn from, as the bits of a piece's word that name it, or -1 for the
+            # one its picture names. D5 is the list the game says (negative or past the table's: none), D6 the table.
+            def emit_palette_chosen(asm)
+              asm.moveq(-1, asm.d(7))
+              asm.movea(:l, asm.d(7), asm.a(4))
+              asm.tst(:l, asm.d(6))
+              asm.branch(:eq, "rt_sprite_place_chosen")
+              asm.movea(:l, asm.d(6), asm.a(3))
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.post(3), asm.d(6))
+              asm.cmp(:l, asm.d(6), asm.d(5))
+              asm.branch(:cc, "rt_sprite_place_chosen")
+              asm.lsl(:l, 1, asm.d(5))
+              asm.moveq(0, asm.d(7))
+              asm.move(:w, asm.idx(3, 0, 5), asm.d(7))
+              asm.movea(:l, asm.d(7), asm.a(4))
+              asm.label("rt_sprite_place_chosen")
             end
 
             # The reader's row for the sprite: whose, which picture, where. D2 and D3 are its place.

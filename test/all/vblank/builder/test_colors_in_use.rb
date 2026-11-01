@@ -80,8 +80,8 @@ class TestColorsInUse < Minitest::Test
   def test_each_thing_wears_its_own_list_in_the_room_that_uses_it
     # The second pass, still in the first room, as far behind as the framework draws
     # (Testing#framework_drawing_lag).
-    assert_equal (0...4).map { |n| self.class.colors_of_list(n)[1] }, things_drawn(2 + framework_drawing_lag), "the first room"
-    assert_equal (4...8).map { |n| self.class.colors_of_list(n)[1] }, things_drawn(6), "the second room"
+    assert_equal (0...4).map { |n| shown(self.class.colors_of_list(n)[1]) }, things_drawn(2 + framework_drawing_lag), "the first room"
+    assert_equal (4...8).map { |n| shown(self.class.colors_of_list(n)[1]) }, things_drawn(6), "the second room"
   end
 
   def test_the_console_fits_twenty_lists_used_four_to_a_room
@@ -105,7 +105,7 @@ class TestColorsInUse < Minitest::Test
     end
     i = game_player.run(late, frames: 2)
 
-    assert_equal (0...4).map { |n| self.class.colors_of_list(n)[1] }, (0...4).map { |n| i.screen.pixel(41 + (n * 20), 41) }
+    assert_equal (0...4).map { |n| shown(self.class.colors_of_list(n)[1]) }, (0...4).map { |n| i.screen.pixel(41 + (n * 20), 41) }
     assert_backends_agree(late, frames: 2)
   end
 
@@ -130,7 +130,7 @@ class TestColorsInUse < Minitest::Test
     end
     i = game_player.run(ring, frames: 6)
 
-    assert_equal [self.class.colors_of_list(1)[1], self.class.colors_of_list(2)[1]], [i.screen.pixel(41, 41), i.screen.pixel(61, 41)]
+    assert_equal [shown(self.class.colors_of_list(1)[1]), shown(self.class.colors_of_list(2)[1])], [i.screen.pixel(41, 41), i.screen.pixel(61, 41)]
     [3, 6].each { |frames| assert_backends_agree(ring, frames: frames) }
   end
 

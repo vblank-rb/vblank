@@ -99,7 +99,6 @@ module VBlank
                 unless bg.tile_w == 8 && bg.tile_h == 8
                   refuse_unmade!("background tiles of #{bg.tile_w}×#{bg.tile_h}")
                 end
-                refuse_unmade!("a background drawn from several sets of tiles") if bg.several_sets?
                 refuse_unmade!("a background whose maps are of different sizes or too big to hold") if bg.streams?
                 unless Array(bg.recolors).empty? && Array(bg.palettes).length <= 1
                   refuse_unmade!("a background drawn with other colours")
@@ -114,7 +113,6 @@ module VBlank
 
             def refuse_unmade_sprites!
               @objects.each_value do |obj|
-                refuse_unmade!("a sprite drawn in other colours") unless obj.recolors.empty? || held_list_of(obj)
                 refuse_unmade!("a sprite put in another layer") if obj.layers && !obj.layers.empty?
               end
               return if @objects.empty? || @backgrounds.empty?
@@ -150,37 +148,51 @@ module VBlank
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
               poses.each do |name|
                 image = Assets::Image.of(picture_named(name))
-                refuse_unmade!("a picture made of pieces") if image.pieces
-                held = held_palette_for(name)
-                held ? @art.sprite_picture(name, image, held: held) : @art.sprite_picture(name, image)
+                if recolored?(name)
+                  @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+                else
+                  @art.sprite_picture(name, image)
+                end
               end
+              @objects.each_value { |obj| recolor_palettes(obj) }
               @backgrounds.each { |bg| bg.every_map.each_index { |which| grid_of(bg, which) } }
+            rescue Art::TooManyLists => e
+              raise NotMadeYet.new("#{e.message.sub(/ To fix this.*\z/m, '')} The Genesis build keeps a palette for each list " \
+                                   "for good, and does not lend one only while something wears the list yet. To fix this, " \
+                                   "draw the sprites with fewer lists of colours, or build the game for the Game Boy Advance " \
+                                   "alone for now (`consoles: %i[gba]`).", part: "the picture")
             end
 
-            # THE LIST OF COLOURS A SPRITE IS DRAWN WITH WHILE THE GAME CHANGES WHAT IT HOLDS (`draw_with` a list
-            # that `recolor` gives other sets), when that is all it is drawn with: its pictures are then drawn
-            # from the list's palette, which the game writes over, and nothing else is needed to draw them in
-            # the colours the list holds. Nil for a sprite drawn in its own colours.
-            def held_list_of(obj)
-              return nil unless obj.recolors.length == 1 && obj.recolors.first.is_a?(Symbol)
+            # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
+            # places are the list's (Art#ordered_palette), and the picture cut into places of its own list, so
+            # the sprite is drawn in a list by writing that list's palette's number over the palette its pieces
+            # name (Runtime::Tiles, rt_sprite_place). A list the game changes as it runs
+            # (`recolor`) keeps a palette that is written over, as the colours it holds change; one that is
+            # never changed shares a palette with any other list of the same colours.
+            def recolored?(name) = @objects.values.any? { |obj| obj.poses.include?(name) && !obj.recolors.empty? }
 
-              list = color_list_named(obj.recolors.first)
-              list.recolors.empty? ? nil : list
+            # The colours of the picture's own list, see-through left out.
+            def own_colors(image) = image.colors.drop(1).map { |color| color & 0x7FFF }
+
+            # The palette of each list +obj+ is drawn with, in the order the sprite is told them (`recolor` counts
+            # from 0 through them), kept for the table the runtime reads.
+            def recolor_palettes(obj)
+              return if obj.recolors.empty?
+
+              @recolor_lines ||= {}
+              @recolor_lines[obj] = obj.recolors.map { |entry| palette_of_list(entry) }
+              @recolor_tables ||= []
+              @recolor_tables << @recolor_lines[obj] unless @recolor_tables.include?(@recolor_lines[obj])
             end
 
-            # The palette +name+'s picture is drawn from when its sprite is drawn with a list the game changes
-            # (see #held_list_of), or nil. The picture must be drawn in that list's own colours, since the
-            # sprite is drawn with the list from its first frame.
-            def held_palette_for(name)
-              obj = @objects.values.find { |candidate| candidate.poses.include?(name) && held_list_of(candidate) }
-              return nil unless obj
+            # The palette of a list a sprite is drawn with: +entry+ is a name, of a list the game may change, or
+            # the colours themselves.
+            def palette_of_list(entry)
+              return @art.ordered_palette(entry.drop(1).map { |color| color & 0x7FFF }) unless entry.is_a?(Symbol)
 
-              list = held_list_of(obj)
-              image = Assets::Image.of(picture_named(name))
-              unless image.colors.map { |color| color & 0x7FFF } == list.colors.map { |color| color & 0x7FFF }
-                refuse_unmade!("a sprite drawn in the colours of a list that its picture was not drawn from")
-              end
-              @art.held_sprite_palette([:sprites, list.name], list.colors.drop(1).map { |color| color & 0x7FFF })
+              list = color_list_named(entry)
+              colors = list.colors.drop(1).map { |color| color & 0x7FFF }
+              list.recolors.empty? ? @art.ordered_palette(colors) : @art.held_sprite_palette([:sprites, entry], colors)
             end
 
             def color_list_named(name)
@@ -248,6 +260,10 @@ module VBlank
               @pose_tables.each do |obj, label|
                 data.label(label)
                 data.data_words(obj.poses.length, *obj.poses.map { |pose| @art.sprite_pictures.fetch(pose).number })
+              end
+              (@recolor_tables || []).each do |lines|
+                data.label(recolor_table_label(lines))
+                data.data_words(lines.length, *lines.map { |line| line << Art::PALETTE_SHIFT })
               end
               [data.section, *tile_section]
             end
@@ -420,9 +436,19 @@ module VBlank
               skip = fresh("sprite_off")
               jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
               runtime_call("rt_sprite_place", [LabelAddress.new(pose_table(obj)), obj.pose, obj.x, obj.y,
-                                               Build.int(@sprite_names.name_number(obj.declared))])
+                                               Build.int(@sprite_names.name_number(obj.declared)), *recolor_operands(obj)])
               @asm.label(skip)
             end
+
+            # Which list the sprite is drawn with, as the game says it now, and the table of the palettes the
+            # lists have; or two noughts for a sprite drawn in no list but its own.
+            def recolor_operands(obj)
+              return [Build.int(0), Build.int(0)] if obj.recolors.empty?
+
+              [obj.recolor, LabelAddress.new(recolor_table_label(@recolor_lines.fetch(obj)))]
+            end
+
+            def recolor_table_label(lines) = "art recolors #{@recolor_tables.index(lines)}"
 
             # The frame's sprites back to front, each a name — or, for a run the game orders
             # (`draw_in_order`), the run, at the place of its first sprite.

@@ -50,6 +50,11 @@ module VBlank
           # Raised for art the console cannot hold.
           class TooMuch < LoweringError; end
 
+          # Raised when the lists of colours the sprites are drawn with need more palettes than there are: the
+          # build keeps a palette for each list for good, which a build that lent them while a sprite wore
+          # them would not.
+          class TooManyLists < TooMuch; end
+
           attr_reader :grids, :sprite_pictures
 
           # The backdrop of a game that says none: black, as the interpreter's empty screen is.
@@ -64,6 +69,7 @@ module VBlank
             @tile_numbers = { blank_tile => 0 }
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
             @held = {} # whose list => the palette it keeps to itself (#held_sprite_palette)
+            @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
             @originals = {} # a colour word => the 15-bit colour of the game's it was first made from
             @sprite_pictures = {}
             @grids = []
@@ -99,24 +105,50 @@ module VBlank
 
           # The sprite picture +name+ (an Assets::Image), cut into pieces. A picture whose width or
           # height is not a multiple of 8 has its last pieces' extra pixels left undrawn.
-          # +held+ is the palette of a list the game changes (#held_sprite_palette), which the picture is drawn
-          # from place for place.
-          def sprite_picture(name, image, held: nil)
+          # +palette+ is a palette whose places are the picture's own list's (#ordered_palette), which a
+          # picture drawn in the colours of another list is drawn from place for place; without it the
+          # picture is drawn from whatever palette holds its colours.
+          def sprite_picture(name, image, palette: nil)
             @sprite_pictures[name] ||= begin
               drawn = (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }
-              palette = held || palette_for(drawn.map { |at| word_of(image.color_at(at)) }.uniq, "sprites")
+              line = palette || palette_for(drawn.map { |at| word_of(image.color_at(at)) }.uniq, "sprites")
               cut = SpritePieces.cut(image.width, image.height) do |x, y|
                 at = (y * image.width) + x
                 if !image.drawn_at?(at) then 0
-                elsif held then image.place_at(at) || image.colors.index(image.color_at(at))
-                else @palettes[palette].index(word_of(image.color_at(at))) + 1
+                elsif palette then image.place_at(at) || first_place(image, image.color_at(at))
+                else @palettes[line].index(word_of(image.color_at(at))) + 1
                 end
               end
               pieces = cut.map do |across, down, places|
-                Piece.new(dx: across, dy: down, tile: tile_number(tile_bytes(places)), palette: palette)
+                Piece.new(dx: across, dy: down, tile: tile_number(tile_bytes(places)), palette: line)
               end
               SpritePicture.new(name: name, number: @sprite_pictures.length, width: image.width, height: image.height,
                                 pieces: pieces)
+            end
+          end
+
+          # A PALETTE WHOSE PLACES ARE A LIST'S, in the list's order: a picture the game draws in the colours of
+          # another list (a sprite's `draw_with`) is made of places in its own list and keeps them whichever
+          # list it is drawn with, so each list it can be drawn with is a palette of its own with that list's
+          # colours at those places, and the sprite is drawn from the one it is told. +colors+ (15-bit, see-through
+          # left out) is the list. A palette that already begins with those colours serves, and one that has room
+          # may be given more colours after them by pictures drawn in no list.
+          def ordered_palette(colors)
+            words = colors.map { |color| word_of(color) }
+            @ordered.fetch(words) do
+              if words.length > OWN_COLORS
+                raise TooMuch, "A list of colours a sprite is drawn with holds #{words.length} colours, and a Genesis " \
+                               "palette shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
+              end
+
+              line = (0...PALETTES).find { |p| @palettes[p] && !@held.value?(p) && @palettes[p].first(words.length) == words } ||
+                     (0...PALETTES).find { |p| @palettes[p].nil? } or
+                raise TooManyLists, "The lists of colours the sprites are drawn with, and the pictures, need more palettes " \
+                                    "than a Genesis has (#{PALETTES}, shared with every other picture). To fix this, draw " \
+                                    "the sprites with fewer lists of colours."
+
+              @palettes[line] ||= words
+              @ordered[words] = line
             end
           end
 
@@ -132,9 +164,9 @@ module VBlank
               end
               free = (0...PALETTES).find { |p| @palettes[p].nil? }
               unless free
-                raise TooMuch, "The lists of colours the game changes need more palettes than a Genesis has (#{PALETTES}, " \
-                               "shared with every other picture). To fix this, change fewer lists, or draw fewer " \
-                               "pictures in other colours."
+                raise TooManyLists, "The lists of colours the game changes need more palettes than a Genesis has (#{PALETTES}, " \
+                                    "shared with every other picture). To fix this, change fewer lists, or draw fewer " \
+                                    "pictures in other colours."
               end
 
               @palettes[free] = colors.map { |color| word_of(color) }
@@ -184,6 +216,10 @@ module VBlank
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
+
+          # The first place of the picture's own list that holds +color+, counting from place 1: place 0 is
+          # see-through, however it is written in a list, as Assets::Recolor reads it.
+          def first_place(image, color) = (1...image.colors.length).find { |place| (image.colors[place] & 0x7FFF) == color }
 
           # The word of the console's a colour of the game's is, kept with the colour it came from.
           def word_of(color)

@@ -160,9 +160,9 @@ class TestSpriteDrawsWith < Minitest::Test
 
     # Where a sprite is drawn from the pass before, the first frame is drawn before the game loop
     # has said anything (Testing#framework_drawing_lag).
-    shown = %i[red yellow orange red red].drop(1 - framework_drawing_lag).first(4)
+    expected = %i[red yellow orange red red].drop(1 - framework_drawing_lag).first(4)
 
-    assert_equal shown.map { |name| Color.resolve(name) }, colors
+    assert_equal expected.map { |name| shown(name) }, colors
   end
 
   def test_the_console_changes_colors_on_the_frame_the_sprite_moves

@@ -65,7 +65,7 @@ class TestRecolor < Minitest::Test
     [i.screen.pixel(41, 41), i.screen.pixel(45, 41)]
   end
 
-  private def colors_of(*names) = names.map { |name| Color.resolve(name) }
+  private def colors_of(*names) = names.map { |name| shown(name) }
 
   def test_a_list_nothing_recolors_holds_the_colors_it_was_declared_with
     assert_equal colors_of(:blue, :white), halves(program { |_ship| nil })

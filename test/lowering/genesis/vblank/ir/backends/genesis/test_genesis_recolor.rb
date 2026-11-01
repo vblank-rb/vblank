@@ -51,18 +51,59 @@ class TestGenesisRecolor < Minitest::Test
     assert_equal shown(:green), run.screen.pixel(46, 41)
   end
 
-  def test_a_sprite_drawn_in_colours_its_picture_was_not_drawn_from_is_refused_in_words
-    error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
-      checked(frames: 2) do
-        colors :slot, [:transparent, :blue, :white]
-        colors :warm, [:transparent, :yellow, :orange]
-        ship = sprite :ship, at: [40, 40]
-        ship.draw_with :slot
-        game_loop { recolor :slot, :warm }
+  def test_a_sprite_drawn_in_a_list_its_picture_was_not_drawn_from_shows_that_list
+    run = checked(frames: 6) do
+      colors :slot, [:transparent, :blue, :white]
+      colors :warm, [:transparent, :yellow, :orange]
+      ship = sprite :ship, at: [40, 40]
+      ship.draw_with :slot
+      game_loop { recolor :slot, :warm }
+    end
+
+    assert_equal shown(:yellow), run.screen.pixel(41, 41)
+    assert_equal shown(:orange), run.screen.pixel(46, 41)
+  end
+
+  def test_a_sprite_told_a_number_past_its_lists_is_drawn_in_its_own_colours_again
+    run = checked(frames: 10) do
+      colors :warm, [:transparent, :yellow, :orange]
+      colors :cold, [:transparent, :cyan, :blue]
+      ship = sprite :ship, at: [40, 40]
+      step = 0
+      game_loop do
+        step += 1
+        ship.draw_with %i[warm cold], showing: step % 4
       end
     end
 
-    assert_match(/not drawn from/, error.message)
+    # Pass 10 said 10 % 4 = 2, which names no list: the sprite's own.
+    assert_equal shown(:red), run.screen.pixel(41, 41)
+    assert_equal shown(:green), run.screen.pixel(46, 41)
+  end
+
+  def test_two_sprites_drawn_with_different_lists_each_wear_their_own
+    checked(frames: 8) do
+      colors :warm, [:transparent, :yellow, :orange]
+      colors :cold, [:transparent, :cyan, :blue]
+      left = sprite :ship, at: [40, 40]
+      right = sprite :ship, at: [100, 40]
+      left.draw_with :warm
+      right.draw_with :cold
+      game_loop { left.x += 1 }
+    end
+  end
+
+  def test_more_lists_than_a_genesis_has_palettes_for_are_refused_in_words
+    error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
+      Genesis.new.build(program_of do
+        ship = sprite :ship, at: [40, 40]
+        { a: :blue, b: :yellow, c: :cyan, d: :orange }.each { |name, color| colors name, [:transparent, color, :white] }
+        ship.draw_with %i[a b c d], showing: 1
+      end)
+    end
+
+    assert_match(/more palettes than a Genesis has \(4, shared with every other picture\)/, error.message)
+    assert_match(/does not lend one only while something wears the list/, error.message)
   end
 
   private
