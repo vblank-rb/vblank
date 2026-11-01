@@ -200,15 +200,16 @@ module VBlank
             extension(source, :l)
           end
 
-          # MOVEM: the registers named (:d0 to :d7, :a0 to :a6, :a7 is the stack) to or from memory. A
-          # push writes them below the stack in an order that a pop reads back.
-          def movem_push(size, *registers)
-            word(0x4880 | movem_size(size) | field(pre(SP), 3, 0))
+          # MOVEM: the registers named (:d0 to :d7, :a0 to :a7) to or from memory. A push writes them
+          # below the address register +via+ (the stack by default) and moves it down, and a pop reads
+          # them back from where it points and moves it up.
+          def movem_push(size, *registers, via: SP)
+            word(0x4880 | movem_size(size) | field(pre(via), 3, 0))
             word(movem_mask(registers, reversed: true))
           end
 
-          def movem_pop(size, *registers)
-            word(0x4C80 | movem_size(size) | field(post(SP), 3, 0))
+          def movem_pop(size, *registers, via: SP)
+            word(0x4C80 | movem_size(size) | field(post(via), 3, 0))
             word(movem_mask(registers, reversed: false))
           end
 
@@ -275,7 +276,7 @@ module VBlank
           # and Ruby will not let another Ractor call one.
 
           { asl: [:as, true], asr: [:as, false], lsl: [:ls, true], lsr: [:ls, false],
-            rol: [:ro, true], ror: [:ro, false] }.each do |name, (type, left)|
+            rol: [:ro, true], ror: [:ro, false], roxl: [:rox, true], roxr: [:rox, false] }.each do |name, (type, left)|
             class_eval <<~RUBY, __FILE__, __LINE__ + 1
               def #{name}(size, count, register) = shift(:#{type}, #{left}, size, count, register)
             RUBY

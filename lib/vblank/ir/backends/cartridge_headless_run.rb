@@ -270,16 +270,23 @@ module VBlank
 
         # A slot of +width+ bytes, read back sign-extended as the interpreter's is.
         def read_slot(address, width)
-          raw = little(address, width)
+          raw = number_at(address, width)
           top = 1 << ((8 * width) - 1)
           raw >= top ? raw - (top << 1) : raw
         end
 
-        # The +width+ bytes at +address+ as one number, lowest byte first, as both consoles keep them.
-        def little(address, width) = (0...width).sum { |i| byte(address + i) << (8 * i) }
+        # The +width+ bytes at +address+ as one number, in the order the console keeps them: lowest byte
+        # first, unless the console's processor is big-endian (#big_endian?).
+        def number_at(address, width)
+          (0...width).sum { |i| byte(address + i) << (8 * (big_endian? ? width - 1 - i : i)) }
+        end
+
+        # Whether the console keeps the high byte of a number at the lower address, as the 68000 does.
+        # The Game Boy Color's and the Super Nintendo's processors keep the low byte there.
+        def big_endian? = false
 
         def word(address) = IR::Int32.wrap(read32(address))
-        def half(address) = little(address, 2)
+        def half(address) = number_at(address, 2)
 
         def runtime_place(name) = @places.runtime.fetch(name)
 
