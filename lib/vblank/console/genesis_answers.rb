@@ -5,8 +5,9 @@ module VBlank
     # WHAT EVERY VERB DOES ON A SEGA GENESIS (Console::Answers says what an answer is).
     #
     # The Genesis is a 16-bit console of 1988 with a 68000 at its heart. Next to the Super Nintendo it
-    # has a wider screen (320×224), fewer colours (512 to choose from, 64 on the screen at once, in
-    # four lists of sixteen that sprites and backgrounds share) and fewer sprites (80, 20 on a row).
+    # has a wider screen (320×224), fewer colours (512 to choose from, 61 on the screen at once: four
+    # lists of sixteen that sprites and backgrounds share, each with one place see-through, and the
+    # backdrop) and fewer sprites (80, 20 on a row).
     # What it lacks is the Advance's painted screen (every picture is tiles), a sprite that turns or
     # resizes, any layer that turns, blending of one layer into another, and the Super Nintendo's
     # colour maths. It has two layers of tiles that scroll, a third (the window) that covers whole
@@ -60,9 +61,12 @@ module VBlank
         inside: works,
         grid: works,
         camera: works("a painted screen is the size of the screen, so moving the view over it shows " \
-                      "black past the picture's edge. To move over a bigger world, use a tiled " \
-                      "background and `scroll_to`."),
-        keep_showing: works("a painted screen is always shown whole, so a picture kept showing never tears."),
+                      "the backdrop past the picture's edge. The view can move 192 pixels across and 32 " \
+                      "down, either way. If a game moves it further, the game stops and says so. To move " \
+                      "over a bigger world, use a tiled background and `scroll_to`."),
+        keep_showing: works("a painted screen is copied to the console in the blank between frames, and only " \
+                            "the squares that changed. A pass that changes much of the screen can take " \
+                            "several frames to show."),
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows, not the picture: the colour " \
@@ -98,11 +102,9 @@ module VBlank
         rgb8: works("see `color`."),
         colors: works("a list of colours holds sixteen places on a Genesis, the first see-through. The console " \
                       "holds four lists, for the sprites and the backgrounds together."),
-        recolor: works("a list told to hold other colours keeps a palette to itself for the whole game, written " \
-                       "over in the blank, so a game can change the four lists. So far only for a sprite drawn in the " \
-                       "colours of the list it was drawn from (`draw_with` a list that holds the picture's own colours " \
-                       "to begin with); any other `draw_with` is refused by name, and a background drawn with other " \
-                       "colours is too."),
+        recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
+                       "game, written over in the blank. A sprite or a background can be drawn with any list of " \
+                       "colours (`draw_with`), and each list takes one of the four."),
         color_walk: works,
         colors_in_use: works,
         mirror: works,
@@ -123,7 +125,8 @@ module VBlank
         background: works("two backgrounds at a time, scrolled and changed as on the Advance. A background is " \
                           "at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are " \
                           "refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for " \
-                          "all 224 rows each pass."),
+                          "all 224 rows each pass. A game can change 64 tiles with `set_tile` in one pass. " \
+                          "If it changes more, the game stops and says so."),
         status_bar: works("the bar is the window, a layer the console keeps beside its two backgrounds. " \
                           "`set_tile` with `now: true` is refused: a Genesis writes its video memory only " \
                           "between frames, so a change shows on the frame after the pass."),
@@ -221,8 +224,9 @@ module VBlank
             lacks and what to use instead. Nothing is shown differently.
 
           **Only the interpreter and the cartridge play a Genesis game.** The desktop, web and Ruby builds
-          (`--format`) are not asked to play one as a Genesis yet: they do not draw its backgrounds as the
-          console does, whose planes come round across a screen wider than they are, so a game for
+          (`--format`) and `vblank run` do not play one as a Genesis yet: they do not draw its backgrounds
+          as the console does, whose planes come round across a screen wider than they are. So
+          `--console genesis` is refused there, and so is a game that names the Genesis first. A game for
           `consoles: %i[gba genesis]` is built for those formats as the Advance.
 
           This file is `Console::GenesisAnswers.reference` written out (`ruby tools/console_answers.rb`),
@@ -234,8 +238,27 @@ module VBlank
           ## Not made yet
 
           #{not_yet_words(not_yet)}
+
+          Parts of the picture are refused the same way, naming the part:
+
+          #{UNMADE_PICTURE.map { |part| "- #{part}" }.join("\n")}
         MARKDOWN
       end
+
+      # What the Genesis's build refuses of the picture as not made yet, though the console could
+      # show it (Lowering::Picture#refuse_unmade_picture!). Those are checks over a whole game rather
+      # than kinds of step, so the page cannot read them from the lowering's list.
+      UNMADE_PICTURE = [
+        "a camera on a tiled screen, which `camera_follows` is",
+        "a game with both a painted (bitmap) screen and a tiled one",
+        "a background or a hardware sprite on a painted (bitmap) screen",
+        "a sprite put in another layer, or behind a background",
+        "a scene's own background in a layer behind one every screen shows",
+        "a scene that says a backdrop of its own (`screen ... backdrop:`)",
+        "background tiles that are not 8×8, or backgrounds of different sizes on one screen",
+        "a map too big to hold",
+        "more lists of colours than the console's four"
+      ].freeze
 
       # What the page says of the steps the Genesis's build does not make yet.
       def self.not_yet_words(not_yet)

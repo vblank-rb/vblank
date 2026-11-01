@@ -13,8 +13,9 @@ in `Console::GenesisAnswers`:
   lacks and what to use instead. Nothing is shown differently.
 
 **Only the interpreter and the cartridge play a Genesis game.** The desktop, web and Ruby builds
-(`--format`) are not asked to play one as a Genesis yet: they do not draw its backgrounds as the
-console does, whose planes come round across a screen wider than they are, so a game for
+(`--format`) and `vblank run` do not play one as a Genesis yet: they do not draw its backgrounds
+as the console does, whose planes come round across a screen wider than they are. So
+`--console genesis` is refused there, and so is a game that names the Genesis first. A game for
 `consoles: %i[gba genesis]` is built for those formats as the Advance.
 
 This file is `Console::GenesisAnswers.reference` written out (`ruby tools/console_answers.rb`),
@@ -44,8 +45,8 @@ and a test fails when the two differ. The Advance's answers are in
 - `clear_screen` — works: the same as on the Advance.
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
-- `camera` — works: a painted screen is the size of the screen, so moving the view over it shows black past the picture's edge. To move over a bigger world, use a tiled background and `scroll_to`.
-- `keep_showing` — works: a painted screen is always shown whole, so a picture kept showing never tears.
+- `camera` — works: a painted screen is the size of the screen, so moving the view over it shows the backdrop past the picture's edge. The view can move 192 pixels across and 32 down, either way. If a game moves it further, the game stops and says so. To move over a bigger world, use a tiled background and `scroll_to`.
+- `keep_showing` — works: a painted screen is copied to the console in the blank between frames, and only the squares that changed. A pass that changes much of the screen can take several frames to show.
 - `fade` — works: `fade` and `tint` change the colours the console shows, not the picture: the colour memory is written again for each step, since a Genesis has no brightness control. `inside:`, `outside:` and `under:` are refused: the build cannot fade part of the screen on a Genesis.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
@@ -68,7 +69,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds sixteen places on a Genesis, the first see-through. The console holds four lists, for the sprites and the backgrounds together.
-- `recolor` — works: a list told to hold other colours keeps a palette to itself for the whole game, written over in the blank, so a game can change the four lists. So far only for a sprite drawn in the colours of the list it was drawn from (`draw_with` a list that holds the picture's own colours to begin with); any other `draw_with` is refused by name, and a background drawn with other colours is too.
+- `recolor` — works: a list told to hold other colours keeps one of the four lists to itself for the whole game, written over in the blank. A sprite or a background can be drawn with any list of colours (`draw_with`), and each list takes one of the four.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
@@ -81,7 +82,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `pool` — works: its sprites count towards the 80.
 - `box` — works: the same as on the Advance.
 - `tiles` — works: tiles of fifteen colours each and see-through, from one of the four lists.
-- `background` — works: two backgrounds at a time, scrolled and changed as on the Advance. A background is at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for all 224 rows each pass.
+- `background` — works: two backgrounds at a time, scrolled and changed as on the Advance. A background is at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for all 224 rows each pass. A game can change 64 tiles with `set_tile` in one pass. If it changes more, the game stops and says so.
 - `status_bar` — works: the bar is the window, a layer the console keeps beside its two backgrounds. `set_tile` with `now: true` is refused: a Genesis writes its video memory only between frames, so a change shows on the frame after the pass.
 - `canvas` — works: the same as on the Advance.
 - `layers` — works: a layer holds a background or sprites. A layer cannot be see-through: a Genesis cannot mix one layer into another, so `transparency:`, `shows:` and `shows_behind:` are refused.
@@ -173,3 +174,15 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - the picture: `draw_column_at`
 - save memory: `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`
 - sound: `enable_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
+
+Parts of the picture are refused the same way, naming the part:
+
+- a camera on a tiled screen, which `camera_follows` is
+- a game with both a painted (bitmap) screen and a tiled one
+- a background or a hardware sprite on a painted (bitmap) screen
+- a sprite put in another layer, or behind a background
+- a scene's own background in a layer behind one every screen shows
+- a scene that says a backdrop of its own (`screen ... backdrop:`)
+- background tiles that are not 8×8, or backgrounds of different sizes on one screen
+- a map too big to hold
+- more lists of colours than the console's four

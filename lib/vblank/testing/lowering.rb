@@ -6,8 +6,8 @@ module VBlank
     # loads. Both the rake tasks (RakeTasks) and the tests themselves (Testing.lowering) read it
     # from here, so the two cannot answer differently.
     #
-    # A game is played four ways, or five when it is for the Game Boy Color too (see
-    # Run#console). The GBA lowering's run plays it on the interpreter
+    # A game is played four ways, and once more for each cartridge console it is for besides the
+    # Advance (see Run#console). The GBA lowering's run plays it on the interpreter
     # (Backends::Reference), which is what the cartridge is checked against; the native
     # lowering's run builds it as C and plays that, the JavaScript lowering's run builds it as
     # JavaScript and plays that under node, the Ruby lowering's builds it as Ruby and plays that
@@ -40,8 +40,10 @@ module VBlank
       #   except   the consoles a run that can play any console cannot play yet: the C, JavaScript and
       #            Ruby builds do not draw a Genesis's picture as the interpreter does (its planes come
       #            round across a screen wider than they are, which only the interpreter and the
-      #            cartridge do), so they are not asked to
-      #   yjit     whether YJIT, Ruby's compiler of hot methods to machine code, makes the run
+      #            cartridge do), so they are not asked to, and the command line refuses those builds
+      #            (Console::Kit#plays_on_runtimes?). A console named here is a gap in the
+      #            cross-backend rule that is still to close, not an answer
+      #   yjit    whether YJIT, Ruby's compiler of hot methods to machine code, makes the run
       #            faster, as measured: it does for the native and JavaScript runs and makes the
       #            Game Boy Color's slower. A run in Ractors is played without it whatever this
       #            says (TestTask#yjit?)

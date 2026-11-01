@@ -529,6 +529,20 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A console no runtime draws is refused in words for every build made on one, rather than shown wrong.
+  def test_a_console_no_runtime_draws_is_refused_for_each_runtime_build
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      %w[web native ruby].each do |format|
+        out, status = cli("build", "demo.rb", "--format", format, "--console", "genesis", dir: dir)
+
+        refute status.success?, format
+        assert_match(/Sega Genesis cannot play a game in a window, a web page or a program/, out)
+        assert_match(/add --console gba/, out)
+      end
+    end
+  end
+
   # `vblank run` plays the game as Ruby in a window: here SDL's dummy drivers, which make windows
   # nobody sees and sound nobody hears. It says which Ruby plays it, and when it stops, how fast
   # it went.

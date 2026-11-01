@@ -45,6 +45,14 @@ the run counts those skips by reason; `skip_on_snes` is there for a test it cann
 reason no folder says. `test/lowering/snes/vblank/ir/backends/snes/` is its own folder, and its `examples/`
 mirrors `examples/`: a test there plays one example built for the Super Nintendo too
 (`consoles: %i[gba snes]`).
+
+**The Sega Genesis run is built the same way.** Its player (`CartridgeCheckedPlayer.for(:genesis)`, over
+`Genesis::CheckedRun`) plays each test's program as a Genesis program in Genesis Plus GX
+(ruby-genesis-emulator, whose core `rake compile_genesis_core` builds), and
+`test/lowering/genesis/vblank/ir/backends/genesis/` is its own folder. The C, JavaScript and Ruby
+runs do not play the Genesis yet (`Run#except`), so only the cartridge is held to the interpreter on
+that console.
+
 `test/console/gba/` is loaded by every run that plays games as the Advance: the GBA lowering's, and
 the native, JavaScript and Ruby runs playing as the Advance. A console's folder is named in
 `TestSuites::CONSOLE_FOLDERS` and a lowering's in `TestSuites::LOWERING_FOLDERS`
