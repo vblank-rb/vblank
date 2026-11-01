@@ -59,7 +59,7 @@ module VBlank
             KeptSprites.reserve(memory) if kept_sprites
             Frame.reserve(memory, together: together, dark: dark)
             Picture.reserve(memory, lends: art.lending, groups: art.groups?, bar_rows: bar_rows, rooms: art.rooms.any?,
-                                    cells_shown_now: cells_shown_now, bar_covers: bar_covers)
+                                    cells_shown_now: cells_shown_now, bar_covers: bar_covers, painting: art.painting?)
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, swells: swells, noise_swells: noise_swells,

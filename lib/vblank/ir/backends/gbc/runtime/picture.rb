@@ -37,9 +37,15 @@ module VBlank
             GRID_UP = "rt picture grid up" # the number of the grid up, or being put up
             # The cells of the background changed during the pass, written in the blank after it:
             # how many, then for each where it is in the console's grid (16 bits), its tile and its
-            # colours. A pass that changes more than CELLS_KEPT has the rest written where it asks.
+            # colours. A pass that changes more than CELLS_KEPT has the rest written where it asks,
+            # each waiting for the display. Kept to what the blank has time for beside the sprites
+            # and the rest of the pass's picture: a cell is 28 of the blank's 2280 instruction
+            # cycles, and one it does not reach is lost.
             CELLS = "rt picture cells"
-            CELLS_KEPT = 32
+            CELLS_KEPT = 64
+            # A painted screen has no cells to change, and every byte it keeps low stays out of the
+            # half of work memory its pictures take turns in (Paint).
+            PAINTED_CELLS_ROOM = 32
             # In a game that asks for it, counted up to 1 while the game changes a cell to show on the
             # frame being drawn (`now: true`, #emit_background_cell). A byte, with room for a run of
             # the cartridge to write a word: started from CELLS_SHOWN_WITH_THE_PASS instead of
@@ -124,7 +130,7 @@ module VBlank
             module_function
 
             def reserve(memory, lends: false, groups: false, bar_rows: nil, rooms: false, cells_shown_now: false,
-                        bar_covers: false)
+                        bar_covers: false, painting: false)
               memory.reserve(ROOMS, 3) if rooms
               memory.reserve(BAR_COVERS, 2) if bar_covers
               memory.reserve(CELL_SHOWN_NOW, CELL_SHOWN_NOW_BYTES) if cells_shown_now
@@ -143,7 +149,7 @@ module VBlank
               memory.reserve(SCROLL, 2)
               memory.reserve(NEXT_SPRITE, 1)
               memory.reserve(MAP_JOB, 6)
-              memory.reserve(CELLS, 1 + (CELLS_KEPT * CELL_BYTES))
+              memory.reserve(CELLS, 1 + ((painting ? PAINTED_CELLS_ROOM : CELLS_KEPT) * CELL_BYTES))
               memory.reserve(BENDS, Console::GBCHardware::SCREEN_HEIGHT)
               memory.reserve(BENDS_FROM, 2)
               memory.reserve(BEND_BASE, 1)
