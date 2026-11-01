@@ -1,0 +1,11 @@
+# frozen_string_literal: true
+
+require_relative "emulator_builds"
+
+# `gem install vblank` runs this. It compiles nothing of VBlank's, which is all Ruby: it builds the
+# two emulators that live in the gem, and each may fail without stopping the install
+# (EmulatorBuilds says why).
+#
+# A RAKEFILE AND NOT AN extconf.rb, because after an extconf RubyGems always runs make. On a machine
+# without make, the install would fail however gracefully the emulators had been skipped.
+task(:default) { EmulatorBuilds.build_all }

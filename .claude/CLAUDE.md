@@ -52,7 +52,13 @@ probe. It is a **gem of its own**, living in this repository under `ruby-gba-emu
 is reached through the one seam, `VBlank::Diagnostics::Emulator` (`lib/vblank/diagnostics/emulator.rb`), so nothing
 else names the backend directly.
 
-**Why a separate gem:** building a cartridge is pure Ruby and running one is not. It is
+**Released, VBlank is one gem.** The emulators' source ships inside it, and `gem install vblank`
+builds both in place (`ext/vblank/Rakefile`). One that cannot be built does not stop the install: it
+leaves a `NOT_BUILT` file, and whatever wants that emulator repeats the reason and the fix, `gem
+pristine vblank`. `rake release:install_check` proves all of this in clean Docker machines
+(`tools/gem_install_check.rb`). It is a release check: not part of the suite, and not run by CI.
+
+**Why a separate gem in the repository:** building a cartridge is pure Ruby and running one is not. It is
 deliberately NOT a dependency of VBlank's gemspec, so somebody who only builds cartridges
 needs no C compiler. A game that wants to verify or profile adds it to its own Gemfile:
 

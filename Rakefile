@@ -123,6 +123,15 @@ VBlank::Testing::Lowering::NAMES.each { |lowering| task "test:lowering:#{lowerin
 task "test:lowering:gba" => :clear_coverage
 task "test:lowering:snes" => :compile_snes_core
 
+namespace :release do
+  # Not one of the test tasks and not run by CI: it needs Docker and takes minutes, and it asks of
+  # a built gem what no test of a checkout can (tools/gem_install_check.rb).
+  desc "Install the gem in clean Linux containers and play its cartridges there"
+  task :install_check do
+    ruby "tools/gem_install_check.rb"
+  end
+end
+
 namespace :test do
   # The emulator gem has its OWN test suite (its C extension + probe, tested in isolation) —
   # kept out of the main `test` glob above. Delegate to its Rakefile, which compiles first.

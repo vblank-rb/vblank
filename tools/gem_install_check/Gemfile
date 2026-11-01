@@ -1,0 +1,5 @@
+# frozen_string_literal: true
+
+# A game's bundle, holding only what an installed vblank should need.
+gem "vblank"
+gem "minitest"

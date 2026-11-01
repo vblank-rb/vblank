@@ -93,7 +93,20 @@ module VBlank
 
       # +bundled+ is a parameter so that each branch can be asked for on its own: it is a fact
       # about the process, and a test of what the three messages say should not have to arrange one.
-      def missing_advice(detail, bundled: Gem.loaded_specs.key?("ruby-gba-emulator"))
+      #
+      # An install that could not build the emulator left the reason beside it
+      # (ext/vblank/emulator_builds.rb), and that is what to repeat.
+      def missing_advice(detail, bundled: Gem.loaded_specs.key?("ruby-gba-emulator"), not_built: reason_not_built)
+        return <<~NOT_BUILT if not_built
+          An emulator is required to run a ROM. This copy of VBlank was installed without one:
+
+              #{not_built.strip}
+
+          To fix this, install what is missing, then run:
+
+              gem pristine vblank
+        NOT_BUILT
+
         return <<~STALE if detail.match?(STALE_BUILD)
           An emulator is required to run a ROM. The ruby-gba-emulator extension is built, but a
           different Ruby built it, and an extension loads only in the Ruby that made it.
@@ -128,7 +141,12 @@ module VBlank
           (brew install mgba, or apt install libmgba-dev).
         ADD
       end
-      private_class_method :load_from_checkout!, :raise_emulator_missing!, :missing_advice
+
+      def reason_not_built
+        reason = VBlank.root.join("ruby-gba-emulator", "NOT_BUILT")
+        reason.read if reason.file?
+      end
+      private_class_method :load_from_checkout!, :raise_emulator_missing!, :missing_advice, :reason_not_built
 
       # The emulator core class (loads the backend on first use).
       def core_class

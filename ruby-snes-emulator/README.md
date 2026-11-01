@@ -25,9 +25,10 @@ core.destroy
 
 bsnes is built as a libretro core with `core/bsnes-vblank-probe.patch`. Its libretro front end
 hands over no memory at all without it. The patch lets it hand over the console's memories,
-read from the accurate PPU. `rake compile_core` clones bsnes at the revision the Rakefile names,
-applies the patch and builds it into `core/build/` (git, make and a C++ compiler). Set
-`VBLANK_SNES_CORE` to use a core built somewhere else.
+read from the accurate PPU. `gem install vblank` builds it, and `rake compile_core` does the same
+in a checkout: it downloads bsnes at the revision `CoreBuild` names, applies the patch and builds
+it into `core/build/` (make, patch, tar and a C++ compiler). Set `VBLANK_SNES_CORE` to use a core
+built somewhere else.
 
 The binding is pure Ruby over Fiddle: there is no C extension to compile. Each `Core` loads a
 copy of the library of its own, so two of them in one process are two consoles.
