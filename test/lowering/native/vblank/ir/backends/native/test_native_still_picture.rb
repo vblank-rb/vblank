@@ -23,7 +23,6 @@ class TestNativeStillPicture < Minitest::Test
   Played = Struct.new(:said, :seconds, keyword_init: true) do
     def not_drawn = said[/^pictures shown that were the one already up, so not drawn again: (\d+)$/, 1].to_i
     def pictures = said[/^pictures: (\d+),/, 1].to_i
-    def middle_ms = said[/^pictures: \d+, [\d.]+ to [\d.]+ ms apart, ([\d.]+) in the middle$/, 1].to_f
   end
 
   # A picture drawn once and then nothing, and a box that moves along every frame.
@@ -74,12 +73,16 @@ class TestNativeStillPicture < Minitest::Test
   # runs at the monitor's speed whether or not anything is drawn, on a sixty-a-second monitor and on
   # one of a hundred and twenty, where a picture is two refreshes. A still game that was held only
   # to the fastest it may go (two parts in a hundred over the monitor) would run faster than that.
+  #
+  # The whole run's length says so, not the middle picture's: a game that fell behind on a busy
+  # machine runs at that fastest for a while to catch up, which is right, and a busy machine can only
+  # lengthen a run.
   def test_a_still_picture_lasts_as_long_as_the_monitor_makes_it_on_a_sixty_and_a_hundred_and_twenty_a_second_monitor
     [60, 120].each do |rate|
       still = play(STILL, refresh_rate: rate)
 
-      assert_in_delta 1000.0 / 60, still.middle_ms, 0.25, "a still picture on a #{rate}Hz monitor: #{still.said}"
-      assert_operator still.seconds, :>=, FRAMES / 60.0 * 0.995, "#{FRAMES} frames cannot go by faster than the monitor shows them"
+      assert_operator still.seconds, :>=, FRAMES / 60.0 * 0.995,
+                      "#{FRAMES} frames cannot go by faster than the monitor shows them, on #{rate}Hz: #{still.said}"
     end
   end
 

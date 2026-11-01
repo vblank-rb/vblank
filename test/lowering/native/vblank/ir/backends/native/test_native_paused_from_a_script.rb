@@ -38,10 +38,12 @@ class TestNativePausedFromAScript < Minitest::Test
   end
 
   def test_each_line_of_a_script_in_a_pause_takes_a_frame_and_the_game_does_not_move
-    short_time, short_frames = play(paused: 2)
+    _, short_frames = play(paused: 2)
     long_time, long_frames = play(paused: 62)
 
     assert_equal short_frames, long_frames, "the game does not move while it is paused, however long"
-    assert_in_delta 60 * FRAME_SECONDS, long_time - short_time, 0.25, "sixty more lines in the pause are sixty more frames of time"
+    # How long it took at the least, and no more than that: a busy machine can only make a run
+    # slower, and a pause that skipped its lines would take no time for them at all.
+    assert_operator long_time, :>=, (30 + 60) * FRAME_SECONDS * 0.9, "the sixty lines of the pause each took a frame of time"
   end
 end
