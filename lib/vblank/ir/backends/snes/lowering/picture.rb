@@ -622,8 +622,9 @@ module VBlank
               bent = bends.reject { |bend| scenes_showing(bend).nil? }.map { |bend| background_declared_for(bend) }
               return if bent.empty?
 
-              up = bent.select { |bg| arrival.scenery.any? { |shown| shown.equal?(bg) } }
-              @asm.lda((bent.map { |bg| layer_of(bg) } - up.map { |bg| layer_of(bg) }).sum { |layer| 1 << layer })
+              up = bent.select { |bg| scenery_holds?(arrival.scenery, bg) }
+              straight = bent.map { |bg| layer_of(bg) }.uniq - up.map { |bg| layer_of(bg) } # two scenes can bend one layer
+              @asm.lda(straight.sum { |layer| 1 << layer })
               @asm.sta(@asm.abs(@memory[Runtime::Picture::LAYERS_STRAIGHT]))
             end
 
@@ -900,17 +901,17 @@ module VBlank
             # another block reads, and then that one's rows are not bands at all.
             #
             # A BEND WHOSE SCENE IS AWAY is asked as it is on the interpreter if its block can change
-            # a number the game reads (#asked_while_away?), and otherwise takes none of the frame.
+            # a number the game reads (#bend_block_observable?), and otherwise takes none of the frame.
             # Only the rows of one whose scene is up are kept: a layer has one set of rows, and
             # another scene's bend may share the layer.
             def emit_bends
               bands = bends.map { |bend| RowBands.firsts(bend, Runtime::Picture::SCREEN_HEIGHT) }
               height = Runtime::Picture::SCREEN_HEIGHT
               if bands.all?
-                bends.zip(bands).each { |bend, firsts| emit_bend_work(bend, height) { emit_bend_bands(bend, firsts) } }
+                bends.zip(bands).each { |bend, firsts| emit_bend_rows_unless_away(bend, height) { emit_bend_bands(bend, firsts) } }
               else
-                bends.each { |bend| emit_bend_work(bend, 1) { emit_bend_rows(bend, 0...1) } }
-                bends.each { |bend| emit_bend_work(bend, height) { emit_bend_rows(bend, 1...height) } }
+                bends.each { |bend| emit_bend_rows_unless_away(bend, 1) { emit_bend_rows(bend, 0...1) } }
+                bends.each { |bend| emit_bend_rows_unless_away(bend, height) { emit_bend_rows(bend, 1...height) } }
               end
             end
 
@@ -928,7 +929,7 @@ module VBlank
             def emit_band_offset(bend, rows)
               offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend)))]
               value(bend.offset)
-              emit_row_kept(bend) do
+              emit_row_store_while_up(bend) do
                 @asm.lda(@asm.direct(R0))
                 @asm.ldx(rows.begin * 2)
                 top = fresh("bend_band")
@@ -964,30 +965,32 @@ module VBlank
             # shows.
             def scenes_showing(bend)
               bg = background_declared_for(bend)
-              return nil if @handover.always_up.scenery.any? { |up| up.equal?(bg) }
+              return nil if scenery_holds?(@handover.always_up.scenery, bg)
 
-              @scenes.filter_map do |scene, number|
-                number if @handover.arrival(scene).scenery.any? { |up| up.equal?(bg) }
-              end
+              @scenes.filter_map { |scene, number| number if scenery_holds?(@handover.arrival(scene).scenery, bg) }
             end
 
-            # Whether anything can tell +bend+'s block has run while its scene is away. One that is a
-            # single expression changes nothing, unless it reads a list, whose index can stop the game.
-            def asked_while_away?(bend)
+            def scenery_holds?(scenery, bg) = scenery.any? { |up| up.equal?(bg) }
+
+            # Whether the game can tell +bend+'s block ran. A block with no statements changes nothing,
+            # unless it reads a list, whose index can stop the game.
+            def bend_block_observable?(bend)
               !bend.children.empty? || bend.offset.walk.any? { |node| node.kind == :list_get }
             end
 
-            # A row's work: left out while the bend's scene is away, if nothing can tell.
-            def emit_bend_work(bend, row_after, &work)
-              return yield if scenes_showing(bend).nil? || asked_while_away?(bend)
+            # The block's rows, left out while the bend's scene is away if the game cannot tell. The
+            # row's variable still ends at +last_row+, as the rows would have left it.
+            def emit_bend_rows_unless_away(bend, last_row, &rows)
+              return yield if scenes_showing(bend).nil? || bend_block_observable?(bend)
 
-              emit_while_bend_up(bend, &work)
-              statement(Build.set(bend.row, row_after))
+              emit_while_bend_up(bend, &rows)
+              statement(Build.set(bend.row, last_row))
             end
 
-            # A row kept, in a bend whose block ran whichever scene is up.
-            def emit_row_kept(bend, &keep)
-              asked_while_away?(bend) ? emit_while_bend_up(bend, &keep) : yield
+            # Keeps a row's offset only while the bend's scene is up, in a bend whose block ran
+            # whichever scene is up. One left out while away (#emit_bend_rows_unless_away) has no need.
+            def emit_row_store_while_up(bend, &store)
+              bend_block_observable?(bend) ? emit_while_bend_up(bend, &store) : yield
             end
 
             # Rows +rows+ (a range short of its end) of +bend+.
@@ -1016,7 +1019,7 @@ module VBlank
               @asm.pha
               value(bend.offset)
               @asm.plx
-              emit_row_kept(bend) do
+              emit_row_store_while_up(bend) do
                 @asm.lda(@asm.direct(R0))
                 @asm.sta(@asm.long_x(offsets))
               end

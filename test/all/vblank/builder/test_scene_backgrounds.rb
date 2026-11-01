@@ -404,6 +404,68 @@ class TestSceneBackgrounds < Minitest::Test
     assert_backends_agree(a_bent_scene_and_a_plain_one, frames: [2, 3, 4, 5, 6, 7, 9, 10, 11])
   end
 
+  # Two scenes can take one layer in turn, each with its own bend. Each shows only its own, and
+  # a third scene with no bend leaves that layer straight.
+  def test_two_scenes_bending_in_turn_and_a_plain_one_each_show_their_own
+    assert_backends_agree(two_bent_scenes_and_a_plain_one, frames: [3, 8, 13])
+  end
+
+  # A block that changes a number runs while its scene is away, as every bend does on the
+  # interpreter.
+  def test_a_bend_that_changes_a_number_is_asked_while_its_scene_is_away
+    played = game_player.run(a_counting_bend_behind_a_plain_scene, frames: 8)
+
+    assert_operator played[:rows], :>=, played.screen.height * 6
+  end
+
+  private def two_bent_scenes_and_a_plain_one
+    program do
+      screen :tiled
+      image(:stripes, "#" => :red, "." => :blue) { "####....\n" * 8 }
+      tiles :set, "#" => :stripes
+      map = Array.new(32) { "#" * 32 }
+      scene(:left) { background(:one, tiles: :set, map: map).scroll_each_row { |row| row >= 30 ? 3 : 0 } }
+      scene(:right) { background(:two, tiles: :set, map: map).scroll_each_row { |row| row >= 90 ? 5 : 0 } }
+      scene(:plain) { background :three, tiles: :set, map: map }
+      state = var :state, 0
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        state = 1 if tick > 5
+        state = 2 if tick > 10
+        case_var(:state) do
+          when_val 0, :left
+          when_val 1, :right
+          when_val 2, :plain
+        end
+      end
+    end
+  end
+
+  private def a_counting_bend_behind_a_plain_scene
+    program do
+      screen :tiled
+      image(:stripes, "#" => :red, "." => :blue) { "####....\n" * 8 }
+      tiles :set, "#" => :stripes
+      map = Array.new(32) { "#" * 32 }
+      rows = var :rows, 0
+      scene(:bent) do
+        background(:one, tiles: :set, map: map).scroll_each_row do |row|
+          rows += 1
+          row >= 30 ? 3 : 0
+        end
+      end
+      scene(:plain) { background :two, tiles: :set, map: map }
+      state = var :state, 1
+      game_loop do
+        case_var(:state) do
+          when_val 0, :bent
+          when_val 1, :plain
+        end
+      end
+    end
+  end
+
   private def a_bent_scene_and_a_plain_one
     program do
       screen :tiled

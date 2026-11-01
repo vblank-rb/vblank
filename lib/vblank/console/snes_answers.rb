@@ -124,8 +124,8 @@ module VBlank
                           "each pass, so a block that reads a table can take more than a frame. If a block only " \
                           "compares the row with numbers, as `row >= 68 ? a : b` does, it runs once for each band of " \
                           "rows, and the game keeps up. A scene can bend a background of its own. The rows go straight " \
-                          "when that scene leaves. If the block is one expression, it takes none of the frame while " \
-                          "that scene is away."),
+                          "when that scene leaves. A block with no statement and no `?` takes none of the frame " \
+                          "while that scene is away. Any other block runs as usual, because it can change a number."),
         status_bar: works("the bar is one of the two backgrounds. `set_tile` with `now: true` is refused: " \
                           "a Super Nintendo writes its video memory only between frames, so a change " \
                           "shows on the frame after the pass."),

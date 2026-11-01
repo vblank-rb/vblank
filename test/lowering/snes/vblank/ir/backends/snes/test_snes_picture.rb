@@ -624,56 +624,6 @@ class TestSNESPicture < Minitest::Test
     end
   end
 
-  # Two scenes take one layer in turn, each with its own bend, and each shows only its own.
-  def test_two_scenes_bend_one_layer_each_their_own_way
-    checked(frames: 12) do
-      screen :tiled
-      image(:bars, "." => :blue, "#" => :white) { "##......\n" * 8 }
-      tiles :set, "#" => :bars
-      map = Array.new(32) { "#" * 32 }
-      scene(:left) { background(:one, tiles: :set, map: map).scroll_each_row { |row| row >= 30 ? 3 : 0 } }
-      scene(:right) { background(:two, tiles: :set, map: map).scroll_each_row { |row| row >= 90 ? 5 : 0 } }
-      state = var :state, 0
-      tick = 0
-      game_loop do
-        tick += 1
-        state = 1 if tick > 5
-        case_var(:state) do
-          when_val 0, :left
-          when_val 1, :right
-        end
-      end
-    end
-  end
-
-  # A block that changes a number runs while its scene is away, on the interpreter and so here,
-  # and that scene's rows still wait for it to come back.
-  def test_a_bend_that_changes_a_number_is_asked_while_its_scene_is_away
-    run = checked(frames: 8) do
-      screen :tiled
-      image(:bars, "." => :blue, "#" => :white) { "##......\n" * 8 }
-      tiles :set, "#" => :bars
-      map = Array.new(32) { "#" * 32 }
-      rows = var :rows, 0
-      scene(:bent) do
-        background(:one, tiles: :set, map: map).scroll_each_row do |row|
-          rows += 1
-          row >= 30 ? 3 : 0
-        end
-      end
-      scene(:plain) { background :two, tiles: :set, map: map }
-      state = var :state, 1
-      game_loop do
-        case_var(:state) do
-          when_val 0, :bent
-          when_val 1, :plain
-        end
-      end
-    end
-
-    assert_operator run[:rows], :>=, 224 * 6
-  end
-
   # All 224 rows of a block reading a table can take more than a frame, so a scene that does not
   # show it must not pay for them. The game keeps up on the other screen.
   def test_a_bend_takes_no_frame_while_its_scene_is_away

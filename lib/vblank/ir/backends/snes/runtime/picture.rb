@@ -896,9 +896,9 @@ module VBlank
             end
 
             # On to +past+ while +layer+'s rows are straight (LAYERS_STRAIGHT), in a game that has
-            # any that can be: a scene that bends it is away.
+            # any that can be: a scene that bends it is away. The block's code runs just before.
             def emit_skip_straight_layer(asm, memory, layer, past)
-              return unless memory.places.key?(LAYERS_STRAIGHT)
+              return unless memory.reserved?(LAYERS_STRAIGHT)
 
               bent_now = "#{past}_bent_now"
               asm.lda(asm.abs(memory[LAYERS_STRAIGHT]))
