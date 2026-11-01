@@ -36,6 +36,10 @@ require_relative "../lib/vblank/root"
 module Emitted
   ROOT = Ractor.make_shareable(VBlank.root.to_s)
   PROBE = File.join(__dir__, "emitted_probe.rb").freeze
+  COLOR_PROBE = File.join(__dir__, "emitted_color_probe.rb").freeze
+
+  # What ends the name of an example's Color cartridge in the baseline.
+  COLOR_MARK = "@gbc"
 
   # Which Ruby to launch, asked once. Asking reads Ruby's own table of how it was built,
   # which a worker Ractor may not touch.
@@ -154,9 +158,24 @@ module Emitted
     paths.select { |path| wanted.include?(File.basename(path, ".rb")) }
   end
 
+  # The examples that say they are for the Game Boy Color, as absolute paths.
+  def color_examples
+    Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bgbc\b/) }
+  end
+
   # Build every example against the library at +lib_root+, one process each.
   def measure(lib_root, paths, detail: false)
     paths.to_h { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }
+  end
+
+  # Each example's Color cartridge, named apart from its Advance one: +code+ the part always in
+  # view, +data+ the banks (tools/emitted_color_probe.rb).
+  def measure_color(lib_root, paths)
+    paths.to_h do |path|
+      name = "#{File.basename(path, '.rb')}#{COLOR_MARK}"
+      stdout, stderr, status = Open3.capture3(RUBY, COLOR_PROBE, lib_root, ROOT, path, chdir: ROOT)
+      [name, measurement(name, stdout, stderr, status)]
+    end
   end
 
   def probe(lib_root, path, detail: false)

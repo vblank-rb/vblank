@@ -75,6 +75,15 @@ class TestEmittedBaseline < Minitest::Test
     assert_match(/pong/, render(v))
   end
 
+  # A Color cartridge's two numbers are the part always in view and the banks, in bytes: the Color's
+  # processor has no fixed size of instruction to count in.
+  def test_a_color_cartridge_says_which_part_grew_in_bytes
+    v = verdict({ "pacman@gbc" => { code: 8000, data: 900 } }, { "pacman@gbc" => { code: 8040, data: 900 } })
+
+    refute_predicate v, :ok?
+    assert_match(/always in view 8000 → 8040 \(\+40 bytes\)/, render(v))
+  end
+
   # ---- shrinking is the good direction ----
 
   def test_code_that_shrank_passes_but_is_mentioned
@@ -158,8 +167,9 @@ class TestEmittedBaseline < Minitest::Test
     recorded = Baseline.read
     refute_empty recorded, "tools/emitted_baseline.json is missing — run rake emitted:record"
 
-    expected = Emitted.examples.map { |path| File.basename(path, ".rb") }.sort
-    assert_equal expected, recorded.keys.sort,
+    advance = Emitted.examples.map { |path| File.basename(path, ".rb") }
+    color = Emitted.color_examples.map { |path| "#{File.basename(path, '.rb')}#{Emitted::COLOR_MARK}" }
+    assert_equal (advance + color).sort, recorded.keys.sort,
                  "the baseline and the examples have drifted apart — run rake emitted:record"
   end
 end

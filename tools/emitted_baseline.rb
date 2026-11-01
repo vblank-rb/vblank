@@ -22,7 +22,7 @@ module Emitted
   # a reviewer sees what a feature cost.
   #
   # Per example rather than one total: a program that shrank would otherwise mask
-  # one that grew.
+  # one that grew. A cartridge's Color build is an entry of its own, <example>@gbc.
   #
   # The frame-work estimate is deliberately NOT recorded. It is an estimate whose
   # weights are re-measured from the emulator now and then, so it would churn for
@@ -57,8 +57,13 @@ module Emitted
           next unless then_
 
           parts = []
-          parts << growth("code", then_[:code], now[:code], :instructions)
-          parts << growth("data", then_[:data], now[:data], :bytes)
+          if name.end_with?(COLOR_MARK)
+            parts << growth("always in view", then_[:code], now[:code], :bytes)
+            parts << growth("in the banks", then_[:data], now[:data], :bytes)
+          else
+            parts << growth("code", then_[:code], now[:code], :instructions)
+            parts << growth("data", then_[:data], now[:data], :bytes)
+          end
           parts.compact!
           parts.empty? ? nil : [name, parts.join(", ")]
         end.to_h
@@ -121,8 +126,12 @@ module Emitted
 
     # Measure every example against the working tree's library — the same path
     # `rake emitted` measures with, so a recorded number is the number it reports.
+    #
+    # Each Color cartridge beside them, named <example>@gbc, since what the Color's lowering
+    # emits grows on its own, and a game there stops building when the part always in view fills.
     def current
-      Emitted.measure(File.join(ROOT, "lib"), Emitted.examples)
+      lib = File.join(ROOT, "lib")
+      Emitted.measure(lib, Emitted.examples).merge(Emitted.measure_color(lib, Emitted.color_examples))
     end
 
     def sizes(measurements)

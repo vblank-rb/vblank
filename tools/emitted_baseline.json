@@ -13,6 +13,10 @@
       "code": 76796,
       "data": 0
     },
+    "breakout@gbc": {
+      "code": 11456,
+      "data": 48036
+    },
     "buffered_bounce": {
       "code": 5326,
       "data": 0
@@ -24,6 +28,10 @@
     "chip_band": {
       "code": 37832,
       "data": 0
+    },
+    "chip_band@gbc": {
+      "code": 13338,
+      "data": 13928
     },
     "clock": {
       "code": 142552,
@@ -81,6 +89,10 @@
       "code": 16328,
       "data": 0
     },
+    "pacman@gbc": {
+      "code": 8175,
+      "data": 14128
+    },
     "parallax": {
       "code": 2092,
       "data": 0
@@ -97,6 +109,10 @@
       "code": 46880,
       "data": 0
     },
+    "pong_gbc@gbc": {
+      "code": 13527,
+      "data": 28000
+    },
     "raycaster": {
       "code": 6364,
       "data": 0
@@ -108,6 +124,10 @@
     "scoreboard": {
       "code": 3316,
       "data": 0
+    },
+    "scoreboard@gbc": {
+      "code": 7912,
+      "data": 7664
     },
     "scroll": {
       "code": 2348,
@@ -144,6 +164,10 @@
     "tower": {
       "code": 20540,
       "data": 0
+    },
+    "tower@gbc": {
+      "code": 8549,
+      "data": 15760
     }
   }
 }

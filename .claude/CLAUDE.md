@@ -160,7 +160,9 @@ answer key both are checked against, so never a narrow change), the build checks
 
 **What every example's cartridge costs is checked too.** `rake emitted:check` builds each example
 and fails if its code or data is bigger than `tools/emitted_baseline.json` says, and CI runs it
-after the tests. Anything that changes what a cartridge holds runs it before committing: a change
+after the tests. An example for the Color has an entry of its own (`pacman@gbc`), whose two numbers
+are the part of the cartridge always in view and the banks, so a change to the Color's lowering
+shows there too. Anything that changes what a cartridge holds runs it before committing: a change
 to the DSL, the IR or the GBA lowering, a new table, an edited example. Growth that was meant is
 accepted with `rake emitted:record`, and that file goes in the same commit, so the diff shows what
 the change cost. Re-record after a shrink as well, or a later regression back up to the old number
