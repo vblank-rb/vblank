@@ -63,8 +63,8 @@ module VBlank
             l_and_r = shoulders ? " <kbd>A</kbd> and <kbd>S</kbd> are L and R," : ""
             keys = <<~HTML.chomp
               <p class="keys">Arrows move. <kbd>X</kbd> is A, <kbd>Z</kbd> is B, <kbd>Enter</kbd> is Start, <kbd>Backspace</kbd> is
-              Select,#{l_and_r} <kbd>F</kbd> fills the screen. Press a key or click
-              to hear the sound.</p>
+              Select,#{l_and_r} <kbd>F</kbd> fills the screen, <kbd>F1</kbd> opens the menu, where the keys can be changed.
+              Press a key or click to hear the sound.</p>
             HTML
             controller = '<p id="controller"></p>'
             fullscreen = '<button id="fullscreen" type="button">Full screen</button>'

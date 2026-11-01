@@ -10,6 +10,7 @@ require_relative "js/headless_run"
 require_relative "js/checked_run"
 require_relative "js/node"
 require_relative "js/page"
+require_relative "js/menu_data"
 require_relative "js/preview"
 
 module VBlank
@@ -122,10 +123,10 @@ module VBlank
         # createGame's text and, with +data+ :separate, the data file its big tables are in (nil
         # with them :inline). A game whose data is separate fetches it from +rg_data_beside+, which
         # whatever wraps the text declares (see #data_beside_declaration).
-        def factory_and_data_file(program, title: "VBlank", data: :inline)
+        def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true)
           text, data_file = Lowering.new(program, title: title).text_and_data_file(data: data)
-          [["function createGame(host) {\n", console_text(program.described_console), *runtime_text(RUNTIME + ["rg_page.js"]), text,
-            "return page_create(host || {});\n}\n"].join, data_file]
+          [["function createGame(host) {\n", console_text(program.described_console), MenuData.source(menu: menu),
+            *runtime_text(RUNTIME + ["rg_page_menu.js", "rg_page.js"]), text, "return page_create(host || {});\n}\n"].join, data_file]
         end
 
         # The program built to run with no window (runtime/rg_headless.js), and the path to it,
@@ -221,7 +222,7 @@ module VBlank
         def write_output(game, path, console:, settings:, data:, err:)
           refuse_folder!(path)
           program = checked_program(game, console: console, settings: settings, err: err)
-          text, data_file = factory_and_data_file(program, title: game.title, data: data)
+          text, data_file = factory_and_data_file(program, title: game.title, data: data, menu: game.menu?)
           File.write(path, yield(text, data_file, program.described_console))
           File.binwrite(File.join(File.dirname(path), data_file_name(path)), data_file) if data_file
           path

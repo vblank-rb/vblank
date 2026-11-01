@@ -97,12 +97,14 @@ class TestJSPage < Minitest::Test
   # Each of the controller's buttons is the console's button it is labelled as, and the keyboard
   # adds to the controller rather than taking turns with it.
   def test_each_controller_button_is_its_console_button_and_the_keyboard_adds_to_them
-    picture = pictures_in(played_page(["pad connect", *[0, 1, 8, 9, 5, 4].map { |n| "pad press #{n}" },
-                                       "down ArrowRight", "play 3", "picture"], buttons_game)).first
-    held = %i[a b select start r l right]
-    interpreter = Reference.new.input_each_frame { |frame| frame >= 2 ? held : [] }.run(buttons_game.program, frames: 3)
+    # Select and Start are not held together: on a computer the two together open the menu.
+    { [0, 1, 8, 5, 4] => %i[a b select r l right], [9] => %i[start right] }.each do |pressed, held|
+      picture = pictures_in(played_page(["pad connect", *pressed.map { |n| "pad press #{n}" },
+                                         "down ArrowRight", "play 3", "picture"], buttons_game)).first
+      interpreter = Reference.new.input_each_frame { |frame| frame >= 2 ? held : [] }.run(buttons_game.program, frames: 3)
 
-    assert_same_picture interpreter.screen.shown, picture, "with A, B, Select, Start, L and R on the controller and right on the keys"
+      assert_same_picture interpreter.screen.shown, picture, "with #{held.join(', ')} held on the controller and right on the keys"
+    end
   end
 
   # The page says under the game whether a controller is being used, and how to get one seen: a
