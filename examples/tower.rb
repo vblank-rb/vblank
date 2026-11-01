@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# A tower of three floors, climbed by its stairs — on the Game Boy Advance and the Game Boy Color
-# alike.
+# A tower of three floors, climbed by its stairs — on the Game Boy Advance, the Game Boy Color, the
+# Super Nintendo and the Sega Genesis alike.
 #
 # Walk with the arrows. Each floor has a staircase somewhere; stand on it and you are on the floor
 # above, back at the door. The roof has a gate in its wall, and A opens it.
@@ -39,7 +39,7 @@ module Tower
     ........
   ART
 
-  # 20 cells across and 18 down, which both consoles show whole. "#" is wall, "." floor, "^" the
+  # 20 cells across and 18 down, which every console shows whole. "#" is wall, "." floor, "^" the
   # stairs up, and on the roof "=" the gate. Every way through a wall is two cells wide.
   GROUND = Ractor.make_shareable(<<~MAP.lines.map(&:chomp))
     ####################
@@ -111,7 +111,7 @@ module Tower
   # The two cells of the gate on the roof.
   GATE = Ractor.make_shareable([[9, 8], [10, 8]])
 
-  GAME = VBlank.game("TOWER", consoles: %i[gba gbc snes]) do
+  GAME = VBlank.game("TOWER", consoles: %i[gba gbc snes genesis]) do
     screen :tiled
     image(:hero, "#" => :white, "." => :transparent) { HERO }
     image(:stone_wall, "#" => :gray) { SOLID }

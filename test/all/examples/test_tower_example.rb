@@ -7,13 +7,13 @@ require VBlank.root.join("examples/tower").to_s
 # a map, tiles and walls of its own, climbed by their stairs, and a gate on the roof that A opens.
 # Played on every lowering, on the console each run plays a game as.
 class TestTowerExample < Minitest::Test
-  GRAY = Color.resolve(:gray)
-  RED = Color.resolve(:red)
-  ORANGE = Color.resolve(:orange)
-  CYAN = Color.resolve(:cyan)
-  BLUE = Color.resolve(:blue)
-  YELLOW = Color.resolve(:yellow)
-  WHITE = Color.resolve(:white)
+  GRAY = VBlank::Testing.shown(:gray)
+  RED = VBlank::Testing.shown(:red)
+  ORANGE = VBlank::Testing.shown(:orange)
+  CYAN = VBlank::Testing.shown(:cyan)
+  BLUE = VBlank::Testing.shown(:blue)
+  YELLOW = VBlank::Testing.shown(:yellow)
+  WHITE = VBlank::Testing.shown(:white)
 
   # A route is legs of [key, passes], each held until the hero is stopped by a wall and a few
   # passes over, so it is the walls that say where the hero ends up, not the count. A leg of nil
@@ -31,7 +31,6 @@ class TestTowerExample < Minitest::Test
 
   # The player, holding each leg's key for its passes in turn, then nothing for +extra+ passes.
   private def played(legs, extra = 4)
-    skip_on_genesis "a scene's own scenery is not made for the Genesis yet, so the game is not written for it"
     keys = legs.flat_map { |key, passes| [key] * passes }
     player = game_player
     frame = 0
