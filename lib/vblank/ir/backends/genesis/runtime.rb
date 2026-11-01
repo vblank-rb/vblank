@@ -35,15 +35,16 @@ module VBlank
           # routine run at each frame boundary (its timers moving on), or nil for none.
           # +picture+ is how the game draws (Picture), :painted, :tiled or :none, which carries what it
           # draws with, and +columns+ how many cells across the planes of a tiled one are.
+          # +fractions+ for a game that holds numbers with a fraction (Int32).
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
           # +registers+ is how many words of the video chip's register table the game writes
           # ("rt_vdp_registers", which the lowering makes).
-          def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false)
+          def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
             Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD))
-            Int32.emit(asm)
+            Int32.emit(asm, fractions: fractions)
             Frame.emit(asm, memory)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns)

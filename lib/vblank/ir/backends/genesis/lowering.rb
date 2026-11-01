@@ -72,7 +72,8 @@ module VBlank
                                            shift_right: :value_of_shift_right, held: :value_of_held,
                                            pressed: :value_of_pressed, list_get: :value_of_list_get,
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
-                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance
+                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
+                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix
                                          }.merge(Collision::VALUES))
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
@@ -87,7 +88,6 @@ module VBlank
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at show_picture_group data_byte],
                                                     "the camera" => %i[camera],
-                                                    "fractions" => %i[mul_fix div_fix],
                                                     "save memory" => %i[save_init save_store save_write save_erase
                                                                         save_read save_sum],
                                                     "sound" => %i[enable_sound beep noise wave stop_wave play_song
@@ -171,6 +171,11 @@ module VBlank
           # How many words of the video chip's register table the cartridge's power-on writes
           # (#sections makes the table).
           def register_count = VIDEO_REGISTERS.length
+
+          # Whether the game holds numbers with a fraction, which is when the cartridge carries the
+          # routines that work them out (Runtime::Int32.emit_fractions).
+          def fractions? = @program.walk.any? { |node| %i[mul_fix div_fix].include?(node.kind) }
+
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
@@ -948,6 +953,19 @@ module VBlank
 
           def value_of_int(node) = load_constant(node.value)
           def value_of_var_ref(node) = load_variable(node.name)
+
+          # Int32.mul_fix and Int32.div_fix: a call, with the count of the fraction's bits.
+          def value_of_mul_fix(node) = runtime_call("rt_mul_fix", [node.lhs, node.rhs, Build.int(fraction_bits(node))])
+          def value_of_div_fix(node) = runtime_call("rt_div_fix", [node.lhs, node.rhs, Build.int(fraction_bits(node))])
+
+          # The bits of fraction a number has, 0 to 32, which is as many as the routines' registers can bring up.
+          def fraction_bits(node)
+            bits = node.fraction_bits
+            return bits if bits.between?(0, 32)
+
+            raise LoweringError, "a number with #{bits} bits of fraction is more than the Genesis build can work " \
+                                 "out. It can work out 0 to 32."
+          end
 
           def value_of_binop(node)
             return value_of_comparison(node) if COMPARISONS.include?(node.op)
