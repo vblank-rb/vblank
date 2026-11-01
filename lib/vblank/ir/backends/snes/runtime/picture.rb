@@ -1131,6 +1131,26 @@ module VBlank
 
               emit_tile_run_upload(asm, memory, work, tile_runs)
 
+              # The cells changed, each a word at its address. Many take more than a blank, so they
+              # go before the colours: a frame between shows some of the cells in the old colours,
+              # which is the pass's change arriving, and never the new colours over an old cell.
+              asm.ldx(0)
+              asm.label("rt_upload_cell")
+              asm.lda(asm.abs(memory[CELLS]))
+              asm.beq("rt_upload_cells_done")
+              asm.jsr(asm.abs("rt_blank_time"))
+              asm.dec(asm.abs(memory[CELLS]))
+              asm.lda(asm.abs_x(memory[CELLS] + 2))
+              asm.sta(asm.abs(h::VMADDL))
+              asm.lda(asm.abs_x(memory[CELLS] + 4))
+              asm.sta(asm.abs(h::VMDATAL))
+              asm.inx
+              asm.inx
+              asm.inx
+              asm.inx
+              asm.bra("rt_upload_cell")
+              asm.label("rt_upload_cells_done")
+
               # Together: the sprite table whole, the colours if a fade or a tint moved them, and
               # each layer's map register, for a map just put up, and scroll.
               tint_changed = memory[Tint::STATE] + Tint::CHANGED
@@ -1176,23 +1196,6 @@ module VBlank
               emit_bar_table(asm, memory, work) if bar
               emit_bends_shown(asm, memory, bent)
               emit_hdma_on(asm, memory) if bar || !bent.empty?
-              # The cells changed, each a word at its address.
-              asm.ldx(0)
-              asm.label("rt_upload_cell")
-              asm.lda(asm.abs(memory[CELLS]))
-              asm.beq("rt_upload_cells_done")
-              asm.jsr(asm.abs("rt_blank_time"))
-              asm.dec(asm.abs(memory[CELLS]))
-              asm.lda(asm.abs_x(memory[CELLS] + 2))
-              asm.sta(asm.abs(h::VMADDL))
-              asm.lda(asm.abs_x(memory[CELLS] + 4))
-              asm.sta(asm.abs(h::VMDATAL))
-              asm.inx
-              asm.inx
-              asm.inx
-              asm.inx
-              asm.bra("rt_upload_cell")
-              asm.label("rt_upload_cells_done")
               asm.rts
             end
           end

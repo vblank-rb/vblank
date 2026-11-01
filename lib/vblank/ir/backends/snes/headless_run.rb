@@ -67,6 +67,13 @@ module VBlank
             @watch_picture = watch_picture
           end
 
+          # For a run made with +watch_picture+: the block is handed every frame the console draws,
+          # as its pixels in rows, for a test of a frame that falls between two passes.
+          def each_frame_drawn(&block)
+            @frame_watcher = block
+            self
+          end
+
           # A Super Nintendo cartridge has no rumble motor, so it never runs (Reference#motor_on?).
           def motor_on? = false
 
@@ -395,6 +402,7 @@ module VBlank
             colors = @core.colors
             @black_each_frame << colors.none?(&:positive?)
             @picture_each_frame << RunComparison.picture_check(colors)
+            @frame_watcher&.call(colors)
           end
 
           # The emulator's picture, each pixel the 15-bit colour the console holds, and where the

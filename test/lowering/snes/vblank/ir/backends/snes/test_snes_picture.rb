@@ -169,6 +169,41 @@ class TestSNESPicture < Minitest::Test
     assert_empty run.black_frames
   end
 
+  # CELLS GO BEFORE THEIR COLOURS. Two hundred cells take more than a blank, so they arrive over two
+  # frames, and a fade of the same pass must wait for the last of them: a frame showing the new
+  # colours over a cell still to change is a picture no pass made.
+  def test_cells_changed_with_a_fade_show_no_new_colours_over_old_cells
+    program = program_of do
+      screen :tiled
+      image(:wall, "#" => :gray) { "########\n" * 8 }
+      image(:gem, "g" => :green) { "gggggggg\n" * 8 }
+      tiles :set, "#" => :wall, "g" => :gem
+      room = background :room, tiles: :set, map: "#{'#' * 32}\n" * 32
+      i = 0
+      game_loop do
+        if pressed(:a)
+          i = 0
+          repeat(200) do
+            room.set_tile i % 25, i / 25, "g"
+            i += 1
+          end
+          fade :black, 50
+        end
+      end
+    end
+    press = ->(frame) { frame == 3 ? [:a] : [] }
+    pictures = []
+    width = 256
+    run = SNES::HeadlessRun.new(watch_picture: true).input_each_frame(&press).each_frame_drawn do |colors|
+      pictures << [colors[(4 * width) + 248], colors[(((7 * 8) + 4) * width) + (24 * 8) + 4]]
+    end
+    run.run(program, frames: 8)
+    wall = pictures.find { |shown, _| shown.positive? }.first
+
+    assert(pictures.any? { |shown, _| shown != wall && shown.positive? }, "the fade shows")
+    assert_empty pictures.select { |shown, last_cell| shown != wall && shown.positive? && last_cell == shown }
+  end
+
   # A STATUS BAR shows from its top row to the bottom of the screen, over a field that scrolls under
   # it and is hidden there: the bar's see-through pixels, and its rows past its two, show the
   # backdrop. A sprite goes over it. The bar is moved each pass, to rows either side of 127 (the
