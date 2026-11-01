@@ -305,6 +305,23 @@ class TestSDL < Minitest::Test
     end
   end
 
+  # A folder named for the play (--config-dir) holds the settings folders, the same ones as the
+  # desktop build's, and is made if it is not there.
+  def test_a_config_dir_holds_the_settings_files
+    Dir.mktmpdir do |dir|
+      shared = File.join(dir, "new", "(all games)", "settings.txt")
+      window = SDL.new(title: "TEST", scale: 1, settings_file: :usual, config_dir: File.join(dir, "new"))
+      press_key(SDL::MENU)
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      %i[right right down left].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+      press_key(SDL::MENU)
+      window.hold_while_paused
+      window.close
+
+      assert_includes File.read(shared), "volume = 90\n"
+    end
+  end
+
   # A size asked for on the command line is for this play: a change in the menu to something else
   # writes that change, and leaves the size the file keeps alone.
   def test_a_size_asked_for_is_not_written_to_the_settings_file

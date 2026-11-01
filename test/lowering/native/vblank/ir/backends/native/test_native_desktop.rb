@@ -174,7 +174,7 @@ class TestNativeDesktop < Minitest::Test
       assert_match(/^  Select +Backspace, Right Shift$/, said, "a button with two keys says both")
       assert_match(/^  Pause +P$/, said, "and the window's own keys")
       assert_match(/^Press F1, or the key above Tab, to open the menu/, said)
-      %w[--save-file --settings-file].each { |option| assert_includes said, option }
+      %w[--save-file --settings-file --config-dir].each { |option| assert_includes said, option }
       refute_includes said, "--refresh-rate", "the tests' own options are not a player's"
       assert_empty said.lines.map(&:chomp).select { |line| line.length > 80 }, "it fits in 80 columns"
       assert_equal said, Open3.capture2e(exe, "-h", chdir: dir).first, "-h says the same"
@@ -502,11 +502,11 @@ class TestNativeDesktop < Minitest::Test
   def assert_the_players_file_and_the_games_file_are_read_and_the_games_wins(exe, dir)
     home = File.join(dir, "settings-home")
     # A Mac keeps a program's files under Library/Application Support in the person's folder; Linux
-    # keeps them straight in the folder it is told.
+    # keeps settings in vblank's folder of the one it is told.
     programs = RUBY_PLATFORM.include?("darwin") ? File.join(home, "Library", "Application Support") : home
     everyones = File.join(programs, "vblank", "(all games)", "settings.txt")
     games = File.join(programs, "vblank", "WINDOWED", "settings.txt")
-    env = { "XDG_DATA_HOME" => home, "CFFIXED_USER_HOME" => home }
+    env = { "XDG_DATA_HOME" => home, "CFFIXED_USER_HOME" => home, "XDG_CONFIG_HOME" => (home unless RUBY_PLATFORM.include?("darwin")) }
     use = ->(lines = [], **more) { picture_of_window(exe, dir, lines, frames: 5, options: ["--usual-settings"], env: env, **more) }
 
     # A scripted run that was not asked for them leaves the player's files alone.
@@ -536,6 +536,32 @@ class TestNativeDesktop < Minitest::Test
     File.write(everyones, "#{before}key.a = Q\n")
     _window, held_q = use.call(["0", "0 keydown:Q", "0", "0 keyup:Q"])
     assert_operator held_q.variables[:held_a], :>=, 1, "the player's file still reaches the game"
+
+    assert_settings_follow_the_folders(exe, dir)
+  end
+
+  # $XDG_CONFIG_HOME names where settings go, and carries the player's old file across, once. A
+  # folder named with --config-dir takes the place of all of it.
+  def assert_settings_follow_the_folders(exe, dir)
+    old_place = File.join(dir, "old-home")
+    programs = RUBY_PLATFORM.include?("darwin") ? File.join(old_place, "Library", "Application Support") : old_place
+    old_file = File.join(programs, "vblank", "(all games)", "settings.txt")
+    FileUtils.mkdir_p(File.dirname(old_file))
+    File.write(old_file, "key.a = Q\n")
+    config = File.join(dir, "xdg-config")
+    env = { "XDG_DATA_HOME" => old_place, "CFFIXED_USER_HOME" => old_place, "XDG_CONFIG_HOME" => config }
+    carried = File.join(config, "vblank", "(all games)", "settings.txt")
+
+    _window, moved = picture_of_window(exe, dir, ["0", "0 keydown:Q", "0", "0 keyup:Q", "0 hotkey:mute"], frames: 8,
+                                       options: ["--usual-settings"], env: env)
+    assert_operator moved.variables[:held_a], :>=, 1, "the old file's key came with it"
+    assert_includes settings_lines(carried), "mute = on"
+    assert_equal "key.a = Q\n", File.read(old_file), "and the old file is left as it was"
+
+    named = File.join(dir, "named-config")
+    play_window(exe, dir, ["0 hotkey:mute"], frames: 3, options: ["--config-dir", named], env: env, own_settings: false)
+    assert_includes settings_lines(File.join(named, "(all games)", "settings.txt")), "mute = on"
+    assert_includes settings_lines(carried), "mute = on", "the usual file is not touched"
   end
 
   # The menu is drawn over the picture once it is opened (the game's own is black there), its

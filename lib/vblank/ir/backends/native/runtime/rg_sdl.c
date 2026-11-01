@@ -11,6 +11,7 @@
  *   ./pong --save-file my.sav            keep the game's save in that file, in place of the usual one
  *   ./pong --settings-file my.txt        read and write the window's settings (see THE SETTINGS) in that
  *                                        file alone, in place of the usual ones
+ *   ./pong --config-dir DIR              keep the settings files in that folder, in place of the usual one
  *   ./pong --usual-settings              with --scripted-keys, use the usual settings files as a player's run does
  *   ./pong --window-picture shot.bmp     with --scripted-keys, save the window as it ends (menu and all)
  *
@@ -86,9 +87,9 @@
  *
  * THE SETTINGS are the scale, fullscreen, volume, mute, frame rate, fast forward's speed, the keys,
  * the gamepad buttons and the hotkeys, in one small text file a player can edit (rg_window.h says
- * its format). There is one for everyone who plays any game built this way, among the files the
- * operating system keeps for the person using the computer, and one for each game, in the game's
- * own folder beside its save. Both are read when the window opens, the game's over the player's. A
+ * its format). There is one for everyone who plays any game built this way and one for each game,
+ * in folders where this computer keeps a person's settings (rg_settings_root.h says where, and
+ * --config-dir names another). Both are read when the window opens, the game's over the player's. A
  * change is written back a moment after it is made (rg_window_settings_due): to the game's file
  * where it has one, which keeps only what it says itself and what was changed while the game
  * played, so the rest goes on following the player's file; otherwise to the player's, whole. A
@@ -125,6 +126,7 @@
 #include "rg_runtime.h"
 #include "rg_save.h"
 #include "rg_screen.h"
+#include "rg_settings_root.h"
 #include "rg_sound.h"
 #include "rg_window.h"
 #include "rg_window_menu.h"
@@ -484,14 +486,44 @@ static void read_settings_file(const char *path, char *said, size_t room) {
   SDL_free(loaded);
 }
 
-/* The settings file inside the folder the operating system keeps for +folder+ (a game's name, or
- * the one folder every game shares), or NULL when the folder cannot be made. */
-static char *settings_file_in(const char *folder) {
+/* The folder --config-dir named, or NULL. */
+static const char *config_dir_asked_for;
+
+/* The settings file inside the operating system's own place for +folder+ (a game's name, or the one
+ * folder every game shares), or NULL when the folder cannot be made. */
+static char *settings_file_in_programs_place(const char *folder) {
   char *base = SDL_GetPrefPath("vblank", folder);
   if (!base) return NULL;
   char *path = NULL;
   if (SDL_asprintf(&path, "%ssettings.txt", base) < 0) path = NULL;
   SDL_free(base);
+  return path;
+}
+
+/* The settings file inside +folder+, in the place rg_settings_root.h says, or NULL when the folder
+ * cannot be made. Settings used to be kept in the operating system's own place, so a player with
+ * no file here yet has the one from there copied across, once, and it stays where it was. */
+static char *settings_file_in(const char *folder) {
+#ifdef __linux__
+  int linux_system = 1;
+#else
+  int linux_system = 0;
+#endif
+  char root[1024];
+  if (!rg_settings_root(root, sizeof root, config_dir_asked_for, SDL_getenv("XDG_CONFIG_HOME"), SDL_getenv("HOME"),
+                        linux_system))
+    return settings_file_in_programs_place(folder);
+
+  char *base = NULL;
+  if (SDL_asprintf(&base, "%s/%s", root, folder) < 0) return NULL;
+  char *path = NULL;
+  if (!SDL_CreateDirectory(base) || SDL_asprintf(&path, "%s/settings.txt", base) < 0) path = NULL;
+  SDL_free(base);
+  if (path && !config_dir_asked_for && !SDL_GetPathInfo(path, NULL)) {
+    char *old = settings_file_in_programs_place(folder);
+    if (old && SDL_GetPathInfo(old, NULL)) SDL_CopyFile(old, path);
+    SDL_free(old);
+  }
   return path;
 }
 
@@ -505,7 +537,7 @@ static void load_settings(const char *asked, int usual_files_asked) {
   if (asked) {
     settings_path = SDL_strdup(asked);
     read_settings_file(asked, said, sizeof said);
-  } else if (!scripted || usual_files_asked) {
+  } else if (!scripted || usual_files_asked || config_dir_asked_for) {
     char game[64];
     name_save_folder(game, sizeof game);
     char *everyones = settings_file_in("(all games)");
@@ -1565,6 +1597,7 @@ static void print_usage(const char *program) {
          "  --save-file PATH       Keep the save in PATH. A .sav file from an emulator\n"
          "                         works.\n"
          "  --settings-file PATH   Read and write the settings in PATH only.\n"
+         "  --config-dir DIR       Keep the settings files in DIR.\n"
          "  -h, --help             Print this.\n");
 }
 
@@ -1582,6 +1615,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--save-file") == 0 && i + 1 < argc) save_file_asked_for = argv[i + 1];
     if (strcmp(argv[i], "--settings-file") == 0 && i + 1 < argc) settings_file_asked_for = argv[i + 1];
+    if (strcmp(argv[i], "--config-dir") == 0 && i + 1 < argc) config_dir_asked_for = argv[i + 1];
     if (strcmp(argv[i], "--usual-settings") == 0) usual_settings_asked_for = 1;
     if (strcmp(argv[i], "--window-picture") == 0 && i + 1 < argc) window_picture_file = argv[i + 1];
     if (strcmp(argv[i], "--trace") == 0) tracing = 1;

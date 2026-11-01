@@ -11,6 +11,7 @@ module VBlank
     # last looked: the game's own file when it has one, the shared one when not.
     #
     # A file named for the play (--settings-file) is the only one there is, and holds every setting.
+    # A folder named for the play (--config-dir) takes the place of the usual one.
     class SettingsFile
       SHARED_FOLDER = "(all games)"
       NAME = "settings.txt"
@@ -63,6 +64,17 @@ module VBlank
         nil
       rescue SystemCallError => e
         "#{@title} cannot write its settings to #{@path} (#{e.message})"
+      end
+
+      # The folder that holds the settings folders, or nil for leaving it to the operating system's
+      # own place: the one the player named, or vblank's folder in $XDG_CONFIG_HOME (+xdg+), which
+      # must start from the root to count, or on Linux in the person's .config (+home+). This is
+      # rg_settings_root.h's rule, held to the same table, since the two share these files.
+      def self.root(config_dir:, xdg:, home:, linux:)
+        return config_dir if config_dir && !config_dir.empty?
+        return File.join(xdg, "vblank") if xdg&.start_with?("/")
+
+        File.join(home, ".config", "vblank") if linux && home && !home.empty?
       end
 
       # A game's folder: its title, with anything but a letter, a digit or a space made a _, and

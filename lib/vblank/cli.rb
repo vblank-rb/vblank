@@ -714,6 +714,10 @@ module VBlank
                                  only. Default: the settings.txt files that the
                                  desktop build of a game uses too, so a change
                                  in one is there in the other.
+        --config-dir DIR         Keep the settings.txt files in DIR. Default:
+                                 $XDG_CONFIG_HOME/vblank if that is set, else
+                                 ~/.config/vblank on Linux, else the folder
+                                 your computer keeps for programs.
         --pictures N             Stop after the window has shown N pictures.
         --uncapped               Do not wait for the end of each frame. The game
                                  then runs as fast as this computer can play it.
@@ -734,6 +738,7 @@ module VBlank
     option :yjit, type: :boolean, default: true
     option :record_sound, banner: "FILE"
     option :settings_file, banner: "FILE"
+    option :config_dir, banner: "DIR"
     option :set, type: :array, banner: "NAME=VALUE", default: []
     def run_game(game_file)
       refuse_unless_whole_and_positive!("--scale", options[:scale]) if options[:scale]
@@ -882,7 +887,8 @@ module VBlank
       console = program.described_console
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
                                      height: console.screen_height, menu: game.menu?,
-                                     settings_file: options[:settings_file] || :usual)
+                                     settings_file: options[:settings_file] || :usual,
+                                     config_dir: options[:config_dir])
       warn window.settings_problems_message if window.settings_problems_message
       say "Playing #{game.title} for the #{console.title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
           "#{'Press F1 or ` for the menu. ' if game.menu?}Press P to pause. Hold Tab to play fast. Press Escape to stop."

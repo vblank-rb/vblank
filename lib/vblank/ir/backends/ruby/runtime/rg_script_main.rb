@@ -18,6 +18,7 @@ module VBlankScript
       parser.on("--pictures N", Integer, "Stop after the window has shown N pictures.")
       parser.on("--uncapped", "Do not wait for the end of each frame, to measure the speed.")
       parser.on("--settings-file FILE", "Read and write the window's settings in FILE only.")
+      parser.on("--config-dir DIR", "Keep the window's settings files in DIR.")
     end.parse!(arguments, into: options)
     %i[scale pictures].each do |name|
       raise OptionParser::InvalidArgument, "--#{name} must be a whole number above 0" if options[name]&.<(1)
@@ -35,7 +36,8 @@ module VBlankScript
   def self.play(options)
     game = VBlank::IR::Backends::Ruby::LiveGame.new(SOURCE)
     window = VBlank::Live::SDL.new(title: TITLE, scale: options[:scale], width: game.width, height: game.height,
-                                   menu: MENU, settings_file: options[:"settings-file"] || :usual)
+                                   menu: MENU, settings_file: options[:"settings-file"] || :usual,
+                                   config_dir: options[:"config-dir"])
     warn window.settings_problems_message if window.settings_problems_message
     puts "Playing #{TITLE}. #{'Press F1 or ` for the menu. ' if MENU}Press P to pause. Hold Tab to play fast. " \
          "Press Escape to stop."

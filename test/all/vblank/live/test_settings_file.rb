@@ -3,11 +3,20 @@
 require "test_helper"
 require "tmpdir"
 require "vblank/live"
+require "settings_root_cases"
 
 # Where a player's settings are kept, found as the desktop build finds them, so the two share them.
 # The operating system's place for vblank is a folder of the test's own.
 class TestSettingsFile < Minitest::Test
+  include SettingsRootCases
+
   SettingsFile = VBlank::Live::SettingsFile
+
+  def test_the_settings_folders_are_where_the_table_says
+    answers = CASES.map { |told, _folder| SettingsFile.root(**told) }
+
+    assert_equal CASES.map(&:last), answers
+  end
 
   # Keys named only as "key N", which is enough for these.
   class NumberedKeys

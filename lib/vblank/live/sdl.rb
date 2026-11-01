@@ -176,15 +176,16 @@ module VBlank
       # What a file says that cannot be used is in #settings_problems.
       #
       # A window that cannot be opened all the way is closed again before the error comes out.
-      def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil)
+      def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil, config_dir: nil)
         @sdl = self.class.binding_for(library)
         @title = title
+        @config_dir = config_dir
         @width = width
         @height = height
         @closed = false
         @has_menu = menu
         @player_settings = Settings.new(key_names: KeyNames.new(@sdl))
-        @settings_file = settings_file && SettingsFile.new(title: title, folder_of: method(:pref_folder),
+        @settings_file = settings_file && SettingsFile.new(title: title, folder_of: method(:settings_folder),
                                                            asked: (settings_file unless settings_file == :usual))
         @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
         scale ||= @player_settings.window.scale
@@ -414,6 +415,7 @@ module VBlank
           extern "const char* SDL_GetScancodeName(int)"
           extern "int SDL_GetScancodeFromName(const char*)"
           extern "void* SDL_GetPrefPath(const char*, const char*)"
+          extern "bool SDL_CreateDirectory(const char*)"
           extern "void SDL_free(void*)"
           extern "char SDL_PushEvent(void*)"
           extern "void* SDL_GetKeyboardState(void*)"
@@ -479,8 +481,28 @@ module VBlank
         @letters_density = atlas.density
       end
 
-      # The folder the operating system keeps for vblank and +name+ (a game's, or the one every game
-      # shares), as SDL finds it and makes it if it is not there; nil when it cannot be made.
+      # The folder for the settings of +name+ (a game's, or the one every game shares), made if it is
+      # not there; nil when it cannot be made. Settings used to be kept in the operating system's own
+      # place, so a player with no file here yet has the one from there copied across, once, and it
+      # stays where it was: settings_file_in in rg_sdl.c does the same.
+      def settings_folder(name)
+        root = SettingsFile.root(config_dir: @config_dir, xdg: ENV.fetch("XDG_CONFIG_HOME", nil),
+                                 home: ENV.fetch("HOME", nil), linux: RUBY_PLATFORM.include?("linux"))
+        return pref_folder(name) unless root
+
+        folder = File.join(root, name)
+        return nil unless @sdl.SDL_CreateDirectory(folder)
+
+        file = File.join(folder, SettingsFile::NAME)
+        unless @config_dir || File.exist?(file)
+          old = pref_folder(name)
+          File.binwrite(file, File.binread(File.join(old, SettingsFile::NAME))) if old && File.exist?(File.join(old, SettingsFile::NAME))
+        end
+        folder
+      end
+
+      # The folder the operating system keeps for vblank and +name+, as SDL finds it and makes it if
+      # it is not there; nil when it cannot be made.
       def pref_folder(name)
         found = @sdl.SDL_GetPrefPath("vblank", name)
         return nil if found.null?
