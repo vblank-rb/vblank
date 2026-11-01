@@ -154,6 +154,78 @@ module VBlank
               @asm.sbc_a((number >> 8) ^ 0x80)
             end
 
+            # Two variables kept at the same width said to equal (or not) each other: [the one, the
+            # other]. Nil for any other test.
+            def equality_of_two_kept(condition)
+              return nil unless binop?(condition, :==) || binop?(condition, :!=)
+
+              left, right = kept_variable_named(condition.lhs), kept_variable_named(condition.rhs)
+              [left, right] if left && right && kept_bytes(left) == kept_bytes(right)
+            end
+
+            # The zero flag set when the two variables' bytes are the same, leaving at the first
+            # that differs.
+            def compare_two_kept(one, other)
+              first, second = place_of(one), place_of(other)
+              done = fresh("compared")
+              kept_bytes(one).times do |i|
+                @asm.jump_relative(:nz, done) unless i.zero?
+                @asm.load(:a, [second + i])
+                @asm.load(:c, :a)
+                @asm.load(:a, [first + i])
+                @asm.cp_a(:c)
+              end
+              @asm.label(done)
+            end
+
+            # `negate!` on a variable kept narrow: nought take its bytes away, where they are. Only
+            # the low bytes of a number decide the low bytes of its negative.
+            def emit_negate_kept(name)
+              @asm.load(:hl, place_of(name))
+              @asm.xor_a(:a)
+              @asm.sub_a([:hl])
+              @asm.load([:hl], :a)
+              if kept_bytes(name) == 2
+                @asm.inc(:hl)
+                @asm.load(:a, 0) # a load moves no flag, so the borrow is kept
+                @asm.sbc_a([:hl])
+                @asm.load([:hl], :a)
+              end
+              emit_sprites_changed(name) unless sprites_placed_from(name).empty?
+            end
+
+            # An index a list can be read at in two bytes: a kept variable, or one with a number
+            # written in the program added or taken away. That index cannot pass 16 bits by enough to
+            # come round: the lowest it can be, as two bytes, is above every slot, so a number below
+            # nought is past the end there too. False for a list too long, or a number too big, to say so.
+            def kept_list_index?(index, capacity)
+              return false unless capacity < LONGEST_KEPT_INDEX
+
+              return !kept_variable_named(index).nil? unless index.is_a?(Node) && index.kind == :binop && %i[+ -].include?(index.op)
+
+              left, right = index.lhs, index.rhs
+              left, right = right, left if index.op == :+ && folded(left)
+              number = folded(right)
+              !number.nil? && number.abs < LONGEST_KEPT_INDEX && !kept_variable_named(left).nil?
+            end
+
+            # An index past this, or a list longer, could come back round into the list in two bytes.
+            LONGEST_KEPT_INDEX = 0x4000
+
+            # An index, in DE, in two bytes when it can be, and HL = its slot; a jump to
+            # +out_of_range+ when it is outside the list. Otherwise as #emit_list_slot_address.
+            # A two-byte index leaves no whole number in BCDE, so where that jump lands the index is
+            # worked out again for the game to stop on.
+            def emit_list_slot_of_index(index, place, capacity, width, out_of_range)
+              if kept_list_index?(index, capacity)
+                low_value(index, 2)
+                return emit_list_slot_of_de(place, width, out_of_range)
+              end
+
+              value(index)
+              emit_list_slot_address(place, width, out_of_range)
+            end
+
             # An ordering of two variables kept at the same width: [the one, the other, and
             # whether it holds when the one is below the other], as WrittenNumbers does it.
             def ordering_of_two_kept(condition)

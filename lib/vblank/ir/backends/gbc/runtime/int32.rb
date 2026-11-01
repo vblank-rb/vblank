@@ -30,6 +30,7 @@ module VBlank
               emit_bits(asm)
               emit_multiply(asm, s)
               emit_multiply_by_byte(asm, s)
+              emit_multiply_low_bytes(asm)
               emit_divide(asm, s)
               emit_shifts(asm)
               emit_fractions(asm, s)
@@ -287,6 +288,32 @@ module VBlank
                 asm.load_high(:a, s.product + i)
                 asm.load(reg, :a)
               end
+              asm.ret
+            end
+
+            # DE = the low two bytes of DE × HL, for a product kept narrow. The same long multiplication,
+            # HL walked in BC and the sum added up in HL, which adds two bytes in one instruction.
+            # BC is left at nought, which a caller keeping only these bytes does not read.
+            def emit_multiply_low_bytes(asm)
+              asm.label("rt_mul16")
+              asm.load(:b, :h)
+              asm.load(:c, :l)
+              asm.load(:hl, 0)
+              asm.label("rt_mul16_loop")
+              asm.srl(:b)
+              asm.rr(:c)
+              asm.jump_relative(:nc, "rt_mul16_shift")
+              asm.add_hl(:de)
+              asm.label("rt_mul16_shift")
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:z, "rt_mul16_done")
+              asm.sla(:e)
+              asm.rl(:d)
+              asm.jump_relative("rt_mul16_loop")
+              asm.label("rt_mul16_done")
+              asm.load(:d, :h)
+              asm.load(:e, :l)
               asm.ret
             end
 

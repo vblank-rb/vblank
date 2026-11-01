@@ -613,7 +613,12 @@ module VBlank
             store(node.dest)
           end
 
-          def emit_negate(node) = apply_to_variable(node.var, "rt_neg32")
+          def emit_negate(node)
+            return emit_negate_kept(node.var) if kept_bytes(node.var)
+
+            apply_to_variable(node.var, "rt_neg32")
+          end
+
           def emit_abs(node) = apply_to_variable(node.var, "rt_abs32")
 
           def apply_to_variable(name, routine)
@@ -862,16 +867,19 @@ module VBlank
           # the index is held to the length the header says — every field of a pool is such a list.
           # An index out of range goes the whole way round, so the game stops as the interpreter's.
           def value_of_list_get(node)
-            place, _capacity, width = list_placed(node)
-            value(node.index)
-            return list_get_through_routine(place) if front_dropped_lists.include?(node.name)
+            place, capacity, width = list_placed(node)
+            if front_dropped_lists.include?(node.name)
+              value(node.index)
+              return list_get_through_routine(place)
+            end
 
             out_of_range = fresh("list_index_out_of_range")
             done = fresh("list_item_read")
-            emit_list_slot_address(place, width, out_of_range)
+            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range)
             @asm.call(TABLE_KEPT.fetch([width, true]).last) # a slot reads back with its top bit as the sign
             @asm.jump(done)
             @asm.label(out_of_range)
+            value(node.index) if kept_list_index?(node.index, capacity)
             list_get_through_routine(place)
             @asm.label(done)
           end
@@ -883,11 +891,10 @@ module VBlank
           def emit_list_set(node)
             return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
 
-            place, _capacity, width = list_placed(node)
+            place, capacity, width = list_placed(node)
             out_of_range = fresh("list_index_out_of_range")
             done = fresh("list_item_written")
-            value(node.index)
-            emit_list_slot_address(place, width, out_of_range)
+            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range)
             @asm.push(:hl)
             value(node.value)
             @asm.pop(:hl)
@@ -897,6 +904,7 @@ module VBlank
             end
             @asm.jump(done)
             @asm.label(out_of_range)
+            value(node.index) if kept_list_index?(node.index, capacity)
             list_set_through_routine(place)
             @asm.label(done)
           end
@@ -908,6 +916,11 @@ module VBlank
             @asm.load(:a, :b)
             @asm.or_a(:c)
             @asm.jump(:nz, out_of_range)
+            emit_list_slot_of_de(place, width, out_of_range)
+          end
+
+          # The same for an index in DE alone.
+          def emit_list_slot_of_de(place, width, out_of_range)
             @asm.load(:hl, place + Runtime::Lists::LENGTH)
             @asm.load(:a, :e)
             @asm.sub_a([:hl])
@@ -1251,6 +1264,9 @@ module VBlank
               @asm.jump(condition.op == :== ? :nz : :z, label)
             elsif (equal = equality_of_kept(condition))
               compare_kept_with_number(*equal)
+              @asm.jump(condition.op == :== ? :nz : :z, label)
+            elsif (equal = equality_of_two_kept(condition))
+              compare_two_kept(*equal)
               @asm.jump(condition.op == :== ? :nz : :z, label)
             elsif (name = sign_tested_variable(condition))
               # A variable at or above nought, or below it, is its top bit, where it is kept.

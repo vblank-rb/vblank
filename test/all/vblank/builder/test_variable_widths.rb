@@ -87,6 +87,136 @@ class TestVariableWidths < Minitest::Test
     assert_equal 1 + 2 + 4 + 8 + 16 + 32 + 128 + 256, run[:seen]
   end
 
+  def test_two_kept_variables_of_one_width_compare_as_their_numbers
+    run = played do
+      a = var :a, -1, width: :byte
+      b = var :b, 127, width: :byte
+      same = var :same, -1, width: :byte
+      c = var :c, 0x1234, width: :half
+      d = var :d, 0x1235, width: :half
+      e = var :e, 0x2234, width: :half
+      seen = var :seen, 0
+      seen += 1 if a == same
+      seen += 2 if a != b
+      seen += 4 if a == b
+      seen += 8 if c == d
+      seen += 16 if c != e
+      seen += 32 if c != d
+    end
+
+    assert_equal 1 + 2 + 16 + 32, run[:seen]
+  end
+
+  def test_turning_a_kept_variable_negative_keeps_its_width
+    run = played do
+      a = var :a, 5, width: :byte
+      a = -a
+      b = var :b, -300, width: :half
+      negate! :b
+      c = var :c, 256, width: :half
+      c = -c
+      d = var :d, -128, width: :byte
+      d = -d
+      e = var :e, -32_768, width: :half
+      e = -e
+    end
+
+    assert_equal(-5, run[:a])
+    assert_equal 300, run[:b]
+    assert_equal(-256, run[:c], "the borrow crosses from the low byte to the high one")
+    assert_equal(-128, run[:d], "128 has no place in a byte")
+    assert_equal(-32_768, run[:e])
+  end
+
+  def test_a_product_kept_narrow_is_the_low_bits_of_the_whole_product
+    run = played do
+      a = var :a, 300, width: :half
+      b = var :b, 200, width: :half
+      c = var :c, -7, width: :byte
+      d = var :d, 9, width: :byte
+      over = var :over, 0, width: :half
+      over = a * b
+      under = var :under, 0, width: :half
+      under = c * d
+      byte = var :byte, 0, width: :byte
+      byte = c * a
+      masked = var :masked, 0, width: :half
+      masked = (a & 0xff) * d
+      written = var :written, 0, width: :half
+      written = a * 1000
+      none = var :none, 0, width: :half
+      none = a * 0
+    end
+
+    assert_equal(-5536, run[:over], "60000 kept in a half")
+    assert_equal(-63, run[:under])
+    assert_equal(-52, run[:byte], "-2100 kept in a byte")
+    assert_equal(396, run[:masked])
+    assert_equal(-27_680, run[:written], "300000 kept in a half")
+    assert_equal 0, run[:none]
+  end
+
+  def test_bit_sums_of_kept_variables_keep_their_width
+    run = played do
+      a = var :a, 0x1234, width: :half
+      b = var :b, -256, width: :half
+      x = var :x, 0, width: :half
+      x = a ^ b
+      y = var :y, 0, width: :half
+      y = a & b
+      z = var :z, 0, width: :half
+      z = a | b
+    end
+
+    assert_equal(0x1234 ^ -256, run[:x])
+    assert_equal(0x1234 & -256, run[:y])
+    assert_equal(0x1234 | -256, run[:z])
+  end
+
+  def test_a_list_is_read_and_written_at_a_kept_variable_and_a_number
+    run = played do
+      slots = list :slots, capacity: 8, width: :byte
+      8.times { |i| slots.push(i * 10) }
+      first = var :first, 2, width: :half
+      small = var :small, 5, width: :byte
+      high = var :high, 0
+      high = slots[first + 3]
+      low = var :low, 0
+      low = slots[small - 2]
+      plain = var :plain, 0
+      plain = slots[small]
+      slots[first + 4] = 99
+      slots[small - 5] = 77
+      after = var :after, 0
+      after = slots[6]
+      start = var :start, 0
+      start = slots[0]
+    end
+
+    assert_equal 50, run[:high]
+    assert_equal 30, run[:low]
+    assert_equal 50, run[:plain]
+    assert_equal 99, run[:after]
+    assert_equal 77, run[:start]
+  end
+
+  # Past either end the game stops as it would for any index, whatever the kept variable holds.
+  def test_a_list_read_past_its_end_at_a_kept_variable_stops_the_game
+    [[-3, 2], [30_000, 0], [32_767, 100], [6, 0], [-1, 0]].each do |at, added|
+      error = assert_raises(StandardError) do
+        played do
+          slots = list :slots, capacity: 6, width: :byte
+          6.times { |i| slots.push(i) }
+          first = var :first, at, width: :half
+          read = var :read, 0
+          read = slots[first + added]
+        end
+      end
+
+      assert_match(/list/i, error.message, "index #{at} + #{added}")
+    end
+  end
+
   # Anywhere a game gives a number, a kept variable can be it.
   def test_a_kept_variable_is_a_number_anywhere_one_goes
     run = played do

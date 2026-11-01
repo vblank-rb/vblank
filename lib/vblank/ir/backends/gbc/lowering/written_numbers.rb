@@ -184,13 +184,44 @@ module VBlank
 
               name = variable_kept_at_least(operand, bytes)
               return emit_low_bytes_at(place_of(name), bytes) if name
+              return emit_low_negative(operand, bytes) if operand.is_a?(Node) && operand.kind == :neg
               return value(operand) unless operand.is_a?(Node) && operand.kind == :binop
 
               case operand.op
               when :+, :-, :&, :|, :^ then emit_low_sum(operand, bytes)
+              when :* then emit_low_product(operand)
               when :>> then emit_low_bytes_shifted_down(operand, bytes)
               else value(operand)
               end
+            end
+
+            # The low bytes of a number's negative, from its low bytes alone: nought take them away.
+            def emit_low_negative(node, bytes)
+              low_value(node.operand, bytes)
+              @asm.xor_a(:a)
+              @asm.sub_a(:e)
+              @asm.load(:e, :a)
+              return if bytes == 1
+
+              @asm.load(:a, 0) # a load moves no flag, so the borrow is kept
+              @asm.sbc_a(:d)
+              @asm.load(:d, :a)
+            end
+
+            # The low two bytes of a product, from the low two bytes of its sides, by rt_mul16: the
+            # low bits of a product come from the low bits alone, with or without a sign. The right
+            # side is the one walked, so the routine ends as soon as it runs out.
+            def emit_low_product(node)
+              left, right = node.lhs, node.rhs
+              left, right = right, left if folded(left)
+              number = folded(right)
+              unless number
+                low_value(right, 2)
+                @asm.push(:de)
+              end
+              low_value(left, 2)
+              number ? @asm.load(:hl, number & 0xFFFF) : @asm.pop(:hl)
+              @asm.call("rt_mul16")
             end
 
             # A = the low byte of +operand+'s number, for a caller that needs only that byte (a
