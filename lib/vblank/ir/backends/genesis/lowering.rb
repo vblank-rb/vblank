@@ -87,7 +87,6 @@ module VBlank
                                                     "the status bar" => %i[place_bar],
                                                     "backgrounds bent row by row" => %i[scroll_rows],
                                                     "tiles painted from a list" => %i[copy_tiles copy_owed_tiles],
-                                                    "colours that change as the game runs" => %i[background_colors],
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at],
                                                     "save memory" => %i[save_init save_store save_write save_erase
@@ -178,10 +177,10 @@ module VBlank
           # are kept apart (Art#initialize's +exact+).
           def self.fading?(program) = program.walk.any? { |node| %i[fade tint].include?(node.kind) }
 
-          # Whether the game changes its colours as it runs: it fades, tints, or has a list of sprite colours
-          # told to hold others, which is when its cartridge carries Runtime::Tint.
+          # Whether the game changes its colours as it runs: it fades, tints, or has a list of colours told
+          # to hold others (a sprite's, or a background's), which is when its cartridge carries Runtime::Tint.
           def self.changing_colors?(program)
-            program.walk.any? { |node| %i[fade tint color_list_holds].include?(node.kind) }
+            program.walk.any? { |node| %i[fade tint color_list_holds background_colors].include?(node.kind) }
           end
 
           # Whether the game holds numbers with a fraction, which is when the cartridge carries the

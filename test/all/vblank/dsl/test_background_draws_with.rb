@@ -232,7 +232,7 @@ class TestBackgroundDrawsWith < Minitest::Test
     said = [[:red, "nothing has been said yet, so it is as drawn"], [:orange, "the counter said 0"],
             [:magenta, "...then 1"], [:red, "...then 2, which names no list: as drawn again"],
             [:red, "...then 3, which names none either"]].drop(1 - framework_drawing_lag)
-    said.first(4).each.with_index(1) { |(color, why), frames| assert_equal Color.resolve(color), left.call(frames), why }
+    said.first(4).each.with_index(1) { |(color, why), frames| assert_equal shown(color), left.call(frames), why }
   end
 
   # Three scenes each declaring the layer, and each telling it which of 52 lists to draw with: the
@@ -266,7 +266,7 @@ class TestBackgroundDrawsWith < Minitest::Test
     builder.finalize_program
     shown = game_player.run(builder.program, frames: 6).screen.pixel(1, 1)
 
-    assert_equal Color.rgb(5 - framework_drawing_lag, 0, 26 + framework_drawing_lag), shown
+    assert_equal VBlank::Testing.shown(Color.rgb(5 - framework_drawing_lag, 0, 26 + framework_drawing_lag)), shown
   end
 
   def test_the_console_walks_the_lists_the_same_way
@@ -412,7 +412,7 @@ class TestBackgroundDrawsWith < Minitest::Test
             [%i[magenta cyan], "version 1 of both"], [%i[red blue], "past the end: both as drawn"],
             [%i[red blue], "further past the end: both as drawn"]].drop(1 - framework_drawing_lag)
     said.first(4).each.with_index(1) do |(colors, why), frames|
-      assert_equal colors.map { |name| Color.resolve(name) }, seen.call(frames), why
+      assert_equal colors.map { |name| shown(name) }, seen.call(frames), why
     end
   end
 
@@ -566,7 +566,7 @@ class TestBackgroundDrawsWith < Minitest::Test
     screen = game_player.run(a_screen_of_seven_lists_brought_in_from_white, frames: 2 + framework_drawing_lag).screen
 
     ARRIVING.each_with_index do |color, i|
-      assert_equal Color.resolve(color), screen.pixel((i * 8) + 1, 1), "list#{i}'s column at its last step"
+      assert_equal shown(color), screen.pixel((i * 8) + 1, 1), "list#{i}'s column at its last step"
     end
   end
 

@@ -169,7 +169,6 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - the status bar: `place_bar`
 - backgrounds bent row by row: `scroll_rows`
 - tiles painted from a list: `copy_tiles`, `copy_owed_tiles`
-- colours that change as the game runs: `background_colors`
 - layers see-through: `see_through`
 - the picture: `draw_column_at`
 - save memory: `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`

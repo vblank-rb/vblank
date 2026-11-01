@@ -21,6 +21,7 @@ module VBlank
                                                  set_tile: :emit_set_tile, show_map: :emit_show_map,
                                                  present_objects: :emit_present_objects,
                                                  color_list_holds: :emit_color_list_holds,
+                                                 background_colors: :emit_background_colors,
                                                  fade: :emit_fade, tint: :emit_tint,
                                                  hide_sprites: :emit_hide_sprites
                                                })
@@ -100,9 +101,6 @@ module VBlank
                   refuse_unmade!("background tiles of #{bg.tile_w}×#{bg.tile_h}")
                 end
                 refuse_unmade!("a background whose maps are of different sizes or too big to hold") if bg.streams?
-                unless Array(bg.recolors).empty? && Array(bg.palettes).length <= 1
-                  refuse_unmade!("a background drawn with other colours")
-                end
               end
               sizes = @backgrounds.map { |bg| TileMap.grid(bg.every_map.first) }.uniq
               refuse_unmade!("backgrounds of different sizes on one screen") if sizes.length > 1
@@ -224,23 +222,41 @@ module VBlank
             def emit_color_list_holds(node)
               palette = @art.held_palette_of([:sprites, node.name]) or return
 
-              runtime_call("rt_colors_hold", [LabelAddress.new(held_colors_label(node.name)), node.which, Build.int(palette)])
+              list = color_list_named(node.name)
+              label = held_colors_label([:list, node.name], list.colors, list.recolors)
+              runtime_call("rt_colors_hold", [LabelAddress.new(label), node.which, Build.int(palette)])
             end
 
-            def held_colors_label(name)
-              @held_label_names ||= []
-              @held_label_names << name unless @held_label_names.include?(name)
-              "art held colors #{@held_label_names.index(name)}"
+            # Reference#exec_background_colors: each list the background's tiles are drawn from holds the list the
+            # game's number names for it, the same list for each and the same step through them all. A list no tile
+            # is drawn from has no palette, and nothing to show.
+            def emit_background_colors(node) = for_background(node) { |bg| emit_background_colors_of(bg, node) }
+
+            def emit_background_colors_of(bg, node)
+              bg.drawn_lists.each_index do |index|
+                palette = @art.held_palette_of([:background, bg.object_id, index]) or next
+
+                steps = bg.recolors.map { |step| step.fetch(index) }
+                label = held_colors_label([:background, bg.object_id, index], bg.palettes.fetch(index), steps)
+                runtime_call("rt_colors_hold", [LabelAddress.new(label), node.which, Build.int(palette)])
+              end
+            end
+
+            # The table of the colours a palette can be told to hold, which rt_colors_hold reads: +declared+ is the
+            # colours it starts with and +steps+ each other set, every one a list with see-through first.
+            def held_colors_label(key, declared, steps)
+              @held_tables ||= {}
+              @held_tables[key] ||= ["art held colors #{@held_tables.length}", declared, steps]
+              @held_tables[key].first
             end
 
             # Each table of sets as data for the Linker: how many sets besides the declared colours, then those and
             # each other set, a palette's places (Art#palette_colors, the game's 15-bit colours) each.
             def write_held_colors(data)
-              (@held_label_names || []).each_with_index do |name, number|
-                list = color_list_named(name)
-                data.label("art held colors #{number}")
-                data.data_words(list.recolors.length)
-                [list.colors, *list.recolors].each { |colors| data.data_words(@art.palette_colors(colors.drop(1))) }
+              (@held_tables || {}).each_value do |label, declared, steps|
+                data.label(label)
+                data.data_words(steps.length)
+                [declared, *steps].each { |colors| data.data_words(@art.palette_colors(colors.drop(1))) }
               end
             end
 
@@ -324,7 +340,18 @@ module VBlank
             def cell_of(bg, tile)
               return nil if tile.nil? || tile.negative?
 
-              @art.background_cell(Assets::Image.of(picture_named(bg.tiles.fetch(tile))))
+              image = Assets::Image.of(picture_named(bg.tiles.fetch(tile)))
+              bg.recolors.empty? ? @art.background_cell(image) : @art.background_cell(image, palette: recolored_palette(bg, image))
+            end
+
+            # THE PALETTE A TILE OF A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS IS DRAWN FROM: one for each list
+            # its tiles were drawn from, written over with the colours of the list the game's number names for it
+            # (Reference#background_swap). The tile is made of the places of its own list.
+            def recolored_palette(bg, image)
+              list = bg.recolored_list_of(image.list_drawn_from) or
+                raise LoweringError, "a tile of the background #{bg.name.inspect} is drawn from a list of colours it was not given"
+              index = bg.drawn_lists.index(list)
+              @art.held_sprite_palette([:background, bg.object_id, index], bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF })
             end
 
             # --- the screen and the backgrounds ---

@@ -82,7 +82,11 @@ module VBlank
           # --- backgrounds ---
 
           # The cell +image+ (an Assets::Image of 8×8) makes in a map: its tile number and its palette.
-          def background_cell(image)
+          # +palette+ is a palette whose places are the tile's own list's (#held_sprite_palette), for a tile of a
+          # background the game draws with other colours: the tile is then made of places, as a sprite's is.
+          def background_cell(image, palette: nil)
+            return placed_background_cell(image, palette) if palette
+
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
             colors = drawn.map { |at| word_of(image.color_at(at)) }.uniq
             palette = palette_for(colors, "backgrounds")
@@ -220,6 +224,14 @@ module VBlank
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
+
+          # A tile of a background drawn with other colours, made of the places its pixels were drawn at.
+          def placed_background_cell(image, palette)
+            places = Array.new(64) do |at|
+              image.tile_see_through_at?(at) ? 0 : image.place_at(at) || first_place(image, image.color_at(at))
+            end
+            [tile_number(tile_bytes(places)), palette]
+          end
 
           # The first place of the picture's own list that holds +color+, counting from place 1: place 0 is
           # see-through, however it is written in a list, as Assets::Recolor reads it.
