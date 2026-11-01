@@ -203,9 +203,9 @@ module VBlank
       # cannot be hit looks like on this console.
       def colors(name, list)
         refuse_bad_color_list_name!(name)
-        unless list.is_a?(Array) && list.length.between?(2, @console.list_colors)
+        unless list.is_a?(Array) && list.length.between?(2, PICTURE_COLORS)
           raise ArgumentError,
-                "colors :#{name} needs a list of 2 to #{@console.list_colors} colors, the first meaning see-through. " \
+                "colors :#{name} needs a list of 2 to #{PICTURE_COLORS} colors, the first meaning see-through. " \
                 "Got #{list.inspect}."
         end
 
@@ -690,9 +690,11 @@ module VBlank
       # front, which the console reads as "leave this pixel alone" whatever color sits
       # there — so it holds one fewer real color than its length.
       #
-      # This is the most one picture can name on any console, not what a console shows at once. A
-      # console that holds fewer in a list (Console::Description#list_colors) cuts a picture into
-      # tiles, and each tile is held to its list as the art is made.
+      # This is the most one picture or `colors` list can name on any console, not what a console
+      # shows at once. A console that holds fewer in a list of its own
+      # (Console::Description#list_colors) takes the colours each tile uses from the longer list, so
+      # a list of five on the Color draws, and each tile is held to the console's list as the art is
+      # made, which is where a tile that truly does not fit is refused by name.
       PICTURE_COLORS = 16
 
       # A picture's own table, checked while the author is still looking at the line
