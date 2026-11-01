@@ -135,6 +135,9 @@ module VBlank
             def self.bend_offsets(layer) = "rt bend offsets #{layer}"
             def self.bend_tables(layer) = "rt bend tables #{layer}"
             BEND_SHOWN = "rt bend shown"
+            # A bit for each layer a scene bends while that scene is away, in a game with such a
+            # scene: the layer's rows go straight, and the next scene using it shows no bend.
+            LAYERS_STRAIGHT = "rt layers straight"
             BEND_STEP_LINES = SCREEN_HEIGHT / 2
             REPEAT = 0x80 # a step's count with this bit: a new value on every line of it
             BEND_TABLE_BYTES = 1 + (BEND_STEP_LINES * 2) + 1 + (BEND_STEP_LINES * 2) + 1
@@ -169,7 +172,8 @@ module VBlank
             # CGADSUB's bit that halves the sum.
             MATH_HALVES = 0x40
 
-            def reserve(memory, bar: false, bends: false, tile_runs: [], math_turns: false, bar_covers: false)
+            def reserve(memory, bar: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false)
+              memory.reserve(LAYERS_STRAIGHT, 2) if scene_bends
               memory.reserve(BAR_COVERS, 2) if bar_covers
               memory.reserve(MATH, 2) if math_turns
               memory.reserve(TILE_RUNS_OWED, tile_runs.length * 2) unless tile_runs.empty?
@@ -846,6 +850,7 @@ module VBlank
                 tables = memory[bend_tables(layer)]
                 offsets = memory[bend_offsets(layer)]
                 tag = "rt_bends_prepare_#{layer}"
+                emit_skip_straight_layer(asm, memory, layer, "#{tag}_done")
                 # The table not shown: the second, past the first, while the first is shown.
                 asm.lda(asm.abs(memory[BEND_SHOWN] + (layer * 2)))
                 asm.beq("#{tag}_second")
@@ -885,12 +890,28 @@ module VBlank
                 asm.lda(0) # the end of the table
                 asm.sta(asm.ind_long_y(work))
                 asm.rep(0x20)
+                asm.label("#{tag}_done")
               end
               asm.rtl
             end
 
+            # On to +past+ while +layer+'s rows are straight (LAYERS_STRAIGHT), in a game that has
+            # any that can be: a scene that bends it is away.
+            def emit_skip_straight_layer(asm, memory, layer, past)
+              return unless memory.places.key?(LAYERS_STRAIGHT)
+
+              bent_now = "#{past}_bent_now"
+              asm.lda(asm.abs(memory[LAYERS_STRAIGHT]))
+              asm.and_a(1 << layer)
+              asm.beq(bent_now)
+              yield if block_given?
+              asm.brl(past)
+              asm.label(bent_now)
+            end
+
             # In the blank: each bent layer's channel switched to the table just made, writing the
-            # layer's BGnHOFS twice a line (low byte, then high).
+            # layer's BGnHOFS twice a line (low byte, then high). A layer whose rows are straight has
+            # its channel left off, so the scroll written once in the blank holds for every line.
             def emit_bends_shown(asm, memory, bent)
               h = Console::SNESHardware
               bent.each do |layer|
@@ -898,6 +919,11 @@ module VBlank
                 channel = h::DMA_BASE + (BEND_CHANNELS.fetch(layer) << 4)
                 shown = memory[BEND_SHOWN] + (layer * 2)
                 tag = "rt_bends_shown_#{layer}"
+                emit_skip_straight_layer(asm, memory, layer, "#{tag}_done") do
+                  asm.lda(asm.abs(memory[HDMA_CHANNELS]))
+                  asm.and_a(0xFFFF ^ (1 << BEND_CHANNELS.fetch(layer)))
+                  asm.sta(asm.abs(memory[HDMA_CHANNELS]))
+                end
                 asm.lda(asm.abs(shown))
                 asm.eor(1)
                 asm.sta(asm.abs(shown))
@@ -918,6 +944,7 @@ module VBlank
                 asm.lda(asm.abs(memory[HDMA_CHANNELS]))
                 asm.ora(1 << BEND_CHANNELS.fetch(layer))
                 asm.sta(asm.abs(memory[HDMA_CHANNELS]))
+                asm.label("#{tag}_done")
               end
             end
 

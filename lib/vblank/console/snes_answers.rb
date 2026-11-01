@@ -123,7 +123,9 @@ module VBlank
                           "A cell of its map is then one 16×16 tile. A `scroll_each_row` block runs for all 224 rows " \
                           "each pass, so a block that reads a table can take more than a frame. If a block only " \
                           "compares the row with numbers, as `row >= 68 ? a : b` does, it runs once for each band of " \
-                          "rows, and the game keeps up."),
+                          "rows, and the game keeps up. A scene can bend a background of its own. The rows go straight " \
+                          "when that scene leaves. If the block is one expression, it takes none of the frame while " \
+                          "that scene is away."),
         status_bar: works("the bar is one of the two backgrounds. `set_tile` with `now: true` is refused: " \
                           "a Super Nintendo writes its video memory only between frames, so a change " \
                           "shows on the frame after the pass."),

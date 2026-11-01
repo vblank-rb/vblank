@@ -44,6 +44,13 @@ module VBlank
             # and line tables of (Runtime::Picture's rt_bends_prepare).
             def self.bends?(program) = program.walk.any? { |node| node.kind == :scroll_rows }
 
+            # Whether a background a scene puts up is bent, whose rows then go straight while that
+            # scene is away (Runtime::Picture::LAYERS_STRAIGHT).
+            def self.scene_bends?(program)
+              always = IR::SceneHandover.of(program).always_up.scenery.map(&:name)
+              program.walk.any? { |node| node.kind == :scroll_rows && !always.include?(node.name) }
+            end
+
             # The runs of tiles +program+ paints from lists (Builder::TileRuns), each once, in the order
             # they were declared: the order the runtime numbers them in.
             def self.tile_runs(program) = program.walk.select { |node| node.kind == :tile_run }.uniq(&:name)
@@ -439,7 +446,7 @@ module VBlank
             attr_reader :see_through_layers
 
             # The layers bent, in #bends' order, whose line tables the runtime makes.
-            def bent_layers = painted? ? [] : bends.map { |bend| layer_of(background_declared_for(bend)) }
+            def bent_layers = painted? ? [] : bends.map { |bend| layer_of(background_declared_for(bend)) }.uniq
 
             # BGMODE'S SIZE BITS for the layers drawn from 16×16 tiles: BG1's is bit 4, BG2's bit 5. The
             # console is told once, at power-on, so a layer that shows a background of 16×16 tiles in
@@ -538,7 +545,7 @@ module VBlank
               end
               @scene_bars = own.flatten.any?(&:bar?)
               refuse_unmade_stacking!(always)
-              refuse_unmade_bends!(always)
+              refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
               refuse_unmade_see_through!(always)
@@ -601,12 +608,23 @@ module VBlank
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               return if @scene_layers.zero?
 
+              emit_layers_straight_for(arrival)
               arrival.map_choices.each { |var| store_number(place_of(var), 0) }
               arrival.scenery.each { |bg| emit_put_up(bg) }
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
               runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none?(&:bar?)
+            end
+
+            # The layers some scene bends and the one taking over does not: their rows go straight.
+            def emit_layers_straight_for(arrival)
+              bent = bends.reject { |bend| scenes_showing(bend).nil? }.map { |bend| background_declared_for(bend) }
+              return if bent.empty?
+
+              up = bent.select { |bg| arrival.scenery.any? { |shown| shown.equal?(bg) } }
+              @asm.lda((bent.map { |bg| layer_of(bg) } - up.map { |bg| layer_of(bg) }).sum { |layer| 1 << layer })
+              @asm.sta(@asm.abs(@memory[Runtime::Picture::LAYERS_STRAIGHT]))
             end
 
             # Whether a scene of the game puts up a status bar of its own, which leaves as the next
@@ -880,12 +898,20 @@ module VBlank
             # A game all of whose bends say a thing about whole bands of rows has each band worked
             # out once (RowBands). All of them or none: a block asked every row can change a number
             # another block reads, and then that one's rows are not bands at all.
+            #
+            # A BEND WHOSE SCENE IS AWAY is asked as it is on the interpreter if its block can change
+            # a number the game reads (#asked_while_away?), and otherwise takes none of the frame.
+            # Only the rows of one whose scene is up are kept: a layer has one set of rows, and
+            # another scene's bend may share the layer.
             def emit_bends
               bands = bends.map { |bend| RowBands.firsts(bend, Runtime::Picture::SCREEN_HEIGHT) }
-              return bends.zip(bands).each { |bend, firsts| emit_bend_bands(bend, firsts) } if bands.all?
-
-              bends.each { |bend| emit_bend_rows(bend, 0...1) }
-              bends.each { |bend| emit_bend_rows(bend, 1...Runtime::Picture::SCREEN_HEIGHT) }
+              height = Runtime::Picture::SCREEN_HEIGHT
+              if bands.all?
+                bends.zip(bands).each { |bend, firsts| emit_bend_work(bend, height) { emit_bend_bands(bend, firsts) } }
+              else
+                bends.each { |bend| emit_bend_work(bend, 1) { emit_bend_rows(bend, 0...1) } }
+                bends.each { |bend| emit_bend_work(bend, height) { emit_bend_rows(bend, 1...height) } }
+              end
             end
 
             # Each band of +bend+ from its first row, whose answer goes in all the band's rows.
@@ -902,15 +928,66 @@ module VBlank
             def emit_band_offset(bend, rows)
               offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend)))]
               value(bend.offset)
-              @asm.lda(@asm.direct(R0))
-              @asm.ldx(rows.begin * 2)
-              top = fresh("bend_band")
-              @asm.label(top)
-              @asm.sta(@asm.long_x(offsets))
-              @asm.inx
-              @asm.inx
-              @asm.cpx(rows.end * 2)
-              @asm.bne(top)
+              emit_row_kept(bend) do
+                @asm.lda(@asm.direct(R0))
+                @asm.ldx(rows.begin * 2)
+                top = fresh("bend_band")
+                @asm.label(top)
+                @asm.sta(@asm.long_x(offsets))
+                @asm.inx
+                @asm.inx
+                @asm.cpx(rows.end * 2)
+                @asm.bne(top)
+              end
+            end
+
+            # The block's code runs only while a scene showing +bend+'s background is up; every
+            # screen's background is always up. The test leaves R0 alone, which the block reads.
+            def emit_while_bend_up(bend, &block)
+              scenes = scenes_showing(bend)
+              return yield if scenes.nil?
+
+              up = fresh("bend_up")
+              past = fresh("bend_not_up")
+              scenes.each do |number|
+                @asm.lda(@asm.abs(place_of(@scene)))
+                @asm.cmp(number)
+                @asm.beq(up)
+              end
+              @asm.brl(past)
+              @asm.label(up)
+              yield
+              @asm.label(past)
+            end
+
+            # The numbers of the scenes that put up +bend+'s background, or nil for one every screen
+            # shows.
+            def scenes_showing(bend)
+              bg = background_declared_for(bend)
+              return nil if @handover.always_up.scenery.any? { |up| up.equal?(bg) }
+
+              @scenes.filter_map do |scene, number|
+                number if @handover.arrival(scene).scenery.any? { |up| up.equal?(bg) }
+              end
+            end
+
+            # Whether anything can tell +bend+'s block has run while its scene is away. One that is a
+            # single expression changes nothing, unless it reads a list, whose index can stop the game.
+            def asked_while_away?(bend)
+              !bend.children.empty? || bend.offset.walk.any? { |node| node.kind == :list_get }
+            end
+
+            # A row's work: left out while the bend's scene is away, if nothing can tell.
+            def emit_bend_work(bend, row_after, &work)
+              return yield if scenes_showing(bend).nil? || asked_while_away?(bend)
+
+              emit_while_bend_up(bend, &work)
+              statement(Build.set(bend.row, row_after))
+            end
+
+            # A row kept, in a bend whose block ran whichever scene is up.
+            def emit_row_kept(bend, &keep)
+              asked_while_away?(bend) ? emit_while_bend_up(bend, &keep) : yield
             end
 
             # Rows +rows+ (a range short of its end) of +bend+.
@@ -939,23 +1016,20 @@ module VBlank
               @asm.pha
               value(bend.offset)
               @asm.plx
-              @asm.lda(@asm.direct(R0))
-              @asm.sta(@asm.long_x(offsets))
+              emit_row_kept(bend) do
+                @asm.lda(@asm.direct(R0))
+                @asm.sta(@asm.long_x(offsets))
+              end
             end
 
-            # The bends a layer's line table cannot show yet: one on a scene's own background (its
-            # layer is another scene's in turn), on a status bar, or in a game that never waits for the
-            # screen (whose rows the interpreter works out as it paints them).
-            def refuse_unmade_bends!(always)
+            # The bends a layer's line table cannot show yet: one on a status bar, or in a game that
+            # never waits for the screen (whose rows the interpreter works out as it paints them).
+            def refuse_unmade_bends!
               return if bends.empty?
 
               refuse_unmade!("a background bent row by row in a game that never waits for the screen") unless
                 @program.walk.any? { |node| node.kind == :wait_vblank }
-              bends.each do |bend|
-                bg = background_declared_for(bend)
-                refuse_unmade!("a status bar bent row by row") if bg&.bar?
-                refuse_unmade!("a background bent row by row that a scene puts up") unless always.any? { |up| up.equal?(bg) }
-              end
+              refuse_unmade!("a status bar bent row by row") if bends.any? { |bend| background_declared_for(bend)&.bar? }
             end
 
             # Reference#exec_show_map: a number naming no map leaves the cells alone; the view stays

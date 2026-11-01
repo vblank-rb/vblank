@@ -386,6 +386,46 @@ class TestSceneBackgrounds < Minitest::Test
     assert_equal BLUE, shown(two_scenes(1), SWITCH_AT + 4)
   end
 
+  # EACH SCREEN OWNS ITS OWN BENT BACKGROUND. The scene that bends sits its rows from 40 down four
+  # pixels along, onto the blue half of each stripe. The next scene's background shares nothing
+  # with it, and its rows stay straight until the first scene comes back.
+  def test_a_scene_bends_only_its_own_background
+    rows = lambda do |frames|
+      screen = game_player.run(a_bent_scene_and_a_plain_one, frames: frames).screen
+      [screen.pixel(0, 10), screen.pixel(0, 50)]
+    end
+
+    assert_equal [RED, BLUE], rows.call(3), "the scene that bends"
+    assert_equal [RED, RED], rows.call(7), "the next scene, straight"
+    assert_equal [RED, BLUE], rows.call(11), "the first scene back, bent again"
+  end
+
+  def test_the_backends_agree_about_a_scene_that_bends
+    assert_backends_agree(a_bent_scene_and_a_plain_one, frames: [2, 3, 4, 5, 6, 7, 9, 10, 11])
+  end
+
+  private def a_bent_scene_and_a_plain_one
+    program do
+      screen :tiled
+      image(:stripes, "#" => :red, "." => :blue) { "####....\n" * 8 }
+      tiles :set, "#" => :stripes
+      map = Array.new(32) { "#" * 32 }
+      scene(:bent) { background(:logo, tiles: :set, map: map).scroll_each_row { |row| row >= 40 ? 4 : 0 } }
+      scene(:plain) { background :island, tiles: :set, map: map }
+      state = var :state, 0
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        state = 1 if tick > SWITCH_AT
+        state = 0 if tick > 8
+        case_var(:state) do
+          when_val 0, :bent
+          when_val 1, :plain
+        end
+      end
+    end
+  end
+
   def test_a_background_declared_inside_a_scene_scrolls
     at_top_level = game_player.run(scrolling_program(in_a_scene: false), frames: SCROLLED_FOR).screen
     in_a_scene = game_player.run(scrolling_program(in_a_scene: true), frames: SCROLLED_FOR).screen

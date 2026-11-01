@@ -122,7 +122,8 @@ module VBlank
           math_turns = Lowering::Picture.see_through_turns_solid?(program)
           Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
-                                  bends: bends, tile_runs: tile_runs, holds_music: Lowering::Sound.holds_music?(program),
+                                  bends: bends, scene_bends: Lowering::Picture.scene_bends?(program), tile_runs: tile_runs,
+                                  holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program),
