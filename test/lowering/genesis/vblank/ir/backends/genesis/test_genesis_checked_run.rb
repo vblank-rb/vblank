@@ -248,6 +248,21 @@ class TestGenesisCheckedRun < Minitest::Test
     assert_operator run[:frames], :>, run[:passes], "a pass spanned more than one frame"
   end
 
+  # A byte read out of a block of data the program declares, built as IR since no verb says it alone.
+  def test_a_byte_of_declared_data_is_read_as_the_interpreter_reads_it
+    build = VBlank::IR::Build
+    game = build.program(
+      build.data(:bytes, "\x05\xFA\x07".b),
+      build.set(:first, build.data_byte(:bytes, 0)),
+      build.loop_(build.wait_vblank, build.set(:second, build.data_byte(:bytes, 1)),
+                  build.set(:total, build.binop(:+, build.data_byte(:bytes, 2), build.var_ref(:second)))),
+      console: :genesis
+    )
+    run = Genesis::CheckedRun.new.run(game, frames: 4)
+
+    assert_equal [5, 250, 257], [run[:first], run[:second], run[:total]]
+  end
+
   def test_a_routine_that_can_call_itself_is_refused_in_plain_words
     program = VBlank::IR::Build.program(
       VBlank::IR::Build.func(:again, VBlank::IR::Build.call(:again)), VBlank::IR::Build.call(:again)

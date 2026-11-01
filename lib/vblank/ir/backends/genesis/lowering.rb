@@ -60,6 +60,9 @@ module VBlank
                                                # a Genesis cartridge has no rumble motor, so nothing is felt
                                                # (Console::Description#rumbles)
                                                rumble: :emit_nothing,
+                                               # every picture is in video memory whichever group is up (the
+                                               # interpreter's own check is all that groups are for here)
+                                               show_picture_group: :emit_nothing,
                                                # a tiled screen is the one the console is set up for at power-on
                                                screen: :emit_nothing
                                              }.merge(Paint::STATEMENTS).merge(Picture::STATEMENTS)
@@ -73,7 +76,8 @@ module VBlank
                                            pressed: :value_of_pressed, list_get: :value_of_list_get,
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
                                            timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
-                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix
+                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
+                                           data_byte: :value_of_data_byte
                                          }.merge(Collision::VALUES))
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
@@ -85,7 +89,7 @@ module VBlank
                                                     "tiles painted from a list" => %i[copy_tiles copy_owed_tiles],
                                                     "colours that change as the game runs" => %i[background_colors],
                                                     "layers see-through" => %i[see_through],
-                                                    "the picture" => %i[draw_column_at show_picture_group data_byte],
+                                                    "the picture" => %i[draw_column_at],
                                                     "save memory" => %i[save_init save_store save_write save_erase
                                                                         save_read save_sum],
                                                     "sound" => %i[enable_sound beep noise wave stop_wave play_song
@@ -957,6 +961,14 @@ module VBlank
 
           def value_of_int(node) = load_constant(node.value)
           def value_of_var_ref(node) = load_variable(node.name)
+
+          # One byte of a named blob of data, which the game says where to look in as it is built, so it is a number
+          # here (Reference#data_byte).
+          def value_of_data_byte(node)
+            bytes = by_kind(:data).fetch(node.name) { raise LoweringError, "reference to undefined data #{node.name.inspect}" }.bytes
+            byte = bytes.getbyte(node.index) or raise LoweringError, "data_byte index #{node.index} is past the end of #{node.name.inspect}"
+            load_constant(byte)
+          end
 
           # Int32.mul_fix and Int32.div_fix: a call, with the count of the fraction's bits.
           def value_of_mul_fix(node) = runtime_call("rt_mul_fix", [node.lhs, node.rhs, Build.int(fraction_bits(node))])
