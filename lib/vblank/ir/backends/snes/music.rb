@@ -82,6 +82,7 @@ module VBlank
           NOTE_SOUNDS = 8
           NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
           NOTE_WOBBLE = 12 # where its wobble's record is, nought for a note that holds its pitch
+          NOTE_SHAPES = 14 # where its shapes' record is, nought for a note that holds its shape
           NOTE_BYTES = 16
           # A WOBBLE'S RECORD (#wobble_record), in bytes: the frames it waits, the frames each swing
           # holds, and the groups that take the voice above and below the note's pitch and log it.
@@ -142,9 +143,14 @@ module VBlank
           def self.follows_level?(program) = IR::Reach.variables(program).include?(IR::Tunes::LEVEL)
 
           # Whether any note of +program+'s songs wobbles its pitch, and so the player needs to.
-          def self.wobbles?(program)
+          def self.wobbles?(program) = any_note?(program) { |part, event| Audio::Vibrato.moves?(IR::Tunes.said_vibrato(part, event)) }
+
+          # Whether any note of +program+'s songs steps through shapes.
+          def self.steps_shapes?(program) = any_note?(program) { |part, event| IR::Tunes.said_duty(part, event)&.steps? }
+
+          def self.any_note?(program)
             program.walk.select { |node| node.kind == :song }.any? do |song|
-              song.voices.any? { |part| part.events.any? { |event| event[1].positive? && Audio::Vibrato.moves?(IR::Tunes.said_vibrato(part, event)) } }
+              song.voices.any? { |part| part.events.any? { |event| event[1].positive? && yield(part, event) } }
             end
           end
 
@@ -211,6 +217,7 @@ module VBlank
             @songs.each { |song| refuse_parts!(song) }
             @groups = [] # every group's commands, each once, in the order first met
             @wobble_records = [] # every wobble's record, each once
+            @shape_records = [] # every note's shapes' record, each once
             # A tune stopping logs its own stop (Music.stop_entry); the voices it lets go of are worked
             # out as it stops, since a sound effect may hold some of them (Runtime::Music's rt_music_quiet).
             tunes = @songs.map do |song|
@@ -228,6 +235,10 @@ module VBlank
             @wobble_records.each do |wait, speed, up, down|
               places[[wait, speed, up, down]] = table.size * 2
               table.concat([wait, speed, places.fetch(up), places.fetch(down)])
+            end
+            @shape_records.each do |groups|
+              places[groups] = table.size * 2
+              table.concat(groups.map { |commands| commands ? places.fetch(commands) : 0 })
             end
             lay_out_lists(table, LISTS_AT, @lists.map { |list| list.songs.map { |name| number(name) } })
             table[SONGS_AT / 2] = table.size * 2
@@ -330,9 +341,9 @@ module VBlank
 
           # A note's words: its frame, its two groups' places, its volume as written, whether it sounds.
           def note_words(note, places)
-            frame, head, tail, written, sounds, recording, wobble = note
-            [frame, places.fetch(head), places.fetch(tail), written, sounds ? 1 : 0, recording || 0, wobble ? places.fetch(wobble) : 0] +
-              Array.new((NOTE_BYTES / 2) - 7, 0)
+            frame, head, tail, written, sounds, recording, wobble, shapes = note
+            [frame, places.fetch(head), places.fetch(tail), written, sounds ? 1 : 0, recording || 0, wobble ? places.fetch(wobble) : 0,
+             shapes ? places.fetch(shapes) : 0]
           end
 
           # What the table holds for one part: its two lists of notes, the first time round and every
@@ -370,13 +381,31 @@ module VBlank
             volume ||= part.volume
             fade = IR::Tunes.said_fade(part, event)
             vibrato = IR::Tunes.said_vibrato(part, event) if frequency.positive?
+            duty = IR::Tunes.said_duty(part, event) if frequency.positive?
             head = [[:note, song.name, frequency],
                     IR::Tunes.voice_entry(channel, song.name, frequency, volume, fade: fade, vibrato: vibrato,
-                                                                         side: IR::Tunes.note_side(part, event))]
+                                                                         side: IR::Tunes.note_side(part, event), duty: duty)]
             commands = entry_commands(head + between + wave_or_noise_entries(part, frequency), voicing, song.name, &number_of)
             wobble = wobble_record(channel, frequency, vibrato, &number_of) if Audio::Vibrato.moves?(vibrato)
+            shapes = shape_record(channel, frequency, duty, &number_of) if duty&.steps?
             [frame, keep_group(commands.take(2).flatten(1)), keep_group(commands.drop(2 + between.size).flatten(1)),
-             frequency.zero? ? 0 : volume, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble]
+             frequency.zero? ? 0 : volume, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes]
+          end
+
+          # A NOTE THAT STEPS ITS SHAPES: a group for each of its four frames, its source written and
+          # its [:duty ...] entry logged, or nil where the shape is the frame before's
+          # (Reference::Player#step_shapes). Each shape is a recording of its own, and the sound
+          # chip takes up a new one where the one playing comes round, a wave later at most.
+          def shape_record(channel, frequency, duty)
+            record = Array.new(Audio::Duty::FRAMES) do |frame|
+              shape = duty.at(frame)
+              next if shape == duty.at(frame - 1)
+
+              writes = DSPWrites.shape(channel, frequency, shape).map { |write| Runtime::Sound.command_for(write) }
+              keep_group(writes + [[GROUP_LOG, yield([:duty, channel, shape]), 0]])
+            end
+            @shape_records << record unless @shape_records.include?(record)
+            record
           end
 
           # A NOTE THAT WOBBLES ITS PITCH: the pitch registers above and below the note's are worked
@@ -534,7 +563,7 @@ module VBlank
             sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
             changing = sounding.any? do |part, event|
               vibrato = IR::Tunes.said_vibrato(part, event)
-              IR::Tunes.said_slide(part, event) || IR::Tunes.said_duty(part, event) ||
+              IR::Tunes.said_slide(part, event) || (IR::Tunes.said_duty(part, event)&.steps? && effects?) ||
                 (Audio::Vibrato.moves?(vibrato) && (vibrato.carries || effects?))
             end
             if changing

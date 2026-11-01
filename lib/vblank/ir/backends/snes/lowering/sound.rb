@@ -215,6 +215,7 @@ module VBlank
             # Reference::Player#game_sound_on: a note of a song's wobbles no more on +channel+.
             def emit_game_sound_on(channel)
               runtime_call("rt_music_stop_wobble", [Build.int(channel)]) if Music.wobbles?(@program)
+              runtime_call("rt_music_stop_shapes", [Build.int(channel)]) if Music.steps_shapes?(@program)
             end
 
             # Reference#exec_enable_sound.

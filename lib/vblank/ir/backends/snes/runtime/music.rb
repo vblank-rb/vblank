@@ -71,13 +71,22 @@ module VBlank
             WOBBLE_LEFT = "rt music wobble left"
             WOBBLE_RISING = "rt music wobble rising"
             WOBBLE_AT = "rt music wobble at"
+            # A SQUARE NOTE THAT STEPS ITS SHAPES (SNES::Music#shape_record), in a game with one: each
+            # console voice's record, nought for a voice holding its shape, and its note's frame, kept
+            # in 0..7 so nought is the note's first frame alone.
+            SHAPE_RECORD = "rt music shape record"
+            SHAPE_FRAME = "rt music shape frame"
 
             module_function
 
             # +follows_level+ for a game that sets the music volume (SNES::Music.follows_level?);
             # +effects+ how many sound effects the game has (Effects).
-            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false)
+            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false)
               memory.reserve(TUNE_HELD, 2) if holds
+              if steps_shapes
+                [SHAPE_RECORD, SHAPE_FRAME].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
+                memory.reserve(WOBBLE_AT, 2) unless wobbles
+              end
               if wobbles
                 [WOBBLE_RECORD, WOBBLE_WAIT, WOBBLE_LEFT, WOBBLE_RISING].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
                 memory.reserve(WOBBLE_AT, 2)
@@ -104,6 +113,7 @@ module VBlank
               emit_tune_hold(asm, at) if holds?(memory)
               emit_frames(asm, at, sharing, memory)
               emit_wobbles(asm, at, memory) if wobbles?(memory)
+              emit_shapes(asm, at, memory) if steps_shapes?(memory)
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
               emit_level(asm, at, memory, level_at) if level_at
@@ -116,6 +126,81 @@ module VBlank
 
             # Whether the game has a note that wobbles (WOBBLE_RECORD).
             def wobbles?(memory) = memory.reserved?(WOBBLE_RECORD)
+
+            # Whether the game has a note that steps its shapes (SHAPE_RECORD).
+            def steps_shapes?(memory) = memory.reserved?(SHAPE_RECORD)
+
+            # rt_music_shapes: every square note that steps its shapes given the shape of the frame it
+            # is on, the voices in order, after the wobbles (Reference::Player#step_shapes). The
+            # record holds a group for each of a note's four frames, nought where the shape stays.
+            def emit_shapes(asm, at, memory)
+              m = SNES::Music
+              asm.label("rt_music_shapes")
+              if holds?(memory)
+                asm.lda(at.call(TUNE_HELD))
+                asm.beq("rt_music_shapes_go")
+                asm.rts
+                asm.label("rt_music_shapes_go")
+              end
+              asm.stz(at.call(WOBBLE_AT))
+              asm.label("rt_music_shapes_voice")
+              asm.ldy(at.call(WOBBLE_AT))
+              asm.lda(asm.abs_y(memory[SHAPE_RECORD]))
+              asm.beq("rt_music_shapes_next")
+              asm.lda(asm.abs_y(memory[SHAPE_FRAME]))
+              asm.beq("rt_music_shapes_on") # a note's first frame is its head's
+              asm.and_a(3)
+              asm.asl
+              asm.clc
+              asm.adc(asm.abs_y(memory[SHAPE_RECORD]))
+              asm.tax
+              asm.lda(asm.long_x("music_data"))
+              asm.beq("rt_music_shapes_on")
+              asm.tax
+              asm.jsr(asm.abs("rt_sound_group"))
+              asm.ldy(at.call(WOBBLE_AT))
+              asm.label("rt_music_shapes_on")
+              asm.lda(asm.abs_y(memory[SHAPE_FRAME]))
+              asm.inc
+              asm.cmp(8)
+              asm.bcc("rt_music_shapes_kept")
+              asm.lda(4)
+              asm.label("rt_music_shapes_kept")
+              asm.sta(asm.abs_y(memory[SHAPE_FRAME]))
+              asm.label("rt_music_shapes_next")
+              asm.inc(at.call(WOBBLE_AT))
+              asm.inc(at.call(WOBBLE_AT))
+              asm.lda(at.call(WOBBLE_AT))
+              asm.cmp(m::CONSOLE_PARTS * 2)
+              asm.bne("rt_music_shapes_voice")
+              asm.rts
+
+              # rt_music_stop_shapes(channel): the game's own sound took the voice
+              # (Reference::Player#game_sound_on).
+              asm.label("rt_music_stop_shapes")
+              asm.lda(asm.direct(Sound::R0))
+              asm.dec
+              asm.asl
+              asm.tay
+              asm.lda(0)
+              asm.sta(asm.abs_y(memory[SHAPE_RECORD]))
+              asm.rtl
+
+              # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE
+              # says, or holding its shape (Reference::Player#set_voice).
+              asm.label("rt_music_note_shapes")
+              asm.ldx(at.call(ENTRY))
+              asm.lda(asm.long_x("music_data", m::CHANNEL))
+              asm.dec
+              asm.asl
+              asm.tay
+              asm.ldx(at.call(NOTE))
+              asm.lda(asm.long_x("music_data", m::NOTE_SHAPES))
+              asm.sta(asm.abs_y(memory[SHAPE_RECORD]))
+              asm.lda(0)
+              asm.sta(asm.abs_y(memory[SHAPE_FRAME]))
+              asm.rts
+            end
 
             # rt_music_wobbles: every wobbling voice moved on a frame, the voices in order, once
             # everything due on the frame has played (Reference::Player#step_wobbles), as
@@ -299,6 +384,7 @@ module VBlank
               asm.label("rt_music_frame_played")
               asm.jsr(asm.abs("rt_sfx_below")) if sharing
               asm.jsr(asm.abs("rt_music_wobbles")) if wobbles?(memory)
+              asm.jsr(asm.abs("rt_music_shapes")) if steps_shapes?(memory)
               asm.rts
             end
 
@@ -368,6 +454,7 @@ module VBlank
               asm.label("rt_music_quiet")
               asm.jsl(asm.long("rt_recordings_release_music")) if recorded # the places its parts hold
               SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[WOBBLE_RECORD], voice * 2)) } if wobbles?(memory)
+              SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[SHAPE_RECORD], voice * 2)) } if steps_shapes?(memory)
               if level_at
                 SNES::Music::PARTS.times do |p|
                   asm.stz(asm.abs(memory[HELD], p * 2))
@@ -493,6 +580,7 @@ module VBlank
               asm.tax
               asm.jsr(asm.abs("rt_sound_group"))
               asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
+              asm.jsr(asm.abs("rt_music_note_shapes")) if steps_shapes?(memory)
               asm.label("rt_music_part_passed")
               asm.lda(at.call(PART))
               asm.asl

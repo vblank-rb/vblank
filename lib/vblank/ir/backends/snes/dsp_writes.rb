@@ -190,8 +190,8 @@ module VBlank
             when :noise then entry.last ? noise(entry.last) : key_off(1 << NOISE_VOICE)
             when :wave then wave(entry.last, voicing.waves)
             when :stop_wave then key_off(1 << WAVE_VOICE)
-            when :note, :sound_effect, :sample, :stop_sample, :wobble then [] # a recording's voice is the count's (Runtime::Recordings), and a wobble's note is #each_entry_writes's to know
-            when :voice then song_note(*entry[1, 4], voicing.parts, fade: entry[FADE_OF_VOICE_ENTRY])
+            when :note, :sound_effect, :sample, :stop_sample, :wobble, :duty then [] # a recording's voice is the count's (Runtime::Recordings), and a wobble's or a shape's note is #each_entry_writes's to know
+            when :voice then song_note(*entry[1, 4], voicing.parts, fade: entry[FADE_OF_VOICE_ENTRY], duty: entry[DUTY_OF_VOICE_ENTRY])
             when :stop_music then key_off(voicing.song_voices(entry.fetch(1)) & ~effect_voices & 0xFF)
             when :loudness then loudness_at(entry[1], entry[2], voicing, song)
             else raise ArgumentError, "the Super Nintendo build does not play #{entry.first.inspect} yet"
@@ -231,11 +231,11 @@ module VBlank
           # A song's note on channel +channel+: on a square voice, the note held at a fixed gain, or
           # the voice let go for a rest or a note at volume nought; on the wave or noise voice,
           # nothing, since the entry after it is the note. +fade+ is an Audio::NoteFade the note said.
-          def song_note(channel, song, frequency, volume, parts, fade: nil)
+          def song_note(channel, song, frequency, volume, parts, fade: nil, duty: nil)
             voice = SQUARE_VOICES[channel] or return []
             return key_off(1 << voice) unless sounds?(channel, frequency, volume, fade)
 
-            duty = parts.fetch([song, channel]) { raise ArgumentError, "no part of #{song.inspect} on #{channel}" }.duty
+            duty = duty&.at(0) || parts.fetch([song, channel]) { raise ArgumentError, "no part of #{song.inspect} on #{channel}" }.duty
             base = voice << 4
             wave = wave_for(frequency)
             pitch = pitch_for(frequency, wave)
@@ -257,7 +257,14 @@ module VBlank
             [[(voice << 4) + PITCH_LOW, pitch & 0xFF], [(voice << 4) + PITCH_HIGH, pitch >> 8]]
           end
 
-          # Where a [:voice ...] entry says its fade (IR::Tunes.voice_entry).
+          # A SQUARE NOTE STEPPING ITS SHAPE: the voice on +channel+ reading the recording of +shape+
+          # for a +frequency+ Hz note.
+          def shape(channel, frequency, shape)
+            [[(CHANNEL_VOICES.fetch(channel) << 4) + SOURCE, Samples.source(shape, wave_for(frequency))]]
+          end
+
+          # Where a [:voice ...] entry says its fade and its shape (IR::Tunes.voice_entry).
+          DUTY_OF_VOICE_ENTRY = 9
           FADE_OF_VOICE_ENTRY = 5
 
           # GAIN's mode that climbs a step at a time, 32 of the envelope's 0x7FF at each.
@@ -450,6 +457,10 @@ module VBlank
               sounding[entry[1]] = entry[3] if entry.first == :voice
               if entry.first == :wobble
                 yield entry, wobble(entry[1], sounding.fetch(entry[1]), entry[2])
+                next
+              end
+              if entry.first == :duty
+                yield entry, shape(entry[1], sounding.fetch(entry[1]), entry[2])
                 next
               end
 

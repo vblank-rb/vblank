@@ -167,7 +167,6 @@ class TestHoldMusic < Minitest::Test
   end
 
   def test_a_held_note_stops_stepping_its_shapes
-    skip_on_snes("a note that steps its shapes")
     game = held_game(lead: proc { duty %i[eighth half] }) { |pass| hold_music if pass == 30 }
 
     stepped = moves(game, frames: 60).select { |_, kind| kind == :duty }.map(&:first)
