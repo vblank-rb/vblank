@@ -329,4 +329,95 @@ class TestJSCreateGame < Minitest::Test
 
     assert_equal stopped_at, later
   end
+
+  # --- the sound: played by a worklet where there is one, and by buffers where there is not ---
+
+  # A steady square wave on the first voice, from the fourth frame on.
+  private def beeping_game
+    VBlank.game "BEEPING", consoles: %i[gba] do
+      screen :bitmap
+      enable_sound
+      count = var :count, 0
+      game_loop do
+        count += 1
+        beep 440, duty: :half, decay: :none, volume: 15 if count == 4
+      end
+    end
+  end
+
+  private def beeping_page(audio: nil)
+    host = audio ? ", audio: #{audio}" : ""
+    page_of(beeping_game, %w[one], "window.games = [createGame({ canvas: #{canvas('one')}#{host} })];")
+  end
+
+  # +frames+ browser frames, with the audio thread asking for what the speaker plays between each, as
+  # it does all the time: a frame's sound is 800 samples, which is six and a quarter of its 128.
+  private def playing(frames) = Array.new(frames) { ["play 1", "speaker 6"] }.flatten
+
+  private def numbers_in(lines, what) = lines.grep(/\A#{what} /).first.split(" ", 3).last.to_s.split(",").map(&:to_f)
+
+  # How many times a second the wave goes from low to high, across the part of it that sounds.
+  private def cycles_a_second(samples, rate)
+    sounding = samples.each_index.select { |i| samples[i].abs > 0.001 }
+    wave = samples[sounding.first..sounding.last]
+    high = wave.map { |sample| sample > samples.max / 2 }
+    high.each_cons(2).count { |before, after| !before && after } * rate.to_f / wave.length
+  end
+
+  # With a worklet the sound is handed to it a frame at a time and plays from its ring, at the game's
+  # own rate on a device made for it, sample for sample, and no buffer is made for any frame.
+  def test_the_sound_plays_through_the_worklet_sample_for_sample
+    lines = played_page(["click one", *playing(30), "speaker 40", "heard", "posted", "counts"], html: beeping_page)
+    heard = numbers_in(lines, "heard")
+    posted = numbers_in(lines, "posted")
+    started = heard.index { |sample| sample.abs > 0.001 }
+
+    refute_nil started, "the speaker should have put out the beep"
+    assert_equal 0, counted(lines, "buffers").first, "no buffer is made for a frame"
+    assert_equal posted.drop(posted.index { |sample| sample.abs > 0.001 }).first(2000), heard.drop(started).first(2000),
+                 "what the speaker puts out is the frames' sound, in order, with nothing added or lost"
+  end
+
+  # The sound is at the right pitch on a device made for the game's rate and on one a host handed in at
+  # another: the worklet reads between the game's samples to make each one the device is given.
+  def test_the_sound_is_at_the_right_pitch_on_a_device_of_any_rate
+    [48_000, 44_100, 96_000].each do |rate|
+      html = beeping_page(audio: "new AudioContext({ sampleRate: #{rate} })")
+      lines = played_page(["play 3", *playing(40), "speaker 400", "heard"], html: html)
+
+      assert_in_delta 440.0, cycles_a_second(numbers_in(lines, "heard"), rate), 440 * 0.03, "a beep of 440 on a device of #{rate} a second"
+    end
+  end
+
+  # A page that is not a secure context has no worklet, and a content security policy can refuse
+  # one's code: each plays a frame's sound the old way, as a buffer of its own.
+  def test_a_page_where_a_worklet_cannot_load_plays_the_sound_in_buffers
+    %w[no-worklet refuse-worklet].each do |why|
+      lines = played_page(["click one", "play 30", "counts", "play 30", "counts"], html: beeping_page, browser: [why])
+      early, later = counted(lines, "buffers")
+
+      assert_operator later, :>, early, "the sound goes on in buffers (#{why})"
+      assert_operator early, :>, 0, "and began as soon as the worklet was known not to load (#{why})"
+    end
+  end
+
+  # Nothing is made of a frame's sound until somebody has clicked or pressed a key: a browser plays
+  # nothing till then.
+  def test_no_sound_is_sent_before_a_click
+    lines = played_page(["play 30", "posted", "counts"], html: beeping_page)
+
+    assert_equal [0], counted(lines, "buffers")
+    assert_equal "posted 0 ", lines.grep(/\Aposted /).first
+  end
+
+  # The sound waits with a game that is paused: the device is suspended, the worklet is not asked for
+  # any, and when the game goes on the sound goes on from where it was.
+  def test_the_sound_waits_with_a_game_that_is_paused
+    lines = played_page(["click one", *playing(30), "speaker 20", "heard", "blur", "speaker 20", "heard", "focus", "play 5",
+                         "speaker 20", "heard"], html: beeping_page)
+    before, during, after = lines.grep(/\Aheard /).map { |line| line.split(" ")[1].to_i }
+
+    assert_equal before, during, "nothing is played while the device is suspended"
+    assert_operator after, :>, during, "and it plays again once the game does"
+  end
 end

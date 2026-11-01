@@ -54,15 +54,17 @@ module WebPage
   # page written by hand, with +beside+ ({ name => text }) the files it loads from beside it.
   # +focused+ false starts the window without the keyboard, as a page in a frame on another site;
   # +pointer+ is what the screen is pointed at with: :mouse, :finger (a phone) or :touch_and_mouse
-  # (a laptop with a touch screen, where the mouse is the main one).
+  # (a laptop with a touch screen, where the mouse is the main one). +browser+ is more of what the
+  # stand-in browser is told about itself (see page_harness.js): "no-worklet" for a page that is not
+  # a secure context, "refuse-worklet" for a content security policy that refuses a worklet's code.
   private def played_page(steps, game = walking_game, template: nil, focused: true, pointer: :mouse, html: nil,
-                          beside: {})
+                          beside: {}, browser: [])
     Dir.mktmpdir do |dir|
       path = File.join(dir, "page.html")
       File.write(path, html || built_page(game, template: template))
       beside.each { |name, text| File.binwrite(File.join(dir, name), text) }
       screen = { mouse: nil, finger: "touchscreen", touch_and_mouse: "touch-and-mouse" }.fetch(pointer)
-      flags = [("unfocused" unless focused), screen].compact
+      flags = [("unfocused" unless focused), screen, *browser].compact
       out, said, status = Open3.capture3("node", HARNESS, path, *flags, stdin_data: steps.join("\n"))
       assert status.success?, said
       out.lines(chomp: true)

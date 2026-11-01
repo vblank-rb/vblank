@@ -38,7 +38,13 @@
  *   skip N              N console frames of time go by with no browser frame: the page was busy,
  *                       and its next frame finds the frames it owes
  *   counts              prints "counts", how many frames the page has asked the browser for
- *                       (frames=) and how many pictures it has put on a canvas (pictures=)
+ *                       (frames=), how many pictures it has put on a canvas (pictures=) and how many
+ *                       sound buffers it has made (buffers=)
+ *   speaker N           the browser's audio thread asks the page's AudioWorklet speaker for N times
+ *                       128 samples (while the sound device is running), and keeps what it gives
+ *   heard / posted      print "heard" and how many samples the speaker has put out and then them, its
+ *                       left channel; or "posted", how many messages the page has sent its speaker and
+ *                       the left channel of all of them
  *   pixel ID X Y        prints "pixel" and the four bytes (red, green, blue, alpha) the canvas of that id
  *                       holds at (X, Y), as the browser keeps them
  *   picture [ID]        prints "picture" and every pixel last put on the canvas of that id
@@ -99,7 +105,9 @@ function tell(target, type, more = {}) {
 
 const waiting = [];
 /* What the page has asked of the browser: frames asked for, and pictures put on a canvas. */
-const asked = { frames: 0, pictures: 0 };
+const asked = { frames: 0, pictures: 0, buffers: 0 };
+const posted = []; /* every message the page sent its speaker */
+const heard = [[], []]; /* what the speaker has put out, each channel */
 let next_frame_id = 1;
 const stored = new Map();
 let now = 0;
@@ -194,14 +202,59 @@ const document = {
   exitFullscreen() { document.fullscreenElement = null; return Promise.resolve(); },
 };
 
-/* The sound device: made on a page's first key press or click, as a browser allows. */
+/* The sound device: made on a page's first key press or click, as a browser allows. It runs at the
+ * rate it was asked for (the console's sound rate, unless the page made it another way), has no
+ * AudioWorklet where the page is started with "no-worklet" (a page that is not a secure context),
+ * and refuses to load one from a Blob where it is started with "refuse-worklet" (a content
+ * security policy). A worklet it does load is the page's own processor code, run here, and pulled
+ * 128 samples at a time by the "speaker" step, as the browser's audio thread would. */
 let audio = null;
+let speaker_node = null;
+const processors = new Map();
+const blob_texts = new Map();
+class Blob {
+  constructor(parts) { this.text = parts.join(""); }
+}
+URL.createObjectURL = (blob) => {
+  const url = `blob:stand-in/${blob_texts.size}`;
+  blob_texts.set(url, blob.text);
+  return url;
+};
+URL.revokeObjectURL = () => {};
+class AudioWorkletProcessor {
+  constructor() { this.port = { onmessage: null }; }
+}
 class AudioContext {
-  constructor() { this.state = "running"; this.currentTime = 0; this.destination = {}; audio = this; }
+  constructor(options = {}) {
+    this.state = "running";
+    this.currentTime = 0;
+    this.destination = {};
+    this.sampleRate = options.sampleRate || 48000;
+    if (!flags.includes("no-worklet")) this.audioWorklet = { addModule: (url) => this.add_module(url) };
+    audio = this;
+  }
   resume() { this.state = "running"; return Promise.resolve(); }
   suspend() { this.state = "suspended"; return Promise.resolve(); }
-  createBuffer(_channels, length) { return { getChannelData: () => new Float32Array(length) }; }
+  createBuffer(_channels, length) { asked.buffers += 1; return { getChannelData: () => new Float32Array(length) }; }
   createBufferSource() { return { connect() {}, start() {} }; }
+  async add_module(url) {
+    if (flags.includes("refuse-worklet")) throw new Error("the page's content security policy refuses it");
+    const code = blob_texts.get(url);
+    if (code === undefined) throw new Error(`no module at ${url}`);
+    const sandbox = vm.createContext({
+      AudioWorkletProcessor, sampleRate: this.sampleRate, Float32Array, Math,
+      registerProcessor: (name, processor) => processors.set(name, processor),
+    });
+    vm.runInContext(code, sandbox);
+  }
+}
+class AudioWorkletNode {
+  constructor(context, name, options) {
+    this.processor = new (processors.get(name))(options);
+    this.port = { postMessage: (data) => { posted.push(data); this.processor.port.onmessage({ data }); } };
+    speaker_node = this;
+  }
+  connect() { this.connected = true; }
 }
 
 /* The one controller there can be, in the browser's own shape for one. */
@@ -221,6 +274,8 @@ const browser = {
   window: page,
   document,
   AudioContext,
+  AudioWorkletNode,
+  Blob,
   navigator: { getGamepads: () => pads.slice() },
   performance: { now: () => now },
   requestAnimationFrame: (callback) => {
@@ -305,6 +360,18 @@ function bytes_at(id, x, y) {
   return Array.from(pixels.slice(at, at + 4)).join(",");
 }
 
+/* The browser's audio thread: while the sound device is running, its speaker is asked for its next
+ * 128 samples, +quanta+ times, and what it puts out is kept (the left channel, and the right). */
+function pull_speaker(quanta) {
+  for (let i = 0; i < quanta; i++) {
+    if (!audio || audio.state !== "running" || !speaker_node) continue;
+    const out = [new Float32Array(128), new Float32Array(128)];
+    speaker_node.processor.process([], [out], {});
+    heard[0].push(...out[0]);
+    heard[1].push(...out[1]);
+  }
+}
+
 function text(id) {
   const found = document.getElementById(id);
   if (!found) return `text ${id} (none)`;
@@ -349,11 +416,15 @@ async function main() {
   }
   /* Whatever the page fetched has arrived, as it would long before a person pressed anything. */
   await new Promise((resolve) => setTimeout(resolve, 20));
-  steps();
+  await steps();
 }
 
 /* Every step read from the input, in order, and then what was printed. */
-function steps() {
+/* Between steps the page's promises settle (a worklet loaded, a sound device suspended), as they
+ * would in the time between a person's key presses. */
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+async function steps() {
   const printed = [];
   for (const line of fs.readFileSync(0, "utf8").split("\n")) {
     const [step, what, ...rest] = line.trim().split(" ");
@@ -373,7 +444,10 @@ function steps() {
     else if (step === "play") play(Number(what));
     else if (step === "skip") skip(what);
     else if (step === "pixel") printed.push(`pixel ${bytes_at(what, Number(rest[0]), Number(rest[1]))}`);
-    else if (step === "counts") printed.push(`counts frames=${asked.frames} pictures=${asked.pictures}`);
+    else if (step === "counts") printed.push(`counts frames=${asked.frames} pictures=${asked.pictures} buffers=${asked.buffers}`);
+    else if (step === "speaker") pull_speaker(Number(what));
+    else if (step === "heard") printed.push(`heard ${heard[0].length} ${heard[0].join(",")}`);
+    else if (step === "posted") printed.push(`posted ${posted.length} ${posted.flatMap((data) => Array.from(data.left || data)).join(",")}`);
     else if (step === "picture") printed.push(`picture ${picture(what)}`);
     else if (step === "js") {
       const result = vm.runInThisContext(line.trim().slice(3));
@@ -382,6 +456,7 @@ function steps() {
     else if (step === "text") printed.push(text(what));
     else if (step === "state") printed.push(state());
     else if (step) throw new Error(`page_harness: no step called ${step}`);
+    await settle();
   }
   if (ids.has("said") && !element("said").hidden) printed.push(`said ${element("said").textContent}`);
   fs.writeSync(1, `${printed.join("\n")}\n`);
