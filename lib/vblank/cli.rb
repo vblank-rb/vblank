@@ -607,10 +607,11 @@ module VBlank
     help_page "preview", <<~TEXT
       Usage: vblank preview GAME_FILE [options]
 
-      Serve the game in GAME_FILE as a web page on this computer, and print its
-      address. Open it in a browser to play. Change the game file and reload the
-      page: the page is built again from the file. If the build stops, the page
-      says why. Press Ctrl-C to stop the server.
+      The same as `vblank run GAME_FILE --browser`. Serve the game in GAME_FILE as
+      a web page on this computer, and print its address. Open it in a browser to
+      play. Change the game file and reload the page: the page is built again from
+      the file. If the build stops, the page says why. Press Ctrl-C to stop the
+      server.
 
       The browser does not run the cartridge. Test the .gba as well before you
       give it to anybody.
@@ -628,24 +629,21 @@ module VBlank
     option :port, type: :numeric, default: 8000
     option :template, banner: "FILE"
     option :set, type: :array, banner: "NAME=VALUE", default: []
-    def preview(game_file)
-      raise Thor::Error, "I cannot find the game file #{game_file}." unless File.file?(game_file)
+    def preview(game_file) = serve_in_browser(game_file)
 
-      server = VBlank::IR::Backends::JS::Preview.new(game_file, settings: options[:set], template: options[:template],
-                                                                 console: options[:console], port: options[:port])
-      trap("INT") { server.stop }
-      server.serve
-    rescue Errno::EADDRINUSE
-      raise Thor::Error, "Port #{options[:port]} is in use already. Give another with --port."
-    end
-
-    desc "run GAME_FILE", "Play the game in a window, in Ruby"
+    desc "run GAME_FILE", "Play the game on this computer, in a window or a browser"
     help_page "run", <<~TEXT
       Usage: vblank run GAME_FILE [options]
 
       Build the game in GAME_FILE as Ruby, and play it in a window on this
       computer. The game runs in this Ruby, at the speed of the console. When the
       play stops, the command prints how fast the game ran.
+
+      With --browser, serve the game as a web page instead, and print its address.
+      Open it in a browser to play. Change the game file and reload the page: the
+      page is built again from the file, and if the build stops, the page says
+      why. Press Ctrl-C to stop the server. The window does not build again: stop
+      the play and run the command again.
 
       The keys:
         arrows                   the direction pad
@@ -691,6 +689,7 @@ module VBlank
         vblank run game.rb
         vblank run game.rb --console gbc         the game as the Game Boy Color
         vblank run game.rb --scale 4             a bigger window
+        vblank run game.rb --browser             in a browser; a reload rebuilds it
         vblank run game.rb --uncapped --pictures 600
                                                  how fast this computer can play
                                                  600 pictures of the game
@@ -729,8 +728,18 @@ module VBlank
         --record-sound FILE      When the play stops, write the sound that the
                                  game gave the speaker to FILE, a .wav file.
                                  Use this to listen to a sound problem again.
+        --browser                Play in a browser, not in a window. Only
+                                 --console, --port, --template and --set go with
+                                 this.
+        --port N                 With --browser, the port to serve the page on.
+                                 Default: 8000.
+        --template FILE          With --browser, make the page from FILE, an
+                                 .html.erb file with <%= game %> in it.
         #{SET}
     TEXT
+    option :browser, type: :boolean, default: false
+    option :port, type: :numeric
+    option :template, banner: "FILE"
     option :console, banner: "NAME", enum: CONSOLES
     option :scale, type: :numeric, banner: "N"
     option :pictures, type: :numeric, banner: "N"
@@ -741,6 +750,9 @@ module VBlank
     option :config_dir, banner: "DIR"
     option :set, type: :array, banner: "NAME=VALUE", default: []
     def run_game(game_file)
+      refuse_mismatched_play_options!
+      return serve_in_browser(game_file) if options[:browser]
+
       refuse_unless_whole_and_positive!("--scale", options[:scale]) if options[:scale]
       refuse_unless_whole_and_positive!("--pictures", options[:pictures]) if options[:pictures]
       game = load_game(game_file)
@@ -878,6 +890,33 @@ module VBlank
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game.title} in a window yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Build a cartridge, or use vblank preview."
+    end
+
+    # The options only a window has, by the words a person typed.
+    WINDOW_OPTIONS = { scale: "--scale", pictures: "--pictures", settings_file: "--settings-file", config_dir: "--config-dir",
+                       record_sound: "--record-sound", uncapped: "--uncapped" }.freeze
+
+    def refuse_mismatched_play_options!
+      if options[:browser]
+        word = WINDOW_OPTIONS.find { |name, _word| options[name] }&.last
+        raise Thor::Error, "#{word} is for the window, so it does nothing with --browser. Take one of them out." if word
+      else
+        word = { port: "--port", template: "--template" }.find { |name, _word| options[name] }&.last
+        raise Thor::Error, "#{word} is for a page in a browser. Add --browser, or take it out." if word
+      end
+    end
+
+    # The game as a page on this computer, built again on every reload, until Ctrl-C.
+    def serve_in_browser(game_file)
+      raise Thor::Error, "I cannot find the game file #{game_file}." unless File.file?(game_file)
+
+      port = options[:port] || 8000
+      server = VBlank::IR::Backends::JS::Preview.new(game_file, settings: options[:set], template: options[:template],
+                                                                 console: options[:console], port: port)
+      trap("INT") { server.stop }
+      server.serve
+    rescue Errno::EADDRINUSE
+      raise Thor::Error, "Port #{port} is in use already. Give another with --port."
     end
 
     # +session+ played in a window until the player stops it, or --pictures are shown; the window

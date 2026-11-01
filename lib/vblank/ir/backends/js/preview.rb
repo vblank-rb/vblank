@@ -45,6 +45,7 @@ module VBlank
           def serve
             @out.puts "Playing #{File.basename(@game_file)} at #{url} — reload the page to play it as the file is now. " \
                       "Ctrl-C stops."
+            @out.flush # a server has no end for buffered words to wait for
             loop do
               client = @server.accept
               answer(client)

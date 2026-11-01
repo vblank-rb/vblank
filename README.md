@@ -56,7 +56,7 @@ vblank build walk.rb                       # walk.gba and walk.gbc, beside the g
 vblank build walk.rb --console gbc         # the Color's cartridge alone
 vblank build walk.rb --format=native       # a program for this computer
 vblank build walk.rb --format=web          # walk.html
-vblank preview walk.rb                     # play it in a browser; every reload rebuilds it
+vblank run walk.rb --browser               # play it in a browser; every reload rebuilds it
 vblank run walk.rb                         # play it in a window, in Ruby
 ```
 
@@ -117,7 +117,7 @@ Keep it as one block. Two separate `gem ... github:` lines look the same but are
 | To… | you need |
 |---|---|
 | build a cartridge, or run a game in the interpreter | Ruby |
-| build a web page, or `vblank preview` | Ruby, and a browser to play it |
+| build a web page, or `vblank run --browser` | Ruby, and a browser to play it |
 | play a game in a window, `vblank run` | SDL3, and `gem "fiddle"` in the game's Gemfile |
 | build a program for a computer | zig 0.17 |
 | import a picture from a PNG | ImageMagick (`.aseprite` files are read in Ruby) |

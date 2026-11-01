@@ -30,6 +30,35 @@ class TestJSPreview < Minitest::Test
     server&.join(5)
   end
 
+  # `vblank run --browser` is the page, and `vblank preview` the same thing by its older name.
+  def test_run_with_browser_serves_the_page_that_preview_does
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "game.rb"), game_source("BROWSER", :blue))
+      [%w[run game.rb --browser --port 8765], %w[preview game.rb --port 8765]].each do |command|
+        said, waiting = spawn_and_read_first_line(command, dir)
+        assert_match(%r{Playing game\.rb at http://127\.0\.0\.1:8765/}, said)
+        assert_match(/<title>BROWSER<\/title>/, Net::HTTP.get(URI("http://127.0.0.1:8765/")).force_encoding(Encoding::UTF_8))
+      ensure
+        stop_process(waiting)
+      end
+    end
+  end
+
+  # Started in a process group of its own, so what it starts is stopped with it.
+  private def spawn_and_read_first_line(command, dir)
+    reader, writer = IO.pipe
+    pid = spawn(RbConfig.ruby, VBlank.root.join("bin", "vblank").to_s, *command, chdir: dir, out: writer, err: writer, pgroup: true)
+    writer.close
+    [reader.gets.to_s, pid]
+  end
+
+  private def stop_process(pid)
+    return unless pid
+
+    Process.kill("KILL", -pid)
+    Process.wait(pid)
+  end
+
   def test_a_reload_plays_the_game_as_its_file_says_now
     Dir.mktmpdir do |dir|
       file = File.join(dir, "game.rb")

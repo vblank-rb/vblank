@@ -649,6 +649,28 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # What only a window has is refused with --browser, and what only a page has without it, before
+  # anything is built or served, so a flag is never quietly dropped.
+  def test_run_refuses_options_of_the_other_way_to_play
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "demo.rb"), "VBlank.game('DEMO', consoles: %i[gba]) { game_loop { clear_screen :blue } }\n")
+      window_only, in_browser = cli("run", "demo.rb", "--browser", "--scale", "2", dir: dir)
+      page_only, in_window = cli("run", "demo.rb", "--port", "9000", dir: dir)
+
+      refute_predicate in_browser, :success?, window_only
+      assert_match(/--scale.*window/, window_only)
+      refute_predicate in_window, :success?, page_only
+      assert_match(/--port.*--browser/, page_only)
+    end
+  end
+
+  def test_the_help_for_run_says_how_to_play_in_a_browser
+    out, status = cli("help", "run", dir: Dir.pwd)
+
+    assert_predicate status, :success?, out
+    assert_includes out, "--browser"
+  end
+
   # A settings file is read for the window, and a line it cannot use is said, naming the file.
   def test_run_says_what_its_settings_file_cannot_use
     Dir.mktmpdir do |dir|
