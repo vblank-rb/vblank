@@ -203,8 +203,8 @@ module VBlank
           raise ArgumentError, "#{what} :#{name} draws from colors :#{colors}, and no list has that name. " \
                                "Declare it first with `colors :#{colors}, [:transparent, ...]`."
         end
-        unless list.is_a?(Array) && list.length.between?(2, Images::OWN_COLORS)
-          raise ArgumentError, "#{what} :#{name} needs `colors:`: a list of 2 to #{Images::OWN_COLORS} colors, " \
+        unless list.is_a?(Array) && list.length.between?(2, Images::PICTURE_COLORS)
+          raise ArgumentError, "#{what} :#{name} needs `colors:`: a list of 2 to #{Images::PICTURE_COLORS} colors, " \
                                "the first meaning see-through. Each four bits of the list's bytes picks one."
         end
         list.map do |color|

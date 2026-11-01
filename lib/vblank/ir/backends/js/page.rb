@@ -50,7 +50,7 @@ module VBlank
           # over, its key help and pad showing L and R only when +shoulders+ (the console has them).
           # A template that leaves the game out is a LoweringError, as anything else that stops a
           # web build is.
-          def html(title:, script:, scale: 3, template: DEFAULT, screen: [Screen::WIDTH, Screen::HEIGHT], shoulders: true)
+          def html(title:, script:, screen:, scale: 3, template: DEFAULT, shoulders: true)
             pieces = pieces(title: title, script: script, scale: scale, screen: screen, shoulders: shoulders)
             page = ERB.new(File.read(template, encoding: Encoding::UTF_8), trim_mode: "-").result_with_hash(pieces)
             return page if page.include?(pieces[:game])
@@ -59,7 +59,7 @@ module VBlank
                                  "play it. Put <%= game %> in the template where the game goes."
           end
 
-          def pieces(title:, script:, scale:, screen: [Screen::WIDTH, Screen::HEIGHT], shoulders: true)
+          def pieces(title:, script:, scale:, screen:, shoulders: true)
             l_and_r = shoulders ? " <kbd>A</kbd> and <kbd>S</kbd> are L and R," : ""
             keys = <<~HTML.chomp
               <p class="keys">Arrows move. <kbd>X</kbd> is A, <kbd>Z</kbd> is B, <kbd>Enter</kbd> is Start, <kbd>Backspace</kbd> is

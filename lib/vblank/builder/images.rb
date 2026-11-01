@@ -203,9 +203,9 @@ module VBlank
       # cannot be hit looks like on this console.
       def colors(name, list)
         refuse_bad_color_list_name!(name)
-        unless list.is_a?(Array) && list.length.between?(2, OWN_COLORS)
+        unless list.is_a?(Array) && list.length.between?(2, @console.list_colors)
           raise ArgumentError,
-                "colors :#{name} needs a list of 2 to #{OWN_COLORS} colors, the first meaning see-through. " \
+                "colors :#{name} needs a list of 2 to #{@console.list_colors} colors, the first meaning see-through. " \
                 "Got #{list.inspect}."
         end
 
@@ -689,7 +689,11 @@ module VBlank
       # actually be. A picture drawn from its own list has a see-through slot at the
       # front, which the console reads as "leave this pixel alone" whatever color sits
       # there — so it holds one fewer real color than its length.
-      OWN_COLORS = 16
+      #
+      # This is the most one picture can name on any console, not what a console shows at once. A
+      # console that holds fewer in a list (Console::Description#list_colors) cuts a picture into
+      # tiles, and each tile is held to its list as the art is made.
+      PICTURE_COLORS = 16
 
       # A picture's own table, checked while the author is still looking at the line
       # that wrote it. Three things can be wrong, and each is a plain sentence rather
@@ -723,12 +727,12 @@ module VBlank
       # A picture's own list, resolved to colors. The see-through entry is kept as nil so
       # nothing mistakes it for the black a real pixel can be drawn in.
       def color_table(name, colors)
-        return colors.map { |c| c == :transparent ? nil : Graphics::Color.resolve(c) } if colors.length <= OWN_COLORS
+        return colors.map { |c| c == :transparent ? nil : Graphics::Color.resolve(c) } if colors.length <= PICTURE_COLORS
 
         raise ArgumentError,
               "image :#{name} was given #{colors.length} colors. A picture drawn from its own list of " \
-              "colors can have #{OWN_COLORS} of them, the first meaning see-through. Give it " \
-              "#{OWN_COLORS} or fewer, or give it none and the framework works the list out."
+              "colors can have #{PICTURE_COLORS} of them, the first meaning see-through. Give it " \
+              "#{PICTURE_COLORS} or fewer, or give it none and the framework works the list out."
       end
 
       def unlisted_color_message(name, value)

@@ -26,6 +26,18 @@ class TestSongTooManyPartsGuardrail < Minitest::Test
 
   private def detect(voices) = Check.new.detect(program(song(:big, total_frames: 4, voices: voices)))
 
+  # How many recordings sound at once is the console's: past it on that console the build stops.
+  def test_each_console_is_held_to_the_recordings_it_sounds_together
+    { snes: 8, gbc: 1 }.each do |console, most|
+      built_for = lambda do |count|
+        Check.new.detect(program(song(:big, total_frames: 4, voices: Array.new(count) { part(:organ) }), console: console))
+      end
+
+      assert_empty built_for.call(most), "#{most} is as many as #{console} sounds"
+      assert_match(/#{most + 1} parts that play an instrument/, built_for.call(most + 1).first.message)
+    end
+  end
+
   def test_a_third_square_wave_part_stops_the_build
     findings = detect([part, part, part])
 

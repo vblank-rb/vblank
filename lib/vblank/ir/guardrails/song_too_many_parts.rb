@@ -8,9 +8,10 @@ module VBlank
         #
         # The console has four voices of its own: two that play a square wave, one that loops a
         # short waveform, and one that makes a hiss. A part that plays an instrument goes through
-        # the framework's mixer instead, which sums Sound::MIXER_VOICES recordings at once. A
-        # song needs a voice for every part at the same moment, since they all play together —
-        # so past any of those numbers, some part of it would simply not be heard.
+        # recordings instead, and how many of those sound at once is the console's
+        # (Console::Description#recordings_at_once). A song needs a voice for every part at the
+        # same moment, since they all play together — so past any of those numbers, some part
+        # of it would simply not be heard.
         #
         # Checked here, on the finished program, rather than where the notes are written,
         # because a song reaches the IR two ways — a `song` block, and a Score handed over in a
@@ -28,15 +29,17 @@ module VBlank
                    "the console has %<limit>d wave voice"],
             noise: [Audio::Music::MAX_NOISE_PARTS, "play the noise voice",
                     "the console has %<limit>d noise voice"],
-            recorded: [Audio::Sound::MIXER_VOICES, "play an instrument",
-                       "the mixer plays %<limit>d recordings at once"],
+            recorded: [nil, "play an instrument", "the console can play only %<limit>d at once"],
           })
+
+          # The most parts of +kind+ a song can have on the console +program+ is for.
+          def limit_of(program, kind) = kind == :recorded ? program.described_console.recordings_at_once : LIMITS.fetch(kind).first
 
           def detect(program)
             program.walk.select { |node| node.kind == :song }.flat_map do |song|
               counts = LIMITS.keys.to_h { |kind| [kind, Tunes.parts_on(song, kind)] }
-              LIMITS.filter_map do |kind, (limit, _, _)|
-                next if counts.fetch(kind) <= limit
+              LIMITS.keys.filter_map do |kind|
+                next if counts.fetch(kind) <= limit_of(program, kind)
 
                 message = message(program, song, kind, counts)
                 Finding.new(check: NAME, severity: :error, message: message, node: song)
@@ -47,7 +50,8 @@ module VBlank
           private
 
           def message(program, song, kind, counts)
-            limit, does, because = LIMITS.fetch(kind)
+            _, does, because = LIMITS.fetch(kind)
+            limit = limit_of(program, kind)
             one = SongWords.effect?(program, song) ? "A sound effect" : "A song"
             "#{SongWords.song_capitalized(program, song)} has #{counts.fetch(kind)} parts that " \
               "#{does}. #{one} can have #{limit} of them at most, because " \
@@ -59,7 +63,7 @@ module VBlank
           # which is the thing an author has no way to know and the reason to reach for them.
           def fix_hints(program, song, kind, counts)
             room = LIMITS.keys.reject { |other| other == kind }
-                         .select { |other| counts.fetch(other) < LIMITS.fetch(other).first }
+                         .select { |other| counts.fetch(other) < limit_of(program, other) }
             last = "To fix this, use fewer parts that #{LIMITS.fetch(kind)[1]}."
             return last if room.empty?
 

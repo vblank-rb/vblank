@@ -335,7 +335,7 @@ module VBlank
       # place having a colour means every build draws that sprite the same.
       def colors_padded_to_sixteen(name)
         colors = @color_lists.fetch(name)
-        colors + ([0x0000] * (Images::OWN_COLORS - colors.length))
+        colors + ([0x0000] * (Images::PICTURE_COLORS - colors.length))
       end
 
       # WHICH SHARED LIST EACH LIST IN A SET IS DRAWN THROUGH: list name -> the shared list's

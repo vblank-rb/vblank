@@ -21,10 +21,26 @@ class TestJSPage < Minitest::Test
     refute_match(/<script src=/, page)
   end
 
+  # The canvas is the screen of the console the page is built as.
+  def test_the_canvas_is_the_size_of_the_console_built_for
+    game = VBlank.game("SIZES", consoles: %i[gba gbc snes]) do
+      enable_sound
+      game_loop { wait_vblank }
+    end
+    { gbc: [160, 144], snes: [256, 224] }.each do |console, (width, height)|
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "page.html")
+        JS.new.build_page(game, path, console: console, err: StringIO.new)
+
+        assert_match(/<canvas id="screen" width="#{width}" height="#{height}"/, File.read(path))
+      end
+    end
+  end
+
   # A console with no L and R, the Color, gets a page that names none: not in the keys said in
   # words, and not on the pad.
   def test_a_console_without_l_and_r_has_none_on_its_page
-    with = JS::Page.html(title: "BOTH", script: "")
+    with = JS::Page.html(title: "BOTH", script: "", screen: [240, 160])
     without = JS::Page.html(title: "BOTH", script: "", screen: [160, 144], shoulders: false)
 
     assert_match(/are L and R/, with)
