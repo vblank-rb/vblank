@@ -143,8 +143,7 @@ module VBlank
 
           # The interpreter's picture over the cartridge's screen.
           def picture_check(screen, width, height)
-            shown = (0...height).flat_map { |y| (0...width).map { |x| screen.pixel(x, y) || 0 } }
-            RunComparison.picture_check(shown)
+            RunComparison.picture_check(RunComparison.pixels_over(screen, width, height))
           end
         end
       end

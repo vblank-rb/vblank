@@ -6,4 +6,5 @@
 # where the core comes from.
 require_relative "ruby_snes_emulator/version"
 require_relative "ruby_snes_emulator/core_library"
+require_relative "ruby_snes_emulator/kept_copy"
 require_relative "ruby_snes_emulator/core"

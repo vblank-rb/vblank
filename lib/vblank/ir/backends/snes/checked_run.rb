@@ -165,7 +165,7 @@ module VBlank
           # The interpreter's picture over the cartridge's screen, as the cartridge's Moments hold it
           # (HeadlessRun.moment_picture).
           def picture_check(screen, width, height)
-            shown = (0...height).flat_map { |y| (0...width).map { |x| screen.pixel(x, y) || 0 } }
+            shown = RunComparison.pixels_over(screen, width, height)
             HeadlessRun.moment_picture(shown, @near, (mixed_cells(screen, width, height) if @near))
           end
 

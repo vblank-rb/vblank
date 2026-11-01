@@ -102,4 +102,16 @@ class TestCore < Minitest::Test
   ensure
     other&.destroy
   end
+
+  # A console after another has closed is opened from the copy the first one used, and shows
+  # nothing of it: its work RAM, its colours and its video RAM are as a console's are out of the box.
+  def test_a_console_made_after_another_closed_starts_clean
+    @core.destroy
+    @core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, RED_BACKDROP.take(3) + [0x80, 0xFE]))
+    @core.run_frame
+
+    refute_equal 0x1234, @core.wram_read16(0x0100)
+    refute_equal 0x001F, @core.cgram.unpack1("v")
+    refute_equal 0xA5, @core.vram.getbyte(0)
+  end
 end

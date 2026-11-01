@@ -50,6 +50,15 @@ module VBlank
         # A picture as one number: the CRC-32 of its pixels, two bytes each with the low byte first.
         def self.picture_check(shown) = Zlib.crc32(shown.pack("v*"))
 
+        # The interpreter's +screen+ as a colour for each of +width+ × +height+ pixels, the size of
+        # the cartridge's picture. A screen that size hands the whole picture over; walking it a
+        # pixel at a time in Ruby is most of what a short checked run would otherwise spend.
+        def self.pixels_over(screen, width, height)
+          return screen.shown.map { |color| color || 0 } if screen.width == width && screen.height == height
+
+          (0...height).flat_map { |y| (0...width).map { |x| screen.pixel(x, y) || 0 } }
+        end
+
         # The first moment +got+ (the lowered side) disagrees with +want+ (the interpreter) on, said
         # as the frame and everything that differs there; nil when they agree throughout.
         def first_difference(want, got)

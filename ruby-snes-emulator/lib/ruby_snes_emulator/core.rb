@@ -18,10 +18,11 @@ module RubySNESEmulator
   #   core.destroy
   #
   # A LIBRETRO CORE IS ONE CONSOLE PER LIBRARY: it keeps the whole machine in the library's own
-  # globals. So each Core loads a copy of the library of its own, from a folder of its own, and
-  # two Cores in one process are two consoles that cannot see each other. The copy is loaded
-  # with its names kept to itself (no RTLD_GLOBAL), or the second copy's code would call into
-  # the first's.
+  # globals. So each Core loads a copy of the library of its own (KeptCopy), and two Cores in one
+  # process are two consoles that cannot see each other. The copy is loaded with its names kept
+  # to itself (no RTLD_GLOBAL), or the second copy's code would call into the first's. Closing it
+  # lets go of those globals, so a Core made later from the same copy is a console just out of
+  # the box.
   #
   # The core talks back through functions it is handed (the libretro callbacks): it asks its
   # settings through the environment callback, hands over each finished picture and each batch
@@ -114,15 +115,15 @@ module RubySNESEmulator
     def width = WIDTH
     def height = HEIGHT
 
+    #
+    # A picture that has not changed since the last one asked for is the same list again: most
+    # frames of a game change little, and comparing the bytes is far quicker than turning them
+    # into colours. So the list must not be changed by whoever is given it.
     def colors
-      across = @drawn_width / WIDTH
-      down = @drawn_height / HEIGHT
-      words = video_buffer.unpack("V*")
-      Array.new(WIDTH * HEIGHT) do |i|
-        y, x = i.divmod(WIDTH)
-        pixel = words[(y * down * @drawn_width) + (x * across)]
-        ((pixel >> 19) & 0x1F) | (((pixel >> 11) & 0x1F) << 5) | (((pixel >> 3) & 0x1F) << 10)
-      end
+      return @colors if @colors && @colors_of == video_buffer
+
+      @colors_of = video_buffer
+      @colors = picture_colors(video_buffer).freeze
     end
 
     # The sound of the frames since this was last asked, as signed 16-bit samples, left and right
@@ -186,11 +187,26 @@ module RubySNESEmulator
       @call[:retro_unload_game].call
       @call[:retro_deinit].call
       @handle.close
+      @copy.give_back
       @call = nil
       FileUtils.rm_rf(@dir)
     end
 
     private
+
+    # Each row's top-left pixels, read by a pattern that steps over the rest of each square, so the
+    # pixels in between are never made into numbers at all.
+    def picture_colors(buffer)
+      across = @drawn_width / WIDTH
+      down = @drawn_height / HEIGHT
+      pattern = "#{"Vx#{(across - 1) * 4}" * WIDTH}"
+      (0...HEIGHT).flat_map do |y|
+        row = buffer.byteslice(y * down * @drawn_width * 4, WIDTH * across * 4)
+        row.unpack(pattern).map do |pixel|
+          ((pixel >> 19) & 0x1F) | (((pixel >> 11) & 0x1F) << 5) | (((pixel >> 3) & 0x1F) << 10)
+        end
+      end
+    end
 
     def memory(id)
       size = @call[:retro_get_memory_size].call(id)
@@ -223,9 +239,8 @@ module RubySNESEmulator
     # stack it believes the thread is on. The probe patch makes the core ask for the buttons, and
     # hand over the sound and the picture, only from the stack retro_run was called on.
     def load_library
-      copy = File.join(@dir, "core.so")
-      FileUtils.cp(CoreLibrary.path, copy)
-      @handle = Fiddle::Handle.new(copy, Fiddle::Handle::RTLD_NOW)
+      @copy = KeptCopy.take
+      @handle = Fiddle::Handle.new(@copy.path, Fiddle::Handle::RTLD_NOW)
       @call = FUNCTIONS.to_h do |name, (args, result)|
         [name, Fiddle::Function.new(@handle[name.to_s], args, result)]
       end
