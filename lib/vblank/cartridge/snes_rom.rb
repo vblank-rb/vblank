@@ -116,10 +116,24 @@ module VBlank
 
       def write(path) = ROM.write_bytes(path, @bytes)
 
-      # A Super Nintendo cartridge cannot be profiled yet.
-      def profile(**)
-        raise ArgumentError, "a Super Nintendo cartridge cannot be profiled yet. Profile the game's Game Boy " \
-                             "Advance cartridge."
+      # HOW MANY FRAMES ITS PASSES TOOK: the cartridge run in the emulator
+      # (Diagnostics::SNESProfiler), reported for a person or as JSON. +keys+ are held from
+      # power-on, and +settle+ passes run before the +frames+ passes measured.
+      def profile(format: :human, out: $stdout, frames: Diagnostics::SNESProfiler::FRAMES,
+                  settle: Diagnostics::SNESProfiler::SETTLE, keys: [], scene: nil, from: nil)
+        if scene || from
+          raise ArgumentError, "a Super Nintendo profile measures the game as it plays from power-on, and cannot be " \
+                               "told a #{scene ? 'scene' : 'saved moment'} yet. To fix this, leave out " \
+                               "#{scene ? '--scene' : '--from'}, and use --keys and --settle to reach the moment."
+        end
+
+        result = Diagnostics::SNESProfiler.run(self, frames: frames, settle: settle, keys: keys)
+        case format
+        when :human then Diagnostics::SNESProfiler.render(result, out: out)
+        when :json then out.puts(JSON.generate(result.to_h))
+        else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
+        end
+        result
       end
 
       private
