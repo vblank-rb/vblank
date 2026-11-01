@@ -52,7 +52,7 @@ module VBlank
     #   save_file_extension     how that emulator names the file it keeps battery-backed RAM in
     #   open_probe(path, save_dir:)
     #                           a running cartridge as the one reader asks of one
-    #   cartridge_file_extension  what its cartridge's file is called
+    #   dumps_ir?               whether `vblank build --format ir` can write its games
     #   inspector              what prints one of its cartridges' header and first instructions
     #                           (`vblank inspect`), or nil for a console with none yet
     #
@@ -95,7 +95,10 @@ module VBlank
       # A running cartridge as the one reader asks of one (Diagnostics::Verifier), opened on a
       # cartridge file, and what that file is called.
       def open_probe(path, save_dir:) = Diagnostics::Emulator.probe(path, save_dir: save_dir)
-      def cartridge_file_extension = ".gba"
+
+      # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
+      # cartridge, so only the Advance's).
+      def dumps_ir? = false
 
       # The console settings its build reads, by name, and whether +setting+ is one of them.
       def console_settings = builder.console_settings
@@ -151,6 +154,7 @@ module VBlank
       def builder = Cartridge::AdvanceBuild
       def cartridge = Cartridge::ROM
       def reading = Diagnostics::AdvanceReading
+      def dumps_ir? = true
       def measured_builds? = true
       def compared_side_by_side? = true
       def inspector = Diagnostics::Inspector
@@ -192,7 +196,6 @@ module VBlank
       def reading = Diagnostics::SNESReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_snes(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::SNESProbe.new(path, save_dir: save_dir)
-      def cartridge_file_extension = ".sfc"
       def save_file_extension = ".srm"
       def variants = SNES_VARIANTS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
@@ -242,6 +245,15 @@ module VBlank
 
     # Every console's kit.
     def self.kits = KITS.values
+
+    # The words a refusal uses to say which consoles a game can name, from the kits, so a console
+    # added is offered without a line changing here. +written+ goes before each list, as a game
+    # writes it.
+    def self.how_to_name_consoles(written: "")
+      first, *others = kits
+      more = others.map { |kit| "`#{written}%i[#{first.name} #{kit.name}]` for the #{kit.title} too" }.join(", or ")
+      "`#{written}%i[#{first.name}]` for the #{first.title} alone, #{more}."
+    end
 
     # Every console setting there is, by name: a build setting only some consoles have
     # (Kit#console_settings).

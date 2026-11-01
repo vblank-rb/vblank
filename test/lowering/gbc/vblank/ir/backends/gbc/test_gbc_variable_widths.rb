@@ -8,7 +8,7 @@ class TestGBCVariableWidths < Minitest::Test
   GBC = VBlank::IR::Backends::GBC
 
   private def code_size(**kept)
-    rom = VBlank.build("WIDTHS", console: :gbc) do
+    rom = VBlank.build("WIDTHS", console: :gbc, out: StringIO.new, err: StringIO.new) do
       flag = var :flag, 0, **kept
       speed = var :speed, 3, **kept
       turns = var :turns, 0, **kept

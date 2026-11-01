@@ -111,6 +111,19 @@ class TestKit < Minitest::Test
     end
   end
 
+  # A game that names no console is told every console there is, from the kits.
+  def test_the_words_for_naming_a_console_offer_every_console
+    [-> { VBlank::Console.refuse_unknown_consoles!([], setting: "`consoles:`") },
+     -> { VBlank.game("NONE") {} }].each do |naming_none|
+      error = assert_raises(ArgumentError, &naming_none)
+
+      VBlank::Console.kits.each do |kit|
+        assert_match(/#{kit.name}/, error.message)
+        assert_match(/#{kit.title}/, error.message)
+      end
+    end
+  end
+
   # Where a console's own code lives: its lowering, its build and its own reader. Anywhere else, a
   # part that needs to know asks the console's kit.
   OWN = %w[lib/vblank/ir/backends/gba lib/vblank/ir/backends/gba.rb lib/vblank/ir/backends/gbc
@@ -119,9 +132,11 @@ class TestKit < Minitest::Test
            lib/vblank/ir/backends/snes.rb lib/vblank/cartridge/snes_rom.rb
            lib/vblank/console].freeze
 
-  # `rom.console == :gbc`, `console.name != :gba` and the like: a console told apart by its name.
-  # (A lowering's run is named :gba or :gbc too, and that is not a console.)
-  NAME_COMPARED = /console[\w.]*\s*[!=]=\s*:(#{VBlank::Console::KITS.keys.join('|')})\b/
+  # `rom.console == :gbc`, `asked != :gba`, `consoles.include?(:gba)` and the like: a console told
+  # apart by its name. A lowering's run is named :gba or :gbc too, and that is not a console, so
+  # a line asking about a lowering is left out.
+  NAME_COMPARED = /(?:[!=]=\s*|include\?\()\s*:(#{VBlank::Console::KITS.keys.join('|')})\b/
+  LOWERING_ASKED = /LOWERING|lowering/
 
   def test_nothing_outside_a_consoles_own_code_compares_console_names
     root = VBlank.root
@@ -130,7 +145,7 @@ class TestKit < Minitest::Test
       next [] if OWN.any? { |own| relative == own || relative.start_with?("#{own}/") }
 
       File.readlines(path).each_with_index.filter_map do |line, at|
-        "#{relative}:#{at + 1}" if line.match?(NAME_COMPARED) && !line.lstrip.start_with?("#")
+        "#{relative}:#{at + 1}" if line.match?(NAME_COMPARED) && !line.match?(LOWERING_ASKED) && !line.lstrip.start_with?("#")
       end
     end
 

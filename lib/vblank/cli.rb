@@ -1099,11 +1099,11 @@ module VBlank
     # refused rather than quietly dumped as the Advance's.
     def refuse_ir_for_other_console!(game)
       asked = options[:console]&.to_sym
-      if asked && asked != :gba
+      if asked && !VBlank::Console.for(asked).dumps_ir?
         raise Thor::Error, "--format ir writes the game for the Game Boy Advance only. To write the IR, " \
                            "remove --console #{asked}."
       end
-      return if game.consoles.include?(:gba)
+      return if game.consoles.any? { |console| VBlank::Console.for(console).dumps_ir? }
 
       raise Thor::Error, "#{game.title} is not for the Game Boy Advance, and --format ir writes the game for " \
                          "the Game Boy Advance only. To write the IR, add :gba to the game's consoles:."

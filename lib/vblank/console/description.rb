@@ -253,8 +253,7 @@ module VBlank
       named = Array(consoles).map(&:to_sym)
       named.each { |name| described(name) }
       if named.empty?
-        raise ArgumentError, "#{setting} names no console. Name the consoles the game is for: " \
-                             "`%i[gba]` for the Game Boy Advance alone, or `%i[gba gbc]` for the Game Boy Color too."
+        raise ArgumentError, "#{setting} names no console. Name the consoles the game is for: #{Console.how_to_name_consoles}"
       end
 
       named.freeze

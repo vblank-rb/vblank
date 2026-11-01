@@ -759,7 +759,7 @@ module VBlank
         # Keep the emulator (and its ROM file) alive on the instance rather than tearing them
         # down here: memory reads (#mem32 / #var) run against the same console after the frames,
         # at the final frame boundary. Both are released when this Verifier is garbage-collected.
-        @tempfile = Tempfile.new(["verify", kit.cartridge_file_extension])
+        @tempfile = Tempfile.new(["verify", kit.description.extension])
         @tempfile.binmode
         @rom.write(@tempfile.path)
         @tempfile.flush

@@ -354,8 +354,7 @@ module VBlank
 
     def refuse_unsaid_consoles!(title)
       raise ArgumentError, "#{title} does not say which consoles it is for. Add consoles: where the game is " \
-                           "named: `VBlank.game #{title.to_s.inspect}, consoles: %i[gba]` for the Game Boy " \
-                           "Advance alone, or `consoles: %i[gba gbc]` for the Game Boy Color too."
+                           "named, `VBlank.game #{title.to_s.inspect}, ...`: #{Console.how_to_name_consoles(written: 'consoles: ')}"
     end
   end
 end

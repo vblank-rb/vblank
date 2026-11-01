@@ -8,7 +8,7 @@ class TestSNESVerifier < Minitest::Test
   Verifier = VBlank::Diagnostics::Verifier
 
   private def rom
-    VBlank.build("READER", console: :snes) do
+    VBlank.build("READER", console: :snes, out: StringIO.new, err: StringIO.new) do
       screen :tiled
       image(:dot, "#" => :red) { (["########"] * 8).join("\n") }
       hero = sprite :dot, at: [30, 40]
