@@ -548,7 +548,7 @@ module VBlank
               refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
-              refuse_unmade_see_through!(always)
+              refuse_unmade_see_through!
             end
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no layer" }
@@ -606,6 +606,7 @@ module VBlank
 
               arrival = @handover.arrival(scene)
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
+              emit_see_through_for_scene(scene)
               return if @scene_layers.zero?
 
               emit_layers_straight_for(arrival)
@@ -742,23 +743,24 @@ module VBlank
             # which #refuse_see_through_amounts! has seen to; and where the sub screen has nothing,
             # the console adds its fixed colour instead and does not halve, so a background that
             # covers every pixel must be behind the layer.
-            def refuse_unmade_see_through!(always)
+            #
+            # A LAYER A SCENE OWNS, or one over a background a scene puts up, is on that scene alone:
+            # the scenes showing it share one sub screen, since that is told once at power-on, and
+            # each scene taking over tells the math what it has to mix, which for any other scene is
+            # nothing (#emit_see_through_for_scene).
+            def refuse_unmade_see_through!
               layers = SeeThrough.layers(@program)
               return if layers.empty?
 
               layer = layers.first
-              picture = Stacking.picture(@program)
-              scenery = picture.scenery.reject(&:bar?)
-              seen_through = scenery.select { |bg| bg.layer == layer.name }
-              @see_through_sprites = picture.objects.select { |obj| obj.layer == layer.name }.map(&:name)
-              return if seen_through.empty? && @see_through_sprites.empty?
-              refuse_unmade!("a see-through layer of both backgrounds and sprites") unless seen_through.empty? || @see_through_sprites.empty?
+              parts = Picture.see_through_parts(@program, layer)
+              seen_through = parts.seen_through
+              sprites = parts.sprites
+              @see_through_sprites = sprites.map(&:name)
+              return if seen_through.empty? && sprites.empty?
+              refuse_unmade!("a see-through layer of both backgrounds and sprites") unless seen_through.empty? || sprites.empty?
 
-              at = picture.stack.index(layer.name)
-              behind = scenery.select { |bg| bg.layer.nil? || picture.stack.index(bg.layer) < at }
-              unless (seen_through + behind).all? { |bg| always.any? { |up| up.equal?(bg) } }
-                refuse_unmade!("a see-through layer over a background that a scene puts up")
-              end
+              behind = see_through_behind_in_its_scenes(parts)
               # Adding, an empty sub screen adds the fixed colour, nothing: the layer whole, as the
               # interpreter shows it over the black backdrop. Only halving needs something behind.
               adds = added_to_what_is_behind?(layer)
@@ -775,6 +777,60 @@ module VBlank
                                [bits.call(seen_through), bits.call(behind) | SPRITES_BIT]
                              end
               @see_through_layers = [adds ? mixed : mixed | Runtime::Picture::MATH_HALVES, under]
+            end
+
+            SeeThroughParts = Data.define(:seen_through, :sprites, :behind)
+
+            # What a see-through +layer+ is made of, and the backgrounds behind it, of every scene.
+            def self.see_through_parts(program, layer)
+              picture = Stacking.picture(program)
+              scenery = picture.scenery.reject(&:bar?)
+              at = picture.stack.index(layer.name)
+              SeeThroughParts.new(seen_through: scenery.select { |bg| bg.layer == layer.name },
+                                  sprites: picture.objects.select { |obj| obj.layer == layer.name },
+                                  behind: scenery.select { |bg| bg.layer.nil? || picture.stack.index(bg.layer) < at })
+            end
+
+            # Whether +program+'s see-through layer is on some scenes only, or over a background only
+            # some scenes put up, so the colour math changes as scenes take over.
+            def self.see_through_in_scene?(program)
+              layer = SeeThrough.layers(program).first
+              return false unless layer
+
+              parts = see_through_parts(program, layer)
+              own = parts.seen_through + parts.sprites
+              !own.empty? && (own + parts.behind).any?(&:scene)
+            end
+
+            # The backgrounds behind the see-through layer on the scenes that show it, one lot, and
+            # which those scenes are (@see_through_scenes, nil for a layer every screen shows alike).
+            def see_through_behind_in_its_scenes(parts)
+              return parts.behind unless Picture.see_through_in_scene?(@program)
+
+              own = parts.seen_through + parts.sprites
+              names = own.filter_map(&:scene).uniq
+              showing = names.empty? ? @scenes.keys : names
+              lots = showing.map { |scene| parts.behind.select { |bg| bg.scene.nil? || bg.scene == scene } }
+              unless lots.map { |lot| lot.map { |bg| layer_of(bg) }.sort }.uniq.one?
+                refuse_unmade!("a see-through layer over backgrounds on different layers in different scenes")
+              end
+              @see_through_scenes = showing.map { |scene| @scenes.fetch(scene) }
+              lots.first
+            end
+
+            # A scene taking over: the colour math told what this scene has to mix, its layer's
+            # amount as the game left it, or nothing at all on a scene that does not show the layer.
+            def emit_see_through_for_scene(scene)
+              return unless @see_through_scenes
+
+              shows = @see_through_scenes.include?(@scenes.fetch(scene))
+              runtime_call("rt_see_through_math", [shows ? see_through_math_now : Build.int(0)])
+            end
+
+            # What the colour math is to be told for the amount the layer stands at now.
+            def see_through_math_now
+              on = Build.binop(:!=, SeeThrough.layers(@program).first.behind.copy, Build.int(0))
+              Build.binop(:*, on, Build.int(@see_through_layers.first))
             end
 
             # Whether +layer+ shows the whole of itself over the whole of what is behind it, which the
@@ -797,18 +853,35 @@ module VBlank
             # Whether +program+ turns a see-through layer solid as it runs, which the runtime then keeps
             # what the colour math is told in (Runtime::Picture's rt_see_through_math).
             def self.see_through_turns_solid?(program)
-              SeeThrough.layers(program).any? { |layer| !layer.split && layer.behind.kind != :int }
+              SeeThrough.layers(program).any? { |layer| !layer.split && layer.behind.kind != :int } ||
+                see_through_in_scene?(program)
             end
 
             # Reference#exec_see_through: the colour math on while what is behind shows, and off, the
             # layer solid, at nought. An amount between shows as 100 does: the console adds or it does
             # not. It is told in the next blank, with the frame's sprites.
             def emit_see_through_amount(node)
-              layer = SeeThrough.layer(@program, node.layer)
               return unless @see_through_layers
+              return emit_see_through_amount_while_up unless @see_through_scenes.nil?
 
-              on = Build.binop(:!=, layer.behind.copy, Build.int(0))
-              runtime_call("rt_see_through_math", [Build.binop(:*, on, Build.int(@see_through_layers.first))])
+              runtime_call("rt_see_through_math", [see_through_math_now])
+            end
+
+            # ...and on a layer some scenes show, only while one of them is up: the next to take
+            # over tells the math again.
+            def emit_see_through_amount_while_up
+              past = fresh("see_through_away")
+              up = fresh("see_through_up")
+              @see_through_scenes.each do |number|
+                other = fresh("see_through_not_scene")
+                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
+                @asm.brl(up)
+                @asm.label(other)
+              end
+              @asm.brl(past)
+              @asm.label(up)
+              runtime_call("rt_see_through_math", [see_through_math_now])
+              @asm.label(past)
             end
 
             # The sprites' bit of the colour math's registers (TS, CGADSUB).

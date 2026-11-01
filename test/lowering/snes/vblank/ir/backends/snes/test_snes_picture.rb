@@ -882,6 +882,90 @@ class TestSNESPicture < Minitest::Test
     assert_equal VBlank::Graphics::Color.resolve(:green), run.screen.pixel(44, 44), "a sprite in another layer"
   end
 
+  # A title's letters added to the title's own background, as a scene owns them: the picture
+  # agrees frame by frame as the title hands over to a map with no see-through layer, whose
+  # backgrounds take the same layers and whose colours nothing adds to, and back again.
+  def test_a_scene_owns_a_layer_added_to_its_own_background
+    run = scene_with_letters(behind: 100, frames: 6)
+
+    assert_equal 0x7FFF, run.screen.pixel(21, 37), "yellow added to the title's blue"
+    assert_equal rgb_number(31, 0, 0), scene_with_letters(behind: 100, frames: 14).screen.pixel(21, 37), "the map's red, plain"
+    assert_equal 0x7FFF, scene_with_letters(behind: 100, frames: 24).screen.pixel(21, 37), "the title back"
+  end
+
+  # The title's letters turned solid stay solid when it comes back: the amount is the game's.
+  def test_a_scene_back_keeps_the_amount_its_layer_was_left_at
+    run = scene_with_letters(behind: 100, frames: 24, solid_at: 6)
+
+    assert_equal 0x03FF, run.screen.pixel(21, 37), "the letter, solid"
+  end
+
+  # A background in the layer a scene sees through is mixed on that scene alone.
+  def test_a_scene_owns_a_background_half_see_through
+    checked(frames: 20) do
+      screen :tiled
+      image(:sky, "#" => :blue) { "########\n" * 8 }
+      image(:mist, "o" => :red) { "oooooooo\n" * 8 }
+      image(:wall, "#" => :green) { "########\n" * 8 }
+      tiles :sky_tiles, "#" => :sky
+      tiles :mist_tiles, "o" => :mist
+      tiles :wall_tiles, "#" => :wall
+      layers :world, :air
+      full = Array.new(32) { "#" * 32 }
+      scene(:misty) do
+        layer(:world) { background :world, tiles: :sky_tiles, map: full }
+        layer(:air, transparency: 50) { background :air, tiles: :mist_tiles, map: Array.new(4) { "oooo" } }
+      end
+      scene(:plain) do
+        background :far, tiles: :wall_tiles, map: full
+        background :near, tiles: :wall_tiles, map: Array.new(4) { "####" }
+      end
+      state = var :state, 0
+      t = var :t, 0
+      game_loop do
+        t += 1
+        state = 1 if t > 8
+        case_var(:state) do
+          when_val 0, :misty
+          when_val 1, :plain
+        end
+      end
+    end
+  end
+
+  private def rgb_number(red, green, blue) = red | (green << 5) | (blue << 10)
+
+  private def scene_with_letters(behind:, frames:, solid_at: nil)
+    checked(frames: frames) do
+      screen :tiled
+      image(:sky, "#" => rgb(0, 0, 31)) { "########\n" * 8 }
+      image(:ground, "#" => rgb(31, 0, 0)) { "########\n" * 8 }
+      image(:letter, "o" => 0x03FF, "." => :transparent) { "oooo....\n" * 8 }
+      tiles :sky_tiles, "#" => :sky
+      tiles :ground_tiles, "#" => :ground
+      layers :world, :letters
+      full = Array.new(32) { "#" * 32 }
+      glow = behind
+      scene(:title) do
+        layer(:world) { background :world, tiles: :sky_tiles, map: full }
+        layer(:letters, shows: 100, shows_behind: glow) { sprite :letter, at: [20, 36] }
+      end
+      scene(:map) { background :island, tiles: :ground_tiles, map: full }
+      state = var :state, 0
+      t = var :t, 0
+      game_loop do
+        t += 1
+        state = 1 if t > 8
+        state = 0 if t > 16
+        glow = 0 if solid_at && t == solid_at
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :map
+        end
+      end
+    end
+  end
+
   # What a title does on the frame it settles: the letters turn solid in one frame, by a number the
   # game changes from 100 to 0.
   def test_a_layer_added_to_what_is_behind_it_turns_solid_on_a_frame_the_game_picks
