@@ -1782,14 +1782,16 @@ module VBlank
           set_see_through_for(node.name)
           map = map_of(node)
           across, down = grid_repeats(node, map)
+          step_x = across_px(node, map) if across > 1 # where the grid comes round again, when it does
+          step_y = down_px(node, map) if down > 1
           down.times do |round_down|
             across.times do |round_across|
               map.each_with_index do |row, r|
                 row.each_with_index do |index, c|
                   next if index.nil?
 
-                  stamp_tile(tiles, index, (round_across * across_px(node, map)) + (c * tile_w),
-                             (round_down * down_px(node, map)) + (r * tile_h), tile_w, tile_h, swapped)
+                  stamp_tile(tiles, index, (round_across * step_x.to_i) + (c * tile_w),
+                             (round_down * step_y.to_i) + (r * tile_h), tile_w, tile_h, swapped)
                 end
               end
             end
@@ -1802,10 +1804,12 @@ module VBlank
         # screen wider or taller than the grid — a Genesis's 320 across is wider than 32 cells of 8
         # pixels — the map is seen again past the grid's edge, whether it is stamped as it is put up or
         # painted as it is scrolled. A background that is brought into view a strip at a time does not
-        # come round, and is seen once; so is every one on a screen no wider than its grid, which is every
+        # come round, and is seen once, and so is a map too big for any grid (it is shown a strip at a time
+        # whatever the node says), and so are tiles that are not the console's own 8 by 8 (the interpreter's
+        # alone); so is every one on a screen no wider than its grid, which is every
         # screen of the Advance, the Color and the Super Nintendo.
         def grid_repeats(node, map)
-          return [1, 1] if node.streams?
+          return [1, 1] if node.streams? || !IR::TileMap.fits?(map) || node.tile_w != 8 || node.tile_h != 8
 
           [(@screen.width.to_f / across_px(node, map)).ceil, (@screen.height.to_f / down_px(node, map)).ceil]
         end

@@ -38,6 +38,20 @@ class TestReferenceWideScreen < Minitest::Test
     assert_equal 0, screen.pixel(0, 32), "and the rows past the map's 4 none"
   end
 
+  def test_a_map_too_big_for_any_grid_is_put_up_once_and_does_not_come_round
+    program = game do
+      screen :tiled
+      image(:wall, "#" => :white) { "########\n" * 8 }
+      tiles :set, "#" => :wall
+      background :room, tiles: :set, map: Array.new(70) { "#" * 70 }
+      game_loop {}
+    end
+    screen = Reference.new.run(program, frames: 2).screen
+
+    assert_equal Color.resolve(:white), screen.pixel(0, 0)
+    assert_equal Color.resolve(:white), screen.pixel(319, 223), "the map fills the screen, as a map this big does"
+  end
+
   def test_the_picture_of_a_background_put_up_is_the_one_a_scroll_of_nought_repaints
     put_up = Reference.new.run(wide_room, frames: 2).screen.shown
     scrolled = Reference.new.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(wide_room(scrolling: true), frames: 3)
