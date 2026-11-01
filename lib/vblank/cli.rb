@@ -340,6 +340,8 @@ module VBlank
       --format native, a program for this computer:
         --target COMPUTER        windows, linux or linux-arm. Default: this
                                  computer. Not tested on those systems.
+        --strip                  Leave the debugging data out. The file is
+                                 smaller, and a crash report says much less.
         Needs zig 0.17. Run the program with --help to see its keys and options.
 
       --format web, a web page:
@@ -378,6 +380,7 @@ module VBlank
     option :keys, type: :array, banner: "BUTTON", default: []
     option :set, type: :array, banner: "NAME=VALUE", default: []
     option :target, banner: "COMPUTER"
+    option :strip, type: :boolean, default: false
     option :template, banner: "FILE"
     option :js, default: "page", enum: %w[page module script]
     option :global, banner: "NAME"
@@ -1081,7 +1084,8 @@ module VBlank
       end
       say "Building #{File.basename(path)} for #{target ? options[:target] : 'this computer'} " \
           "(the first build compiles SDL, which takes a while)"
-      VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target)
+      VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
+                                                                 strip: options[:strip])
       say "Built #{path}"
     rescue VBlank::BuildError, VBlank::IR::Backends::Native::Zig::Error => e
       raise Thor::Error, e.message
@@ -1102,9 +1106,14 @@ module VBlank
                          "that does not work in Ruby yet: #{e.part}."
     end
 
-    # An option for the web build given where it does nothing — on another format, or beside an
-    # output it is not for — is refused, so nobody thinks it did something.
+    # An option given where it does nothing — --strip on anything but a program for a computer, an
+    # option for the web build on another format or beside an output it is not for — is refused,
+    # so nobody thinks it did something.
     def refuse_web_options_out_of_place!
+      if options[:strip] && options[:format] != "native"
+        raise Thor::Error, "--strip works only with --format=native. Add --format=native, or remove --strip."
+      end
+
       given = { js: options[:js] != "page", data: options[:data] != "inline", template: options[:template],
                 global: options[:global] }.select { |_, said| said }.keys
       if options[:format] != "web" && !given.empty?

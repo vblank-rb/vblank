@@ -29,6 +29,8 @@ pub fn build(b: *std.Build) void {
     const name = b.option([]const u8, "name", "What to call the executable (default: game)") orelse "game";
     const src_dir_option = b.option(std.Build.LazyPath, "src_dir", "Directory holding the C files, and the headers they include");
     const sources_option = b.option([]const []const u8, "sources", "A C file in src_dir to compile; say it once per file");
+    // Null, not false, when it is not said, so a build that does not ask is the same build as ever.
+    const strip = b.option(bool, "strip", "Leave the debugging data out of the program");
 
     // Missing either is a failed build rather than an exit here, so that
     // `zig build --help` still works without them.
@@ -40,6 +42,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
         .link_libcpp = true,
+        .strip = strip,
     });
 
     // Our own files are held to the strictest warnings, and a warning stops

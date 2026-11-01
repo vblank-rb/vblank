@@ -104,8 +104,9 @@ module VBlank
         # executable that needs nothing installed beside it. The first build fetches SDL's source
         # and compiles it, which takes a while once; every build after that reuses it. +target+
         # names another computer to build for (see TARGETS), and left out it is this one. +console+
-        # is the one it plays the game as (#checked_program).
-        def build_desktop(game, path, console: nil, settings: {}, target: nil, err: $stderr)
+        # is the one it plays the game as (#checked_program). +strip+ leaves the program's debugging
+        # data out: a far smaller file, and far poorer crash reports.
+        def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, err: $stderr)
           if File.directory?(path)
             raise LoweringError, "#{path} is a folder, so the program cannot be written there. Name a file instead."
           end
@@ -121,7 +122,7 @@ module VBlank
             File.write(File.join(src, MenuData::FILE), MenuData.source(menu: game.menu?))
             Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
             exe = Zig.build_with_sdl(src, ["game.c", *DESKTOP_RUNTIME], name: "game", prefix: File.join(dir, "out"),
-                                                                        target: target && TARGETS.fetch(target))
+                                                                        target: target && TARGETS.fetch(target), strip: strip)
             FileUtils.cp(exe, path)
           end
           FileUtils.chmod(0o755, path)

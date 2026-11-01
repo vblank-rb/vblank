@@ -964,6 +964,16 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # --strip does something only to a program for a computer, so anywhere else it is refused.
+  def test_strip_works_only_with_format_native
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      out, status = cli("build", "demo.rb", "--strip", dir: dir)
+      refute status.success?, "--strip on a cartridge should fail"
+      assert_match(/--strip works only with --format=native/, out)
+    end
+  end
+
   # A computer there is no build for is refused before anything is built, in the command's own
   # words for the ones there are.
   def test_format_native_rejects_an_unknown_target

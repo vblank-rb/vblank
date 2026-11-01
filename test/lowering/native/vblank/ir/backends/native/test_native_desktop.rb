@@ -616,6 +616,18 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A STRIPPED PROGRAM is the same program with its debugging data left out, which is most of a
+  # Linux file. SDL and the menu are libraries of their own, so the data has to go at the link.
+  def test_a_stripped_program_is_a_fraction_of_the_size_and_still_a_program
+    Dir.mktmpdir do |dir|
+      whole = Native.new.build_desktop(PongGame::GAME, File.join(dir, "whole"), target: :linux, err: nil)
+      stripped = Native.new.build_desktop(PongGame::GAME, File.join(dir, "stripped"), target: :linux, strip: true, err: nil)
+
+      assert_operator File.size(stripped), :<, File.size(whole) / 3
+      assert_equal LINUX_PROGRAM, File.binread(stripped, 4)
+    end
+  end
+
   private
 
   # What a run of the game with its window (on SDL's stand-in display) printed at its end, with
