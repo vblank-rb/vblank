@@ -46,15 +46,18 @@ module VBlank
           # off for (Lowering#counts_dark_frames?), and +rumble+ that it runs a cartridge's motor
           # (Lowering#rumbles?). +swells+ says a song's note swells by itself in a game that
           # moves the music volume (GBC::Music#swells?). +kept_sprites+ says a sprite placed as it was
-          # on the pass before is left as it is (Lowering::Picture#keeps_unchanged_sprites?).
+          # on the pass before is left as it is (Lowering::Picture#keeps_unchanged_sprites?), and
+          # +cells_shown_now+ that it changes a cell on the frame being drawn
+          # (Lowering::Picture#cells_shown_now?).
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
-                      rumble: false, kept_sprites: false, holds_music: false, effect_table: false)
+                      rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false)
             Clips.reserve(memory, laps: clip_laps) if clips
             Rumble.reserve(memory) if rumble
             KeptSprites.reserve(memory) if kept_sprites
             Frame.reserve(memory, together: together, dark: dark)
-            Picture.reserve(memory, lends: art.lending, groups: art.groups?, bar_rows: bar_rows, rooms: art.rooms.any?)
+            Picture.reserve(memory, lends: art.lending, groups: art.groups?, bar_rows: bar_rows, rooms: art.rooms.any?,
+                                    cells_shown_now: cells_shown_now)
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, swells: swells, noise_swells: noise_swells,

@@ -235,12 +235,14 @@ module VBlank
       # One cell of a declared background becomes a different tile, while the game runs —
       # a door opening, a pot breaking, a wall a bomb took out. +col+ and +row+ are cell
       # coordinates and may be worked out as the game runs; +tile+ is which of the
-      # background's own tiles goes there, settled while the program is written.
+      # background's own tiles goes there, settled while the program is written. +now+ asks for
+      # the change on the frame being drawn, on the rows still to come, and changes nothing about
+      # what the program means: a console showing every pass whole shows the cell the same.
       class SetTile
         include Node
         kind :set_tile
         category :draw
-        operands name: :name, col: :value, row: :value, tile: :int
+        operands name: :name, col: :value, row: :value, tile: :int, now: :flag
       end
 
       class BackingBuffer

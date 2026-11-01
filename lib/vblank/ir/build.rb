@@ -889,8 +889,8 @@ module VBlank
       # Put a different tile in one cell of a declared background. +col+/+row+ are cell
       # coordinates and may be worked out as the program runs; +tile+ is an index into
       # that background's own tiles, settled while the program is written.
-      def set_tile(name, col, row, tile)
-        Nodes.build(:set_tile, name: name, col: to_value_node(col), row: to_value_node(row), tile: tile)
+      def set_tile(name, col, row, tile, now: nil)
+        Nodes.build(:set_tile, name: name, col: to_value_node(col), row: to_value_node(row), tile: tile, now: now)
       end
 
       # Reserves the object; #present_objects is what actually draws it for a frame.

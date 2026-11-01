@@ -100,6 +100,16 @@ module VBlank
           def first_pass_ended
             dark = @places.runtime[Runtime::Frame::DARK_FRAMES]
             @dark_frames = dark ? half(dark) : 0
+            hold_back_cells_shown_now
+          end
+
+          # A PASS'S PICTURE IS READ FROM THE FRAME DRAWN AFTER IT, while the next pass runs, and the
+          # interpreter's picture of a pass holds nothing of the pass after. A cell shown on the
+          # frame being drawn would be seen a pass early, on whichever rows the display had not
+          # reached, so here such a cell shows with the rest of its pass.
+          def hold_back_cells_shown_now
+            place = @places.runtime[Runtime::Picture::CELL_SHOWN_NOW]
+            write32(place, Runtime::Picture::CELLS_SHOWN_WITH_THE_PASS) if place
           end
 
           # The recording sounding by the frames the last frame boundary left it (Runtime::Clips

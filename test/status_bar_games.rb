@@ -75,3 +75,17 @@ module StatusBarGames
 
   def picture(prog, frames) = game_player.run(prog, frames: frames).screen
 end
+
+# A bar's cell changed with `now: true`, played by each console that can show one: however the
+# console times it, the cell is the same in the pass's picture.
+module BarCellShownNowTests
+  include StatusBarGames
+
+  def test_a_bar_cell_changed_now_shows_the_tile_it_was_given
+    screen = picture(bar_game { |bar, step| bar.set_tile 1, 0, "o", now: true if step == 2 }, 6)
+    row = screen_height - BAR_HEIGHT + 4
+
+    assert_equal BLUE, screen.pixel(12, row)
+    assert_equal GREEN, screen.pixel(28, row)
+  end
+end

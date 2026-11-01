@@ -50,8 +50,17 @@ module VBlank
       # PUT A DIFFERENT TILE IN ONE CELL OF THE BAR: a digit of the score, a heart lost. The
       # same as a background's `set_tile`: +col+ and +row+ are cells of the bar's map, and the
       # tile is named the way the map was written.
-      def set_tile(col, row, tile)
-        @background.set_tile(col, row, tile)
+      #
+      # A change shows on the frame after the pass that made it, with the rest of the pass's picture.
+      # +now+ shows it on the frame being drawn, as a menu in the bar wants when it answers a press:
+      # the screen is drawn from the top, so rows it has not reached yet show the change. Each such
+      # cell waits for moments the display is not reading, so it is for a few cells, not a whole bar.
+      def set_tile(col, row, tile, now: false)
+        unless [true, false].include?(now)
+          raise ArgumentError, "`now:` is #{now.inspect}. It must be true or false."
+        end
+
+        @background.set_tile(col, row, tile, now: now || nil)
         self
       end
 

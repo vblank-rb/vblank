@@ -45,6 +45,11 @@ module VBlank
         when :see_through
           Question.new(:layers, "This game changes how much one layer shows through another as the game runs",
                        console.blends || (console.mixes_by_half && node.added == true))
+        when :set_tile
+          if node.now
+            Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
+                         console.changes_cells_while_drawing)
+          end
         when :held, :pressed
           Question.new(:held, "This line reads the #{node.button.inspect} button", button?(node.button, console))
         when :fade

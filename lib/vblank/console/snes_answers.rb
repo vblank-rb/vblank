@@ -122,7 +122,9 @@ module VBlank
                           "each pass, so a block that reads a table can take more than a frame. If a block only " \
                           "compares the row with numbers, as `row >= 68 ? a : b` does, it runs once for each band of " \
                           "rows, and the game keeps up."),
-        status_bar: works("the bar is one of the two backgrounds."),
+        status_bar: works("the bar is one of the two backgrounds. `set_tile` with `now: true` is refused: " \
+                          "a Super Nintendo writes its video memory only between frames, so a change " \
+                          "shows on the frame after the pass."),
         canvas: works,
         layers: works("a layer holds a background or sprites. A layer of backgrounds can be half " \
                       "see-through, over a background that covers the whole screen: `transparency:` " \

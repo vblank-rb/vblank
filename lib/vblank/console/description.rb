@@ -73,12 +73,16 @@ module VBlank
     # sends them from a copy as the wait ends places them before it, or they would show a frame
     # later than the pass that moved them.
     #
+    # +changes_cells_while_drawing+ says a pass can write a cell of a background into the display's
+    # memory as a frame is drawn, for rows the screen has not reached yet. One whose display locks
+    # that memory until the frame is drawn cannot.
+    #
     # +rumbles+ says a game's `rumble` is felt: the cartridge carries a motor the game turns on and
     # off. Where it is not, the verb does nothing, since a game plays the same without it.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :sprites, :sprite_places,
                               :sprites_a_row, :turning_sprites, :cuts_sprites, :backgrounds, :turning_backgrounds,
-                              :backgrounds_beside_turning, :bar_is_a_background, :blends, :mixes_by_half, :list_colors,
-                              :painted_pages,
+                              :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
+                              :blends, :mixes_by_half, :list_colors, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
                               :recording_voice_hz,
@@ -125,6 +129,7 @@ module VBlank
                               backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
                               # A status bar is one of those layers.
                               bar_is_a_background: true,
+                              changes_cells_while_drawing: true,
                               blends: true, mixes_by_half: false, list_colors: 16, painted_pages: 2, clock_keeps_date: true,
                               # 228 lines of 1232 cycles: 160 drawn, and 68 the gap after.
                               cycles_a_second: 16_777_216, cycles_a_frame: 280_896,
@@ -157,6 +162,7 @@ module VBlank
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false,
+                            changes_cells_while_drawing: true,
                             blends: false, mixes_by_half: false, list_colors: 4, painted_pages: 1, clock_keeps_date: false,
                             # 154 lines of 456 cycles: the Advance's frame exactly, on a clock a
                             # quarter as fast. Double speed doubles the cycles, not the frames.
@@ -205,6 +211,7 @@ module VBlank
                                      bar_is_a_background: true,
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
+                                     changes_cells_while_drawing: false,
                                      blends: false, mixes_by_half: true, list_colors: 16,
                                      # A painted screen is copied whole to the console before it
                                      # is shown, as the Color's is.

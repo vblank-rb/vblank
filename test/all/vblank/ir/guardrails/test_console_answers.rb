@@ -130,7 +130,38 @@ class TestConsoleAnswers < Minitest::Test
     game_loop { see = 52 }
   end
 
+  CELL_SHOWN_NOW = VBlank.game("CELL NOW", consoles: %i[gba gbc snes]) do
+    screen :tiled
+    image(:red_tile, "#" => :red) { "########\n" * 8 }
+    tiles :floor, "r" => :red_tile
+    bar = status_bar :menu, tiles: :floor, map: ["r" * 20], top: screen_height - 8
+    game_loop { bar.set_tile 1, 0, "r", now: true if pressed(:down) }
+  end
+
   private def findings(game, console) = CHECK.detect(game.program(console: console))
+
+  def test_a_bar_cell_shown_now_is_refused_on_the_super_nintendo
+    found = findings(CELL_SHOWN_NOW, :snes)
+
+    assert_equal [:error], found.map(&:severity).uniq
+    assert_match(/between frames/, found.first.message)
+    assert_empty findings(CELL_SHOWN_NOW, :gba)
+    assert_empty findings(CELL_SHOWN_NOW, :gbc)
+  end
+
+  def test_a_bar_cell_told_now_with_anything_but_true_or_false_is_refused
+    error = assert_raises(ArgumentError) do
+      VBlank.game("CELL WHEN", consoles: %i[gba]) do
+        screen :tiled
+        image(:red_tile, "#" => :red) { "########\n" * 8 }
+        tiles :floor, "r" => :red_tile
+        bar = status_bar :menu, tiles: :floor, map: ["r" * 20], top: 120
+        game_loop { bar.set_tile 1, 0, "r", now: :soon }
+      end.program(console: :gba)
+    end
+
+    assert_match(/must be true or false/, error.message)
+  end
 
   def test_reading_or_setting_the_clock_is_refused_on_the_super_nintendo_in_its_words
     [CLOCKED, SETTING_CLOCK].each do |game|

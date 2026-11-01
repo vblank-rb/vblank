@@ -40,6 +40,13 @@ module VBlank
             # colours. A pass that changes more than CELLS_KEPT has the rest written where it asks.
             CELLS = "rt picture cells"
             CELLS_KEPT = 32
+            # In a game that asks for it, counted up to 1 while the game changes a cell to show on the
+            # frame being drawn (`now: true`, #emit_background_cell). A byte, with room for a run of
+            # the cartridge to write a word: started from CELLS_SHOWN_WITH_THE_PASS instead of
+            # nought it never reaches 1, and the cell shows with the rest of its pass (HeadlessRun).
+            CELL_SHOWN_NOW = "rt picture cell shown now"
+            CELL_SHOWN_NOW_BYTES = 4
+            CELLS_SHOWN_WITH_THE_PASS = 0x80
             CELL_BYTES = 4
             # A BACKGROUND BENT ROW BY ROW (`scroll_each_row`): how far each of the screen's rows
             # sits along, worked out once a pass into a table of the bend's own (the lowering keeps
@@ -109,8 +116,9 @@ module VBlank
 
             module_function
 
-            def reserve(memory, lends: false, groups: false, bar_rows: nil, rooms: false)
+            def reserve(memory, lends: false, groups: false, bar_rows: nil, rooms: false, cells_shown_now: false)
               memory.reserve(ROOMS, 3) if rooms
+              memory.reserve(CELL_SHOWN_NOW, CELL_SHOWN_NOW_BYTES) if cells_shown_now
               if bar_rows
                 memory.reserve(BAR, 3)
                 memory.reserve(BAR_JOB, 6)
@@ -1313,6 +1321,11 @@ module VBlank
             # one (STAT's low two bits, 3 while it reads video memory), so each write waits for a
             # moment it is not reading, with the interrupt held off between the wait and the write.
             #
+            # ON THE FRAME BEING DRAWN, for a cell the game asks to see there (CELL_SHOWN_NOW): it is
+            # written where the game asks, so the rows the display has not reached show it, and it
+            # goes into CELLS as well, so a change of the same cell waiting there cannot put the
+            # older tile back in the blank.
+            #
             # A grid with a cell changed is no longer the one declared, so the next put up of it puts
             # it up again (GRID_UP), as declared.
             def emit_background_cell(asm, memory, label: "rt_background_cell", grid: Console::GBCHardware::TILE_MAP0,
@@ -1355,6 +1368,11 @@ module VBlank
               asm.label("#{label}_place_found")
               asm.load(:a, 0xFF)
               asm.load([up], :a)
+              if memory.reserved?(CELL_SHOWN_NOW)
+                asm.load(:a, [memory[CELL_SHOWN_NOW]])
+                asm.dec(:a)
+                asm.call(:z, "#{label}_shown")
+              end
               # Into the cells for the blank, while there is room: HL where it goes, then the cell.
               asm.load(:a, [memory[CELLS]])
               asm.cp_a(CELLS_KEPT)
@@ -1380,6 +1398,7 @@ module VBlank
               asm.load([:hl], :a)
               asm.ret
               asm.label("#{label}_now")
+              asm.label("#{label}_shown") if memory.reserved?(CELL_SHOWN_NOW)
               asm.di
               [0, 1].each do |bank|
                 asm.load(:a, bank)

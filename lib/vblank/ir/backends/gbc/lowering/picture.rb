@@ -57,6 +57,9 @@ module VBlank
               bars.flat_map(&:every_map).map { |map| TileMap.size_of(map).last }.max unless bars.empty?
             end
 
+            # Does the game ask for a cell on the frame being drawn (`now: true`)?
+            def cells_shown_now? = @reachable.any? { |node| node.kind == :set_tile && node.now }
+
             # Has a status bar of the game more than one map to show (Runtime::Picture#emit_bar_show)?
             def bar_shows_maps? = @backgrounds.each_value.any? { |bg| bg.bar? && bg.every_map.length > 1 }
 
@@ -1294,6 +1297,17 @@ module VBlank
               return runtime_call("rt_big_set", [node.col, node.row, cell]) if big?(bg)
 
               refuse_background!(bg, as_grid: true)
+              return emit_cell_change(node, bg, cell) unless node.now
+
+              shown = @memory[Runtime::Picture::CELL_SHOWN_NOW]
+              @asm.load(:hl, shown)
+              @asm.inc([:hl])
+              emit_cell_change(node, bg, cell)
+              @asm.load(:hl, shown)
+              @asm.dec([:hl])
+            end
+
+            def emit_cell_change(node, bg, cell)
               cols, rows = map_size_of(bg)
               routine = bg.bar? ? "rt_bar_cell" : "rt_background_cell" # a status bar's is in the window's grid
               row = folded(node.row)

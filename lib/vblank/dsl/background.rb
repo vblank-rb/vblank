@@ -84,7 +84,9 @@ module VBlank
       #
       # A cell outside the map is left alone rather than writing over something else, so a
       # coordinate the game worked out can be off the edge without a test around it.
-      def set_tile(col, row, tile)
+      #
+      # +now+ is a status bar's (StatusBar#set_tile).
+      def set_tile(col, row, tile, now: nil)
         refuse_on_bitmap_screen!("set_tile", instead: "Draw over the spot with `blit`")
         if @walks_areas
           raise ArgumentError,
@@ -96,7 +98,7 @@ module VBlank
         index = @tile_index[tile]
         raise ArgumentError, unknown_tile_message(tile) if index.nil?
 
-        record(Build.set_tile(@name, Value.node_for(col), Value.node_for(row), index))
+        record(Build.set_tile(@name, Value.node_for(col), Value.node_for(row), index, now: now))
         record_wall_change(col, row, index)
         self
       end
