@@ -87,7 +87,6 @@ module VBlank
                                                     "colours that change as the game runs" => %i[background_colors],
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at show_picture_group data_byte],
-                                                    "the camera" => %i[camera],
                                                     "save memory" => %i[save_init save_store save_write save_erase
                                                                         save_read save_sum],
                                                     "sound" => %i[enable_sound beep noise wave stop_wave play_song

@@ -20,7 +20,7 @@ module VBlank
                                                  pixel: :emit_pixel, inside: :emit_inside, blit: :emit_blit,
                                                  blit_pose: :emit_blit_pose, draw_text: :emit_draw_text,
                                                  draw_digit: :emit_draw_digit, save_region: :emit_save_region,
-                                                 restore_region: :emit_restore_region
+                                                 restore_region: :emit_restore_region, camera: :emit_camera
                                                })
 
             # The kinds that paint, which make a screen painted when the game names none. The camera
@@ -47,6 +47,14 @@ module VBlank
             end
 
             def painted? = @painted
+
+            # Whether the game moves the window over its picture, which is when its cartridge carries the
+            # routines that do (Runtime::Paint.emit_camera).
+            def camera? = painted? && @program.walk.any? { |node| node.kind == :camera }
+
+            # Reference#exec_camera: the window's corner. A tiled screen has no one picture to move it over
+            # (its planes scroll and its sprites sit over them), which is refused where the picture is.
+            def emit_camera(node) = runtime_call("rt_camera_to", [node.x, node.y])
 
             # Every backing buffer — the patch of the screen under a sprite on a painted screen — given
             # its room in work RAM, a byte a pixel.

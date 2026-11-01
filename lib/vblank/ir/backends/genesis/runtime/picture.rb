@@ -20,9 +20,9 @@ module VBlank
             # The routines every cartridge carries, whatever the game draws: what the wait calls
             # before it shows a pass, which for a game that draws nothing is nothing, the copy of a
             # pass's changes, the whole copy and the screen switched on.
-            def emit(asm, memory, picture: :none, columns: 32)
+            def emit(asm, memory, picture: :none, columns: 32, camera: false)
               case picture
-              when :painted then Paint.emit(asm, memory)
+              when :painted then Paint.emit(asm, memory, camera: camera)
               when :tiled then Tiles.emit(asm, memory, columns: columns)
               else
                 asm.label("rt_picture_start")

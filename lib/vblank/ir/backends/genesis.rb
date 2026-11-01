@@ -63,7 +63,8 @@ module VBlank
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
-                                             columns: lowering.plane_size.first, collision: lowering.collides?, fractions: lowering.fractions?)
+                                             columns: lowering.plane_size.first, collision: lowering.collides?, fractions: lowering.fractions?,
+                                             camera: lowering.camera?)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

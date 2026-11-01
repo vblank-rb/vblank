@@ -138,8 +138,8 @@ class TestColorWalk < Minitest::Test
     seen = game_player
     seen.run(game, frames: 12)
 
-    assert_equal rgb5(24, 24, 24), seen.screen.pixel(10, 10), "four steps of eight on from white"
-    assert_equal gray, seen.screen.pixel(26, 10), "the other sprite is as drawn"
+    assert_equal shown(rgb5(24, 24, 24)), seen.screen.pixel(10, 10), "four steps of eight on from white"
+    assert_equal shown(gray), seen.screen.pixel(26, 10), "the other sprite is as drawn"
   end
 
   def test_a_colour_a_walk_does_not_know_is_a_friendly_error

@@ -72,13 +72,15 @@ module VBlank
               memory.reserve(ANY_DIRTY, 2)
               memory.reserve(AREA, AREA_BYTES)
               memory.reserve(SCRATCH, 4)
+              memory.reserve(CAMERA, 4)
             end
 
             # +patches+ is how many places the game keeps a patch of the screen in (SaveRegion).
-            def emit(asm, memory)
+            def emit(asm, memory, camera: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, memory, at)
-              emit_upload(asm, memory, at)
+              emit_upload(asm, memory, at, camera: camera)
+              emit_camera(asm, at) if camera
               emit_clear(asm, memory, at)
               emit_area(asm, at)
               emit_fill(asm, memory, at)
@@ -149,13 +151,57 @@ module VBlank
               asm.label("rt_picture_start_patched")
             end
 
+            # THE CAMERA (`camera x, y`, Reference#exec_camera) moves the window over the picture, which on a
+            # Genesis is moving the plane that shows it: its horizontal and vertical scroll, written in the
+            # blank with the tiles. The plane is 64 cells across and 32 down and the picture 40 and 28, so
+            # the cells past the picture are empty and show the backdrop as the interpreter does, for a
+            # window as far out as the plane goes: 192 pixels across (64 less 40 cells) and 32 down. Past
+            # that the plane would come round to the picture again, so the camera is held there.
+            #
+            # rt_camera_to(x, y): the window's corner, held within what the plane can show.
+            # rt_camera_written: the scroll registers made to say it.
+            CAMERA = "rt camera" # the window's corner, a word each: across, then down
+            CAMERA_ACROSS = 192
+            CAMERA_DOWN = 32
+
+            def emit_camera(asm, at)
+              h = Console::GenesisHardware
+              asm.label("rt_camera_to")
+              [[0, CAMERA_ACROSS, 0], [1, CAMERA_DOWN, 2]].each do |register, most, place|
+                kept = "rt_camera_to_#{place}"
+                asm.cmp(:l, asm.imm(most), asm.d(register))
+                asm.branch(:le, "#{kept}_low")
+                asm.move(:l, asm.imm(most), asm.d(register))
+                asm.label("#{kept}_low")
+                asm.cmp(:l, asm.imm(-most), asm.d(register))
+                asm.branch(:ge, "#{kept}_set")
+                asm.move(:l, asm.imm(-most), asm.d(register))
+                asm.label("#{kept}_set")
+                asm.move(:w, asm.d(register), at.call(CAMERA, place))
+              end
+              asm.rts
+
+              asm.label("rt_camera_written")
+              asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, Tiles::HSCROLL_AT)), asm.abs_l(h::VDP_CONTROL))
+              asm.move(:w, at.call(CAMERA, 0), asm.d(0))
+              asm.neg(:w, asm.d(0))
+              asm.and(:w, asm.imm(0x3FF), asm.d(0))
+              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+              asm.move(:l, asm.imm(h.command(h::WRITE_VSRAM, 0)), asm.abs_l(h::VDP_CONTROL))
+              asm.move(:w, at.call(CAMERA, 2), asm.d(0))
+              asm.and(:w, asm.imm(0x3FF), asm.d(0))
+              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+              asm.rts
+            end
+
             # rt_upload: every tile marked as changed copied to video RAM, in the blank, and its mark
             # taken off. The marks are looked at four at a time, so a pass that changed nothing near
             # most of the screen skips most of it in a few instructions. rt_upload_whole: the whole
             # picture, while the screen is still off.
-            def emit_upload(asm, memory, at)
+            def emit_upload(asm, memory, at, camera: false)
               h = Console::GenesisHardware
               asm.label("rt_upload")
+              asm.jsr(asm.abs_l("rt_camera_written")) if camera
               asm.tst(:w, at.call(ANY_DIRTY))
               asm.branch(:eq, "rt_upload_done")
               asm.clr(:w, at.call(ANY_DIRTY))
@@ -203,6 +249,7 @@ module VBlank
               asm.rts
 
               asm.label("rt_upload_whole")
+              asm.jsr(asm.abs_l("rt_camera_written")) if camera
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, FIRST_TILE_AT)), asm.abs_l(h::VDP_CONTROL))
               asm.lea(asm.abs_l(memory[SCREEN]), asm.a(0))
               asm.move(:w, asm.imm(SCREEN_BYTES / 4 - 1), asm.d(0))

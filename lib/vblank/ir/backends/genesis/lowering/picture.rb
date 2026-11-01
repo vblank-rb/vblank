@@ -63,6 +63,7 @@ module VBlank
                 refuse_unmade!("a background on a painted (bitmap) screen") unless @backgrounds.empty?
                 refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.empty?
               end
+              refuse_unmade!("a camera on a tiled screen") if !painted? && @program.walk.any? { |node| node.kind == :camera }
               refuse_unmade_backgrounds!
               refuse_unmade_sprites!
             end

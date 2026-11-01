@@ -115,7 +115,12 @@ module VBlank
           end)
 
           # Where a painted screen's camera puts the view; [0, 0] until a painted screen is made.
-          def read_camera = [0, 0]
+          def read_camera
+            return [0, 0] unless @places.runtime.key?(Runtime::Paint::CAMERA)
+
+            at = runtime_place(Runtime::Paint::CAMERA)
+            [half(at), half(at + 2)].map { |word| word >= 0x8000 ? word - 0x10000 : word }
+          end
 
           # The sprites the game placed in its last pass, back to front, as the interpreter says them
           # (Reference#sprites): the runtime keeps a row for each (Runtime::Tiles::DRAWN) — whose, which
