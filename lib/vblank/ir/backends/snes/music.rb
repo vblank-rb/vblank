@@ -81,6 +81,11 @@ module VBlank
           NOTE_VOLUME = 6
           RINGS_ALONE = 0x100 # in a note's volume word: it fades by itself, and is not held for a new level
           SLIDES = 0x200 # ...and it slides, so its NOTE_WOBBLE word is where its slide's record is
+          PLAIN_VOLUME = RINGS_ALONE - 1 # what of the word is the volume
+          # ...and which of the part's lists of loudness groups a note from one speaker takes, kept
+          # with its volume, so a held note strikes again on its own side.
+          LEFT_ONLY = 0x400
+          RIGHT_ONLY = 0x800
           NOTE_SOUNDS = 8
           NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
           NOTE_SWELL = 10 # the same word, on a console voice: where its swell's record is, nought for none
@@ -174,6 +179,12 @@ module VBlank
 
           # Whether any note of +program+'s songs slides its pitch, and so the player walks its pitches.
           def self.slides?(program) = any_note?(program) { |part, event| Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event)) }
+
+          # Whether a note from one speaker must stay there as the music volume moves, and so a part
+          # keeps its loudness groups for each side.
+          def self.sides_under_level?(program)
+            follows_level?(program) && any_note?(program) { |part, event| IR::Tunes.note_side(part, event) }
+          end
 
           def self.any_note?(program)
             program.walk.select { |node| node.kind == :song }.any? do |song|
@@ -409,9 +420,20 @@ module VBlank
             layout = { lists: lists, holds: IR::Tunes.part_kind(part) != :noise, channel: channel }
             return layout unless follows_level?
 
-            layout.merge(loudness: VOLUMES.map do |volume|
-              keep_group(entry_commands([[:loudness, channel, volume]], voicing, song.name, &number_of).flatten(1))
+            sides = part.events.any? { |event| event[1].positive? && IR::Tunes.note_side(part, event) } ? [nil, :left, :right] : [nil]
+            layout.merge(loudness: sides.flat_map do |side|
+              VOLUMES.map { |volume| loudness_group(song, channel, volume, side, voicing, &number_of) }
             end)
+          end
+
+          # What writes and logs a loudness of +channel+'s part: on both sides, or on +side+ alone
+          # for a note from one speaker, which is why a part with one keeps a list of these for each.
+          def loudness_group(song, channel, volume, side, voicing)
+            entry = [:loudness, channel, volume]
+            return keep_group(entry_commands([entry], voicing, song.name) { |said| yield said }.flatten(1)) unless side
+
+            writes = DSPWrites.heard_from_one_side(DSPWrites.loudness_at(channel, volume, voicing, song.name), side)
+            keep_group(writes.map { |write| Runtime::Sound.command_for(write) } + [[GROUP_LOG, yield(entry), 0]])
           end
 
           # One note of +song+'s +part+ on +channel+ (an +event+ of its list), with +between+ its head
@@ -425,15 +447,17 @@ module VBlank
             vibrato = IR::Tunes.said_vibrato(part, event) if frequency.positive?
             duty = IR::Tunes.said_duty(part, event) if frequency.positive?
             slide = IR::Tunes.said_slide(part, event) if frequency.positive?
+            side = IR::Tunes.note_side(part, event)
             head = [[:note, song.name, frequency],
                     IR::Tunes.voice_entry(channel, song.name, frequency, volume, fade: fade, slide: slide, vibrato: vibrato,
-                                                                         side: IR::Tunes.note_side(part, event), duty: duty)]
+                                                                         side: side, duty: duty)]
             commands = entry_commands(head + between + wave_or_noise_entries(part, frequency), voicing, song.name, &number_of)
             wobble = wobble_record(channel, frequency, vibrato, &number_of) if Audio::Vibrato.moves?(vibrato)
             shapes = shape_record(channel, frequency, duty, &number_of) if duty&.steps?
             written = frequency.zero? ? 0 : volume
             written |= RINGS_ALONE if frequency.positive? && follows_level? && IR::Tunes.changes_by_itself?(part, event)
-            swell = swell_record(song, channel, fade.step, voicing, &number_of) if between.any? && self.class.swells_on_console_voice?(part, event)
+            written |= side == :left ? LEFT_ONLY : RIGHT_ONLY if side && between.any? && frequency.positive? && volume.positive?
+            swell = swell_record(song, channel, fade.step, side, voicing, &number_of) if between.any? && self.class.swells_on_console_voice?(part, event)
             if Audio::PitchSlide.moves?(slide)
               written |= SLIDES
               steps = slide_record(channel, frequency, slide, lasts, duty&.steps? ? nil : duty&.at(0) || part.duty)
@@ -483,19 +507,20 @@ module VBlank
           # loudness the count can be at: what its start logs, which writes nothing, since the voice
           # must stay at its full volume to be heard climbing; the note held there; and the note
           # climbing on from there (DSPWrites.swell_strike).
-          def swell_record(song, channel, step, voicing, &number_of)
+          def swell_record(song, channel, step, side, voicing, &number_of)
             starts = VOLUMES.map { |volume| keep_group([[GROUP_LOG, yield([:loudness, channel, volume]), 0]]) }
-            holds = VOLUMES.map { |volume| swell_strike_group([:loudness, channel, volume], song, voicing, &number_of) }
+            holds = VOLUMES.map { |volume| swell_strike_group([:loudness, channel, volume], song, side, voicing, &number_of) }
             swelling = Audio::NoteFade.swelling(step)
-            onwards = VOLUMES.map { |volume| swell_strike_group([:loudness, channel, volume, swelling], song, voicing, &number_of) }
+            onwards = VOLUMES.map { |volume| swell_strike_group([:loudness, channel, volume, swelling], song, side, voicing, &number_of) }
             record = [step * 256, *starts, *holds, *onwards]
             @swell_records << record unless @swell_records.include?(record)
             record
           end
 
-          def swell_strike_group(entry, song, voicing)
-            writes = DSPWrites.swell_strike(entry, voicing, song.name).map { |write| Runtime::Sound.command_for(write) }
-            keep_group(writes + [[GROUP_LOG, yield(entry), 0]])
+          def swell_strike_group(entry, song, side, voicing)
+            writes = DSPWrites.swell_strike(entry, voicing, song.name)
+            writes = DSPWrites.heard_from_one_side(writes, side) if side
+            keep_group(writes.map { |write| Runtime::Sound.command_for(write) } + [[GROUP_LOG, yield(entry), 0]])
           end
 
           # A NOTE THAT STEPS ITS SHAPES: a group for each of its four frames, its source written and
@@ -638,8 +663,7 @@ module VBlank
 
           def refuse_parts!(song)
             refuse_unmade_recorded_parts!(song)
-            refuse_note_changes!(song)
-            kinds = song.voices.map { |part| IR::Tunes.part_kind(part) }
+            kinds =song.voices.map { |part| IR::Tunes.part_kind(part) }
             return if kinds.count(:square) <= 2 && kinds.count(:wave) <= 1 && kinds.count(:noise) <= 1
 
             raise LoweringError, "The song #{song.name.inspect} has too many parts for one voice. A song can have two " \
@@ -661,27 +685,6 @@ module VBlank
               "The song #{song.name.inspect} has #{unmade}. The Super Nintendo build does not make that yet. To fix " \
               "this, build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the sound"
             )
-          end
-
-          # A NOTE THAT CHANGES AS IT PLAYS — fading out or swelling in, sliding or wobbling its
-          # pitch, playing from one speaker, or stepping through the square wave's shapes — as its
-          # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet: in
-          # a game that sets its music volume, a note from one speaker, since a new level strikes
-          # a held note on both sides. A note that fades is made, and the level reaches its next
-          # note (RINGS_ALONE).
-          def refuse_note_changes!(song)
-            return unless follows_level?
-
-            sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
-            sounding.each do |part, event|
-              next unless IR::Tunes.note_side(part, event)
-
-              raise Lowering::NotMadeYet.new(
-                "The song #{song.name.inspect} has a note from one speaker, in a game that sets its music volume. The Super " \
-                "Nintendo build does not make that yet. To fix this, remove `music_volume` from the game.",
-                part: "notes that change as they play"
-              )
-            end
           end
         end
       end

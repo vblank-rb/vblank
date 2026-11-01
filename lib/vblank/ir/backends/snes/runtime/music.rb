@@ -91,14 +91,18 @@ module VBlank
             # A NOTE THAT SLIDES (SNES::Music#slide_record), in a game with one: where in its record
             # the next frame is, nought when no note slides. Only one voice slides, so one word.
             SLIDE_CURSOR = "rt music slide cursor"
+            # Which of a part's lists of loudness groups a strike reads, in a game with a note from one
+            # speaker and a music volume (SNES::Music#loudness_group).
+            LOUDNESS_LIST = "rt music loudness list"
 
             module_function
 
             # +follows_level+ for a game that sets the music volume (SNES::Music.follows_level?);
             # +effects+ how many sound effects the game has (Effects).
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
-                        slides: false)
+                        slides: false, sides: false)
               memory.reserve(TUNE_HELD, 2) if holds
+              memory.reserve(LOUDNESS_LIST, 2) if sides
               memory.reserve(SLIDE_CURSOR, 2) if slides
               if swells
                 [SWELL_RECORD, SWELL_VOLUME, SWELL_COUNTED, SWELL_RISING].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
@@ -161,6 +165,9 @@ module VBlank
 
             # Whether the game has sound effects, which share the voices (Effects).
             def shares_voices?(memory) = memory.reserved?(Effects::HOLDERS)
+
+            # Whether a note from one speaker stays there as the music volume moves (LOUDNESS_LIST).
+            def sides?(memory) = memory.reserved?(LOUDNESS_LIST)
 
             # The note at ENTRY and NOTE taken up by what changes as it plays, a tune's or an effect's.
             def emit_note_changes(asm, memory)
@@ -918,7 +925,7 @@ module VBlank
               m = SNES::Music
               asm.ldx(at.call(NOTE))
               asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
-              asm.and_a(m::RINGS_ALONE - 1)
+              asm.and_a(m::PLAIN_VOLUME | m::LEFT_ONLY | m::RIGHT_ONLY)
               asm.pha
               # A note that fades by itself is not held for a new level: one struck again would
               # start its fade over (IR::Tunes.changes_by_itself?), so the level reaches its next note.
@@ -958,6 +965,7 @@ module VBlank
                 asm.beq("rt_music_note_plain")
                 asm.sta(at.call(SWELL_GROUPS))
                 asm.lda(at.call(LOUDNESS))
+                asm.and_a(m::PLAIN_VOLUME)
                 asm.jsr(asm.abs("rt_music_scaled"))
                 asm.asl
                 asm.clc
@@ -1072,6 +1080,16 @@ module VBlank
               asm.rts
 
               asm.label("rt_music_loudness")
+              if sides?(memory)
+                # The note's side in its upper bits is which of the part's lists: each is a word for
+                # each of the sixteen volumes, 32 bytes.
+                asm.sta(at.call(LOUDNESS))
+                5.times { asm.lsr }
+                asm.and_a(0x60)
+                asm.sta(at.call(LOUDNESS_LIST))
+                asm.lda(at.call(LOUDNESS))
+                asm.and_a(m::PLAIN_VOLUME)
+              end
               asm.jsr(asm.abs("rt_music_scaled"))
               asm.sta(at.call(LOUDNESS))
               asm.ldx(at.call(ENTRY))
@@ -1081,6 +1099,10 @@ module VBlank
               asm.asl
               asm.clc
               asm.adc(at.call(LOUDNESS_TABLE))
+              if sides?(memory)
+                asm.clc
+                asm.adc(at.call(LOUDNESS_LIST))
+              end
               asm.tax
               asm.lda(asm.long_x("music_data"))
               asm.tax

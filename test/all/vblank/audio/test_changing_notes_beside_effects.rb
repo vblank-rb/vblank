@@ -89,6 +89,33 @@ class TestChangingNotesBesideEffects < Minitest::Test
     refute_empty logged(b.program, :duty, frames: 12)
   end
 
+  # A note from one speaker keeps to it when a new music volume strikes it again, and when one
+  # swells it is held there the same way.
+  def test_a_note_from_one_speaker_stays_there_under_a_new_music_volume
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      clear_screen :black
+      enable_sound
+      song :tune do
+        tempo 150
+        voice(:left) { |v| v.pan :left; v.note :C4, :whole }
+        voice(:right) { |v| v.pan :right; v.volume 0; v.swell :fast; v.note :E4, :whole }
+      end
+      play_song :tune
+      pass = 0
+      game_loop do
+        pass += 1
+        music_volume 50 if pass == 20
+        music_volume 25 if pass == 30
+        wait_vblank
+      end
+    end
+    b.finalize_program
+
+    assert_includes logged(b.program, :loudness, frames: 40).map(&:last), 3
+  end
+
   def test_a_swelling_note_beside_effects_is_held_at_the_music_volume
     entries = logged(shared_voice_game(effect, lead: { volume: 0, swell: :fast }) { |pass| music_volume 50 if pass == 1 }, :loudness)
 

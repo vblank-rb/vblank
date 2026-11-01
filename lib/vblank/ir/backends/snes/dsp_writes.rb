@@ -507,12 +507,15 @@ module VBlank
             fade = nil # the fade it said
             sounding = {} # what each channel's last note is, for a wobble of it
             rising = {} # whether each channel's last note is a song's that swells
+            sides = {} # the speaker each channel's last note plays from, nil for both
             entries.each do |entry|
               sounding[entry[1]] = entry[3] if entry.first == :voice
               rising[entry[1]] = swelling_note?(entry, voicing) if entry.first == :voice
+              sides[entry[1]] = entry[SIDE_OF_VOICE_ENTRY] if entry.first == :voice
               if entry.first == :loudness && rising[entry[1]]
                 # A swell's own start writes nothing: the voice stays at its full volume, climbing.
-                yield entry, previous == :voice ? [] : swell_strike(entry, voicing, song)
+                strike = previous == :voice ? [] : swell_strike(entry, voicing, song)
+                yield entry, sides[entry[1]] ? heard_from_one_side(strike, sides[entry[1]]) : strike
                 loudness = []
                 previous = entry.first
                 next
@@ -539,6 +542,7 @@ module VBlank
               writes = writes.reject { |register, *| loudness.include?(register) } if voice_own_entry?(entry)
               writes = note_envelope(writes, entry.first == :noise ? entry.last[:volume] : 0, fade) if fade && noise_note?(entry)
               writes = heard_from_one_side(writes, side) if side && (entry.first == :voice || voice_own_entry?(entry))
+              writes = heard_from_one_side(writes, sides[entry[1]]) if entry.first == :loudness && sides[entry[1]]
               # A note's loudness follows its [:voice ...]; one that does not is a held note's, at a new level.
               loudness = entry.first == :loudness && previous == :voice ? writes.map(&:first) : []
               previous = entry.first
