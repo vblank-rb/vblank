@@ -141,7 +141,11 @@ module VBlank
       def play_runs(chosen)
         chosen = chosen_by_console(chosen)
         labels = chosen.map { |lowering, console| label(lowering, console) }
-        results = chosen.zip(labels).map { |(lowering, console), name| play_run(lowering, console, name) }
+        results = []
+        chosen.zip(labels).each do |(lowering, console), name|
+          results << play_run(lowering, console, name)
+          break if ENV[Lowering::FAIL_FAST_SETTING] && results.last[1] == :failed
+        end
         puts
         results.each do |name, outcome, seconds|
           puts format("%-*s %s%s", labels.map(&:length).max, name, OUTCOMES.fetch(outcome),
@@ -164,7 +168,7 @@ module VBlank
       end
 
       # One run: whether it passed and how long it took. Every one is played whatever the one
-      # before found.
+      # before found, unless FAIL_FAST says otherwise (#play_runs).
       def play_run(lowering, console, name)
         named = ENV["TEST"]&.delete_prefix("./")
         return [name, :not_played, 0] if named && !files(lowering, console).include?(named)

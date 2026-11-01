@@ -128,6 +128,7 @@ rake test:lowering:gbc                                          # the Game Boy C
 CONSOLE=gbc rake test:all                                       # only the runs that play games as one console (any task, TEST= too)
 rake test:playthroughs                                          # one module's tests: every file in test/lowering/gba/vblank/playthroughs/
 VBLANK_SUITE_LOCK=checkout rake test                            # in a worktree: go ahead beside another checkout's run
+FAIL_FAST=1 rake test:all                                       # stop at the first failing test; no later run starts
 ```
 
 **One whole run at a time on the machine**, across every checkout: a second waits for the first and

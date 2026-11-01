@@ -57,6 +57,13 @@ module VBlank
       def child? = ENV[CHILD_SETTING] == "1"
       def processes = Integer(ENV.fetch(PROCESSES_SETTING))
 
+      # This process's children once they start, for a reporter made before they do (Testing::FailFast).
+      Running = Struct.new(:children) do
+        def stop_handing_out = children&.stop_handing_out
+      end
+      RUNNING = Running.new
+      def running = RUNNING
+
       # The parent's command, with the seed it settled on put last, where it wins: a run that was
       # not given one picks its own, after COMMAND was taken. One word, `--seed=N`, because
       # rake's loader takes a word that does not start with a dash for a file to load. Warnings
@@ -88,7 +95,11 @@ module VBlank
           @reporter = reporter
           @options = options
           @children = []
+          Processes.running.children = self
         end
+
+        # No more tests start, and the ones playing finish (Testing::FailFast).
+        def stop_handing_out = @waiting.clear
 
         def play
           count = [Processes.processes, @waiting.size].min

@@ -155,3 +155,16 @@ if ENV["CI"]
   end
   Minitest.extensions << "progress_lines"
 end
+
+# FAIL_FAST=1: stop at the first failing test.
+require_relative "testing/fail_fast"
+if ENV[VBlank::Testing::Lowering::FAIL_FAST_SETTING]
+  module Minitest
+    def self.plugin_fail_fast_init(options)
+      children = defined?(VBlank::Testing::Processes) ? VBlank::Testing::Processes.running : nil
+      stop = children ? -> { children.stop_handing_out } : -> { exit!(1) }
+      reporter << VBlank::Testing::FailFast.new(options[:io], stop: stop)
+    end
+  end
+  Minitest.extensions << "fail_fast"
+end

@@ -82,6 +82,8 @@ module VBlank
       # The setting a run's lowering is read from: each run but the GBA lowering's sets it to its
       # name ("native", "js", "gbc"); left alone it is the GBA lowering's run.
       SETTING = "VBLANK_LOWERING"
+      # Set to anything, a run stops at its first failing test and no later run starts (Testing::FailFast).
+      FAIL_FAST_SETTING = "FAIL_FAST"
       NAMES = Ractor.make_shareable(RUNS.map(&:name))
 
       module_function
