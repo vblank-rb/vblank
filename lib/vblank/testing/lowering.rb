@@ -84,6 +84,9 @@ module VBlank
       SETTING = "VBLANK_LOWERING"
       # Set to anything, a run stops at its first failing test and no later run starts (Testing::FailFast).
       FAIL_FAST_SETTING = "FAIL_FAST"
+      # What a run's test processes are told of it, by TestTask: FAIL_FAST is the person's choice and
+      # is not handed on, as CONSOLE is not, or a test that starts a rake of its own would stop early.
+      STOPS_AT_FAILURE_SETTING = "VBLANK_STOPS_AT_FAILURE"
       NAMES = Ractor.make_shareable(RUNS.map(&:name))
 
       module_function
