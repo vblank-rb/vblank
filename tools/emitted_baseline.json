@@ -5,6 +5,10 @@
       "code": 48260,
       "data": 0
     },
+    "animate@genesis": {
+      "code": 3610,
+      "data": 1122
+    },
     "bird": {
       "code": 7316,
       "data": 0
@@ -172,6 +176,10 @@
     "sprite_mover": {
       "code": 12964,
       "data": 0
+    },
+    "sprite_mover@genesis": {
+      "code": 3998,
+      "data": 134
     },
     "tiles": {
       "code": 7848,

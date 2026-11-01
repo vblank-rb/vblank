@@ -41,7 +41,7 @@ module SpriteMover
 
   # The game as a block the builder runs, so a test can drive the exact program
   # that ships — the headless interpreter runs THIS, the console runs the ROM.
-  GAME = VBlank.game("SPRITEMV", consoles: %i[gba snes]) do
+  GAME = VBlank.game("SPRITEMV", consoles: %i[gba snes genesis]) do
     screen :bitmap
     places = SpriteMover.layout(screen_width, screen_height)
 
