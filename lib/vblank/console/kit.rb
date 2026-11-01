@@ -53,6 +53,7 @@ module VBlank
     #   open_probe(path, save_dir:)
     #                           a running cartridge as the one reader asks of one
     #   dumps_ir?               whether `vblank build --format ir` can write its games
+    #   routine_lister          what lists a routine of its cartridges (`dump_func`), or nil
     #   inspector              what prints one of its cartridges' header and first instructions
     #                           (`vblank inspect`), or nil for a console with none yet
     #
@@ -99,6 +100,10 @@ module VBlank
       # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
       # cartridge, so only the Advance's).
       def dumps_ir? = false
+
+      # What lists a routine of its cartridges (`dump_func`) through a build that goes by the kit,
+      # or nil for none. The Advance's own build lists its routines itself.
+      def routine_lister = nil
 
       # The console settings its build reads, by name, and whether +setting+ is one of them.
       def console_settings = builder.console_settings
@@ -183,6 +188,7 @@ module VBlank
       def lowering = IR::Backends::GBC
       def cartridge = Cartridge::GBCROM
       def reading = Diagnostics::ColorReading
+      def routine_lister = Diagnostics::SM83Listing
       def sprite_piece_sizes = GBCHardware::SPRITE_PIECE_SIZES
     end
 

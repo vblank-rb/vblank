@@ -203,8 +203,8 @@ module VBlank
         scene: works("see `func` for `fast:`."),
         case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
-        dump_func: refused("it lists the ARM a routine was made into, and a Game Boy Color has no ARM " \
-                           "processor to list it for."),
+        dump_func: works("it lists the SM83 code a routine was made into, with the game's variables and " \
+                         "the runtime's routines by name."),
         entry: refused("`entry` is raw ARM for the Advance's processor, which a Game Boy Color does " \
                        "not have."),
 

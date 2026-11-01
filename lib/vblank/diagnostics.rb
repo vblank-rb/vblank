@@ -9,6 +9,7 @@ require_relative "diagnostics/sprite_row" # one sprite read back, off the consol
 require_relative "diagnostics/video_memory" # how much room the pictures took, and what the storage saved
 require_relative "diagnostics/inspector" # a finished ROM taken apart: header, and the code disassembled
 require_relative "diagnostics/func_dumper"
+require_relative "diagnostics/sm83_listing" # ...and a routine of a Game Boy Color cartridge
 require_relative "diagnostics/emulator" # the one seam to the emulator backend; swap emulators here
 require_relative "diagnostics/recorded_sound" # the sound of a run, the older part of it in a scratch file
 require_relative "diagnostics/verifier" # ...and reading real pixels and real sound back through it
