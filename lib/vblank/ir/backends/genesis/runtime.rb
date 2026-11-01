@@ -38,7 +38,7 @@ module VBlank
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
-            Boot.emit(asm, main: main, registers: registers)
+            Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD))
             Int32.emit(asm)
             Frame.emit(asm, memory)
             Lists.emit(asm, memory)
@@ -51,7 +51,7 @@ module VBlank
           # What a game needs before its first line: its variables that do not start at nought (the
           # table "game_starts": each place as a long, then its number as a long, and a place of
           # nought after the last), its lists' headers, the picture's start, the screen's interrupt
-          # switched on, and the buttons held from power-on.
+          # switched on.
           def emit_start(asm)
             asm.label("rt_start")
             asm.lea(asm.abs_l("game_starts"), asm.a(0))
@@ -65,7 +65,6 @@ module VBlank
             asm.jsr(asm.abs_l("rt_lists_start"))
             asm.jsr(asm.abs_l("rt_picture_start"))
             emit_interrupt_on(asm)
-            asm.jsr(asm.abs_l("rt_buttons_from_power_on"))
             asm.rts
           end
 

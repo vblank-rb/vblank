@@ -273,13 +273,6 @@ module VBlank
               asm.label("rt_read_buttons_step")
               asm.move(:w, asm.d(1), at.call(STEP_TAKEN))
               asm.rts
-
-              # Held from power-on: down before the first frame boundary, and not yet seen there, so
-              # the first boundary still finds them going down — the interpreter's `hold`.
-              asm.label("rt_buttons_from_power_on")
-              asm.jsr(asm.abs_l("rt_buttons_now"))
-              asm.move(:w, asm.d(0), at.call(HELD))
-              asm.rts
             end
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is

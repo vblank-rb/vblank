@@ -41,7 +41,9 @@ module VBlank
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built from,
         # and each sprite picture's number as SpriteNames numbers the picture it shows.
-        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names) do
+        # +bytes+ says what the cartridge's sections come to, as :code (what the processor runs) and :data
+        # (what it only reads), for the cost recorded in tools/emitted_baseline.json.
+        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
         end
@@ -61,11 +63,19 @@ module VBlank
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
-                             source_program: program, code: linked.places, sprite_picture_names: {})
+                             source_program: program, code: linked.places, sprite_picture_names: {},
+                             bytes: byte_counts(linked))
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
         end
 
         private
+
+        # How many bytes of the cartridge are code and how many are data: the sections that hold the
+        # game's tables and pictures (Lowering::DATA) are data, and the rest code.
+        def byte_counts(linked)
+          data, code = linked.sections.values.partition { |placed| placed.section.holds == Lowering::DATA }
+          { code: code.sum { |placed| placed.section.size }, data: data.sum { |placed| placed.section.size } }
+        end
 
         # Where each vector points: reset starts the game, the vertical blank counts the frame and
         # reads the pad, the horizontal blank does nothing, and every way the processor can fault

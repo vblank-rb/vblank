@@ -38,20 +38,31 @@ module VBlank
             end
 
             # rt_boot: the console made ready, then the game's main routine, +main+, for good.
-            def emit(asm, main:, registers:)
+            def emit(asm, main:, registers:, held_at:)
               h = Console::GenesisHardware
               asm.label("rt_boot")
               asm.move_to_sr(asm.imm(0x2700)) # every interrupt held off
+              emit_buttons_from_power_on(asm, h)
               emit_security_check(asm, h)
               emit_sound_quiet(asm, h)
               emit_video_chip(asm, h, registers)
               emit_memories_cleared(asm, h)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
-              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD1_CONTROL))
+              asm.move(:w, asm.d(7), asm.disp(5, held_at))
               asm.jsr(asm.abs_l("rt_start"))
               asm.jsr(asm.abs_l(main))
               asm.label("rt_main_returned")
               asm.jmp(asm.abs_l("rt_halt"))
+            end
+
+            # THE BUTTONS HELD FROM POWER-ON are read first of all, before anything that takes a frame:
+            # a player's hand is on the pad before the console is on. They are kept in D7 until work RAM
+            # is cleared, and are the first pass's (Frame::HELD), down before the first frame boundary and
+            # not yet seen there, so the first boundary still finds them going down.
+            def emit_buttons_from_power_on(asm, h)
+              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD1_CONTROL))
+              asm.jsr(asm.abs_l("rt_buttons_now"))
+              asm.move(:l, asm.d(0), asm.d(7))
             end
 
             def emit_security_check(asm, h)
