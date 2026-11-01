@@ -98,6 +98,43 @@ module VBlank
         name
       end
 
+      # THE STEPS OF A COLOUR WALK, each a list, for `draw_with` or `recolor` to show one at a time.
+      #
+      #   walk = color_walk :city, from: :black      # 32 lists, black first, :city's own last
+      #   world.draw_with walk, showing: step
+      #   recolor :letters, color_walk(:letters, from: :white), showing: step
+      #
+      # A fade mixes every colour toward another by a share of the way, so the dark colours of a
+      # picture show almost at once. The console's own games walk instead, and this is that walk:
+      # each channel of each colour moves one step of its 31 from one list to the next, and stops
+      # at the far colour. So a bright channel starts first, a dim colour stays at the far end for
+      # most of the walk, and every channel arrives on the last step together.
+      #
+      # It is lists and nothing more. The colours are worked out as the cartridge is built, so a
+      # game pays for the lists and for saying which one shows, and only the lists it names move.
+      # How fast it goes is how fast the game moves the number it hands to `showing:`.
+      #
+      # @param name [Symbol] a list declared with `colors`
+      # @param from [Symbol, String, Integer] the colour the walk starts at
+      # @param steps [Integer] how many steps from there to the list itself
+      # @return [Array<Symbol>] the lists' names, the walk's start first and +name+'s colours last
+      def color_walk(name, from:, steps: CHANNEL_STEPS)
+        own = @color_lists.fetch(name) do
+          raise ArgumentError, "color_walk :#{name} walks a list of colors, and no list has that name. " \
+                               "To fix this, declare it first with `colors :#{name}, [:transparent, ...]`."
+        end
+        unless steps.is_a?(Integer) && steps.positive?
+          raise ArgumentError, "color_walk :#{name} needs a positive whole number of steps. `steps:` is #{steps.inspect}."
+        end
+
+        far = Graphics::Color.resolve(from)
+        (0..steps).map do |step|
+          walked = :"#{name}_walk_#{from.to_s.delete_prefix('#')}_#{steps}_#{step}"
+          @color_lists[walked] = own.each_with_index.map { |color, at| at.zero? ? color : color_steps_from(color, far, steps - step) }
+          walked
+        end
+      end
+
       # Keep track of a sprite's or a pool's other colours, so the lists that change can
       # find who is drawn with them once the whole program is declared. Called by
       # {DSL::Recolors} as one is made.
@@ -112,6 +149,18 @@ module VBlank
       end
 
       private
+
+      # How many steps a channel of a colour has from one end to the other.
+      CHANNEL_STEPS = 31
+
+      # +color+ with each of its three channels moved +steps+ toward +far+'s, and no further.
+      def color_steps_from(color, far, steps)
+        [0, 5, 10].sum do |shift|
+          own = (color >> shift) & CHANNEL_STEPS
+          limit = (far >> shift) & CHANNEL_STEPS
+          (own < limit ? [own + steps, limit].min : [own - steps, limit].max) << shift
+        end
+      end
 
       # Everything kept about the list +name+, made the first time it is told `recolor`.
       #
