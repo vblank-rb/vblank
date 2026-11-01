@@ -51,6 +51,8 @@ module VBlank
             SHAPE_AD = 24
             SHAPE_SR = 26
             SHAPED = 28
+            # ...and for a song's note, how its end is found without counting its samples (#frames_left).
+            FRAMES_LEFT = 30
             ROW_BYTES = 32
 
             # A place's state, PLACE_BYTES apart: which recording (its number plus one, nought when the
@@ -75,6 +77,10 @@ module VBlank
             OWNER = 24
             RANK = 26
             TICKET = 28
+            PLACE_FRAMES_LEFT = 30
+            # What FRAMES_LEFT holds besides a count: walk the samples, or the note never ends by itself.
+            COUNTS_SAMPLES = 0
+            NEVER_ENDS = 0xFFFF
             EFFECT_OWNER = 0x100
             # ...and its SHAPE (Reference::Mixer#step_envelopes): the row's two words of it, its level
             # (out of Audio::Envelope::FULL), which part of the shape it is in (PLAIN for a note with
@@ -84,6 +90,9 @@ module VBlank
             LEVEL = 36
             PHASE = 38
             LOUD = 40
+            # ...and in a game with a sound queue, whether a word about its loudness is waiting there
+            # (#emit_shapes).
+            VOLUME_WAITING = 42
             PLACE_BYTES = 64
             LOOPS = 0x8000
             PLAIN = 0
@@ -130,6 +139,7 @@ module VBlank
             # nil for a note that sounds flat out from its first sample to its last.
             def row(source:, pitch:, volume:, length:, back:, advance:, logged:, name:, shape: nil)
               words = Array.new(ROW_BYTES / 2, 0)
+              words[FRAMES_LEFT / 2] = frames_left(length, back, advance) if logged == NOT_LOGGED
               { SOURCE => source, PITCH => pitch, VOLUME => volume, LENGTH => length & 0xFFFF, LENGTH + 2 => length >> 16,
                 BACK => back & 0xFFFF, BACK + 2 => back >> 16, ADVANCE => (advance >> 16) & 0xFFFF,
                 ADVANCE + 2 => advance >> 32, ADVANCE_FRACTION => advance & 0xFFFF, LOGGED => logged,
@@ -140,6 +150,19 @@ module VBlank
                 words[SHAPED / 2] = 1
               end
               words
+            end
+
+            # WALKING A RECORDING FORWARD is some twenty instructions a frame for each note sounding, and
+            # all it is for is noticing the end. A note of a song logs nothing as it comes round, so a
+            # note that holds has no end to notice, and one played once ends a number of frames after
+            # its start that the build can work out: the frames it takes +advance+ a frame, in 65536ths
+            # of a sample, to reach +length+. A count too big for a word goes on walking its samples.
+            def frames_left(length, back, advance)
+              return NEVER_ENDS if back.positive?
+              return COUNTS_SAMPLES unless advance.positive?
+
+              frames = [(length << 16).ceildiv(advance), 1].max
+              frames < NEVER_ENDS ? frames : COUNTS_SAMPLES
             end
 
             def reserve(memory)
@@ -250,11 +273,21 @@ module VBlank
               asm.lda(row.call(NAME))
               asm.inc
               asm.sta(place.call(HELD))
+              if memory.reserved?(Sound::QUEUE) # a note counted in frames needs nothing to walk its samples
+                asm.lda(row.call(FRAMES_LEFT))
+                asm.sta(place.call(PLACE_FRAMES_LEFT))
+                asm.branch_long(:bne, "rt_recordings_take_walked")
+              end
               asm.lda(0)
               [POSITION, POSITION + 2, FRACTION].each { |field| asm.sta(place.call(field)) }
               { LENGTH => PLACE_LENGTH, LENGTH + 2 => PLACE_LENGTH + 2, BACK => PLACE_BACK, BACK + 2 => PLACE_BACK + 2,
                 ADVANCE => PLACE_ADVANCE, ADVANCE + 2 => PLACE_ADVANCE + 2, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION,
-                LOGGED => PLACE_LOGGED, SHAPE_AD => PLACE_AD, SHAPE_SR => PLACE_SR, VOLUME => LOUD }.each do |from, to|
+                LOGGED => PLACE_LOGGED }.each do |from, to|
+                asm.lda(row.call(from))
+                asm.sta(place.call(to))
+              end
+              asm.label("rt_recordings_take_walked")
+              { SHAPE_AD => PLACE_AD, SHAPE_SR => PLACE_SR, VOLUME => LOUD }.each do |from, to|
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
@@ -284,7 +317,7 @@ module VBlank
                 emit_queued_entry(asm, at, Sound::START_NOTE)
                 asm.lda(1)
                 asm.rtl
-                emit_voice_routines(asm, at, row)
+                emit_voice_routines(asm, at, row, place)
               else
                 emit_voice_start(asm, at, row)
                 asm.lda(1)
@@ -297,11 +330,14 @@ module VBlank
             # (Sound's rt_sound_send_queued). rt_recordings_voice_start (JSL), with PLACE and ROW set:
             # the note, in Sound::NOTE_START_WRITES writes. rt_recordings_voice_volume (JSL), with
             # PLACE set: its loudness, in Sound::NOTE_VOLUME_WRITES.
-            def emit_voice_routines(asm, at, row)
+            def emit_voice_routines(asm, at, row, place)
               asm.label("rt_recordings_voice_start")
               emit_voice_start(asm, at, row)
               asm.rtl
               asm.label("rt_recordings_voice_volume")
+              asm.ldy(at.call(PLACE))
+              asm.lda(0)
+              asm.sta(place.call(VOLUME_WAITING))
               emit_registers(asm, at)
               asm.jsr(asm.abs("rt_recordings_volume"))
               asm.rtl
@@ -584,6 +620,11 @@ module VBlank
             #
             # rt_recordings_volume: the voice of the place at PLACE (its registers at REGISTERS) told the
             # place's volume scaled by its level — the whole of it at full.
+            #
+            # A NOTE'S LOUDNESS CHANGES EVERY FRAME while it climbs or falls, and a game with no time
+            # to spare empties the sound queue slowly. Seven notes would add seven entries a frame, it
+            # would fill, and the game would wait for room. One word waiting about a place is enough,
+            # since it is worked out from the level when it reaches the front of the queue.
             def emit_shapes(asm, at, memory, heard)
               place = place_field(asm, memory)
               h = Console::SNESHardware
@@ -645,6 +686,10 @@ module VBlank
                 asm.branch_long(:bcs, next_place)
                 asm.sty(at.call(PLACE))
                 if memory.reserved?(Sound::QUEUE)
+                  asm.lda(place.call(VOLUME_WAITING))
+                  asm.branch_long(:bne, next_place)
+                  asm.lda(1)
+                  asm.sta(place.call(VOLUME_WAITING))
                   emit_queued_entry(asm, at, Sound::NOTE_VOLUME)
                 else
                   emit_registers(asm, at)
@@ -757,6 +802,18 @@ module VBlank
               asm.label("rt_recordings_frame_place")
               asm.lda(place.call(HELD))
               asm.branch_long(:beq, "rt_recordings_frame_next")
+              if memory.reserved?(Sound::QUEUE)
+                asm.lda(place.call(PLACE_FRAMES_LEFT))
+                asm.beq("rt_recordings_frame_walk")
+                asm.cmp(NEVER_ENDS)
+                asm.branch_long(:beq, "rt_recordings_frame_next")
+                asm.dec
+                asm.sta(place.call(PLACE_FRAMES_LEFT))
+                asm.branch_long(:bne, "rt_recordings_frame_next")
+                asm.sta(place.call(HELD)) # over: A is nought
+                asm.brl("rt_recordings_frame_next")
+                asm.label("rt_recordings_frame_walk")
+              end
               asm.clc
               asm.lda(place.call(FRACTION))
               asm.adc(place.call(PLACE_ADVANCE_FRACTION))

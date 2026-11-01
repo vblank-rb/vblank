@@ -395,7 +395,7 @@ module VBlank
               asm.sta(asm.direct(R2))
               emit_write_at_once(asm, memory)
               asm.rtl
-              emit_queue_room_made(asm, memory)
+              emit_queue_room_made(asm, memory, samples)
               emit_send_queued(asm, memory, samples)
             end
 
@@ -480,7 +480,7 @@ module VBlank
             # stack: the oldest entries sent, however long the sound unit takes, up to PATIENCE tries,
             # and then dropped and counted until there is room. A game that never waits for the
             # screen goes on this way, a command at a time, once its queue has filled.
-            def emit_queue_room_made(asm, memory)
+            def emit_queue_room_made(asm, memory, samples)
               asm.label("rt_sound_queue_make_room")
               asm.phy
               asm.ldy(PATIENCE)
@@ -492,6 +492,17 @@ module VBlank
               asm.bne("rt_sound_queue_make_room_try")
               asm.label("rt_sound_queue_drop")
               asm.inc(asm.abs(memory[DROPPED]))
+              if samples # a loudness dropped is no longer waiting (Recordings#emit_shapes)
+                asm.ldx(asm.abs(memory[QUEUE_HEAD]))
+                asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+                asm.cmp(NOTE_VOLUME)
+                asm.bne("rt_sound_queue_drop_counted")
+                asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+                asm.tax
+                asm.lda(0)
+                asm.sta(asm.abs_x(memory[Recordings::PLACES_STATE], Recordings::VOLUME_WAITING))
+                asm.label("rt_sound_queue_drop_counted")
+              end
               asm.lda(asm.abs(memory[QUEUE_HEAD]))
               emit_advance_queue_place(asm)
               asm.sta(asm.abs(memory[QUEUE_HEAD]))
