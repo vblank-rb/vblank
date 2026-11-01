@@ -336,6 +336,13 @@ class TestPlaythroughTape < Minitest::Test
     assert_match(/line 4: "3 - a".*`-` means no button/m, dash_and_button)
   end
 
+  def test_a_button_only_the_super_nintendo_has_cannot_be_read
+    only_there = unreadable("3 y\n")
+
+    assert_match(/line 4: "3 y".*"y" names a button the console does not have/m, only_there)
+    refute_match(/, x\b/, only_there)
+  end
+
   def test_a_moment_line_that_cannot_be_read_says_what_to_write
     too_soon = unreadable("moment start\n10 -\n")
     twice = unreadable("10 -\nmoment here\n5 -\nmoment here\n")

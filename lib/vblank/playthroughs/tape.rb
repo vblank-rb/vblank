@@ -379,10 +379,10 @@ module VBlank
             raise_unreadable_line!(number, "`#{NOTHING_DOWN}` means no button is down. Write `#{NOTHING_DOWN}` alone, or name the buttons.")
           end
           names = words.map(&:to_sym)
-          unknown = names.find { |name| !IR::Buttons.known?(name) } or return names
+          unknown = (names - Playthrough.pressable_buttons).first or return names
 
           raise_unreadable_line!(number, "#{unknown.to_s.inspect} names a button the console does not have. " \
-                                         "The buttons are #{IR::Buttons::NAMES.join(', ')}.")
+                                         "The buttons are #{Playthrough.pressable_buttons.join(', ')}.")
         end
 
         # The rules are Moment's own, shared with a script; the words are a tape's.

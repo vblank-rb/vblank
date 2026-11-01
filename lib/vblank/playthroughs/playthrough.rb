@@ -348,6 +348,11 @@ module VBlank
         end
       end
 
+      # The buttons a script can press: the Advance's, since those are the bits key_mask knows.
+      # IR::Buttons is every console's, and a script pressing one of the rest would get past
+      # the checks and stop with a Ruby error once it played.
+      def self.pressable_buttons = Console::ADVANCE.buttons
+
       # The buttons as the console reads them: one bit apiece, each named for its button.
       def self.key_mask(buttons)
         buttons.reduce(0) { |mask, button| mask | Console::Hardware.const_get(:"KEY_#{button.upcase}") }
@@ -514,14 +519,14 @@ module VBlank
         end
 
         def refuse_unknown_buttons!(step_name, buttons)
-          unknown = buttons.find { |button| !IR::Buttons.known?(button) } or return
+          unknown = (buttons - Playthrough.pressable_buttons).first or return
 
           raise ArgumentError,
                 "`#{step_name} #{unknown.inspect}` in playthrough #{@title.inspect} names a button " \
                 "the console does not have. The buttons are #{button_list}."
         end
 
-        def button_list = IR::Buttons::NAMES.map(&:inspect).join(", ")
+        def button_list = Playthrough.pressable_buttons.map(&:inspect).join(", ")
 
         def refuse_invalid_frame_count!(step_name, frames, keyword: "frames:")
           return if frames.is_a?(Integer) && frames >= 1
