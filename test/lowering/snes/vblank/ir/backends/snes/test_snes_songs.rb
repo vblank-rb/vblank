@@ -198,6 +198,27 @@ class TestSNESSongs < Minitest::Test
     assert_equal 0x12, dsp.getbyte(NOISE)
   end
 
+  # A NOTE FROM ONE SPEAKER: a voice has a volume for each side, and the other side's is nought. A
+  # square part on the left, and a drum on the right, whose own entry writes its volumes after it.
+  def test_a_note_from_one_speaker_has_no_volume_on_the_other_side
+    game = VBlank.game("ONE SIDE", consoles: %i[gba snes]) do
+      enable_sound
+      song(:tune) do
+        tempo 150
+        voice(:lead) { |v| v.pan :left; v.note :C5, :whole }
+        voice(:drums, plays: :noise) { |v| v.pan :right; v.note :C2, :whole }
+      end
+      play_song :tune
+      game_loop {}
+    end
+    dsp = SNES::CheckedRun.new.run(game.program(console: :snes), frames: 3).dsp_registers
+
+    assert_operator dsp.getbyte(FIRST), :>, 0, "the square voice on the left"
+    assert_equal 0, dsp.getbyte(FIRST + 1), "and nothing on the right"
+    assert_equal 0, dsp.getbyte(NOISE), "the noise voice nothing on the left"
+    assert_operator dsp.getbyte(NOISE + 1), :>, 0, "and on the right"
+  end
+
   # The wave part, after its rest, sounds again as the tune comes round (frame 12): its key-off
   # cleared before its key-on.
   def test_a_wave_part_sounds_again_after_its_rest

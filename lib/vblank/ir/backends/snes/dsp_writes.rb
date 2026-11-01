@@ -191,7 +191,7 @@ module VBlank
             when :wave then wave(entry.last, voicing.waves)
             when :stop_wave then key_off(1 << WAVE_VOICE)
             when :note, :sound_effect, :sample, :stop_sample then [] # a recording's voice is the count's (Runtime::Recordings)
-            when :voice then song_note(*entry.drop(1), voicing.parts)
+            when :voice then song_note(*entry[1, 4], voicing.parts)
             when :stop_music then key_off(voicing.song_voices(entry.fetch(1)) & ~effect_voices & 0xFF)
             when :loudness then loudness_at(entry[1], entry[2], voicing, song)
             else raise ArgumentError, "the Super Nintendo build does not play #{entry.first.inspect} yet"
@@ -382,19 +382,32 @@ module VBlank
             loudness = [] # the registers a new note's loudness has just written
             previous = nil
             effect_voices = 0 # the voices a sound effect holds, a bit each
+            side = nil # the speaker the note just logged plays from, nil for both
             entries.each do |entry|
               song = entry[1] if entry.first == :note && !voicing.effects.include?(entry[1])
               effect_voices = held_by_effects(effect_voices, entry, voicing) if entry.first == :voice
               played = note_volume && wave_or_noise_note?(entry) ? [entry.first, entry.last.merge(volume: note_volume)] : entry
               note_volume = entry[4] if entry.first == :voice && !SQUARE_VOICES.key?(entry[1])
               note_volume = nil unless %i[voice loudness].include?(entry.first)
+              side = entry[SIDE_OF_VOICE_ENTRY] if entry.first == :voice
               writes = for_entry(played, voicing, song: song, effect_voices: effect_voices)
               writes = writes.reject { |register, *| loudness.include?(register) } if voice_own_entry?(entry)
+              writes = heard_from_one_side(writes, side) if side && (entry.first == :voice || voice_own_entry?(entry))
               # A note's loudness follows its [:voice ...]; one that does not is a held note's, at a new level.
               loudness = entry.first == :loudness && previous == :voice ? writes.map(&:first) : []
               previous = entry.first
               yield entry, writes
             end
+          end
+
+          # Where a [:voice ...] entry says its side (IR::Tunes.voice_entry).
+          SIDE_OF_VOICE_ENTRY = 8
+
+          # A NOTE FROM ONE SPEAKER: each voice of the sound chip has a volume for each side, so the
+          # other side's is nought (+side+ :left or :right).
+          def heard_from_one_side(writes, side)
+            silent = side == :left ? VOLUME_RIGHT : VOLUME_LEFT
+            writes.map { |write| write.length == 2 && (write.first & 0x0F) == silent ? [write.first, 0] : write }
           end
 
           # +voices+, the voices sound effects hold, after a [:voice ...] +entry+: whoever's note it is

@@ -349,7 +349,8 @@ module VBlank
 
             frame, frequency, _, volume = event
             volume ||= part.volume
-            head = [[:note, song.name, frequency], [:voice, channel, song.name, frequency, volume]]
+            head = [[:note, song.name, frequency],
+                    IR::Tunes.voice_entry(channel, song.name, frequency, volume, side: IR::Tunes.note_side(part, event))]
             commands = entry_commands(head + between + wave_or_noise_entries(part, frequency), voicing, song.name, &number_of)
             [frame, keep_group(commands.take(2).flatten(1)), keep_group(commands.drop(2 + between.size).flatten(1)),
              frequency.zero? ? 0 : volume, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume)]
@@ -493,19 +494,24 @@ module VBlank
           # part or the note itself says (IR::Tunes.said_fade and the rest). The voices here play
           # each note as written, so a song that says any of these is not made yet.
           def refuse_note_changes!(song)
-            changing = song.voices.any? do |part|
-              part.events.any? do |event|
-                event[1].positive? &&
-                  [IR::Tunes.said_fade(part, event), IR::Tunes.said_slide(part, event), IR::Tunes.said_vibrato(part, event),
-                   IR::Tunes.note_side(part, event), IR::Tunes.said_duty(part, event)].any?
-              end
+            sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
+            changing = sounding.any? do |part, event|
+              [IR::Tunes.said_fade(part, event), IR::Tunes.said_slide(part, event), IR::Tunes.said_vibrato(part, event),
+               IR::Tunes.said_duty(part, event)].any?
             end
-            return unless changing
+            if changing
+              raise Lowering::NotMadeYet.new(
+                "The song #{song.name.inspect} has a note that fades, swells, slides, wobbles or steps through shapes. " \
+                "The Super Nintendo build does not make that yet. To fix this, build the game for the Game Boy " \
+                "Advance alone for now (`consoles: %i[gba]`).", part: "notes that change as they play"
+              )
+            end
+            return unless follows_level? && sounding.any? { |part, event| IR::Tunes.note_side(part, event) }
 
             raise Lowering::NotMadeYet.new(
-              "The song #{song.name.inspect} has a note that fades, swells, slides, wobbles, plays from one speaker " \
-              "or steps through shapes. The Super Nintendo build does not make that yet. To fix this, build the " \
-              "game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "notes that change as they play"
+              "The song #{song.name.inspect} has a note from one speaker, in a game that sets its music volume. " \
+              "The Super Nintendo build does not make that yet. To fix this, remove `pan`, or `music_volume`.",
+              part: "notes that change as they play"
             )
           end
         end
