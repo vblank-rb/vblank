@@ -32,6 +32,8 @@ There are seven today:
 - `Backends::GBC` lowers the tree to SM83 code and a Game Boy Color cartridge (MBC5).
 - `Backends::SNES` lowers the tree to 65816 code and a Super Nintendo cartridge (LoROM), played in bsnes
   (ruby-snes-emulator) to check it.
+- `Backends::Genesis` lowers the tree to 68000 code and a Sega Genesis cartridge, played in Genesis Plus GX
+  (ruby-genesis-emulator) to check it.
 
 ## A second console
 
@@ -262,8 +264,8 @@ game's own suite uses:
   (on a checked run they compare the lowered game instead of the cartridge), and the process
   runner `Testing::TestTask` starts such a run with. A test skips on one run with
   `skip_on_lowering(:name, why)` (`skip_on_native`, `skip_on_js`, `skip_on_ruby`, `skip_on_gbc`
-  and `skip_on_snes`
-  are its five), and the lowering's test folder goes in `TestSuites::LOWERING_FOLDERS`.
+  `skip_on_snes` and `skip_on_genesis`
+  are its six), and the lowering's test folder goes in `TestSuites::LOWERING_FOLDERS`.
 - **`Testing::Pictures` plays the cartridge of the program's console**, which that console's
   kit builds (`builder.cartridge_for`) and the one reader reads back, so a new console's programs
   are compared pixel for pixel once its kit names them.

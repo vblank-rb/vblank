@@ -18,6 +18,7 @@ The toolchain is shaped around fast, readable feedback while building a game, fo
 |---|---|
 | Game Boy Advance | Fairly robust. Every feature works here, and it is what the examples are written for. |
 | Super Nintendo | Underway. Most of the examples build for it, with sprites, backgrounds and sound. Some music features and a second player are still to come. |
+| Sega Genesis | Early. Painted screens, tiled screens with backgrounds and sprites, the buttons, lists and timers, and a sprite drawn in colours the game changes work; sound, saves, fades and tints, the status bar and backgrounds that change colour do not yet. Played in Genesis Plus GX to check it. |
 | Game Boy Color | Underway. Much of the language works, and several of the examples build for it. |
 | A program for a computer | Works, built from the game as C. The Mac build is played and tested; Windows and Linux builds are made but not yet run on those systems. |
 | A web page | Works, built from the game as JavaScript. One file that opens from a disk or any web server. |
