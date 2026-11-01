@@ -62,7 +62,8 @@ module VBlank
   #   cartridge already carries is refused (see {GameCode}).
   # @param maker [String, nil] the 2 characters that name a publisher. Leave it out and the
   #   cartridge says it has none, which is true — "01" is Nintendo's.
-  # @param validate [Boolean] run the ROM-image validation after build (default: true)
+  # @param validate [Boolean] run the ROM-image validation after build (default: true); only the
+  #   Advance's cartridge has one, and another console's build reads this as nothing
   # @param fast_cartridge [Boolean, nil] ask the console for quick cartridge timing at boot
   #   (on unless said). Pass false to leave the cautious power-on timing alone — the
   #   escape hatch for a cartridge that can't keep up. The Game Boy Advance's alone.

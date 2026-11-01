@@ -6,11 +6,13 @@ module VBlank
     # Nintendo's way of keeping things answers — the same questions an Advance reader answers its own
     # way (AdvanceReading).
     #
-    # A Super Nintendo cartridge plays in bsnes (ruby-snes-emulator), not in libmgba, and the one
-    # reader (Verifier) is written over libmgba's core, so it cannot play one yet: a Super Nintendo
-    # cartridge is read back by the lowering's own run (IR::Backends::SNES::HeadlessRun), which
-    # plays it in bsnes and compares it with the interpreter. Each question here says so.
+    # A Super Nintendo cartridge plays in bsnes (ruby-snes-emulator), through SNESProbe. Its picture,
+    # memory, sprites and passes are read as the other consoles' are. Its sound is not recorded
+    # here: the lowering's own run (IR::Backends::SNES::HeadlessRun) checks the sound chip against
+    # the interpreter, and a question about it says so rather than answering that it is silent.
     module SNESReading
+      include CountedPasses
+
       # Eight lists of sixteen colours for the backgrounds, then eight for the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 128, group: 16)
 
@@ -24,16 +26,31 @@ module VBlank
         clock_bytes: 0
       )
 
-      def passes = refuse_snes_reader!(:passes)
-      def sprites(_name = nil) = refuse_snes_reader!(:sprites)
+      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them (Reference#sprites),
+      # from the list the runtime keeps of what it placed, which the checked run compares with the
+      # interpreter after every pass. See ColorReading#sprites.
+      #
+      # @param name [Symbol, nil] keep only this declared sprite's rows; nil for every row
+      # @return [Array<DrawnSprite>]
+      def sprites(name = nil)
+        refuse_missing_build_record!("which of its sprites is which")
+        ensure_rendered!
+        @drawn ||= IR::Backends::SpriteNames.new(@rom.source_program)
+        rows = @rom.built.drawn_sprite_rows(@drawn, method(:mem16))
+        name ? @drawn.rows_named(rows, name) : rows
+      end
+
+      def silent? = refuse_sound_question!
+      def sound? = refuse_sound_question!
+      def audio_samples = refuse_sound_question!
+      def audio_energy = refuse_sound_question!
+      def audio_energy_by_frame = refuse_sound_question!
 
       private
 
-      def watch_passes! = nil
-
-      def refuse_snes_reader!(question)
-        raise ArgumentError, "A Super Nintendo cartridge cannot be read back by the Verifier yet, so it cannot say " \
-                             "#{question}. Play it with VBlank::IR::Backends::SNES::HeadlessRun instead."
+      def refuse_sound_question!
+        raise ArgumentError, "This reader does not record a Super Nintendo cartridge's sound. To read it, play the " \
+                             "cartridge with VBlank::IR::Backends::SNES::HeadlessRun."
       end
     end
   end

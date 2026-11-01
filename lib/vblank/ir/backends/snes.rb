@@ -64,6 +64,20 @@ module VBlank
                              :sound_voicing, :recording_names, :sprite_picture_names) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
+
+          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them
+          # (Reference#sprites): what the runtime keeps of what it placed (Runtime::Picture::DRAWN).
+          # +drawn+ is the program's SpriteNames; +read16+ reads a word of the running cartridge's
+          # memory, given its address. A picture copied in other colours is named as the picture
+          # it copies.
+          def drawn_sprite_rows(drawn, read16)
+            at = runtime.fetch(Runtime::Picture::DRAWN)
+            signed = ->(value) { value >= 0x8000 ? value - 0x10000 : value }
+            Array.new(read16.call(at)) do |i|
+              whose, picture, x, y = Array.new(4) { |word| read16.call(at + 2 + (i * Runtime::Picture::DRAWN_BYTES) + (word * 2)) }
+              drawn.row(signed.call(whose), sprite_picture_names.fetch(picture, picture), signed.call(x), signed.call(y))
+            end
+          end
         end
 
         # One routine of the game's in the cartridge: the addresses its code takes, 24 bits each,

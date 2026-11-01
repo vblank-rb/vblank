@@ -422,16 +422,7 @@ module VBlank
           # The sprites the game placed in its last pass, back to front, as the interpreter says them
           # (Reference#sprites): the runtime keeps a row for each (Runtime::Picture::DRAWN) — whose,
           # which picture, where — and SpriteNames turns the numbers back into names.
-          def read_sprites
-            at = wram_offset(runtime_place(Runtime::Picture::DRAWN))
-            signed = ->(value) { value >= 0x8000 ? value - 0x10000 : value }
-            Array.new(@core.wram_read16(at)) do |i|
-              whose, picture, x, y = @core.wram_bytes(at + 2 + (i * Runtime::Picture::DRAWN_BYTES), 8).unpack("v4")
-              # A picture copied in other colours is named as the picture it copies.
-              @drawn_sprites.row(signed.call(whose), @places.sprite_picture_names.fetch(picture, picture), signed.call(x),
-                                 signed.call(y))
-            end
-          end
+          def read_sprites = @places.drawn_sprite_rows(@drawn_sprites, method(:half))
 
           # Where +address+ is in work RAM: an address in the first 8K is its own offset, and one in
           # banks $7E and $7F is counted from $7E:0000.

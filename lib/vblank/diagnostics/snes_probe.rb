@@ -1,0 +1,61 @@
+# frozen_string_literal: true
+
+module VBlank
+  module Diagnostics
+    # A RUNNING SUPER NINTENDO CARTRIDGE, answering what the one reader (Verifier) asks of a running
+    # cartridge. The Advance and the Color play in libmgba, whose probe (RubyGBAEmulator::Probe) the
+    # reader was written over; this plays in bsnes and takes the same calls.
+    #
+    # Two things differ underneath and stop here. bsnes draws at twice the console's size with
+    # blue in the low byte, and the reader takes four bytes a pixel at the console's size with red
+    # in the low byte. And the reader says buttons as the Advance's bits, while bsnes takes names.
+    class SNESProbe
+      # bsnes's picture is held in 256 × 224, so a whole screen's questions (Emulator.screen_questions)
+      # read this as they read any console's.
+      def initialize(path, save_dir: nil)
+        @core = Emulator.open_snes(path, save_dir: save_dir)
+      end
+
+      def width = @core.width
+      def height = @core.height
+
+      # +keys+ is a button mask (IR::Buttons.mask).
+      def step(frames, keys: 0)
+        @core.set_buttons(IR::Buttons::NAMES.select.with_index { |_, bit| keys.anybits?(1 << bit) })
+        frames.times { @core.run_frame }
+      end
+
+      # The picture as four bytes a pixel: red, green, blue and one unused, each five-bit channel
+      # widened to eight by repeating its top bits.
+      def frame_buffer
+        @core.colors.map do |color|
+          widened(color & 0x1F) | (widened((color >> 5) & 0x1F) << 8) | (widened((color >> 10) & 0x1F) << 16)
+        end.pack("V*")
+      end
+
+      # The sound is dropped here, so it does not pile up in the core: SNESReading refuses to be
+      # asked about it, and the lowering's own run is what checks it.
+      def audio_by_frame
+        @core.take_audio
+        []
+      end
+
+      def read8(address) = @core.wram_read8(work_ram_offset(address))
+      def read16(address) = @core.wram_read16(work_ram_offset(address))
+      def read32(address) = @core.wram_read32(work_ram_offset(address))
+
+      def palette = @core.cgram.unpack("v*")
+
+      # A Super Nintendo cartridge here has no motor.
+      def motor_on? = false
+
+      private
+
+      def widened(channel) = (channel << 3) | (channel >> 2)
+
+      # The console's addresses for work RAM start at bank $7E; a game's own low addresses are the
+      # same bytes.
+      def work_ram_offset(address) = address >= 0x7E0000 ? address - 0x7E0000 : address
+    end
+  end
+end

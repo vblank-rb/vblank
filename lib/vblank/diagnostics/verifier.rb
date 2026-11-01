@@ -729,7 +729,10 @@ module VBlank
         File.binwrite(save_path, @save.to_sav)
       end
 
-      def save_path = File.join(self.class.save_dir, "#{File.basename(@tempfile.path, '.gba')}.sav")
+      def save_path = File.join(self.class.save_dir, "#{File.basename(@tempfile.path, '.*')}#{kit.save_file_extension}")
+
+      # What says how this cartridge's console is played.
+      def kit = Console.for(@rom.console)
 
       # The picture to compare this reader's with: another reader's, or one that was kept.
       #
@@ -756,12 +759,12 @@ module VBlank
         # Keep the emulator (and its ROM file) alive on the instance rather than tearing them
         # down here: memory reads (#mem32 / #var) run against the same console after the frames,
         # at the final frame boundary. Both are released when this Verifier is garbage-collected.
-        @tempfile = Tempfile.new(["verify", ".gba"])
+        @tempfile = Tempfile.new(["verify", kit.cartridge_file_extension])
         @tempfile.binmode
         @rom.write(@tempfile.path)
         @tempfile.flush
         write_save_memory if @save
-        @probe = Emulator.probe(@tempfile.path, save_dir: self.class.save_dir)
+        @probe = kit.open_probe(@tempfile.path, save_dir: self.class.save_dir)
         # The picture is the size the console draws, which the emulator knows from the cartridge.
         @width = @probe.width
         @height = @probe.height
