@@ -92,7 +92,7 @@ class TestGenesisBackgroundColors < Minitest::Test
       end)
     end
 
-    assert_match(/more palettes than a Genesis has/, error.message)
+    assert_match(/more than the four a Genesis holds/, error.message)
   end
 
   private

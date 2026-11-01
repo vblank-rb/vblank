@@ -66,8 +66,19 @@ module VBlank
                 refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.empty?
               end
               refuse_unmade!("a camera on a tiled screen") if !painted? && @program.walk.any? { |node| node.kind == :camera }
+              refuse_backdrops_of_its_own!
               refuse_unmade_backgrounds!
               refuse_unmade_sprites!
+            end
+
+            # A `screen` other than the game's own that says a backdrop the game's does not: a scene's
+            # own. Colour 0 is the console's one backdrop, set once for the game, so one that changes
+            # as a scene comes up is not made yet.
+            def refuse_backdrops_of_its_own!
+              game_backdrop = IR::SceneHandover.of(@program).game_backdrop
+              return unless @program.walk.any? { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
+
+              refuse_unmade!("a scene that says a backdrop of its own (`screen ... backdrop:`)")
             end
 
             # Reference#exec_fade, which on a console that cannot blend walks the colours (IR::Fading): the
@@ -173,11 +184,11 @@ module VBlank
               end
               @objects.each_value { |obj| recolor_palettes(obj) }
               @backgrounds.each { |bg| bg.every_map.each_index { |which| grid_of(bg, which) } }
-            rescue Art::TooManyLists => e
-              raise NotMadeYet.new("#{e.message.sub(/ To fix this.*\z/m, '')} The Genesis build keeps a palette for each list " \
-                                   "for good, and does not lend one only while something wears the list yet. To fix this, " \
-                                   "draw the sprites with fewer lists of colours, or build the game for the Game Boy Advance " \
-                                   "alone for now (`consoles: %i[gba]`).", part: "the picture")
+            rescue Art::TooManyLists
+              raise NotMadeYet.new("The lists of colours this game draws with need more than the four a Genesis holds at " \
+                                   "once. The Genesis build keeps each list for the whole game. It does not swap lists " \
+                                   "as the game runs yet. To fix this, draw with fewer lists of colours, or build the " \
+                                   "game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
             end
 
             # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
@@ -209,7 +220,7 @@ module VBlank
 
               list = color_list_named(entry)
               colors = list.colors.drop(1).map { |color| color & 0x7FFF }
-              list.recolors.empty? ? @art.ordered_palette(colors) : @art.held_sprite_palette([:sprites, entry], colors)
+              list.recolors.empty? ? @art.ordered_palette(colors) : @art.reserve_held_palette([:sprites, entry], colors)
             end
 
             def color_list_named(name)
@@ -269,7 +280,7 @@ module VBlank
 
               data = M68000.new("art", holds: ART)
               data.label("art colors")
-              data.data_words(@art.cgram)
+              data.data_words(@art.color_memory)
               data.label("art tile bytes")
               data.data_longs(@art.tile_data.bytesize)
               data.label("art sprite pictures")
@@ -351,7 +362,7 @@ module VBlank
               list = bg.recolored_list_of(image.list_drawn_from) or
                 raise LoweringError, "a tile of the background #{bg.name.inspect} is drawn from a list of colours it was not given"
               index = bg.drawn_lists.index(list)
-              @art.held_sprite_palette([:background, bg.object_id, index], bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF })
+              @art.reserve_held_palette([:background, bg.object_id, index], bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF })
             end
 
             # --- the screen and the backgrounds ---

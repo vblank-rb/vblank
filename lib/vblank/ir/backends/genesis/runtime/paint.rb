@@ -158,9 +158,10 @@ module VBlank
             # blank with the tiles. The plane is 64 cells across and 32 down and the picture 40 and 28, so
             # the cells past the picture are empty and show the backdrop as the interpreter does, for a
             # window as far out as the plane goes: 192 pixels across (64 less 40 cells) and 32 down. Past
-            # that the plane would come round to the picture again, so the camera is held there.
+            # that the plane would come round to the picture again and show it where the interpreter
+            # shows nothing, so the game stops, saying so, rather than showing the wrong picture.
             #
-            # rt_camera_to(x, y): the window's corner, held within what the plane can show.
+            # rt_camera_to(x, y): the window's corner, once it is within what the plane can show.
             # rt_camera_written: the scroll registers made to say it.
             CAMERA = "rt camera" # the window's corner, a word each: across, then down
             CAMERA_ACROSS = 192
@@ -170,18 +171,17 @@ module VBlank
               h = Console::GenesisHardware
               asm.label("rt_camera_to")
               [[0, CAMERA_ACROSS, 0], [1, CAMERA_DOWN, 2]].each do |register, most, place|
-                kept = "rt_camera_to_#{place}"
                 asm.cmp(:l, asm.imm(most), asm.d(register))
-                asm.branch(:le, "#{kept}_low")
-                asm.move(:l, asm.imm(most), asm.d(register))
-                asm.label("#{kept}_low")
+                asm.branch(:gt, "rt_camera_too_far")
                 asm.cmp(:l, asm.imm(-most), asm.d(register))
-                asm.branch(:ge, "#{kept}_set")
-                asm.move(:l, asm.imm(-most), asm.d(register))
-                asm.label("#{kept}_set")
+                asm.branch(:lt, "rt_camera_too_far")
                 asm.move(:w, asm.d(register), at.call(CAMERA, place))
               end
               asm.rts
+
+              asm.label("rt_camera_too_far")
+              asm.moveq(Frame::CAMERA_TOO_FAR, asm.d(0))
+              asm.jmp(asm.abs_l("rt_fault"))
 
               asm.label("rt_camera_written")
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, Tiles::HSCROLL_AT)), asm.abs_l(h::VDP_CONTROL))

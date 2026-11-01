@@ -102,8 +102,8 @@ class TestGenesisRecolor < Minitest::Test
       end)
     end
 
-    assert_match(/more palettes than a Genesis has \(4, shared with every other picture\)/, error.message)
-    assert_match(/does not lend one only while something wears the list/, error.message)
+    assert_match(/more than the four a Genesis holds/, error.message)
+    assert_match(/does not swap lists as the game runs yet/, error.message)
   end
 
   private

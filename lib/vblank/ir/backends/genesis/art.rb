@@ -72,7 +72,7 @@ module VBlank
             @tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
             @tile_numbers = { blank_tile => 0 }
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
-            @held = {} # whose list => the palette it keeps to itself (#held_sprite_palette)
+            @held = {} # whose list => the palette it keeps to itself (#reserve_held_palette)
             @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
             @originals = {} # what a place holds (a colour word, or the colour itself when exact) => the 15-bit colour it was first made from
             @sprite_pictures = {}
@@ -82,7 +82,7 @@ module VBlank
           # --- backgrounds ---
 
           # The cell +image+ (an Assets::Image of 8×8) makes in a map: its tile number and its palette.
-          # +palette+ is a palette whose places are the tile's own list's (#held_sprite_palette), for a tile of a
+          # +palette+ is a palette whose places are the tile's own list's (#reserve_held_palette), for a tile of a
           # background the game draws with other colours: the tile is then made of places, as a sprite's is.
           def background_cell(image, palette: nil)
             return placed_background_cell(image, palette) if palette
@@ -146,14 +146,14 @@ module VBlank
             @ordered.fetch(words) do
               if words.length > OWN_COLORS
                 raise TooMuch, "A list of colours a sprite is drawn with holds #{words.length} colours, and a Genesis " \
-                               "palette shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
+                               "list shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
               end
 
               line = (0...PALETTES).find { |p| @palettes[p] && !@held.value?(p) && @palettes[p].first(words.length) == words } ||
                      (0...PALETTES).find { |p| @palettes[p].nil? } or
-                raise TooManyLists, "The lists of colours the sprites are drawn with, and the pictures, need more palettes " \
-                                    "than a Genesis has (#{PALETTES}, shared with every other picture). To fix this, draw " \
-                                    "the sprites with fewer lists of colours."
+                raise TooManyLists, "The lists of colours the sprites are drawn with, and the pictures, need more lists " \
+                                    "than a Genesis holds (#{PALETTES}, shared with every other picture). To fix this, " \
+                                    "draw the sprites with fewer lists of colours."
 
               @palettes[line] ||= words
               @ordered[words] = line
@@ -164,15 +164,15 @@ module VBlank
           # of its places: changing it is writing other colours over that palette, so every pixel of a picture
           # drawn from it is the place it was drawn at, and nothing else's colours can share it. +key+ says
           # whose list it is, and +colors+ (15-bit, see-through left out) are the colours it starts with.
-          def held_sprite_palette(key, colors)
+          def reserve_held_palette(key, colors)
             @held.fetch(key) do
               if colors.length > OWN_COLORS
                 raise TooMuch, "A list of colours the game changes holds #{colors.length} colours, and a Genesis " \
-                               "palette shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
+                               "list shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
               end
               free = (0...PALETTES).find { |p| @palettes[p].nil? }
               unless free
-                raise TooManyLists, "The lists of colours the game changes need more palettes than a Genesis has (#{PALETTES}, " \
+                raise TooManyLists, "The lists of colours the game changes need more lists than a Genesis holds (#{PALETTES}, " \
                                     "shared with every other picture). To fix this, change fewer lists, or draw fewer " \
                                     "pictures in other colours."
               end
@@ -192,10 +192,10 @@ module VBlank
 
           # All 64 colours, as the console's colour memory holds them: a word each, the four palettes in
           # turn. Colour 0 is the backdrop.
-          def cgram
+          def color_memory
             colors = Array.new(PALETTES * PLACES, 0)
             colors[0] = @backdrop
-            @palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = colour_word(c) } }
+            @palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = word_shown(c) } }
             colors
           end
 
@@ -246,7 +246,7 @@ module VBlank
           end
 
           # The word of the colour memory a place's contents are.
-          def colour_word(held) = @exact ? Console::GenesisHardware.color_word(held) : held
+          def word_shown(held) = @exact ? Console::GenesisHardware.color_word(held) : held
 
           def tile_number(bytes)
             @tile_numbers[bytes] ||= begin

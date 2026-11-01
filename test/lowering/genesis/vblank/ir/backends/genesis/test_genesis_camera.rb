@@ -24,19 +24,32 @@ class TestGenesisCamera < Minitest::Test
     assert_equal [(40 * 7) - 150, 40 - 20], [run.screen.camera_x, run.screen.camera_y]
   end
 
-  def test_a_window_past_what_the_plane_can_show_is_held_at_the_edge
+  def test_a_window_at_the_edge_of_what_the_plane_can_show_agrees_with_the_interpreter
     program = program_of do
       screen :bitmap
       clear_screen :blue
-      camera 900, -900
-      halt
+      camera 192, -32
+      game_loop { nil }
     end
-    run = Genesis::CheckedRun.new.run(program, frames: 3) # the interpreter shows the backdrop all over; the plane cannot
+    run = Genesis::CheckedRun.new.run(program, frames: 3)
 
     assert_equal [192, -32], [run.screen.camera_x, run.screen.camera_y]
-  rescue VBlank::IR::Backends::RunComparison::Disagreement => e
-    # The picture differs where the interpreter has nothing to show and the plane would come round: said, not hidden.
-    assert_match(/picture differs/, e.message)
+  end
+
+  # The interpreter shows the backdrop out there and the plane would come round to the picture, so the
+  # cartridge stops rather than show the wrong rows.
+  def test_a_window_past_what_the_plane_can_show_stops_the_game_in_words
+    [[0, 64], [193, 0], [-193, 0], [0, -33]].each do |x, y|
+      program = program_of do
+        screen :bitmap
+        clear_screen :blue
+        camera x, y
+        game_loop { nil }
+      end
+      error = assert_raises(VBlank::IR::Backends::RunComparison::CannotAnswer) { Genesis::HeadlessRun.new.run(program, frames: 3) }
+
+      assert_match(/moved the camera past 192 pixels across or 32 down/, error.message)
+    end
   end
 
   def test_a_camera_on_a_tiled_screen_is_refused_in_words
