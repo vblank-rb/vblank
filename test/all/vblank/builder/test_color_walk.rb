@@ -91,6 +91,57 @@ class TestColorWalk < Minitest::Test
     end
   end
 
+  # A long walk beside a short fade, as a title does: the walk runs while the screen fades out.
+  # The walk is lists, so the fade keeps its own length, and each is checked against the
+  # interpreter on every frame on the runs that build the game.
+  def test_a_walk_and_a_short_fade_run_at_once
+    gray = rgb5(20, 20, 20)
+    game = built do
+      screen :tiled
+      colors :city, [:transparent, gray]
+      image(:city_art, colors: :city, width: 8, height: 8, places: Array.new(64, 1))
+      tiles :city_tiles, "#" => :city_art
+      city = background :city_layer, tiles: :city_tiles, map: Array.new(4) { "#" * 32 }
+      walk = color_walk(:city, from: :black, steps: 20)
+      step = 0
+      game_loop do
+        city.draw_with walk, showing: step
+        step += 1 if step < 20
+        fade_out frames: 4 if step == 6
+      end
+    end
+    seen = game_player
+    seen.run(game, frames: 30)
+
+    assert_equal 0, seen.screen.pixel(4, 4), "faded out, whatever the walk reached"
+  end
+
+  # A list of sprite colours walks by `recolor`, and only sprites drawn with it move.
+  def test_a_sprite_list_walks
+    gray = rgb5(20, 20, 20)
+    game = built do
+      screen :tiled
+      colors :letters, [:transparent, gray]
+      colors :others, [:transparent, gray]
+      image(:letter, colors: :letters, width: 8, height: 8, places: Array.new(64, 1))
+      image(:other, colors: :others, width: 8, height: 8, places: Array.new(64, 1))
+      letter = sprite :letter, at: [8, 8]
+      letter.draw_with :letters
+      sprite :other, at: [24, 8]
+      walk = color_walk(:letters, from: :white, steps: 8)
+      step = 0
+      game_loop do
+        recolor :letters, walk, showing: step
+        step += 1 if step < 4
+      end
+    end
+    seen = game_player
+    seen.run(game, frames: 12)
+
+    assert_equal rgb5(24, 24, 24), seen.screen.pixel(10, 10), "four steps of eight on from white"
+    assert_equal gray, seen.screen.pixel(26, 10), "the other sprite is as drawn"
+  end
+
   def test_a_colour_a_walk_does_not_know_is_a_friendly_error
     error = assert_raises(ArgumentError) { Builder.new.instance_eval { color_walk(:nothing, from: :black) } }
 
