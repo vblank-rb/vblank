@@ -436,7 +436,7 @@ module VBlank
             swell = swell_record(song, channel, fade.step, voicing, &number_of) if between.any? && self.class.swells_on_console_voice?(part, event)
             if Audio::PitchSlide.moves?(slide)
               written |= SLIDES
-              steps = slide_record(channel, frequency, slide, lasts, duty&.at(0) || part.duty)
+              steps = slide_record(channel, frequency, slide, lasts, duty&.steps? ? nil : duty&.at(0) || part.duty)
             end
             [frame, keep_group(commands.take(2).flatten(1)), keep_group(commands.drop(2 + between.size).flatten(1)),
              written, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes, swell, steps]
@@ -451,6 +451,7 @@ module VBlank
           # IR::Tunes::COUNTED_A_FRAME is how many 256ths of a 64th of a second a frame lasts, which is
           # that many 128ths once shifted down seven places.
           def slide_record(channel, frequency, slide, frames, shape)
+            @sliding_from = frequency
             count = DSPWrites.slide_count(frequency)
             ticks = ->(frame) { (frame * IR::Tunes::COUNTED_A_FRAME) >> 7 }
             counts = slide.counts_from(count, ticks.call(frames) / slide.every)
@@ -471,7 +472,7 @@ module VBlank
             return nil if taken.empty?
             return keep_group(slide_stop_commands(channel)) if taken.include?(nil)
 
-            keep_group(DSPWrites.slide_step(channel, taken.last, was, shape).map { |write| Runtime::Sound.command_for(write) })
+            keep_group(DSPWrites.slide_step(channel, taken.last, was, shape, from: @sliding_from).map { |write| Runtime::Sound.command_for(write) })
           end
 
           def slide_stop_commands(channel) = DSPWrites.slide_stop(channel).map { |write| Runtime::Sound.command_for(write) }
@@ -547,8 +548,11 @@ module VBlank
           def effect_layout(song, voicing, &number_of)
             order = @effect_names.index(song.name)
             parts = channels_of(song).map do |part, channel|
-              { notes: part.events.map { |event| note_layout(song, part, channel, event, [], voicing, &number_of) },
-                channel: channel, release: effect_release_group(song, channel, voicing, &number_of) }
+              ends = part.events.drop(1).map(&:first) << song.total_frames
+              notes = part.events.zip(ends).map do |event, ending|
+                note_layout(song, part, channel, event, [], voicing, lasts: ending - event.first, &number_of)
+              end
+              { notes: notes, channel: channel, release: effect_release_group(song, channel, voicing, &number_of) }
             end
             { rank: IR::Tunes.effect_rank(song, order), group: group_number(song.group), priority: song.priority || 0,
               length: song.total_frames, parts: parts,
@@ -661,37 +665,19 @@ module VBlank
 
           # A NOTE THAT CHANGES AS IT PLAYS — fading out or swelling in, sliding or wobbling its
           # pitch, playing from one speaker, or stepping through the square wave's shapes — as its
-          # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet: a
-          # slide over shapes that step, which each write which recording the voice reads; and a
-          # slide, a wobble or shapes that step in a game with sound effects, which take a voice
-          # from under them. In a game
-          # that sets its music volume, a note from one speaker is not made yet either, nor a swell
-          # beside sound effects; a note that fades is, and the level reaches its next note (RINGS_ALONE).
+          # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet: in
+          # a game that sets its music volume, a note from one speaker, since a new level strikes
+          # a held note on both sides. A note that fades is made, and the level reaches its next
+          # note (RINGS_ALONE).
           def refuse_note_changes!(song)
-            sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
-            changing = sounding.any? do |part, event|
-              vibrato = IR::Tunes.said_vibrato(part, event)
-              slides = Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event))
-              steps = IR::Tunes.said_duty(part, event)&.steps?
-              (slides && (effects? || steps)) || (steps && effects?) || (Audio::Vibrato.moves?(vibrato) && effects?)
-            end
-            if changing
-              raise Lowering::NotMadeYet.new(
-                "The song #{song.name.inspect} has a note that slides, steps through shapes, or wobbles in a way " \
-                "the Super Nintendo build does not make yet. To fix this, build the game for the Game Boy Advance " \
-                "alone for now (`consoles: %i[gba]`).", part: "notes that change as they play"
-              )
-            end
             return unless follows_level?
 
+            sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
             sounding.each do |part, event|
-              said = if IR::Tunes.said_fade(part, event)&.swells_by_itself? && effects? then "that swells beside sound effects"
-                     elsif IR::Tunes.note_side(part, event) then "from one speaker"
-                     end
-              next unless said
+              next unless IR::Tunes.note_side(part, event)
 
               raise Lowering::NotMadeYet.new(
-                "The song #{song.name.inspect} has a note #{said}, in a game that sets its music volume. The Super " \
+                "The song #{song.name.inspect} has a note from one speaker, in a game that sets its music volume. The Super " \
                 "Nintendo build does not make that yet. To fix this, remove `music_volume` from the game.",
                 part: "notes that change as they play"
               )

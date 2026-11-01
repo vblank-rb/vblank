@@ -265,14 +265,17 @@ module VBlank
 
           # A NOTE SLIDING: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide),
           # the chip reading the recording for +shape+ when the slide has left the wave length of
-          # +was+, the count before. The note is not started again, so nothing else is written.
-          def slide_step(channel, count, was, shape)
+          # +was+, the count before. The note is not started again, so nothing else is written. With
+          # no +shape+, a note stepping through its shapes, whose steps are written for the wave
+          # length of +from+, its first Hz: it stays on that one, and past the top of what that
+          # reaches holds there.
+          def slide_step(channel, count, was, shape, from:)
             frequency = slide_frequency(count)
-            wave = wave_for(frequency)
+            wave = wave_for(shape ? frequency : from)
             base = CHANNEL_VOICES.fetch(channel) << 4
             pitch = pitch_for(frequency, wave)
             [[base + PITCH_LOW, pitch & 0xFF], [base + PITCH_HIGH, pitch >> 8]] +
-              (wave == wave_for(slide_frequency(was)) ? [] : [[base + SOURCE, Samples.source(shape, wave)]])
+              (!shape || wave == wave_for(slide_frequency(was)) ? [] : [[base + SOURCE, Samples.source(shape, wave)]])
           end
 
           # The Hz of a voice's pitch count.
@@ -627,9 +630,10 @@ module VBlank
 
           # WHAT THE LOG CANNOT ANSWER FOR. A slide logs nothing as it moves, on the interpreter as on
           # the Advance, whose voice does the moving. So while the last note of a channel slides,
-          # the registers the player moves it with have no expected value.
+          # the registers the player moves it with have no expected value. A rest or a tune's stop
+          # leaves them where the slide took them, so it is the last note that sounded that says.
           def slide_registers(entries)
-            entries.select { |entry| entry.first == :voice }.group_by { |entry| entry[1] }.flat_map do |channel, notes|
+            entries.select { |entry| entry.first == :voice && entry[3].positive? }.group_by { |entry| entry[1] }.flat_map do |channel, notes|
               next [] unless VBlank::Audio::PitchSlide.moves?(notes.last[SLIDE_OF_VOICE_ENTRY])
 
               base = CHANNEL_VOICES.fetch(channel) << 4

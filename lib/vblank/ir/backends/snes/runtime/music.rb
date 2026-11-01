@@ -159,6 +159,68 @@ module VBlank
             # Whether the game has a note that slides (SLIDE_CURSOR).
             def slides?(memory) = memory.reserved?(SLIDE_CURSOR)
 
+            # Whether the game has sound effects, which share the voices (Effects).
+            def shares_voices?(memory) = memory.reserved?(Effects::HOLDERS)
+
+            # The note at ENTRY and NOTE taken up by what changes as it plays, a tune's or an effect's.
+            def emit_note_changes(asm, memory)
+              asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
+              asm.jsr(asm.abs("rt_music_note_shapes")) if steps_shapes?(memory)
+              asm.jsr(asm.abs("rt_music_note_swell")) if swells?(memory)
+              asm.jsr(asm.abs("rt_music_note_slide")) if slides?(memory)
+            end
+
+            # The voice Y says stopped wobbling, stepping and sliding, A left nought, as an effect's
+            # end stops it (Reference::Player#finish_effect). +channel+ is where its channel is.
+            def emit_voice_stops_changing(asm, memory, channel)
+              asm.lda(0)
+              asm.sta(asm.abs_y(memory[WOBBLE_RECORD])) if wobbles?(memory)
+              asm.sta(asm.abs_y(memory[SHAPE_RECORD])) if steps_shapes?(memory)
+              return unless slides?(memory)
+
+              asm.lda(channel)
+              asm.cmp(SNES::Music::SLIDING_CHANNEL)
+              asm.bne("rt_voice_stops_changing_done")
+              asm.stz(asm.abs(memory[SLIDE_CURSOR]))
+              asm.label("rt_voice_stops_changing_done")
+            end
+
+            # A HELD TUNE'S NOTES HOLD STILL, and an effect's move on (Reference::Player#held_still?).
+            # With no effects the whole walk stops at the top; with them each voice is asked. Inline,
+            # Y the voice: on to +next+ when it holds still. A wide branch, since Y's walk can be long.
+            def emit_skip_voice_held_still(asm, at, memory, next_voice, label)
+              return unless holds?(memory) && shares_voices?(memory)
+
+              asm.lda(at.call(TUNE_HELD))
+              asm.beq(label)
+              asm.jsr(asm.abs("rt_sfx_effect_holds"))
+              asm.branch_long(:beq, next_voice)
+              asm.ldy(at.call(WOBBLE_AT))
+              asm.label(label)
+            end
+
+            # A stopping tune's voices stop changing, but one a sound effect holds, which goes on as
+            # the effect's (Reference::Player#silence_song).
+            def emit_tune_voices_stop_changing(asm, at, memory)
+              records = [(WOBBLE_RECORD if wobbles?(memory)), (SHAPE_RECORD if steps_shapes?(memory)),
+                         (SWELL_RECORD if swells?(memory))].compact
+              unless shares_voices?(memory)
+                SNES::Music::CONSOLE_PARTS.times { |voice| records.each { |name| asm.stz(asm.abs(memory[name], voice * 2)) } }
+                asm.stz(at.call(SLIDE_CURSOR)) if slides?(memory)
+                return
+              end
+
+              SNES::Music::CONSOLE_PARTS.times do |voice|
+                kept = "rt_music_quiet_changes_#{voice}"
+                asm.ldy(voice * 2)
+                asm.jsr(asm.abs("rt_sfx_effect_holds"))
+                asm.bne(kept)
+                records.each { |name| asm.stz(asm.abs(memory[name], voice * 2)) }
+                asm.stz(at.call(SLIDE_CURSOR)) if slides?(memory) && voice.zero?
+                asm.label(kept)
+              end
+            end
+
             # rt_music_slides: the sliding note's frame played from its record, every frame the
             # player runs, since on the Advance the voice moves by itself even under `hold_music`.
             # rt_music_note_slide: the record of the note at NOTE taken up, or nothing, when the
@@ -344,7 +406,7 @@ module VBlank
             def emit_shapes(asm, at, memory)
               m = SNES::Music
               asm.label("rt_music_shapes")
-              if holds?(memory)
+              if holds?(memory) && !shares_voices?(memory)
                 asm.lda(at.call(TUNE_HELD))
                 asm.beq("rt_music_shapes_go")
                 asm.rts
@@ -354,7 +416,8 @@ module VBlank
               asm.label("rt_music_shapes_voice")
               asm.ldy(at.call(WOBBLE_AT))
               asm.lda(asm.abs_y(memory[SHAPE_RECORD]))
-              asm.beq("rt_music_shapes_next")
+              asm.branch_long(:beq, "rt_music_shapes_next")
+              emit_skip_voice_held_still(asm, at, memory, "rt_music_shapes_next", "rt_music_shapes_step")
               asm.lda(asm.abs_y(memory[SHAPE_FRAME]))
               asm.beq("rt_music_shapes_on") # a note's first frame is its head's
               asm.and_a(3)
@@ -416,7 +479,7 @@ module VBlank
             def emit_wobbles(asm, at, memory)
               m = SNES::Music
               asm.label("rt_music_wobbles")
-              if holds?(memory)
+              if holds?(memory) && !shares_voices?(memory)
                 asm.lda(at.call(TUNE_HELD))
                 asm.beq("rt_music_wobbles_go")
                 asm.rts
@@ -426,7 +489,8 @@ module VBlank
               asm.label("rt_music_wobble_voice")
               asm.ldy(at.call(WOBBLE_AT))
               asm.lda(asm.abs_y(memory[WOBBLE_RECORD]))
-              asm.beq("rt_music_wobble_next")
+              asm.branch_long(:beq, "rt_music_wobble_next")
+              emit_skip_voice_held_still(asm, at, memory, "rt_music_wobble_next", "rt_music_wobble_moves")
               asm.lda(asm.abs_y(memory[WOBBLE_WAIT]))
               asm.beq("rt_music_wobble_going")
               asm.dec
@@ -677,10 +741,7 @@ module VBlank
               # logged (Music.stop_entry).
               asm.label("rt_music_quiet")
               asm.jsl(asm.long("rt_recordings_release_music")) if recorded # the places its parts hold
-              SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[WOBBLE_RECORD], voice * 2)) } if wobbles?(memory)
-              SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[SHAPE_RECORD], voice * 2)) } if steps_shapes?(memory)
-              SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[SWELL_RECORD], voice * 2)) } if swells?(memory)
-              asm.stz(at.call(SLIDE_CURSOR)) if slides?(memory)
+              emit_tune_voices_stop_changing(asm, at, memory)
               if level_at
                 SNES::Music::PARTS.times do |p|
                   asm.stz(asm.abs(memory[HELD], p * 2))
@@ -805,10 +866,7 @@ module VBlank
               asm.lda(asm.long_x("music_data", m::NOTE_TAIL))
               asm.tax
               asm.jsr(asm.abs("rt_sound_group"))
-              asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
-              asm.jsr(asm.abs("rt_music_note_shapes")) if steps_shapes?(memory)
-              asm.jsr(asm.abs("rt_music_note_swell")) if swells?(memory)
-              asm.jsr(asm.abs("rt_music_note_slide")) if slides?(memory)
+              emit_note_changes(asm, memory)
               asm.label("rt_music_part_passed")
               asm.lda(at.call(PART))
               asm.asl

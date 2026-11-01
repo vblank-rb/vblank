@@ -94,6 +94,7 @@ module VBlank
               emit_recorded_parts(asm, at) if recorded
               emit_claim_routine(asm, at, memory)
               emit_select(asm, at, memory)
+              emit_effect_holds(asm, at, memory)
             end
 
             # A call of rt_sfx_claim, inline, by the rank's place in A, for the part whose entry is at
@@ -109,6 +110,21 @@ module VBlank
               asm.lda(asm.long_x("music_data", m::NOTE_SOUNDS))
               asm.sta(asm.abs(memory[CLAIM_SOUNDS]))
               asm.jsr(asm.abs("rt_sfx_claim"))
+            end
+
+            # rt_sfx_effect_holds (JSR): A, and the zero flag clear, when a sound effect holds the voice
+            # Y says (two bytes a voice, from channel 1), rather than the tune or nobody. Y is kept.
+            def emit_effect_holds(asm, at, memory)
+              asm.label("rt_sfx_effect_holds")
+              asm.lda(asm.long("music_data", SNES::Music::RANK_KINDS_AT))
+              asm.sta(at.call(TABLE_AT))
+              asm.lda(asm.abs_y(memory[HOLDERS]))
+              asm.asl
+              asm.clc
+              asm.adc(at.call(TABLE_AT))
+              asm.tax
+              asm.lda(asm.long_x("music_data"))
+              asm.rts
             end
 
             # As the tune stops, inline: R0, the voices its parts play on, less those a sound effect
@@ -410,6 +426,13 @@ module VBlank
               asm.lda(asm.long_x("music_data", m::NOTE_TAIL))
               asm.tax
               asm.jsr(asm.abs("rt_sound_group"))
+              # An effect's note changes as it plays as a tune's does, by the same steps, which read
+              # the note from the tune's places (Reference::Player#set_voice).
+              asm.lda(at.call(ENTRY))
+              asm.sta(at.call(Music::ENTRY))
+              asm.lda(at.call(NOTE))
+              asm.sta(at.call(Music::NOTE))
+              Music.emit_note_changes(asm, memory)
               asm.label("rt_sfx_frame_next")
               asm.inc(at.call(PART))
               asm.brl("rt_sfx_frame_part")
@@ -462,6 +485,7 @@ module VBlank
               asm.bne("rt_sfx_finish_walk")
               asm.lda(0)
               asm.sta(asm.abs_y(memory[HOLDERS]))
+              Music.emit_voice_stops_changing(asm, memory, at.call(RELEASE_CHANNEL))
               # Its part on that voice, whose group lets the voice go.
               asm.ldx(at.call(RECORD))
               asm.lda(asm.long_x("music_data", m::EFFECT_PART_COUNT))
