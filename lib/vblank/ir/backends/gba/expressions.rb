@@ -106,8 +106,8 @@ module VBlank
             case node.op
             when :- then emit_subtract(node)
             when :<<, :>>, :/, :% then emit_operation_in_order(node)
-            when *COMPARISONS.keys then emit_comparison(node)
-            else emit_either_way_round(node)
+            when *COMPARISONS.keys then emit_comparison_as_number(node)
+            else emit_commutative_operation(node)
             end
           end
 
@@ -123,13 +123,14 @@ module VBlank
           end
 
           # An operation that gives the same answer whichever side is in which register.
-          def emit_either_way_round(node)
+          def emit_commutative_operation(node)
             emit_sides(node)
             @emitter.emit(case node.op
                           when :+ then ASM.add_reg(ACC, TMP, ACC)
                           when :* then ASM.mul(ACC, TMP, ACC)
                           # Both sides of a join are already 0/1, so a bitwise and/or gives the
-                          # combined 0/1.
+                          # combined 0/1. And the program's own bit operations: the chip does each
+                          # in one instruction, which is why reading packed data costs what it reads.
                           when :and, :& then ASM.and_reg(ACC, TMP, ACC)
                           when :or, :| then ASM.orr_reg(ACC, TMP, ACC)
                           when :^ then ASM.eor_reg(ACC, TMP, ACC)
@@ -191,83 +192,87 @@ module VBlank
             end
           end
 
-          # THE VALUES THAT CAN BE LEFT UNREAD, OR READ LATER, with no difference to the game. A
-          # value not named here might draw a random number, or stop the game over a list index
-          # out of range, and the interpreter does those on both sides of a join every time
-          # (see Reference#eval_binop), so they cannot be skipped.
-          UNCHANGING_READS = Ractor.make_shareable(%i[var_ref held pressed])
-          UNCHANGING_WORK = Ractor.make_shareable(%i[neg bit_not absolute])
+          # THE VALUES THAT CAN BE LEFT UNREAD, OR READ LATER, with no difference to the game, each
+          # with the parts of it that must be such values too. A chance is here because its number
+          # is drawn by a statement before the test, and only read here. A list read is not: an
+          # index out of range stops the game, and the interpreter works out both sides of a join
+          # every time (see Reference#eval_binop), so the read cannot be skipped.
+          UNCHANGING_VALUES = Ractor.make_shareable(
+            { var_ref: [], list_len: [], held: [], pressed: [],
+              neg: [:operand], bit_not: [:operand], absolute: [:operand], shift_right: [:operand],
+              clamped: %i[operand min max], chance: [:draw], table_get: [:index],
+              binop: %i[lhs rhs], mul_fix: %i[lhs rhs], div_fix: %i[lhs rhs] }
+          )
 
           def self.changes_nothing?(node)
-            return true if Primitives.const_int(node) || UNCHANGING_READS.include?(node.kind)
-            return changes_nothing?(node.lhs) && changes_nothing?(node.rhs) if node.kind == :binop
+            return true if Primitives.const_int(node)
 
-            UNCHANGING_WORK.include?(node.kind) && changes_nothing?(node.operand)
+            parts = UNCHANGING_VALUES[node.kind]
+            !parts.nil? && parts.all? { |part| changes_nothing?(node.public_send(part)) }
           end
 
-          # TEST +cond+ AND BRANCH TO +label+ UNLESS IT HOLDS, with no 0 or 1 made on the way. A
+          # BRANCH TO +label+ WHEN +cond+ COMES OUT AS +holds+, with no 0 or 1 made on the way. A
           # compare leaves its answer in the chip's flags, and a branch reads them, so working the
           # answer into a register to test it again costs five instructions and tells the branch
           # nothing it did not know.
           #
-          # A JOIN OF TWO TESTS IS TWO TESTS, when the second can go unread. The first that decides
-          # the answer branches, and the rest does not run.
-          def emit_branch_unless(cond, label)
+          # A TEST TURNED ROUND is the same test branching the other way.
+          #
+          # A JOIN OF TWO TESTS IS TWO TESTS, when the second can go unread. One side alone settles
+          # a join: a false one settles `and`, a true one `or`. If that is the answer branched on,
+          # either side may take the branch. If not, the first side settling it jumps past the
+          # second, and only the second can take the branch.
+          def emit_branch_when(cond, holds:, to:)
             @lowering.measure_value(cond) do
-              cond = plain_test(cond)
-              if comparison?(cond)
-                emit_compare(cond)
-                @emitter.emit_branch(:bcond, label, cond: COMPARISONS.fetch(cond.op).last)
-              elsif join_of?(cond, :and)
-                emit_branch_unless(cond.lhs, label)
-                emit_branch_unless(cond.rhs, label)
-              elsif join_of?(cond, :or)
-                held = @emitter.gensym
-                emit_branch_if(cond.lhs, held)
-                emit_branch_unless(cond.rhs, label)
-                @emitter.place_label(held)
-              else
-                emit_test_of_value(cond, label, :eq)
-              end
-            end
-          end
-
-          # ...and to +label+ when it holds.
-          def emit_branch_if(cond, label)
-            @lowering.measure_value(cond) do
-              cond = plain_test(cond)
-              if comparison?(cond)
-                emit_compare(cond)
-                @emitter.emit_branch(:bcond, label, cond: COMPARISONS.fetch(cond.op).first)
-              elsif join_of?(cond, :or)
-                emit_branch_if(cond.lhs, label)
-                emit_branch_if(cond.rhs, label)
-              elsif join_of?(cond, :and)
-                failed = @emitter.gensym
-                emit_branch_unless(cond.lhs, failed)
-                emit_branch_if(cond.rhs, label)
-                @emitter.place_label(failed)
-              else
-                emit_test_of_value(cond, label, :ne)
+              test = cond.kind == :chance ? chance_comparison(cond) : cond
+              if turned_round?(test) then emit_branch_when(test.lhs, holds: !holds, to: to)
+              elsif comparison?(test) then emit_branch_on_comparison(test, holds, to)
+              elsif skippable_join?(test) then emit_branch_on_join(test, holds, to)
+              else emit_branch_on_value(test, holds, to)
               end
             end
           end
 
           def comparison?(node) = node.kind == :binop && COMPARISONS.key?(node.op)
+          def join?(node) = node.kind == :binop && %i[and or].include?(node.op)
+          def skippable_join?(node) = join?(node) && Expressions.changes_nothing?(node.rhs)
 
-          # A chance is a comparison in all but name (see #eval_chance), and branches as one.
-          def plain_test(cond) = cond.kind == :chance ? chance_comparison(cond) : cond
+          # `test == 0` is how `!`, `unless` and `while` turn a test round. A plain number compared
+          # with nought is not one: that is an ordinary comparison, and shorter as one.
+          def turned_round?(node)
+            return false unless node.kind == :binop && node.op == :== && @primitives.const_int(node.rhs)&.zero?
 
-          def join_of?(node, op) = node.kind == :binop && node.op == op && Expressions.changes_nothing?(node.rhs)
+            test = node.lhs
+            comparison?(test) || join?(test) || test.kind == :chance
+          end
 
-          def emit_test_of_value(node, label, branch_on)
+          def emit_branch_on_comparison(test, holds, label)
+            when_true, when_false = COMPARISONS.fetch(test.op)
+            emit_compare_setting_flags(test)
+            @emitter.emit_branch(:bcond, label, cond: holds ? when_true : when_false)
+          end
+
+          def emit_branch_on_join(join, holds, label)
+            answer_one_side_settles = join.op == :or
+            if holds == answer_one_side_settles
+              emit_branch_when(join.lhs, holds: holds, to: label)
+              emit_branch_when(join.rhs, holds: holds, to: label)
+            else
+              past = @emitter.gensym
+              emit_branch_when(join.lhs, holds: !holds, to: past)
+              emit_branch_when(join.rhs, holds: holds, to: label)
+              @emitter.place_label(past)
+            end
+          end
+
+          def emit_branch_on_value(node, holds, label)
             @lowering.value(node)
             @emitter.emit(ASM.cmp_imm(ACC, 0))
-            @emitter.emit_branch(:bcond, label, cond: branch_on)
+            @emitter.emit_branch(:bcond, label, cond: holds ? :ne : :eq)
           end
 
           # Set the flags from lhs - rhs. A small number on the right rides inside the compare.
-          def emit_compare(node)
+          def emit_compare_setting_flags(node)
             fixed = @primitives.const_int(node.rhs)
             if fixed && SMALL_NUMBERS.cover?(fixed)
               @lowering.value(node.lhs)
@@ -362,7 +367,7 @@ module VBlank
             return false unless value
 
             case node.op
-            when :+, :- then emit_constant_add(node, value)
+            when :+, :- then emit_small_add_or_subtract(node, value)
             when :/ then emit_constant_divide(node.lhs, value)
             when :* then emit_constant_multiply(node.lhs, value)
             when :% then emit_constant_modulo(node.lhs, value)
@@ -374,7 +379,7 @@ module VBlank
           end
 
           # x + n and x - n for a small n, which rides inside the instruction.
-          def emit_constant_add(node, value)
+          def emit_small_add_or_subtract(node, value)
             return false unless SMALL_NUMBERS.cover?(value)
 
             @lowering.value(node.lhs)
@@ -409,7 +414,7 @@ module VBlank
           # the five the general path spends putting both sides through the stack.
           def emit_constant_bitwise(lhs, value, op)
             @lowering.value(lhs)
-            if (0..0xFF).cover?(value)
+            if SMALL_NUMBERS.cover?(value)
               @emitter.emit(case op
                             when :& then ASM.and_imm(ACC, ACC, value)
                             when :| then ASM.orr_imm(ACC, ACC, value)
@@ -757,10 +762,10 @@ module VBlank
           end
 
           # A comparison kept as a number yields 1 or 0: what a game stores or adds up. A test
-          # that only decides a branch does not come here (see #emit_branch_unless). Compare,
+          # that only decides a branch does not come here (see #emit_branch_when). Compare,
           # default the result to 0, and set it to 1 only when the comparison holds.
-          def emit_comparison(node)
-            emit_compare(node)
+          def emit_comparison_as_number(node)
+            emit_compare_setting_flags(node)
             done = @emitter.gensym
             @emitter.emit_number(ACC, 0)
             @emitter.emit_branch(:bcond, done, cond: COMPARISONS.fetch(node.op).last)

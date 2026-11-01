@@ -111,7 +111,7 @@ module VBlank
             if else_node
               else_label = @emitter.gensym
               end_label = @emitter.gensym
-              @expressions.emit_branch_unless(node.cond, else_label) # false => run the else
+              @expressions.emit_branch_when(node.cond, holds: false, to: else_label)
               node.children.each { |stmt| @lowering.statement(stmt) }
               @emitter.emit_branch(:b, end_label)                 # then done => skip the else
               @emitter.place_label(else_label)
@@ -119,7 +119,7 @@ module VBlank
               @emitter.place_label(end_label)
             else
               skip = @emitter.gensym
-              @expressions.emit_branch_unless(node.cond, skip) # false => skip
+              @expressions.emit_branch_when(node.cond, holds: false, to: skip)
               # A block of the game loop that runs for one scene alone is that scene's routine
               # (see SceneQuickMemory#prepare_scene_loop_work), and only called from here.
               routine = @placement.scene_loop_routine_for(node)
@@ -236,7 +236,7 @@ module VBlank
           def emit_stop_test(node, done)
             return unless LoopForm.stops_early?(node)
 
-            @expressions.emit_branch_if(node.stop_when, done)
+            @expressions.emit_branch_when(node.stop_when, holds: true, to: done)
           end
 
           # ...and counting down, when nothing reads the index. The passes left are kept in the

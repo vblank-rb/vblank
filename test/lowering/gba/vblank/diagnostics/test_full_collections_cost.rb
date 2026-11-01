@@ -28,6 +28,7 @@ class TestFullCollectionsCost < Minitest::Test
     Profiler.define_singleton_method(:run, real)
   end
 
+  # Two divides a slot, since a pass must fall behind once the lists are full for this to count.
   def test_a_scene_behind_when_full_costs_one_run_however_many_collections_it_has
     rom = VBlank.build("FULL", console: :gba, out: nil, err: nil) do
       screen :bitmap

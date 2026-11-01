@@ -42,7 +42,7 @@
       "data": 0
     },
     "dive": {
-      "code": 55692,
+      "code": 55268,
       "data": 0
     },
     "floating_digits": {
@@ -62,7 +62,7 @@
       "data": 0
     },
     "hero": {
-      "code": 80456,
+      "code": 80400,
       "data": 0
     },
     "jukebox": {
@@ -106,7 +106,7 @@
       "data": 0
     },
     "pong": {
-      "code": 43532,
+      "code": 43456,
       "data": 0
     },
     "pong_gbc@gbc": {
@@ -138,7 +138,7 @@
       "data": 0
     },
     "shmup": {
-      "code": 37292,
+      "code": 36964,
       "data": 0
     },
     "snake": {
@@ -146,11 +146,11 @@
       "data": 0
     },
     "snake_buffered": {
-      "code": 40384,
+      "code": 40376,
       "data": 0
     },
     "sparks": {
-      "code": 3356,
+      "code": 3276,
       "data": 0
     },
     "sprite_mover": {
