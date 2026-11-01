@@ -1,0 +1,421 @@
+# frozen_string_literal: true
+
+module VBlank
+  module IR
+    module Backends
+      class Genesis
+        module Runtime
+          # A TILED SCREEN, as a Genesis keeps one: two planes of tiles that scroll, and sprites over
+          # them. Everything is in video RAM, which only the video chip's two ports reach, so the game
+          # works on its own notes of what it wants (where each plane is scrolled to, which map each
+          # shows, which cells changed, which sprites are placed) and the blank after each pass writes
+          # them into the chip (rt_upload).
+          #
+          # VIDEO RAM, 64K, is laid out like this:
+          #
+          #   $0000        tile 0, which is blank: a cell of a map that names no tile shows nothing
+          #   $0020-$B7FF  the game's tiles, one after another, backgrounds' and sprites' together
+          #   $B800        the horizontal scroll table: the two planes' places, a word each
+          #   $BC00        the sprite table, 80 rows of 8 bytes
+          #   $C000        plane A's map, which draws over plane B's, and $E000 plane B's: 8K each,
+          #                which holds the biggest map there is, 64 cells across and 64 down
+          #
+          # A MAP IS A GRID OF CELLS, a word each: the tile's number in the low eleven bits and its
+          # palette in the two bits at 13. A plane is 32 or 64 cells across and down (the game's
+          # backgrounds all say one size), and coming off one edge it comes round to the other, which is
+          # what the interpreter's backgrounds do.
+          #
+          # THE SPRITE TABLE is a list the chip walks from row 0, each row naming the next by its
+          # link, and it draws a row in front of the rows after it. A game places its sprites back to
+          # front, so they are noted in that order and written to the table the other way round, the
+          # last placed first, each linked to the one after, the last to nothing.
+          #
+          # A SCROLL REGISTER MOVES THE PLANE, not the view over it: a plane scrolled right by 5 shows
+          # what was 5 pixels to the left. A game's view at x is the plane scrolled by -x. Vertically
+          # it is the other way: the plane scrolled up by y shows what was y below.
+          module Tiles
+            PLANE_A_AT = 0xC000
+            PLANE_B_AT = 0xE000
+            SPRITES_AT = 0xBC00
+            HSCROLL_AT = 0xB800
+            TILES_AT = Art::TILE_BYTES
+
+            MOST_SPRITES = Console::GENESIS.sprites
+            # The cells a game may change in one pass, each noted as its plane, its place in it and its tile.
+            MOST_CELLS = 64
+            CELL_BYTES = 6
+            # A sprite's note: where it is on the screen as the chip counts (128 past the screen's corner),
+            # and the tile and palette it is drawn with.
+            SPRITE_BYTES = 6
+            # A sprite the reader of the running game is told of: whose, which picture, where.
+            DRAWN = "rt drawn"
+            DRAWN_BYTES = 8
+
+            SCROLL = "rt scroll" # each plane's left, then its top, a word each: plane A's, plane B's
+            PENDING = "rt pending maps" # each plane's grid still to be copied, a long each, or nought
+            CELL_COUNT = "rt cell count"
+            CELLS = "rt cells"
+            SPRITE_COUNT = "rt sprite count"
+            SPRITES = "rt sprites"
+
+            # How far past the screen's corner the chip counts a sprite's place from.
+            SPRITE_ORIGIN = 128
+
+            module_function
+
+            def reserve(memory)
+              memory.reserve(SCROLL, 8)
+              memory.reserve(PENDING, 8)
+              memory.reserve(CELL_COUNT, 2)
+              memory.reserve(CELLS, MOST_CELLS * CELL_BYTES)
+              memory.reserve(SPRITE_COUNT, 2)
+              memory.reserve(SPRITES, MOST_SPRITES * SPRITE_BYTES)
+              memory.reserve(DRAWN, 2 + (MOST_SPRITES * DRAWN_BYTES))
+            end
+
+            # +columns+ is how many cells across the planes are (32 or 64).
+            def emit(asm, memory, columns:)
+              at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
+              emit_start(asm)
+              emit_maps(asm, memory, at, columns)
+              emit_sprites(asm, memory, at)
+              emit_upload(asm, memory, at, columns)
+            end
+
+            # rt_picture_start: the colours into the colour memory and the tiles into video RAM, with the
+            # screen still off. The tiles are the long words of "art tiles", counted in "art tile bytes".
+            def emit_start(asm)
+              h = Console::GenesisHardware
+              asm.label("rt_picture_start")
+              asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, 0)), asm.abs_l(h::VDP_CONTROL))
+              asm.lea(asm.abs_l("art colors"), asm.a(0))
+              asm.move(:w, asm.imm(Art::PALETTES * Art::PLACES - 1), asm.d(1))
+              asm.label("rt_picture_start_color")
+              asm.move(:w, asm.post(0), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(1), "rt_picture_start_color")
+              asm.lea(asm.abs_l("art tile bytes"), asm.a(1))
+              asm.move(:l, asm.ind(1), asm.d(1))
+              asm.lsr(:l, 2, asm.d(1))
+              asm.branch(:eq, "rt_picture_start_done")
+              asm.subq(:l, 1, asm.d(1))
+              asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, TILES_AT)), asm.abs_l(h::VDP_CONTROL))
+              asm.lea(asm.abs_l("art tiles"), asm.a(0))
+              asm.label("rt_picture_start_tile")
+              asm.move(:l, asm.post(0), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(1), "rt_picture_start_tile")
+              asm.label("rt_picture_start_done")
+              asm.rts
+
+              asm.label("rt_picture_prepare")
+              asm.rts
+              asm.label("rt_tint_prepare")
+              asm.rts
+
+              # rt_vram_write_at: the chip pointed at the video RAM address in D0, to be written. D1 is used.
+              asm.label("rt_vram_write_at")
+              asm.move(:l, asm.d(0), asm.d(1))
+              asm.and(:l, asm.imm(0x3FFF), asm.d(1))
+              asm.swap(asm.d(1))
+              asm.lsr(:l, 8, asm.d(0))
+              asm.lsr(:l, 6, asm.d(0))
+              asm.or(:l, asm.d(0), asm.d(1))
+              asm.or(:l, asm.imm(h::WRITE_VRAM), asm.d(1))
+              asm.move(:l, asm.d(1), asm.abs_l(h::VDP_CONTROL))
+              asm.rts
+            end
+
+            # THE MAPS. rt_background_put_up(plane, grid, reset): the grid (a place in "art grids":
+            # where its cells are, how many across and how many down) is noted to be copied onto the plane
+            # in the blank, and every cell the game changed on that plane before is let go, since the
+            # map covers it; with +reset+ not nought the view goes back to the corner. rt_background_scroll
+            # (plane, x, y): where the view of the plane is. rt_set_cell(plane, column, row, cell): one
+            # cell noted to change, the game stopped when it changes more than a queue holds.
+            def emit_maps(asm, memory, at, columns)
+              shift = columns == 64 ? 6 : 5
+              asm.label("rt_background_put_up")
+              asm.lea(asm.abs_l("art grids"), asm.a(0))
+              asm.lsl(:l, 3, asm.d(1))
+              asm.add(:l, asm.d(1), asm.a(0))
+              asm.lea(asm.abs_l(memory[PENDING]), asm.a(1))
+              asm.move(:l, asm.d(0), asm.d(3))
+              asm.lsl(:l, 2, asm.d(3))
+              asm.move(:l, asm.a(0), asm.idx(1, 0, 3))
+              emit_cells_of_plane_let_go(asm, memory, at)
+              asm.tst(:l, asm.d(2))
+              asm.branch(:eq, "rt_background_put_up_done")
+              asm.lea(asm.abs_l(memory[SCROLL]), asm.a(1))
+              asm.clr(:l, asm.idx(1, 0, 3))
+              asm.label("rt_background_put_up_done")
+              asm.rts
+
+              asm.label("rt_background_scroll")
+              asm.lea(asm.abs_l(memory[SCROLL]), asm.a(0))
+              asm.lsl(:l, 2, asm.d(0))
+              asm.move(:w, asm.d(1), asm.idx(0, 0, 0))
+              asm.move(:w, asm.d(2), asm.idx(0, 2, 0))
+              asm.rts
+
+              asm.label("rt_set_cell")
+              asm.move(:w, at.call(CELL_COUNT), asm.d(4))
+              asm.cmp(:w, asm.imm(MOST_CELLS), asm.d(4))
+              asm.branch(:cs, "rt_set_cell_room")
+              asm.moveq(Frame::CELLS_FULL, asm.d(0))
+              asm.jmp(asm.abs_l("rt_fault"))
+              asm.label("rt_set_cell_room")
+              asm.and(:l, asm.imm(0xFFFF), asm.d(4))
+              asm.mulu(asm.imm(CELL_BYTES), asm.d(4))
+              asm.lea(asm.abs_l(memory[CELLS]), asm.a(0))
+              asm.add(:l, asm.d(4), asm.a(0))
+              asm.move(:w, asm.d(0), asm.post(0))
+              asm.lsl(:l, shift, asm.d(2))
+              asm.add(:l, asm.d(1), asm.d(2))
+              asm.move(:w, asm.d(2), asm.post(0))
+              asm.move(:w, asm.d(3), asm.post(0))
+              asm.addq(:w, 1, at.call(CELL_COUNT))
+              asm.rts
+            end
+
+            # The cells noted for plane D0 taken out of the queue, the rest kept in their order.
+            def emit_cells_of_plane_let_go(asm, memory, at)
+              asm.move(:w, at.call(CELL_COUNT), asm.d(4))
+              asm.branch(:eq, "rt_cells_let_go_done")
+              asm.lea(asm.abs_l(memory[CELLS]), asm.a(1))
+              asm.movea(:l, asm.a(1), asm.a(2))
+              asm.moveq(0, asm.d(5)) # how many are kept
+              asm.subq(:w, 1, asm.d(4))
+              asm.label("rt_cells_let_go_cell")
+              asm.move(:w, asm.post(1), asm.d(6))
+              asm.move(:w, asm.post(1), asm.d(7))
+              asm.cmp(:w, asm.d(0), asm.d(6))
+              asm.branch(:ne, "rt_cells_let_go_keep")
+              asm.addq(:l, 2, asm.a(1))
+              asm.bra("rt_cells_let_go_next")
+              asm.label("rt_cells_let_go_keep")
+              asm.move(:w, asm.d(6), asm.post(2))
+              asm.move(:w, asm.d(7), asm.post(2))
+              asm.move(:w, asm.post(1), asm.post(2))
+              asm.addq(:w, 1, asm.d(5))
+              asm.label("rt_cells_let_go_next")
+              asm.dbra(asm.d(4), "rt_cells_let_go_cell")
+              asm.move(:w, asm.d(5), at.call(CELL_COUNT))
+              asm.label("rt_cells_let_go_done")
+            end
+
+            # SPRITES. rt_sprites_begin forgets the sprites of the last pass. rt_sprite_place(poses, pose,
+            # x, y, whose) places one: +poses+ is the place of the sprite's table of pictures (how many,
+            # then each picture's number), +pose+ which of them it shows — none for a number outside the
+            # table — and +whose+ the sprite's number for a reader (SpriteNames). Each piece of the
+            # picture is a row of the table, at the sprite's place plus the piece's own; a piece wholly
+            # off the screen is not written, and nor is any piece once the table's 80 rows are used.
+            def emit_sprites(asm, memory, at)
+              asm.label("rt_sprites_begin")
+              asm.clr(:w, at.call(SPRITE_COUNT))
+              asm.clr(:w, at.call(DRAWN))
+              asm.rts
+
+              asm.label("rt_sprite_place")
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.moveq(0, asm.d(5))
+              asm.move(:w, asm.post(0), asm.d(5))
+              asm.cmp(:l, asm.d(5), asm.d(1))
+              asm.branch(:cc, "rt_sprite_place_done")
+              asm.lsl(:l, 1, asm.d(1))
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.idx(0, 0, 1), asm.d(6)) # the picture's number
+              emit_drawn_note(asm, memory, at)
+              asm.lea(asm.abs_l("art sprite pictures"), asm.a(0))
+              asm.lsl(:l, 2, asm.d(6))
+              asm.movea(:l, asm.idx(0, 0, 6), asm.a(0))
+              asm.moveq(0, asm.d(5))
+              asm.move(:w, asm.post(0), asm.d(5))
+              asm.subq(:w, 1, asm.d(5))
+              asm.branch(:mi, "rt_sprite_place_done")
+              asm.label("rt_sprite_place_piece")
+              asm.moveq(0, asm.d(7))
+              asm.move(:w, asm.post(0), asm.d(7))
+              asm.add(:l, asm.d(2), asm.d(7)) # the piece's left
+              asm.moveq(0, asm.d(1))
+              asm.move(:w, asm.post(0), asm.d(1))
+              asm.add(:l, asm.d(3), asm.d(1)) # its top
+              asm.move(:w, asm.post(0), asm.d(0)) # its tile and palette
+              emit_piece_written(asm, memory, at)
+              asm.dbra(asm.d(5), "rt_sprite_place_piece")
+              asm.label("rt_sprite_place_done")
+              asm.rts
+            end
+
+            # The reader's row for the sprite: whose, which picture, where. D2 and D3 are its place.
+            def emit_drawn_note(asm, memory, at)
+              asm.moveq(0, asm.d(5))
+              asm.move(:w, at.call(DRAWN), asm.d(5))
+              asm.cmp(:w, asm.imm(MOST_SPRITES), asm.d(5))
+              asm.branch(:cc, "rt_sprite_place_noted")
+              asm.lsl(:l, 3, asm.d(5))
+              asm.lea(asm.abs_l(memory[DRAWN], 2), asm.a(1))
+              asm.add(:l, asm.d(5), asm.a(1))
+              asm.move(:w, asm.d(4), asm.post(1))
+              asm.move(:w, asm.d(6), asm.post(1))
+              asm.move(:w, asm.d(2), asm.post(1))
+              asm.move(:w, asm.d(3), asm.post(1))
+              asm.addq(:w, 1, at.call(DRAWN))
+              asm.label("rt_sprite_place_noted")
+            end
+
+            # The piece at (D7, D1) with the tile and palette in D0 into the table, if it is on the screen
+            # and the table has a row for it.
+            def emit_piece_written(asm, memory, at)
+              asm.cmp(:l, asm.imm(1 - 8), asm.d(7))
+              asm.branch(:lt, "rt_sprite_place_skip")
+              asm.cmp(:l, asm.imm(Paint::WIDTH), asm.d(7))
+              asm.branch(:ge, "rt_sprite_place_skip")
+              asm.cmp(:l, asm.imm(1 - 8), asm.d(1))
+              asm.branch(:lt, "rt_sprite_place_skip")
+              asm.cmp(:l, asm.imm(Paint::HEIGHT), asm.d(1))
+              asm.branch(:ge, "rt_sprite_place_skip")
+              asm.moveq(0, asm.d(4))
+              asm.move(:w, at.call(SPRITE_COUNT), asm.d(4))
+              asm.cmp(:w, asm.imm(MOST_SPRITES), asm.d(4))
+              asm.branch(:cc, "rt_sprite_place_done")
+              asm.mulu(asm.imm(SPRITE_BYTES), asm.d(4))
+              asm.lea(asm.abs_l(memory[SPRITES]), asm.a(1))
+              asm.add(:l, asm.d(4), asm.a(1))
+              asm.add(:l, asm.imm(SPRITE_ORIGIN), asm.d(7))
+              asm.add(:l, asm.imm(SPRITE_ORIGIN), asm.d(1))
+              asm.move(:w, asm.d(7), asm.post(1))
+              asm.move(:w, asm.d(1), asm.post(1))
+              asm.move(:w, asm.d(0), asm.post(1))
+              asm.addq(:w, 1, at.call(SPRITE_COUNT))
+              asm.label("rt_sprite_place_skip")
+            end
+
+            # rt_upload (and rt_upload_whole, which is the same, the screen being off): the maps noted
+            # are copied onto their planes, the cells changed after them written, then the sprite table
+            # and the scroll.
+            def emit_upload(asm, memory, at, columns)
+              asm.label("rt_upload")
+              asm.label("rt_upload_whole")
+              [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
+              emit_cells_written(asm, memory, at)
+              emit_sprite_table_written(asm, memory, at)
+              emit_scroll_written(asm, memory)
+              asm.rts
+            end
+
+            # The grid noted for plane +plane+, if any, copied row by row onto it: each row is
+            # as many cells as the map has across, from the start of a row of the plane.
+            def emit_plane_map_copied(asm, memory, plane, base, columns)
+              h = Console::GenesisHardware
+              shift = columns == 64 ? 6 : 5
+              skip = "rt_upload_no_map_#{plane}"
+              asm.move(:l, asm.abs_l(memory[PENDING], plane * 4), asm.d(0))
+              asm.branch(:eq, skip)
+              asm.movea(:l, asm.d(0), asm.a(2))
+              asm.clr(:l, asm.abs_l(memory[PENDING], plane * 4))
+              asm.movea(:l, asm.post(2), asm.a(0))
+              asm.moveq(0, asm.d(2))
+              asm.move(:w, asm.post(2), asm.d(2)) # cells across
+              asm.moveq(0, asm.d(3))
+              asm.move(:w, asm.ind(2), asm.d(3)) # rows
+              asm.moveq(0, asm.d(4)) # the row
+              asm.label("rt_upload_map_row_#{plane}")
+              asm.cmp(:l, asm.d(3), asm.d(4))
+              asm.branch(:ge, skip)
+              asm.move(:l, asm.d(4), asm.d(0))
+              asm.lsl(:l, shift + 1, asm.d(0)) # a row of the plane is its cells across, two bytes each
+              asm.add(:l, asm.imm(base), asm.d(0))
+              asm.jsr(asm.abs_l("rt_vram_write_at"))
+              asm.move(:w, asm.d(2), asm.d(5))
+              asm.subq(:w, 1, asm.d(5))
+              asm.label("rt_upload_map_cell_#{plane}")
+              asm.move(:w, asm.post(0), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(5), "rt_upload_map_cell_#{plane}")
+              asm.addq(:l, 1, asm.d(4))
+              asm.bra("rt_upload_map_row_#{plane}")
+              asm.label(skip)
+            end
+
+            # The cells noted written one at a time, each with its place in the plane it is on.
+            def emit_cells_written(asm, memory, at)
+              h = Console::GenesisHardware
+              asm.move(:w, at.call(CELL_COUNT), asm.d(7))
+              asm.branch(:eq, "rt_upload_cells_done")
+              asm.clr(:w, at.call(CELL_COUNT))
+              asm.lea(asm.abs_l(memory[CELLS]), asm.a(1))
+              asm.subq(:w, 1, asm.d(7))
+              asm.label("rt_upload_cell")
+              asm.moveq(0, asm.d(0))
+              asm.move(:w, asm.post(1), asm.d(0))
+              asm.and(:l, asm.imm(1), asm.d(0))
+              asm.lsl(:l, 8, asm.d(0))
+              asm.lsl(:l, 5, asm.d(0)) # 8K a plane
+              asm.add(:l, asm.imm(PLANE_A_AT), asm.d(0))
+              asm.moveq(0, asm.d(3))
+              asm.move(:w, asm.post(1), asm.d(3))
+              asm.lsl(:l, 1, asm.d(3))
+              asm.add(:l, asm.d(3), asm.d(0))
+              asm.move(:w, asm.post(1), asm.d(2))
+              asm.jsr(asm.abs_l("rt_vram_write_at"))
+              asm.move(:w, asm.d(2), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(7), "rt_upload_cell")
+              asm.label("rt_upload_cells_done")
+            end
+
+            # The sprite table, the last sprite placed in the first row (see the note on the table above);
+            # with no sprites, one row that is off the screen.
+            def emit_sprite_table_written(asm, memory, at)
+              h = Console::GenesisHardware
+              asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, SPRITES_AT)), asm.abs_l(h::VDP_CONTROL))
+              asm.moveq(0, asm.d(5))
+              asm.move(:w, at.call(SPRITE_COUNT), asm.d(5))
+              asm.branch(:ne, "rt_upload_sprites_some")
+              asm.moveq(0, asm.d(0))
+              4.times { asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA)) }
+              asm.bra("rt_upload_sprites_done")
+              asm.label("rt_upload_sprites_some")
+              asm.move(:l, asm.d(5), asm.d(0))
+              asm.mulu(asm.imm(SPRITE_BYTES), asm.d(0))
+              asm.lea(asm.abs_l(memory[SPRITES] - SPRITE_BYTES), asm.a(1))
+              asm.add(:l, asm.d(0), asm.a(1)) # the last row noted
+              asm.moveq(1, asm.d(6))
+              asm.label("rt_upload_sprite")
+              asm.move(:w, asm.disp(1, 2), asm.abs_l(h::VDP_DATA)) # up and down
+              asm.move(:w, asm.d(6), asm.d(0)) # the next row, or none after the last
+              asm.cmp(:w, asm.d(5), asm.d(6))
+              asm.branch(:ne, "rt_upload_sprite_linked")
+              asm.moveq(0, asm.d(0))
+              asm.label("rt_upload_sprite_linked")
+              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA)) # a sprite of one tile, and its link
+              asm.move(:w, asm.disp(1, 4), asm.abs_l(h::VDP_DATA)) # its tile and palette
+              asm.move(:w, asm.ind(1), asm.abs_l(h::VDP_DATA)) # across
+              asm.lea(asm.disp(1, -SPRITE_BYTES), asm.a(1))
+              asm.addq(:w, 1, asm.d(6))
+              asm.cmp(:w, asm.d(5), asm.d(6))
+              asm.branch(:ls, "rt_upload_sprite")
+              asm.label("rt_upload_sprites_done")
+            end
+
+            # Where each plane's view is, into the horizontal scroll table (a plane moved right by the
+            # distance the view moves left) and the vertical scroll memory (a plane moved up by the
+            # distance the view moves down).
+            def emit_scroll_written(asm, memory)
+              h = Console::GenesisHardware
+              asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, HSCROLL_AT)), asm.abs_l(h::VDP_CONTROL))
+              [0, 4].each do |plane|
+                asm.move(:w, asm.abs_l(memory[SCROLL], plane), asm.d(0))
+                asm.neg(:w, asm.d(0))
+                asm.and(:w, asm.imm(0x3FF), asm.d(0))
+                asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+              end
+              asm.move(:l, asm.imm(h.command(h::WRITE_VSRAM, 0)), asm.abs_l(h::VDP_CONTROL))
+              [2, 6].each do |plane|
+                asm.move(:w, asm.abs_l(memory[SCROLL], plane), asm.d(0))
+                asm.and(:w, asm.imm(0x3FF), asm.d(0))
+                asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end

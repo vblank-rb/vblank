@@ -18,7 +18,7 @@ module FontsDemo
   SCORE = 12_345
   GAP = 3 # the pixels left clear between a label and the number under it
 
-  GAME = VBlank.game("FONTS", consoles: %i[gba snes]) do
+  GAME = VBlank.game("FONTS", consoles: %i[gba snes genesis]) do
     screen :bitmap
     clear_screen :black
 

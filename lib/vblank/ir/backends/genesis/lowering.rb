@@ -37,6 +37,7 @@ module VBlank
           end
 
           include Paint
+          include Picture
 
           STATEMENTS = Ractor.make_shareable({
                                                program: :emit_children, set: :emit_set, add: :emit_add,
@@ -60,7 +61,7 @@ module VBlank
                                                rumble: :emit_nothing,
                                                # a tiled screen is the one the console is set up for at power-on
                                                screen: :emit_nothing
-                                             }.merge(Paint::STATEMENTS)
+                                             }.merge(Paint::STATEMENTS).merge(Picture::STATEMENTS)
                                               .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))
 
           VALUES = Ractor.make_shareable({
@@ -77,11 +78,14 @@ module VBlank
           # day the Genesis does it; test_genesis_kind_coverage.rb holds the list and the tables above
           # to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
-                                                    "the picture" => %i[background scroll_background set_tile
-                                                                        show_map present_objects hide_sprites fade tint
-                                                                        place_bar scroll_rows copy_tiles copy_owed_tiles
-                                                                        background_colors color_list_holds see_through
-                                                                        draw_column_at show_picture_group data_byte],
+                                                    "fades and tints" => %i[fade tint],
+                                                    "the status bar" => %i[place_bar],
+                                                    "backgrounds bent row by row" => %i[scroll_rows],
+                                                    "tiles painted from a list" => %i[copy_tiles copy_owed_tiles],
+                                                    "colours that change as the game runs" => %i[background_colors
+                                                                                                color_list_holds],
+                                                    "layers see-through" => %i[see_through],
+                                                    "the picture" => %i[draw_column_at show_picture_group data_byte],
                                                     "the camera" => %i[camera],
                                                     "collision" => %i[pixels_overlap],
                                                     "fractions" => %i[mul_fix div_fix],
@@ -148,8 +152,16 @@ module VBlank
             @section_routines = {}
             @pictures = by_kind(:bitmap)
             prepare_paint
+            prepare_picture
             @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES,
                                     most_part_bytes: MOST_PART_BYTES) { |statements| bytes_of(statements) }
+          end
+
+          # How the program draws: :painted, :tiled (it has a background or a sprite) or :none.
+          def self.picture_of(program)
+            return :painted if Paint.painted?(program)
+
+            program.walk.any? { |node| %i[background object].include?(node.kind) } ? :tiled : :none
           end
 
           # How many words of the video chip's register table the cartridge's power-on writes
@@ -162,6 +174,9 @@ module VBlank
             refuse_unlowered_kinds!
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
+            refuse_unmade_picture!
+            assign_background_layers unless painted?
+            make_sprite_art
             (Reach.variables(@program) | loop_variables).each do |name|
               @variables[name] = @memory.reserve("the variable #{name.inspect}", 4)
             end
@@ -181,7 +196,9 @@ module VBlank
             timers = timer_sections
             @lowering_scene = nil
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
-            [data_section, video_registers_section, *table_sections, *routines, *timers, *main, *paint_sections]
+            placings = sprite_placing_sections
+            [data_section, video_registers_section, *table_sections, *routines, *timers, *main, *placings,
+             *paint_sections, *art_sections]
           end
 
           private
@@ -234,10 +251,20 @@ module VBlank
              [Console::GenesisHardware::REG_WINDOW_Y, 0]]
           )
 
+          # The planes' size, as the register says it: a tiled screen's own, and for any other the 64 across
+          # and 32 down a painted screen's map is laid out in (Runtime::Paint).
+          def plane_size_register
+            return 0x01 unless tiled?
+
+            columns, rows = plane_size
+            (columns == 64 ? 0x01 : 0x00) | (rows == 64 ? 0x10 : 0x00)
+          end
+
           def video_registers_section
             asm = M68000.new("video registers")
             asm.label("rt_vdp_registers")
             words = VIDEO_REGISTERS.map do |register, value|
+              value = plane_size_register if register == Console::GenesisHardware::REG_PLANE_SIZE
               Console::GenesisHardware::VDP_REGISTER | (register << 8) | value
             end
             asm.data_words(words)
@@ -378,11 +405,11 @@ module VBlank
           # The objects the lowering adds to as it makes a statement, besides its own lists and tables:
           # the work RAM it reserves and the pictures and colours it gathers. Each is copied all the way down
           # to be measured on.
-          COPIED_WHEN_MEASURING = [Memory, PaintedArt].freeze
+          COPIED_WHEN_MEASURING = [Memory, PaintedArt, Art].freeze
 
           # What the lowering only reads while it makes a statement, shared as it is: numbers, names,
           # the program and what is worked out from it before any statement is made.
-          SHARED_WHEN_MEASURING = [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
+          SHARED_WHEN_MEASURING = [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, SpriteNames,
                                    M68000, RoutineCuts::PartCall, LoweringPlan].freeze
 
           # What the lowering keeps that making a statement never changes, shared as it is: the

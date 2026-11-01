@@ -5,6 +5,7 @@ require_relative "runtime/int32"
 require_relative "runtime/frame"
 require_relative "runtime/lists"
 require_relative "runtime/paint"
+require_relative "runtime/tiles"
 require_relative "runtime/picture"
 
 module VBlank
@@ -23,18 +24,19 @@ module VBlank
           module_function
 
           # The runtime's own places in work RAM, asked for before the game's.
-          def reserve(memory, painted: false)
+          def reserve(memory, picture: :none)
             Frame.reserve(memory)
-            Picture.reserve(memory, painted: painted)
+            Picture.reserve(memory, picture: picture)
           end
 
           # The runtime's sections: the vectors' entry points first, then everything else in one.
           # +main+ is the label of the game's main routine; +frame_begins+ the label of the game's
           # routine run at each frame boundary (its timers moving on), or nil for none.
-          # +painted+ is for a game whose screen is painted (Paint), which carries what paints it.
+          # +picture+ is how the game draws (Picture), :painted, :tiled or :none, which carries what it
+          # draws with, and +columns+ how many cells across the planes of a tiled one are.
           # +registers+ is how many words of the video chip's register table the game writes
           # ("rt_vdp_registers", which the lowering makes).
-          def sections(memory, main:, registers:, frame_begins: nil, painted: false)
+          def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -42,7 +44,7 @@ module VBlank
             Int32.emit(asm)
             Frame.emit(asm, memory)
             Lists.emit(asm, memory)
-            Picture.emit(asm, memory, painted: painted)
+            Picture.emit(asm, memory, picture: picture, columns: columns)
             emit_start(asm)
             emit_frame_begins(asm, frame_begins)
             [entry.section, asm.section]

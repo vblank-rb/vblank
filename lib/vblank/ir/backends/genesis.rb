@@ -16,8 +16,10 @@ end
 require_relative "genesis/m68000"
 require_relative "genesis/linker"
 require_relative "genesis/memory"
-require_relative "genesis/runtime"
+require_relative "genesis/art"
 require_relative "genesis/painted_art"
+require_relative "genesis/runtime"
+require_relative "genesis/lowering/picture"
 require_relative "genesis/lowering/paint"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
@@ -54,16 +56,17 @@ module VBlank
         # +program+ as a cartridge (Cartridge::GenesisROM), carrying its Places.
         def build(program, title: "VBLANK")
           memory = Memory.new
-          painted = Lowering::Paint.painted?(program)
-          Runtime.reserve(memory, painted: painted)
+          picture = Lowering.picture_of(program)
+          Runtime.reserve(memory, picture: picture)
           lowering = Lowering.new(program, memory: memory)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
-                                             frame_begins: lowering.frame_begins, painted: painted)
+                                             frame_begins: lowering.frame_begins, picture: picture,
+                                             columns: lowering.plane_size.first)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
-                             source_program: program, code: linked.places, sprite_picture_names: {},
+                             source_program: program, code: linked.places, sprite_picture_names: picture == :tiled ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked))
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
         end
@@ -71,9 +74,9 @@ module VBlank
         private
 
         # How many bytes of the cartridge are code and how many are data: the sections that hold the
-        # game's tables and pictures (Lowering::DATA) are data, and the rest code.
+        # game's tables and pictures (Lowering::DATA and Lowering::ART) are data, and the rest code.
         def byte_counts(linked)
-          data, code = linked.sections.values.partition { |placed| placed.section.holds == Lowering::DATA }
+          data, code = linked.sections.values.partition { |placed| [Lowering::DATA, Lowering::ART].include?(placed.section.holds) }
           { code: code.sum { |placed| placed.section.size }, data: data.sum { |placed| placed.section.size } }
         end
 

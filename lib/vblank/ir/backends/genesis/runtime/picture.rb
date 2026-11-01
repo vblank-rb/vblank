@@ -11,16 +11,19 @@ module VBlank
           module Picture
             module_function
 
-            def reserve(memory, painted: false)
-              Paint.reserve(memory) if painted
+            # +picture+ is how the game draws: :painted (Paint), :tiled (Tiles), or :none.
+            def reserve(memory, picture: :none)
+              Paint.reserve(memory) if picture == :painted
+              Tiles.reserve(memory) if picture == :tiled
             end
 
             # The routines every cartridge carries, whatever the game draws: what the wait calls
             # before it shows a pass, which for a game that draws nothing is nothing, the copy of a
             # pass's changes, the whole copy and the screen switched on.
-            def emit(asm, memory, painted: false)
-              if painted
-                Paint.emit(asm, memory)
+            def emit(asm, memory, picture: :none, columns: 32)
+              case picture
+              when :painted then Paint.emit(asm, memory)
+              when :tiled then Tiles.emit(asm, memory, columns: columns)
               else
                 asm.label("rt_picture_start")
                 asm.rts

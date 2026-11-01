@@ -69,6 +69,10 @@
       "code": 4488,
       "data": 0
     },
+    "fonts@genesis": {
+      "code": 3160,
+      "data": 826
+    },
     "grid_cursor": {
       "code": 6804,
       "data": 0
@@ -93,9 +97,17 @@
       "code": 4004,
       "data": 0
     },
+    "level@genesis": {
+      "code": 4456,
+      "data": 2370
+    },
     "maze": {
       "code": 3348,
       "data": 0
+    },
+    "maze@genesis": {
+      "code": 3922,
+      "data": 2096
     },
     "meadow": {
       "code": 32908,
@@ -112,6 +124,10 @@
     "parallax": {
       "code": 2092,
       "data": 0
+    },
+    "parallax@genesis": {
+      "code": 2714,
+      "data": 4448
     },
     "piano": {
       "code": 26420,
@@ -153,6 +169,10 @@
       "code": 2348,
       "data": 0
     },
+    "scroll@genesis": {
+      "code": 2722,
+      "data": 8472
+    },
     "sheet": {
       "code": 4004,
       "data": 0
@@ -184,6 +204,10 @@
     "tiles": {
       "code": 7848,
       "data": 0
+    },
+    "tiles@genesis": {
+      "code": 3044,
+      "data": 2776
     },
     "tower": {
       "code": 15676,
