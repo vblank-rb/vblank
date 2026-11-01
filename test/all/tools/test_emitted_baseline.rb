@@ -169,7 +169,8 @@ class TestEmittedBaseline < Minitest::Test
 
     advance = Emitted.examples.map { |path| File.basename(path, ".rb") }
     color = Emitted.color_examples.map { |path| "#{File.basename(path, '.rb')}#{Emitted::COLOR_MARK}" }
-    assert_equal (advance + color).sort, recorded.keys.sort,
+    genesis = Emitted.genesis_examples.map { |path| "#{File.basename(path, '.rb')}#{Emitted::GENESIS_MARK}" }
+    assert_equal (advance + color + genesis).sort, recorded.keys.sort,
                  "the baseline and the examples have drifted apart — run rake emitted:record"
   end
 end

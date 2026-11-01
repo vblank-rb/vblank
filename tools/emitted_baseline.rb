@@ -60,6 +60,9 @@ module Emitted
           if name.end_with?(COLOR_MARK)
             parts << growth("always in view", then_[:code], now[:code], :bytes)
             parts << growth("in the banks", then_[:data], now[:data], :bytes)
+          elsif name.end_with?(GENESIS_MARK)
+            parts << growth("code", then_[:code], now[:code], :bytes)
+            parts << growth("data", then_[:data], now[:data], :bytes)
           else
             parts << growth("code", then_[:code], now[:code], :instructions)
             parts << growth("data", then_[:data], now[:data], :bytes)
@@ -128,10 +131,12 @@ module Emitted
     # `rake emitted` measures with, so a recorded number is the number it reports.
     #
     # Each Color cartridge beside them, named <example>@gbc, since what the Color's lowering
-    # emits grows on its own, and a game there stops building when the part always in view fills.
+    # emits grows on its own, and a game there stops building when the part always in view fills. And
+    # each Genesis cartridge, <example>@genesis, for the same reason: its lowering grows on its own.
     def current
       lib = File.join(ROOT, "lib")
       Emitted.measure(lib, Emitted.examples).merge(Emitted.measure_color(lib, Emitted.color_examples))
+                                            .merge(Emitted.measure_genesis(lib, Emitted.genesis_examples))
     end
 
     def sizes(measurements)

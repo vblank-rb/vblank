@@ -69,6 +69,10 @@
       "code": 6804,
       "data": 0
     },
+    "grid_cursor@genesis": {
+      "code": 3710,
+      "data": 44
+    },
     "hero": {
       "code": 80400,
       "data": 0
@@ -112,6 +116,10 @@
     "pixels": {
       "code": 96268,
       "data": 0
+    },
+    "pixels@genesis": {
+      "code": 3456,
+      "data": 44
     },
     "pong": {
       "code": 43944,

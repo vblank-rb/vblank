@@ -37,9 +37,13 @@ module Emitted
   ROOT = Ractor.make_shareable(VBlank.root.to_s)
   PROBE = File.join(__dir__, "emitted_probe.rb").freeze
   COLOR_PROBE = File.join(__dir__, "emitted_color_probe.rb").freeze
+  GENESIS_PROBE = File.join(__dir__, "emitted_genesis_probe.rb").freeze
 
   # What ends the name of an example's Color cartridge in the baseline.
   COLOR_MARK = "@gbc"
+
+  # ...and of its Sega Genesis cartridge.
+  GENESIS_MARK = "@genesis"
 
   # Which Ruby to launch, asked once. Asking reads Ruby's own table of how it was built,
   # which a worker Ractor may not touch.
@@ -163,6 +167,11 @@ module Emitted
     Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bgbc\b/) }
   end
 
+  # The examples that say they are for the Sega Genesis, as absolute paths.
+  def genesis_examples
+    Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bgenesis\b/) }
+  end
+
   # Build every example against the library at +lib_root+, one process each.
   def measure(lib_root, paths, detail: false)
     paths.to_h { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }
@@ -174,6 +183,16 @@ module Emitted
     paths.to_h do |path|
       name = "#{File.basename(path, '.rb')}#{COLOR_MARK}"
       stdout, stderr, status = Open3.capture3(RUBY, COLOR_PROBE, lib_root, ROOT, path, chdir: ROOT)
+      [name, measurement(name, stdout, stderr, status)]
+    end
+  end
+
+  # Each example's Genesis cartridge, named apart from its Advance one: +code+ the bytes the processor
+  # runs, +data+ the bytes it only reads (tools/emitted_genesis_probe.rb).
+  def measure_genesis(lib_root, paths)
+    paths.to_h do |path|
+      name = "#{File.basename(path, '.rb')}#{GENESIS_MARK}"
+      stdout, stderr, status = Open3.capture3(RUBY, GENESIS_PROBE, lib_root, ROOT, path, chdir: ROOT)
       [name, measurement(name, stdout, stderr, status)]
     end
   end

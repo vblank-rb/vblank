@@ -5,18 +5,19 @@
 # under it, and a marker in each corner.
 #
 # Everything is placed from the screen's own size (`screen_width`, `screen_height`), so the
-# same picture comes out right on the Game Boy Advance's 240x160 screen and the Super
-# Nintendo's 256x224: the flag stays in the middle and the markers stay in the corners.
+# same picture comes out right on the Game Boy Advance's 240x160 screen, the Super Nintendo's
+# 256x224 and the Genesis's 320x224: the flag stays in the middle and the markers stay in the
+# corners.
 #
 # Usage:
 #   ruby examples/pixels.rb
 #
 # Output:
-#   examples/pixels.gba and examples/pixels.sfc
+#   examples/pixels.gba, examples/pixels.sfc and examples/pixels.gen
 
 require_relative "../lib/vblank"
 
-Pixels = VBlank.game("RUBYGBA", consoles: %i[gba snes]) do
+Pixels = VBlank.game("RUBYGBA", consoles: %i[gba snes genesis]) do
   screen :bitmap
 
   # Draw an Italian flag in the center of the screen
