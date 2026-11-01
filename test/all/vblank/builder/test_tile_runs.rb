@@ -255,6 +255,43 @@ class TestTileRuns < Minitest::Test
   # sprite stands is settled in the gap, and moves on the frame after — as on the cartridge
   # the Minish Cap port was measured against, where the letter is written straight into video
   # memory and the sprite table goes out at the next frame.
+  # A sprite drawn with another list of colours shows a painted picture on the same frame as one
+  # that is not: the list is chosen as the sprites are placed, and its colours are found for the
+  # picture as it stands when it is painted.
+  def test_a_letter_typed_on_a_sprite_drawn_with_another_list_shows_on_that_frame
+    plain = letter_typed_on_frame_three(other_list: false)
+    listed = letter_typed_on_frame_three(other_list: true)
+    first_white = lambda do |program|
+      (1..6).find { |frames| game_player.run(program, frames: frames).screen.pixel(40, 20) == WHITE }
+    end
+
+    assert_equal first_white.call(plain), first_white.call(listed)
+    [3, 4].each { |frames| assert_backends_agree(listed, frames: frames) }
+  end
+
+  private def letter_typed_on_frame_three(other_list:)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      colors :ink, %i[transparent white]
+      colors :other_ink, %i[transparent white]
+      canvas = list :canvas, capacity: 32, width: :byte, full_of: 0
+      letter = image :letter, from: canvas, width: 8, height: 8, colors: :ink
+      tag = sprite :letter, at: [40, 20]
+      frame = 0
+      game_loop do
+        tag.draw_with :other_ink if other_list
+        frame += 1
+        if frame == 3
+          canvas[0] = 0x01
+          letter.changed now: true
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   def test_a_letter_typed_on_a_press_shows_before_the_sprite_moves
     b = Builder.new
     b.instance_eval do

@@ -2512,12 +2512,13 @@ module VBlank
         def paint_snapshot_object(obj)
           return paint_object_in_blocks(obj) if in_blocks?(obj[:name])
 
+          recolor = recolor_of_picture(obj[:image], obj[:color_list])
           if obj[:transform]
             return blit_image_transformed(obj[:image], obj[:x], obj[:y], *obj[:transform],
-                                          scales: object_scales?(@objects.fetch(obj[:name])), recolor: obj[:recolor])
+                                          scales: object_scales?(@objects.fetch(obj[:name])), recolor: recolor)
           end
 
-          blit_image(obj[:image], obj[:x], obj[:y], recolor: obj[:recolor])
+          blit_image(obj[:image], obj[:x], obj[:y], recolor: recolor)
         end
 
         # ONE SPRITE IN BLOCKS, while the picture is shown in them (see SpriteBlocks, which
@@ -2526,7 +2527,7 @@ module VBlank
           blocks = SpriteBlocks.new(@screen, @block)
           name = obj[:image]
           bmp = @bitmaps.fetch(name)
-          color_at = picture_reader(name, obj[:recolor])
+          color_at = picture_reader(name, recolor_of_picture(name, obj[:color_list]))
           unless obj[:transform]
             declared = @objects.fetch(obj[:name])
             boxes = object_boxes(declared).fetch(declared.poses.index(name))
@@ -2696,7 +2697,11 @@ module VBlank
         # THE COLOURS AN OBJECT IS DRAWN IN THIS FRAME, when it is told to draw with another
         # list: each place of the picture's own list shows the colour at the same place of
         # that list. nil draws the picture as it is stored.
-        def object_recolor(obj, image)
+        def object_recolor(obj, image) = recolor_of_picture(image, object_color_list(obj))
+
+        # The list of colours an object is told to draw with now, or nil for none. This is chosen
+        # where the sprites are placed, since a game can change the number later in the pass.
+        def object_color_list(obj)
           lists = obj.recolors
           return nil if lists.empty?
 
@@ -2704,7 +2709,15 @@ module VBlank
           return nil unless which >= 0 && which < lists.length
 
           swapped = lists[which]
-          swapped = colors_held_by(swapped) if swapped.is_a?(Symbol)
+          swapped.is_a?(Symbol) ? colors_held_by(swapped) : swapped
+        end
+
+        # +image+ as it stands drawn in the colours +swapped+. Worked out when it is painted, not
+        # kept from when the list was chosen: a picture painted from a list can have changed
+        # between the two, and is shown as it now is.
+        def recolor_of_picture(image, swapped)
+          return nil unless swapped
+
           @recolor_maps[[image, swapped]] ||= Assets::Recolor.of(@bitmaps.fetch(image), swapped)
         end
 
@@ -2801,7 +2814,7 @@ module VBlank
             obj = on[:object]
             image = on[:picture]
             snap = { name: obj.name, image: image, x: on[:x], y: on[:y],
-                     level: object_level(obj), recolor: object_recolor(obj, image) }
+                     level: object_level(obj), color_list: object_color_list(obj) }
             snap[:transform] = object_transform(obj) if object_transformed?(obj)
             snap
           end
