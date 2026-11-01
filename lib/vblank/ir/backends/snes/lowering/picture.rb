@@ -448,6 +448,12 @@ module VBlank
             # The layers bent, in #bends' order, whose line tables the runtime makes.
             def bent_layers = painted? ? [] : bends.map { |bend| layer_of(background_declared_for(bend)) }.uniq
 
+            # Whether the game's bends are kept as a step for each band (Runtime::Picture, "A bend that
+            # says a thing about whole bands of rows"): every bend has bands, few enough to keep.
+            def bends_by_bands?
+              bend_bands.all? && bend_bands.all? { |firsts| band_steps(firsts).sum(&:length) <= Runtime::Picture::MOST_BAND_STEPS }
+            end
+
             # BGMODE'S SIZE BITS for the layers drawn from 16×16 tiles: BG1's is bit 4, BG2's bit 5. The
             # console is told once, at power-on, so a layer that shows a background of 16×16 tiles in
             # one scene and one of 8×8 in another is not made yet.
@@ -978,13 +984,60 @@ module VBlank
             # Only the rows of one whose scene is up are kept: a layer has one set of rows, and
             # another scene's bend may share the layer.
             def emit_bends
-              bands = bends.map { |bend| RowBands.firsts(bend, Runtime::Picture::SCREEN_HEIGHT) }
+              bands = bend_bands
               height = Runtime::Picture::SCREEN_HEIGHT
-              if bands.all?
+              if bends_by_bands?
+                bends.zip(bands).each { |bend, firsts| emit_bend_rows_unless_away(bend, height) { emit_bend_steps(bend, firsts) } }
+              elsif bands.all?
                 bends.zip(bands).each { |bend, firsts| emit_bend_rows_unless_away(bend, height) { emit_bend_bands(bend, firsts) } }
               else
                 bends.each { |bend| emit_bend_rows_unless_away(bend, 1) { emit_bend_rows(bend, 0...1) } }
                 bends.each { |bend| emit_bend_rows_unless_away(bend, height) { emit_bend_rows(bend, 1...height) } }
+              end
+            end
+
+            # Each bend's bands, as the first row of each, or nil for a bend asked every row.
+            def bend_bands
+              @bend_bands ||= bends.map { |bend| RowBands.firsts(bend, Runtime::Picture::SCREEN_HEIGHT) }
+            end
+
+            # Each band of +firsts+ as the lines of its steps. A step counts so many lines at most.
+            def band_steps(firsts)
+              firsts.zip(firsts.drop(1) + [Runtime::Picture::SCREEN_HEIGHT]).map do |first, past|
+                whole, rest = (past - first).divmod(Runtime::Picture::MOST_STEP_LINES)
+                Array.new(whole, Runtime::Picture::MOST_STEP_LINES) + (rest.zero? ? [] : [rest])
+              end
+            end
+
+            # Each band of +bend+ from its first row, kept as its steps, and lines of nought after.
+            def emit_bend_steps(bend, firsts)
+              offsets = @memory[Runtime::Picture.bend_offsets(layer_of(background_declared_for(bend)))]
+              at = offsets
+              firsts.zip(band_steps(firsts)).each do |first, steps|
+                statement(Build.set(bend.row, first))
+                bend.children.each { |child| statement(child) }
+                value(bend.offset)
+                from = at
+                emit_row_store_while_up(bend) { emit_stores_of_steps(steps, from) }
+                at += steps.length * Runtime::Picture::BAND_STEP_BYTES
+              end
+              statement(Build.set(bend.row, Runtime::Picture::SCREEN_HEIGHT))
+              emit_row_store_while_up(bend) do
+                @asm.ldx(0)
+                @asm.lda(0)
+                @asm.sta(@asm.long_x(at))
+              end
+            end
+
+            # The steps of +lines+, each holding the offset in R0, from +at+.
+            def emit_stores_of_steps(lines, at)
+              @asm.ldx(0)
+              lines.each_with_index do |count, step|
+                place = at + (step * Runtime::Picture::BAND_STEP_BYTES)
+                @asm.lda(count)
+                @asm.sta(@asm.long_x(place))
+                @asm.lda(@asm.direct(R0))
+                @asm.sta(@asm.long_x(place + 2))
               end
             end
 

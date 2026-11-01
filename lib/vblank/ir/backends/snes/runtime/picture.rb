@@ -141,6 +141,13 @@ module VBlank
             BEND_STEP_LINES = SCREEN_HEIGHT / 2
             REPEAT = 0x80 # a step's count with this bit: a new value on every line of it
             BEND_TABLE_BYTES = 1 + (BEND_STEP_LINES * 2) + 1 + (BEND_STEP_LINES * 2) + 1
+            # A BEND THAT SAYS A THING ABOUT WHOLE BANDS OF ROWS needs no value for every line. A step
+            # with no REPEAT bit writes the register once and leaves it for as many lines as it counts,
+            # so such a layer's table is a step for each band, three bytes where the other is 450.
+            # Its rows hold those steps in place of a word a row: each step BAND_STEP_BYTES, the lines
+            # and then the offset, and lines of nought after the last.
+            BAND_STEP_BYTES = 4
+            MOST_BAND_STEPS = (SCREEN_HEIGHT * 2 / BAND_STEP_BYTES) - 1
             BEND_CHANNELS = [2, 3].freeze
             # Where a run's tiles are made in the console's form, and which runs are owed a copy to
             # video RAM in the next blank (a word each). The lowering's table "art tile runs" says,
@@ -203,7 +210,8 @@ module VBlank
             # sixth number then (Lowering::Picture#sprite_depths). +big_tiles+ is BGMODE's size bits for the
             # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers). +sprite_squares+ for a
             # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
-            def emit(asm, memory, work:, painted: false, bar: false, bent: [], tile_runs: 0, run_scratch: nil,
+            # +banded+ says the game's bends are kept as steps (Lowering::Picture#bends_by_bands?).
+            def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
                      math_turns: false, scene_bars: false)
               emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns)
@@ -211,7 +219,7 @@ module VBlank
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
               emit_backgrounds(asm, memory, work)
               emit_bar(asm, memory, scene_bars: scene_bars) if bar
-              emit_bends_prepare(asm, memory, work, bent) unless bent.empty?
+              emit_bends_prepare(asm, memory, work, bent, banded) unless bent.empty?
               emit_tile_run_copy(asm, memory, run_scratch) if tile_runs.positive?
               emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns, scene_bars)
               asm.label("rt_picture_prepare")
@@ -843,7 +851,7 @@ module VBlank
             # BENDS. rt_bends_prepare (JSL, as a pass ends): for each layer in +bent+, the line table
             # the channel is not reading made from the layer's rows and its scroll across: +work+ is
             # the table's place (three bytes and a spare) and the lines left of a step.
-            def emit_bends_prepare(asm, memory, work, bent)
+            def emit_bends_prepare(asm, memory, work, bent, banded)
               layers = memory[LAYERS]
               asm.label("rt_bends_prepare")
               bent.each do |layer|
@@ -866,25 +874,11 @@ module VBlank
                 asm.sta(asm.direct(work + 2))
                 asm.ldy(0)
                 asm.ldx(0)
-                2.times do |step|
-                  asm.sep(0x20)
-                  asm.lda(REPEAT | BEND_STEP_LINES)
-                  asm.sta(asm.ind_long_y(work))
-                  asm.rep(0x20)
-                  asm.iny
-                  asm.lda(BEND_STEP_LINES)
-                  asm.sta(asm.direct(work + 4))
-                  asm.label("#{tag}_line_#{step}")
-                  asm.lda(asm.long_x(offsets))
-                  asm.clc
-                  asm.adc(asm.abs(layers + (layer * LAYER_STATE_BYTES) + LAYER_SCROLL_X))
-                  asm.sta(asm.ind_long_y(work))
-                  asm.iny
-                  asm.iny
-                  asm.inx
-                  asm.inx
-                  asm.dec(asm.direct(work + 4))
-                  asm.bne("#{tag}_line_#{step}")
+                scroll = asm.abs(layers + (layer * LAYER_STATE_BYTES) + LAYER_SCROLL_X)
+                if banded
+                  emit_band_steps(asm, work, offsets, scroll, tag)
+                else
+                  emit_line_steps(asm, work, offsets, scroll, tag)
                 end
                 asm.sep(0x20)
                 asm.lda(0) # the end of the table
@@ -893,6 +887,50 @@ module VBlank
                 asm.label("#{tag}_done")
               end
               asm.rtl
+            end
+
+            # A value for every line, two steps of them, from a word a row.
+            def emit_line_steps(asm, work, offsets, scroll, tag)
+              2.times do |step|
+                asm.sep(0x20)
+                asm.lda(REPEAT | BEND_STEP_LINES)
+                asm.sta(asm.ind_long_y(work))
+                asm.rep(0x20)
+                asm.iny
+                asm.lda(BEND_STEP_LINES)
+                asm.sta(asm.direct(work + 4))
+                asm.label("#{tag}_line_#{step}")
+                asm.lda(asm.long_x(offsets))
+                asm.clc
+                asm.adc(scroll)
+                asm.sta(asm.ind_long_y(work))
+                asm.iny
+                asm.iny
+                asm.inx
+                asm.inx
+                asm.dec(asm.direct(work + 4))
+                asm.bne("#{tag}_line_#{step}")
+              end
+            end
+
+            # A step for each band, from the steps the game kept.
+            def emit_band_steps(asm, work, offsets, scroll, tag)
+              asm.label("#{tag}_band")
+              asm.lda(asm.long_x(offsets))
+              asm.beq("#{tag}_bands_done")
+              asm.sep(0x20)
+              asm.sta(asm.ind_long_y(work))
+              asm.rep(0x20)
+              asm.iny
+              asm.lda(asm.long_x(offsets + 2))
+              asm.clc
+              asm.adc(scroll)
+              asm.sta(asm.ind_long_y(work))
+              asm.iny
+              asm.iny
+              BAND_STEP_BYTES.times { asm.inx }
+              asm.bra("#{tag}_band")
+              asm.label("#{tag}_bands_done")
             end
 
             # On to +past+ while +layer+'s rows are straight (LAYERS_STRAIGHT), in a game that has

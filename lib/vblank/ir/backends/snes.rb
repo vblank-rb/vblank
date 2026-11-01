@@ -147,7 +147,7 @@ module VBlank
                                              music_level_at: (lowering.variables.fetch(IR::Tunes::LEVEL) if follows_level),
                                              effects: effects, recordings: lowering.sound_recordings,
                                              plays: (lowering.recordings_section if samples), bar: bar,
-                                             bent: lowering.bent_layers, tile_runs: tile_runs.length,
+                                             bent: lowering.bent_layers, banded: lowering.bends_by_bands?, tile_runs: tile_runs.length,
                                              see_through: lowering.see_through_layers, big_tiles: lowering.big_tile_layers,
                                              recorded_parts: songs && lowering.recorded_parts?,
                                              colors_shown: lowering.colors_shown,
