@@ -21,6 +21,7 @@ require_relative "genesis/painted_art"
 require_relative "genesis/runtime"
 require_relative "genesis/lowering/picture"
 require_relative "genesis/lowering/paint"
+require_relative "genesis/lowering/collision"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
 require_relative "genesis/checked_run"
@@ -62,7 +63,7 @@ module VBlank
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
-                                             columns: lowering.plane_size.first)
+                                             columns: lowering.plane_size.first, collision: lowering.collides?)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

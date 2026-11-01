@@ -38,6 +38,7 @@ module VBlank
 
           include Paint
           include Picture
+          include Collision
 
           STATEMENTS = Ractor.make_shareable({
                                                program: :emit_children, set: :emit_set, add: :emit_add,
@@ -72,7 +73,7 @@ module VBlank
                                            pressed: :value_of_pressed, list_get: :value_of_list_get,
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
                                            timer_ticks: :value_of_timer_ticks, chance: :value_of_chance
-                                         })
+                                         }.merge(Collision::VALUES))
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
           # day the Genesis does it; test_genesis_kind_coverage.rb holds the list and the tables above
@@ -86,7 +87,6 @@ module VBlank
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at show_picture_group data_byte],
                                                     "the camera" => %i[camera],
-                                                    "collision" => %i[pixels_overlap],
                                                     "fractions" => %i[mul_fix div_fix],
                                                     "save memory" => %i[save_init save_store save_write save_erase
                                                                         save_read save_sum],
@@ -152,6 +152,7 @@ module VBlank
             @pictures = by_kind(:bitmap)
             prepare_paint
             prepare_picture
+            prepare_collision
             @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES,
                                     most_part_bytes: MOST_PART_BYTES) { |statements| bytes_of(statements) }
           end
@@ -202,7 +203,7 @@ module VBlank
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             placings = sprite_placing_sections
             [data_section, video_registers_section, *table_sections, *routines, *timers, *main, *placings,
-             *paint_sections, *art_sections]
+             *paint_sections, *art_sections, *collision_sections]
           end
 
           private
