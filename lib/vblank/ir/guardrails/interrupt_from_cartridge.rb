@@ -34,7 +34,7 @@ module VBlank
           end
 
           def detect(_program)
-            over = @placement&.passed_over&.find { |o| o.name == Backends::GBA::Placement::IRQ_ROUTINE } or return []
+            over = @placement&.passed_over&.find { |o| o.name == Cartridge::BuildRecord::IRQ_ROUTINE } or return []
             taken = insisted_in_its_share(over)
             return [] if taken.sum { |name| @placement.sizes.fetch(name, 0) } < over.bytes - over.room
 
@@ -52,7 +52,7 @@ module VBlank
 
           def message(over, taken)
             "One routine did not fit in the console's #{Messages::PlainWords::QUICK_MEMORY}. It is " \
-              "#{Messages::PlainWords.routine(Backends::GBA::Placement::IRQ_ROUTINE)}. It runs on every frame of " \
+              "#{Messages::PlainWords.routine(Cartridge::BuildRecord::IRQ_ROUTINE)}. It runs on every frame of " \
               "every screen. It needs #{kilobytes(over.bytes)}, and #{kilobytes(over.room)} was free when its turn " \
               "came. Before its turn, the build put in the routines that this game marks `fast: true`: " \
               "#{named(taken)}. So it runs from the cartridge, which is about two and a half times slower. Then the " \

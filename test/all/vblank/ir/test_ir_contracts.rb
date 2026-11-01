@@ -8,7 +8,6 @@ require "test_helper"
 # quietly drifting from it.
 class TestIRContracts < Minitest::Test
   Buttons = VBlank::IR::Buttons
-  Screen = VBlank::IR::Screen
 
   def test_the_button_vocabulary_is_every_button_of_any_console
     assert_equal %i[a b down l left r right select start up x y], Buttons::NAMES.sort
@@ -25,11 +24,10 @@ class TestIRContracts < Minitest::Test
   end
 
   def test_the_screen_size_has_a_single_source_of_truth
-    assert_equal 240, Screen::WIDTH
-    assert_equal 160, Screen::HEIGHT
+    advance = VBlank::Console::ADVANCE
+    assert_equal [240, 160], advance.screen_size
     # The GBA hardware constants are an alias for the contract, not a second copy.
-    assert_equal Screen::WIDTH, VBlank::Console::Hardware::SCREEN_WIDTH
-    assert_equal Screen::HEIGHT, VBlank::Console::Hardware::SCREEN_HEIGHT
+    assert_equal advance.screen_size, [VBlank::Console::Hardware::SCREEN_WIDTH, VBlank::Console::Hardware::SCREEN_HEIGHT]
   end
 
   # Before it plays a program, the interpreter's screen is the one a program that names no

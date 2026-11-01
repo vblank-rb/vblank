@@ -81,8 +81,8 @@ class TestFastCodePlacement < Minitest::Test
   private def console_pixels(program, **opts)
     rom = VBlank::Cartridge::ROM.assemble(GBA.new(**opts).lower(program), title: "PLACE", code: "PLC1", maker: "01")
     verifier = assert_emulator_loads_rom(rom, frames: 4)
-    height = VBlank::IR::Screen::HEIGHT
-    width = VBlank::IR::Screen::WIDTH
+    height = VBlank::Console::ADVANCE.screen_height
+    width = VBlank::Console::ADVANCE.screen_width
     (0...height).flat_map { |y| (0...width).map { |x| verifier.pixel_gba(x, y) } }
   end
 

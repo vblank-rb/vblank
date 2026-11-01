@@ -417,8 +417,8 @@ module VBlank
       # Screen
       # ========================================================================
 
-      # The GBA screen size, in pixels. IR::Screen says the same for every backend, and
-      # test_ir_contracts.rb holds the two to agreeing.
+      # The GBA screen size, in pixels. Console::ADVANCE says the same to everything but the
+      # Advance's own lowering, and test_ir_contracts.rb holds the two to agreeing.
       SCREEN_WIDTH  = 240
       SCREEN_HEIGHT = 160
     end

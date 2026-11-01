@@ -15,8 +15,8 @@ class TestIRGuardrailOffScreenDraw < Minitest::Test
 
   Guardrails = VBlank::IR::Guardrails
 
-  W = VBlank::IR::Screen::WIDTH  # 240
-  H = VBlank::IR::Screen::HEIGHT # 160
+  W = VBlank::Console::ADVANCE.screen_width  # 240
+  H = VBlank::Console::ADVANCE.screen_height # 160
 
   # The off-screen-draw warnings the checker raises for a program.
   private def off_screen_warnings(prog)

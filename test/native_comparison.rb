@@ -16,7 +16,7 @@ module NativeComparison
   Native = VBlank::IR::Backends::Native
   Reference = VBlank::IR::Backends::Reference
   Builder = VBlank::Builder
-  WIDTH = VBlank::IR::Screen::WIDTH
+  WIDTH = VBlank::Console::ADVANCE.screen_width
 
   # Buttons held the way a person holds them — one button through a run of frames at a time —
   # as the map of frame to buttons the comparisons take:

@@ -135,8 +135,8 @@ class TestOverlaps < Minitest::Test
     b.finalize_program
     screen = game_player.run(b.program).screen
 
-    fragments = (0...VBlank::IR::Screen::HEIGHT).sum do |y|
-      (0...VBlank::IR::Screen::WIDTH).count { |x| screen.pixel(x, y) == magenta }
+    fragments = (0...VBlank::Console::ADVANCE.screen_height).sum do |y|
+      (0...VBlank::Console::ADVANCE.screen_width).count { |x| screen.pixel(x, y) == magenta }
     end
     assert_equal 0, fragments, "the hidden coin should leave no fragment where the hero passed over it"
   end

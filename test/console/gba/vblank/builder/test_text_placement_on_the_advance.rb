@@ -11,7 +11,7 @@ class TestTextPlacementOnTheAdvance < Minitest::Test
 
   # "IM" in the demo font: 1 + a 1px gap + 5.
   IM_WIDE = 7
-  SCREEN = VBlank::IR::Screen::WIDTH
+  SCREEN = VBlank::Console::ADVANCE.screen_width
 
   # A proportional demo font, both glyphs 5 tall, each lighting its leftmost column in
   # every row — so "where does this glyph start" is one pixel to look at.

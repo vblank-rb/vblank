@@ -46,8 +46,8 @@ module VBlank
       # Where the picture lives on a direct-color bitmap screen, and how big it is. Each
       # pixel is one 16-bit color, rows top to bottom, and the display shows exactly this.
       FRAMEBUFFER = Console::Hardware::VRAM_START
-      WIDTH = IR::Screen::WIDTH
-      HEIGHT = IR::Screen::HEIGHT
+      WIDTH = Console::ADVANCE.screen_width
+      HEIGHT = Console::ADVANCE.screen_height
 
       # WHAT A RUN SAW. +rows+ is how many of the visible rows the display showed before the
       # game had finished them — 0 for a picture that held together. +first+ and +last+ are

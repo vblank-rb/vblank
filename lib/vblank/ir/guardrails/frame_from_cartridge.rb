@@ -65,7 +65,7 @@ module VBlank
           end
 
           def detect(program)
-            frame = Backends::GBA::Placement::FRAME_ROUTINE
+            frame = Cartridge::BuildRecord::FRAME_ROUTINE
             over = @placement&.passed_over&.find { |o| o.name == frame } or return []
             return [] if over.measured && over.measured.percent < LEAST_SHARE_WORTH_WARNING
 

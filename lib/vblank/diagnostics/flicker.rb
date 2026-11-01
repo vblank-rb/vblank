@@ -82,7 +82,7 @@ module VBlank
       # picture first in both snapshots. Which of the two the display happens to be showing
       # swaps every frame and does not matter here; what matters is that a picture is
       # compared against itself.
-      def read(before, after, width: IR::Screen::WIDTH)
+      def read(before, after, width: Console::ADVANCE.screen_width)
         first_a, second_a = before
         first_b, second_b = after
 

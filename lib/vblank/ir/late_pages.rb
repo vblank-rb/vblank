@@ -9,7 +9,8 @@ module VBlank
     # next break, which never tears but makes a frame that is a little late cost a whole one,
     # or be shown as soon as it is done, which is only as late as it really is but can tear —
     # the picture changes part way down. The game decides, per `screen`: a screen's +late+ is
-    # nil to wait, or the rows above which a late page is shown at once (ANY_ROW for anywhere).
+    # nil to wait, or the rows above which a late page is shown at once (the screen's height for
+    # anywhere, since every row of the picture is above that).
     #
     # WHAT LATE MEANS is the screen's +late_pace+: how many breaks a pass may take and be on
     # time, one for a game aiming at sixty pictures a second, two for one aiming at thirty. A
@@ -19,9 +20,6 @@ module VBlank
     # It says when a page is SHOWN, never what is on it, so a backend with no breaks between
     # pictures to miss draws exactly the same game and has nothing here to read.
     class LatePages
-      # Every row of the picture: a late page is shown at once wherever the picture has got to.
-      ANY_ROW = Screen::HEIGHT
-
       # The pictures a second a game can aim at, by the breaks a pass may take for each.
       PACES = { 60 => 1, 30 => 2, 20 => 3, 15 => 4 }.freeze
 

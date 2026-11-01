@@ -11,7 +11,7 @@ module TextPlacementGames
   # "IM" in the demo font: 1 + a 1px gap + 5. A fixed grid of the font's widest glyph
   # would call it 11 instead, which is what every assertion below can tell apart.
   IM_WIDE = 7
-  SCREEN = VBlank::IR::Screen::WIDTH
+  SCREEN = VBlank::Console::ADVANCE.screen_width
 
   # A proportional demo font, both glyphs 5 tall, each lighting its leftmost column in
   # every row — so "where does this glyph start" is one pixel to look at.

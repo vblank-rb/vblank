@@ -149,14 +149,14 @@ module VBlank
       end
 
       # The rows a late page may still be shown at once above, as the IR keeps them: nil to
-      # wait, IR::LatePages::ANY_ROW for :show_now, else the row the game named.
+      # wait, the screen's height for :show_now, since every row is above that, else the row the game named.
       private def resolve_late_pages(late, tear_free)
         return nil if late == :wait
         unless tear_free
           raise ArgumentError, "late: works only with `screen :bitmap, tear_free: true`. Only that screen keeps a " \
                                "finished page to show. To use late:, add tear_free: true."
         end
-        return IR::LatePages::ANY_ROW if late == :show_now
+        return console.screen_height if late == :show_now
         return late if late.is_a?(Integer) && (0...console.screen_height).cover?(late)
 
         raise ArgumentError, "late: #{late.inspect} is not a setting. Use :wait (the default), :show_now, or a " \
