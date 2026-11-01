@@ -263,9 +263,37 @@ module VBlank
             [[(CHANNEL_VOICES.fetch(channel) << 4) + SOURCE, Samples.source(shape, wave_for(frequency))]]
           end
 
-          # Where a [:voice ...] entry says its fade and its shape (IR::Tunes.voice_entry).
+          # A NOTE SLIDING: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide),
+          # the chip reading the recording for +shape+ when the slide has left the wave length of
+          # +was+, the count before. The note is not started again, so nothing else is written.
+          def slide_step(channel, count, was, shape)
+            frequency = slide_frequency(count)
+            wave = wave_for(frequency)
+            base = CHANNEL_VOICES.fetch(channel) << 4
+            pitch = pitch_for(frequency, wave)
+            [[base + PITCH_LOW, pitch & 0xFF], [base + PITCH_HIGH, pitch >> 8]] +
+              (wave == wave_for(slide_frequency(was)) ? [] : [[base + SOURCE, Samples.source(shape, wave)]])
+          end
+
+          # The Hz of a voice's pitch count.
+          def slide_frequency(count) = SQUARE_CLOCK / (VBlank::Audio::PitchSlide::COUNT_TOP - count)
+
+          # The pitch count of a +frequency+ Hz note.
+          def slide_count(frequency) = VBlank::Audio::PitchSlide::COUNT_TOP - (SQUARE_CLOCK / frequency).round
+
+          SQUARE_CLOCK = 131_072.0
+
+          # A SLIDE RUN OFF THE TOP: the voice silent at once. Only the envelope is written, since a
+          # key-off held would stay in a register the sound log has an answer for.
+          def slide_stop(channel)
+            base = CHANNEL_VOICES.fetch(channel) << 4
+            [[base + ADSR1, ADSR_OFF], [base + GAIN, 0]]
+          end
+
+          # Where a [:voice ...] entry says its fade, its slide and its shape (IR::Tunes.voice_entry).
           DUTY_OF_VOICE_ENTRY = 9
           FADE_OF_VOICE_ENTRY = 5
+          SLIDE_OF_VOICE_ENTRY = 6
 
           # GAIN's mode that climbs a step at a time, 32 of the envelope's 0x7FF at each.
           GAIN_RISES = 0xC0
@@ -594,7 +622,19 @@ module VBlank
                 held[register] = value.first
               end
             end
-            held
+            held.except(*slide_registers(entries))
+          end
+
+          # WHAT THE LOG CANNOT ANSWER FOR. A slide logs nothing as it moves, on the interpreter as on
+          # the Advance, whose voice does the moving. So while the last note of a channel slides,
+          # the registers the player moves it with have no expected value.
+          def slide_registers(entries)
+            entries.select { |entry| entry.first == :voice }.group_by { |entry| entry[1] }.flat_map do |channel, notes|
+              next [] unless VBlank::Audio::PitchSlide.moves?(notes.last[SLIDE_OF_VOICE_ENTRY])
+
+              base = CHANNEL_VOICES.fetch(channel) << 4
+              [base + PITCH_LOW, base + PITCH_HIGH, base + SOURCE, base + ADSR1, base + GAIN]
+            end
           end
         end
       end

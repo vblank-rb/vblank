@@ -46,7 +46,7 @@ module VBlank
           def reserve(memory, painted: false, chip: false, sound: false, songs: false, music_follows_level: false,
                       effects: 0, samples: false, bar: false, bends: false, tile_runs: [], holds_music: false,
                       changing_colors: false, dims: false, math_turns: false, bar_covers: false, wobbles: false,
-                      steps_shapes: false, swells: false)
+                      steps_shapes: false, swells: false, slides: false)
             Paint.reserve(memory, chip: chip) if painted
             Frame.reserve(memory)
             Picture.reserve(memory, bar: bar, bends: bends, tile_runs: tile_runs, math_turns: math_turns,
@@ -55,7 +55,7 @@ module VBlank
             Chip.reserve(memory) if chip
             Sound.reserve(memory) if sound
             Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
-                                  steps_shapes: steps_shapes, swells: swells) if songs
+                                  steps_shapes: steps_shapes, swells: swells, slides: slides) if songs
             Recordings.reserve(memory) if samples
           end
 

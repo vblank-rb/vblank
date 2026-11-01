@@ -272,6 +272,35 @@ class TestSNESSongs < Minitest::Test
     assert_includes (7 * 0x7F / 15)...0x7F, climbing_on.last, "the envelope climbing on from where it was held"
   end
 
+  # A NOTE THAT SLIDES. The sound chip has no slide, so the player walks the pitches worked out at
+  # build time. Going down it only slows; going up it runs off the top and the voice falls silent.
+  def test_a_note_sliding_down_falls_and_one_sliding_up_runs_out
+    falling = sliding_pitches(slide_down: :fast)
+    climbing = sliding_pitches(slide_up: :fast)
+
+    assert_operator falling[8], :<, falling[2], "the pitch falls as the note holds"
+    assert_operator climbing[4], :>, climbing[0], "the pitch climbs as the note holds"
+    dsp = SNES::CheckedRun.new.run(slide_game(slide_up: :fast).program(console: :snes), frames: 60).dsp_registers
+    assert_equal 0, dsp.getbyte(FIRST + ENVX), "and the voice has switched itself off, past the top"
+  end
+
+  private def slide_game(**slide)
+    VBlank.game("SLIDES", consoles: %i[gba snes]) do
+      enable_sound
+      song(:tune) { voice(:lead) { |v| v.note :C5, :whole, **slide } }
+      play_song :tune
+      game_loop {}
+    end
+  end
+
+  private def sliding_pitches(**slide)
+    program = slide_game(**slide).program(console: :snes)
+    (0..8).to_h do |frames|
+      dsp = SNES::CheckedRun.new.run(program, frames: frames + 1).dsp_registers
+      [frames, dsp.getbyte(FIRST + 2) | (dsp.getbyte(FIRST + 3) << 8)]
+    end
+  end
+
   # The wave part, after its rest, sounds again as the tune comes round (frame 12): its key-off
   # cleared before its key-on.
   def test_a_wave_part_sounds_again_after_its_rest

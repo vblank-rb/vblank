@@ -84,6 +84,38 @@ module VBlank
                              "square part can slide its notes. To fix this, give the slide to that part."
       end
 
+      # THE COUNT the voice keeps its pitch as, one past the highest there is. A step moves it by
+      # itself shifted right, and a step past the top is no pitch at all.
+      COUNT_TOP = 2048
+
+      # The count one step on from +count+, or nil past the top.
+      def stepped_from(count)
+        by = count >> shift
+        moved = direction == :down ? count - by : count + by
+        moved < COUNT_TOP ? moved : nil
+      end
+
+      # Does the voice switch itself off at +count+? It looks one step ahead, as a note starts and
+      # after every step, so the highest pitch a slide up reaches is never heard. A slide down never
+      # runs out.
+      def runs_out_from?(count) = direction == :up && shift.positive? && stepped_from(count).nil?
+
+      # The counts a note at +count+ moves through, a step at a time, at most +steps+ of them. A
+      # nil in place of a count is the voice switching itself off, and nothing follows it. For a
+      # console with no such circuit, which plays the steps itself.
+      def counts_from(count, steps)
+        return [nil] if runs_out_from?(count)
+
+        counts = []
+        while counts.size < steps
+          count = stepped_from(count)
+          counts << count
+          return counts if count.nil?
+          return counts << nil if runs_out_from?(count)
+        end
+        counts
+      end
+
       # The seven bits the voice's sweep register keeps it in: how many 128ths each step waits,
       # then 8 when it slides down, then the shift. Both consoles lay it out the same.
       EVERY_AT = 4

@@ -88,13 +88,18 @@ module VBlank
             SWELL_CEILING = "rt music swell ceiling"
             SWELL_NEEDS = "rt music swell needs"
             SWELL_GROUPS = "rt music swell groups"
+            # A NOTE THAT SLIDES (SNES::Music#slide_record), in a game with one: where in its record
+            # the next frame is, nought when no note slides. Only one voice slides, so one word.
+            SLIDE_CURSOR = "rt music slide cursor"
 
             module_function
 
             # +follows_level+ for a game that sets the music volume (SNES::Music.follows_level?);
             # +effects+ how many sound effects the game has (Effects).
-            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false)
+            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
+                        slides: false)
               memory.reserve(TUNE_HELD, 2) if holds
+              memory.reserve(SLIDE_CURSOR, 2) if slides
               if swells
                 [SWELL_RECORD, SWELL_VOLUME, SWELL_COUNTED, SWELL_RISING].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
                 [SWELL_AT, SWELL_CEILING, SWELL_NEEDS, SWELL_GROUPS].each { |name| memory.reserve(name, 2) }
@@ -131,6 +136,7 @@ module VBlank
               emit_wobbles(asm, at, memory) if wobbles?(memory)
               emit_shapes(asm, at, memory) if steps_shapes?(memory)
               emit_swells(asm, at, memory) if swells?(memory)
+              emit_slides(asm, at) if slides?(memory)
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
               emit_level(asm, at, memory, level_at) if level_at
@@ -149,6 +155,50 @@ module VBlank
 
             # Whether the game has a note that swells under the music volume (SWELL_RECORD).
             def swells?(memory) = memory.reserved?(SWELL_RECORD)
+
+            # Whether the game has a note that slides (SLIDE_CURSOR).
+            def slides?(memory) = memory.reserved?(SLIDE_CURSOR)
+
+            # rt_music_slides: the sliding note's frame played from its record, every frame the
+            # player runs, since on the Advance the voice moves by itself even under `hold_music`.
+            # rt_music_note_slide: the record of the note at NOTE taken up, or nothing, when the
+            # part at ENTRY plays on the one voice that slides.
+            def emit_slides(asm, at)
+              m = SNES::Music
+              asm.label("rt_music_slides")
+              asm.ldx(at.call(SLIDE_CURSOR))
+              asm.beq("rt_music_slides_done")
+              asm.lda(asm.long_x("music_data"))
+              asm.inx
+              asm.inx
+              asm.stx(at.call(SLIDE_CURSOR))
+              asm.cmp(m::SLIDE_END)
+              asm.beq("rt_music_slides_over")
+              asm.tax
+              asm.beq("rt_music_slides_done")
+              asm.jmp(asm.abs("rt_sound_group"))
+              asm.label("rt_music_slides_over")
+              asm.stz(at.call(SLIDE_CURSOR))
+              asm.label("rt_music_slides_done")
+              asm.rts
+
+              asm.label("rt_music_note_slide")
+              asm.ldx(at.call(ENTRY))
+              asm.lda(asm.long_x("music_data", m::CHANNEL))
+              asm.cmp(m::SLIDING_CHANNEL)
+              asm.bne("rt_music_note_slide_done")
+              asm.ldx(at.call(NOTE))
+              asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              asm.bit(m::SLIDES)
+              asm.bne("rt_music_note_slides")
+              asm.stz(at.call(SLIDE_CURSOR))
+              asm.rts
+              asm.label("rt_music_note_slides")
+              asm.lda(asm.long_x("music_data", m::NOTE_WOBBLE))
+              asm.sta(at.call(SLIDE_CURSOR))
+              asm.label("rt_music_note_slide_done")
+              asm.rts
+            end
 
             # rt_music_swells: every swelling note held under the music volume, the voices in order,
             # before the wobbles (Reference::Player#step_swells): struck where IR::Tunes::Swell#held_under
@@ -270,6 +320,13 @@ module VBlank
               asm.sta(record)
               asm.beq("rt_music_note_swell_done")
               asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              asm.bit(m::SLIDES)
+              asm.beq("rt_music_note_swell_counts")
+              # A note that slides is left to climb: striking it again would start its slide over.
+              asm.lda(0)
+              asm.sta(record)
+              asm.rts
+              asm.label("rt_music_note_swell_counts")
               asm.and_a(m::RINGS_ALONE - 1)
               asm.jsr(asm.abs("rt_music_scaled"))
               asm.sta(volume)
@@ -427,6 +484,16 @@ module VBlank
               asm.asl
               asm.tay
               asm.ldx(at.call(NOTE))
+              if slides?(memory)
+                # A note that slides does not wobble: the word is its slide's record.
+                asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+                asm.bit(m::SLIDES)
+                asm.beq("rt_music_note_wobble_says")
+                asm.lda(0)
+                asm.sta(asm.abs_y(memory[WOBBLE_RECORD]))
+                asm.rts
+                asm.label("rt_music_note_wobble_says")
+              end
               asm.lda(asm.long_x("music_data", m::NOTE_WOBBLE))
               asm.sta(asm.abs_y(memory[WOBBLE_RECORD]))
               asm.beq("rt_music_note_wobble_done")
@@ -535,6 +602,7 @@ module VBlank
               asm.label("rt_music_frame_played")
               asm.jsr(asm.abs("rt_sfx_below")) if sharing
               asm.jsr(asm.abs("rt_music_swells")) if swells?(memory)
+              asm.jsr(asm.abs("rt_music_slides")) if slides?(memory)
               asm.jsr(asm.abs("rt_music_wobbles")) if wobbles?(memory)
               asm.jsr(asm.abs("rt_music_shapes")) if steps_shapes?(memory)
               asm.rts
@@ -608,6 +676,7 @@ module VBlank
               SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[WOBBLE_RECORD], voice * 2)) } if wobbles?(memory)
               SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[SHAPE_RECORD], voice * 2)) } if steps_shapes?(memory)
               SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[SWELL_RECORD], voice * 2)) } if swells?(memory)
+              asm.stz(at.call(SLIDE_CURSOR)) if slides?(memory)
               if level_at
                 SNES::Music::PARTS.times do |p|
                   asm.stz(asm.abs(memory[HELD], p * 2))
@@ -735,6 +804,7 @@ module VBlank
               asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
               asm.jsr(asm.abs("rt_music_note_shapes")) if steps_shapes?(memory)
               asm.jsr(asm.abs("rt_music_note_swell")) if swells?(memory)
+              asm.jsr(asm.abs("rt_music_note_slide")) if slides?(memory)
               asm.label("rt_music_part_passed")
               asm.lda(at.call(PART))
               asm.asl

@@ -80,6 +80,7 @@ module VBlank
           NOTE_TAIL = 4
           NOTE_VOLUME = 6
           RINGS_ALONE = 0x100 # in a note's volume word: it fades by itself, and is not held for a new level
+          SLIDES = 0x200 # ...and it slides, so its NOTE_WOBBLE word is where its slide's record is
           NOTE_SOUNDS = 8
           NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
           NOTE_SWELL = 10 # the same word, on a console voice: where its swell's record is, nought for none
@@ -98,6 +99,8 @@ module VBlank
           SWELL_STARTS = 2
           SWELL_HOLDS = 34
           SWELL_ONWARDS = 66
+          SLIDE_END = 0xFFFF # ends a slide's record (#slide_record)
+          SLIDING_CHANNEL = 1 # the one voice that slides, a song's first square part
           COMMAND_FIRST = 2
           COMMAND_SECOND = 4
           COMMAND_BYTES = 6
@@ -159,15 +162,17 @@ module VBlank
           # Whether a note of +program+'s songs swells under a music volume, and so the player
           # counts along with the sound chip to stop it there (Runtime::Music's rt_music_swells).
           def self.swells_under_level?(program)
-            follows_level?(program) && any_note?(program) { |part, event| swell_held_under_level?(part, event) }
+            follows_level?(program) && any_note?(program) { |part, event| swells_on_console_voice?(part, event) }
           end
 
-          # Whether +event+ of +part+ is a note held at the music volume
-          # (Reference::Player#hold_swell_under_level): a square note or drum hit that swells, not sliding.
-          def self.swell_held_under_level?(part, event)
+          # Whether +event+ of +part+ is a square note or drum hit that swells by itself.
+          def self.swells_on_console_voice?(part, event)
             event[1].positive? && IR::Tunes.said_fade(part, event)&.swells_by_itself? &&
-              %i[square noise].include?(IR::Tunes.part_kind(part)) && !Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event))
+              %i[square noise].include?(IR::Tunes.part_kind(part))
           end
+
+          # Whether any note of +program+'s songs slides its pitch, and so the player walks its pitches.
+          def self.slides?(program) = any_note?(program) { |part, event| Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event)) }
 
           def self.any_note?(program)
             program.walk.select { |node| node.kind == :song }.any? do |song|
@@ -240,6 +245,7 @@ module VBlank
             @wobble_records = [] # every wobble's record, each once
             @shape_records = [] # every note's shapes' record, each once
             @swell_records = [] # every swell's record, each once
+            @slide_records = [] # every slide's record, each once
             # A tune stopping logs its own stop (Music.stop_entry); the voices it lets go of are worked
             # out as it stops, since a sound effect may hold some of them (Runtime::Music's rt_music_quiet).
             tunes = @songs.map do |song|
@@ -265,6 +271,10 @@ module VBlank
             @swell_records.each do |record|
               places[record] = table.size * 2
               table.concat([record.first, *record.drop(1).map { |commands| places.fetch(commands) }])
+            end
+            @slide_records.each do |record|
+              places[record] = table.size * 2
+              table.concat(record.map { |commands| commands ? places.fetch(commands) : 0 } << SLIDE_END)
             end
             lay_out_lists(table, LISTS_AT, @lists.map { |list| list.songs.map { |name| number(name) } })
             table[SONGS_AT / 2] = table.size * 2
@@ -367,9 +377,10 @@ module VBlank
 
           # A note's words: its frame, its two groups' places, its volume as written, whether it sounds.
           def note_words(note, places)
-            frame, head, tail, written, sounds, recording, wobble, shapes, swell = note
+            frame, head, tail, written, sounds, recording, wobble, shapes, swell, slide = note
+            pitches = slide || wobble
             [frame, places.fetch(head), places.fetch(tail), written, sounds ? 1 : 0, swell ? places.fetch(swell) : recording || 0,
-             wobble ? places.fetch(wobble) : 0, shapes ? places.fetch(shapes) : 0]
+             pitches ? places.fetch(pitches) : 0, shapes ? places.fetch(shapes) : 0]
           end
 
           # What the table holds for one part: its two lists of notes, the first time round and every
@@ -388,7 +399,10 @@ module VBlank
             passes = IR::Tunes.loop_passes(song).fetch(song.voices.index(part))
             between = follows_level? ? [[:loudness, channel, 0]] : []
             lists = [passes.first, passes.again].map do |events|
-              events.map { |event| note_layout(song, part, channel, event, between, voicing, &number_of) }
+              ends = events.drop(1).map(&:first) << song.total_frames
+              events.zip(ends).map do |event, ending|
+                note_layout(song, part, channel, event, between, voicing, lasts: ending - event.first, &number_of)
+              end
             end
             layout = { lists: lists, holds: IR::Tunes.part_kind(part) != :noise, channel: channel }
             return layout unless follows_level?
@@ -399,8 +413,8 @@ module VBlank
           end
 
           # One note of +song+'s +part+ on +channel+ (an +event+ of its list), with +between+ its head
-          # and its tail.
-          def note_layout(song, part, channel, event, between, voicing, &number_of)
+          # and its tail, and +lasts+ the frames until the part's next note.
+          def note_layout(song, part, channel, event, between, voicing, lasts: 0, &number_of)
             return recorded_note_layout(song, part, event, &number_of) if self.class.recorded?(channel)
 
             frame, frequency, _, volume = event
@@ -408,18 +422,57 @@ module VBlank
             fade = IR::Tunes.said_fade(part, event)
             vibrato = IR::Tunes.said_vibrato(part, event) if frequency.positive?
             duty = IR::Tunes.said_duty(part, event) if frequency.positive?
+            slide = IR::Tunes.said_slide(part, event) if frequency.positive?
             head = [[:note, song.name, frequency],
-                    IR::Tunes.voice_entry(channel, song.name, frequency, volume, fade: fade, vibrato: vibrato,
+                    IR::Tunes.voice_entry(channel, song.name, frequency, volume, fade: fade, slide: slide, vibrato: vibrato,
                                                                          side: IR::Tunes.note_side(part, event), duty: duty)]
             commands = entry_commands(head + between + wave_or_noise_entries(part, frequency), voicing, song.name, &number_of)
             wobble = wobble_record(channel, frequency, vibrato, &number_of) if Audio::Vibrato.moves?(vibrato)
             shapes = shape_record(channel, frequency, duty, &number_of) if duty&.steps?
             written = frequency.zero? ? 0 : volume
             written |= RINGS_ALONE if frequency.positive? && follows_level? && IR::Tunes.changes_by_itself?(part, event)
-            swell = swell_record(song, channel, fade.step, voicing, &number_of) if between.any? && self.class.swell_held_under_level?(part, event)
+            swell = swell_record(song, channel, fade.step, voicing, &number_of) if between.any? && self.class.swells_on_console_voice?(part, event)
+            if Audio::PitchSlide.moves?(slide)
+              written |= SLIDES
+              steps = slide_record(channel, frequency, slide, lasts, duty&.at(0) || part.duty)
+            end
             [frame, keep_group(commands.take(2).flatten(1)), keep_group(commands.drop(2 + between.size).flatten(1)),
-             written, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes, swell]
+             written, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes, swell, steps]
           end
+
+          # A NOTE THAT SLIDES ITS PITCH. The first square voice of the Advance and the Color slides
+          # by itself, a step every so many 128ths of a second, and the sound chip here has nothing of
+          # the kind. So the steps are worked out here (Audio::PitchSlide#counts_from), as a list with
+          # a group for each frame of the note, nil where the frame moves nothing, and all the player
+          # does is walk it (Runtime::Music's rt_music_slides). The table holds a list for each note
+          # and length, and the list stops at the note's end or where the voice switches itself off.
+          # IR::Tunes::COUNTED_A_FRAME is how many 256ths of a 64th of a second a frame lasts, which is
+          # that many 128ths once shifted down seven places.
+          def slide_record(channel, frequency, slide, frames, shape)
+            count = DSPWrites.slide_count(frequency)
+            ticks = ->(frame) { (frame * IR::Tunes::COUNTED_A_FRAME) >> 7 }
+            counts = slide.counts_from(count, ticks.call(frames) / slide.every)
+            record = [slide_frame_group(channel, counts.first.nil? ? counts.shift(1) : [], count, shape)]
+            (1...frames).each do |frame|
+              break if counts.empty?
+
+              taken = counts.shift((ticks.call(frame) / slide.every) - (ticks.call(frame - 1) / slide.every))
+              record << slide_frame_group(channel, taken, count, shape)
+              count = taken.compact.last || count
+            end
+            @slide_records << record unless @slide_records.include?(record)
+            record
+          end
+
+          # The frame's group, for the counts it moves through: the last of them, or nothing.
+          def slide_frame_group(channel, taken, was, shape)
+            return nil if taken.empty?
+            return keep_group(slide_stop_commands(channel)) if taken.include?(nil)
+
+            keep_group(DSPWrites.slide_step(channel, taken.last, was, shape).map { |write| Runtime::Sound.command_for(write) })
+          end
+
+          def slide_stop_commands(channel) = DSPWrites.slide_stop(channel).map { |write| Runtime::Sound.command_for(write) }
 
           # A NOTE THAT SWELLS UNDER THE MUSIC VOLUME. The sound chip climbs by itself, as far as the
           # top, whatever the level is, so the player counts along with it (Runtime::Music's
@@ -606,17 +659,19 @@ module VBlank
 
           # A NOTE THAT CHANGES AS IT PLAYS — fading out or swelling in, sliding or wobbling its
           # pitch, playing from one speaker, or stepping through the square wave's shapes — as its
-          # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet:
-          # a slide, shapes that step, and a wobble that carries from note to note, is in a sound
-          # effect, or shares a game with sound effects, which take a voice from under it. In a game
+          # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet: a
+          # wobble that carries from note to note; a slide over shapes that step, which each write
+          # which recording the voice reads; and a slide, a wobble or shapes that step in a game
+          # with sound effects, which take a voice from under them. In a game
           # that sets its music volume, a note from one speaker is not made yet either, nor a swell
           # beside sound effects; a note that fades is, and the level reaches its next note (RINGS_ALONE).
           def refuse_note_changes!(song)
             sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
             changing = sounding.any? do |part, event|
               vibrato = IR::Tunes.said_vibrato(part, event)
-              IR::Tunes.said_slide(part, event) || (IR::Tunes.said_duty(part, event)&.steps? && effects?) ||
-                (Audio::Vibrato.moves?(vibrato) && (vibrato.carries || effects?))
+              slides = Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event))
+              steps = IR::Tunes.said_duty(part, event)&.steps?
+              (slides && (effects? || steps)) || (steps && effects?) || (Audio::Vibrato.moves?(vibrato) && (vibrato.carries || effects?))
             end
             if changing
               raise Lowering::NotMadeYet.new(
