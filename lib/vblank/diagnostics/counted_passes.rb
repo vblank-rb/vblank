@@ -38,7 +38,7 @@ module VBlank
 
       def refuse_waits_not_passes!
         raise ArgumentError, "This game waits for the screen in places of its own (`wait_vblank`, or " \
-                             "`frame_sync: :manual`). This console counts the waits, not the passes of the " \
+                             "`frame_sync: :manual`). A #{kit.title} counts the waits, not the passes of the " \
                              "game loop, so this cartridge cannot say its passes. Count them in a variable of " \
                              "the game's own, and read it with `var`."
       end
