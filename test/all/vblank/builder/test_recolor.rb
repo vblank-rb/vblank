@@ -97,6 +97,41 @@ class TestRecolor < Minitest::Test
     assert_equal colors_of(:blue, :white), halves(program { |ship| recolor :slot, [:warm, :cold], showing: ship.x })
   end
 
+  # A fade over the ship that ends on the pass the list changes: the list shows in full, unfaded,
+  # and every other colour goes back too, whichever of the two the pass said first.
+  private def fade_ending_as_a_list_changes(list_first:)
+    built do
+      ship = sprite :ship, at: [40, 40]
+      ship.draw_with :slot
+      image :bystander, width: 8, height: 8, data: SHIP, colors: OWN
+      sprite :bystander, at: [60, 40]
+      pass = var :pass, 0
+      list_before = list_first ? 4 : 0
+      list_after = list_first ? 0 : 4
+      game_loop do
+        pass += 1
+        fade :black, 50 if pass < 4
+        recolor :slot, :warm if pass == list_before
+        fade :black, 0 if pass == 4
+        recolor :slot, :warm if pass == list_after
+      end
+    end
+  end
+
+  # The ship's two halves, and the first half of the sprite the list does not dress.
+  private def shown_after_the_fade(program)
+    i = game_player.run(program, frames: 7)
+    [i.screen.pixel(41, 41), i.screen.pixel(45, 41), i.screen.pixel(61, 41)]
+  end
+
+  def test_a_list_held_before_a_fade_ends_in_one_pass_shows_unfaded
+    assert_equal colors_of(:yellow, :orange, :red), shown_after_the_fade(fade_ending_as_a_list_changes(list_first: true))
+  end
+
+  def test_a_list_held_after_a_fade_ends_in_one_pass_shows_unfaded
+    assert_equal colors_of(:yellow, :orange, :red), shown_after_the_fade(fade_ending_as_a_list_changes(list_first: false))
+  end
+
   def test_own_puts_back_the_colors_it_was_declared_with
     back = program do |ship|
       ship.x += 1

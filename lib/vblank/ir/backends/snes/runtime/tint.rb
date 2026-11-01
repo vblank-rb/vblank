@@ -90,17 +90,23 @@ module VBlank
               emit_colors_held(asm, memory) if changing_colors
             end
 
-            # rt_colors_start (JSL, at power-on): the game's colours, into the place they change in.
+            # rt_colors_start (JSL, at power-on): the game's colours, into the place they change in and
+            # into the copy the blank sends, which is then right for a list held with no fade.
             #
-            # rt_colors_hold(table, which): the colours of the table's set +which+ in that place, and
-            # the fade worked out again as the pass ends, which is what puts them in the copy the blank
-            # sends. The table is a count, then each set's 24-bit address in four bytes, the colours
-            # the game declared first: so a number naming none of the others comes to that one, as
-            # Reference#colors_held_by says. A set is a count of palettes, then for each its place
-            # in the 512 bytes and its PALETTE_COLORS colours.
+            # rt_colors_hold(table, which): the colours of the table's set +which+ in that place and in
+            # that copy. With no fade in force the copy is then ready, and only those colours were
+            # touched, so changing a list costs what its colours cost and not one move of every
+            # colour on the screen. With a fade in force the colours are moved as the pass ends, as
+            # a fade said this pass moves them, which writes over what went in the copy here, so
+            # the two meet on the same pass whichever was said first. A fade that ended this pass
+            # has its work still to do and keeps it. The table is a count, then each set's 24-bit
+            # address in four bytes, the colours the game declared first: so a number naming none of
+            # the others comes to that one, as Reference#colors_held_by says. A set is a count of
+            # palettes, then for each its place in the 512 bytes and its PALETTE_COLORS colours.
             def emit_colors_held(asm, memory)
               state = memory[STATE]
               now = memory[COLORS_NOW]
+              shadow = memory[SHADOW]
               set = R.call(2)
               palettes = R.call(3)
               colors = R.call(3) + 2
@@ -109,6 +115,7 @@ module VBlank
               asm.label("rt_colors_start_color")
               asm.lda(asm.long_x("art colors"))
               asm.sta(asm.long_x(now))
+              asm.sta(asm.long_x(shadow))
               asm.inx
               asm.inx
               asm.cpx(512)
@@ -149,6 +156,7 @@ module VBlank
               asm.label("rt_colors_hold_color")
               asm.lda(asm.ind_long_y(set))
               asm.sta(asm.long_x(now))
+              asm.sta(asm.long_x(shadow))
               asm.inx
               asm.inx
               asm.iny
@@ -157,8 +165,17 @@ module VBlank
               asm.bne("rt_colors_hold_color")
               asm.dec(asm.direct(palettes))
               asm.bne("rt_colors_hold_palette")
+              asm.lda(asm.abs(state + STEPS_AT))
+              asm.bne("rt_colors_hold_faded")
+              asm.lda(asm.abs(state + CHANGED))
+              asm.bne("rt_colors_hold_done")
+              asm.lda(TO_SEND)
+              asm.bra("rt_colors_hold_note")
+              asm.label("rt_colors_hold_faded")
               asm.lda(TO_WORK_OUT)
+              asm.label("rt_colors_hold_note")
               asm.sta(asm.abs(state + CHANGED))
+              asm.label("rt_colors_hold_done")
               asm.rtl
             end
 

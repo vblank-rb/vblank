@@ -22,7 +22,43 @@ class TestSNESProfile < Minitest::Test
     end
   end
 
+  # A screen of eight lists of fifteen colours, so a change that moved every colour would have 120
+  # to go through. One list steps on every pass while a sprite moves on every pass, which is how a
+  # console's own game brings a line of text up from black. The pass has work of its own too, enough
+  # to leave room for those fifteen colours and not for all of them.
+  STEPPED_COLORS = VBlank.game("STEPPED", consoles: %i[snes]) do
+    screen :tiled
+    letters = "abcdefghijklmno".chars
+    8.times do |list|
+      shades = letters.each_with_index.to_h { |letter, shade| [letter, rgb(list * 2, shade * 2, 31 - list)] }
+      image(:"art#{list}", shades) { Array.new(8) { |row| letters.rotate(row).first(8).join }.join("\n") }
+    end
+    tiles :set, Array.new(8) { |list| [list.to_s(16), :"art#{list}"] }.to_h
+    field = background :field, tiles: :set, map: Array.new(32) { |row| Array.new(32) { |column| ((row + column) % 8).to_s(16) }.join }
+    own = [:transparent, *Array.new(15) { |shade| rgb(31, shade * 2, shade) }]
+    image :ball, width: 8, height: 8, data: Array.new(64) { |pixel| own[(pixel % 15) + 1] }, colors: own
+    colors :letters, own
+    walk = color_walk :letters, from: :black
+    ball = sprite :ball, at: [0, 40]
+    ball.draw_with :letters
+    field.scroll_to 3, 0
+    step = 0
+    total = 0
+    game_loop do
+      recolor :letters, walk, showing: step
+      step = (step + 1) & 31
+      ball.x = (ball.x + 1) & 127
+      repeat(200) { total += 3 }
+    end
+  end
+
   private def rom_of(game) = game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
+
+  def test_a_list_of_colours_stepped_every_pass_keeps_a_pass_a_frame
+    result = rom_of(STEPPED_COLORS).profile(out: StringIO.new, settle: 30, frames: 40)
+
+    assert_equal({ 1 => 40 }, result.passes_by_frames)
+  end
 
   def test_a_light_game_takes_a_frame_a_pass
     result = rom_of(LIGHT).profile(out: StringIO.new, frames: 20)
