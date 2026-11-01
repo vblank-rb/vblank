@@ -79,6 +79,7 @@ module VBlank
           NOTE_HEAD = 2
           NOTE_TAIL = 4
           NOTE_VOLUME = 6
+          RINGS_ALONE = 0x100 # in a note's volume word: it fades by itself, and is not held for a new level
           NOTE_SOUNDS = 8
           NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
           NOTE_WOBBLE = 12 # where its wobble's record is, nought for a note that holds its pitch
@@ -388,8 +389,10 @@ module VBlank
             commands = entry_commands(head + between + wave_or_noise_entries(part, frequency), voicing, song.name, &number_of)
             wobble = wobble_record(channel, frequency, vibrato, &number_of) if Audio::Vibrato.moves?(vibrato)
             shapes = shape_record(channel, frequency, duty, &number_of) if duty&.steps?
+            written = frequency.zero? ? 0 : volume
+            written |= RINGS_ALONE if frequency.positive? && follows_level? && IR::Tunes.changes_by_itself?(part, event)
             [frame, keep_group(commands.take(2).flatten(1)), keep_group(commands.drop(2 + between.size).flatten(1)),
-             frequency.zero? ? 0 : volume, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes]
+             written, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble, shapes]
           end
 
           # A NOTE THAT STEPS ITS SHAPES: a group for each of its four frames, its source written and
@@ -558,7 +561,9 @@ module VBlank
           # pitch, playing from one speaker, or stepping through the square wave's shapes — as its
           # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet:
           # a slide, shapes that step, and a wobble that carries from note to note, is in a sound
-          # effect, or shares a game with sound effects, which take a voice from under it.
+          # effect, or shares a game with sound effects, which take a voice from under it. In a game
+          # that sets its music volume, a note that swells or plays from one speaker is not made yet
+          # either; a note that fades is, and the level reaches its next note (RINGS_ALONE).
           def refuse_note_changes!(song)
             sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
             changing = sounding.any? do |part, event|
@@ -576,7 +581,7 @@ module VBlank
             return unless follows_level?
 
             sounding.each do |part, event|
-              said = if IR::Tunes.said_fade(part, event) then "that fades or swells"
+              said = if IR::Tunes.said_fade(part, event)&.swells_by_itself? then "that swells"
                      elsif IR::Tunes.note_side(part, event) then "from one speaker"
                      end
               next unless said

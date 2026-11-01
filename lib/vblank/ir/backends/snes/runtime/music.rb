@@ -632,7 +632,18 @@ module VBlank
               m = SNES::Music
               asm.ldx(at.call(NOTE))
               asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              asm.and_a(m::RINGS_ALONE - 1)
               asm.pha
+              # A note that fades by itself is not held for a new level: one struck again would
+              # start its fade over (IR::Tunes.changes_by_itself?), so the level reaches its next note.
+              asm.lda(asm.long_x("music_data", m::NOTE_VOLUME))
+              asm.bit(m::RINGS_ALONE)
+              asm.beq("rt_music_note_may_hold")
+              asm.ldx(at.call(ENTRY))
+              asm.lda(asm.long_x("music_data", m::CHANNEL))
+              asm.jsr(asm.abs("rt_music_unhold"))
+              asm.bra("rt_music_note_not_held")
+              asm.label("rt_music_note_may_hold")
               asm.ldx(at.call(ENTRY))
               asm.lda(asm.long_x("music_data", m::HOLDS))
               asm.beq("rt_music_note_not_held")
