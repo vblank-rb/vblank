@@ -533,7 +533,7 @@ module VBlank
               if always.length + @scene_layers > BACKGROUND_LAYERS
                 refuse_unmade!("more than two backgrounds on the screen at once")
               end
-              refuse_unmade!("a status bar that a scene puts up") if own.flatten.any?(&:bar?)
+              @scene_bars = own.flatten.any?(&:bar?)
               refuse_unmade_stacking!(always)
               refuse_unmade_bends!(always)
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
@@ -603,7 +603,12 @@ module VBlank
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
+              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none?(&:bar?)
             end
+
+            # Whether a scene of the game puts up a status bar of its own, which leaves as the next
+            # scene takes over (Runtime::Picture's rt_bar_gone).
+            public def scene_bars? = @scene_bars
 
             # A grid of nothing, put up on a layer to take down what was there.
             def empty_grid = @empty_grid ||= @art.grid(Array.new(32) { Array.new(32) }, 32, 32)

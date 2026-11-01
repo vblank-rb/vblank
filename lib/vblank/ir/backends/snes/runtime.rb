@@ -86,7 +86,7 @@ module VBlank
                        sound: false, sound_waves: [], music: nil, music_level_at: nil, effects: 0, recordings: [],
                        plays: nil, bar: false, bent: [], tile_runs: 0, see_through: nil, sprite_depths: false, big_tiles: 0,
                        colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
-                       extra_buttons: false, math_turns: false)
+                       extra_buttons: false, math_turns: false, scene_bars: false)
             chip = board.name == :super_fx
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
@@ -101,7 +101,7 @@ module VBlank
                                       run_scratch: (Picture.run_scratch(memory) if tile_runs.positive?),
                                       see_through: see_through, sprite_depths: sprite_depths, big_tiles: big_tiles,
                                       sprite_squares: sprite_squares, changing_colors: changing_colors,
-                                      math_turns: math_turns)
+                                      math_turns: math_turns, scene_bars: scene_bars)
             Paint.emit(asm, memory, Paint.scratch(memory), chip: chip) if painted
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: colors_shown, changing_colors: changing_colors)
             Collide.emit(asm, memory, Collide.scratch(memory))

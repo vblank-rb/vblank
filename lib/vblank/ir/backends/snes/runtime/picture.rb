@@ -114,6 +114,8 @@ module VBlank
             BAR_CHANGED = 4
             BAR_TABLE = 6
             BAR_BYTES = BAR_TABLE + 8
+            # What BAR_CHANGED says when the bar has left the screen, and not moved (rt_bar_gone).
+            BAR_LEAVES = 2
             # In a game that tells its bar to cover sprites: whether it does. The table then leaves
             # the sprites out of TM from the bar down, so the console draws none on those lines.
             BAR_COVERS = "rt bar covers"
@@ -199,15 +201,15 @@ module VBlank
             # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], tile_runs: 0, run_scratch: nil,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
-                     math_turns: false)
+                     math_turns: false, scene_bars: false)
               emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns)
               emit_see_through_math(asm, memory) if math_turns
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
               emit_backgrounds(asm, memory, work)
-              emit_bar(asm, memory) if bar
+              emit_bar(asm, memory, scene_bars: scene_bars) if bar
               emit_bends_prepare(asm, memory, work, bent) unless bent.empty?
               emit_tile_run_copy(asm, memory, run_scratch) if tile_runs.positive?
-              emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns)
+              emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns, scene_bars)
               asm.label("rt_picture_prepare")
               if painted
                 asm.jml(asm.long("rt_paint_prepare"))
@@ -691,7 +693,7 @@ module VBlank
 
             # STATUS BAR. rt_bar_place(layer, top): the bar on +layer+ shown from row +top+, held to
             # the screen (0 to its height, where none of it shows), from the next blank on.
-            def emit_bar(asm, memory)
+            def emit_bar(asm, memory, scene_bars: false)
               r = ->(n) { Memory.register(n) }
               bar = memory[BAR]
               layers = memory[LAYERS]
@@ -721,6 +723,14 @@ module VBlank
               asm.lda(1)
               asm.sta(asm.abs(bar + BAR_CHANGED))
               asm.rtl
+              if scene_bars
+                # rt_bar_gone(): a scene with no bar has taken over, so from the next blank the
+                # line table stops and both layers and the sprites show on every line.
+                asm.label("rt_bar_gone")
+                asm.lda(BAR_LEAVES)
+                asm.sta(asm.abs(bar + BAR_CHANGED))
+                asm.rtl
+              end
               return unless memory.reserved?(BAR_COVERS)
 
               # rt_bar_covers(covers): whether the sprites show from the bar's top down.
@@ -735,13 +745,13 @@ module VBlank
             # In the blank, if the bar moved: its table of lines made again, and channel 1 set to
             # write TM from it on every frame from the next. +work+'s words: the bar's layer's bit,
             # TM above the bar, TM from it down.
-            def emit_bar_table(asm, memory, work)
+            def emit_bar_table(asm, memory, work, scene_bars: false)
               h = Console::SNESHardware
               bar = memory[BAR]
               table = bar + BAR_TABLE
               channel = h::DMA_BASE + BAR_CHANNEL
               asm.lda(asm.abs(bar + BAR_CHANGED))
-              if memory.reserved?(BAR_COVERS) # the table's code is past a short branch's reach then
+              if memory.reserved?(BAR_COVERS) || scene_bars # the table's code is past a short branch's reach then
                 asm.bne("rt_bar_table_changed")
                 asm.brl("rt_bar_table_kept")
                 asm.label("rt_bar_table_changed")
@@ -749,6 +759,19 @@ module VBlank
                 asm.beq("rt_bar_table_kept")
               end
               asm.stz(asm.abs(bar + BAR_CHANGED))
+              if scene_bars
+                asm.cmp(BAR_LEAVES)
+                asm.bne("rt_bar_table_stays")
+                asm.lda(asm.abs(memory[HDMA_CHANNELS]))
+                asm.and_a(~(1 << (BAR_CHANNEL >> 4)) & 0xFFFF)
+                asm.sta(asm.abs(memory[HDMA_CHANNELS]))
+                asm.sep(0x20)
+                asm.lda(LAYERS_SHOWN)
+                asm.sta(asm.abs(h::TM))
+                asm.rep(0x20)
+                asm.brl("rt_bar_table_kept")
+                asm.label("rt_bar_table_stays")
+              end
               asm.lda(asm.abs(bar + BAR_LAYER))
               asm.inc # BG1's bit is 1, BG2's 2
               asm.sta(asm.direct(work))
@@ -1062,7 +1085,7 @@ module VBlank
             # register and its scroll; then the cells changed, each when the blank has a line left
             # for it. A painted screen's copy is Paint's rt_paint_upload. With the screen still off,
             # before the first pass is shown, everything goes at once.
-            def emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns = false)
+            def emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns = false, scene_bars = false)
               h = Console::SNESHardware
               layers = memory[LAYERS]
               # The first pass's, with the screen off (Frame switches it on), and every other's.
@@ -1193,7 +1216,7 @@ module VBlank
                 asm.dec
                 emit_scroll_register(asm, h::BG1VOFS + (layer * 2))
               end
-              emit_bar_table(asm, memory, work) if bar
+              emit_bar_table(asm, memory, work, scene_bars: scene_bars) if bar
               emit_bends_shown(asm, memory, bent)
               emit_hdma_on(asm, memory) if bar || !bent.empty?
               asm.rts

@@ -236,21 +236,43 @@ class TestSNESPicture < Minitest::Test
     assert_equal 14, run[:t]
   end
 
-  # A bar that a scene puts up, and takes down when another scene takes over, is not made yet.
-  def test_a_status_bar_that_a_scene_puts_up_is_refused_in_plain_words
-    error = assert_raises(SNES::Lowering::NotMadeYet) do
-      SNES.new.build(program_of do
-        screen :tiled
-        image(:edge, "#" => :gray) { "########\n" * 8 }
-        tiles :bar_tiles, "[" => :edge
-        state = var :state, 0
-        scene(:play) { status_bar :score, tiles: :bar_tiles, map: ["[["], top: 200 }
-        game_loop { case_var(:state) { when_val 0, :play } }
-        state = 0
-      end)
+  # A SCENE WITH A BAR beside its field, then one with no bar and two backgrounds: the bar's lines
+  # stop, and the second scene's front background shows on every row, the bar's old rows among them.
+  # The bar's cell changes every pass, as a clock's digit does.
+  def test_a_bar_a_scene_puts_up_leaves_with_the_scene
+    program = program_of do
+      screen :tiled
+      image(:red_art, "#" => :red) { "########\n" * 8 }
+      image(:blue_art, "#" => :blue) { "########\n" * 8 }
+      image(:green_art, "#" => :green) { "########\n" * 8 }
+      tiles :field_tiles, "r" => :red_art, "b" => :blue_art
+      tiles :bar_tiles, "g" => :green_art, "b" => :blue_art
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:play) do
+        background :field, tiles: :field_tiles, map: Array.new(32) { "r" * 32 }
+        bar = status_bar :clock, tiles: :bar_tiles, map: ["g" * 32, "g" * 32], top: 208
+        bar.set_tile tick % 8, 0, "b"
+      end
+      scene(:title) do
+        background :sky, tiles: :field_tiles, map: Array.new(32) { "r" * 32 }
+        background :logo, tiles: :field_tiles, map: Array.new(32) { "b" * 32 }
+      end
+      game_loop do
+        tick.increase! 1
+        state = 1 if tick == 8
+        case_var(:state) do
+          when_val 0, :play
+          when_val 1, :title
+        end
+      end
     end
+    blue = VBlank::Graphics::Color.resolve(:blue)
 
-    assert_match(/status bar that a scene puts up/, error.message)
+    run = SNES::CheckedRun.new.run(program, frames: 14)
+
+    assert_equal blue, run.screen.pixel(8, 212), "the front background, where the bar was"
+    assert_equal blue, run.screen.pixel(8, 8)
   end
 
   # BACKGROUNDS IN LAYERS are stacked as the layers say, not as they were declared: the near one is

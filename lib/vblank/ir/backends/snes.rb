@@ -134,7 +134,7 @@ module VBlank
                                              sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
                                              sprite_squares: lowering.sprite_squares?, changing_colors: changing_colors,
                                              extra_buttons: Runtime::Frame.reads_extra_buttons?(program),
-                                             math_turns: math_turns)
+                                             math_turns: math_turns, scene_bars: lowering.scene_bars?)
           linked = Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
