@@ -117,6 +117,7 @@ module VBlank
                       "free list shows another list's colours. A profile of the game says how many " \
                       "times a sprite showed another list's colours."),
         recolor: works,
+        color_walk: works,
         colors_in_use: works("a set can name eight lists or fewer, because the console holds eight lists " \
                              "for sprites. A set with more is refused, naming the set."),
         mirror: works,

@@ -103,9 +103,11 @@ module VBlank
           bar = Lowering::Picture.status_bar?(program)
           bends = Lowering::Picture.bends?(program)
           tile_runs = Lowering::Picture.tile_run_bytes(program)
+          changing_colors = Lowering::Picture.changing_colors?(program)
           Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
-                                  bends: bends, tile_runs: tile_runs, holds_music: Lowering::Sound.holds_music?(program))
+                                  bends: bends, tile_runs: tile_runs, holds_music: Lowering::Sound.holds_music?(program),
+                                  changing_colors: changing_colors)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares)
           begin
             game = lowering.sections + lowering.art_sections
@@ -128,7 +130,8 @@ module VBlank
                                              recorded_parts: songs && lowering.recorded_parts?,
                                              colors_shown: lowering.colors_shown,
                                              sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
-                                             sprite_squares: lowering.sprite_squares?)
+                                             sprite_squares: lowering.sprite_squares?, changing_colors: changing_colors,
+                                             extra_buttons: Runtime::Frame.reads_extra_buttons?(program))
           linked = Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)

@@ -32,7 +32,7 @@ class TestSNESConformance < Minitest::Test
     painted = kept.any? { |part| part.walk.any? { |node| node.kind == :screen && node.mode == :bitmap } }
     kept.reject do |part|
       part.walk.any? do |node|
-        (%i[scroll_background set_tile show_map place_bar play_song].include?(node.kind) && !declared.include?(node.name)) ||
+        (%i[scroll_background set_tile show_map place_bar play_song background_colors].include?(node.kind) && !declared.include?(node.name)) ||
           (node.kind == :song_list && !(node.songs - declared).empty?) ||
           (node.kind == :sound_effect_list && !(node.effects - declared).empty?) ||
           (node.kind == :present_objects && !(node.names - declared).empty?) ||

@@ -58,9 +58,19 @@ module VBlank
 
             module_function
 
-            def reserve(memory)
+            # THE COLOURS A GAME CHANGES (`draw_with` on a background, `recolor`), for a game that
+            # changes any: the 512 bytes a fade moves from, in work RAM, where without them it is
+            # "art colors" in the cartridge. So a list held now and a fade in force meet: the list
+            # goes in here and the fade moves what is here, on the same pass.
+            COLORS_NOW = "rt colors now"
+
+            # A palette's colours past the one every palette keeps for see-through.
+            PALETTE_COLORS = 15
+
+            def reserve(memory, changing_colors: false)
               memory.reserve_far(SHADOW, 512)
               memory.reserve(STATE, STATE_BYTES)
+              memory.reserve_far(COLORS_NOW, 512) if changing_colors
             end
 
             def scratch(memory)
@@ -70,11 +80,86 @@ module VBlank
 
             # +colors_shown+ is the runs of the colour memory a picture can show, as [first, count]
             # (Lowering::Picture#colors_shown): the colours the fade moves.
-            def emit(asm, memory, s, colors_shown: [[0, 256]])
+            # +changing_colors+ for a game that changes colours as it runs, which then fades from
+            # COLORS_NOW and carries rt_colors_start and rt_colors_hold.
+            def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false)
               emit_tint(asm, memory, s)
               emit_table(asm, memory, s)
-              emit_apply(asm, memory, colors_shown)
+              emit_apply(asm, memory, colors_shown, changing_colors ? memory[COLORS_NOW] : "art colors")
               emit_upload(asm, memory)
+              emit_colors_held(asm, memory) if changing_colors
+            end
+
+            # rt_colors_start (JSL, at power-on): the game's colours, into the place they change in.
+            #
+            # rt_colors_hold(table, which): the colours of the table's set +which+ in that place, and
+            # the fade worked out again as the pass ends, which is what puts them in the copy the blank
+            # sends. The table is a count, then each set's 24-bit address in four bytes, the colours
+            # the game declared first: so a number naming none of the others comes to that one, as
+            # Reference#colors_held_by says. A set is a count of palettes, then for each its place
+            # in the 512 bytes and its PALETTE_COLORS colours.
+            def emit_colors_held(asm, memory)
+              state = memory[STATE]
+              now = memory[COLORS_NOW]
+              set = R.call(2)
+              palettes = R.call(3)
+              colors = R.call(3) + 2
+              asm.label("rt_colors_start")
+              asm.ldx(0)
+              asm.label("rt_colors_start_color")
+              asm.lda(asm.long_x("art colors"))
+              asm.sta(asm.long_x(now))
+              asm.inx
+              asm.inx
+              asm.cpx(512)
+              asm.bne("rt_colors_start_color")
+              asm.rtl
+
+              asm.label("rt_colors_hold")
+              asm.lda(asm.direct(R.call(1) + 2))
+              asm.bne("rt_colors_hold_own")
+              asm.lda(asm.direct(R.call(1)))
+              asm.inc
+              asm.cmp(asm.ind_long(R.call(0)))
+              asm.bcc("rt_colors_hold_set")
+              asm.label("rt_colors_hold_own")
+              asm.lda(0)
+              asm.label("rt_colors_hold_set")
+              asm.asl
+              asm.asl
+              asm.inc
+              asm.inc
+              asm.tay
+              asm.lda(asm.ind_long_y(R.call(0)))
+              asm.sta(asm.direct(set))
+              asm.iny
+              asm.iny
+              asm.lda(asm.ind_long_y(R.call(0)))
+              asm.sta(asm.direct(set + 2))
+              asm.lda(asm.ind_long(set))
+              asm.sta(asm.direct(palettes))
+              asm.ldy(2)
+              asm.label("rt_colors_hold_palette")
+              asm.lda(asm.ind_long_y(set))
+              asm.tax
+              asm.iny
+              asm.iny
+              asm.lda(PALETTE_COLORS)
+              asm.sta(asm.direct(colors))
+              asm.label("rt_colors_hold_color")
+              asm.lda(asm.ind_long_y(set))
+              asm.sta(asm.long_x(now))
+              asm.inx
+              asm.inx
+              asm.iny
+              asm.iny
+              asm.dec(asm.direct(colors))
+              asm.bne("rt_colors_hold_color")
+              asm.dec(asm.direct(palettes))
+              asm.bne("rt_colors_hold_palette")
+              asm.lda(TO_WORK_OUT)
+              asm.sta(asm.abs(state + CHANGED))
+              asm.rtl
             end
 
             # The steps held to 0..256 and, when the fade is not the one in force, the colours moved.
@@ -243,7 +328,8 @@ module VBlank
             # through the table. Moving a colour is the most of a fade's work, so only the runs of
             # +colors_shown+ are moved: a game whose pictures use one palette moves its sixteen
             # colours, the backdrop among them, not 256. The others are never drawn from, and stay as nought in the copy.
-            def emit_apply(asm, memory, colors_shown)
+            # +from+ is where the colours are moved from.
+            def emit_apply(asm, memory, colors_shown, from)
               state = memory[STATE]
               shadow = memory[SHADOW]
               asm.label("rt_tint_apply")
@@ -255,7 +341,7 @@ module VBlank
                 asm.lda(0)
                 asm.sta(asm.long_x(shadow))
                 3.times do |channel|
-                  asm.lda(asm.long_x("art colors"))
+                  asm.lda(asm.long_x(from))
                   (channel * 5).times { asm.lsr }
                   asm.and_a(CHANNEL_MAX)
                   asm.phx

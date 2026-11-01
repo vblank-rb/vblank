@@ -38,7 +38,7 @@ module VBlank
 
         # --- pictures and sprites ---
         image: works, color: works, rgb: works, rgb8: works, colors: works, recolor: works,
-        colors_in_use: works, mirror: works, upside_down: works, blit: works, sprite: works,
+        colors_in_use: works, color_walk: works, mirror: works, upside_down: works, blit: works, sprite: works,
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
 
         # --- backgrounds and layers ---

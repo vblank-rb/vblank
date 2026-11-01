@@ -23,12 +23,18 @@ module VBlank
                                                  present_objects: :emit_present_objects,
                                                  hide_sprites: :emit_hide_sprites, fade: :emit_fade, tint: :emit_tint,
                                                  place_bar: :emit_place_bar, scroll_rows: :emit_scroll_rows,
-                                                 copy_tiles: :emit_copy_tiles, copy_owed_tiles: :emit_copy_owed_tiles
+                                                 copy_tiles: :emit_copy_tiles, copy_owed_tiles: :emit_copy_owed_tiles,
+                                                 background_colors: :emit_background_colors,
+                                                 color_list_holds: :emit_color_list_holds
                                                })
 
             # Whether +program+ has a status bar, which the runtime then carries what places
             # (Runtime::Picture's rt_bar_place).
             def self.status_bar?(program) = program.walk.any? { |node| node.kind == :background && node.bar? }
+
+            # Whether +program+ changes colours as it runs, which the runtime then keeps a place for
+            # (Runtime::Tint's rt_colors_hold).
+            def self.changing_colors?(program) = program.walk.any? { |node| %i[background_colors color_list_holds].include?(node.kind) }
 
             # Whether +program+ bends a background row by row, which the runtime then keeps the rows
             # and line tables of (Runtime::Picture's rt_bends_prepare).
@@ -117,7 +123,6 @@ module VBlank
                 if bg.tile_w == BIG_TILE && @tile_runs.any? { |run| !run.picture && run.tiles.intersect?(bg.tiles) }
                   refuse_unmade!("16×16 background tiles that the game paints from a list")
                 end
-                refuse_unmade!("a background drawn with other colours") unless Array(bg.recolors).empty? && Array(bg.palettes).empty?
                 refuse_unmade!("a background drawn from several sets of tiles") if bg.several_sets?
                 refuse_unmade!("a background whose maps are of different sizes or too big to hold") if bg.streams?
               end
@@ -167,8 +172,100 @@ module VBlank
                   swapped = list.is_a?(Symbol) ? color_list_named(list).colors : list
                   obj.poses.each do |pose|
                     image = Assets::Image.of(picture_named(pose))
+                    held = held_sprite_palette(list, mixed.include?(pose))
+                    next @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held) if held
+
                     @art.sprite_picture([pose, swapped], RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)),
                                         mixed: mixed.include?(pose))
+                  end
+                end
+              end
+            end
+
+            # The palette of +list+, for a list of sprite colours the game changes (`recolor`), and
+            # nil for any other. A sprite drawn with it is one picture whatever the list holds.
+            def held_sprite_palette(list, mixed)
+              return nil unless list.is_a?(Symbol) && !color_list_named(list).recolors.empty?
+
+              colors = color_list_named(list).colors.drop(1).map { |color| color & 0x7FFF }
+              held_palette_or_refuse { @art.held_sprite_palette([:sprites, list], colors, mixed: mixed) }
+            end
+
+            # Reference#exec_color_list_holds: the sets the list can hold, written over its palette. A
+            # list nothing is drawn with has no palette, and nothing to show.
+            def emit_color_list_holds(node)
+              palette = @art.held_palette_of([:sprites, node.name]) or return
+
+              list = color_list_named(node.name)
+              sets = [list.colors, *list.recolors].map { |colors| [[@art.sprite_palette_at(palette), colors.drop(1)]] }
+              runtime_call("rt_colors_hold", [LongAddress.new(held_colors_label([:sprites, node.name]) { sets }), node.which])
+            end
+
+            # Reference#exec_background_colors: the background's lists, each written over its palette.
+            def emit_background_colors(node) = for_background(node) { |bg| emit_background_colors_on(node, bg) }
+
+            def emit_background_colors_on(node, bg)
+              label = held_colors_label([:background, bg.object_id]) do
+                [nil, *bg.recolors.each_index].map { |step| background_held_set(bg, step) }
+              end
+              runtime_call("rt_colors_hold", [LongAddress.new(label), node.which])
+            end
+
+            # What a background's palettes hold at its step +step+ (nil for its own colours): each list
+            # it is drawn from, by place, as the list named for that step says (Assets::Recolor).
+            def background_held_set(bg, step)
+              swaps = step && bg.list_swaps(step)
+              ((@background_lists || {})[bg.name] || {}).map do |list, (palette, image)|
+                swapped = swaps && swaps[list]
+                colors = (1...image.colors.length).map { |place| (swapped && swapped[place]) || image.colors[place] }
+                [@art.background_palette_at(palette), colors]
+              end
+            end
+
+            # The palette of the list +image+ is drawn from, in a background the game draws with other
+            # colours, and nil in any other.
+            def held_background_palette(bg, image)
+              return nil if Array(bg.recolors).empty?
+
+              list = image.list_drawn_from
+              colors = image.colors.drop(1).map { |color| color & 0x7FFF }
+              palette = held_palette_or_refuse { @art.held_background_palette([:backgrounds, bg.name, list], colors) }
+              ((@background_lists ||= {})[bg.name] ||= {})[list] = [palette, image]
+              palette
+            end
+
+            # A list that changes keeps a palette for the whole game, and the console has eight. The
+            # Color's build brings each scene's colours in with it; this one does not yet.
+            def held_palette_or_refuse
+              yield
+            rescue Art::TooMuch
+              refuse_unmade!("more lists of colours changing as the game runs than a Super Nintendo has palettes")
+            end
+
+            # The label of the table of sets (Runtime::Tint's rt_colors_hold) kept under +key+, worked
+            # out by the block when the art is written, by when every palette of it is known.
+            def held_colors_label(key, &sets)
+              @held_colors ||= {}
+              @held_colors[key] ||= ["art held colors #{@held_colors.length}", sets]
+              @held_colors[key].first
+            end
+
+            # Each table of sets as data for the Linker.
+            def write_held_colors(data)
+              (@held_colors || {}).each_value do |label, sets|
+                worked_out = sets.call
+                data.label(label)
+                data.data_words(worked_out.length)
+                worked_out.each_index do |set|
+                  data.data_longs("#{label} set #{set}")
+                  data.data_bytes(0)
+                end
+                worked_out.each_with_index do |palettes, set|
+                  data.label("#{label} set #{set}")
+                  data.data_words(palettes.length)
+                  palettes.each do |at, colors|
+                    shown = colors.map { |color| color & 0x7FFF }
+                    data.data_words(at, *shown.fill(0, shown.length...Runtime::Tint::PALETTE_COLORS))
                   end
                 end
               end
@@ -251,6 +348,7 @@ module VBlank
                   data.data_words(piece.big ? Runtime::Picture::SPRITE_SIZE_BIT : 0) if sprite_squares?
                 end
               end
+              write_held_colors(data)
               data.label("art grids")
               @art.grids.each do |grid|
                 data.data_longs(grid_label(grid.number))
@@ -489,9 +587,11 @@ module VBlank
               return nil if tile.nil? || tile.negative?
 
               name = bg.tiles.fetch(tile)
+              refuse_unmade!("a background painted from a list and drawn with other colours") if @run_cells.key?(name) && !Array(bg.recolors).empty?
               @run_cells.fetch(name) do
                 image = Assets::Image.of(picture_named(name))
-                bg.tile_w == BIG_TILE ? @art.background_big_cell(image) : @art.background_cell(image)
+                held = held_background_palette(bg, image)
+                bg.tile_w == BIG_TILE ? @art.background_big_cell(image, held: held) : @art.background_cell(image, held: held)
               end
             end
 

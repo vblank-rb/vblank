@@ -10,18 +10,18 @@ class TestIRContracts < Minitest::Test
   Buttons = VBlank::IR::Buttons
   Screen = VBlank::IR::Screen
 
-  def test_the_button_vocabulary_is_the_ten_gba_buttons
-    assert_equal %i[a b down l left r right select start up], Buttons::NAMES.sort
+  def test_the_button_vocabulary_is_every_button_of_any_console
+    assert_equal %i[a b down l left r right select start up x y], Buttons::NAMES.sort
     assert Buttons.known?(:start)
     refute Buttons.known?(:turbo)
   end
 
-  def test_the_gba_backend_maps_exactly_the_shared_vocabulary
-    # The console's name -> key-bit mapping must cover every shared button and no
+  def test_the_gba_backend_maps_exactly_the_advances_buttons
+    # The console's name -> key-bit mapping must cover every button it has and no
     # stragglers. If they drift, a valid button would fail to lower (or a bogus
     # one would sneak in a mapping) — this catches that at the seam.
     mapped = VBlank::IR::Backends::GBA::BUTTON_BIT.keys
-    assert_equal Buttons::NAMES.sort, mapped.sort
+    assert_equal VBlank::Console.described(:gba).buttons.sort, mapped.sort
   end
 
   def test_the_screen_size_has_a_single_source_of_truth

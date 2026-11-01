@@ -63,7 +63,8 @@ and a test fails when the two differ. The Advance's answers are in
 - `rgb` — works: the same as on the Advance.
 - `rgb8` — works: the same as on the Advance.
 - `colors` — works: a list of colours holds sixteen places on a Super Nintendo, the first see-through on a sprite. The console holds eight lists for sprites and eight for backgrounds.
-- `recolor` — works: the same as on the Advance.
+- `recolor` — works: a list told to hold other colours keeps a palette to itself for the whole game, so a game can change eight lists of backgrounds and eight of sprites.
+- `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
@@ -160,4 +161,4 @@ and a test fails when the two differ. The Advance's answers are in
 An answer above is what the Super Nintendo does with a verb. The build for it is still growing,
 and a game that reaches one of these steps is refused, naming the step, until it is made:
 
-- the picture: `draw_column_at`, `background_colors`, `show_picture_group`, `color_list_holds`, `data_byte`
+- the picture: `draw_column_at`, `show_picture_group`, `data_byte`

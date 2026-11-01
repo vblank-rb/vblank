@@ -101,6 +101,8 @@ module VBlank
             @sprite_tile_numbers = {}
             @sprite_palettes = [] # each a list of up to fifteen colours, or nil for one not used yet
             @sprite_palettes_for = { false => (0...PALETTES), true => (0...PALETTES) }
+            @held_palettes = {} # whose list => its palette (#held_palette)
+            @held = { backgrounds: [], sprites: [] }
             @sprite_pictures = {}
             @grids = []
           end
@@ -109,11 +111,16 @@ module VBlank
 
           # The cell +image+ (an Assets::Image of 8×8) makes in a map: its tile number and its
           # palette, as two numbers.
-          def background_cell(image)
+          # +held+ is the palette of a list the game changes (#held_background_palette), whose
+          # tiles are drawn from it place for place.
+          def background_cell(image, held: nil)
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
-            palette = palette_for(@background_palettes, drawn.map { |at| image.color_at(at) }.uniq, "backgrounds")
+            palette = held || palette_for(@background_palettes, drawn.map { |at| image.color_at(at) }.uniq, "backgrounds")
             places = Array.new(64) do |at|
-              image.tile_see_through_at?(at) ? 0 : @background_palettes[palette].index(image.color_at(at)) + 1
+              if image.tile_see_through_at?(at) then 0
+              elsif held then place_in_list(image, at)
+              else @background_palettes[palette].index(image.color_at(at)) + 1
+              end
             end
             bytes = tile_bytes(places)
             number = @background_tile_numbers[bytes] ||= begin
@@ -131,13 +138,16 @@ module VBlank
           # So the four quarters of +image+ (an Assets::Image of 16×16) go in four places that
           # pattern takes, the first of them at an even place in an even row, and the whole tile is
           # drawn from one palette. Its tile number (the top left quarter's) and the palette.
-          def background_big_cell(image)
+          def background_big_cell(image, held: nil)
             drawn = (0...256).reject { |at| image.tile_see_through_at?(at) }
-            palette = palette_for(@background_palettes, drawn.map { |at| image.color_at(at) }.uniq, "backgrounds")
+            palette = held || palette_for(@background_palettes, drawn.map { |at| image.color_at(at) }.uniq, "backgrounds")
             quarters = (0...4).map do |quarter|
               tile_bytes(Array.new(64) do |at|
                 pixel = ((((quarter / 2) * 8) + (at / 8)) * 16) + ((quarter % 2) * 8) + (at % 8)
-                image.tile_see_through_at?(pixel) ? 0 : @background_palettes[palette].index(image.color_at(pixel)) + 1
+                if image.tile_see_through_at?(pixel) then 0
+                elsif held then place_in_list(image, pixel)
+                else @background_palettes[palette].index(image.color_at(pixel)) + 1
+                end
               end)
             end
             number = @background_tile_numbers[quarters.join] ||= begin
@@ -148,6 +158,43 @@ module VBlank
             end
             [number, palette]
           end
+
+          # A LIST THE GAME CHANGES AS IT RUNS has a palette to itself, its colours in the order of its
+          # places: changing it is writing another list over that palette, so every pixel has to
+          # be the place it was drawn at, and nothing else's colours can share it. +key+ says whose
+          # it is, a background's name and a list or a sprites' list. Its colours are the first ones
+          # it holds; the rest go in as the game runs (Runtime::Tint's rt_colors_hold).
+          def held_background_palette(key, colors) = held_palette(@background_palettes, key, colors, "backgrounds", 0...PALETTES)
+
+          def held_sprite_palette(key, colors, mixed: false)
+            held_palette(@sprite_palettes, key, colors, "sprites", @sprite_palettes_for.fetch(mixed))
+          end
+
+          # The palette kept under +key+, or nil for a list nothing is drawn with.
+          def held_palette_of(key) = @held_palettes[key]
+
+          # Where a palette starts in the 512 bytes of the colour memory: the backgrounds' from
+          # colour 1 of each, the sprites' after them.
+          def background_palette_at(palette) = ((palette * PLACES) + 1) * 2
+          def sprite_palette_at(palette) = ((128 + (palette * PLACES)) + 1) * 2
+
+          def held_palette(palettes, key, colors, what, within)
+            @held_palettes.fetch(key) do
+              held = @held[palettes.equal?(@sprite_palettes) ? :sprites : :backgrounds]
+              free = within.find { |p| palettes[p].nil? || (palettes[p].empty? && !held.include?(p)) }
+              unless free
+                raise TooMuch, "The #{what} hold more lists of colors the game changes than a Super Nintendo can " \
+                               "show. It holds #{PALETTES} sets of #{OWN_COLORS} colours. To fix this, change fewer lists."
+              end
+
+              palettes[free] = colors.dup
+              held << free
+              @held_palettes[key] = free
+            end
+          end
+
+          # Which place of its list pixel +at+ of +image+ was drawn at.
+          def place_in_list(image, at) = image.place_at(at) || image.colors.index(image.color_at(at))
 
           # Where a big tile's quarters go, from the place its cell names.
           BIG_TILE_PLACES = [0, 1, 16, 17].freeze
@@ -194,16 +241,21 @@ module VBlank
           # The sprite picture +name+ (an Assets::Image), cut into pieces. A picture whose width or
           # height is not a multiple of 8 has its last pieces' extra pixels left undrawn.
           # +mixed+ draws it from a see-through sprite's palettes (#split_sprite_palettes!).
-          def sprite_picture(name, image, mixed: false)
-            return @sprite_pictures[name] ||= pieced_sprite_picture(name, image, mixed) if image.pieces
+          # +held+ is the palette of a list the game changes (#held_sprite_palette), whose pictures
+          # are drawn from it place for place.
+          def sprite_picture(name, image, mixed: false, held: nil)
+            return @sprite_pictures[name] ||= pieced_sprite_picture(name, image, mixed, held) if image.pieces
 
             @sprite_pictures[name] ||= begin
               drawn = (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }
-              palette = palette_for(@sprite_palettes, drawn.map { |at| image.color_at(at) }.uniq, "sprites",
-                                    @sprite_palettes_for.fetch(mixed))
+              palette = held || palette_for(@sprite_palettes, drawn.map { |at| image.color_at(at) }.uniq, "sprites",
+                                            @sprite_palettes_for.fetch(mixed))
               cut = SpritePieces.cut(image.width, image.height) do |x, y|
                 i = (y * image.width) + x
-                image.drawn_at?(i) ? @sprite_palettes[palette].index(image.color_at(i)) + 1 : 0
+                if !image.drawn_at?(i) then 0
+                elsif held then place_in_list(image, i)
+                else @sprite_palettes[palette].index(image.color_at(i)) + 1
+                end
               end
               squares = cut.to_h { |across, down, places| [[across, down], places] }
               pieces = @sprite_squares ? square_pieces(squares, image, palette) : []
@@ -323,13 +375,13 @@ module VBlank
           #
           # Its colours are read from the pieces rather than the composed pixels: all of a piece can
           # lie under another, and its tile still needs them.
-          def pieced_sprite_picture(name, image, mixed)
+          def pieced_sprite_picture(name, image, mixed, held = nil)
             given = (@sprite_squares ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
             colors = given.flat_map { |_, _, own| own.bytes }.uniq.reject(&:zero?).map { |place| image.colors.fetch(place) & 0x7FFF }
-            palette = palette_for(@sprite_palettes, colors, "sprites", @sprite_palettes_for.fetch(mixed))
+            palette = held || palette_for(@sprite_palettes, colors, "sprites", @sprite_palettes_for.fetch(mixed))
             # Last given first: sprites go into the table back-most first (Lowering::Picture
             # #emit_present_objects), so the piece placed last is the one in front.
-            pieces = given.map { |dx, dy, own| sprite_piece_from_places(dx, dy, own, image, palette) }.reverse
+            pieces = given.map { |dx, dy, own| sprite_piece_from_places(dx, dy, own, image, palette, held) }.reverse
             SpritePicture.new(name: name, number: @sprite_pictures.length, width: image.width, height: image.height,
                               pieces: pieces)
           end
@@ -337,9 +389,9 @@ module VBlank
           # One piece of a game's own, of 8×8 or 16×16, its tiles shared with any piece alike. A big
           # piece with no place for its four tiles raises, and the game is built again without
           # squares (SNES#build).
-          def sprite_piece_from_places(dx, dy, own, image, palette)
-            ours = own.bytes.map { |place| place.zero? ? 0 : @sprite_palettes[palette].index(image.colors.fetch(place) & 0x7FFF) + 1 }
-                      .pack("C*")
+          def sprite_piece_from_places(dx, dy, own, image, palette, held = nil)
+            ours = held ? own : own.bytes.map { |place| place.zero? ? 0 : @sprite_palettes[palette].index(image.colors.fetch(place) & 0x7FFF) + 1 }
+                                   .pack("C*")
             if Assets::Image.side(own) == Assets::PIECE_SIZE
               return Piece.new(dx: dx, dy: dy, tile: shared_sprite_tile_number(tile_bytes(ours.bytes)), palette: palette)
             end
@@ -388,7 +440,8 @@ module VBlank
                              "Super Nintendo tile shows #{OWN_COLORS} and see-through. To fix this, draw it in #{OWN_COLORS} colours or fewer."
             end
 
-            used = within.select { |p| palettes[p] }
+            held = @held[palettes.equal?(@sprite_palettes) ? :sprites : :backgrounds]
+            used = within.select { |p| palettes[p] && !held.include?(p) }
             found = used.find { |p| (colors - palettes[p]).empty? }
             return found if found
 

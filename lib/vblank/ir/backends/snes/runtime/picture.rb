@@ -187,8 +187,8 @@ module VBlank
             # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers). +sprite_squares+ for a
             # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], tile_runs: 0, run_scratch: nil,
-                     see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false)
-              emit_start(asm, memory, painted, see_through, big_tiles)
+                     see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false)
+              emit_start(asm, memory, painted, see_through, big_tiles, changing_colors)
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
               emit_backgrounds(asm, memory, work)
               emit_bar(asm, memory) if bar
@@ -207,7 +207,7 @@ module VBlank
 
             # The registers, then the tiles and the colours copied in while the screen is off — or,
             # for a +painted+ screen, Runtime::Paint's.
-            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0)
+            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0, changing_colors = false)
               h = Console::SNESHardware
               asm.label("rt_picture_start")
               # WRIO's top bit lets a read of SLHV latch the line the picture is on, which the copy
@@ -244,6 +244,7 @@ module VBlank
               asm.stz(asm.abs(h::CGADD))
               asm.rep(0x20)
               emit_dma(asm, h::DMA_TO_ONE_PORT, h::CGDATA, asm.imm("art colors"), asm.bank_of("art colors"), 512)
+              asm.jsl(asm.long("rt_colors_start")) if changing_colors
               asm.jsl(asm.long("rt_sprites_begin"))
               asm.rtl
             end

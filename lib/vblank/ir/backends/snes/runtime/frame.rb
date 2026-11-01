@@ -79,12 +79,20 @@ module VBlank
 
             # The buttons as the controller hands them over, a bit each in a 16-bit word with B at
             # the top (Console::SNESHardware::JOYPAD_BITS), to the bit each has in IR::Buttons's
-            # order. X and Y are read and dropped: no game names them yet.
+            # order. X and Y are turned round only for a game that can ask about them, since this
+            # runs in the interrupt on every frame and a game that never reads them should not pay.
             BUTTON_BITS = Buttons::NAMES.each_with_index.to_h do |name, bit|
-              [1 << Console::SNESHardware::JOYPAD_BITS.fetch(name), 1 << bit]
+              [name, [1 << Console::SNESHardware::JOYPAD_BITS.fetch(name), 1 << bit]]
             end.freeze
 
+            EXTRA_BUTTONS = %i[x y].freeze
+
             module_function
+
+            # Whether +program+ reads X or Y, by name or as any button at all.
+            def reads_extra_buttons?(program)
+              program.walk.any? { |node| %i[held pressed].include?(node.kind) && (EXTRA_BUTTONS + [Buttons::ANY]).include?(node.button) }
+            end
 
             def reserve(memory)
               memory.reserve(STATE, 2)
@@ -111,7 +119,7 @@ module VBlank
             # +pad+ is two words of the direct page, the same on the game's page and the
             # interrupt's, that reading the controller works in. +sound+ for a game that makes sound,
             # whose wait ends in Sound's rt_sound_frame.
-            def emit(asm, memory, pad:, sound: false)
+            def emit(asm, memory, pad:, sound: false, extra_buttons: false)
               h = Console::SNESHardware
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
@@ -214,7 +222,7 @@ module VBlank
               asm.label("rt_frame_begins_skipped")
               asm.rts
 
-              emit_buttons(asm, memory, pad)
+              emit_buttons(asm, memory, pad, extra_buttons)
               emit_stopping(asm, memory)
             end
 
@@ -225,7 +233,7 @@ module VBlank
             # come out laid out as the console's own automatic read lays them out (JOYPAD_BITS). That
             # read happens by itself at the start of the blank and takes three lines; reading by hand
             # takes a few dozen instructions and needs nothing waited for.
-            def emit_buttons(asm, memory, pad)
+            def emit_buttons(asm, memory, pad, extra_buttons)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               joyser = 0x4016
               # rt_buttons_now: A = the buttons held now, a bit each in IR::Buttons's order.
@@ -244,7 +252,9 @@ module VBlank
               asm.dex
               asm.bne("rt_buttons_now_bit")
               asm.stz(asm.direct(pad + 2))
-              BUTTON_BITS.each do |from, to|
+              BUTTON_BITS.each do |name, (from, to)|
+                next if EXTRA_BUTTONS.include?(name) && !extra_buttons
+
                 skip = "rt_buttons_now_not_#{to}"
                 asm.lda(asm.direct(pad))
                 asm.bit(from)

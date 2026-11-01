@@ -30,7 +30,7 @@ These work as their group files say:
 `keep_showing`, `fade`, `tint`, `fade_in`, `fade_out`, `flash_screen`, `fade_level`,
 `shake_screen`, `pixelate`, `pixelate_in`, `pixelate_out`, `pixelate_size`, `spotlight`,
 `iris_in`, `iris_out`, `iris_shut?`, `pulse`, `camera_follows`, `image`, `color`, `rgb`, `rgb8`,
-`colors`, `recolor`, `colors_in_use`, `mirror`, `upside_down`, `blit`, `sprite`,
+`colors`, `recolor`, `colors_in_use`, `color_walk`, `mirror`, `upside_down`, `blit`, `sprite`,
 `draw_in_order`, `hide_sprites`, `picture_groups`, `pool`, `box`, `tiles`, `background`,
 `canvas`, `layers`, `layer`, `draw_text`, `draw_number`, `font`, `text_width`, `text_height`,
 `menu`, `var`, `save_var`, `save_data`, `clock`, `saves_keep_everything`, `set`, `add`,
