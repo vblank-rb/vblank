@@ -1284,6 +1284,12 @@ module VBlank
             return if known&.zero?
             return @asm.jump(label) if known
 
+            if (equal = equality_of_kept(condition))
+              compare_kept_with_number(*equal)
+              return @asm.jump(condition.op == :== ? :z : :nz, label)
+            end
+            return jump_unless(condition.lhs, label) if turned_round?(condition)
+
             go_on = fresh("holds_not")
             jump_unless(condition, go_on)
             @asm.jump(label)
@@ -1296,7 +1302,9 @@ module VBlank
             known = folded(condition)
             return (@asm.jump(label) if known.zero?) if known
 
-            if (equal = equality_with_number(condition))
+            if turned_round?(condition)
+              jump_if(condition.lhs, label)
+            elsif (equal = equality_with_number(condition))
               compare_with_number(*equal)
               @asm.jump(condition.op == :== ? :nz : :z, label)
             elsif (equal = equality_of_kept(condition))
@@ -1324,11 +1332,16 @@ module VBlank
               other, name, below = ordered
               emit_carry_when_below_variable(other, name)
               @asm.jump(below ? :nc : :c, label)
-            elsif binop?(condition, :and)
-              # The interpreter works both sides out; the second is skipped here when the first does
-              # not hold, which is the same thing, since nothing this lowering makes can stop the game.
+            elsif binop?(condition, :and) && right_side_skippable?(condition)
+              # The interpreter works both sides out; the second is skipped here when the first has
+              # decided, which is the same thing where working it out changes nothing.
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
+            elsif binop?(condition, :or) && right_side_skippable?(condition)
+              holds = fresh("either_holds")
+              jump_if(condition.lhs, holds)
+              jump_unless(condition.rhs, label)
+              @asm.label(holds)
             elsif condition.is_a?(Node) && condition.kind == :binop && COMPARISONS.key?(condition.op)
               compare(condition)
               _, holds_when = COMPARISONS.fetch(condition.op)
@@ -1341,6 +1354,17 @@ module VBlank
           end
 
           def binop?(node, op) = node.is_a?(Node) && node.kind == :binop && node.op == op
+
+          def right_side_skippable?(join) = Unchanging.value?(join.rhs) { |part| folded(part) }
+
+          # `test == 0` is how `!`, `unless` and `while` turn a test round: a comparison or a join
+          # asked the other way, with no 0 or 1 made of it first.
+          def turned_round?(condition)
+            return false unless binop?(condition, :==) && folded(condition.rhs)&.zero?
+
+            test = condition.lhs
+            test.is_a?(Node) && test.kind == :binop && (COMPARISONS.key?(test.op) || %i[and or].include?(test.op))
+          end
 
           # The variable +condition+ asks is at or above nought (>= 0), or below it (< 0), or nil.
           def sign_tested_variable(condition)

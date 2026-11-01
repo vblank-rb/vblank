@@ -998,9 +998,9 @@ module VBlank
             known = folded(condition)
             return (@asm.brl(label) if known.zero?) if known
 
-            if binop?(condition, :and)
+            if binop?(condition, :and) && Unchanging.value?(condition.rhs) { |part| folded(part) }
               # The interpreter works both sides out; the second is skipped here when the first does
-              # not hold, which is the same thing, since working a side out changes nothing.
+              # not hold, which is the same thing where working it out changes nothing.
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
             elsif condition.is_a?(Node) && condition.kind == :binop && COMPARISONS.include?(condition.op)

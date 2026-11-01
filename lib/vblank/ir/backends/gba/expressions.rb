@@ -192,24 +192,8 @@ module VBlank
             end
           end
 
-          # THE VALUES THAT CAN BE LEFT UNREAD, OR READ LATER, with no difference to the game, each
-          # with the parts of it that must be such values too. A chance is here because its number
-          # is drawn by a statement before the test, and only read here. A list read is not: an
-          # index out of range stops the game, and the interpreter works out both sides of a join
-          # every time (see Reference#eval_binop), so the read cannot be skipped.
-          UNCHANGING_VALUES = Ractor.make_shareable(
-            { var_ref: [], list_len: [], held: [], pressed: [],
-              neg: [:operand], bit_not: [:operand], absolute: [:operand], shift_right: [:operand],
-              clamped: %i[operand min max], chance: [:draw], table_get: [:index],
-              binop: %i[lhs rhs], mul_fix: %i[lhs rhs], div_fix: %i[lhs rhs] }
-          )
-
-          def self.changes_nothing?(node)
-            return true if Primitives.const_int(node)
-
-            parts = UNCHANGING_VALUES[node.kind]
-            !parts.nil? && parts.all? { |part| changes_nothing?(node.public_send(part)) }
-          end
+          # A value that can be left unread, or read later, with no difference to the game.
+          def self.changes_nothing?(node) = IR::Unchanging.value?(node) { |part| Primitives.const_int(part) }
 
           # BRANCH TO +label+ WHEN +cond+ COMES OUT AS +holds+, with no 0 or 1 made on the way. A
           # compare leaves its answer in the chip's flags, and a branch reads them, so working the
