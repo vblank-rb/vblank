@@ -26,6 +26,17 @@ class TestEmulatorBuilds < Minitest::Test
     end
   end
 
+  # A game's bundle builds the same source as a gem of its own at the same moment, so an install
+  # builds on a copy and leaves nothing in the folder the other build is using.
+  def test_a_build_works_on_a_copy_of_the_source
+    folder = VBlank.root.join("ruby-gba-emulator").to_s
+    EmulatorBuilds.with_copy_of_source(folder) do |copy|
+      refute copy.start_with?(folder)
+      assert_path_exists File.join(copy, "extconf.rb")
+      assert_path_exists File.join(copy, "..", "..", "lib", "ruby_gba_emulator", "built_from.rb")
+    end
+  end
+
   def test_an_install_without_the_emulator_says_why_and_not_what_a_checkout_does
     said = VBlank::Diagnostics::Emulator.send(:missing_advice, "cannot load such file -- ruby_gba_emulator",
                                               bundled: false, not_built: "libmgba not found")

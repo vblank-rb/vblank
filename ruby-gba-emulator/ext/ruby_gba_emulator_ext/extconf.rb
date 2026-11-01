@@ -47,9 +47,23 @@ def check_mgba
   add_mgba_deps
   return true if have_library("mgba")
 
+  # A static archive carries none of them, and linking it without them still "works": macOS leaves
+  # the missing names to be found at run time, and the first call to one crashes at address 0.
+  if static_mgba?
+    abort "libmgba here is a static library and needs libpng and libzip, and a test program with them " \
+          "did not link. Install them (brew install libpng libzip), or read mkmf.log for why."
+  end
+
   # Fall back without deps (shared lib on Linux — deps baked into the .so).
   $libs = saved_libs
   have_library("mgba")
+end
+
+# Whether the libmgba on the search path is only an archive.
+def static_mgba?
+  dirs = $LDFLAGS.scan(/-L(\S+)/).flatten
+  dirs.any? { |dir| File.exist?("#{dir}/libmgba.a") } &&
+    dirs.none? { |dir| File.exist?("#{dir}/libmgba.#{RbConfig::CONFIG['SOEXT']}") }
 end
 
 def find_mgba

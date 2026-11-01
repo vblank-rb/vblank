@@ -3,6 +3,7 @@
 require "fileutils"
 require "open3"
 require "rbconfig"
+require "tmpdir"
 
 # BUILDING THE EMULATORS WHEN THE GEM IS INSTALLED.
 #
@@ -49,14 +50,26 @@ module EmulatorBuilds
     installed = File.join(folder, "lib", RubyGBAEmulator::BUILT_FOR, "ruby_gba_emulator")
     source = File.join(folder, "ext", "ruby_gba_emulator_ext")
     FileUtils.mkdir_p(installed)
-    run(source, RbConfig.ruby, "extconf.rb")
-    run(source, "make")
-    run(source, "make", "install-so", "RUBYARCHDIR=#{installed}")
-    run(source, "make", "clean")
+    with_copy_of_source(folder) do |copy|
+      run(copy, RbConfig.ruby, "extconf.rb")
+      run(copy, "make")
+      run(copy, "make", "install-so", "RUBYARCHDIR=#{installed}")
+    end
   rescue StandardError
     # A folder for this Ruby is what tells the emulator's loader that a build is there.
     FileUtils.rm_rf(File.dirname(installed)) if installed
     raise
+  end
+
+  # The extension's source copied somewhere of its own for the block. A game's bundle installs vblank
+  # and ruby-gba-emulator side by side from one clone, and that gem builds the same source itself. Two
+  # builds in one folder delete each other's test programs, so each finds libpng and libzip missing,
+  # and the extension links without them and crashes the first time it opens a cartridge.
+  def with_copy_of_source(folder)
+    Dir.mktmpdir("vblank-emulator-build") do |copy|
+      %w[ext lib].each { |part| FileUtils.cp_r(File.join(folder, part), copy) }
+      yield File.join(copy, "ext", "ruby_gba_emulator_ext")
+    end
   end
 
   def build_snes_core(folder)
