@@ -27,7 +27,7 @@ module VBlank
         # what two sprites are tested against each other with; and every grid a background shows.
         class Art
           # The places a list holds, and how many are the picture's own: one is see-through.
-          PLACES = 4
+          PLACES = Console::COLOR.list_colors
           OWN_COLORS = PLACES - 1
 
           # How many palettes of each kind there are.

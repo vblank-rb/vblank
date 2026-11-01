@@ -24,7 +24,7 @@ module VBlank
         class Art
           # A palette's places, and how many hold a colour of the picture's own: place 0 is
           # see-through.
-          PLACES = 16
+          PLACES = Console::SUPER_NINTENDO.list_colors
           OWN_COLORS = PLACES - 1
           PALETTES = 8
 
