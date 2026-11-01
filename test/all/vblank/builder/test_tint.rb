@@ -193,13 +193,13 @@ class TestTint < Minitest::Test
   # Half way, a channel at the top and one at nothing meet at 15, not 16: the fraction is
   # dropped, so green loses its half step and red does not gain one.
   def test_half_way_mixes_the_two_a_channel_at_a_time
-    assert_equal 0x01EF, shown(tinted(:red, 50))
+    assert_equal VBlank::Testing.shown(0x01EF), shown(tinted(:red, 50))
   end
 
   def test_the_amount_walks_the_picture_toward_the_color
     seen = [0, 25, 50, 75, 100].map { |amount| shown(tinted(:red, amount)) }
 
-    assert_equal [GREEN, 0x02E7, 0x01EF, 0x00F7, RED], seen
+    assert_equal [GREEN, 0x02E7, 0x01EF, 0x00F7, RED].map { |color| VBlank::Testing.shown(color) }, seen
   end
 
   # The picture is not redrawn, so it is all still there when the tint lifts. Written as
@@ -232,7 +232,7 @@ class TestTint < Minitest::Test
     end
     b.finalize_program
 
-    assert_equal 0x01EF, shown(b.program)
+    assert_equal VBlank::Testing.shown(0x01EF), shown(b.program)
   end
 
   # --- a tint counted in 256ths ---
@@ -286,27 +286,27 @@ class TestTint < Minitest::Test
 
   def test_a_tint_toward_black_counts_in_256ths
     SHARES_IN_256THS.each do |share|
-      assert_equal channels_in_256ths(:black, share), tinted_in_256ths(:black, share), "#{share} of 256 toward black"
+      assert_equal VBlank::Testing.shown(channels_in_256ths(:black, share)), tinted_in_256ths(:black, share), "#{share} of 256 toward black"
     end
   end
 
   def test_a_tint_toward_white_counts_in_256ths
     SHARES_IN_256THS.each do |share|
-      assert_equal channels_in_256ths(:white, share), tinted_in_256ths(:white, share), "#{share} of 256 toward white"
+      assert_equal VBlank::Testing.shown(channels_in_256ths(:white, share)), tinted_in_256ths(:white, share), "#{share} of 256 toward white"
     end
   end
 
   def test_an_amount_in_256ths_the_game_works_out
     [1, 13, 255].each do |share|
-      assert_equal channels_in_256ths(:black, share), tinted_in_256ths(:black, share, worked_out: true), "#{share} toward black"
-      assert_equal channels_in_256ths(:white, share), tinted_in_256ths(:white, share, worked_out: true), "#{share} toward white"
+      assert_equal VBlank::Testing.shown(channels_in_256ths(:black, share)), tinted_in_256ths(:black, share, worked_out: true), "#{share} toward black"
+      assert_equal VBlank::Testing.shown(channels_in_256ths(:white, share)), tinted_in_256ths(:white, share, worked_out: true), "#{share} toward white"
     end
   end
 
   # One step of 256 toward black keeps 255 256ths of each channel and drops the fraction, so
   # every channel that has anything loses one: 31 red, 17 green and 5 blue become 30, 16 and 4.
   def test_one_256th_toward_black_takes_a_step_off_every_channel
-    assert_equal 30 | (16 << 5) | (4 << 10), tinted_in_256ths(:black, 1)
+    assert_equal VBlank::Testing.shown(30 | (16 << 5) | (4 << 10)), tinted_in_256ths(:black, 1)
   end
 
   # --- the console agrees, which is the point of having two backends ---
@@ -354,14 +354,14 @@ class TestTint < Minitest::Test
   def test_a_tint_on_a_color_table_is_mixed_at_five_bits
     { tear_free: gray_redrawn_under_yellow, tiled: gray_tiles_under_yellow }.each do |kind, program|
       assert_backends_agree(program, frames: 2, name: "TABLE")
-      assert_equal 23 | (23 << 5) | (8 << 10), shown(program), "on the #{kind} screen"
+      assert_equal VBlank::Testing.shown(23 | (23 << 5) | (8 << 10)), shown(program), "on the #{kind} screen"
     end
   end
 
   # A tint the game works out is converted as the program runs, which is a different
   # path through the lowering than a number written into it.
   def test_the_console_agrees_on_an_amount_the_game_works_out
-    assert_equal 0x01EF, game_player.run(worked_out_tint, frames: 2).screen.pixel(120, 80)
+    assert_equal VBlank::Testing.shown(0x01EF), game_player.run(worked_out_tint, frames: 2).screen.pixel(120, 80)
   end
 
   # --- a tint and a fade are one effect on the display ---
@@ -409,7 +409,7 @@ class TestTint < Minitest::Test
   def test_the_tear_free_screen_walks_the_picture_toward_the_color
     seen = [0, 25, 50, 75, 100].map { |amount| shown(buffered_tint(:red, amount)) }
 
-    assert_equal [GREEN, 0x02E7, 0x01EF, 0x00F7, RED], seen
+    assert_equal [GREEN, 0x02E7, 0x01EF, 0x00F7, RED].map { |color| VBlank::Testing.shown(color) }, seen
   end
 
   def test_a_tiled_screen_tints_the_scenery_and_the_sprites_together
@@ -418,14 +418,14 @@ class TestTint < Minitest::Test
       [screen.pixel(*SCENERY_XY), screen.pixel(*SPRITE_XY)]
     end
 
-    assert_equal TILED_SCENERY, seen.map(&:first)
-    assert_equal TILED_SPRITE, seen.map(&:last)
+    assert_equal TILED_SCENERY.map { |color| VBlank::Testing.shown(color) }, seen.map(&:first)
+    assert_equal TILED_SPRITE.map { |color| VBlank::Testing.shown(color) }, seen.map(&:last)
   end
 
   # An amount the game works out takes the other path through the lowering — the steps
   # are worked out as the program runs, and so is the color's share of every entry.
   def test_the_console_agrees_on_a_worked_out_amount_on_the_tear_free_screen
-    assert_equal 0x01EF, game_player.run(worked_out_buffered_tint, frames: 2).screen.pixel(120, 80)
+    assert_equal VBlank::Testing.shown(0x01EF), game_player.run(worked_out_buffered_tint, frames: 2).screen.pixel(120, 80)
   end
 
   # On this screen the fade and the tint are separate pieces of hardware, so nothing

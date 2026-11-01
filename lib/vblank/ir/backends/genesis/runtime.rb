@@ -6,6 +6,7 @@ require_relative "runtime/frame"
 require_relative "runtime/lists"
 require_relative "runtime/paint"
 require_relative "runtime/tiles"
+require_relative "runtime/tint"
 require_relative "runtime/picture"
 require_relative "runtime/collide"
 
@@ -25,9 +26,9 @@ module VBlank
           module_function
 
           # The runtime's own places in work RAM, asked for before the game's.
-          def reserve(memory, picture: :none)
+          def reserve(memory, picture: :none, colors: false)
             Frame.reserve(memory)
-            Picture.reserve(memory, picture: picture)
+            Picture.reserve(memory, picture: picture, colors: colors)
           end
 
           # The runtime's sections: the vectors' entry points first, then everything else in one.
@@ -35,12 +36,14 @@ module VBlank
           # routine run at each frame boundary (its timers moving on), or nil for none.
           # +picture+ is how the game draws (Picture), :painted, :tiled or :none, which carries what it
           # draws with, and +columns+ how many cells across the planes of a tiled one are.
+          # +colors+ for a game that fades, tints or recolours (Tint).
           # +camera+ for a painted screen whose game moves the window over its picture (Paint).
           # +fractions+ for a game that holds numbers with a fraction (Int32).
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
           # +registers+ is how many words of the video chip's register table the game writes
           # ("rt_vdp_registers", which the lowering makes).
-          def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false)
+          def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
+                         colors: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -48,7 +51,7 @@ module VBlank
             Int32.emit(asm, fractions: fractions)
             Frame.emit(asm, memory)
             Lists.emit(asm, memory)
-            Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera)
+            Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors)
             Collide.emit(asm, memory) if collision
             emit_start(asm)
             emit_frame_begins(asm, frame_begins)

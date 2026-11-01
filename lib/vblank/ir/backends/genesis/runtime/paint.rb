@@ -76,10 +76,10 @@ module VBlank
             end
 
             # +patches+ is how many places the game keeps a patch of the screen in (SaveRegion).
-            def emit(asm, memory, camera: false)
+            def emit(asm, memory, camera: false, colors: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_start(asm, memory, at)
-              emit_upload(asm, memory, at, camera: camera)
+              emit_start(asm, memory, at, colors: colors)
+              emit_upload(asm, memory, at, camera: camera, colors: colors)
               emit_camera(asm, at) if camera
               emit_clear(asm, memory, at)
               emit_area(asm, at)
@@ -93,7 +93,7 @@ module VBlank
             # colour memory; the map of the screen's plane, which names the tiles in the order they
             # come (tile 1 first) and is the same for ever; and every patch of the screen kept for
             # the game made empty. Done with the screen off, so none of it is seen.
-            def emit_start(asm, memory, at)
+            def emit_start(asm, memory, at, colors: false)
               h = Console::GenesisHardware
               asm.label("rt_picture_start")
               asm.move(:w, asm.imm(0), at.call(AREA, AREA_LEFT))
@@ -106,6 +106,7 @@ module VBlank
               asm.label("rt_picture_start_color")
               asm.move(:w, asm.post(0), asm.abs_l(h::VDP_DATA))
               asm.dbra(asm.d(1), "rt_picture_start_color")
+              asm.jsr(asm.abs_l("rt_colors_start")) if colors
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, MAP_AT)), asm.abs_l(h::VDP_CONTROL))
               asm.moveq(0, asm.d(0))
               asm.moveq(1, asm.d(1))
@@ -198,10 +199,11 @@ module VBlank
             # taken off. The marks are looked at four at a time, so a pass that changed nothing near
             # most of the screen skips most of it in a few instructions. rt_upload_whole: the whole
             # picture, while the screen is still off.
-            def emit_upload(asm, memory, at, camera: false)
+            def emit_upload(asm, memory, at, camera: false, colors: false)
               h = Console::GenesisHardware
               asm.label("rt_upload")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
+              asm.jsr(asm.abs_l("rt_colors_written")) if colors
               asm.tst(:w, at.call(ANY_DIRTY))
               asm.branch(:eq, "rt_upload_done")
               asm.clr(:w, at.call(ANY_DIRTY))
@@ -250,6 +252,7 @@ module VBlank
 
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
+              asm.jsr(asm.abs_l("rt_colors_written")) if colors
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, FIRST_TILE_AT)), asm.abs_l(h::VDP_CONTROL))
               asm.lea(asm.abs_l(memory[SCREEN]), asm.a(0))
               asm.move(:w, asm.imm(SCREEN_BYTES / 4 - 1), asm.d(0))

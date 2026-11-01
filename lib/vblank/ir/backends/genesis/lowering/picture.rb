@@ -21,6 +21,7 @@ module VBlank
                                                  set_tile: :emit_set_tile, show_map: :emit_show_map,
                                                  present_objects: :emit_present_objects,
                                                  color_list_holds: :emit_color_list_holds,
+                                                 fade: :emit_fade, tint: :emit_tint,
                                                  hide_sprites: :emit_hide_sprites
                                                })
 
@@ -66,6 +67,30 @@ module VBlank
               refuse_unmade!("a camera on a tiled screen") if !painted? && @program.walk.any? { |node| node.kind == :camera }
               refuse_unmade_backgrounds!
               refuse_unmade_sprites!
+            end
+
+            # Reference#exec_fade, which on a console that cannot blend walks the colours (IR::Fading): the
+            # whole screen toward black or white, in 256ths.
+            def emit_fade(node)
+              return unless tiled? || painted?
+
+              mode = node.toward == :white ? Runtime::Tint::TOWARD_WHITE : Runtime::Tint::TOWARD_BLACK
+              runtime_call("rt_tint_to", [Build.int(mode), tint_steps(node), Build.int(0)])
+            end
+
+            # Reference#exec_tint: the whole screen toward a colour, in 256ths.
+            def emit_tint(node)
+              return unless tiled? || painted?
+
+              runtime_call("rt_tint_to", [Build.int(Runtime::Tint::TOWARD_COLOR), tint_steps(node),
+                                          Build.int(Graphics::Color.resolve(node.color))])
+            end
+
+            # How far the fade or tint has gone, in the walk's 256ths, held between none and all
+            # (FadeSteps.steps, worked out as the game runs).
+            def tint_steps(node)
+              steps = FadeSteps.steps_value(node.amount, fraction_bits: node.fraction_bits, walked: true)
+              Build.clamped(steps, Build.int(0), Build.int(256))
             end
 
             def refuse_unmade_backgrounds!
@@ -178,13 +203,13 @@ module VBlank
             end
 
             # Each table of sets as data for the Linker: how many sets besides the declared colours, then those and
-            # each other set, a palette's places (Art#palette_words) each.
+            # each other set, a palette's places (Art#palette_colors, the game's 15-bit colours) each.
             def write_held_colors(data)
               (@held_label_names || []).each_with_index do |name, number|
                 list = color_list_named(name)
                 data.label("art held colors #{number}")
                 data.data_words(list.recolors.length)
-                [list.colors, *list.recolors].each { |colors| data.data_words(@art.palette_words(colors.drop(1).map { |color| color & 0x7FFF })) }
+                [list.colors, *list.recolors].each { |colors| data.data_words(@art.palette_colors(colors.drop(1))) }
               end
             end
 
@@ -210,6 +235,7 @@ module VBlank
                 end
               end
               write_held_colors(data)
+              write_colors15(data) if self.class.changing_colors?(@program)
               data.label("art grids")
               @art.grids.each do |grid|
                 data.data_longs(grid_label(grid.number))
@@ -224,6 +250,14 @@ module VBlank
                 data.data_words(obj.poses.length, *obj.poses.map { |pose| @art.sprite_pictures.fetch(pose).number })
               end
               [data.section, *tile_section]
+            end
+
+            # The game's own colours for the runtime to move (Runtime::Tint): the 64 places of the colour memory
+            # and how many of each palette are used.
+            def write_colors15(data)
+              data.label("colors15")
+              data.data_words(@art.colors15)
+              data.data_words(@art.colors_used)
             end
 
             ART = M68000::Holding.new(what: "the game's pictures", fix: "use fewer different pictures and maps")

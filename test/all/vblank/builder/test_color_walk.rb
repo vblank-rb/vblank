@@ -67,8 +67,8 @@ class TestColorWalk < Minitest::Test
     seen = game_player
     seen.run(walking_game, frames: 16)
 
-    assert_equal rgb5(10, 10, 10), seen.screen.pixel(4, 4), "the walked background, ten steps of twenty up"
-    assert_equal rgb5(20, 20, 20), seen.screen.pixel(4, 62), "the sprite is as drawn"
+    assert_equal VBlank::Testing.shown(rgb5(10, 10, 10)), seen.screen.pixel(4, 4), "the walked background, ten steps of twenty up"
+    assert_equal VBlank::Testing.shown(rgb5(20, 20, 20)), seen.screen.pixel(4, 62), "the sprite is as drawn"
   end
 
   private def walking_game

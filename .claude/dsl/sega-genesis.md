@@ -166,7 +166,6 @@ and a test fails when the two differ. The Advance's answers are in
 An answer above is what the Genesis does with a verb. The build for it is still growing,
 and a game that reaches one of these steps is refused, naming the step, until it is made:
 
-- fades and tints: `fade`, `tint`
 - the status bar: `place_bar`
 - backgrounds bent row by row: `scroll_rows`
 - tiles painted from a list: `copy_tiles`, `copy_owed_tiles`

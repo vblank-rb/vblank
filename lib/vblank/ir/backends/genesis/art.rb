@@ -58,11 +58,13 @@ module VBlank
           # +backdrop+ is the colour the game shows wherever nothing is drawn (`screen ... backdrop:`),
           # a 15-bit colour, or nil for black.
           def initialize(backdrop: nil)
-            @backdrop = Console::GenesisHardware.color_word((backdrop || BACKDROP) & 0x7FFF)
+            @backdrop_color = (backdrop || BACKDROP) & 0x7FFF
+            @backdrop = Console::GenesisHardware.color_word(@backdrop_color)
             @tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
             @tile_numbers = { blank_tile => 0 }
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
             @held = {} # whose list => the palette it keeps to itself (#held_sprite_palette)
+            @originals = {} # a colour word => the 15-bit colour of the game's it was first made from
             @sprite_pictures = {}
             @grids = []
           end
@@ -144,7 +146,7 @@ module VBlank
           def held_palette_of(key) = @held[key]
 
           # +colors+ (15-bit) as the words a palette's places hold, filled out to fifteen.
-          def palette_words(colors) = colors.map { |color| word_of(color) }.fill(0, colors.length...OWN_COLORS)
+          def palette_colors(colors) = colors.map { |color| color & 0x7FFF }.fill(0, colors.length...OWN_COLORS)
 
           # --- the colour memory ---
 
@@ -157,6 +159,22 @@ module VBlank
             colors
           end
 
+          # The colours of the game's that the colour memory's places were made from, 15-bit, a word each
+          # in the colour memory's order (Runtime::Tint): the backdrop, then each palette's places. Two
+          # colours of the game that make one word of the console's are the first one, which a fade can
+          # tell apart from the other where the interpreter would.
+          def colors15
+            colors = Array.new(PALETTES * PLACES, 0)
+            colors[0] = @backdrop_color
+            @palettes.each_with_index do |list, p|
+              list&.each_with_index { |word, i| colors[(p * PLACES) + i + 1] = @originals.fetch(word, 0) }
+            end
+            colors
+          end
+
+          # How many places of each palette hold a colour, for the runtime to write again when they change.
+          def colors_used = @palettes.map { |list| list ? list.length : 0 }
+
           # The tiles' pixels, tile 1 first (tile 0, the blank one, is in video RAM already).
           def tile_data = @tiles.drop(1).join
 
@@ -167,7 +185,12 @@ module VBlank
 
           def blank_tile = ("\0".b * TILE_BYTES)
 
-          def word_of(color) = Console::GenesisHardware.color_word(color)
+          # The word of the console's a colour of the game's is, kept with the colour it came from.
+          def word_of(color)
+            word = Console::GenesisHardware.color_word(color)
+            @originals[word] ||= color & 0x7FFF
+            word
+          end
 
           def tile_number(bytes)
             @tile_numbers[bytes] ||= begin

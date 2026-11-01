@@ -31,6 +31,7 @@ module VBlank
 
           def initialize
             @colors = [BLACK]
+            @originals = { BLACK => 0 }
             @pictures = []
             @numbered = {}
           end
@@ -38,6 +39,7 @@ module VBlank
           # The place of +color+ (15-bit) in the colour list, added there the first time.
           def place_of(color)
             word = Console::GenesisHardware.color_word(color)
+            @originals[word] ||= color & 0x7FFF
             at = @colors.index(word)
             return at if at
 
@@ -62,6 +64,9 @@ module VBlank
 
           # The colour list as the console's colour memory takes it: sixteen words, in its layout.
           def colors_as_words = @colors.dup.fill(BLACK, @colors.length...COLORS)
+
+          # The colour list as the game's own colours, 15-bit, for the runtime to fade and tint (Runtime::Tint).
+          def colors_as_15bit = @colors.map { |word| @originals.fetch(word) }.fill(BLACK, @colors.length...COLORS)
 
           # How many places of the list the game paints in, from place 0.
           def colors_painted = @colors.length

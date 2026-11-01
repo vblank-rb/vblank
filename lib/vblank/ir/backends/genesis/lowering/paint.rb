@@ -71,6 +71,11 @@ module VBlank
               tables = M68000.new("paint tables", holds: DATA)
               tables.label("paint colors")
               tables.data_words(@painted_art.colors_as_words)
+              if painted? && self.class.changing_colors?(@program)
+                tables.label("colors15")
+                tables.data_words(@painted_art.colors_as_15bit + Array.new(Art::PLACES * (Art::PALETTES - 1), 0))
+                tables.data_words([@painted_art.colors_painted - 1, 0, 0, 0])
+              end
               tables.label("paint pictures")
               @painted_art.pictures.each do |picture|
                 tables.data_longs("paint pixels #{picture.number}")

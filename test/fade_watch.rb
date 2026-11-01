@@ -34,11 +34,12 @@ module FadeWatch
         image(:red_art, "#" => color) { tile }
         tiles :set, "#" => :red_art
         background :field, tiles: :set, map: Array.new(20) { "#" * 30 }
+      else
+        clear_screen color
       end
       frame = 0
       level = var :fade_level_seen, 0
       game_loop do
-        clear_screen color unless screen_kind == :tiled
         level = fade_level.to_i
         frame += 1
         fade_out toward, frames: frames if frame == 2

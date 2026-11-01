@@ -80,7 +80,6 @@ module VBlank
           # day the Genesis does it; test_genesis_kind_coverage.rb holds the list and the tables above
           # to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
-                                                    "fades and tints" => %i[fade tint],
                                                     "the status bar" => %i[place_bar],
                                                     "backgrounds bent row by row" => %i[scroll_rows],
                                                     "tiles painted from a list" => %i[copy_tiles copy_owed_tiles],
@@ -170,6 +169,12 @@ module VBlank
           # How many words of the video chip's register table the cartridge's power-on writes
           # (#sections makes the table).
           def register_count = VIDEO_REGISTERS.length
+
+          # Whether the game changes its colours as it runs: it fades, tints, or has a list of sprite colours
+          # told to hold others, which is when its cartridge carries Runtime::Tint.
+          def self.changing_colors?(program)
+            program.walk.any? { |node| %i[fade tint color_list_holds].include?(node.kind) }
+          end
 
           # Whether the game holds numbers with a fraction, which is when the cartridge carries the
           # routines that work them out (Runtime::Int32.emit_fractions).

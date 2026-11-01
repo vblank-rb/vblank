@@ -58,13 +58,14 @@ module VBlank
         def build(program, title: "VBLANK")
           memory = Memory.new
           picture = Lowering.picture_of(program)
-          Runtime.reserve(memory, picture: picture)
+          colors = Lowering.changing_colors?(program)
+          Runtime.reserve(memory, picture: picture, colors: colors)
           lowering = Lowering.new(program, memory: memory)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
                                              columns: lowering.plane_size.first, collision: lowering.collides?, fractions: lowering.fractions?,
-                                             camera: lowering.camera?)
+                                             camera: lowering.camera?, colors: colors)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
