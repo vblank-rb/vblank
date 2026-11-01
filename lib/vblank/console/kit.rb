@@ -233,8 +233,23 @@ module VBlank
       })
     end
 
+    # The Sega Genesis's. Its cartridges play in Genesis Plus GX, through ruby-genesis-emulator,
+    # which keeps no battery-backed RAM in a file of its own: a Genesis cartridge's save memory
+    # is the emulator's save RAM (the lowering does not make saves yet).
+    class GenesisKit < CheckedKit
+      def answers = GenesisAnswers
+      def answers_page = answers.reference(not_yet: IR::Backends::Genesis::Lowering::NOT_LOWERED_YET)
+      def lowering = IR::Backends::Genesis
+      def cartridge = Cartridge::GenesisROM
+      def reading = Diagnostics::GenesisReading
+      def open_core(path, save_dir:) = Diagnostics::Emulator.open_genesis(path, save_dir: save_dir)
+      def save_file_extension = ".srm"
+      # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
+      def sprite_piece_sizes = [[8, 8]].freeze
+    end
+
     KITS = Ractor.make_shareable({ gba: AdvanceKit.new(ADVANCE), gbc: ColorKit.new(COLOR),
-                                   snes: SNESKit.new(SUPER_NINTENDO) })
+                                   snes: SNESKit.new(SUPER_NINTENDO), genesis: GenesisKit.new(GENESIS) })
 
     # What a game can tell about each console, by name.
     DESCRIPTIONS = Ractor.make_shareable(KITS.transform_values(&:description))

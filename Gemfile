@@ -41,6 +41,11 @@ gem "ruby-gba-emulator", path: "ruby-gba-emulator"
 # which `rake compile_core` in ruby-snes-emulator/ does (see its Rakefile).
 gem "ruby-snes-emulator", path: "ruby-snes-emulator"
 
+# THE SEGA GENESIS'S EMULATOR, the same way: Genesis Plus GX, driven through Fiddle, whose core
+# `rake compile_core` in ruby-genesis-emulator/ builds (see its Rakefile). Its licence bars commercial
+# use, which is one more reason it is here for testing and not in the gemspec.
+gem "ruby-genesis-emulator", path: "ruby-genesis-emulator"
+
 # Reaches SDL3 for a game played live in a window (VBlank::Live::SDL). It comes with Ruby, and
 # under bundler a gem the Gemfile does not name cannot be loaded, so a game that plays live names
 # it in its own Gemfile too. Not in the gemspec: building a cartridge never needs it.

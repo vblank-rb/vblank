@@ -187,6 +187,39 @@ module VBlank
         RubySNESEmulator::Core.new(rom_path, save_dir: save_dir)
       end
 
+      # THE SEGA GENESIS'S EMULATOR is a gem of its own too, ruby-genesis-emulator: Genesis Plus GX,
+      # built as a libretro core with a patch that hands over the console's memories, driven through
+      # Fiddle. It is loaded the same way, the gem first and this repository's checkout second, and
+      # when it is missing it says how to get it.
+      def load_genesis!
+        return true if genesis_loaded?
+
+        require "ruby_genesis_emulator"
+        true
+      rescue LoadError
+        lib = VBlank.root.join("ruby-genesis-emulator", "lib").to_s
+        unless File.directory?(lib)
+          raise LoadError, "An emulator is required to run a Sega Genesis cartridge, and ruby-genesis-emulator will " \
+                           "not load. To fix this, add it to the git block that names vblank in your Gemfile: " \
+                           "widen its glob to \"{,ruby-gba-emulator/,ruby-genesis-emulator/}*.gemspec\" and add " \
+                           "`gem \"ruby-genesis-emulator\"` inside it. Then run `rake compile_core` in " \
+                           "ruby-genesis-emulator/ to build the Genesis Plus GX core it plays cartridges in."
+        end
+
+        $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+        require "ruby_genesis_emulator"
+        true
+      end
+
+      def genesis_loaded? = !defined?(::RubyGenesisEmulator::Core).nil?
+
+      # A Genesis core on a cartridge file (see RubyGenesisEmulator::Core). +save_dir+ is where the
+      # core is told to keep its files.
+      def open_genesis(rom_path, save_dir: nil)
+        load_genesis!
+        RubyGenesisEmulator::Core.new(rom_path, save_dir: save_dir)
+      end
+
       # Open an emulator core on a ROM file path.
       #
       # +save_dir+ says where the cartridge's battery-backed save memory is kept. The core

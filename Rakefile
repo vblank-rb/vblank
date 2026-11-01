@@ -47,6 +47,14 @@ task :compile_snes_core do
   Dir.chdir("ruby-snes-emulator") { sh "rake", "compile_core" }
 end
 
+# THE SEGA GENESIS'S EMULATOR: Genesis Plus GX, built with ruby-genesis-emulator's probe patch (that
+# gem's Rakefile says how). Its binding is plain Ruby too, so the core is all there is to build, once;
+# the Genesis run is the only one that plays its cartridges.
+desc "Build the Genesis Plus GX core the Sega Genesis run plays its cartridges in, if it is not built"
+task :compile_genesis_core do
+  Dir.chdir("ruby-genesis-emulator") { sh "rake", "compile_core" }
+end
+
 # SimpleCov merges every result it finds in coverage/.resultset.json that is younger
 # than its merge timeout, and each run files its slice under a name of its
 # own — so without this a second run within a few minutes reports the UNION of both
@@ -122,6 +130,7 @@ task "test:all" => :suite_lock
 VBlank::Testing::Lowering::NAMES.each { |lowering| task "test:lowering:#{lowering}" => %i[suite_lock compile_emulator] }
 task "test:lowering:gba" => :clear_coverage
 task "test:lowering:snes" => :compile_snes_core
+task "test:lowering:genesis" => :compile_genesis_core
 
 namespace :release do
   # Not one of the test tasks and not run by CI: it needs Docker and takes minutes, and it asks of
@@ -177,7 +186,7 @@ end
 
 namespace :test do
   desc "Tests kept out of test/all that pass, playing a game, on runs that do not load them " \
-       "(rake test:misplaced ONLY=test/console/gba RUNS=gbc,snes)"
+       "(rake test:misplaced ONLY=test/console/gba RUNS=gbc,snes,genesis)"
   task misplaced: :compile_emulator do
     ruby "tools/misplaced_tests.rb"
   end

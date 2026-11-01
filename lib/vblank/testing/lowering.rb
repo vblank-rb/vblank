@@ -76,6 +76,10 @@ module VBlank
                                      Run.new(name: :snes, title: "Super Nintendo", console: :snes, checked: true,
                                              does: "the game built as a Super Nintendo cartridge, played in bsnes " \
                                                    "and checked against the interpreter",
+                                             needs: nil, player: nil, yjit: true),
+                                     Run.new(name: :genesis, title: "Sega Genesis", console: :genesis, checked: true,
+                                             does: "the game built as a Sega Genesis cartridge, played in Genesis " \
+                                                   "Plus GX and checked against the interpreter",
                                              needs: nil, player: nil, yjit: true)
                                    ])
 

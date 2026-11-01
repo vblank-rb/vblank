@@ -107,7 +107,7 @@ class TestKit < Minitest::Test
     [:n64, nil].each do |name|
       error = assert_raises(ArgumentError) { Console.for(name) }
 
-      assert_match(/:gba, :gbc and :snes/, error.message, name.inspect)
+      assert_match(/:gba, :gbc, :snes and :genesis/, error.message, name.inspect)
     end
   end
 

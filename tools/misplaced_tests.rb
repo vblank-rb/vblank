@@ -4,7 +4,7 @@
 # TESTS KEPT OUT OF test/all/ THAT WOULD PLAY THERE.
 #
 #   ruby tools/misplaced_tests.rb                    every folder, on every run that does not load it
-#   rake test:misplaced ONLY=test/console/gba RUNS=gbc,snes
+#   rake test:misplaced ONLY=test/console/gba RUNS=gbc,snes,genesis
 #
 # A test lives in test/all/ unless a run that cannot do what it asks fails it there (see
 # test/support/suites.rb). A test in a console's or a lowering's folder can outlive the reason it
