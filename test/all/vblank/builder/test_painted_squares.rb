@@ -56,8 +56,8 @@ class TestPaintedSquares < Minitest::Test
     warm = game_player.run(scenes_program, frames: 3).screen
     cool = game_player.input_each_frame { |frame| frame == 3 ? [:a] : [] }.run(scenes_program, frames: 8).screen
 
-    WARM.each_with_index { |color, i| assert_equal Color.resolve(color), warm.pixel(9 + (i * 2), 20), "the warm scene's #{color}" }
-    COOL.each_with_index { |color, i| assert_equal Color.resolve(color), cool.pixel(9 + (i * 2), 20), "the cool scene's #{color}" }
+    WARM.each_with_index { |color, i| assert_equal shown(color), warm.pixel(9 + (i * 2), 20), "the warm scene's #{color}" }
+    COOL.each_with_index { |color, i| assert_equal shown(color), cool.pixel(9 + (i * 2), 20), "the cool scene's #{color}" }
   end
 
   # A scene that does not clear the screen keeps the picture the scene before it left, and paints
@@ -94,9 +94,9 @@ class TestPaintedSquares < Minitest::Test
   def test_a_scene_paints_over_the_picture_the_scene_before_it_left
     screen = game_player.input_each_frame { |frame| frame == 3 ? [:a] : [] }.run(kept_picture_program, frames: 8).screen
 
-    assert_equal Color.resolve(:red), screen.pixel(9, 20), "the first scene's red is still there"
-    assert_equal Color.resolve(:orange), screen.pixel(11, 20), "and its orange"
-    assert_equal Color.resolve(:green), screen.pixel(15, 23), "with the second scene's green beside them"
+    assert_equal shown(:red), screen.pixel(9, 20), "the first scene's red is still there"
+    assert_equal shown(:orange), screen.pixel(11, 20), "and its orange"
+    assert_equal shown(:green), screen.pixel(15, 23), "with the second scene's green beside them"
   end
 
   # A scene run inside another, on the same pass: the inner one clears the screen and paints green
@@ -127,9 +127,9 @@ class TestPaintedSquares < Minitest::Test
   def test_a_scene_inside_another_paints_beside_what_that_one_painted
     screen = game_player.run(nested_scenes_program, frames: 4).screen
 
-    assert_equal Color.resolve(:red), screen.pixel(9, 20), "the outer scene's red"
-    assert_equal Color.resolve(:orange), screen.pixel(11, 20), "and its orange"
-    assert_equal Color.resolve(:green), screen.pixel(15, 23), "with the inner scene's green beside them"
+    assert_equal shown(:red), screen.pixel(9, 20), "the outer scene's red"
+    assert_equal shown(:orange), screen.pixel(11, 20), "and its orange"
+    assert_equal shown(:green), screen.pixel(15, 23), "with the inner scene's green beside them"
   end
 
   # A paddle at a row written in the program reaches only that row of squares, so the three
@@ -153,8 +153,8 @@ class TestPaintedSquares < Minitest::Test
   def test_a_colour_at_a_row_written_in_the_program_reaches_only_that_row
     screen = game_player.run(paddle_program, frames: 3).screen
 
-    assert_equal Color.resolve(:green), screen.pixel(10, 17), "the green above"
-    assert_equal Color.resolve(:white), screen.pixel(50, 131), "the paddle below"
+    assert_equal shown(:green), screen.pixel(10, 17), "the green above"
+    assert_equal shown(:white), screen.pixel(50, 131), "the paddle below"
   end
 
   # A ball, placed as the game runs, crosses a row of three colours: wherever it is, its square
@@ -178,16 +178,16 @@ class TestPaintedSquares < Minitest::Test
   def test_a_colour_placed_as_the_game_runs_shows_in_every_square_it_reaches
     screen = game_player.run(ball_program, frames: 4).screen
 
-    assert_includes [Color.resolve(:white)], screen.pixel(10, 43), "the ball over the green"
-    assert_equal Color.resolve(:blue), screen.pixel(20, 43), "the blue it has not reached"
+    assert_includes [shown(:white)], screen.pixel(10, 43), "the ball over the green"
+    assert_equal shown(:blue), screen.pixel(20, 43), "the blue it has not reached"
   end
 
   def test_colours_in_squares_of_their_own_show_where_they_were_painted
     screen = game_player.run(stripes_program, frames: 2).screen
 
     STRIPES.each_with_index do |color, i|
-      assert_equal Color.resolve(color), screen.pixel((i * 16) + 3, 4), "the #{color} stripe"
+      assert_equal shown(color), screen.pixel((i * 16) + 3, 4), "the #{color} stripe"
     end
-    assert_equal Color.resolve(:black), screen.pixel(100, 4), "black past the last stripe"
+    assert_equal shown(:black), screen.pixel(100, 4), "black past the last stripe"
   end
 end

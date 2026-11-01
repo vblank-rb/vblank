@@ -63,6 +63,12 @@ module VBlank
     end
     IR::Nodes::Program.prepend(LaidOutForTheAdvance)
 
+    # THE COLOUR +color+ (a name, a hex string or a 15-bit number) LOOKS LIKE on this run's console,
+    # which keeps fewer bits of each channel than a game names a colour in on some (the Genesis keeps
+    # three of five): what a test compares a pixel of the picture to.
+    def self.shown(color) = Console.described(CONSOLE).shown(Graphics::Color.resolve(color))
+    def shown(color) = Testing.shown(color)
+
     # HOW MANY PASSES BEHIND THE GAME'S NUMBERS what the framework draws for it is — its sprites,
     # its tiled text, its scroll — read at a frame boundary on this run's console. One on the
     # Advance, which places them in the gap after the boundary from the pass before; none on the

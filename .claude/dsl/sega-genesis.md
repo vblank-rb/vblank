@@ -161,7 +161,13 @@ and a test fails when the two differ. The Advance's answers are in
 An answer above is what the Genesis does with a verb. The build for it is still growing,
 and a game that reaches one of these steps is refused, naming the step, until it is made:
 
-- the picture: `background`, `scroll_background`, `set_tile`, `show_map`, `present_objects`, `hide_sprites`, `fade`, `tint`, `place_bar`, `scroll_rows`, `copy_tiles`, `copy_owed_tiles`, `background_colors`, `color_list_holds`, `see_through`, `draw_column_at`, `show_picture_group`, `data_byte`
+- fades and tints: `fade`, `tint`
+- the status bar: `place_bar`
+- backgrounds bent row by row: `scroll_rows`
+- tiles painted from a list: `copy_tiles`, `copy_owed_tiles`
+- colours that change as the game runs: `background_colors`, `color_list_holds`
+- layers see-through: `see_through`
+- the picture: `draw_column_at`, `show_picture_group`, `data_byte`
 - the camera: `camera`
 - collision: `pixels_overlap`
 - fractions: `mul_fix`, `div_fix`

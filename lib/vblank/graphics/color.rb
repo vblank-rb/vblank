@@ -108,6 +108,23 @@ module VBlank
         end
       end
 
+      # +color+ as a console that keeps only the top +bits+ of each channel shows it: those bits, each
+      # channel widened back to five by repeating them, which is how such a picture is read back (the
+      # Genesis keeps three).
+      #
+      # @example
+      #   Color.kept(Color.resolve(:gray), bits: 3)  # => 0x2529, the gray a Genesis shows
+      def kept(color, bits:)
+        return color if bits >= 5
+
+        lost = 5 - bits
+        kept_mask = (1 << bits) - 1
+        [0, 5, 10].sum do |at|
+          level = (color >> (at + lost)) & kept_mask
+          ((level << lost) | (level >> (bits - lost))) << at
+        end
+      end
+
       # A color as a person would name it — :magenta where there is a name for it, and
       # the raw value where there is not. For messages: an author reading about a color
       # in their own art wants the word they typed, not a number they never saw.

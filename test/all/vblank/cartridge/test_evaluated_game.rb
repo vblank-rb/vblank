@@ -18,7 +18,7 @@ class TestEvaluatedGame < Minitest::Test
   # A game that stops half way through itself. The blue clear is in the program; the red
   # one is written after the `debug_halt` and never happened.
   private def truncated_game
-    VBlank.game("DBGHLT", consoles: %i[gba gbc snes], code: "ZDBG", maker: "01") do
+    VBlank.game("DBGHLT", consoles: %i[gba gbc snes genesis], code: "ZDBG", maker: "01") do
       screen :bitmap
       clear_screen :blue
       debug_halt

@@ -31,6 +31,7 @@ class TestTowerExample < Minitest::Test
 
   # The player, holding each leg's key for its passes in turn, then nothing for +extra+ passes.
   private def played(legs, extra = 4)
+    skip_on_genesis "a scene's own scenery is not made for the Genesis yet, so the game is not written for it"
     keys = legs.flat_map { |key, passes| [key] * passes }
     player = game_player
     frame = 0

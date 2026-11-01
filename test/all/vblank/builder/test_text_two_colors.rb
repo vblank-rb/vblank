@@ -84,8 +84,8 @@ class TestTextTwoColors < Minitest::Test
 
   Fonts = VBlank::Graphics::Fonts
 
-  DULL = Color.resolve(:gray)
-  BRIGHT = Color.resolve(:white)
+  DULL = VBlank::Testing.shown(:gray)
+  BRIGHT = VBlank::Testing.shown(:white)
 
   private def walk(program, frames:, press: false)
     interp = game_player

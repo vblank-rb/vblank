@@ -727,12 +727,7 @@ module VBlank
           def displayed(color)
             return color if @color_bits == CHANNEL_BITS || color.nil?
 
-            lost = CHANNEL_BITS - @color_bits
-            kept_mask = (1 << @color_bits) - 1
-            [0, 5, 10].sum do |at|
-              level = (color >> (at + lost)) & kept_mask
-              ((level << lost) | (level >> (@color_bits - lost))) << at
-            end
+            Graphics::Color.kept(color, bits: @color_bits)
           end
         end
       end

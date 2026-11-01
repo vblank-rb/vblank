@@ -109,6 +109,9 @@ module VBlank
       # How much of the work memory is free for a game's own variables and lists.
       def free_work_memory_bytes = work_memory_bytes - work_memory_kept_bytes
 
+      # +color+ (a 15-bit value) as this console shows it: with the top #color_bits of each channel.
+      def shown(color) = Graphics::Color.kept(color, bits: color_bits)
+
       # Whether there is a roomier memory beside the work memory for lists and pools to move to.
       def roomier_memory? = roomier_memory_bytes.positive?
 

@@ -149,8 +149,8 @@ class TestComputedTilemap < Minitest::Test
     end
     b.finalize_program
     s = game_player.run(b.program).screen
-    assert_equal Assets::BRICK, s.pixel(0, 3), "tile 1 is the sheet's first cell"
-    assert_equal Assets::FLOOR, s.pixel(8, 3), "tile 2 is the sheet's second cell"
+    assert_equal shown(Assets::BRICK), s.pixel(0, 3), "tile 1 is the sheet's first cell"
+    assert_equal shown(Assets::FLOOR), s.pixel(8, 3), "tile 2 is the sheet's second cell"
   end
 
   # The one combination with no answer: characters over a tileset that has none. The

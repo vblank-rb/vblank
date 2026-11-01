@@ -53,7 +53,7 @@ class TestSpriteOffScreen < Minitest::Test
 
   WIDTH = 240
   HEIGHT = 160
-  FLOOR = Color.resolve(:gray)
+  FLOOR = VBlank::Testing.shown(:gray)
 
   def self.checks(width, height)
     (0...height).map { |row| (0...width).map { |col| (row + col).even? ? "#" : "o" }.join }.join("\n")

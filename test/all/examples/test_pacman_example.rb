@@ -22,7 +22,11 @@ class TestPacmanExample < Minitest::Test
   end
 
   # The game as this run's console plays it, and where it lays itself out on that console's screen.
-  private def program = Pacman::GAME.program(console: game_console)
+  private def program
+    skip_on_genesis "sound and save memory are not made for the Genesis yet, so the game is not written for it"
+    Pacman::GAME.program(console: game_console)
+  end
+
   private def screen_size = VBlank::Console.described(game_console).screen_size
   private def layout = Pacman::Layout.new(width: screen_size[0], height: screen_size[1])
 

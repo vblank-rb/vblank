@@ -27,13 +27,18 @@ class TestMenu < Minitest::Test
   include Differential
   include MenuLayout
 
-  PICKED = Color.resolve(:white)
-  PLAIN = Color.resolve(:gray)
-  DIMMED = Color.resolve(:red) # a colour of its own, so "dimmed" is visible in a test
+  PICKED = VBlank::Testing.shown(:white)
+  PLAIN = VBlank::Testing.shown(:gray)
+  DIMMED = VBlank::Testing.shown(:red) # a colour of its own, so "dimmed" is visible in a test
 
   # Why a test that taps on frames a pass apart skips on the Super Nintendo.
   SLOW_PASS = "clearing the painted screen every pass takes a Super Nintendo several frames, so a tap on a " \
               "frame between two passes is never read"
+
+  # Why one skips on the Genesis: redrawing the painted screen every pass takes it about ten frames,
+  # which is how long the video chip takes to be handed that many tiles.
+  SLOW_PASS_ON_GENESIS = "clearing and redrawing the painted screen every pass takes a Genesis about ten frames, " \
+                         "so a tap on a frame between two passes is never read"
 
   # A four-row menu whose second row cannot be picked. `chose` records which row's
   # block ran, so the action half is observable too. The same program is built for
@@ -155,6 +160,7 @@ class TestMenu < Minitest::Test
 
   def test_down_moves_the_cursor_and_up_moves_it_back
     skip_on_snes SLOW_PASS
+    skip_on_genesis SLOW_PASS_ON_GENESIS
     down = walk(menu_program, frames: 3) { |f| f == 1 ? [:down] : [] }
 
     assert_equal 2, cursor_row(down), "row 1 cannot be picked, so down lands on row 2"
@@ -210,6 +216,7 @@ class TestMenu < Minitest::Test
 
   def test_letting_go_clears_the_wait_so_the_next_tap_moves_at_once
     skip_on_snes SLOW_PASS
+    skip_on_genesis SLOW_PASS_ON_GENESIS
     i = walk(counting_moves(repeat_every: 60), frames: 6) { |f| f.odd? ? [:down] : [] }
 
     assert_equal 3, i[:chose],
@@ -263,6 +270,7 @@ class TestMenu < Minitest::Test
 
   def test_the_pick_survives_leaving_the_scene_and_coming_back
     skip_on_snes SLOW_PASS
+    skip_on_genesis SLOW_PASS_ON_GENESIS
     program = build_program do
       screen :bitmap
       state = var :state, 0
@@ -295,6 +303,7 @@ class TestMenu < Minitest::Test
   # back out of still opens where you left it rather than jumping back to the
   # recommendation.
   def test_a_named_start_is_the_power_on_row_and_not_where_it_returns_to
+    skip_on_genesis SLOW_PASS_ON_GENESIS
     program = build_program do
       screen :bitmap
       state = var :state, 0
@@ -773,6 +782,7 @@ class TestMenu < Minitest::Test
   # 0 (said as the variable itself). L opens and closes both.
 
   private def changing_menu(on: :bitmap, opens_at: nil, repeat_every: nil)
+    skip_on_console :genesis, "a Genesis pad has no select button, which these rows are opened with"
     build_program do
       screen on
       chose = var :chose, 0
@@ -813,6 +823,7 @@ class TestMenu < Minitest::Test
 
   def test_up_wraps_and_steps_over_shut_rows_too
     skip_on_snes SLOW_PASS
+    skip_on_genesis SLOW_PASS_ON_GENESIS
     i = walk(changing_menu, frames: 6) { |f| { 1 => [:up], 4 => [:up] }.fetch(f, []) }
 
     assert_equal 0, cursor_row(i), "up to FOUR, then up over THREE and TWO to ONE"
