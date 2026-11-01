@@ -78,6 +78,7 @@ module VBlank
       end
 
       def define
+        @ruby_opts << "-r#{File.expand_path('quiet_warnings.rb', __dir__)}"
         @ruby_opts << "-r#{File.expand_path('processes.rb', __dir__)}" if checked?
         @defined = true
         super
