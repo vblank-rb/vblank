@@ -128,7 +128,8 @@ module VBlank
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program),
                                   changing_colors: changing_colors, dims: dims, math_turns: math_turns,
-                                  bar_covers: Lowering::Picture.bar_covers_sprites?(program))
+                                  bar_covers: Lowering::Picture.bar_covers_sprites?(program),
+                                  tile_sizes: Lowering::Picture.two_tile_sizes?(program))
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares)
           begin
             game = lowering.sections + lowering.art_sections

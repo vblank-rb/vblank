@@ -109,6 +109,13 @@ module VBlank
 
           # --- backgrounds ---
 
+          # A cell with nothing in it names tile 0, and on a layer of 16×16 tiles the console draws that
+          # as tile 0 and the three that make up a big tile with it. In a game of 8×8 tiles too, one
+          # could land there and show in every empty cell, so those three stay blank.
+          def reserve_blank_big_tile
+            BIG_TILE_PLACES.drop(1).each { |place| @background_tiles[place] = blank_tile }
+          end
+
           # The cell +image+ (an Assets::Image of 8×8) makes in a map: its tile number and its
           # palette, as two numbers.
           # +held+ is the palette of a list the game changes (#held_background_palette), whose

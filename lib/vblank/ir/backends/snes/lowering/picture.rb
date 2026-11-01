@@ -104,6 +104,8 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares)
+              sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
+              @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
               @objects = by_kind(:object)
               @backgrounds = by_kind(:background)
@@ -454,22 +456,50 @@ module VBlank
               bend_bands.all? && bend_bands.all? { |firsts| band_steps(firsts).sum(&:length) <= Runtime::Picture::MOST_BAND_STEPS }
             end
 
-            # BGMODE'S SIZE BITS for the layers drawn from 16×16 tiles: BG1's is bit 4, BG2's bit 5. The
-            # console is told once, at power-on, so a layer that shows a background of 16×16 tiles in
-            # one scene and one of 8×8 in another is not made yet.
+            # BGMODE'S SIZE BITS for the layers drawn from 16×16 tiles: BG1's is bit 4, BG2's bit 5, told
+            # at power-on. A layer whose scenes differ is told as each takes over (#emit_tile_sizes_for),
+            # and is not among these. Only a scene can differ: what every screen shows has one size.
             def big_tile_layers
               return 0 if painted?
 
               @big_tile_layers ||= @layers.group_by { |_, layer| layer }.sum do |layer, held|
                 sizes = held.map { |bg, _| bg.tile_w }.uniq
-                refuse_unmade!("one layer showing backgrounds of 16×16 tiles and of 8×8 in different scenes") if sizes.length > 1
                 sizes == [BIG_TILE] ? BIG_TILE_BIT << layer : 0
               end
+            end
+
+            # Whether a layer shows 16×16 tiles in one scene and 8×8 in another.
+            def tile_sizes_turn? = !painted? && !layers_of_two_sizes.empty?
+
+            # Whether +program+ could have such a layer, so the runtime keeps room to be told: which
+            # layer a background is on is worked out later, and two sizes on two layers ask for the
+            # room and never use it.
+            def self.two_tile_sizes?(program)
+              backgrounds = program.walk.select { |node| node.kind == :background }
+              backgrounds.any? { |bg| !bg.scene.nil? } && backgrounds.map(&:tile_w).uniq.length > 1
             end
 
             BIG_TILE_BIT = 0x10
 
             private
+
+            def layers_of_two_sizes
+              @layers_of_two_sizes ||= @layers.group_by { |_, layer| layer }.filter_map do |layer, held|
+                layer if held.map { |bg, _| bg.tile_w }.uniq.length > 1
+              end
+            end
+
+            # A scene taking over: BGMODE told the size of the tiles it shows on a layer whose scenes
+            # differ, in the same blank as its maps' registers (Runtime::Picture::TILE_SIZES), so no
+            # frame shows a map with the other size's setting.
+            def emit_tile_sizes_for(arrival)
+              return unless tile_sizes_turn?
+
+              shown = arrival.scenery.select { |bg| bg.tile_w == BIG_TILE }.map { |bg| layer_of(bg) }
+              bits = (layers_of_two_sizes & shown).sum { |layer| BIG_TILE_BIT << layer }
+              @asm.lda(Runtime::Picture::TILED_MODE | big_tile_layers | bits)
+              @asm.sta(@asm.abs(@memory[Runtime::Picture::TILE_SIZES]))
+            end
 
             def by_kind(kind) = @program.walk.select { |node| node.kind == kind }.to_h { |node| [node.name, node] }
 
@@ -616,6 +646,7 @@ module VBlank
               return if @scene_layers.zero?
 
               emit_layers_straight_for(arrival)
+              emit_tile_sizes_for(arrival)
               arrival.map_choices.each { |var| store_number(place_of(var), 0) }
               arrival.scenery.each { |bg| emit_put_up(bg) }
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|

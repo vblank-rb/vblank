@@ -176,10 +176,17 @@ module VBlank
             # What CGADSUB is told in the blank, in a game that turns a see-through layer solid.
             MATH = "rt see-through math"
 
+            # What BGMODE is told in the next blank, in a game with a layer whose scenes show tiles of
+            # two sizes: the console's one setting for each layer, told beside the scene's maps.
+            TILE_SIZES = "rt tile sizes"
+            TILED_MODE = 0x01
+
             # CGADSUB's bit that halves the sum.
             MATH_HALVES = 0x40
 
-            def reserve(memory, bar: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false)
+            def reserve(memory, bar: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
+                        tile_sizes: false)
+              memory.reserve(TILE_SIZES, 2) if tile_sizes
               memory.reserve(LAYERS_STRAIGHT, 2) if scene_bends
               memory.reserve(BAR_COVERS, 2) if bar_covers
               memory.reserve(MATH, 2) if math_turns
@@ -251,8 +258,9 @@ module VBlank
               end
 
               asm.sep(0x20)
-              asm.lda(0x01 | big_tiles) # mode 1, every tile 8×8 but on the layers of +big_tiles+
+              asm.lda(TILED_MODE | big_tiles) # mode 1, every tile 8×8 but on the layers of +big_tiles+
               asm.sta(asm.abs(h::BGMODE))
+              asm.sta(asm.abs(memory[TILE_SIZES])) if memory.reserved?(TILE_SIZES)
               asm.stz(asm.abs(h::BG12NBA)) # both layers' tiles at $0000
               asm.lda(SPRITE_TILES >> 13) # sprites' tiles at $6000, the next 256 straight after; 8×8 and 16×16
               asm.sta(asm.abs(h::OBSEL))
@@ -1257,6 +1265,12 @@ module VBlank
                 asm.sep(0x20)
                 asm.lda(asm.abs(memory[MATH]))
                 asm.sta(asm.abs(h::CGADSUB))
+                asm.rep(0x20)
+              end
+              if memory.reserved?(TILE_SIZES)
+                asm.sep(0x20)
+                asm.lda(asm.abs(memory[TILE_SIZES]))
+                asm.sta(asm.abs(h::BGMODE))
                 asm.rep(0x20)
               end
               LAYER_MAPS.each_with_index do |at, layer|
