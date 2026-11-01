@@ -4,9 +4,10 @@ require "test_helper"
 
 # A GAME THAT WAITS FOR FRAMES SHOWS NOTHING UNTIL ITS FIRST FRAME IS SET UP. Everything said before
 # the game loop reaches the screen by work done between frames, so the display is switched off
-# until then and shows plain white, the same on every lowering: a picture read before the first
-# frame is white, and one read after it is the picture the game made.
-class TestDisplayHeld < Minitest::Test
+# until then and shows plain white, the same on every lowering that plays the Advance: a picture read
+# before the first frame is white, and one read after it is the picture the game made. The Color's
+# cartridge shows what its own hardware does before its first frame, so this is the Advance's.
+class TestDisplayHeldOnTheAdvance < Minitest::Test
   WHITE = VBlank::Graphics::Color.resolve(:white)
   RED = VBlank::Graphics::Color.resolve(:red)
 
