@@ -37,11 +37,15 @@ module VBlank
       #            the classes are loaded with the whole library, and a Rakefile reads these
       #            records without it. Nil for a run that plays its console's own cartridge,
       #            whose player is made from the console's kit (CartridgeCheckedPlayer.for)
+      #   except   the consoles a run that can play any console cannot play yet: the C, JavaScript and
+      #            Ruby builds do not draw a Genesis's picture as the interpreter does (its planes come
+      #            round across a screen wider than they are, which only the interpreter and the
+      #            cartridge do), so they are not asked to
       #   yjit     whether YJIT, Ruby's compiler of hot methods to machine code, makes the run
       #            faster, as measured: it does for the native and JavaScript runs and makes the
       #            Game Boy Color's slower. A run in Ractors is played without it whatever this
       #            says (TestTask#yjit?)
-      Run = Data.define(:name, :title, :console, :checked, :does, :needs, :player, :yjit) do
+      Run = Data.define(:name, :title, :console, :checked, :does, :needs, :player, :yjit, :except) do
         alias_method :checked?, :checked
         alias_method :yjit?, :yjit
 
@@ -53,34 +57,38 @@ module VBlank
         # cartridge's play their own console alone. +console+ above is then the one it plays as
         # when nothing says otherwise.
         def plays_any_console? = checked && !player.nil?
+
+        # Whether the run plays a game as +played+: any console it is not told it cannot, for a run that plays any;
+        # its own and no other for the rest.
+        def plays?(played) = plays_any_console? ? !except.include?(played) : played == console
       end
 
       # In the order `rake test` plays them.
       RUNS = Ractor.make_shareable([
                                      Run.new(name: :gba, title: "GBA", console: :gba, checked: false,
                                              does: "the game on the interpreter", needs: nil,
-                                             player: "IR::Backends::Reference", yjit: true),
+                                             player: "IR::Backends::Reference", yjit: true, except: []),
                                      Run.new(name: :native, title: "native", console: :gba, checked: true,
                                              does: "the game built as C, checked against the interpreter",
-                                             needs: "zig", player: "Testing::CheckedPlayer", yjit: true),
+                                             needs: "zig", player: "Testing::CheckedPlayer", yjit: true, except: %i[genesis]),
                                      Run.new(name: :js, title: "JavaScript", console: :gba, checked: true,
                                              does: "the game built as JavaScript, checked against the interpreter",
-                                             needs: "node", player: "Testing::JSCheckedPlayer", yjit: true),
+                                             needs: "node", player: "Testing::JSCheckedPlayer", yjit: true, except: %i[genesis]),
                                      Run.new(name: :ruby, title: "Ruby", console: :gba, checked: true,
                                              does: "the game built as Ruby, checked against the interpreter",
-                                             needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true),
+                                             needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true, except: %i[genesis]),
                                      Run.new(name: :gbc, title: "Game Boy Color", console: :gbc, checked: true,
                                              does: "the game built as a Game Boy Color cartridge, played in the " \
                                                    "emulator and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: false),
+                                             needs: nil, player: nil, yjit: false, except: []),
                                      Run.new(name: :snes, title: "Super Nintendo", console: :snes, checked: true,
                                              does: "the game built as a Super Nintendo cartridge, played in bsnes " \
                                                    "and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: true),
+                                             needs: nil, player: nil, yjit: true, except: []),
                                      Run.new(name: :genesis, title: "Sega Genesis", console: :genesis, checked: true,
                                              does: "the game built as a Sega Genesis cartridge, played in Genesis " \
                                                    "Plus GX and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: true)
+                                             needs: nil, player: nil, yjit: true, except: [])
                                    ])
 
       # The setting a run's lowering is read from: each run but the GBA lowering's sets it to its
@@ -108,12 +116,12 @@ module VBlank
       # The lowerings whose runs play a game for +consoles+ (Symbols), in the order `rake test`
       # plays them.
       def lowerings_for(consoles)
-        RUNS.select { |run| run.plays_any_console? || consoles.include?(run.console) }.map(&:name)
+        RUNS.select { |run| consoles.any? { |played| run.plays?(played) } }.map(&:name)
       end
 
       # The consoles +run+ plays a game for +consoles+ as, one run of the suite each: every one of
       # them on a runtime's run, and the run's own console on the rest.
-      def consoles_for(run, consoles) = run.plays_any_console? ? consoles : [run.console] & consoles
+      def consoles_for(run, consoles) = consoles.select { |played| run.plays?(played) }
 
       # The lowering +env+ says, refusing one there is not.
       def from(env)
@@ -146,11 +154,11 @@ module VBlank
         played_as = env[PLAYED_AS_SETTING]
         console = played_as.nil? || played_as.empty? ? named_console(env) : Console.named(played_as)
         return run.console if console.nil?
-        return console if console == run.console || run.plays_any_console?
+        return console if run.plays?(console)
 
-        others = RUNS.select(&:plays_any_console?).map(&:name)
-        raise ArgumentError, "#{CONSOLE_SETTING} is #{console}, but the #{run.title} run plays only the " \
-                             "#{Console.for(run.console).title}. Leave #{CONSOLE_SETTING} out, or pick the " \
+        others = RUNS.select { |other| other.plays_any_console? && other.plays?(console) }.map(&:name)
+        raise ArgumentError, "#{CONSOLE_SETTING} is #{console}, but the #{run.title} run does not play a game as the " \
+                             "#{Console.for(console).title}. Leave #{CONSOLE_SETTING} out, or pick the " \
                              "#{in_words(others)} run."
       end
 
