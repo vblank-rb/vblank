@@ -1247,7 +1247,7 @@ module VBlank
 
           def emit_button_truth(which, button)
             mask = if button == Buttons::ANY
-                     (1 << Buttons::NAMES.length) - 1
+                     Buttons.mask(Console::SUPER_NINTENDO.buttons)
                    else
                      1 << (Buttons::NAMES.index(button) or raise LoweringError, "unknown button #{button.inspect}")
                    end

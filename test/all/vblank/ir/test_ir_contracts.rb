@@ -10,7 +10,7 @@ class TestIRContracts < Minitest::Test
   Buttons = VBlank::IR::Buttons
 
   def test_the_button_vocabulary_is_every_button_of_any_console
-    assert_equal %i[a b down l left r right select start up x y], Buttons::NAMES.sort
+    assert_equal %i[a b c down l left r right select start up x y], Buttons::NAMES.sort
     assert Buttons.known?(:start)
     refute Buttons.known?(:turbo)
   end

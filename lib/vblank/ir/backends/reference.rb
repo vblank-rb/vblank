@@ -348,7 +348,9 @@ module VBlank
         def size_screen_for(node)
           @console = (node.kind == :program ? node : Build.program).described_console
           width, height = @console.screen_size
-          @screen = Framebuffer.new(width: width, height: height) unless [@screen.width, @screen.height] == [width, height]
+          unless [@screen.width, @screen.height] == [width, height]
+            @screen = Framebuffer.new(width: width, height: height, color_bits: @console.color_bits)
+          end
           @screen.dims = @console.fades_by_brightness
         end
 

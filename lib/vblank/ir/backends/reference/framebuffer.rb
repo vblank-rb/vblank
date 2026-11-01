@@ -22,17 +22,22 @@ module VBlank
           # A color channel runs 0..31, and a full fade is 16 steps. Both come from the
           # display contract every backend blends against, so the two agree step for step.
           CHANNEL_MAX = 31
+          CHANNEL_BITS = 5
           FADE_STEPS = FadeSteps::DISPLAY
           # A tint counts in 256ths (see #tint_steps_to), sixteen of them to a display's step.
           TINT_STEPS = FadeSteps::WALK
           WALK_PER_DISPLAY = FadeSteps::WALK / FadeSteps::DISPLAY
 
-          # @param fill [Integer] the color every cell starts as (0 reads as black)
           # Whether a fade to black is the display's brightness (Console::Description#fades_by_brightness).
           attr_writer :dims
 
-          def initialize(width:, height:, fill: 0)
+          # @param fill [Integer] the color every cell starts as (0 reads as black)
+          # @param color_bits [Integer] how many bits of each color channel the console shows, from
+          #   the top: the five the other consoles keep, or the three of the Genesis
+          #   (Console::Description#color_bits)
+          def initialize(width:, height:, fill: 0, color_bits: CHANNEL_BITS)
             @width = width
+            @color_bits = color_bits
             @height = height
             @fill = fill
             @pixels = Array.new(width * height, fill)
@@ -269,7 +274,7 @@ module VBlank
 
             seen_x, seen_y = @block > 1 ? block_corner(x, y) : [x, y]
             color = shown_color(seen_x + @camera_x, seen_y + @camera_y, fade_here: fade_reaches?(x, y))
-            lit?(x, y) ? color : darkened_by_display(color, @shade_steps)
+            displayed(lit?(x, y) ? color : darkened_by_display(color, @shade_steps))
           end
 
           # DARKEN THE PICTURE OUTSIDE ONE SPAN OF EACH ROW, by +steps+ sixteenths, from now
@@ -421,7 +426,7 @@ module VBlank
           # anything comparing this screen with a real display has to read this one — the
           # stored cells are a picture nobody is looking at.
           def shown
-            return to_a if plain?
+            return to_a.map { |color| displayed(color) } if plain?
 
             Array.new(@width * @height) { |i| pixel(i % @width, i / @width) }
           end
@@ -713,6 +718,22 @@ module VBlank
           # and nothing else — the display still shows the whole picture, and what is already
           # there is still there to be read, whatever area is open when somebody looks.
           def on_screen?(x, y) = x >= 0 && x < @width && y >= 0 && y < @height
+
+          # +color+ as the console shows it: a console that keeps fewer than five bits of a channel
+          # (the Genesis keeps three) shows the top bits it keeps, each channel widened back to five
+          # by repeating those bits, which is how its picture is read back. A color is rounded here, as the
+          # picture is read, and not where it is painted, so a fade or a mix still works on the
+          # color the game named.
+          def displayed(color)
+            return color if @color_bits == CHANNEL_BITS || color.nil?
+
+            lost = CHANNEL_BITS - @color_bits
+            kept_mask = (1 << @color_bits) - 1
+            [0, 5, 10].sum do |at|
+              level = (color >> (at + lost)) & kept_mask
+              ((level << lost) | (level >> (@color_bits - lost))) << at
+            end
+          end
         end
       end
     end

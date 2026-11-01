@@ -58,4 +58,22 @@ class TestIRFramebuffer < Minitest::Test
     fb.clear(0x2222)
     assert_equal [0x2222] * 6, fb.to_a
   end
+
+  # A console that keeps three bits of each colour channel (the Genesis) can only show the top
+  # three bits of what a game painted, each widened back to five by repeating its top bits: a red of 5
+  # keeps its top three bits (1) and is shown as 4, a green of 18 (4) as 18, a blue of 31 (7) as 31.
+  def test_a_console_of_three_bit_colours_shows_the_top_three_bits_of_each_channel
+    fb = Framebuffer.new(width: 2, height: 1, color_bits: 3)
+    fb.set_pixel(0, 0, Color.rgb(5, 18, 31))
+
+    assert_equal Color.rgb(4, 18, 31), fb.pixel(0, 0)
+    assert_equal [Color.rgb(4, 18, 31), 0], fb.shown
+  end
+
+  def test_a_console_of_five_bit_colours_shows_every_bit
+    fb = Framebuffer.new(width: 1, height: 1)
+    fb.set_pixel(0, 0, Color.rgb(5, 18, 31))
+
+    assert_equal Color.rgb(5, 18, 31), fb.pixel(0, 0)
+  end
 end

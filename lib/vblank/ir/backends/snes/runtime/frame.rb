@@ -81,9 +81,9 @@ module VBlank
             # the top (Console::SNESHardware::JOYPAD_BITS), to the bit each has in IR::Buttons's
             # order. X and Y are turned round only for a game that can ask about them, since this
             # runs in the interrupt on every frame and a game that never reads them should not pay.
-            BUTTON_BITS = Ractor.make_shareable(Buttons::NAMES.each_with_index.to_h do |name, bit|
-              [name, [1 << Console::SNESHardware::JOYPAD_BITS.fetch(name), 1 << bit]]
-            end)
+            BUTTON_BITS = Ractor.make_shareable(Buttons::NAMES.each_with_index.filter_map do |name, bit|
+              [name, [1 << Console::SNESHardware::JOYPAD_BITS.fetch(name), 1 << bit]] if Console::SNESHardware::JOYPAD_BITS.key?(name)
+            end.to_h)
 
             EXTRA_BUTTONS = %i[x y].freeze
 

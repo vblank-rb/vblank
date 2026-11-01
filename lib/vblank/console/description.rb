@@ -46,6 +46,11 @@ module VBlank
     # and the time of day since it started (IR::Clock). +extension+ ends the name of a cartridge
     # file for it.
     #
+    # +color_bits+ is how many bits of each colour channel the console can show, counted from the
+    # top: the five a game names a colour in, or the three of a console whose colours are 9 bits
+    # in all. A picture is shown with the top +color_bits+ of each channel (the interpreter's
+    # Framebuffer), so what a console cannot tell apart looks the same on every backend.
+    #
     # +cycles_a_second+ is the clock the display counts in, and +cycles_a_frame+ how many of those
     # it takes to draw one picture and the gap after it: together they are how long a frame is,
     # which anything that keeps real seconds by counting frames needs. Neither console shows
@@ -93,7 +98,7 @@ module VBlank
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :sprites, :sprite_places,
                               :sprites_a_row, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
-                              :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :painted_pages,
+                              :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
                               :recording_voice_hz, :lowest_square_hz,
@@ -141,7 +146,7 @@ module VBlank
                               # A status bar is one of those layers.
                               bar_is_a_background: true,
                               changes_cells_while_drawing: true,
-                              blends: true, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, painted_pages: 2, clock_keeps_date: true,
+                              blends: true, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, color_bits: 5, painted_pages: 2, clock_keeps_date: true,
                               # 228 lines of 1232 cycles: 160 drawn, and 68 the gap after.
                               cycles_a_second: 16_777_216, cycles_a_frame: 280_896,
                               # The sound copy moves four 32-bit words at a time: sixteen 8-bit samples.
@@ -174,7 +179,7 @@ module VBlank
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false,
                             changes_cells_while_drawing: true,
-                            blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 4, painted_pages: 1, clock_keeps_date: false,
+                            blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 4, color_bits: 5, painted_pages: 1, clock_keeps_date: false,
                             # 154 lines of 456 cycles: the Advance's frame exactly, on a clock a
                             # quarter as fast. Double speed doubles the cycles, not the frames.
                             cycles_a_second: 4_194_304, cycles_a_frame: 70_224,
@@ -223,7 +228,7 @@ module VBlank
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
                                      changes_cells_while_drawing: false,
-                                     blends: false, fades_by_brightness: true, mixes_by_half: true, list_colors: 16,
+                                     blends: false, fades_by_brightness: true, mixes_by_half: true, list_colors: 16, color_bits: 5,
                                      # A painted screen is copied whole to the console before it
                                      # is shown, as the Color's is.
                                      painted_pages: 1, clock_keeps_date: false,
@@ -251,6 +256,51 @@ module VBlank
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
                                      rumbles: false, extension: ".sfc")
+
+    # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
+    # Select and no shoulder buttons), 80 sprites and 20 of them on a row, two backgrounds of
+    # tiles, nothing that turns, four lists of sixteen colours, and colours of 9 bits, three to a
+    # channel. What each verb does on it is Console::GenesisAnswers's to say.
+    GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
+                              buttons: %i[a b c start right left up down].freeze, sprites: 80, sprite_places: 80,
+                              # A row of the screen shows at most 20 sprites (16 on a screen of 256
+                              # across), and a sprite here is one 8-pixel piece of a picture.
+                              sprites_a_row: 20, turning_sprites: false,
+                              # Every sprite picture is cut into 8×8 pieces (Backends::Genesis::Art).
+                              cuts_sprites: true,
+                              # Two planes of tiles that scroll. The window plane is a third, but it
+                              # only covers whole rows of tiles and the build does not use it.
+                              backgrounds: 2, turning_backgrounds: 0, backgrounds_beside_turning: 0,
+                              bar_is_a_background: false,
+                              # The build writes video RAM only in the gap between frames.
+                              changes_cells_while_drawing: false,
+                              # Nothing mixes one layer into another by degrees, and the shadow and
+                              # highlight modes halve and brighten the whole picture, not a layer.
+                              blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, color_bits: 3,
+                              # A painted screen is kept in work RAM and copied to the console
+                              # whole before it is shown, so it holds one picture.
+                              painted_pages: 1, clock_keeps_date: false,
+                              # 262 lines of 3420 cycles of the console's master clock: sixty frames a
+                              # second and a little under.
+                              cycles_a_second: 53_693_175, cycles_a_frame: 896_040,
+                              # No timer hands the sound chip samples: a recording is written to its
+                              # digital voice by the processor itself, and none is made yet.
+                              samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,
+                              recordings_at_once: 1, mixes_recordings: false,
+                              recording_voice_hz: nil, lowest_square_hz: 109, voice_output_hz: 223_722,
+                              # Lists and pools go in the work RAM past the runtime's own places.
+                              largest_memory_bytes: 64 * 1024,
+                              # All 64K of work RAM is in view from the cartridge's code, so every
+                              # variable is there; the stack, the runtime's own state and a painted
+                              # screen's copy of the picture take some of it first (see
+                              # Backends::Genesis::Memory).
+                              work_memory_bytes: 64 * 1024, work_memory_kept_bytes: 4096,
+                              roomier_memory_bytes: 0,
+                              # The wait sends the sprite table and the scroll from a copy, so a
+                              # pass places them in it before its wait, as the Super Nintendo's does.
+                              sprites_placed_before_wait: true,
+                              # No cartridge with a motor is made for it.
+                              rumbles: false, extension: ".gen")
 
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 
