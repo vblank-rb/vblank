@@ -284,6 +284,33 @@ class TestGBCClips < Minitest::Test
     b.program
   end
 
+  # EVERY NOTE IS LOGGED ONCE, however the recording's samples fall. The timer's interrupt is let in
+  # while the music plays, so it can land just as the player reaches a note, and the run's sound log
+  # is checked against the interpreter's on every pass.
+  def test_a_busy_song_beside_a_long_recording_logs_each_note_once
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    recording = square_recording(40)
+    b.instance_eval do
+      screen :tiled
+      enable_sound
+      song :busy do
+        tempo 240
+        voice(:lead) { |v| 1600.times { |n| v.note((n % 3).zero? ? :C5 : :E5, :sixteenth) } }
+        voice(:harmony) { |v| 1600.times { |n| v.note(n.even? ? :G4 : :A4, :sixteenth) } }
+      end
+      play_song :busy
+      hum = sample :hum, pcm: recording
+      count = 0
+      game_loop do
+        count += 1
+        hum.play(loop: true) if count == 3
+      end
+    end
+    b.finalize_program
+
+    assert_operator game_player.run(b.program, frames: 240).audio.count { |entry| entry.first == :note }, :>, 100
+  end
+
   private def quiet_from(program)
     heard = console_voice(program, :wave, frames: 80)
     (10...80).find { |frame| heard.loudness(frame) < SoundComparison::HEARD }

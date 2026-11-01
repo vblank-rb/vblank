@@ -56,6 +56,11 @@ module VBlank
                          rt_wait_vblank_buttons rt_sfx_note rt_clip_came_round] + RELEVELS.keys + WOBBLE_TURNS.keys + SHAPE_CHANGES.keys +
                       SWELLS_HELD.keys + SWELLS_ON.keys).freeze
 
+          # Where the processor goes for each interrupt (#record_new_arrival!).
+          INTERRUPT_VECTORS = [Console::GBCHardware::VBLANK_VECTOR, Console::GBCHardware::STAT_VECTOR,
+                               Console::GBCHardware::TIMER_VECTOR, Console::GBCHardware::SERIAL_VECTOR,
+                               Console::GBCHardware::JOYPAD_VECTOR].freeze
+
           # +places+ is the build record (GBC::Places).
           def initialize(places)
             code = places.code
@@ -114,11 +119,13 @@ module VBlank
           def any? = !@tables.empty? || !@notes.empty?
 
           # The instructions the emulator records arrivals at.
-          def addresses = @routines.keys
+          def addresses = @routines.keys + INTERRUPT_VECTORS
 
           # Reads +arrivals+ (Core#take_arrivals), oldest first, into the log.
           def read(arrivals)
-            arrivals.each do |pc, af, bc, _de, hl, _sp, _back, handed|
+            arrivals.each do |pc, af, bc, _de, hl, _sp, back, handed|
+              next unless record_new_arrival!(pc, back)
+
               case @routines[pc]
               when "rt_sound_writes" then @entries << @tables.fetch(handed)
               when "rt_music_note" then note_arrived(@notes.fetch(note_key(af >> 8, hl - 2))) # handed past the note's frame
@@ -153,6 +160,24 @@ module VBlank
           end
 
           private
+
+          # AN INTERRUPT TAKEN JUST AS THE PROCESSOR REACHES AN INSTRUCTION comes back to it, and the
+          # emulator records it reached twice, with one run of it. The interrupt says so itself:
+          # the place it will return to, on top of the stack as its vector is reached, is the
+          # instruction just recorded, which has not run yet. So the next arrival there is that
+          # same one. A vector is never an arrival of its own.
+          def record_new_arrival!(pc, back)
+            if INTERRUPT_VECTORS.include?(pc)
+              @coming_back_to = back if back == @last_arrival
+              return false
+            end
+            if pc == @coming_back_to
+              @coming_back_to = nil
+              return false
+            end
+            @last_arrival = pc
+            true
+          end
 
           # What a note at +address+ in bank +bank+ is found by: its address alone, unless songs are
           # kept in the banks.
