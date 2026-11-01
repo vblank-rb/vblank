@@ -98,8 +98,11 @@ module VBlank
         rgb8: works("see `color`."),
         colors: works("a list of colours holds sixteen places on a Genesis, the first see-through. The console " \
                       "holds four lists, for the sprites and the backgrounds together."),
-        recolor: works("a list told to hold other colours keeps a palette to itself for the whole game, so " \
-                       "a game can change the four lists."),
+        recolor: works("a list told to hold other colours keeps a palette to itself for the whole game, written " \
+                       "over in the blank, so a game can change the four lists. So far only for a sprite drawn in the " \
+                       "colours of the list it was drawn from (`draw_with` a list that holds the picture's own colours " \
+                       "to begin with); any other `draw_with` is refused by name, and a background drawn with other " \
+                       "colours is too."),
         color_walk: works,
         colors_in_use: works,
         mirror: works,

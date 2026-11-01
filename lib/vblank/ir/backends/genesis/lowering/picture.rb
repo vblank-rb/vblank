@@ -20,6 +20,7 @@ module VBlank
                                                  scroll_background: :emit_scroll_background,
                                                  set_tile: :emit_set_tile, show_map: :emit_show_map,
                                                  present_objects: :emit_present_objects,
+                                                 color_list_holds: :emit_color_list_holds,
                                                  hide_sprites: :emit_hide_sprites
                                                })
 
@@ -87,7 +88,7 @@ module VBlank
 
             def refuse_unmade_sprites!
               @objects.each_value do |obj|
-                refuse_unmade!("a sprite drawn in other colours") unless obj.recolors.empty?
+                refuse_unmade!("a sprite drawn in other colours") unless obj.recolors.empty? || held_list_of(obj)
                 refuse_unmade!("a sprite put in another layer") if obj.layers && !obj.layers.empty?
               end
               return if @objects.empty? || @backgrounds.empty?
@@ -124,9 +125,66 @@ module VBlank
               poses.each do |name|
                 image = Assets::Image.of(picture_named(name))
                 refuse_unmade!("a picture made of pieces") if image.pieces
-                @art.sprite_picture(name, image)
+                held = held_palette_for(name)
+                held ? @art.sprite_picture(name, image, held: held) : @art.sprite_picture(name, image)
               end
               @backgrounds.each { |bg| bg.every_map.each_index { |which| grid_of(bg, which) } }
+            end
+
+            # THE LIST OF COLOURS A SPRITE IS DRAWN WITH WHILE THE GAME CHANGES WHAT IT HOLDS (`draw_with` a list
+            # that `recolor` gives other sets), when that is all it is drawn with: its pictures are then drawn
+            # from the list's palette, which the game writes over, and nothing else is needed to draw them in
+            # the colours the list holds. Nil for a sprite drawn in its own colours.
+            def held_list_of(obj)
+              return nil unless obj.recolors.length == 1 && obj.recolors.first.is_a?(Symbol)
+
+              list = color_list_named(obj.recolors.first)
+              list.recolors.empty? ? nil : list
+            end
+
+            # The palette +name+'s picture is drawn from when its sprite is drawn with a list the game changes
+            # (see #held_list_of), or nil. The picture must be drawn in that list's own colours, since the
+            # sprite is drawn with the list from its first frame.
+            def held_palette_for(name)
+              obj = @objects.values.find { |candidate| candidate.poses.include?(name) && held_list_of(candidate) }
+              return nil unless obj
+
+              list = held_list_of(obj)
+              image = Assets::Image.of(picture_named(name))
+              unless image.colors.map { |color| color & 0x7FFF } == list.colors.map { |color| color & 0x7FFF }
+                refuse_unmade!("a sprite drawn in the colours of a list that its picture was not drawn from")
+              end
+              @art.held_sprite_palette([:sprites, list.name], list.colors.drop(1).map { |color| color & 0x7FFF })
+            end
+
+            def color_list_named(name)
+              @color_lists ||= by_kind(:color_list)
+              @color_lists.fetch(name) { raise LoweringError, "the list of colours #{name.inspect} is drawn with and never declared" }
+            end
+
+            # Reference#exec_color_list_holds: the list holds the set the game says, written over its palette in
+            # the blank. A list nothing is drawn with has no palette, and nothing to show.
+            def emit_color_list_holds(node)
+              palette = @art.held_palette_of([:sprites, node.name]) or return
+
+              runtime_call("rt_colors_hold", [LabelAddress.new(held_colors_label(node.name)), node.which, Build.int(palette)])
+            end
+
+            def held_colors_label(name)
+              @held_label_names ||= []
+              @held_label_names << name unless @held_label_names.include?(name)
+              "art held colors #{@held_label_names.index(name)}"
+            end
+
+            # Each table of sets as data for the Linker: how many sets besides the declared colours, then those and
+            # each other set, a palette's places (Art#palette_words) each.
+            def write_held_colors(data)
+              (@held_label_names || []).each_with_index do |name, number|
+                list = color_list_named(name)
+                data.label("art held colors #{number}")
+                data.data_words(list.recolors.length)
+                [list.colors, *list.recolors].each { |colors| data.data_words(@art.palette_words(colors.drop(1).map { |color| color & 0x7FFF })) }
+              end
             end
 
             # The picture each picture of the art is, by number, as SpriteNames numbers it.
@@ -150,6 +208,7 @@ module VBlank
                   data.data_words(piece.dx, piece.dy, piece.tile | (piece.palette << Art::PALETTE_SHIFT))
                 end
               end
+              write_held_colors(data)
               data.label("art grids")
               @art.grids.each do |grid|
                 data.data_longs(grid_label(grid.number))

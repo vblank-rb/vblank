@@ -62,6 +62,7 @@ module VBlank
             @tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
             @tile_numbers = { blank_tile => 0 }
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
+            @held = {} # whose list => the palette it keeps to itself (#held_sprite_palette)
             @sprite_pictures = {}
             @grids = []
           end
@@ -96,13 +97,18 @@ module VBlank
 
           # The sprite picture +name+ (an Assets::Image), cut into pieces. A picture whose width or
           # height is not a multiple of 8 has its last pieces' extra pixels left undrawn.
-          def sprite_picture(name, image)
+          # +held+ is the palette of a list the game changes (#held_sprite_palette), which the picture is drawn
+          # from place for place.
+          def sprite_picture(name, image, held: nil)
             @sprite_pictures[name] ||= begin
               drawn = (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }
-              palette = palette_for(drawn.map { |at| word_of(image.color_at(at)) }.uniq, "sprites")
+              palette = held || palette_for(drawn.map { |at| word_of(image.color_at(at)) }.uniq, "sprites")
               cut = SpritePieces.cut(image.width, image.height) do |x, y|
                 at = (y * image.width) + x
-                image.drawn_at?(at) ? @palettes[palette].index(word_of(image.color_at(at))) + 1 : 0
+                if !image.drawn_at?(at) then 0
+                elsif held then image.place_at(at) || image.colors.index(image.color_at(at))
+                else @palettes[palette].index(word_of(image.color_at(at))) + 1
+                end
               end
               pieces = cut.map do |across, down, places|
                 Piece.new(dx: across, dy: down, tile: tile_number(tile_bytes(places)), palette: palette)
@@ -111,6 +117,34 @@ module VBlank
                                 pieces: pieces)
             end
           end
+
+          # A LIST OF COLOURS THE GAME CHANGES AS IT RUNS keeps a palette to itself, its colours in the order
+          # of its places: changing it is writing other colours over that palette, so every pixel of a picture
+          # drawn from it is the place it was drawn at, and nothing else's colours can share it. +key+ says
+          # whose list it is, and +colors+ (15-bit, see-through left out) are the colours it starts with.
+          def held_sprite_palette(key, colors)
+            @held.fetch(key) do
+              if colors.length > OWN_COLORS
+                raise TooMuch, "A list of colours the game changes holds #{colors.length} colours, and a Genesis " \
+                               "palette shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
+              end
+              free = (0...PALETTES).find { |p| @palettes[p].nil? }
+              unless free
+                raise TooMuch, "The lists of colours the game changes need more palettes than a Genesis has (#{PALETTES}, " \
+                               "shared with every other picture). To fix this, change fewer lists, or draw fewer " \
+                               "pictures in other colours."
+              end
+
+              @palettes[free] = colors.map { |color| word_of(color) }
+              @held[key] = free
+            end
+          end
+
+          # The palette kept under +key+, or nil for a list nothing is drawn with.
+          def held_palette_of(key) = @held[key]
+
+          # +colors+ (15-bit) as the words a palette's places hold, filled out to fifteen.
+          def palette_words(colors) = colors.map { |color| word_of(color) }.fill(0, colors.length...OWN_COLORS)
 
           # --- the colour memory ---
 
@@ -157,7 +191,7 @@ module VBlank
                              "colours or fewer."
             end
 
-            used = (0...PALETTES).select { |p| @palettes[p] }
+            used = (0...PALETTES).select { |p| @palettes[p] && !@held.value?(p) }
             found = used.find { |p| (colors - @palettes[p]).empty? }
             return found if found
 

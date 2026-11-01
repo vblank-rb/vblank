@@ -82,8 +82,7 @@ module VBlank
                                                     "the status bar" => %i[place_bar],
                                                     "backgrounds bent row by row" => %i[scroll_rows],
                                                     "tiles painted from a list" => %i[copy_tiles copy_owed_tiles],
-                                                    "colours that change as the game runs" => %i[background_colors
-                                                                                                color_list_holds],
+                                                    "colours that change as the game runs" => %i[background_colors],
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at show_picture_group data_byte],
                                                     "the camera" => %i[camera],

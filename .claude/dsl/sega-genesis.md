@@ -63,7 +63,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds sixteen places on a Genesis, the first see-through. The console holds four lists, for the sprites and the backgrounds together.
-- `recolor` — works: a list told to hold other colours keeps a palette to itself for the whole game, so a game can change the four lists.
+- `recolor` — works: a list told to hold other colours keeps a palette to itself for the whole game, written over in the blank, so a game can change the four lists. So far only for a sprite drawn in the colours of the list it was drawn from (`draw_with` a list that holds the picture's own colours to begin with); any other `draw_with` is refused by name, and a background drawn with other colours is too.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
@@ -165,7 +165,7 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - the status bar: `place_bar`
 - backgrounds bent row by row: `scroll_rows`
 - tiles painted from a list: `copy_tiles`, `copy_owed_tiles`
-- colours that change as the game runs: `background_colors`, `color_list_holds`
+- colours that change as the game runs: `background_colors`
 - layers see-through: `see_through`
 - the picture: `draw_column_at`, `show_picture_group`, `data_byte`
 - the camera: `camera`

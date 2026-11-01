@@ -57,6 +57,10 @@ module VBlank
             CELLS = "rt cells"
             SPRITE_COUNT = "rt sprite count"
             SPRITES = "rt sprites"
+            COLORS_PENDING = "rt colors pending" # for each palette, the colours it is to hold next (a long), or nought
+
+            # A set of colours a list holds, in the table rt_colors_hold reads: the palette's places, a word each.
+            SET_BYTES = Art::OWN_COLORS * 2
 
             # How far past the screen's corner the chip counts a sprite's place from.
             SPRITE_ORIGIN = 128
@@ -66,6 +70,7 @@ module VBlank
             def reserve(memory)
               memory.reserve(SCROLL, 8)
               memory.reserve(PENDING, 8)
+              memory.reserve(COLORS_PENDING, Art::PALETTES * 4)
               memory.reserve(CELL_COUNT, 2)
               memory.reserve(CELLS, MOST_CELLS * CELL_BYTES)
               memory.reserve(SPRITE_COUNT, 2)
@@ -78,6 +83,7 @@ module VBlank
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm)
               emit_maps(asm, memory, at, columns)
+              emit_colors_held(asm, memory)
               emit_sprites(asm, memory, at)
               emit_upload(asm, memory, at, columns)
             end
@@ -173,6 +179,50 @@ module VBlank
               asm.move(:w, asm.d(3), asm.post(0))
               asm.addq(:w, 1, at.call(CELL_COUNT))
               asm.rts
+            end
+
+            # A LIST OF COLOURS THE GAME CHANGES. rt_colors_hold(table, which, palette): the table is a word, how
+            # many sets there are besides the colours the list was declared with, then that set and each of the
+            # others, SET_BYTES each; +which+ names one of the others, and a number naming none is the declared
+            # colours, as the interpreter holds them (Reference#colors_held_by). The set is noted for the palette
+            # and written over it in the blank (rt_upload), with the sprite table, so the colours change on the
+            # frame the sprites' places and pictures do.
+            def emit_colors_held(asm, memory)
+              asm.label("rt_colors_hold")
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.moveq(0, asm.d(3))
+              asm.move(:w, asm.post(0), asm.d(3))
+              asm.cmp(:l, asm.d(3), asm.d(1))
+              asm.branch(:cc, "rt_colors_hold_own")
+              asm.addq(:l, 1, asm.d(1))
+              asm.bra("rt_colors_hold_set")
+              asm.label("rt_colors_hold_own")
+              asm.moveq(0, asm.d(1))
+              asm.label("rt_colors_hold_set")
+              asm.mulu(asm.imm(SET_BYTES), asm.d(1))
+              asm.add(:l, asm.d(1), asm.a(0))
+              asm.lsl(:l, 2, asm.d(2))
+              asm.lea(asm.abs_l(memory[COLORS_PENDING]), asm.a(1))
+              asm.move(:l, asm.a(0), asm.idx(1, 0, 2))
+              asm.rts
+            end
+
+            # The colours noted for each palette written over it, and forgotten.
+            def emit_colors_written(asm, memory)
+              h = Console::GenesisHardware
+              Art::PALETTES.times do |palette|
+                skip = "rt_colors_written_#{palette}"
+                asm.move(:l, asm.abs_l(memory[COLORS_PENDING], palette * 4), asm.d(0))
+                asm.branch(:eq, skip)
+                asm.movea(:l, asm.d(0), asm.a(0))
+                asm.clr(:l, asm.abs_l(memory[COLORS_PENDING], palette * 4))
+                asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, ((palette * Art::PLACES) + 1) * 2)), asm.abs_l(h::VDP_CONTROL))
+                asm.move(:w, asm.imm(Art::OWN_COLORS - 1), asm.d(1))
+                asm.label("#{skip}_word")
+                asm.move(:w, asm.post(0), asm.abs_l(h::VDP_DATA))
+                asm.dbra(asm.d(1), "#{skip}_word")
+                asm.label(skip)
+              end
             end
 
             # The cells noted for plane D0 taken out of the queue, the rest kept in their order.
@@ -296,6 +346,7 @@ module VBlank
               asm.label("rt_upload_whole")
               [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
               emit_cells_written(asm, memory, at)
+              emit_colors_written(asm, memory)
               emit_sprite_table_written(asm, memory, at)
               emit_scroll_written(asm, memory)
               asm.rts
