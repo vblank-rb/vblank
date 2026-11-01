@@ -409,8 +409,12 @@ module VBlank
         end
         address = @var_addresses[name] ||
                   raise(ArgumentError, "unknown variable #{name.inspect} — known: #{@var_addresses.keys.join(', ')}")
-        var_at(address)
+        variable_kept_at(name, address)
       end
+
+      # What is kept for +name+ at +address+. A console that keeps some variables narrow says it
+      # otherwise (ColorReading).
+      private def variable_kept_at(_name, address) = var_at(address)
 
       # The variable at an address, with its sign put back — the rule above, kept in one place so
       # that anything reading a variable the program never named (the framework keeps a few of its

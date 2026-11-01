@@ -27,6 +27,15 @@ module VBlank
 
       include CountedPasses
 
+      # A VARIABLE THE GAME SAID IS NARROW is kept in a byte or two here, with the next variable
+      # straight after it, so only its own bytes are read, and its sign is put back from the top one.
+      private def variable_kept_at(name, address)
+        width = @rom.source_program&.kept_width_of(name) or return super
+        bytes = IR::KeptWidths::BYTES.fetch(width)
+        number = (0...bytes).sum { |i| mem8(address + i) << (8 * i) }
+        number >= 1 << ((bytes * 8) - 1) ? number - (1 << (bytes * 8)) : number
+      end
+
       # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them
       # (Reference#sprites): a DrawnSprite for each, with its +name+, +x+, +y+ and +picture+, back
       # to front, where the game put them. Name one and only that sprite's rows come back. The

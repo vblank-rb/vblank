@@ -85,6 +85,24 @@ class TestGBCVariableWidths < Minitest::Test
     refute_match(/ld c,|ld b,/, fast_path, "nothing above the two bytes is worked out")
   end
 
+  # The next variable sits straight after a narrow one, so a four-byte read would take its bytes too.
+  def test_the_cartridge_reader_gives_a_narrow_variable_as_the_game_holds_it
+    rom = VBlank.build("WIDTHS", console: :gbc, out: StringIO.new, err: StringIO.new) do
+      x = var :x, -1408, width: :half
+      y = var :y, 0, width: :half
+      small = var :small, -3, width: :byte
+      big = var :big, -70_000
+      after = var :after, 0x1234, width: :half
+      game_loop do
+        y = -1408
+        wait_vblank
+      end
+    end
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 30, vars: rom.var_addresses)
+
+    assert_equal [-1408, -1408, -3, -70_000, 0x1234], %i[x y small big after].map { |name| reader.var(name) }
+  end
+
   def test_a_byte_is_read_written_and_compared_in_far_less_code
     assert_operator code_size(width: :byte), :<, code_size - 40
   end
