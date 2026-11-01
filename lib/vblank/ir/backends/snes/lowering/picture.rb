@@ -1231,16 +1231,20 @@ module VBlank
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS (Reference#names_in_draw_order): its list holds the
             # run's sprites back to front, each by its place in the run, so each entry in turn places
             # the sprite it names — back-most first, as every sprite here is. A sprite's placing is a
-            # routine of its own (#sprite_placing_sections), so the entries share it.
-            def emit_ordered_run(run)
+            # routine of its own (#sprite_placing_sections), so the entries share it. +depths+ is the
+            # names of the depth being placed, by sprite, for a frame with sprites that change layer;
+            # a sprite not named has no place at that depth.
+            def emit_ordered_run(run, depths = nil)
               entry = keep_local(:ordered_entry)
               run.objects.each_index do |k|
                 statement(Build.set(entry, Build.list_get(run.order, Build.int(k))))
                 past = fresh("past_the_ordered")
                 run.objects.each_with_index do |name, at|
+                  next if depths && !depths.key?(name)
+
                   other = fresh("not_sprite")
                   jump_unless(Build.binop(:==, Build.var_ref(entry), Build.int(at)), other)
-                  call_routine(sprite_placing_label(name))
+                  call_routine(sprite_placing_label(name, depths&.fetch(name)))
                   @asm.brl(past)
                   @asm.label(other)
                 end
@@ -1248,13 +1252,20 @@ module VBlank
               end
             end
 
-            def sprite_placing_label(name) = (@sprite_placings ||= {})[name] ||= "sprite placing #{@sprite_placings.length}"
+            # The routine placing sprite +name+, or placing it when it is at the depth called +at+.
+            def sprite_placing_label(name, at = nil)
+              (@sprite_placings ||= {})[[name, at]] ||= "sprite placing #{@sprite_placings.length}"
+            end
 
             # The routine each sprite of an ordered run is placed by (#emit_ordered_run), made once the
             # game's routines are.
             def sprite_placing_sections
-              (@sprite_placings || {}).map do |name, label|
-                routine_section(label, [], routine: "placing the sprite #{name.inspect}") { emit_sprite_placing(object_named(name)) }
+              (@sprite_placings || {}).map do |(name, at), label|
+                routine_section(label, [], routine: "placing the sprite #{name.inspect}") do
+                  next emit_sprite_placing(object_named(name)) unless at
+
+                  emit_sprite_placed_at(object_named(name), at, Stacking.picture(@program).depths)
+                end
               end
             end
 
@@ -1262,25 +1273,32 @@ module VBlank
             # Reference#object_level): every depth any of them can be at, back-most first, and at each,
             # every sprite that can be there, placed when the layer it is in now is that one — so a
             # sprite is placed once, among the sprites of its layer now, behind the backgrounds as
-            # that layer is.
+            # that layer is. A run the game orders is walked at each depth, for those of its sprites
+            # that are there, so the order holds inside each layer.
             def emit_layer_changing_sprites(node, objects)
-              refuse_unmade!("sprites drawn in an order the game works out, beside a sprite put in another layer") unless Array(node.orders).empty?
-
               depths = Stacking.picture(@program).depths
+              depth_of = ->(obj, level) { depth_names(obj).find { |name| depths[name] == level } }
               objects.flat_map { |obj| Stacking.levels_of(depths, obj) }.uniq.sort.each do |level|
-                objects.each do |obj|
-                  at = depth_names(obj).find { |name| depths[name] == level }
-                  next unless at
-
-                  there = at_level(obj, level, depths)
-                  next emit_sprite_placing(obj, at) if there == true
-
-                  elsewhere = fresh("sprite_elsewhere")
-                  jump_unless(there, elsewhere)
-                  emit_sprite_placing(obj, at)
-                  @asm.label(elsewhere)
+                present_items(node).each do |item|
+                  if item.is_a?(Build::DrawOrder)
+                    here = item.objects.to_h { |name| [name, depth_of.call(object_named(name), level)] }.compact
+                    emit_ordered_run(item, here) unless here.empty?
+                  elsif (at = depth_of.call(object_named(item), level))
+                    emit_sprite_placed_at(object_named(item), at, depths)
+                  end
                 end
               end
+            end
+
+            # +obj+ placed, if the depth called +at+ is where it is now.
+            def emit_sprite_placed_at(obj, at, depths)
+              there = at_level(obj, depths[at], depths)
+              return emit_sprite_placing(obj, at) if there == true
+
+              elsewhere = fresh("sprite_elsewhere")
+              jump_unless(there, elsewhere)
+              emit_sprite_placing(obj, at)
+              @asm.label(elsewhere)
             end
 
             # The names +obj+ has a depth by: its own, and one for each other layer it can be put in.

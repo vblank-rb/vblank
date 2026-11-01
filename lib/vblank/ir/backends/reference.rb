@@ -153,6 +153,13 @@ module VBlank
           rows.select { |row| row.name == name }
         end
 
+        # The sprites drawn, back-most layer first and in drawing order inside each. A console's sprite
+        # table has to hold them this way round (Lowering::Picture#emit_layer_changing_sprites), where
+        # #sprites keeps a run the game orders together whichever layer each of its sprites is in now.
+        def sprites_by_depth
+          sprites.each_with_index.sort_by { |_, at| [@obj_layer[at][:level], at] }.map(&:first)
+        end
+
         # WHETHER THE CARTRIDGE'S MOTOR IS RUNNING on the frame the screen shows now (`rumble`,
         # #exec_rumble): never on a console whose cartridge has no motor.
         def motor_on? = @motor_on

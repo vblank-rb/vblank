@@ -47,7 +47,8 @@ module VBlank
       #
       # The order is among the things named: each takes the place of the backmost of them,
       # and anything else keeps its own place in front of or behind the whole run. So the
-      # things of one order are in one layer, and a sprite is in one order at most.
+      # things of one order are declared in one layer, and a sprite is in one order at most.
+      # One told `put_in_layer` is drawn in the layer it is in now: the order holds inside each.
       #
       # @param things [Array<HardwareSprite, Pool>] what is put in order
       # @param front [Symbol] :highest (the default) or :lowest — which number is in front
@@ -138,7 +139,6 @@ module VBlank
         return if draw_orders.empty?
 
         draw_orders.each do |order|
-          refuse_order_that_changes_layer!(order)
           declare_order_lists(order)
           @functions[order.routine] = proc {}
           push_container(Build.func(order.routine)) { order_sort_nodes(order).each { |node| record(node) } }
@@ -263,17 +263,6 @@ module VBlank
               "Put them in one #{word}, or give each #{word} a draw_in_order of its own."
       end
 
-      # A sprite told `put_in_layer` changes how deep it is drawn as the game runs, and an
-      # order is a run of one depth.
-      def refuse_order_that_changes_layer!(order)
-        order.things.each do |thing|
-          next if order_objects_of(thing).none?(&:layer_pick)
-
-          raise ArgumentError,
-                "#{order_thing_name(thing)} is in a draw_in_order and is told put_in_layer. An order puts " \
-                "things in order inside one layer, so a thing in it cannot change layer. Take it out of one of the two."
-        end
-      end
     end
   end
 end

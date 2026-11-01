@@ -237,19 +237,59 @@ class TestDrawInOrder < Minitest::Test
     assert_match(/pool :dust draws nothing/, message)
   end
 
-  def test_a_sprite_told_to_change_layer_is_refused
-    block = BLOCK
-    message = refusal do
+  # THE ORDER HOLDS INSIDE EACH LAYER. A hero and a guard standing in one layer, the lower one in
+  # front, and the hero then sent behind the background: the guard stays in front of it, and the
+  # hero shows only where nothing covers him.
+  private def layer_changing_game(pool:)
+    b = Builder.new
+    b.instance_eval do
       screen :tiled
-      image(:a, "#" => :red) { block }
-      layers :ground, :upper
-      one = layer(:ground) { sprite :a, at: [0, 0] }
-      two = layer(:ground) { sprite :b, at: [4, 4], facing: { down: :a } }
-      draw_in_order one, two
-      game_loop { two.put_in_layer :upper }
+      image(:field, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      image(:red, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:green, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :field
+      layers :behind, :ground, :front
+      layer(:ground) { background :world, tiles: :set, map: "###\n###\n###" }
+      hero = layer(:front) { sprite :red, at: [4, 4] }
+      if pool
+        guards = layer(:front) { self.pool(:guards, x: 4, y: 8, capacity: 2, image: :green) }
+        guards.spawn
+        draw_in_order hero, guards
+      else
+        guard = layer(:front) { sprite :green, at: [4, 8] }
+        draw_in_order hero, guard
+      end
+      step = 0
+      behind = var :behind, 0
+      game_loop do
+        step += 1
+        hero.move_to 4, 12 if step == 10
+        behind = 1 if step == 20
+        hero.put_in_layer %i[front behind], showing: behind
+      end
     end
+    b.finalize_program
+    b.program
+  end
 
-    assert_match(/put_in_layer/, message)
+  private def assert_order_holds_in_each_layer(program)
+    screen_at = ->(frames) { game_player.run(program, frames: frames).screen }
+
+    assert_equal 0x03E0, screen_at.call(6).pixel(6, 10), "the guard stands lower, so it is in front"
+    in_front = screen_at.call(16)
+    assert_equal 0x001F, in_front.pixel(6, 13), "the hero stands lower now, so he is in front"
+    assert_equal 0x001F, in_front.pixel(6, 17), "...and nothing covers him"
+    behind = screen_at.call(28)
+    assert_equal 0x03E0, behind.pixel(6, 13), "the hero has gone behind the background, and the guard has not"
+    assert_equal 0x7C00, behind.pixel(6, 17), "the background covers him"
+  end
+
+  def test_a_sprite_in_an_order_can_change_layer
+    assert_order_holds_in_each_layer(layer_changing_game(pool: false))
+  end
+
+  def test_a_sprite_ordered_with_a_pool_can_change_layer
+    assert_order_holds_in_each_layer(layer_changing_game(pool: true))
   end
 
   def test_an_unknown_front_is_refused

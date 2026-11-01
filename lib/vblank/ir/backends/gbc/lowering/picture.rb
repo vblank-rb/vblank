@@ -1740,31 +1740,57 @@ module VBlank
             # Reference#object_level): every depth any of them can be at, front-most first, and at
             # each, every sprite that can be there, placed when the layer it is in now is that one —
             # so a sprite is placed once, among the sprites of its layer now, behind the background
-            # or not as that layer is.
+            # or not as that layer is. A run the game orders is walked at each depth, for those of its
+            # sprites that are there: the order holds inside each layer, and a table with a sprite
+            # behind the background in front of one before it would hide that one where they cross.
             def emit_layer_changing_sprites(node, objects)
-              unless Array(node.orders).empty?
-                raise LoweringError, "this program puts sprites in order as the game runs (`draw_in_order`) and moves a " \
-                                     "sprite to another layer, which #{build_name} cannot make yet."
-              end
-
+              placings = {}
+              items = present_items(node)
               emit_groups_wanted
               emit_refuse_groups_not_together
               @asm.call("rt_sprites_begin")
               unless_sprites_hidden do
                 objects.flat_map { |obj| Stacking.levels_of(@stacking.depths, obj) }.uniq.sort.reverse_each do |level|
-                  objects.reverse_each do |obj|
-                    there = at_level(obj, level)
-                    next if there.nil?
-                    next sprite_placement(obj, level) if there == true
+                  items.reverse_each do |item|
+                    next emit_ordered_run_at_level(item, level, placings) if item.is_a?(Build::DrawOrder)
 
-                    elsewhere = fresh("sprite_elsewhere")
-                    jump_unless(there, elsewhere)
-                    sprite_placement(obj, level)
-                    @asm.label(elsewhere)
+                    emit_sprite_placed_at_level(@objects.fetch(item), level)
                   end
                 end
               end
               @asm.call("rt_sprites_end")
+              return if placings.empty?
+
+              past = fresh("past_the_placings")
+              @asm.jump(past)
+              placings.each do |(name, level), label|
+                @asm.label(label)
+                emit_sprite_placed_at_level(@objects.fetch(name), level)
+                @asm.ret
+              end
+              @asm.label(past)
+            end
+
+            # +obj+ placed, if depth +level+ is where it is now.
+            def emit_sprite_placed_at_level(obj, level)
+              there = at_level(obj, level)
+              return if there.nil?
+              return sprite_placement(obj, level) if there == true
+
+              elsewhere = fresh("sprite_elsewhere")
+              jump_unless(there, elsewhere)
+              sprite_placement(obj, level)
+              @asm.label(elsewhere)
+            end
+
+            # The sprites of +run+ that can be at depth +level+, front-most first, each by a routine of
+            # that depth's kept in +placings+.
+            def emit_ordered_run_at_level(run, level, placings)
+              here = run.objects.reject { |name| at_level(@objects.fetch(name), level).nil? }
+              return if here.empty?
+
+              labels = here.to_h { |name| [name, placings[[name, level]] ||= fresh("place_sprite")] }
+              emit_ordered_run(run, labels)
             end
 
             # A FRAME WITHOUT SPRITES (`hide_sprites`, Reference#exec_hide_sprites). The pass that
@@ -1887,6 +1913,8 @@ module VBlank
                 @asm.jump(:nz, past)
                 @asm.load(:a, :e)
                 run.objects.each_with_index do |name, at|
+                  next unless placings.key?(name)
+
                   other = fresh("not_sprite")
                   @asm.cp_a(at)
                   @asm.jump(:nz, other)
