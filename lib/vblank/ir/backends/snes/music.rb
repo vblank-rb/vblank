@@ -93,6 +93,7 @@ module VBlank
           WOBBLE_SPEED = 2
           WOBBLE_UP = 4
           WOBBLE_DOWN = 6
+          WOBBLE_CARRIES = 8 # 1 when a note takes up the swing where the voice's last one left it
           # A SWELL'S RECORD (#swell_record), in bytes: how much the count must reach for a step of
           # loudness, and where each of three lists of groups is, one for each of VOLUMES.
           SWELL_STEP = 0
@@ -260,9 +261,10 @@ module VBlank
               places[commands] = table.size * 2
               table.concat(commands.flatten, [GROUP_END])
             end
-            @wobble_records.each do |wait, speed, up, down|
-              places[[wait, speed, up, down]] = table.size * 2
-              table.concat([wait, speed, places.fetch(up), places.fetch(down)])
+            @wobble_records.each do |record|
+              wait, speed, up, down, carries = record
+              places[record] = table.size * 2
+              table.concat([wait, speed, places.fetch(up), places.fetch(down), carries])
             end
             @shape_records.each do |groups|
               places[groups] = table.size * 2
@@ -519,7 +521,7 @@ module VBlank
               writes = DSPWrites.wobble(channel, frequency, steps).map { |write| Runtime::Sound.command_for(write) }
               keep_group(writes + [[GROUP_LOG, yield([:wobble, channel, steps]), 0]])
             end
-            record = [vibrato.after, vibrato.speed, up, down]
+            record = [vibrato.after, vibrato.speed, up, down, vibrato.carries ? 1 : 0]
             @wobble_records << record unless @wobble_records.include?(record)
             record
           end
@@ -660,9 +662,9 @@ module VBlank
           # A NOTE THAT CHANGES AS IT PLAYS — fading out or swelling in, sliding or wobbling its
           # pitch, playing from one speaker, or stepping through the square wave's shapes — as its
           # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet: a
-          # wobble that carries from note to note; a slide over shapes that step, which each write
-          # which recording the voice reads; and a slide, a wobble or shapes that step in a game
-          # with sound effects, which take a voice from under them. In a game
+          # slide over shapes that step, which each write which recording the voice reads; and a
+          # slide, a wobble or shapes that step in a game with sound effects, which take a voice
+          # from under them. In a game
           # that sets its music volume, a note from one speaker is not made yet either, nor a swell
           # beside sound effects; a note that fades is, and the level reaches its next note (RINGS_ALONE).
           def refuse_note_changes!(song)
@@ -671,7 +673,7 @@ module VBlank
               vibrato = IR::Tunes.said_vibrato(part, event)
               slides = Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event))
               steps = IR::Tunes.said_duty(part, event)&.steps?
-              (slides && (effects? || steps)) || (steps && effects?) || (Audio::Vibrato.moves?(vibrato) && (vibrato.carries || effects?))
+              (slides && (effects? || steps)) || (steps && effects?) || (Audio::Vibrato.moves?(vibrato) && effects?)
             end
             if changing
               raise Lowering::NotMadeYet.new(

@@ -500,6 +500,10 @@ module VBlank
               asm.tax
               asm.lda(asm.long_x("music_data", m::WOBBLE_WAITS))
               asm.sta(asm.abs_y(memory[WOBBLE_WAIT]))
+              # A vibrato that carries takes the swing up where the voice's last wobble left it, which
+              # is still here, however long ago it stopped (IR::Tunes::Wobble.starting).
+              asm.lda(asm.long_x("music_data", m::WOBBLE_CARRIES))
+              asm.bne("rt_music_note_wobble_done")
               asm.lda(0)
               asm.sta(asm.abs_y(memory[WOBBLE_LEFT]))
               asm.sta(asm.abs_y(memory[WOBBLE_RISING]))
