@@ -1,0 +1,69 @@
+# THE GOLDEN PATH: the files `rake test:golden` plays, each on every run that loads it. The core of
+# each thing a game does, and a little of what only one lowering can break, for a run that takes
+# minutes rather than most of an hour. test/all/vblank/testing/test_golden.rb holds it to a tenth of
+# the suite, so a file goes in here by another coming out.
+
+# What a game says
+test/all/vblank/dsl/test_dsl_expression.rb
+test/all/vblank/builder/test_variable_widths.rb
+test/all/vblank/builder/test_subroutines.rb
+test/all/vblank/builder/test_scenes.rb
+test/all/vblank/builder/test_game_loop.rb
+test/all/vblank/builder/test_input.rb
+test/all/vblank/builder/test_random.rb
+test/all/vblank/builder/test_pool.rb
+test/all/vblank/builder/test_save.rb
+
+# What it shows
+test/all/vblank/builder/test_sprite.rb
+test/all/vblank/builder/test_tiled_background.rb
+test/all/vblank/builder/test_tiled_text.rb
+test/all/vblank/builder/test_layers.rb
+test/all/vblank/builder/test_fade.rb
+test/all/vblank/builder/test_color_list_length.rb
+test/all/vblank/dsl/test_hardware_sprite.rb
+test/all/vblank/dsl/test_background_scroll.rb
+
+# What it plays
+test/all/vblank/builder/test_sound.rb
+test/all/vblank/builder/test_music.rb
+test/all/vblank/builder/test_music_volume.rb
+test/all/vblank/builder/test_hold_music.rb
+test/all/vblank/audio/test_song_note_fades.rb
+test/all/vblank/audio/test_changing_notes_beside_effects.rb
+
+# Whole games: every example built and played a little on every run, and a few played right through
+test/all/examples/test_every_example_plays.rb
+test/all/examples/test_pacman_example.rb
+test/all/examples/test_tower_example.rb
+test/console/gbc/examples/test_breakout_example.rb
+
+# The rules the suite and the library keep
+test/all/test_suites.rb
+test/all/vblank/console/test_kit.rb
+test/all/vblank/test_method_names.rb
+test/all/vblank/test_dsl_reference.rb
+test/all/vblank/ir/test_kind_coverage.rb
+
+# Each console
+test/console/gba/vblank/ir/test_cross_backend_conformance_on_the_advance.rb
+test/console/snes/vblank/builder/test_fade_on_the_super_nintendo.rb
+test/console/snes/vblank/builder/test_music_volume_on_the_super_nintendo.rb
+
+# Each lowering's own
+test/lowering/gba/vblank/diagnostics/test_verifier_passes.rb
+test/lowering/native/vblank/ir/backends/native/test_checked_run.rb
+test/lowering/native/vblank/ir/backends/native/test_native_kind_coverage.rb
+test/lowering/js/vblank/ir/backends/js/test_js_checked_run.rb
+test/lowering/js/vblank/ir/backends/js/test_js_kind_coverage.rb
+test/lowering/ruby/vblank/ir/backends/ruby/test_ruby_checked_run.rb
+test/lowering/ruby/vblank/ir/backends/ruby/test_ruby_kind_coverage.rb
+test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_checked_run.rb
+test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_kind_coverage.rb
+test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_refusals.rb
+test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_music.rb
+test/lowering/gbc/vblank/diagnostics/test_sm83_listing.rb
+test/lowering/snes/vblank/ir/backends/snes/test_snes_checked_run.rb
+test/lowering/snes/vblank/ir/backends/snes/test_snes_kind_coverage.rb
+test/lowering/snes/vblank/ir/backends/snes/test_snes_eight_voices.rb
+test/lowering/snes/vblank/diagnostics/test_snes_verifier.rb

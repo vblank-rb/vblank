@@ -60,6 +60,9 @@ module VBlank
     # but the task it is asked for.
     class RakeTasks < Rake::TaskLib
       OUTCOMES = { passed: "passed", failed: "FAILED", not_played: "does not play this file" }.freeze
+      # The list `rake test:golden` plays, a short run of a tenth of the tests or less. A game that
+      # keeps no such file has no such task.
+      GOLDEN_LIST = "test/golden.txt"
 
       # The test files; the folders a test file can require from by bare name (the game's own code
       # and its tests, lib and test unless told); the folders each lowering owns, and each console;
@@ -120,6 +123,8 @@ module VBlank
         namespace :test do
           desc "Run the tests on every lowering, one after the other (CONSOLE= for one console)"
           task(:all) { play_runs(plays) }
+          desc "Run the golden path: the files #{GOLDEN_LIST} names, on every lowering that plays each"
+          task(:golden) { play_runs(plays, golden: Lowering.golden_files(GOLDEN_LIST)) } if File.file?(GOLDEN_LIST)
         end
 
         desc "Run one file on every lowering that plays it (TEST=test/test_foo.rb); see test:all"
@@ -131,6 +136,7 @@ module VBlank
       def choices_message
         tasks = @lowerings.map { |lowering| "  rake test:lowering:#{lowering}" }
         ["`rake test` on its own runs no tests. Type one of these:", "",
+         "  rake test:golden                    a tenth of the tests or less, on every lowering",
          "  rake test:all                       every lowering, one after the other",
          *tasks.map { |line| format("%-37s one lowering", line) },
          "  rake test TEST=test/test_thing.rb   one file, on every lowering that plays it",
@@ -138,12 +144,14 @@ module VBlank
       end
 
       # The runs of +chosen+ that CONSOLE leaves, one after the other, ending with a line for each.
-      def play_runs(chosen)
+      # With +golden+, a list of files, each run plays those of them it loads.
+      def play_runs(chosen, golden: nil)
         chosen = chosen_by_console(chosen)
         labels = chosen.map { |lowering, console| label(lowering, console) }
         results = []
         chosen.zip(labels).each do |(lowering, console), name|
-          results << play_run(lowering, console, name)
+          ENV["TEST"] = (golden & files(lowering, console)).join(",") if golden
+          results << play_run(lowering, console, name, golden: !golden.nil?)
           break if ENV[Lowering::FAIL_FAST_SETTING] && results.last[1] == :failed
         end
         puts
@@ -169,9 +177,9 @@ module VBlank
 
       # One run: whether it passed and how long it took. Every one is played whatever the one
       # before found, unless FAIL_FAST says otherwise (#play_runs).
-      def play_run(lowering, console, name)
+      def play_run(lowering, console, name, golden: false)
         named = ENV["TEST"]&.delete_prefix("./")
-        return [name, :not_played, 0] if named && !files(lowering, console).include?(named)
+        return [name, :not_played, 0] if golden ? named.to_s.empty? : named && !files(lowering, console).include?(named)
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         passed = begin

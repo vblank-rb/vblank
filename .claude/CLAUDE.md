@@ -99,7 +99,15 @@ needs a C compiler and a system libmgba (`brew install mgba` / `apt install libm
 
 ## Running Tests
 
-**`rake test:all` is how the suite is run.** It plays the suite once for each lowering, one after
+**Day to day, run `rake test:golden`, and `rake test:all` at most once a day and only after asking
+the operator.** `rake test:all` takes the machine for the best part of an hour and stops work while
+it does, so never start it, or a whole lowering's run, without the operator's say-so. The golden
+path (`test/golden.txt`) plays the core of each feature and a little of each lowering, a tenth of the
+tests or less, on every run. While working, run the test files the change touches, then
+`rake test:golden` before committing anything shared. Wherever this file says a change "wants"
+`rake test:all`, that means the golden path now and the next full run the operator agrees to.
+
+**`rake test:all` is the whole suite.** It plays the suite once for each lowering, one after
 the other: the GBA lowering's run (every game on the interpreter, the cartridge checked in the
 emulator, each test given a core of its own, and a test that reaches state the whole process
 shares reported rather than tolerated — see "Ractors" in `.claude/rules/testing.md`: fix what
@@ -116,7 +124,8 @@ with a line for each and fails if any did. It needs zig 0.17 (`mise use zig@0.17
 18 or later as well as the emulator, and SDL3 (`brew install sdl3`) for the tests that open a window.
 
 ```bash
-rake test:all                                                   # the suite, on every lowering
+rake test:golden                                                # the golden path, on every lowering: the everyday run
+rake test:all                                                   # the suite, on every lowering: ask the operator first
 rake test TEST=test/all/vblank/dsl/test_thing.rb                    # one file, on every lowering that plays it
 rake test TEST=test/all/vblank/dsl/test_thing.rb TESTOPTS="--name=/pattern/"  # one test
 rake test:lowering:gba                                          # the GBA lowering's run alone (takes TEST= too)

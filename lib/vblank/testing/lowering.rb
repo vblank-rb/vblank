@@ -91,6 +91,9 @@ module VBlank
 
       module_function
 
+      # The test files the list at +path+ names: a file a line, blank lines and # comments left out.
+      def golden_files(path) = File.readlines(path, chomp: true).map(&:strip).reject { |line| line.empty? || line.start_with?("#") }
+
       # The record of the lowering named +name+, refusing a name no lowering has.
       def run_named(name) = RUNS.find { |run| run.name == name } || refuse_unknown_lowering!(name)
 
