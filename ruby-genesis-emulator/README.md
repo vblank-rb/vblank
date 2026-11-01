@@ -25,12 +25,12 @@ core.destroy
 
 Genesis Plus GX is built as a libretro core with `core/gpgx-vblank-probe.patch`. Its libretro
 front end hands over only work RAM without it. The patch names the other memories.
-`rake compile_core` clones Genesis Plus GX at the revision the Rakefile names, applies the patch and
-builds it into `core/build/` (git, make and a C compiler). Set `VBLANK_GENESIS_CORE` to use a core
-built somewhere else.
+`rake compile_core` downloads one archive of Genesis Plus GX at the revision `CoreBuild` names, applies
+the patch and builds it into `core/build/` (tar, patch, make and a C compiler). Set
+`VBLANK_GENESIS_CORE` to use a core built somewhere else.
 
-Genesis Plus GX's licence bars commercial use. This gem is a tool for testing, and VBlank never ships
-it: it is not in VBlank's gemspec.
+Genesis Plus GX's licence bars commercial use, and `core/LICENSE.md` says what that covers here. This
+gem is a tool for testing, and VBlank never ships it: it is not in VBlank's gemspec.
 
 The binding is pure Ruby over Fiddle: there is no C extension to compile. Each `Core` loads a copy
 of the library of its own, so two of them in one process are two consoles.
