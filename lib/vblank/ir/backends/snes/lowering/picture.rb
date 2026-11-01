@@ -420,12 +420,14 @@ module VBlank
                       if found.fetch(name, priority) != priority
                         refuse_unmade!("a sprite behind a background on one screen and in front of it on another")
                       end
+                      if priority != 3 && screenful.scenery.any?(&:bar?)
+                        refuse_unmade!("a status bar beside a sprite behind a background")
+                      end
                       found[name] = priority
                     end
                   end
                 end
                 found.reject! { |_, priority| priority == 3 }
-                refuse_unmade!("a status bar beside a sprite behind a background") if !found.empty? && @backgrounds.each_value.any?(&:bar?)
                 found
               end
             end
