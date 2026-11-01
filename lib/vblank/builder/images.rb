@@ -420,7 +420,7 @@ module VBlank
                     raise(ArgumentError,
                           "#{verb} names the picture :#{source}, which is not defined. Define it first " \
                           "with `image :#{source}, ...`.")
-          name = free_turned_name(source, way)
+          name = free_name_after(source, way)
           turned = picture.public_send(way)
           record_picture(Build.bitmap(name, width: turned.width, height: turned.height,
                                               pixels: turned.pixels, transparent: turned.transparent,
@@ -436,9 +436,9 @@ module VBlank
         end
       end
 
-      # A name for the turned picture that reads like the picture it came from, and that no
+      # A name for a copy of a picture that reads like the picture it came from, and that no
       # other picture has already taken.
-      def free_turned_name(source, way)
+      def free_name_after(source, way)
         return :"#{source}_#{way}" unless @images.key?(:"#{source}_#{way}")
 
         (2..).lazy.map { |n| :"#{source}_#{way}#{n}" }.find { |name| !@images.key?(name) }

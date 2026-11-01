@@ -131,10 +131,12 @@ module VBlank
         from = tile_map.delete(:from)          # a tile sheet to import the tiles from, if any
         tile = tile_map.delete(:tile)          # each tile's size in that sheet
         transparent = tile_map.delete(:transparent) { false }
+        black = tile_map.delete(:black) { :see_through }
+        refuse_unknown_black!(name, black)
 
         # A sheet with no keys at all: import EVERY cell as a numbered tile, ready for a
         # map that picks tiles by that number.
-        return define_sheet_tileset(name, from, tile, transparent, solid) if from && tile_map.empty?
+        return define_sheet_tileset(name, from, tile, transparent, solid, black) if from && tile_map.empty?
 
         raise ArgumentError, "tiles :#{name} needs at least one key => tile mapping" if tile_map.empty?
 
@@ -161,12 +163,51 @@ module VBlank
                 "These sizes are different: #{sizes.uniq.map { |w, h| "#{w}x#{h}" }.join(', ')}."
         end
 
+        tile_map = tile_map.transform_values { |image| solid_black_image(image) } if black == :solid
+
         # Number the tiles 1, 2, 3… in the order they're listed, so this same tileset
         # can also be drawn from a CSV map of numbers (not only from its own keys).
         by_number = tile_map.values.each_with_index.to_h { |img, i| [i + 1, img] }
         @tilesets[name] = { by_key: tile_map.dup, by_number: by_number,
                             tile_w: sizes.first[0], tile_h: sizes.first[1],
                             solid_images: solid.map { |key| tile_map[key] }.uniq }
+      end
+
+      private def refuse_unknown_black!(name, black)
+        return if BLACK_ANSWERS.include?(black)
+
+        raise ArgumentError,
+              "tiles :#{name}: black: #{black.inspect} is not an answer. Use black: :see_through, which lets the " \
+              "layer behind show through black, or black: :solid, which keeps black as a colour."
+      end
+
+      # BLACK AS A COLOUR. A tile has no marker of its own for "nothing here", so black drawn by colour
+      # stands for it, and an outline in black comes out full of holes. Art given as place numbers
+      # never had that trouble: place 0 is see-through and black at any other place is a colour. So
+      # a tileset that says `black: :solid` holds its pictures as place numbers, every backend then
+      # reads them as it reads any such art, and black takes a colour slot of its own on the console.
+      #
+      # This is a copy of the picture, once however many tilesets ask, and the picture itself keeps
+      # its answer for any tileset that did not ask: the same tile stored twice, which is what two
+      # answers about one tile cost.
+      private def solid_black_image(source)
+        picture = @pictures[source]
+        return source if picture.nil? || picture.places
+
+        @solid_black_images[source] ||= begin
+          table = picture.colors&.dup || [nil]
+          places = Array.new(picture.width * picture.height) do |at|
+            next 0 unless picture.drawn_at?(at)
+
+            color = picture.color_at(at)
+            table << color unless (1...table.length).any? { |place| table[place] == color }
+            (1...table.length).find { |place| table[place] == color }
+          end
+          name = free_name_after(source, :solid_black)
+          define_placed_image(name, places: places, width: picture.width, height: picture.height,
+                                    colors: table.map { |color| color || :transparent }, colors_name: picture.colors_name)
+          name
+        end
       end
 
       # Paint a tiled background: a tileset plus a map of which tile goes in each grid
@@ -640,7 +681,7 @@ module VBlank
       # top-to-bottom, the exact order a map editor like Tiled numbers a sheet (so its
       # CSV export lines up). `solid:` here is a list of those tile numbers. There are
       # no characters — a background over this tileset is authored as a CSV of numbers.
-      def define_sheet_tileset(name, path, tile, transparent, solid_numbers)
+      def define_sheet_tileset(name, path, tile, transparent, solid_numbers, black)
         tile_w, tile_h = sheet_tile_size("tiles :#{name}", tile)
         sheet = Graphics::Image.slice(resolve_asset_path(path), tile_w: tile_w, tile_h: tile_h, transparent: transparent)
 
@@ -652,7 +693,7 @@ module VBlank
             img = :"__tile_#{name}_#{number}"
             define_pixel_image(img, width: bmp.width, height: bmp.height, data: bmp.data,
                                     transparent: bmp.transparent)
-            by_number[number] = img
+            by_number[number] = black == :solid ? solid_black_image(img) : img
           end
         end
 
@@ -859,6 +900,9 @@ module VBlank
       # So past a size nobody would read, say how many there are and where they start and
       # end, which is what tells somebody whether their key was even in the right range.
       TILE_KEYS_TO_NAME = 24
+
+      # What a tileset can say about black drawn by colour (#tiles).
+      BLACK_ANSWERS = %i[see_through solid].freeze
 
       def tileset_tiles_in_words(keys)
         return "Its tiles are #{keys.map(&:inspect).join(', ')}." if keys.length <= TILE_KEYS_TO_NAME

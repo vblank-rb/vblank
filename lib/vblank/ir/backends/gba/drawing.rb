@@ -1271,6 +1271,10 @@ module VBlank
             bmp = @layout.bitmaps.fetch(node.name) do
               raise LoweringError, "blit of undefined image #{node.name.inspect}"
             end
+            emit_blit_of(node, bmp)
+          end
+
+          def emit_blit_of(node, bmp)
             return @buffered.emit_blit_buffered(node, bmp) if @lowering.mode == :buffered
 
             bmp.transparent ? emit_blit_transparent(node, bmp) : emit_blit_opaque(node, bmp)
@@ -1298,7 +1302,9 @@ module VBlank
           end
 
           # Bitmap-mode background: no tile hardware, so stamp each non-empty cell with
-          # the shared blit path — a positioned copy of the tile image onto the screen.
+          # the shared blit path — a positioned copy of the tile image onto the screen. A tile's
+          # see-through pixels are the tile's own rule, which a blit does not know, so they are
+          # marked first (Image#with_tile_see_through_marked).
           def emit_background_blits(node)
             tiles = node.tiles
             tile_w = node.tile_w
@@ -1307,7 +1313,10 @@ module VBlank
               row.each_with_index do |index, c|
                 next if index.nil?
 
-                emit_blit(Build.blit(tiles[index], c * tile_w, r * tile_h))
+                picture = @layout.bitmaps.fetch(tiles[index]) do
+                  raise LoweringError, "blit of undefined image #{tiles[index].inspect}"
+                end
+                emit_blit_of(Build.blit(tiles[index], c * tile_w, r * tile_h), picture.with_tile_see_through_marked)
               end
             end
           end

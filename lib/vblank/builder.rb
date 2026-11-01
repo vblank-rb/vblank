@@ -152,6 +152,7 @@ module VBlank
       @image_bounds = {}       # image name → [x, y, w, h] box around its visible (non-transparent) pixels, for collision
       @pictures = {}           # image name → its {IR::Assets::Image}, so `mirror` can turn one round
       @turned_images = {}      # [:mirrored or :upside_down, image name] → the turned picture's name, so turning one twice makes one picture
+      @solid_black_images = {} # image name → its copy for a tileset that says `black: :solid`
       @color_lists = {}        # `colors` name → its colours, see-through first, for a sprite told to draw with it
       @changing_color_lists = {} # `colors` name → what the build keeps about a list told to hold other colours (see ColorLists)
       @picture_groups = {}     # `picture_groups` name → its declaration (see PictureGroups)

@@ -70,6 +70,11 @@ module VBlank
         list = tile_map.delete(:from)
         count = tile_map.delete(:count)
         given = tile_map.delete(:colors)
+        if tile_map.key?(:black)
+          raise ArgumentError,
+                "tiles :#{name}: black: has no use here. These tiles are painted as places in colors:, so place 0 " \
+                "is see-through and black at any other place is already solid. Remove black:."
+        end
         colors = tile_run_colors(name, given)
         colors_name = given if given.is_a?(Symbol)
         refuse_tile_run_on_bitmap_screen!(name)

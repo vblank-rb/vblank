@@ -42,6 +42,9 @@ module VBlank
       PIECE_SIZE = 8
       BIG_PIECE_SIZE = 16
 
+      # What marks a pixel see-through where a picture has no marker yet (the sixteenth bit alone).
+      SEE_THROUGH_MARKER = 0x8000
+
       Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces) do
         def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil) = super
 
@@ -82,6 +85,17 @@ module VBlank
         def tile_see_through_at?(index)
           place = place_at(index)
           place.nil? ? color_at(index).zero? : place.zero?
+        end
+
+        # The same picture with every pixel #tile_see_through_at? carrying the see-through marker, for
+        # a console that stamps a tile as it stamps any picture, which skips only what is marked.
+        def with_tile_see_through_marked
+          count = width * height
+          return self if (0...count).none? { |at| drawn_at?(at) && tile_see_through_at?(at) }
+
+          marker = transparent || SEE_THROUGH_MARKER
+          marked = (0...count).map { |at| tile_see_through_at?(at) ? marker : raw_at(at) }
+          with(pixels: marked.pack("v*"), transparent: marker)
         end
 
         # EVERY COLOR THIS PICTURE ACTUALLY DRAWS, its see-through pixels left out. What a
