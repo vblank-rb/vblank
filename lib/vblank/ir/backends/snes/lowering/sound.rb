@@ -202,8 +202,20 @@ module VBlank
             # Reference#exec_wave's entry.
             def wave_params(node) = { shape: node.shape, frequency: node.frequency, volume: node.volume }
 
-            def emit_wave(node) = emit_sound_entry([:wave, wave_params(node)])
-            def emit_stop_wave(_node) = emit_sound_entry([:stop_wave])
+            def emit_wave(node)
+              emit_game_sound_on(Reference::Player::WAVE_CHANNEL)
+              emit_sound_entry([:wave, wave_params(node)])
+            end
+
+            def emit_stop_wave(_node)
+              emit_game_sound_on(Reference::Player::WAVE_CHANNEL)
+              emit_sound_entry([:stop_wave])
+            end
+
+            # Reference::Player#game_sound_on: a note of a song's wobbles no more on +channel+.
+            def emit_game_sound_on(channel)
+              runtime_call("rt_music_stop_wobble", [Build.int(channel)]) if Music.wobbles?(@program)
+            end
 
             # Reference#exec_enable_sound.
             def emit_enable_sound(_node) = emit_sound_entry([:enabled])
@@ -212,6 +224,7 @@ module VBlank
             def emit_beep(node)
               effect = VBlank::Audio::Sound.resolve_effect(node.tone, duty: node.duty, decay: node.decay,
                                                                       volume: node.volume, defined: @defined_sounds)
+              emit_game_sound_on(Reference::Player::BEEP_CHANNEL)
               emit_sound_entry([:beep, effect])
             end
 

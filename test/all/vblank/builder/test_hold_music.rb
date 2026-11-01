@@ -140,7 +140,6 @@ class TestHoldMusic < Minitest::Test
   end
 
   def test_a_sound_effect_keeps_wobbling_while_the_music_is_held
-    skip_on_snes("a note that wobbles")
     effect = Score.new(tempo: 150, priority: 1, parts: [Part.new(notes: [Note.new(at: 0, key: :A5), Note.new(at: 20, key: 0)],
                                                                  vibrato: { depth: 4, speed: 2 })])
     game = held_with_effect(effect) { |pass| pass == 40 }
@@ -160,7 +159,6 @@ class TestHoldMusic < Minitest::Test
   end
 
   def test_a_held_note_stops_wobbling
-    skip_on_snes("a note that wobbles")
     game = held_game(lead: proc { vibrato depth: 4, speed: 2 }) { |pass| hold_music if pass == 30 }
 
     wobbled = moves(game, frames: 60).select { |_, kind| kind == :wobble }.map(&:first)

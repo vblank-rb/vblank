@@ -61,13 +61,27 @@ module VBlank
             HELD_IN = "rt music held in"
             HELD_WALK = "rt music held walk"
             CHANNEL_FOUND = "rt music channel found"
+            # A NOTE THAT WOBBLES ITS PITCH (SNES::Music#wobble_record), in a game with one. The sound
+            # chip has no wobble, so the player does it a frame at a time, as the interpreter counts
+            # it (IR::Tunes::Wobble): each console voice's record, nought for a voice holding still;
+            # the frames still to wait; the frames its swing has left; and whether it is above the
+            # note's pitch. WOBBLE_AT is the voice being stepped.
+            WOBBLE_RECORD = "rt music wobble record"
+            WOBBLE_WAIT = "rt music wobble wait"
+            WOBBLE_LEFT = "rt music wobble left"
+            WOBBLE_RISING = "rt music wobble rising"
+            WOBBLE_AT = "rt music wobble at"
 
             module_function
 
             # +follows_level+ for a game that sets the music volume (SNES::Music.follows_level?);
             # +effects+ how many sound effects the game has (Effects).
-            def reserve(memory, follows_level: false, effects: 0, holds: false)
+            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false)
               memory.reserve(TUNE_HELD, 2) if holds
+              if wobbles
+                [WOBBLE_RECORD, WOBBLE_WAIT, WOBBLE_LEFT, WOBBLE_RISING].each { |name| memory.reserve(name, SNES::Music::CONSOLE_PARTS * 2) }
+                memory.reserve(WOBBLE_AT, 2)
+              end
               [NAMED, PLAYING, STOPS, STOPS_SEEN, ENDED, FRAME, AGAIN, SONG, PART, PARTS_IN, COUNT, LIST,
                ENTRY, NOTE].each { |name| memory.reserve(name, 2) }
               memory.reserve(CURSORS, SNES::Music::PARTS * 2)
@@ -88,7 +102,8 @@ module VBlank
               sharing = effects.positive?
               emit_game_side(asm, at)
               emit_tune_hold(asm, at) if holds?(memory)
-              emit_frames(asm, at, sharing)
+              emit_frames(asm, at, sharing, memory)
+              emit_wobbles(asm, at, memory) if wobbles?(memory)
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
               emit_level(asm, at, memory, level_at) if level_at
@@ -98,6 +113,96 @@ module VBlank
 
             # Whether the game holds its music (TUNE_HELD).
             def holds?(memory) = memory.reserved?(TUNE_HELD)
+
+            # Whether the game has a note that wobbles (WOBBLE_RECORD).
+            def wobbles?(memory) = memory.reserved?(WOBBLE_RECORD)
+
+            # rt_music_wobbles: every wobbling voice moved on a frame, the voices in order, once
+            # everything due on the frame has played (Reference::Player#step_wobbles), as
+            # IR::Tunes::Wobble#stepped counts it. A held tune's notes hold still.
+            def emit_wobbles(asm, at, memory)
+              m = SNES::Music
+              asm.label("rt_music_wobbles")
+              if holds?(memory)
+                asm.lda(at.call(TUNE_HELD))
+                asm.beq("rt_music_wobbles_go")
+                asm.rts
+                asm.label("rt_music_wobbles_go")
+              end
+              asm.stz(at.call(WOBBLE_AT))
+              asm.label("rt_music_wobble_voice")
+              asm.ldy(at.call(WOBBLE_AT))
+              asm.lda(asm.abs_y(memory[WOBBLE_RECORD]))
+              asm.beq("rt_music_wobble_next")
+              asm.lda(asm.abs_y(memory[WOBBLE_WAIT]))
+              asm.beq("rt_music_wobble_going")
+              asm.dec
+              asm.sta(asm.abs_y(memory[WOBBLE_WAIT]))
+              asm.bra("rt_music_wobble_next")
+              asm.label("rt_music_wobble_going")
+              asm.lda(asm.abs_y(memory[WOBBLE_LEFT]))
+              asm.bne("rt_music_wobble_hold")
+              asm.lda(asm.abs_y(memory[WOBBLE_RISING]))
+              asm.eor(1)
+              asm.sta(asm.abs_y(memory[WOBBLE_RISING]))
+              asm.lda(asm.abs_y(memory[WOBBLE_RECORD]))
+              asm.tax
+              asm.lda(asm.long_x("music_data", m::WOBBLE_SPEED))
+              asm.sta(asm.abs_y(memory[WOBBLE_LEFT]))
+              asm.lda(asm.abs_y(memory[WOBBLE_RISING]))
+              asm.beq("rt_music_wobble_down")
+              asm.lda(asm.long_x("music_data", m::WOBBLE_UP))
+              asm.bra("rt_music_wobble_turn")
+              asm.label("rt_music_wobble_down")
+              asm.lda(asm.long_x("music_data", m::WOBBLE_DOWN))
+              asm.label("rt_music_wobble_turn")
+              asm.tax
+              asm.jsr(asm.abs("rt_sound_group"))
+              asm.ldy(at.call(WOBBLE_AT))
+              asm.label("rt_music_wobble_hold")
+              asm.lda(asm.abs_y(memory[WOBBLE_LEFT]))
+              asm.dec
+              asm.sta(asm.abs_y(memory[WOBBLE_LEFT]))
+              asm.label("rt_music_wobble_next")
+              asm.inc(at.call(WOBBLE_AT))
+              asm.inc(at.call(WOBBLE_AT))
+              asm.lda(at.call(WOBBLE_AT))
+              asm.cmp(m::CONSOLE_PARTS * 2)
+              asm.bne("rt_music_wobble_voice")
+              asm.rts
+
+              # rt_music_stop_wobble(channel): the game's own sound took the voice, so no note of a
+              # song's wobbles on it (Reference::Player#game_sound_on).
+              asm.label("rt_music_stop_wobble")
+              asm.lda(asm.direct(Sound::R0))
+              asm.dec
+              asm.asl
+              asm.tay
+              asm.lda(0)
+              asm.sta(asm.abs_y(memory[WOBBLE_RECORD]))
+              asm.rtl
+
+              # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE
+              # says, or holding still (Reference::Player#set_voice).
+              asm.label("rt_music_note_wobble")
+              asm.ldx(at.call(ENTRY))
+              asm.lda(asm.long_x("music_data", m::CHANNEL))
+              asm.dec
+              asm.asl
+              asm.tay
+              asm.ldx(at.call(NOTE))
+              asm.lda(asm.long_x("music_data", m::NOTE_WOBBLE))
+              asm.sta(asm.abs_y(memory[WOBBLE_RECORD]))
+              asm.beq("rt_music_note_wobble_done")
+              asm.tax
+              asm.lda(asm.long_x("music_data", m::WOBBLE_WAITS))
+              asm.sta(asm.abs_y(memory[WOBBLE_WAIT]))
+              asm.lda(0)
+              asm.sta(asm.abs_y(memory[WOBBLE_LEFT]))
+              asm.sta(asm.abs_y(memory[WOBBLE_RISING]))
+              asm.label("rt_music_note_wobble_done")
+              asm.rts
+            end
 
             # rt_music_hold_tune, rt_music_release_tune: it stays where it is, or carries on
             # (Reference::Player#hold).
@@ -184,7 +289,7 @@ module VBlank
             # the pass just ended took) — with sound effects, Reference::Player#advance's order: the
             # tune caught up with, the effects that outrank it, its parts, and the other effects
             # (Effects).
-            def emit_frames(asm, at, sharing)
+            def emit_frames(asm, at, sharing, memory)
               asm.label("rt_music_frame")
               asm.jsr(asm.abs("rt_music_switch"))
               asm.jsr(asm.abs("rt_sfx_above")) if sharing
@@ -193,6 +298,7 @@ module VBlank
               asm.jsr(asm.abs("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
               asm.jsr(asm.abs("rt_sfx_below")) if sharing
+              asm.jsr(asm.abs("rt_music_wobbles")) if wobbles?(memory)
               asm.rts
             end
 
@@ -261,6 +367,7 @@ module VBlank
               # logged (Music.stop_entry).
               asm.label("rt_music_quiet")
               asm.jsl(asm.long("rt_recordings_release_music")) if recorded # the places its parts hold
+              SNES::Music::CONSOLE_PARTS.times { |voice| asm.stz(asm.abs(memory[WOBBLE_RECORD], voice * 2)) } if wobbles?(memory)
               if level_at
                 SNES::Music::PARTS.times do |p|
                   asm.stz(asm.abs(memory[HELD], p * 2))
@@ -385,6 +492,7 @@ module VBlank
               asm.lda(asm.long_x("music_data", m::NOTE_TAIL))
               asm.tax
               asm.jsr(asm.abs("rt_sound_group"))
+              asm.jsr(asm.abs("rt_music_note_wobble")) if wobbles?(memory)
               asm.label("rt_music_part_passed")
               asm.lda(at.call(PART))
               asm.asl

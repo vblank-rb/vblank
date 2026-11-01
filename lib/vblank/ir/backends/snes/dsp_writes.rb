@@ -190,7 +190,7 @@ module VBlank
             when :noise then entry.last ? noise(entry.last) : key_off(1 << NOISE_VOICE)
             when :wave then wave(entry.last, voicing.waves)
             when :stop_wave then key_off(1 << WAVE_VOICE)
-            when :note, :sound_effect, :sample, :stop_sample then [] # a recording's voice is the count's (Runtime::Recordings)
+            when :note, :sound_effect, :sample, :stop_sample, :wobble then [] # a recording's voice is the count's (Runtime::Recordings), and a wobble's note is #each_entry_writes's to know
             when :voice then song_note(*entry[1, 4], voicing.parts, fade: entry[FADE_OF_VOICE_ENTRY])
             when :stop_music then key_off(voicing.song_voices(entry.fetch(1)) & ~effect_voices & 0xFF)
             when :loudness then loudness_at(entry[1], entry[2], voicing, song)
@@ -243,6 +243,18 @@ module VBlank
             note_envelope([[base + VOLUME_LEFT, level], [base + VOLUME_RIGHT, level], [base + PITCH_LOW, pitch & 0xFF],
                            [base + PITCH_HIGH, pitch >> 8], [base + SOURCE, Samples.source(duty, wave)],
                            [base + ADSR1, ADSR_OFF], [base + GAIN, FIXED_TOP]], volume, fade) + key_on(voice)
+          end
+
+          # A NOTE WOBBLING: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's
+          # pitch number from it (Audio::Vibrato), which the voice's pitch registers say on the wave
+          # length the note is on. The note is not started again, so nothing else is written.
+          def wobble(channel, frequency, steps)
+            voice = CHANNEL_VOICES.fetch(channel)
+            wave_voice = voice == WAVE_VOICE
+            pitch_clock = wave_voice ? 65_536.0 : 131_072.0
+            moved = pitch_clock / ((pitch_clock / frequency) - steps)
+            pitch = pitch_for(moved, wave_voice ? Samples::LONG_WAVE : wave_for(frequency))
+            [[(voice << 4) + PITCH_LOW, pitch & 0xFF], [(voice << 4) + PITCH_HIGH, pitch >> 8]]
           end
 
           # Where a [:voice ...] entry says its fade (IR::Tunes.voice_entry).
@@ -433,7 +445,14 @@ module VBlank
             effect_voices = 0 # the voices a sound effect holds, a bit each
             side = nil # the speaker the note just logged plays from, nil for both
             fade = nil # the fade it said
+            sounding = {} # what each channel's last note is, for a wobble of it
             entries.each do |entry|
+              sounding[entry[1]] = entry[3] if entry.first == :voice
+              if entry.first == :wobble
+                yield entry, wobble(entry[1], sounding.fetch(entry[1]), entry[2])
+                next
+              end
+
               song = entry[1] if entry.first == :note && !voicing.effects.include?(entry[1])
               effect_voices = held_by_effects(effect_voices, entry, voicing) if entry.first == :voice
               played = note_volume && wave_or_noise_note?(entry) ? [entry.first, entry.last.merge(volume: note_volume)] : entry

@@ -81,7 +81,14 @@ module VBlank
           NOTE_VOLUME = 6
           NOTE_SOUNDS = 8
           NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
+          NOTE_WOBBLE = 12 # where its wobble's record is, nought for a note that holds its pitch
           NOTE_BYTES = 16
+          # A WOBBLE'S RECORD (#wobble_record), in bytes: the frames it waits, the frames each swing
+          # holds, and the groups that take the voice above and below the note's pitch and log it.
+          WOBBLE_WAITS = 0
+          WOBBLE_SPEED = 2
+          WOBBLE_UP = 4
+          WOBBLE_DOWN = 6
           COMMAND_FIRST = 2
           COMMAND_SECOND = 4
           COMMAND_BYTES = 6
@@ -133,6 +140,13 @@ module VBlank
           # writes each note's loudness (Reference::Player#play_song_frame with a level): whether a run
           # can reach its music volume, which is then one of the variables the lowering keeps.
           def self.follows_level?(program) = IR::Reach.variables(program).include?(IR::Tunes::LEVEL)
+
+          # Whether any note of +program+'s songs wobbles its pitch, and so the player needs to.
+          def self.wobbles?(program)
+            program.walk.select { |node| node.kind == :song }.any? do |song|
+              song.voices.any? { |part| part.events.any? { |event| event[1].positive? && Audio::Vibrato.moves?(IR::Tunes.said_vibrato(part, event)) } }
+            end
+          end
 
           def initialize(program)
             @songs = program.walk.select { |node| node.kind == :song }.uniq(&:name)
@@ -196,6 +210,7 @@ module VBlank
             @recording_row = recording_row
             @songs.each { |song| refuse_parts!(song) }
             @groups = [] # every group's commands, each once, in the order first met
+            @wobble_records = [] # every wobble's record, each once
             # A tune stopping logs its own stop (Music.stop_entry); the voices it lets go of are worked
             # out as it stops, since a sound effect may hold some of them (Runtime::Music's rt_music_quiet).
             tunes = @songs.map do |song|
@@ -209,6 +224,10 @@ module VBlank
             @groups.each do |commands|
               places[commands] = table.size * 2
               table.concat(commands.flatten, [GROUP_END])
+            end
+            @wobble_records.each do |wait, speed, up, down|
+              places[[wait, speed, up, down]] = table.size * 2
+              table.concat([wait, speed, places.fetch(up), places.fetch(down)])
             end
             lay_out_lists(table, LISTS_AT, @lists.map { |list| list.songs.map { |name| number(name) } })
             table[SONGS_AT / 2] = table.size * 2
@@ -311,9 +330,9 @@ module VBlank
 
           # A note's words: its frame, its two groups' places, its volume as written, whether it sounds.
           def note_words(note, places)
-            frame, head, tail, written, sounds, recording = note
-            [frame, places.fetch(head), places.fetch(tail), written, sounds ? 1 : 0, recording || 0] +
-              Array.new((NOTE_BYTES / 2) - 6, 0)
+            frame, head, tail, written, sounds, recording, wobble = note
+            [frame, places.fetch(head), places.fetch(tail), written, sounds ? 1 : 0, recording || 0, wobble ? places.fetch(wobble) : 0] +
+              Array.new((NOTE_BYTES / 2) - 7, 0)
           end
 
           # What the table holds for one part: its two lists of notes, the first time round and every
@@ -350,11 +369,27 @@ module VBlank
             frame, frequency, _, volume = event
             volume ||= part.volume
             fade = IR::Tunes.said_fade(part, event)
+            vibrato = IR::Tunes.said_vibrato(part, event) if frequency.positive?
             head = [[:note, song.name, frequency],
-                    IR::Tunes.voice_entry(channel, song.name, frequency, volume, fade: fade, side: IR::Tunes.note_side(part, event))]
+                    IR::Tunes.voice_entry(channel, song.name, frequency, volume, fade: fade, vibrato: vibrato,
+                                                                         side: IR::Tunes.note_side(part, event))]
             commands = entry_commands(head + between + wave_or_noise_entries(part, frequency), voicing, song.name, &number_of)
+            wobble = wobble_record(channel, frequency, vibrato, &number_of) if Audio::Vibrato.moves?(vibrato)
             [frame, keep_group(commands.take(2).flatten(1)), keep_group(commands.drop(2 + between.size).flatten(1)),
-             frequency.zero? ? 0 : volume, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade)]
+             frequency.zero? ? 0 : volume, song.keeps_voices || DSPWrites.sounds?(channel, frequency, volume, fade), nil, wobble]
+          end
+
+          # A NOTE THAT WOBBLES ITS PITCH: the pitch registers above and below the note's are worked
+          # out here, so all the player does is count (Runtime::Music's rt_music_wobbles), and a
+          # move is a group like a note's: its writes, and its [:wobble ...] entry in the sound log.
+          def wobble_record(channel, frequency, vibrato)
+            up, down = [vibrato.above, -vibrato.below].map do |steps|
+              writes = DSPWrites.wobble(channel, frequency, steps).map { |write| Runtime::Sound.command_for(write) }
+              keep_group(writes + [[GROUP_LOG, yield([:wobble, channel, steps]), 0]])
+            end
+            record = [vibrato.after, vibrato.speed, up, down]
+            @wobble_records << record unless @wobble_records.include?(record)
+            record
           end
 
           # A NOTE OF A PART THAT PLAYS A RECORDING (Reference::Player#play_recorded_note): its head logs
@@ -492,18 +527,21 @@ module VBlank
 
           # A NOTE THAT CHANGES AS IT PLAYS — fading out or swelling in, sliding or wobbling its
           # pitch, playing from one speaker, or stepping through the square wave's shapes — as its
-          # part or the note itself says (IR::Tunes.said_fade and the rest). The voices here play
-          # each note as written, so a song that says any of these is not made yet.
+          # part or the note itself says (IR::Tunes.said_fade and the rest). What is not made yet:
+          # a slide, shapes that step, and a wobble that carries from note to note, is in a sound
+          # effect, or shares a game with sound effects, which take a voice from under it.
           def refuse_note_changes!(song)
             sounding = song.voices.flat_map { |part| part.events.select { |event| event[1].positive? }.map { |event| [part, event] } }
             changing = sounding.any? do |part, event|
-              [IR::Tunes.said_slide(part, event), IR::Tunes.said_vibrato(part, event), IR::Tunes.said_duty(part, event)].any?
+              vibrato = IR::Tunes.said_vibrato(part, event)
+              IR::Tunes.said_slide(part, event) || IR::Tunes.said_duty(part, event) ||
+                (Audio::Vibrato.moves?(vibrato) && (vibrato.carries || effects?))
             end
             if changing
               raise Lowering::NotMadeYet.new(
-                "The song #{song.name.inspect} has a note that slides, wobbles or steps through shapes. The Super " \
-                "Nintendo build does not make that yet. To fix this, build the game for the Game Boy Advance alone " \
-                "for now (`consoles: %i[gba]`).", part: "notes that change as they play"
+                "The song #{song.name.inspect} has a note that slides, steps through shapes, or wobbles in a way " \
+                "the Super Nintendo build does not make yet. To fix this, build the game for the Game Boy Advance " \
+                "alone for now (`consoles: %i[gba]`).", part: "notes that change as they play"
               )
             end
             return unless follows_level?
