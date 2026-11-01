@@ -62,7 +62,11 @@ module VBlank
       VDP_REGISTER = 0x8000
 
       # The registers that matter to a game's picture, by number.
-      REG_MODE1 = 0 # bit 4: the horizontal interrupt; bit 2 must be set
+      #
+      # Mode register 1: bit 4 is the horizontal interrupt, and bit 2 is the palette select, which must
+      # be set: with it clear the chip keeps only some of each colour's bits (the Master System's
+      # way) and every colour comes out wrong.
+      REG_MODE1 = 0
       REG_MODE2 = 1 # bit 6: the screen on; bit 5: the vertical interrupt; bit 3: 30 rows of tiles; bit 2: mode 5
       REG_PLANE_A = 2 # where plane A's map is, in video RAM: the address's top bits (value << 10)
       REG_WINDOW = 3 # where the window's map is (value << 10)
