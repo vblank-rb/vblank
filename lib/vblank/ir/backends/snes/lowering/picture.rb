@@ -864,9 +864,9 @@ module VBlank
               @bends ||= @program.walk.select { |node| node.kind == :scroll_rows }.group_by(&:name).map { |_, said| said.last }
             end
 
-            # Reference#work_out_bends, where the pass's wait ends: each row of the screen, its number
+            # Reference#work_out_bends, before the pass's wait: each row of the screen, its number
             # in the bend's variable, the bend's own steps, and how far along the row sits kept in the
-            # layer's rows (Runtime::Picture.bend_offsets) for the frame after; the first row of each
+            # layer's rows (Runtime::Picture.bend_offsets) for the frame the wait shows; the first row of each
             # bend, then the rest of each, leaving each variable at the screen's height.
             #
             # A game all of whose bends say a thing about whole bands of rows has each band worked

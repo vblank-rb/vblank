@@ -330,7 +330,7 @@ class TestSNESPicture < Minitest::Test
       end
     end
 
-    assert_equal 224 * 8, run[:rows]
+    assert_equal 224 * 9, run[:rows], "eight passes, and the wait before the first of them"
   end
 
   # The bend is worked out for all 224 rows at every boundary, so what each row costs is paid 224

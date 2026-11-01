@@ -547,14 +547,20 @@ module VBlank
           # that bends a background it has works every bend's lines out for the pass to come
           # (Reference#work_out_bends), and a game with a light works out where it falls
           # (Reference#work_out_shade).
+          #
+          # A console that places a pass's scroll before its wait works the bends out there too,
+          # first of all, so a row's bend and its scroll show on one frame.
           def lower_wait_vblank(_node)
             count = variable(Frames::COUNT)
-            [*(@switches_shade ? [eval_call("rg_shade_switch", variable(IR::LightScenes::ON))] : []),
+            bends = @bends.empty? ? [] : [eval_call("rg_screen_work_out_bends")]
+            bends_first = @program.described_console.sprites_placed_before_wait
+            [*(bends_first ? bends : []),
+             *(@switches_shade ? [eval_call("rg_shade_switch", variable(IR::LightScenes::ON))] : []),
              eval_call("rg_wait_vblank"),
              assign(Frames::COUNT, call("rg_add", count, C::Int.new(1))),
              assign(Frames::SEEN, count),
              assign(Frames::STEP, C::Int.new(1)),
-             *(@bends.empty? ? [] : [eval_call("rg_screen_work_out_bends")]),
+             *(bends_first ? [] : bends),
              *lower_show_light_now(nil)]
           end
 

@@ -695,9 +695,12 @@ module VBlank
           # The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame
           # counters the program can read move on, where the interpreter moves them
           # (Reference#store_frame_counters): the frames shown by every frame the pass took, and what
-          # the game catches up by held at the cap, both as the runtime counted them. Then the rows of
-          # each background bent row by row, for the frame after (Reference#work_out_bends).
+          # the game catches up by held at the cap, both as the runtime counted them.
+          #
+          # The rows of each background bent row by row come first (Reference#work_out_bends): the
+          # wait's blank sends the scroll this pass placed, and a row's bend goes out with it.
           def emit_wait_vblank(_node)
+            emit_bends
             call_routine("rt_wait_vblank")
             emit_corners_forgotten
             count = place_of(Frames::COUNT)
@@ -714,7 +717,6 @@ module VBlank
             @asm.stz(@asm.abs(step + 2))
             value(Frames::COUNT)
             store(Frames::SEEN)
-            emit_bends
           end
 
           # --- lists (Runtime::Lists does the work and the checking) ---

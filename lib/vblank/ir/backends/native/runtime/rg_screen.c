@@ -1149,7 +1149,7 @@ void rg_bend_work_out(int32_t background, int32_t first_line, int32_t past_line)
  * worked out from whatever the blocks read. */
 void rg_screen_work_out_bends(void) {
   rg_game_work_out_bends();
-  request_repaint();
+  if (frames_begun) request_repaint();
 }
 
 /* Reference#bend_offset_at: how far across line +py+ of the screen a background sits, on top of

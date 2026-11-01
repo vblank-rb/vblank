@@ -1181,6 +1181,10 @@ module VBlank
         # be spotted), advance the frame counter, and pull the next frame's input
         # if a script is driving it.
         def advance_frame
+          # A console that sends the frame's scroll from a copy as the wait ends has placed it
+          # already, so the bends go out beside it (#work_out_bends).
+          work_out_bends if @console.sprites_placed_before_wait
+
           # A LIGHT THAT TAKES TURNS GOES OFF WITH THE PASS that switched it off: the scene it is
           # off in takes the display's mixing for its own as it starts. It comes back on only
           # from the light worked out at this gap, a frame later (see IR::LightScenes and
@@ -1250,7 +1254,7 @@ module VBlank
           @log << [:vblank, @frame]
           @on_vblank&.call(@frame)
           store_frame_counters(took)
-          work_out_bends
+          work_out_bends unless @console.sprites_placed_before_wait
           work_out_shade
         end
 
@@ -1324,7 +1328,9 @@ module VBlank
         #
         # It comes last in the frame boundary, after anybody watching the run has been shown the
         # frame — the same moment a run that stops here would have stopped at, so a picture read
-        # after a run is the one a watcher saw.
+        # after a run is the one a watcher saw. On a console that places a pass's scroll before
+        # its wait (Description#sprites_placed_before_wait) it comes first instead, so a row's
+        # bend and its scroll are from one pass and show on one frame.
         #
         # A bend written for a background the game does not have is never asked: there are no
         # rows of it to work out.
@@ -1337,7 +1343,8 @@ module VBlank
             (1...@screen.height).each { |py| @bend_rows[name] << run_bend_for_row(bend, py) }
             @vars[bend.row] = @screen.height
           end
-          request_repaint
+          # Worked out ahead of the first wait of all, no pass has put anything up to repaint.
+          request_repaint if @uses_frames
         end
 
         # Where row +py+ of a bending background sits, as the gap between frames last worked it

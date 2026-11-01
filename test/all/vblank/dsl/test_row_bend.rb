@@ -33,6 +33,29 @@ module RowBendGames
     b.program
   end
 
+  # The bars scrolled three pixels a pass, and the block handed how far they have gone to bend
+  # the rows from row 40 down back by it. Only a scroll and a bend from one pass, shown together,
+  # leave those rows standing still.
+  private def scroll_cancelled_by_bend(&bend)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      image :bar, "." => :transparent, "#" => :red do
+        (["##......"] * 8).join("\n")
+      end
+      tiles :stripes, "#" => :bar
+      water = background :water, tiles: :stripes, map: Array.new(20) { "#" * 32 }
+      across = var :across, 0
+      water.scroll_each_row { |row| bend.call(row, across) }
+      game_loop do
+        across.increase! 3
+        water.scroll_to across, 0
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # A bend whose block counts into :asked each time it is asked for a row, under a scrolling
   # background and a moving sprite; :passes counts the passes.
   private def counting_bend_program
@@ -282,13 +305,15 @@ class TestRowBend < Minitest::Test
   # the rows out in the gap between frames and nowhere else, so a block that changes the game
   # (counts, rolls a random number) has to be asked as often on the interpreter or the two
   # play different games. The background scrolls and a sprite moves, which are the things that
-  # once had the interpreter asking again.
+  # once had the interpreter asking again. A console that places a pass before its wait is asked
+  # at the wait before the first pass too, for the frame that shows it.
   def test_a_block_is_asked_once_for_every_row_each_frame
     i = game_player.run(counting_bend_program, frames: 8)
     rows = VBlank::Console.described(game_console).screen_height # 160 on the Advance
+    rounds = i[:passes] + 1 - framework_drawing_lag
 
     assert_operator i[:passes], :>, 3, "the game should have played a few passes"
-    assert_equal rows * i[:passes], i[:asked], "#{rows} a pass, a row of the screen each"
+    assert_equal rows * rounds, i[:asked], "#{rows} a pass, a row of the screen each"
   end
 
   def test_a_bend_and_a_moving_sprite_agree_frame_after_frame
@@ -304,6 +329,32 @@ class TestRowBend < Minitest::Test
       water.scroll_each_row { |row| row % 4 }
     end
     assert_backends_agree(program, frames: 4, name: "BSCR")
+  end
+
+  # A SCROLL AND A BEND CHANGED ON ONE PASS SHOW ON ONE FRAME, as a logo split in two slides as one
+  # picture: the bent rows stay where they are, frame after frame, while the rest move.
+  private def assert_bent_rows_stand_still(program)
+    red = VBlank::Graphics::Color.resolve(:red)
+    (3..7).each do |frames|
+      screen = game_player.run(program, frames: frames).screen
+
+      assert_equal red, screen.pixel(1, 60), "the bent row's bar is where it started on frame #{frames}"
+      refute_equal red, screen.pixel(4, 60), "and only there on frame #{frames}"
+    end
+  end
+
+  # Every row of a band has one answer, so the build asks the block once a band (RowBands).
+  def test_a_bend_in_bands_shows_on_the_frame_of_the_scroll_it_goes_with
+    program = scroll_cancelled_by_bend { |row, across| row >= 40 ? across * -1 : 0 }
+
+    assert_bent_rows_stand_still(program)
+  end
+
+  # A block that works on the row itself is asked for every row.
+  def test_a_bend_of_every_row_shows_on_the_frame_of_the_scroll_it_goes_with
+    program = scroll_cancelled_by_bend { |row, across| (row >= 40 ? across * -1 : 0) + ((row % 2) * 0) }
+
+    assert_bent_rows_stand_still(program)
   end
 
   # --- bends in scenes ---

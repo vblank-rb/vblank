@@ -1206,7 +1206,7 @@ end
 # every bend's lines are worked out, and the picture is owed again.
 def rg_screen_work_out_bends
   rg_game_work_out_bends
-  rg_request_repaint
+  rg_request_repaint if @rg_frames_begun
 end
 
 # Reference#bend_offset_at: how far across line +py+ of the screen a background sits, on top of its

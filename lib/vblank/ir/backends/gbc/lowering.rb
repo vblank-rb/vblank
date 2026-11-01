@@ -785,7 +785,11 @@ module VBlank
           # (Reference#store_frame_counters): the frames shown by every frame the pass took, and what
           # the game catches up by held at the cap, both as the runtime counted them
           # (Runtime::Frame::FRAMES_TAKEN, STEP_TAKEN).
+          #
+          # The rows of each background bent row by row come first (Reference#work_out_bends): the
+          # wait's blank sends the scroll this pass placed, and a row's bend goes out with it.
           def emit_wait_vblank(_node)
+            emit_bends
             @asm.call("rt_wait_vblank")
             emit_corners_forgotten
             emit_clock_each_pass
@@ -807,7 +811,6 @@ module VBlank
             3.times { @asm.load([:hli], :a) }
             value(Frames::COUNT)
             store(Frames::SEEN)
-            emit_bends
           end
 
           # --- lists (Runtime::Lists does the work and the checking) ---
