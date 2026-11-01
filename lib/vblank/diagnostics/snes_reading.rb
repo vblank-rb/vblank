@@ -7,9 +7,7 @@ module VBlank
     # way (AdvanceReading).
     #
     # A Super Nintendo cartridge plays in bsnes (ruby-snes-emulator), through SNESProbe. Its picture,
-    # memory, sprites and passes are read as the other consoles' are. Its sound is not recorded
-    # here: the lowering's own run (IR::Backends::SNES::HeadlessRun) checks the sound chip against
-    # the interpreter, and a question about it says so rather than answering that it is silent.
+    # memory, sprites, passes and sound are read as the other consoles' are.
     module SNESReading
       include CountedPasses
 
@@ -38,19 +36,6 @@ module VBlank
         @drawn ||= IR::Backends::SpriteNames.new(@rom.source_program)
         rows = @rom.built.drawn_sprite_rows(@drawn, method(:mem16))
         name ? @drawn.rows_named(rows, name) : rows
-      end
-
-      def silent? = refuse_sound_question!
-      def sound? = refuse_sound_question!
-      def audio_samples = refuse_sound_question!
-      def audio_energy = refuse_sound_question!
-      def audio_energy_by_frame = refuse_sound_question!
-
-      private
-
-      def refuse_sound_question!
-        raise ArgumentError, "This reader does not record a Super Nintendo cartridge's sound. To read it, play the " \
-                             "cartridge with VBlank::IR::Backends::SNES::HeadlessRun."
       end
     end
   end

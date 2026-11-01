@@ -82,7 +82,7 @@ module SoundComparison
   include NativeComparison
 
   Recording = VBlank::Diagnostics::SoundRecording
-  CONSOLE_RATE = Recording::CARTRIDGE_RATE # what the emulator hands its sound over at
+  CONSOLE_RATE = Recording::CARTRIDGE_RATES.fetch(:gba) # what the emulator hands its sound over at
 
   # A frame of the console: this many ticks of a clock of 2^CLOCK_BITS a second.
   FRAME_TICKS = 280_896

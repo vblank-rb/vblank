@@ -73,10 +73,43 @@ class TestSNESVerifier < Minitest::Test
     assert_equal 16, reader.palette(:sprites, 0).size
   end
 
-  # Its sound is checked by the lowering's own run; saying so beats answering that it is silent.
-  def test_a_question_about_sound_says_where_to_ask
-    error = assert_raises(ArgumentError) { Verifier.new(rom, frames: 2).silent? }
+  def test_a_game_that_makes_no_sound_is_silent
+    assert Verifier.new(rom, frames: 20).silent?
+  end
 
-    assert_match(/HeadlessRun/, error.message)
+  # The console takes some frames to reach the game's first pass, so a frame's sound in the wrong
+  # frame shows here: the first frames are quiet and the last are not.
+  def test_it_records_each_frames_sound_when_the_game_makes_it
+    reader = Verifier.new(beeper, frames: 40)
+    energy = reader.audio_energy_by_frame
+
+    assert reader.sound?
+    assert_equal 40, energy.size
+    assert_equal 0, energy.first
+    assert_operator energy.last, :>, 0
+    assert_equal 0, reader.audio_samples.size % 2, "left and right by turns"
+  end
+
+  # Its sound is 48000 samples a second, more than the other consoles' emulator hands over, so a
+  # recording read at their rate is too many frames long.
+  def test_a_recording_of_its_cartridge_is_as_long_as_the_frames_played
+    heard = VBlank::Diagnostics::SoundRecording.of(beeper.source_program, on: :cartridge, frames: 40)
+
+    assert_equal 48_000, heard.rate
+    assert_in_delta 40, heard.frames.size, 1
+    assert_operator heard.frames.last.loudest, :>, 0
+  end
+
+  private def beeper
+    VBlank.build("BEEPER", console: :snes, out: StringIO.new, err: StringIO.new) do
+      screen :bitmap
+      enable_sound
+      define_sound :ping, frequency: 880, decay: :none
+      n = var :n, 0
+      game_loop do
+        beep :ping if n == 3
+        n += 1
+      end
+    end
   end
 end

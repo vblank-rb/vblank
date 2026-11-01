@@ -14,6 +14,7 @@ module VBlank
       # read this as they read any console's.
       def initialize(path, save_dir: nil)
         @core = Emulator.open_snes(path, save_dir: save_dir)
+        @last_audio = []
       end
 
       def width = @core.width
@@ -22,7 +23,10 @@ module VBlank
       # +keys+ is a button mask (IR::Buttons.mask).
       def step(frames, keys: 0)
         @core.set_buttons(IR::Buttons::NAMES.select.with_index { |_, bit| keys.anybits?(1 << bit) })
-        frames.times { @core.run_frame }
+        @last_audio = Array.new(frames) do
+          @core.run_frame
+          @core.take_audio.pack("s<*")
+        end
       end
 
       # The picture as four bytes a pixel: red, green, blue and one unused, each five-bit channel
@@ -33,12 +37,9 @@ module VBlank
         end.pack("V*")
       end
 
-      # The sound is dropped here, so it does not pile up in the core: SNESReading refuses to be
-      # asked about it, and the lowering's own run is what checks it.
-      def audio_by_frame
-        @core.take_audio
-        []
-      end
+      # The sound of the last step, a String of samples for each frame of it: 16 bits each, left
+      # and right by turns, at SoundRecording's rate for this console.
+      def audio_by_frame = @last_audio.dup
 
       def read8(address) = @core.wram_read8(work_ram_offset(address))
       def read16(address) = @core.wram_read16(work_ram_offset(address))

@@ -21,7 +21,8 @@ module VBlank
     # picture the interpreter does.
     #
     # The cartridge is the one for the console the program is built for: a Game Boy Color program
-    # is played as a Color cartridge, and a program that names no console as an Advance one.
+    # is played as a Color cartridge, a Super Nintendo program as a Super Nintendo one, and a
+    # program that names no console as an Advance one.
     #
     # The interpreter is the answer key: it says what the program MEANS. Any disagreement is a bug
     # in the cartridge the console's lowering built (or, now and then, in the interpreter's model
@@ -63,11 +64,17 @@ module VBlank
       # measured as the Advance's were, by sweeping the pairing on an animated program of each
       # screen, and test_pictures_on_each_console.rb pins them: it fails if a Color program is
       # compared at any other frame than the one asked for. The Color has no turning screen.
+      #
+      # A Super Nintendo cartridge is the same story with its own numbers, measured the same way and
+      # pinned by test_pictures_on_the_super_nintendo_interpreter.rb. It too copies a pass's picture
+      # in the blank after the pass, and a game here has no turning screen either.
       LineUp = Data.define(:boot_frames, :shows_pass_before_last)
       LINE_UPS = Ractor.make_shareable({
                                          gba: LineUp.new(boot_frames: BOOT_FRAMES, shows_pass_before_last: false),
                                          gbc: LineUp.new(boot_frames: { bitmap: 9, tiled: 6 },
-                                                         shows_pass_before_last: true)
+                                                         shows_pass_before_last: true),
+                                         snes: LineUp.new(boot_frames: { bitmap: 7, tiled: 6 },
+                                                          shows_pass_before_last: true)
                                        })
 
       class OverBudget < StandardError; end

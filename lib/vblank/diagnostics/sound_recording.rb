@@ -27,8 +27,8 @@ module VBlank
     # desktop build is held to (test/sound_comparison.rb) are read only where a note is held still,
     # so they never see one.
     class SoundRecording
-      # What the emulator hands its sound over at.
-      CARTRIDGE_RATE = 44_100
+      # What each console's emulator hands its sound over at, in samples a second for each speaker.
+      CARTRIDGE_RATES = Ractor.make_shareable({ gba: 44_100, gbc: 44_100, snes: 48_000 })
 
       # The console's count of its voices, by the emulator's names for them.
       VOICES = { square1: 1, square2: 2, wave: 3, noise: 4 }.freeze
@@ -58,8 +58,8 @@ module VBlank
         refuse_unknown_side!(side)
         frame_seconds = program.described_console.frame_seconds
         if on == :cartridge
-          return new(samples: cartridge_samples(program, frames, buttons, only, side), rate: CARTRIDGE_RATE,
-                     frame_seconds: frame_seconds)
+          return new(samples: cartridge_samples(program, frames, buttons, only, side),
+                     rate: CARTRIDGE_RATES.fetch(program.described_console.name), frame_seconds: frame_seconds)
         end
 
         run = RUNTIMES.fetch(on) do
