@@ -110,6 +110,115 @@ module VBlank
       def button_of_key(key) = key && BUTTONS.find { |button| keys_of(button.setting).include?(key) }&.setting
       def hotkey_of_key(key) = key && HOTKEYS.find { |hotkey| hotkey_of(hotkey.setting) == key }&.setting
 
+      # --- choosing keys and gamepad buttons, as rg_window.c's rg_window_bind_* and rg_window_capture_* ---
+
+      # The last thing to say about a choice that did not go through, or nil.
+      attr_reader :notice
+
+      # Waits for a key or a gamepad button for the console button at +place+, or a key for the hotkey.
+      def capture_for_button(place)
+        @notice = nil
+        @waiting = [:button, place]
+      end
+
+      def capture_for_hotkey(place)
+        @notice = nil
+        @waiting = [:hotkey, place]
+      end
+
+      def capture_cancel = @waiting = nil
+      def capturing? = !@waiting.nil?
+
+      # The place of the line of +kind+ being chosen, or nil.
+      def capture_place(kind) = (@waiting.last if @waiting&.first == kind)
+
+      def capture_prompt
+        return nil unless @waiting
+
+        kind, place = @waiting
+        return "Press a key or a gamepad button for #{BUTTONS[place].name} (Escape to give up)..." if kind == :button
+
+        "Press a key for \"#{HOTKEYS[place].name}\" (Escape to give up)..."
+      end
+
+      # A key pressed: true when it was taken for the choice waiting. Escape gives up; a key that is
+      # refused is said in #notice, and the wait goes on for another.
+      def capture_key(key)
+        return false unless @waiting
+        return (capture_cancel; true) if key == ESCAPE
+
+        kind, place = @waiting
+        why = kind == :button ? bind_key(BUTTONS[place].setting, 0, key) : bind_hotkey(HOTKEYS[place].setting, key)
+        capture_cancel unless why
+        true
+      end
+
+      # A gamepad button pressed, by its name: true when it was taken for the choice waiting.
+      def capture_pad(pad)
+        return false unless @waiting&.first == :button
+
+        bind_pad(BUTTONS[@waiting.last].setting, pad)
+        capture_cancel
+        true
+      end
+
+      # Gives +button+'s place +slot+ the key +key+: nil when done, or why not, which is also the
+      # notice. A key another has is refused, and a key the button has in its other place moves.
+      def bind_key(button, slot, key)
+        why = refusal(key, button: button)
+        return why if why
+
+        KEYS_A_BUTTON.times { |other| change([:key, button, other], nil) if other != slot && @now[[:key, button, other]] == key }
+        change([:key, button, slot], key)
+        @notice = nil
+      end
+
+      def bind_hotkey(hotkey, key)
+        why = refusal(key, hotkey: hotkey)
+        return why if why
+
+        change([:hotkey, hotkey], key)
+        @notice = nil
+      end
+
+      # A gamepad button another console button has swaps with it, so A and B can be swapped by
+      # choosing one.
+      def bind_pad(button, pad)
+        was = pad_of(button)
+        BUTTONS.each { |each| change([:pad, each.setting], was) if each.setting != button && pad_of(each.setting) == pad }
+        change([:pad, button], pad)
+        @notice = @pad_map = nil
+      end
+
+      # Keys and gamepad buttons as they start. A key a hotkey has been given since stays with it.
+      def reset_keys
+        @problems = []
+        @candidate = @now.dup
+        BUTTONS.each do |button|
+          KEYS_A_BUTTON.times { |slot| @candidate[[:key, button.setting, slot]] = button.keys[slot] }
+        end
+        clear_clashing_keys
+        key_slots.each { |slot, _owner| change(slot, @candidate[slot]) }
+        BUTTONS.each { |button| change([:pad, button.setting], button.pad) }
+        @notice = @problems.empty? ? nil : "Keys are back as they were. #{@problems.join(' ')}"
+        @pad_map = nil
+      end
+
+      def reset_hotkeys
+        HOTKEYS.each { |hotkey| change([:hotkey, hotkey.setting], button_of_key(hotkey.key) ? nil : hotkey.key) }
+        @notice = nil
+      end
+
+      # What a console button is on, and a hotkey, as a menu line says it.
+      def button_text(place)
+        button = BUTTONS[place]
+        keys = keys_of(button.setting).map { |key| key_name(key) }
+        pad = pad_of(button.setting).to_s.tr("_", " ").sub("dpad", "d-pad")
+        "#{keys.empty? ? 'none' : keys.join(', ')} / #{pad}"
+      end
+
+      def hotkey_text(place) = key_name(hotkey_of(HOTKEYS[place].setting))
+
       # Something has changed since the settings were last written.
       def unwritten? = @unwritten
       def mark_written = @unwritten = false
@@ -182,6 +291,31 @@ module VBlank
       end
 
       private
+
+      # Why +key+ cannot be given to the +button+ or +hotkey+ asking, said in #notice, or nil.
+      def refusal(key, button: nil, hotkey: nil)
+        return @notice = "Escape gives up choosing a key, so it cannot be one." if key == ESCAPE
+
+        owner = button_of_key(key)
+        if owner && owner != button
+          name = BUTTONS.find { |each| each.setting == owner }.name
+          return @notice = "#{key_name(key)} is already the #{name} button. Clear it there first, then it can be used here."
+        end
+        taken = hotkey_of_key(key)
+        return unless taken && taken != hotkey
+
+        name = HOTKEYS.find { |each| each.setting == taken }.name
+        @notice = "#{key_name(key)} is the hotkey for \"#{name}\". Change that hotkey first, then this key can be used here."
+      end
+
+      # A setting given a new value, to be written. The value it has is no change.
+      def change(name, value)
+        return if @now[name] == value
+
+        @now[name] = value
+        @owned[name] = true
+        @unwritten = true
+      end
 
       def on_off(flag) = flag ? "on" : "off"
 

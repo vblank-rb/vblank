@@ -305,6 +305,26 @@ class TestSDL < Minitest::Test
     end
   end
 
+  # A key chosen in the menu works at once, is kept from the game until it comes up, and is written
+  # to the file for the next play.
+  def test_a_key_chosen_in_the_menu_is_that_button_and_is_written
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "settings.txt")
+      window = open_window(settings_file: path)
+      press_key(SDL::MENU)
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      %i[right right right down enter].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      press_key(20) # Q
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      press_key(SDL::MENU)
+      window.hold_while_paused
+      window.close
+
+      assert_includes File.read(path), "key.a = Q\n"
+    end
+  end
+
   # A folder named for the play (--config-dir) holds the settings folders, the same ones as the
   # desktop build's, and is made if it is not there.
   def test_a_config_dir_holds_the_settings_files

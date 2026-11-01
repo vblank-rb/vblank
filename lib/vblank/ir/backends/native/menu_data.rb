@@ -55,7 +55,7 @@ module VBlank
             fields = [c_string(line.label), enum_name(line.kind), line.does ? enum_name(line.does) : "RG_MENU_NOTHING",
                       line.setting ? enum_name(line.setting) : "RG_MENU_NO_SETTING", line.range&.min || 0, line.range&.max || 0,
                       line.step || 0, line.written ? enum_name(line.written) : "RG_MENU_NOT_WRITTEN",
-                      line.shortcut ? c_string(line.shortcut) : "NULL", line.line_before ? 1 : 0]
+                      line.shortcut ? c_string(line.shortcut) : "NULL", line.line_before ? 1 : 0, line.place]
             "{#{fields.join(', ')}}"
           end
 

@@ -19,13 +19,23 @@ module VBlank
     # says, or switches it on or off. The game is held while the menu is open (the window sees to
     # that).
     class Menu
-      attr_reader :settings
+      # Keys named only as "key N", for a menu with no window to ask.
+      class NumberedKeys
+        def name(_key) = nil
+        def key(_name) = nil
+      end
+
+      attr_reader :settings, :controls
 
       # +settings+ as the player last left them; +picture+, the game's picture's size, to say how
       # big the window is at each size; +scales+, the sizes the window can be made, in times the
-      # picture's, which the frontend may make fewer than WindowMenu::SCALES (what fits the screen).
-      def initialize(settings: WindowMenu::STARTING, picture: [240, 160], scales: WindowMenu::SCALES)
+      # picture's, which the frontend may make fewer than WindowMenu::SCALES (what fits the screen);
+      # +controls+, the Settings that hold which key is what, and the rules for changing them. While
+      # one is being chosen the window hands it the next key or gamepad button (#capture_key).
+      def initialize(settings: WindowMenu::STARTING, picture: [240, 160], scales: WindowMenu::SCALES,
+                     controls: Settings.new(key_names: NumberedKeys.new))
         @scales = scales
+        @controls = controls
         self.settings = settings
         @picture = picture
         @open = @quit = false
@@ -48,6 +58,7 @@ module VBlank
         @open = !@open
         @heading = 0
         @row = -1
+        @controls.capture_cancel
       end
 
       # The heading whose lines are showing, while the menu is open.
@@ -121,10 +132,21 @@ module VBlank
       def enter(line)
         case line.kind
         when :check then @settings = @settings.with(line.setting => !@settings.public_send(line.setting))
+        when :button then @controls.capture_for_button(line.place)
+        when :hotkey then @controls.capture_for_hotkey(line.place)
         when :action
           @open = false if line.does == :resume
           @quit = true if line.does == :quit
+          @controls.reset_keys if line.does == :reset_keys
+          @controls.reset_hotkeys if line.does == :reset_hotkeys
         end
+      end
+
+      # What a line of keys says at its right: what it is on now, or that it is being chosen.
+      def control_text(line)
+        return @controls.capture_prompt if line.place == @controls.capture_place(line.kind)
+
+        line.kind == :button ? @controls.button_text(line.place) : @controls.hotkey_text(line.place)
       end
 
       # --- drawing ---
@@ -172,10 +194,11 @@ module VBlank
       def draw_lines(top)
         pad = size(:pad)
         row = size(:row)
+        notice = @controls.notice
         inner = [lines.map { |line| width_of(line.label) + size(:label_gap) + right_width(line) }.max,
-                 size(:least_width)].max
+                 size(:least_width), *(width_of(notice) if notice)].max
         wide = inner + (2 * pad)
-        high = (lines.size * row) + (2 * pad) + (lines.count(&:line_before) * size(:line_before))
+        high = (lines.size * row) + (2 * pad) + (lines.count(&:line_before) * size(:line_before)) + (notice ? row : 0)
         border = pixels(1)
         add_box(@heading_left, top, wide, high, size(:corner), :border)
         add_box(@heading_left + border, top + border, wide - (2 * border), high - (2 * border), size(:corner) - border, :box)
@@ -189,6 +212,7 @@ module VBlank
           draw_line(line, @heading_left + pad, y, inner, row)
           y += row
         end
+        add_words_in_row(notice, @heading_left + pad, y, row, :paused) if notice
       end
 
       # How much room the right of a line takes: a slider, a shortcut, or a check mark.
@@ -196,6 +220,7 @@ module VBlank
         case line.kind
         when :slider then size(:slider)
         when :check then size(:check)
+        when :button, :hotkey then width_of(control_text(line))
         else line.shortcut ? width_of(line.shortcut) : 0
         end
       end
@@ -207,6 +232,9 @@ module VBlank
         when :action then add_words_in_row(line.shortcut, right - width_of(line.shortcut), y, row, :dim) if line.shortcut
         when :check then add_words_in_row("✓", right - width_of("✓"), y, row, :text) if @settings.public_send(line.setting)
         when :slider then draw_slider(line, right - size(:slider), y + pixels(2), size(:slider), row - pixels(4))
+        when :button, :hotkey
+          text = control_text(line)
+          add_words_in_row(text, right - width_of(text), y, row, line.place == @controls.capture_place(line.kind) ? :fast : :dim)
         end
       end
 

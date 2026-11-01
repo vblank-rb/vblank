@@ -36,6 +36,7 @@ void rg_window_menu_toggle(void) {
   menu_open = !menu_open;
   heading = 0;
   row = -1;
+  rg_window_capture_cancel();
 }
 
 static const rg_menu_heading *open_lines(void) { return &rg_menu_headings[heading]; }
@@ -117,9 +118,39 @@ static void enter(const rg_menu_line *line) {
   case RG_MENU_ACTION:
     if (line->does == RG_MENU_RESUME) menu_open = 0;
     if (line->does == RG_MENU_QUIT) quit_chosen = 1;
+    if (line->does == RG_MENU_RESET_KEYS) {
+      rg_window_reset_keys();
+      rg_window_reset_pad();
+    }
+    if (line->does == RG_MENU_RESET_HOTKEYS) rg_window_reset_hotkeys();
+    break;
+  case RG_MENU_BUTTON:
+    rg_window_capture_for_button(line->place);
+    break;
+  case RG_MENU_HOTKEY:
+    rg_window_capture_key_for_hotkey(line->place);
     break;
   case RG_MENU_SLIDER:
     break;
+  }
+}
+
+/* Which line of keys is being chosen: its place among its kind, or -1. */
+static int capture_place(const rg_menu_line *line) {
+  return rg_window_capturing() && open_lines()->lines + row == line ? line->place : -1;
+}
+
+/* What a line of keys says at its right: what it is on now, or that it is being chosen. */
+static void control_text(const rg_menu_line *line, char *text, size_t room) {
+  if (capture_place(line) >= 0) {
+    snprintf(text, room, "%s", rg_window_capture_prompt());
+  } else if (line->kind == RG_MENU_HOTKEY) {
+    snprintf(text, room, "%s", rg_window_key_name(rg_window_hotkey_key(line->place)));
+  } else {
+    int first = rg_window_button_key(line->place, 0), second = rg_window_button_key(line->place, 1);
+    const char *pad = rg_window_pad_button_name(rg_window_pad_button(line->place));
+    if (first != RG_NO_KEY && second != RG_NO_KEY) snprintf(text, room, "%s, %s / %s", rg_window_key_name(first), rg_window_key_name(second), pad);
+    else snprintf(text, room, "%s / %s", rg_window_key_name(first != RG_NO_KEY ? first : second), pad);
   }
 }
 
@@ -240,6 +271,12 @@ static int right_width(const rg_menu_line *line) {
     return pixels(rg_menu_size.slider);
   case RG_MENU_CHECK:
     return pixels(rg_menu_size.check);
+  case RG_MENU_BUTTON:
+  case RG_MENU_HOTKEY: {
+    char text[192];
+    control_text(line, text, sizeof text);
+    return width_of(text);
+  }
   case RG_MENU_ACTION:
     break;
   }
@@ -292,6 +329,13 @@ static void draw_line(const rg_menu_line *line, int x, int y, int inner, int row
   case RG_MENU_SLIDER:
     draw_slider(line, right - pixels(rg_menu_size.slider), y + pixels(2), pixels(rg_menu_size.slider), row_height - pixels(4));
     break;
+  case RG_MENU_BUTTON:
+  case RG_MENU_HOTKEY: {
+    char text[192];
+    control_text(line, text, sizeof text);
+    add_words_in_row(text, right - width_of(text), y, row_height, capture_place(line) >= 0 ? rg_menu_color.fast : rg_menu_color.dim);
+    break;
+  }
   }
 }
 
@@ -310,8 +354,10 @@ static void draw_lines(int top) {
     if (line->line_before) separated++;
   }
   if (widest > inner) inner = widest;
+  const char *notice = rg_window_notice();
+  if (notice[0] && width_of(notice) > inner) inner = width_of(notice);
   int wide = inner + 2 * pad;
-  int high = lines->line_count * row_height + 2 * pad + separated * pixels(rg_menu_size.line_before);
+  int high = lines->line_count * row_height + 2 * pad + separated * pixels(rg_menu_size.line_before) + (notice[0] ? row_height : 0);
   int border = pixels(1);
   add_box(heading_left, top, wide, high, pixels(rg_menu_size.corner), rg_menu_color.border);
   add_box(heading_left + border, top + border, wide - 2 * border, high - 2 * border, pixels(rg_menu_size.corner) - border,
@@ -327,6 +373,7 @@ static void draw_lines(int top) {
     draw_line(line, heading_left + pad, y, inner, row_height);
     y += row_height;
   }
+  if (notice[0]) add_words_in_row(notice, heading_left + pad, y, row_height, rg_menu_color.paused);
 }
 
 /* What the window is doing, in a see-through box in the top right corner, under the bar when the

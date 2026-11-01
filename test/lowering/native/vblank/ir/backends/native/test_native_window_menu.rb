@@ -51,6 +51,17 @@ class TestNativeWindowMenu < Minitest::Test
     assert_same_drawing(["toggle", "press right", "press down"], most_scale: 10, picture: [160, 144])
   end
 
+  # Keys and gamepad buttons chosen from the menu: a key taken, a key another button has refused in
+  # words and waited on, Escape giving up, a gamepad button swapped, a hotkey, and both Resets.
+  def test_choosing_keys_draws_the_same
+    to_keys = ["toggle", "press right", "press right", "press right"]
+    assert_same_drawing([*to_keys, "press down", "press enter", "capture_key 20", "press down", "press enter",
+                         "capture_key 20", "capture_key 26", "press down", "press enter", "capture_key 41",
+                         "press up", "press enter", "capture_pad 2", "press up", "press enter", "capture_pad 2",
+                         "press right", "press down", "press enter", "capture_key 26", "press enter", "capture_key 30",
+                         "press up", "press enter", "press left", "press up", "press enter", "toggle"], most_scale: 6)
+  end
+
   def test_quit_is_chosen_from_the_menu_and_resume_closes_it
     assert_equal ["open 0 quit 0", "open 1 quit 1"],
                  ask("toggle", "press down", "press enter", "state", "toggle", "press down", "press down", "press down",
@@ -91,6 +102,8 @@ class TestNativeWindowMenu < Minitest::Test
     case command
     when "toggle" then menu.toggle
     when "press" then menu.press(name.to_sym)
+    when "capture_key" then menu.controls.capture_key(name.to_i)
+    when "capture_pad" then menu.controls.capture_pad(VBlank::Live::Settings::PAD_BUTTONS.fetch(name.to_i))
     when "hotkey"
       setting = HOTKEYS.fetch(name)
       menu.settings = menu.settings.with(setting => !menu.settings.public_send(setting))

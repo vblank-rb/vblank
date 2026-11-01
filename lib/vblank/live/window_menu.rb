@@ -28,19 +28,27 @@ module VBlank
       #   and right, and written as +written+ says: :times ("4x"), :percent ("90%"), or :window
       #   ("3x  (720 × 480)", the size the window is then).
       # - :check holds +setting+ on or off, switched with Enter.
+      # - :button and :hotkey show what number +place+ among the console's buttons or the window's
+      #   hotkeys is on now, and Enter waits for the next key or gamepad button pressed to change it.
       # +shortcut+ is the key that does the same outside the menu, written dim at the right.
       # +line_before+ draws a line across the box above it, to set it apart.
-      Line = Data.define(:label, :kind, :does, :setting, :range, :step, :written, :shortcut, :line_before) do
+      Line = Data.define(:label, :kind, :does, :setting, :range, :step, :written, :shortcut, :line_before, :place) do
         def self.action(label, does, shortcut: nil, line_before: false)
-          new(label, :action, does, nil, nil, nil, nil, shortcut, line_before)
+          new(label, :action, does, nil, nil, nil, nil, shortcut, line_before, 0)
         end
 
         def self.slider(label, setting, range, step, written)
-          new(label, :slider, nil, setting, range, step, written, nil, false)
+          new(label, :slider, nil, setting, range, step, written, nil, false, 0)
         end
 
-        def self.check(label, setting, shortcut: nil) = new(label, :check, nil, setting, nil, nil, nil, shortcut, false)
+        def self.check(label, setting, shortcut: nil) = new(label, :check, nil, setting, nil, nil, nil, shortcut, false, 0)
+        def self.button(label, place) = new(label, :button, nil, nil, nil, nil, nil, nil, false, place)
+        def self.hotkey(label, place) = new(label, :hotkey, nil, nil, nil, nil, nil, nil, false, place)
       end
+
+      # The console's buttons and the window's hotkeys, in Settings::BUTTONS's and HOTKEYS's order.
+      BUTTON_NAMES = %w[A B Select Start Right Left Up Down R L].freeze
+      HOTKEY_NAMES = ["Pause", "Step one frame", "Show frame rate", "Fullscreen", "Mute", "Show menu", "Fast forward"].freeze
 
       # The most times the picture's size a window can be made. A frontend may say fewer: the most
       # that fits on the screen it is on.
@@ -52,7 +60,11 @@ module VBlank
                              Line.action("Quit", :quit, shortcut: "Esc", line_before: true)]),
         Heading.new("Window", [Line.slider("Size", :scale, SCALES, 1, :window), Line.check("Fullscreen", :fullscreen),
                                Line.check("Show frame rate", :frame_rate)]),
-        Heading.new("Sound", [Line.slider("Volume", :volume, 0..100, 10, :percent), Line.check("Mute", :muted)])
+        Heading.new("Sound", [Line.slider("Volume", :volume, 0..100, 10, :percent), Line.check("Mute", :muted)]),
+        Heading.new("Keys", [*BUTTON_NAMES.each_with_index.map { |name, place| Line.button(name, place) },
+                             Line.action("Reset", :reset_keys, line_before: true)]),
+        Heading.new("Hotkeys", [*HOTKEY_NAMES.each_with_index.map { |name, place| Line.hotkey(name, place) },
+                                Line.action("Reset", :reset_hotkeys, line_before: true)])
       ])
 
       # THE KEYS, by name; each frontend knows which of its own keys and buttons each name is. F1

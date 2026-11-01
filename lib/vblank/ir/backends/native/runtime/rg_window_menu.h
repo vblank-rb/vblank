@@ -31,8 +31,8 @@ extern "C" {
 
 /* --- what the menu holds, from the library (rg_window_menu_data.c) --- */
 
-typedef enum { RG_MENU_ACTION, RG_MENU_SLIDER, RG_MENU_CHECK } rg_menu_kind;
-typedef enum { RG_MENU_NOTHING, RG_MENU_RESUME, RG_MENU_QUIT } rg_menu_does;
+typedef enum { RG_MENU_ACTION, RG_MENU_SLIDER, RG_MENU_CHECK, RG_MENU_BUTTON, RG_MENU_HOTKEY } rg_menu_kind;
+typedef enum { RG_MENU_NOTHING, RG_MENU_RESUME, RG_MENU_QUIT, RG_MENU_RESET_KEYS, RG_MENU_RESET_HOTKEYS } rg_menu_does;
 /* The settings a line shows, each one of rg_window.c's. */
 typedef enum {
   RG_MENU_NO_SETTING,
@@ -47,7 +47,8 @@ typedef enum {
 typedef enum { RG_MENU_NOT_WRITTEN, RG_MENU_TIMES, RG_MENU_PERCENT, RG_MENU_WINDOW } rg_menu_written;
 
 /* A line under a heading. +shortcut+ is the key that does the same outside the menu, written dim
- * at its right, or NULL; +line_before+ draws a line across the box above it. */
+ * at its right, or NULL; +line_before+ draws a line across the box above it; +place+ is which
+ * console button or hotkey an RG_MENU_BUTTON or RG_MENU_HOTKEY line changes. */
 typedef struct {
   const char *label;
   rg_menu_kind kind;
@@ -57,6 +58,7 @@ typedef struct {
   rg_menu_written written;
   const char *shortcut;
   int line_before;
+  int place;
 } rg_menu_line;
 
 typedef struct {
@@ -120,12 +122,12 @@ typedef struct {
   int is_box;
   int x, y, width, height, radius;
   uint8_t color[4];
-  char text[64];
+  char text[192];
   int first_letter, letter_count;
 } rg_menu_part;
 
-#define RG_MENU_PARTS_MOST 64
-#define RG_MENU_LETTERS_MOST 512
+#define RG_MENU_PARTS_MOST 96
+#define RG_MENU_LETTERS_MOST 1024
 typedef struct {
   rg_menu_part parts[RG_MENU_PARTS_MOST];
   int part_count;

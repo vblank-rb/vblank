@@ -7,6 +7,8 @@
  *   toggle                           open the menu, or close it
  *   press up|down|left|right|enter|close
  *   hotkey NAME                      a hotkey pressed, as rg_window.c takes it: frame_rate, mute...
+ *   capture_key N                    a key pressed, by number, while one is being chosen
+ *   capture_pad N                    a gamepad button pressed, by SDL's number, the same
  *   draw WIDTH DENSITY HELD FAST RATE WORK
  *                                    print what the menu draws; RATE and WORK are words, - for none
  *   state                            print whether it is open and whether Quit was chosen
@@ -67,6 +69,10 @@ int main(void) {
       rg_window_menu_toggle();
     } else if (strcmp(command, "press") == 0) {
       rg_window_menu_press(key_named(strtok(NULL, " \n")));
+    } else if (strcmp(command, "capture_key") == 0) {
+      rg_window_capture_key(atoi(strtok(NULL, " \n")));
+    } else if (strcmp(command, "capture_pad") == 0) {
+      rg_window_capture_pad(atoi(strtok(NULL, " \n")));
     } else if (strcmp(command, "hotkey") == 0) {
       const char *name = strtok(NULL, " \n");
       for (int h = 0; h < RG_HOTKEY_COUNT; h++)

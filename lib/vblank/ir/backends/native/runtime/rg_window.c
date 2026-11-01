@@ -581,7 +581,7 @@ void rg_window_use_defaults(void) {
 
 /* --- choosing a key by pressing it --- */
 
-static enum { WAITING_FOR_NOTHING, WAITING_FOR_BUTTON_KEY, WAITING_FOR_HOTKEY, WAITING_FOR_PAD } waiting;
+static enum { WAITING_FOR_NOTHING, WAITING_FOR_BUTTON_KEY, WAITING_FOR_HOTKEY, WAITING_FOR_PAD, WAITING_FOR_KEY_OR_PAD } waiting;
 static int waiting_button, waiting_slot, waiting_hotkey;
 
 /* A wait for a button, slot or hotkey that is not there is no wait at all. */
@@ -601,24 +601,30 @@ void rg_window_capture_pad_for_button(int button) {
   waiting = is_button(button) ? WAITING_FOR_PAD : WAITING_FOR_NOTHING;
   waiting_button = button;
 }
+void rg_window_capture_for_button(int button) {
+  rg_window_clear_notice();
+  waiting = is_button(button) ? WAITING_FOR_KEY_OR_PAD : WAITING_FOR_NOTHING;
+  waiting_button = button;
+  waiting_slot = 0;
+}
 void rg_window_capture_cancel(void) { waiting = WAITING_FOR_NOTHING; }
 int rg_window_capturing(void) { return waiting != WAITING_FOR_NOTHING; }
 
 int rg_window_capture_key(int key) {
-  if (waiting != WAITING_FOR_BUTTON_KEY && waiting != WAITING_FOR_HOTKEY) return 0;
+  if (waiting != WAITING_FOR_BUTTON_KEY && waiting != WAITING_FOR_HOTKEY && waiting != WAITING_FOR_KEY_OR_PAD) return 0;
   if (key == RG_KEY_ESCAPE) {
     waiting = WAITING_FOR_NOTHING;
     return 1;
   }
-  const char *why = waiting == WAITING_FOR_BUTTON_KEY ? rg_window_bind_key(waiting_button, waiting_slot, key)
-                                                      : rg_window_bind_hotkey(waiting_hotkey, key);
+  const char *why = waiting == WAITING_FOR_HOTKEY ? rg_window_bind_hotkey(waiting_hotkey, key)
+                                                  : rg_window_bind_key(waiting_button, waiting_slot, key);
   /* A key that was refused is said, and the window goes on waiting for another. */
   if (!why) waiting = WAITING_FOR_NOTHING;
   return 1;
 }
 
 int rg_window_capture_pad(int pad_button) {
-  if (waiting != WAITING_FOR_PAD) return 0;
+  if (waiting != WAITING_FOR_PAD && waiting != WAITING_FOR_KEY_OR_PAD) return 0;
   if (rg_window_bind_pad(waiting_button, pad_button)) return 1; /* a button that is not a standard one: wait for another */
   waiting = WAITING_FOR_NOTHING;
   return 1;
@@ -635,6 +641,9 @@ const char *rg_window_capture_prompt(void) {
     break;
   case WAITING_FOR_PAD:
     snprintf(prompt, sizeof prompt, "Press a gamepad button for %s...", button_kinds[waiting_button].name);
+    break;
+  case WAITING_FOR_KEY_OR_PAD:
+    snprintf(prompt, sizeof prompt, "Press a key or a gamepad button for %s (Escape to give up)...", button_kinds[waiting_button].name);
     break;
   default:
     prompt[0] = '\0';

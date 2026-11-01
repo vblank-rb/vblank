@@ -36,10 +36,10 @@ class TestMenu < Minitest::Test
     assert_equal "Sound", menu.open_heading
     assert_nil menu.chosen_line
 
-    menu.press(:right)
+    3.times { menu.press(:right) }
     assert_equal "Game", menu.open_heading
     menu.press(:left)
-    assert_equal "Sound", menu.open_heading
+    assert_equal "Hotkeys", menu.open_heading
     assert_equal WindowMenu::STARTING, menu.settings
   end
 
@@ -154,10 +154,88 @@ class TestMenu < Minitest::Test
 
   # --- what it has a window draw ---
 
+  # The Keys heading, on the line of the console button at +place+.
+  private def on_key_line(menu, place)
+    menu.toggle
+    3.times { menu.press(:right) }
+    (place + 1).times { menu.press(:down) }
+  end
+
+  def test_a_key_chosen_from_the_menu_is_that_button_and_is_kept
+    menu = Menu.new
+    on_key_line(menu, 0)
+    menu.press(:enter)
+
+    assert_includes menu.controls.capture_prompt, "for A"
+    assert menu.controls.capture_key(20)
+    refute_predicate menu.controls, :capturing?
+    assert_equal :a, menu.controls.button_of_key(20)
+    assert_nil menu.controls.button_of_key(27)
+    assert_predicate menu.controls, :unwritten?
+    assert_includes menu.controls.text, "key.a = key 20\n"
+  end
+
+  def test_a_key_another_button_has_is_refused_in_words_and_the_wait_goes_on
+    menu = Menu.new
+    on_key_line(menu, 0)
+    menu.press(:enter)
+    menu.controls.capture_key(29)
+
+    assert_match(/already the B button/, menu.controls.notice)
+    assert_predicate menu.controls, :capturing?
+    assert_equal :b, menu.controls.button_of_key(29)
+  end
+
+  def test_a_hotkeys_key_is_refused_and_escape_gives_up
+    menu = Menu.new
+    on_key_line(menu, 0)
+    menu.press(:enter)
+    menu.controls.capture_key(19)
+
+    assert_match(/hotkey for "Pause"/, menu.controls.notice)
+    menu.controls.capture_key(VBlank::Live::Settings::ESCAPE)
+    refute_predicate menu.controls, :capturing?
+    assert_equal :a, menu.controls.button_of_key(27), "A keeps its key"
+  end
+
+  def test_a_gamepad_button_chosen_from_the_menu_swaps_with_the_one_that_had_it
+    menu = Menu.new
+    on_key_line(menu, 0)
+    menu.press(:enter)
+    menu.controls.capture_pad(:south)
+
+    assert_equal :south, menu.controls.pad_of(:a)
+    assert_equal :east, menu.controls.pad_of(:b)
+  end
+
+  def test_reset_puts_keys_and_gamepad_buttons_back
+    menu = Menu.new
+    on_key_line(menu, 0)
+    menu.press(:enter)
+    menu.controls.capture_key(20)
+    menu.press(:enter)
+    menu.controls.capture_pad(:south)
+    10.times { menu.press(:down) }
+    assert_equal "Reset", menu.chosen_line
+    menu.press(:enter)
+
+    assert_equal :a, menu.controls.button_of_key(27)
+    assert_equal :east, menu.controls.pad_of(:a)
+  end
+
+  def test_closing_the_menu_ends_a_choice
+    menu = Menu.new
+    on_key_line(menu, 0)
+    menu.press(:enter)
+    menu.toggle
+
+    refute_predicate menu.controls, :capturing?
+  end
+
   def test_the_bar_shows_every_heading_and_the_open_headings_lines
     words = drawn_words(opened)
 
-    assert_equal %w[Game Window Sound Resume F1 Fast\ forward 4x Quit Esc], words.map(&:text)
+    assert_equal %w[Game Window Sound Keys Hotkeys Resume F1 Fast\ forward 4x Quit Esc], words.map(&:text)
   end
 
   def test_a_closed_menu_draws_nothing_but_what_the_window_is_doing
@@ -180,7 +258,7 @@ class TestMenu < Minitest::Test
     menu.press(:right)
 
     assert_equal ["Size", "3x  (720 × 480)", "Fullscreen", "Show frame rate", "✓"],
-                 drawn_words(menu).map(&:text).drop(3)
+                 drawn_words(menu).map(&:text).drop(5)
   end
 
   # The chosen line has the chosen colour behind it, across the box.

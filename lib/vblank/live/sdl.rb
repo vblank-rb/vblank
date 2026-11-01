@@ -202,7 +202,7 @@ module VBlank
           close
           raise
         end
-        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [width, height],
+        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [width, height], controls: @player_settings,
                          scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max)
         @settings = @menu.settings # as the window last made them so
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
@@ -673,10 +673,14 @@ module VBlank
         # Only what changed is the player's to keep: a size given with --scale is for this play.
         changed = @settings.to_h.reject { |name, value| was.public_send(name) == value }
         @player_settings.window = @player_settings.window.with(**changed)
-        @write_settings_at = now + SETTINGS_QUIET if @player_settings.unwritten?
+        write_settings_soon
       end
 
       SETTINGS_QUIET = 0.5 # seconds
+
+      def write_settings_soon
+        @write_settings_at = now + SETTINGS_QUIET if @player_settings.unwritten?
+      end
 
       def write_settings_when_due
         write_settings if @write_settings_at && now >= @write_settings_at
@@ -776,6 +780,10 @@ module VBlank
         end
 
         @pad_down[id] << button
+        if @player_settings.capture_pad(Settings::PAD_BUTTONS[button])
+          @pad_kept << button
+          return write_settings_soon
+        end
         return unless @has_menu
 
         if PAD_OPENERS.include?(button) || pad_openers_together?(id, button)
@@ -805,6 +813,10 @@ module VBlank
       # desktop build has too — pause, fast forward held, the menu, and frame rate, fullscreen and
       # mute switched on and off, and a step of one frame while paused.
       def read_key_down(scancode, repeat)
+        if !repeat && @player_settings.capture_key(scancode)
+          @kept_from_game << scancode
+          return write_settings_soon
+        end
         hotkey = @player_settings.hotkey_of_key(scancode)
         if menu_opener?(scancode, hotkey) && @has_menu
           @menu.toggle unless repeat

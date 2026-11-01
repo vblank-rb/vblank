@@ -193,6 +193,8 @@ void rg_window_reset_hotkeys(void);
 void rg_window_capture_key_for_button(int button, int slot);
 void rg_window_capture_key_for_hotkey(int hotkey);
 void rg_window_capture_pad_for_button(int button);
+/* Whichever comes first, a key for the button's first place or a gamepad button (the menu's way). */
+void rg_window_capture_for_button(int button);
 void rg_window_capture_cancel(void);
 int rg_window_capturing(void);
 int rg_window_capture_key(int key);
