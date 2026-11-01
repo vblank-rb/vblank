@@ -11,7 +11,7 @@ class TestSnakeOnSNES < Minitest::Test
   SNES = VBlank::IR::Backends::SNES
 
   # START, then up until the snake meets the top wall, then START again from the game-over screen.
-  def presses(frame)
+  private def presses(frame)
     return [:start] if [20, 160].include?(frame)
 
     frame.between?(60, 64) ? [:up] : []

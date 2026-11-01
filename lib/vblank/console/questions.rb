@@ -34,7 +34,7 @@ module VBlank
         # The layers' declaration, which every see-through layer is in: one whose amounts are
         # written in the program is told to the console once and has no step of its own. A
         # console that mixes only by half is asked no more here: its build says which amounts
-        # it can show (Backends::SNES::Lowering::Picture#refuse_unmade_see_through!).
+        # it can show.
         when :layers
           unless node.see_through.empty?
             Question.new(:layers, "This game shows one layer through another (`transparency:`)",

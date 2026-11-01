@@ -1080,8 +1080,8 @@ module VBlank
           def value_of_binop(node)
             return value_of_comparison(node) if COMPARISONS.include?(node.op)
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
-            return if node.op == :* && multiplied_by_power_of_two?(node)
-            return if node.op == :% && left_by_power_of_two?(node)
+            return if node.op == :* && emit_product_by_power_of_two(node)
+            return if node.op == :% && emit_remainder_by_power_of_two(node)
 
             if (routine = CALLED_SUMS[node.op])
               return runtime_call(routine, [node.lhs, node.rhs])
@@ -1328,12 +1328,10 @@ module VBlank
             @asm.sta(@asm.direct(at + 2))
           end
 
-          # A product by a power of two up to 16 written in the program, as shifts of the two halves —
-          # none at all for a product by one. True when it was done so.
           # What is left after dividing by a positive power of two, as Int32.mod has it: the sign of
           # the divisor, so it is the low bits alone (-1 % 16 is 15, and so is -1 & 15) — an AND of
-          # each half, where the runtime's division takes a loop of 32 steps.
-          def left_by_power_of_two?(node)
+          # each half, where the runtime's division takes a loop of 32 steps. True when it was done so.
+          def emit_remainder_by_power_of_two(node)
             divisor = folded(node.rhs)
             return false unless divisor&.positive? && (divisor & (divisor - 1)).zero?
 
@@ -1341,7 +1339,9 @@ module VBlank
             true
           end
 
-          def multiplied_by_power_of_two?(node)
+          # A product by a power of two up to 16 written in the program, as shifts of the two halves —
+          # none at all for a product by one. True when it was done so.
+          def emit_product_by_power_of_two(node)
             [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
               number = folded(by)
               next unless number&.positive? && (number & (number - 1)).zero? && number <= 16

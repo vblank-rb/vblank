@@ -822,13 +822,13 @@ module VBlank
                                    "half see-through only: `transparency:` from 50 to 56, or `shows: 50, shows_behind: " \
                                    "50`. It can also add a layer to what is behind it: `shows: 100, shows_behind: 100`. " \
                                    "To fix this, use one of those amounts for the Super Nintendo, for example " \
-                                   "`transparency: console.name == :snes ? 50 : 40`."
+                                   "`transparency: console.mixes_by_half ? 50 : 40`."
             end
 
             SEE_THROUGH_WORKED_OUT = "This game works out how see-through a layer is as the game runs. A Super " \
                                      "Nintendo can show a layer half see-through only, so the amount must be a " \
                                      "number. To fix this, give the layer a number for the Super Nintendo, for " \
-                                     "example `transparency: console.name == :snes ? 50 : 100 - mist`."
+                                     "example `transparency: console.mixes_by_half ? 50 : 100 - mist`."
 
             def see_through_uncovered_message(layer)
               "Layer :#{layer.name} is see-through, and no background behind it covers the whole screen. Where " \

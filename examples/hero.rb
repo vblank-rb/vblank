@@ -240,7 +240,7 @@ module Hero
     # built for, and the one line says each console's best. (`mist` is still worked out and
     # saved on both, so a file means the same walk on either.)
     mist = 0
-    layer(:air, transparency: console.name == :snes ? 50 : 100 - mist) do
+    layer(:air, transparency: console.mixes_by_half ? 50 : 100 - mist) do
       background :fog, tiles: :weather, map: Array.new(32) { "#" * 32 }
     end
 
@@ -289,7 +289,7 @@ module Hero
     # A SUPER NINTENDO SHOWS TWO BACKGROUNDS AT ONCE, and the world and the mist are both of
     # them, so there the box is a picture sprites show instead (`as: :sprite`): the same words,
     # typed the same way.
-    two_backgrounds = console.name == :snes
+    two_backgrounds = console.backgrounds < 3
     note = list :note, capacity: 32, width: :byte # the sign's words, as letters, put together as you read
     box = canvas :box, width: 192, height: 16, colors: [:transparent, :white, rgb(2, 4, 12)],
                        as: two_backgrounds ? :sprite : :tiles
@@ -475,7 +475,8 @@ module Hero
         if two_backgrounds
           sprite :box, at: [24, 144]
         else
-          rows = box.cells.map { |row| ([nil] * 3) + row + ([nil] * 3) }
+          edge = [nil] * 3
+          rows = box.cells.map { |row| edge + row + edge }
           background :sign_box, tiles: :box, map: Array.new(18) { [nil] * 30 } + rows
         end
         sprite :trail, at: [204, 4]
