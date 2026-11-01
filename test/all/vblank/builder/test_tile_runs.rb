@@ -292,6 +292,42 @@ class TestTileRuns < Minitest::Test
     b.program
   end
 
+  # A sprite told to draw with other colours shows its picture on the frame it was painted, as one
+  # that is not: what its colours are worked out from is the picture as it now stands.
+  private def letter_game(other_ink:)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      colors :ink, [:transparent, :white]
+      colors :other_ink, [:transparent, :white]
+      canvas = list :canvas, capacity: 32, width: :byte, full_of: 0
+      letter = image :letter, from: canvas, width: 8, height: 8, colors: :ink
+      tag = sprite :letter, at: [40, 20]
+      frame = 0
+      game_loop do
+        tag.draw_with :other_ink if other_ink
+        frame += 1
+        if frame == 3
+          canvas[0] = 0x01
+          letter.changed now: true
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  private def first_frame_showing_the_letter(program)
+    (1..8).find { |frames| game_player.run(program, frames: frames).screen.pixel(40, 20) == 0x7FFF }
+  end
+
+  def test_a_letter_shows_on_its_frame_on_a_sprite_drawn_with_other_colours
+    plain = first_frame_showing_the_letter(letter_game(other_ink: false))
+
+    refute_nil plain
+    assert_equal plain, first_frame_showing_the_letter(letter_game(other_ink: true))
+  end
+
   def test_a_letter_typed_on_a_press_shows_before_the_sprite_moves
     b = Builder.new
     b.instance_eval do
