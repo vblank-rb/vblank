@@ -109,7 +109,7 @@ needs a C compiler and a system libmgba (`brew install mgba` / `apt install libm
 the operator.** `rake test:all` takes the machine for the best part of an hour and stops work while
 it does, so never start it, or a whole lowering's run, without the operator's say-so. The golden
 path (`test/golden.txt`) plays the core of each feature and a little of each lowering, a tenth of the
-tests or less, on every run. While working, run the test files the change touches, then
+tests or less, on every run, and it fails past five minutes (`Testing::GoldenLimit`). While working, run the test files the change touches, then
 `rake test:golden` before committing anything shared. Wherever this file says a change "wants"
 `rake test:all`, that means the golden path now and the next full run the operator agrees to.
 

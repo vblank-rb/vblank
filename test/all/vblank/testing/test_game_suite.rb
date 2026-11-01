@@ -60,6 +60,35 @@ class TestGameSuite < Minitest::Test
     refute_match(/test:lowering:gbc/, rake("-T").first)
   end
 
+  # A copy of the game with a golden path of one file.
+  private def game_with_a_golden_path
+    Dir.mktmpdir do |folder|
+      game = File.join(folder, "game")
+      FileUtils.cp_r(GAME, game)
+      File.write(File.join(game, "test/golden.txt"), "test/walker_test.rb\n")
+      yield game
+    end
+  end
+
+  # The golden path is the everyday run, so it has a limit, and a run past it fails, saying the
+  # limit and how long it took, though every test in it passed.
+  def test_a_golden_run_past_its_limit_fails_and_says_why
+    game_with_a_golden_path do |game|
+      out, passed, = rake("test:golden", env: { "CONSOLE" => "gba", "GAME_SUITE_GOLDEN_SECONDS" => "0" }, game: game)
+
+      refute passed, out
+      assert_match(/took \d+ seconds.*limit is 0 seconds/m, out)
+    end
+  end
+
+  def test_a_golden_run_inside_its_limit_passes
+    game_with_a_golden_path do |game|
+      out, passed, = rake("test:golden", env: { "CONSOLE" => "gba" }, game: game)
+
+      assert passed, out
+    end
+  end
+
   # A copy of the game with one test more, which fails on the native run until a file exists.
   private def game_with_a_fault
     Dir.mktmpdir do |folder|

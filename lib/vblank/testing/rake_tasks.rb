@@ -4,6 +4,7 @@ require "rake"
 require "rake/tasklib"
 require_relative "../console/description"
 require_relative "../console/kit" # which names its parts and loads none of them
+require_relative "golden_limit"
 require_relative "lowering"
 require_relative "run_progress"
 require_relative "test_task"
@@ -72,8 +73,9 @@ module VBlank
 
       # The test files; the folders a test file can require from by bare name (the game's own code
       # and its tests, lib and test unless told); the folders each lowering owns, and each console;
-      # and the consoles the game is for, which every Rakefile names.
-      attr_accessor :test_files, :libs, :lowering_folders, :console_folders, :consoles
+      # the consoles the game is for, which every Rakefile names; and how long its golden path may
+      # take, if not GoldenLimit::MOST_SECONDS.
+      attr_accessor :test_files, :libs, :lowering_folders, :console_folders, :consoles, :golden_most_seconds
 
       def initialize
         super
@@ -82,6 +84,7 @@ module VBlank
         @lowering_folders = {}
         @console_folders = {}
         @consoles = nil
+        @golden_most_seconds = GoldenLimit::MOST_SECONDS
         yield self if block_given?
         @consoles = Console.refuse_unknown_consoles!(consoles, setting: "t.consoles")
         @lowerings = Lowering.lowerings_for(@consoles)
@@ -130,12 +133,18 @@ module VBlank
           desc "Run the tests on every lowering, one after the other (CONSOLE= for one console)"
           task(:all) { play_all_runs }
           desc "Run the golden path: the files #{GOLDEN_LIST} names, on every lowering that plays each"
-          task(:golden) { play_runs(plays, golden: Lowering.golden_files(GOLDEN_LIST)) } if File.file?(GOLDEN_LIST)
+          task(:golden) { play_golden_runs } if File.file?(GOLDEN_LIST)
         end
 
         desc "Run one file on every lowering that plays it (TEST=test/test_foo.rb); see test:all"
         task :test do
           ENV["TEST"] ? play_runs(plays) : abort(choices_message)
+        end
+      end
+
+      def play_golden_runs
+        GoldenLimit.hold(list: GOLDEN_LIST, most_seconds: golden_most_seconds) do
+          play_runs(plays, golden: Lowering.golden_files(GOLDEN_LIST))
         end
       end
 
