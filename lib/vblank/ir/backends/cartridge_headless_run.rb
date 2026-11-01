@@ -100,12 +100,21 @@ module VBlank
         # watching block is asked at.
         def screen = @screen
 
+        # The cartridge made from +program+, before anything is played: a checked run builds it first of
+        # all, so whatever the lowering does not make is said before the interpreter plays a frame of a
+        # game it could never be held to.
+        def build(program)
+          @rom = kit.lowering.new.build(program, title: "CHECKED")
+          @built_for = program
+          @rom
+        end
+
         # Plays +program+ for +frames+ frames — as many as the interpreter plays when it is not told
         # — or until it halts. Gives back self.
         def run(program, max_steps: nil, frames: nil)
           raise RunComparison::AsksTheInterpreter, "a step budget (`max_steps:`)" if max_steps
 
-          @rom = kit.lowering.new.build(program, title: "CHECKED")
+          build(program) unless @built_for.equal?(program)
           @places = @rom.built
           @drawn_sprites = SpriteNames.new(program)
           @declared_lists = program.walk.select { |node| node.kind == :list_new }.map(&:name).uniq
@@ -235,12 +244,15 @@ module VBlank
         def decide_buttons
           return unless @deciding
 
-          frame = word(runtime_place(runtime::Frame::FRAMES)) + 1
+          frame = next_screen_frame
           return if frame == @decided
 
           @decided = frame
           set_buttons(@input_script ? Array(@input_script.call(frame)) : @held)
         end
+
+        # The number of the screen frame the console plays next, as the runtime counts them.
+        def next_screen_frame = word(runtime_place(runtime::Frame::FRAMES)) + 1
 
         # How many frames pass +pass+ took, as the runtime counted them where its wait ended
         # (Frame::STEPS) — read once the game waits at the end of the pass after it. The real

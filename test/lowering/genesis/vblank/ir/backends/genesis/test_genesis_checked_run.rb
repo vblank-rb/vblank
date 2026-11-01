@@ -241,7 +241,7 @@ class TestGenesisCheckedRun < Minitest::Test
       once_a_frame { frames += 1 }
       game_loop do
         passes += 1
-        repeat(60) { x = (x * 1103) + 12_345 }
+        repeat(1000) { x = (x * 1103) + 12_345 }
       end
     end
 

@@ -25,7 +25,7 @@ module VBlank
           def active_samples = []
 
           # The rest of what the interpreter answers, each refused by name.
-          refuses :clock_at
+          refuses :clock_at, :mixed_sound
 
           private
 
@@ -55,13 +55,16 @@ module VBlank
 
           # THE BUTTONS ARE THE ONES HELD FROM POWER-ON for the first emulated frame, which is where the
           # cartridge reads them (Runtime::Boot), and from the second on each frame's own, decided before
-          # the frame is played: the frames the runtime counts (Frame::FRAMES) start where the video
-          # chip's interrupt is switched on, a few emulated frames in, and the interrupt of
-          # the frame that starts them reads the buttons the script gave for it.
+          # the frame is played. The frames the runtime counts (Frame::FRAMES) start as the screen comes
+          # on, a few emulated frames in, with the frame whose interrupt switches it on as the first: every
+          # frame before it is the first's, and the interrupts of those read the buttons the script gave
+          # for it.
           def start_run(_program)
             @frames_played = 0
             @deciding = true
           end
+
+          def next_screen_frame = screen_on? ? super : 1
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on.
           def record_moment(frame, variables, lists, picture, sounds)
@@ -91,6 +94,8 @@ module VBlank
             decide_buttons unless @frames_played == 1
             @core.run_frame
           end
+
+          def screen_on? = half(runtime_place(Runtime::Frame::DISPLAY_ON)) == 1
 
           # The emulator's picture, each pixel the 15-bit colour the console holds (the three bits of
           # each channel it keeps, widened), and where the camera put the view, [x, y], as the pass

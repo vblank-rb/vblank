@@ -170,6 +170,12 @@ module VBlank
             # screen is still off, so everything set up so far is copied while nothing is drawn, and
             # the screen comes on in the blank after, showing it; after that, the pass's changes are
             # copied in the blank.
+            #
+            # THE FRAMES ARE COUNTED FROM THE SCREEN COMING ON. Setting up and the first copy take
+            # several frames of the console's time with nothing to see, and the interpreter's first
+            # pass takes one: the count starts again as the picture first shows, with that frame as
+            # the first, so a game counting frames (a timer, an effect that runs every frame) counts
+            # the same ones, and the buttons the interrupt of that frame read are the first frame's.
             def emit_show_pass(asm, at)
               asm.label("rt_show_pass")
               asm.tst(:w, at.call(DISPLAY_ON))
@@ -177,6 +183,8 @@ module VBlank
               asm.jsr(asm.abs_l("rt_upload_whole"))
               asm.jsr(asm.abs_l("rt_sleep_until_vblank"))
               asm.jsr(asm.abs_l("rt_screen_on"))
+              asm.move(:l, asm.imm(1), at.call(FRAMES))
+              asm.move(:w, asm.imm(1), at.call(FRAMES_MARK))
               asm.move(:w, asm.imm(1), at.call(DISPLAY_ON))
               asm.bra("rt_show_pass_shown")
               asm.label("rt_show_pass_on")

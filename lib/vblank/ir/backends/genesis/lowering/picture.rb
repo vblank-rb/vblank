@@ -205,6 +205,36 @@ module VBlank
 
             def emit_put_up(bg, which, reset_view:)
               runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, which).number), Build.int(reset_view)])
+              note = @put_up_this_pass&.fetch(layer_of(bg)) if reset_view.nonzero?
+              statement(Build.set(note, 1)) if note
+            end
+
+            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
+            # (Reference#put_up_background), and the place the game keeps for its view is written at the
+            # end of the pass (IR::Frames.loop_in_console_order), after the put-up. So a put-up notes
+            # itself for the rest of its pass, a note for each plane, and the write at the end of it leaves
+            # the background where it was put up. The wait forgets the notes (#emit_corners_forgotten),
+            # and the next pass's write moves it.
+            def keep_corner_notes
+              return unless @program.walk.any? { |node| node.kind == :scroll_background && placed_at_pass_end?(node) }
+
+              @put_up_this_pass = (0...PLANES).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
+            end
+
+            # The notes forgotten at a wait: the pass that put a background up has ended.
+            def emit_corners_forgotten
+              @put_up_this_pass&.each_value { |note| statement(Build.set(note, 0)) }
+            end
+
+            # +node+'s write, unless it is written at the end of a pass that put its background up (+note+,
+            # #keep_corner_notes).
+            def emit_unless_put_up(node, note)
+              return yield unless note && placed_at_pass_end?(node)
+
+              held = fresh("held_at_corner")
+              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
+              yield
+              @asm.label(held)
             end
 
             # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names.
@@ -216,7 +246,9 @@ module VBlank
             # Reference#exec_scroll_background.
             def emit_scroll_background(node)
               bg = background_declared_for(node)
-              runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
+              emit_unless_put_up(node, @put_up_this_pass&.fetch(layer_of(bg))) do
+                runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
+              end
             end
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
@@ -266,8 +298,11 @@ module VBlank
 
             # Reference#exec_present_objects: every sprite the frame draws, the back-most first, each
             # placed by the runtime from its table of pictures — or none at all on the pass after
-            # `hide_sprites`.
+            # `hide_sprites`. A game with no tiled screen has none to place, and the runtime that
+            # places them is not in its cartridge.
             def emit_present_objects(node)
+              return unless tiled?
+
               hidden = sprites_hidden_flag
               placing = fresh("sprites_placed")
               done = fresh("sprites_done")

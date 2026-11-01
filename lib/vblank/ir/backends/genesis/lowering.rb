@@ -157,11 +157,15 @@ module VBlank
                                     most_part_bytes: MOST_PART_BYTES) { |statements| bytes_of(statements) }
           end
 
-          # How the program draws: :painted, :tiled (it has a background or a sprite) or :none.
+          # How the program draws: :painted, :tiled (it says `screen :tiled`, or has a background or a
+          # sprite) or :none.
           def self.picture_of(program)
             return :painted if Paint.painted?(program)
 
-            program.walk.any? { |node| %i[background object].include?(node.kind) } ? :tiled : :none
+            tiled = program.walk.any? do |node|
+              %i[background object].include?(node.kind) || (node.kind == :screen && node.mode == :tiled)
+            end
+            tiled ? :tiled : :none
           end
 
           # How many words of the video chip's register table the cartridge's power-on writes
@@ -188,6 +192,7 @@ module VBlank
             reserve_patches
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
+            keep_corner_notes
             keep_loop_running
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
@@ -566,6 +571,14 @@ module VBlank
 
           def console_loop(node) = @plan.console_loop(node)
 
+          # Is +node+ one of the boundary's writes a game loop places at the end of its pass, or in
+          # one (IR::Frames::ConsoleLoop#placed)?
+          def placed_at_pass_end?(node)
+            @placed_at_pass_end ||= @plan.game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
+                                         .to_h { |write| [write.object_id, true] }
+            @placed_at_pass_end.key?(node.object_id)
+          end
+
           # The game loops that end each pass by placing the display's writes
           # (IR::Frames::ConsoleLoop#pass_end), which a halt has to end as the running one does.
           def loops_ending_passes
@@ -693,6 +706,7 @@ module VBlank
           # the game catches up by held at the cap, both as the runtime counted them.
           def emit_wait_vblank(_node)
             call_routine("rt_wait_vblank")
+            emit_corners_forgotten
             @asm.moveq(0, @asm.d(0))
             @asm.move(:w, runtime_at(Runtime::Frame::FRAMES_TAKEN), @asm.d(0))
             @asm.add(:l, @asm.d(0), var(Frames::COUNT))
