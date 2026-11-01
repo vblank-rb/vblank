@@ -1,28 +1,29 @@
 # VBlank
 
-**Write a 2D retro game in plain Ruby, and build it for the consoles it was made for — written end to end by AI.**
-
-The name is the pause after every frame, when the screen has finished drawing and it is safe to change the picture. Every machine a game here runs on has one, so the name fits whichever of them a game is built for.
-
-You write Ruby. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. It began as a way to learn: **you need to know Ruby, not the hardware.** No video memory, no registers, no assembly, no "why is my screen black" — the framework manages the machine and turns the classic mistakes into plain-language errors. It has since grown into a tool for building real games, and those two aims share the same language. The language is about 2D games today: tiles, sprites, layers and a painted screen.
-
-It is also an experiment in AI-native tooling: every line was written by an AI agent, and the toolchain is shaped around giving an agent (and a human) fast, readable feedback while building a game.
+**Write a 2D retro game in plain Ruby, and build it for the consoles it was made for.**
 
 ![Snake, built with VBlank, running in an emulator](assets/snake.gif)
 
 > A complete Snake written in VBlank. Source: [`examples/snake.rb`](examples/snake.rb).
+
+You write Ruby. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. The language is about 2D games today: tiles, sprites, layers and a painted screen.
+
+VBlank began as a way to learn, and it has grown into a multi-console engine for real games. The proof of that is porting real games to it, and those ports decide much of what gets built next.
+
+The toolchain is shaped around fast, readable feedback while building a game, for a person or an agent. The language has grown large, with many options on its verbs.
 
 ## Where a game runs
 
 | Target | Status |
 |---|---|
 | Game Boy Advance | Fairly robust. Every feature works here, and it is what the examples are written for. |
-| Game Boy Color | Underway. Much of the language works; what the Color cannot do is refused at build time, in plain words. |
+| Super Nintendo | Underway. Most of the examples build for it, with sprites, backgrounds and sound. Some music features and a second player are still to come. |
+| Game Boy Color | Underway. Much of the language works, and several of the examples build for it. |
 | A program for a computer | Works, built from the game as C. The Mac build is played and tested; Windows and Linux builds are made but not yet run on those systems. |
 | A web page | Works, built from the game as JavaScript. One file that opens from a disk or any web server. |
-| Super Nintendo | Planned. |
+| A window, in Ruby | Works, with some features still to come. `vblank run` plays the game on Ruby and SDL3, with no compiler. |
 
-Every game says which consoles it is for, and a build makes a cartridge for each one.
+Every game says which consoles it is for, and a build makes a cartridge for each one. What a console cannot do is refused at build time, in plain words, so a game either plays the same there or does not build.
 
 ## A first game
 
@@ -63,9 +64,9 @@ vblank run walk.rb                         # play it in a window, in Ruby
 
 ## How it works
 
-**Mistakes become teaching errors.** The worst part of learning an old console is that a mistake rarely says what went wrong — you get a black screen, or garbled pictures, or a crash far from its cause. VBlank checks the game before it builds and says what happened and how to fix it: *drew something but never chose a screen*, *a game loop that never waits for the screen*, *a comparison used as a Ruby `if`*. A serious problem stops the build; a smaller one prints a warning. Fixes are suggested, never made silently.
+**Mistakes explain themselves.** The worst part of working on an old console is that a mistake rarely says what went wrong — you get a black screen, or garbled pictures, or a crash far from its cause. VBlank checks the game before it builds and says what happened and how to fix it: *drew something but never chose a screen*, *a game loop that never waits for the screen*, *a comparison used as a Ruby `if`*. A serious problem stops the build; a smaller one prints a warning. Fixes are suggested, never made silently.
 
-**One description of the game, many targets.** The language does not write machine code as it goes. Each verb records what the game does, and the whole game is checked before anything is made. A backend then turns that description into its target: an Advance cartridge, a Color cartridge, C, or JavaScript. A Ruby interpreter runs the same description too, and it is the answer every target is tested against. A new console is a new backend, not a new language.
+**One description of the game, many targets.** The language does not write machine code as it goes. Each verb records what the game does, and the whole game is checked before anything is made. A backend then turns that description into its target: an Advance, Color or Super Nintendo cartridge, C, JavaScript, or Ruby. A Ruby interpreter runs the same description too, and it is the answer every target is tested against. A new console is a new backend, not a new language.
 
 **Add verbs without touching the compiler.** A game can register a module of its own verbs, written in the same verbs it already uses, and from then on they read like the built-in ones. Because such a verb is made only of other verbs, it works on every target the day it is written. Screen shake and fades ship this way: see [`lib/vblank/effects/packs/`](lib/vblank/effects/packs/).
 
@@ -95,7 +96,7 @@ In the game's Rakefile, `require "vblank/testing/rake_tasks"` and `VBlank::Testi
 Every file in [`examples/`](examples/) is a complete game or demo that teaches one idea, and its header comment explains the hardware it touches. Build any of them with `ruby examples/<name>.rb`. Good places to start:
 
 - [`pong.rb`](examples/pong.rb) — paddles, a ball, collision, scoring, music and a title menu.
-- [`pacman.rb`](examples/pacman.rb) — a tiled maze, sprites, a chasing ghost and a live score; it builds for the Advance and the Color.
+- [`pacman.rb`](examples/pacman.rb) — a tiled maze, sprites, a chasing ghost and a live score; it builds for all three consoles.
 - [`breakout.rb`](examples/breakout.rb) — a wall of bricks, lives and scenes on a screen that never tears.
 - [`shmup.rb`](examples/shmup.rb) — a game split across files, with a play, game-over and restart flow.
 - [`raycaster.rb`](examples/raycaster.rb) — a first-person maze, drawn the Wolfenstein way.
@@ -105,7 +106,7 @@ Every file in [`examples/`](examples/) is a complete game or demo that teaches o
 Building a cartridge needs only Ruby. Checking or measuring one runs it in an emulator, through the `ruby-gba-emulator` gem, which lives in this repository but is not a dependency, so somebody who only builds cartridges needs no C compiler. Add both to a game's Gemfile in one block:
 
 ```ruby
-git "https://github.com/jamescook/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
+git "https://github.com/vblank-rb/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
   gem "vblank"
   gem "ruby-gba-emulator"
 end
@@ -125,4 +126,16 @@ Keep it as one block. Two separate `gem ... github:` lines look the same but are
 
 ## Status
 
-Pre-1.0. Full games work end to end on the Game Boy Advance, and the computer and browser builds are checked against it frame by frame. The Game Boy Color is catching up. The proving grounds are ports of real games, each in its own repository, which find most of the gaps still to close: a Wolfenstein 3D port, [ruby-wolf3d](https://github.com/jamescook/ruby-wolf3d), and a port of The Legend of Zelda: The Minish Cap, which is underway and not public yet.
+Pre-1.0. Full games work end to end on the Game Boy Advance, and every other build is checked against the same answers, frame by frame or pass by pass. The Super Nintendo and the Game Boy Color are catching up.
+
+## Where it is headed
+
+**More consoles, closer to what each can do.** The near work is bringing the Super Nintendo and the Color up to the Advance. A new console is a new backend, and the same game goes with it.
+
+**Real games as the proving ground.** Ports live in their own repositories, and they find most of the gaps still to close: a Wolfenstein 3D port, [ruby-wolf3d](https://github.com/jamescook/ruby-wolf3d), and a port of The Legend of Zelda: The Minish Cap, which is underway and not public yet.
+
+**Ports that an agent can drive.** So far each port has been a long session held to a few rules: follow the original game, match how it behaves, work in small pieces. Those rules are close to a method, because the original can say what is right and the first real difference names the next piece of work. The plan is a separate tool that runs that loop, with an agent doing the porting and a person supervising. It is not built yet.
+
+## The name
+
+VBlank is the pause after every frame, when the screen has finished drawing and it is safe to change the picture. Every machine a game here runs on has one.
