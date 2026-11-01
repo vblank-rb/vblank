@@ -29,6 +29,7 @@ COPY vblank.gem /check/
 RUN gem install --no-document /check/vblank.gem
 
 FROM bare-install AS bare-refused
+RUN ls /usr/local/bundle/gems/vblank-*/LICENSE.md /usr/local/bundle/gems/vblank-*/ruby-snes-emulator/core/LICENSE.md
 COPY walk.rb expect_refusal.rb ./
 RUN vblank build walk.rb && ls walk.gba walk.gbc walk.sfc
 RUN ruby expect_refusal.rb

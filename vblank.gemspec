@@ -9,7 +9,9 @@ Gem::Specification.new do |spec|
   spec.summary       = "Ruby DSL for building GBA ROMs"
   spec.description   = "A Ruby DSL that generates valid Game Boy Advance ROM files"
   spec.homepage      = "https://github.com/jamescook/vblank"
-  spec.licenses      = ["MIT"]
+  # MIT, but for ruby-snes-emulator/core/bsnes-vblank-probe.patch, a change to bsnes and so under
+  # bsnes's licence (ruby-snes-emulator/core/LICENSE.md says more).
+  spec.licenses      = ["MIT", "GPL-3.0-or-later"]
 
   # compile_flags.txt is written for an editor on the machine it names folders on (see
   # Native::Zig), so it is no part of the gem.
@@ -21,8 +23,8 @@ Gem::Specification.new do |spec|
                        Dir.glob("ruby-gba-emulator/lib/**/*.rb") +
                        Dir.glob("ruby-gba-emulator/ext/ruby_gba_emulator_ext/*.{c,h,rb}") +
                        Dir.glob("ruby-snes-emulator/lib/**/*.rb") +
-                       Dir.glob("ruby-snes-emulator/core/*.patch") +
-                       %w[vblank.gemspec Rakefile]
+                       Dir.glob("ruby-snes-emulator/core/*.{patch,md}") +
+                       %w[vblank.gemspec Rakefile LICENSE.md]
   spec.bindir        = "bin"
   spec.executables   = ["vblank"]
   spec.require_paths = ["lib"]

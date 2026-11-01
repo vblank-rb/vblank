@@ -26,8 +26,8 @@ module RubySNESEmulator
   #   patch -p1 -i ruby-snes-emulator/core/bsnes-vblank-probe.patch
   #   make -C bsnes target=libretro binary=library build=performance -j4
   #
-  # bsnes's own licence is GPLv3. Its source is fetched from where bsnes publishes it, so none of it
-  # is in this repository or the gem; the patch is the part that is.
+  # bsnes's own licence is the GPL. Its source is fetched from where bsnes publishes it, so none of
+  # it is in this repository or the gem. The patch is, under that same licence (core/LICENSE.md).
   module CoreBuild
     REVISION = "78474e5d39f58872dc21aca18cf9eb583b147fe7"
     ARCHIVE = "https://codeload.github.com/bsnes-emu/bsnes/tar.gz/#{REVISION}".freeze
