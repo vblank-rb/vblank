@@ -1,0 +1,58 @@
+diff --git a/libretro/libretro.c b/libretro/libretro.c
+index 798c6cc5..653ee469 100644
+--- a/libretro/libretro.c
++++ b/libretro/libretro.c
+@@ -3743,10 +3743,40 @@ void retro_unload_game(void)
+ 
+ unsigned retro_get_region(void) { return vdp_pal ? RETRO_REGION_PAL : RETRO_REGION_NTSC; }
+ 
++/* THE PROBE PATCH: the console's own memories, which libretro has no names for. Video RAM, colour
++   RAM, vertical scroll RAM, the VDP's registers, and the 68000's registers (data registers, then
++   address registers, then the program counter and the status register, 32 bits each). */
++#define PROBE_VRAM      0x8001
++#define PROBE_CRAM      0x8002
++#define PROBE_VSRAM     0x8003
++#define PROBE_VDP_REGS  0x8004
++#define PROBE_M68K_REGS 0x8005
++#define PROBE_SAT       0x8006
++
++static unsigned int probe_m68k_regs[18];
++
++static void probe_read_m68k_regs(void)
++{
++   int i;
++   for (i = 0; i < 8; i++)
++   {
++      probe_m68k_regs[i]     = m68k_get_reg(M68K_REG_D0 + i);
++      probe_m68k_regs[8 + i] = m68k_get_reg(M68K_REG_A0 + i);
++   }
++   probe_m68k_regs[16] = m68k_get_reg(M68K_REG_PC);
++   probe_m68k_regs[17] = m68k_get_reg(M68K_REG_SR);
++}
++
+ void *retro_get_memory_data(unsigned id)
+ {
+    switch (id)
+    {
++      case PROBE_VRAM:      return vram;
++      case PROBE_CRAM:      return cram;
++      case PROBE_VSRAM:     return vsram;
++      case PROBE_VDP_REGS:  return reg;
++      case PROBE_SAT:       return sat;
++      case PROBE_M68K_REGS: probe_read_m68k_regs(); return probe_m68k_regs;
+       case RETRO_MEMORY_SAVE_RAM:
+          return sram.on ? sram.sram : NULL;
+       case RETRO_MEMORY_SYSTEM_RAM:
+@@ -3762,6 +3792,12 @@ size_t retro_get_memory_size(unsigned id)
+ 
+    switch (id)
+    {
++      case PROBE_VRAM:      return 0x10000;
++      case PROBE_CRAM:      return 0x80;
++      case PROBE_VSRAM:     return 0x50;
++      case PROBE_VDP_REGS:  return 0x20;
++      case PROBE_SAT:       return 0x400;
++      case PROBE_M68K_REGS: return sizeof(probe_m68k_regs);
+       case RETRO_MEMORY_SAVE_RAM:
+       {
+          /* return 0 if SRAM is disabled */

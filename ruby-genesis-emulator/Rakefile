@@ -1,0 +1,65 @@
+# frozen_string_literal: true
+
+require "etc"
+require "rake/testtask"
+require "tmpdir"
+
+# THE CORE: Genesis Plus GX, at the revision below, with core/gpgx-vblank-probe.patch, built as a
+# libretro core into core/build/genesis_plus_gx_libretro.so.
+#
+# Why Genesis Plus GX, and why patched. It is the most accurate Mega Drive emulator in common use
+# that is built as a libretro core, it runs without a window, steps one frame at a time and plays
+# the original cartridges VBlank's users own. Its libretro front end hands over work RAM and the
+# cartridge's save memory and nothing else, and a check of a cartridge wants the video RAM, the
+# colour memory and the scroll memory too. The patch is small: names for those memories (and for the
+# video chip's registers and the 68000's) in retro_get_memory_data.
+#
+# Its licence bars commercial use, which is why it is a tool for testing and is never shipped with
+# VBlank, nor named in its gemspec. clownmdemu (AGPL) is the other emulator that was weighed; this one
+# met every need, so it was not used.
+#
+# The steps, which are all this task does, so a machine without rake can repeat them:
+#
+#   git clone https://github.com/libretro/Genesis-Plus-GX.git
+#   git -C Genesis-Plus-GX checkout GPGX_REVISION
+#   git -C Genesis-Plus-GX apply ruby-genesis-emulator/core/gpgx-vblank-probe.patch
+#   make -C Genesis-Plus-GX -f Makefile.libretro -j4
+#   cp Genesis-Plus-GX/genesis_plus_gx_libretro.so ruby-genesis-emulator/core/build/
+#
+# It needs git, make and a C compiler. VBLANK_GENESIS_CORE points the gem at a core built some
+# other way.
+GPGX_URL = "https://github.com/libretro/Genesis-Plus-GX.git"
+GPGX_REVISION = "f27655b592ef43f317272d79883bcaa10d3ac8ad"
+CORE_DIR = File.expand_path("core", __dir__)
+PATCH = File.join(CORE_DIR, "gpgx-vblank-probe.patch")
+BUILT = File.join(CORE_DIR, "build", "genesis_plus_gx_libretro.so")
+
+desc "Build Genesis Plus GX as a libretro core, with the probe patch, into core/build/"
+task :compile_core do
+  next if File.file?(BUILT) && File.mtime(BUILT) > File.mtime(PATCH)
+
+  Dir.mktmpdir("gpgx") do |dir|
+    source = File.join(dir, "Genesis-Plus-GX")
+    sh "git", "clone", "--quiet", GPGX_URL, source
+    sh "git", "-C", source, "checkout", "--quiet", GPGX_REVISION
+    sh "git", "-C", source, "apply", PATCH
+    sh "make", "-C", source, "-f", "Makefile.libretro", "-j#{Etc.nprocessors}"
+    mkdir_p File.dirname(BUILT)
+    built = File.join(source, "genesis_plus_gx_libretro.so")
+    abort "Genesis Plus GX built, but left no genesis_plus_gx_libretro.so to copy" unless File.file?(built)
+    cp built, BUILT
+  end
+end
+
+desc "Remove the built core"
+task :clean do
+  rm_rf File.dirname(BUILT)
+end
+
+Rake::TestTask.new(test: :compile_core) do |t|
+  t.libs << "test" << "lib"
+  t.test_files = FileList["test/**/test_*.rb"]
+  t.warning = false
+end
+
+task default: :test
