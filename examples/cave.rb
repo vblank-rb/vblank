@@ -14,6 +14,11 @@
 # `iris_out` and `iris_in` close it on a point and open it again — the pair to `fade_out`
 # and `fade_in`, said the same way, and `iris_shut?` is the moment to swap the scene.
 #
+# And as the circle opens the hero comes up out of the black, a little brighter each frame,
+# their colours walked there by `color_walk` and `recolor`. A fade would raise everything by the
+# same share, so their dark colours would show almost at once. A walk moves each colour one
+# step at a time, so the brightest parts of the hero arrive first and the dark ones last.
+#
 # Notice what you never write: the console's windows, its darkening, which row of the
 # screen the circle starts and stops on. The console really does all of it as it draws —
 # the light costs the same however much is on screen — and none of it is in this file.
@@ -139,7 +144,8 @@ module Cave
       ART
     end
 
-    image :hero, "." => :transparent, "o" => :yellow, "#" => :red do
+    # The hero's own list of colours, in order: a list made to replace them matches them by place.
+    image :hero, "." => :transparent, "o" => :yellow, "#" => :red, colors: %i[transparent yellow red] do
       <<~ART
         ..oooo..
         ..oooo..
@@ -158,6 +164,15 @@ module Cave
     hero = sprite :hero, at: [24, CAVE_MOUTH_Y]
     hero.blocked_by land
 
+    # The hero's colours, as a list of their own the game can change. `color_walk` works out the
+    # steps from black to that list while the cartridge is built, and `recolor` below says
+    # which step the list holds now, so walking is one number going up.
+    colors :clothes, %i[transparent yellow red]
+    hero.draw_with :clothes
+    out_of_the_dark = color_walk :clothes, from: :black
+    arrived = out_of_the_dark.length - 1 # the last step is the hero's own colours
+    step = arrived
+
     # The lantern: everything past its reach is nearly black. It starts on the hero and
     # follows them every frame below.
     lantern = spotlight at: [28, CAVE_MOUTH_Y + 4], radius: LANTERN_REACH, dark: CAVE_DARK
@@ -175,6 +190,8 @@ module Cave
       end
       hero.clamp_to_screen
       lantern.move_to hero.x + 4, hero.y + 4
+      step += 1 if step < arrived
+      recolor :clothes, out_of_the_dark, showing: step
 
       # Out of the cave mouth, or back in at the meadow's edge: close the circle on the hero.
       in_cave = land.showing == land.map_number(:cave)
@@ -189,6 +206,7 @@ module Cave
       # open the circle onto it — daylight outside, the lantern's dark back in the cave.
       if leaving && iris_shut?
         leaving = false
+        step = 0
         if land.showing == land.map_number(:cave)
           land.show_map :meadow
           hero.move_to MEADOW_EDGE_X + 8, hero.y

@@ -68,9 +68,26 @@ module BufferedSnake
   START_CELLS = Ractor.make_shareable([[5, START_ROW], [6, START_ROW], [7, START_ROW], [8, START_ROW]])
   FOOD_TRIES = 8
 
+  # The snake on the title: a strip of skin 32 columns wide, each column drawn two pixels across,
+  # with a diagonal stripe so that it reads as a body sliding along.
+  SKIN_W = 32
+  SKIN = Ractor.make_shareable(Array.new(8) { |row| Array.new(SKIN_W) { |col| ((col + row) % 8) < 2 ? "o" : "#" }.join }.join("\n"))
+  SKIN_X = (SCREEN_W - (SKIN_W * 2)) / 2
+  SKIN_Y = 66
+  SKIN_TALL = 12 # the strip is drawn 8 rows high and stretched to this
+
+  # How far down each column hangs, one wave of it over 16 columns, 0 to 8 pixels.
+  SWAY = Ractor.make_shareable((0...16).map { |i| ((Math.sin(i * 2 * Math::PI / 16) + 1) * 4).round })
+
   GAME = VBlank.game("SNAKEBUF", consoles: %i[gba]) do
     screen :bitmap, tear_free: true # <-- the whole difference. Remove it and it tears.
     enable_sound
+
+    image :skin, "#" => :green, "o" => :yellow do
+      SKIN
+    end
+    sway = table :sway, SWAY, width: :byte
+    wriggle = 0 # how far the wave has travelled along the title's snake
 
     # One gap past the end of the word, whatever the word is — the font is the only
     # thing that knows how wide "SCORE" comes out.
@@ -183,6 +200,17 @@ module BufferedSnake
     scene :title do
       clear_screen :black
       draw_text "SNAKE", :center, 56, :green
+
+      # The snake under the word. `draw_column_at` draws one column of a picture at a place and
+      # a height the game works out, so giving every column of the skin its own place along a
+      # wave is all it takes to make a stiff strip wriggle. The wave moves along a column a
+      # frame; `slice:` says which column of the picture, and `width:` how many pixels across.
+      wriggle += 1
+      repeat(SKIN_W) do |col|
+        draw_column_at :skin, slice: col, x: SKIN_X + (col * 2), top: SKIN_Y + sway[(col + wriggle) & 15],
+                              height: SKIN_TALL, width: 2
+      end
+
       every(0.5, :seconds) do
         if blink
           blink = false

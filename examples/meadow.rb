@@ -48,6 +48,12 @@
 # in blocks is a switch the console keeps on each background and each sprite, and the
 # name's is simply left off.
 #
+# EACH ROOM HAS ITS OWN COMPANY, a cat in the cabin and a butterfly out in the meadow, and
+# `picture_groups` says which picture belongs to which room. The console keeps the pictures of
+# sprites in a small memory of its own, and a game of many rooms needs far more of them than fit.
+# Pictures in a group are only kept there while `show` says the group's room is up, so it is one
+# room's pictures that have to fit and not the whole game's.
+#
 # The hero walks over everything; walls are left out to keep this short (see
 # examples/hero.rb for a hero that trees stop).
 #
@@ -105,6 +111,11 @@ module Meadow
   # Where the hero stands on walking through each door, in the room's own pixels.
   INSIDE_DOOR = [(14 * 8), (19 * 8) - HERO - 12].freeze
   OUTSIDE_DOOR = [(53 * 8), (46 * 8) + 4].freeze
+
+  # Where the cat sits on the cabin's rug, and how far from the hero the butterfly keeps.
+  CAT_AT = [136, 76].freeze
+  BUTTERFLY_OFF_X = 22
+  BUTTERFLY_OFF_Y = -14
 
   GAME = VBlank.game("MEADOW", consoles: %i[gba]) do
     screen :tiled
@@ -262,8 +273,40 @@ module Meadow
     end
     hero = layer(:actors) { sprite :hero_art, at: [112, 72] }
 
+    image :cat_art, "." => :transparent, "#" => rgb(24, 14, 4), "o" => :black do
+      <<~ART
+        #..#....
+        ####....
+        #o#o....
+        ####...#
+        .######.
+        .######.
+        .##..##.
+        .#....#.
+      ART
+    end
+    image :butterfly_art, "." => :transparent, "#" => :magenta, "o" => :yellow do
+      <<~ART
+        ........
+        ##....##
+        ###oo###
+        ###oo###
+        .##oo##.
+        ..#oo#..
+        ........
+        ........
+      ART
+    end
+
+    # Which picture is kept for which room, numbered as `room` is below. The hero is in no
+    # group, so the hero is kept whatever room is up.
+    company = picture_groups :company, { 0 => [:cat_art], 1 => [:butterfly_art] }
+    cat = layer(:actors) { sprite :cat_art, at: CAT_AT }
+    butterfly = layer(:actors) { sprite :butterfly_art, at: [0, 0], shown: false }
+
     room = 0 # 0 is the cabin, 1 the meadow — the map number show_map takes
     in_door = false # true from the hero stepping into a door until the room is swapped
+    company.show room # the sprites are drawn before the first pass, so say it here as well
 
     # The room's name, in the corner. A test around the words says when each shows.
     layer :words do
@@ -336,6 +379,18 @@ module Meadow
       world.show_map room
       world.scroll_to view_x, view_y
       hero.move_to x - view_x, y - view_y
+
+      # The room's company. Each goes out of sight on the pass its room is left, since a sprite
+      # drawn from a picture whose group is not up would have nothing of its own to show.
+      company.show room
+      if room == 0
+        butterfly.hide
+        cat.show
+      else
+        cat.hide
+        butterfly.show
+        butterfly.move_to hero.x + BUTTERFLY_OFF_X, hero.y + BUTTERFLY_OFF_Y
+      end
     end
   end
 

@@ -46,7 +46,7 @@
 # you back exactly where you saved — even after the console was switched off.
 # A walk you never saved is gone when the power goes, which is what a save file is for.
 #
-#     files = save_data :file, copies: 3 do keep px, py, mist, steps end
+#     files = save_data :file, copies: 3 do keep px, py, mist, steps, random_numbers end
 #     files[slot].save        files[slot].load        files[n].peek(steps)
 #
 # CONTINUE, COPY TO NEXT and ERASE are grey while the picked file is empty: a menu row can
@@ -56,10 +56,10 @@
 #
 # And two PICTURES THE GAME DRAWS AS IT RUNS. A signpost stands a few steps from where a walk
 # starts: press A beside it and a box along the bottom types out which file you are walking
-# in and how many steps it has taken, a letter every two frames — words nobody could have
-# drawn before the game was built. And a little map in the corner gains a dot wherever you
-# walk. Both are a `canvas`, a picture you draw into with words — a pixel, a rectangle, a
-# letter, a number — that shows what you drew on the next frame:
+# in, how many steps it has taken and what the weather ahead will be, a letter every two
+# frames — words nobody could have drawn before the game was built. And a little map in the
+# corner gains a dot wherever you walk. Both are a `canvas`, a picture you draw into with
+# words — a pixel, a rectangle, a letter, a number — that shows what you drew on the next frame:
 #
 #     box = canvas :box, width: 192, height: 16, colors: [...]
 #     pen += box.draw_letter(note[typed], pen, 5, :white)
@@ -259,10 +259,23 @@ module Hero
     # Where the hero stands in the WORLD is the game's own to keep. The follow camera keeps
     # the hero in one place on the screen and slides the world instead, so the hero's own
     # position never says how far they walked; these two do, moved by the same steps.
+    #
+    # `random_numbers` goes in the file too. The sign below tosses a coin for its forecast, and
+    # the coin is a hidden number the game keeps churning. Leave it out and a walk loaded back
+    # tosses differently from the walk that was saved; kept, it reads the same forecast.
     px = START_X
     py = START_Y
     steps = 0
-    files = save_data(:file, copies: 3) { keep px, py, mist, steps }
+    files = save_data(:file, copies: 3) { keep px, py, mist, steps, random_numbers }
+
+    # This game saves in the middle of a walk, and such a save is right only while it keeps
+    # everything the walk depends on. The quiet way it goes wrong is a variable added later
+    # and never added to the file: a load puts back the rest and leaves that one as it was.
+    # Said once, this makes the build refuse any variable or list that no file keeps and that
+    # is not named here. What is named here is what a load must leave alone: the file screen,
+    # its menu and which file is picked, and the sign's box, which a fresh walk opens shut.
+    saves_keep_everything except: %i[slot saved mode shown0 shown1 shown2 number choosing next_choosing
+                                     actions note reading typed pen tick]
 
     slot = 0     # the file picked on the file screen, and the one START saves to
     saved = 0   # frames left of "SAVED" after START
@@ -320,6 +333,12 @@ module Hero
       end
       note.push (steps % 10) + 48
       " STEPS".each_char { |char| note.push char.ord }
+      # The forecast, a toss of a coin: `chance(50)` is true on half the times it is asked.
+      if chance(50)
+        " FAIR".each_char { |char| note.push char.ord }
+      else
+        " MIST".each_char { |char| note.push char.ord }
+      end
       box.clear rgb(2, 4, 12)
       typed = 0
       pen = 4

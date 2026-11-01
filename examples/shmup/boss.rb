@@ -34,6 +34,7 @@ module Shmup
 
     HURT = 12     # frames of glowing warm after a shot lands
     DEATH = 48    # ...and of flickering out after the last one
+    JOLT = 12     # how big the blocks are, in pixels, when the kill shakes the picture apart
 
     # The cruiser, banking left: a long gun arm under the left shoulder and a stub fin on
     # the right, so the two directions are pictures you can tell apart. `#` is the hull,
@@ -117,6 +118,18 @@ module Shmup
       @flash = build.var(:boss_flash, 0)
       @rammed = build.var(:boss_rammed, 0) # so one swoop through the ship costs one life
       @due = build.var(:boss_due, WAVE) # frames until the next one turns up
+      @blocks = build.var(:boss_blocks, 1) # how big the picture's blocks are, 1 being as drawn
+
+      # THE KILL SHAKES THE PICTURE APART. `pixelate` shows the screen in flat blocks of a size
+      # the game says, and the console does that as it draws, so nothing is repainted. It reaches
+      # the field and leaves the score sharp, because it is placed under :ui as the game's dim is.
+      # The blocks shrink back a step at a time, and `each_pass` is the verb for that: it does
+      # nothing until `start`, then takes one step a pass, and the step stops it when it arrives.
+      @shaking = build.each_pass(:boss_shake) do |job|
+        @blocks -= 1
+        build.pixelate @blocks, under: :ui
+        job.stop if @blocks <= 1
+      end
 
       declare_phases
     end
@@ -239,6 +252,8 @@ module Shmup
           if @hits <= 0
             @flash = DEATH
             @phase = :dying
+            @blocks = JOLT
+            @shaking.start
           end
         end
       end

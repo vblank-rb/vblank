@@ -25,6 +25,11 @@
 #      Press B on the small chord: the blip is heard.
 #   5. Press A, then move the cursor: the tune fades, and HOORAY does not.
 #
+# SELECT stops the tune where it is and lets it go on again, which is `hold_music` and
+# `release_music`: the notes sounding ring on, and it carries on from the next note with
+# nothing lost. START plays a low hum under everything on the console's wave voice, a voice
+# none of these tunes uses, and START again stops it with `stop_wave`.
+#
 # Run it to build examples/jukebox.gba:
 #   ruby examples/jukebox.rb
 
@@ -36,6 +41,7 @@ module Jukebox
   FIRST_ROW  = 50
   ROW_GAP    = 14
   EFFECTS_ROW = 116
+  HELD_ROW   = 132
 
   # The bobbing "it's playing" blocks along the bottom: five 8x8 blocks that
   # bounce between BAR_TOP and BAR_BOTTOM at their own speeds, so they dance a
@@ -173,10 +179,16 @@ module Jukebox
     playing   = 0
     switching = false # Which sound effect was asked for last (1 HOORAY, 2 BLIP), whose name is lit.
     asked = 0
+    holding = false # true while SELECT is holding the tune
+    humming = false # true while START has the hum on
 
-    game_loop do
-      # --- Advance the bobbing blocks: move each by its speed, and reverse (snap
-      # to the edge, flip the sign) whenever it reaches the top or bottom. ---
+    # --- Advance the bobbing blocks: move each by its speed, and reverse (snap
+    # to the edge, flip the sign) whenever it reaches the top or bottom. ---
+    #
+    # `once_a_frame` runs this once for every frame the screen really shows. The music keeps
+    # that time too, whatever the game is doing, so the blocks dance on with the tune on a
+    # busy frame where a step in the loop below would fall behind it.
+    once_a_frame do
       BARS.each_with_index do |(_x, _y0, spd), i|
         bar_y[i] += bar_v[i]
         if bar_y[i] >= BAR_BOTTOM
@@ -188,7 +200,9 @@ module Jukebox
           bar_v[i] = spd
         end
       end
+    end
 
+    game_loop do
       # --- Draw the screen fresh each frame ---
       clear_screen :black
       draw_text "JUKEBOX", :center, 14, :white
@@ -243,6 +257,30 @@ module Jukebox
       end
       draw_text "A HOORAY", 64, EFFECTS_ROW, [:gray, :white], showing: asked == 1
       draw_text "B BLIP", 136, EFFECTS_ROW, [:gray, :white], showing: asked == 2
+
+      # --- Holding the tune, and the hum under it ---
+      # A held tune stays held while `play_song` goes on naming it above, since naming the song
+      # already playing changes nothing. Each press turns its word's light on or off.
+      if pressed(:select)
+        if holding
+          release_music
+          holding = false
+        else
+          hold_music
+          holding = true
+        end
+      end
+      if pressed(:start)
+        if humming
+          stop_wave
+          humming = false
+        else
+          wave :triangle, :C3, volume: :quarter
+          humming = true
+        end
+      end
+      draw_text "SELECT HOLD", 8, HELD_ROW, [:gray, :white], showing: holding
+      draw_text "START HUM", 170, HELD_ROW, [:gray, :white], showing: humming
     end
   end)
 

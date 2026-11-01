@@ -25,7 +25,10 @@ Pixels = VBlank.game("RUBYGBA", consoles: %i[gba snes]) do
   flag_x = (screen_width - (stripe_w * 3)) / 2
   flag_y = (screen_height - flag_h) / 2
 
-  fill_rect flag_x,                flag_y, stripe_w, flag_h, rgb(0, 31, 0)   # green
+  # A paint program shows a colour as three numbers from 0 to 255, and `rgb8` takes those, so a
+  # colour picked there can be typed in as it reads. (`rgb` is the same thing counted 0 to 31,
+  # which is how finely the console tells colours apart.)
+  fill_rect flag_x,                flag_y, stripe_w, flag_h, rgb8(0, 255, 0) # green
   fill_rect flag_x + stripe_w,     flag_y, stripe_w, flag_h, :white          # white
   fill_rect flag_x + stripe_w * 2, flag_y, stripe_w, flag_h, :red            # red
 

@@ -34,6 +34,10 @@
 # shows them in turn, so that nobody ever sees one half drawn; `keep_showing` is what paints a
 # change into both, where painting it once would flicker between the new second and the old.
 #
+# HOW LONG IT HAS BEEN RUNNING is the one thing the console does know, clock chip or no clock
+# chip, and the bottom line shows it. `frames_since_power_on` counts every frame the screen has
+# shown since the power came on, setting up included, and about sixty of them make a second.
+#
 # Run it to build examples/clock.gba:
 #   ruby examples/clock.rb
 
@@ -54,6 +58,10 @@ module ClockFace
   TIME_ROW = 40
   DATE_ROW = 86
   DAY_ROW = 108
+  RUNNING_ROW = 140
+
+  # About how many frames the screen shows in a second.
+  FRAMES_A_SECOND = 60
 
   INK = :white
   BACKGROUND = :black
@@ -89,6 +97,7 @@ module ClockFace
     font :small, glyphs: ClockFace.blown_up("0123456789-#{DAYS.join}", SMALL), spacing: SMALL
 
     now = clock
+    running = var :running, 0 # the seconds the console has been on, as the face shows them
 
     # A number of two figures, with a nought in front of one below ten, as a clock shows it:
     # `draw_number` leaves a leading nought blank, so the tens and the ones are drawn as a
@@ -128,14 +137,21 @@ module ClockFace
       else
         draw_text NO_CLOCK, :center, TIME_ROW, INK, font: :big
       end
+
+      draw_text "ON FOR", :right, RUNNING_ROW, :gray, within: 0...100
+      draw_number running, :left, RUNNING_ROW, :gray, digits: 5, within: 106...SCREEN_W
+      draw_text "SECONDS", :left, RUNNING_ROW, :gray, within: 142...SCREEN_W
     end
 
     # The second the face shows. It starts at one the clock never reads, so the first pass paints.
     shown = -1
 
     game_loop do
-      if now.second != shown
+      # A cartridge with no clock chip never moves `now.second`, so the seconds the console has
+      # been on are watched too: the bottom line ticks on with no clock at all.
+      if now.second != shown || frames_since_power_on / FRAMES_A_SECOND != running
         shown = now.second
+        running = frames_since_power_on / FRAMES_A_SECOND
         face.changed
       end
       face.draw

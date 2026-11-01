@@ -14,6 +14,12 @@
 # hand. When the `sprite` helper lands, this whole file collapses to "make a sprite
 # for each digit and nudge it"; for now it's the honest manual version.
 #
+# It is manual about time as well. A `game_loop` normally waits for the screen by itself
+# at the top of every pass. `frame_sync: :manual` takes that away, and `wait_vblank` is
+# the wait written out: it holds the game until the console has finished drawing a
+# picture, which is the moment it is safe to start on the next one. Leave it out and the
+# game runs flat out, drawing over a screen that is still being shown.
+#
 # Run it to build examples/floating_digits.gba:
 #   ruby examples/floating_digits.rb
 
@@ -39,7 +45,7 @@ module FloatingDigits
 
   # The game as a block the builder runs (so a test can drive the exact program
   # that ships — the interpreter runs THIS, the console runs the ROM built from it).
-  GAME = VBlank.game("FLOATNUM", consoles: %i[gba snes]) do
+  GAME = VBlank.game("FLOATNUM", consoles: %i[gba snes], frame_sync: :manual) do
     screen :bitmap
 
     # A colored glyph image per digit. '.' is transparent, so only the digit's lit
@@ -64,6 +70,8 @@ module FloatingDigits
     max_y = screen_height - H
 
     game_loop do
+      wait_vblank # one picture a frame: this is the line the game loop would have added
+
       # The simple, unclever way: wipe the screen and redraw every digit. It's a
       # touch wasteful (a real game would erase only where each digit was), but at
       # this scale it fits the frame comfortably and keeps the example plain.

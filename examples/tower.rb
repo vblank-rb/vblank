@@ -130,7 +130,10 @@ module Tower
     level = var :level, 0
 
     # One floor: its own :floor, the hero walking it and stopped by its walls, and the stairs
-    # up, where it has any.
+    # up, where it has any. Climbing them sends the hero to the door at once, but the floor
+    # above only comes up on the next pass, so for one frame the hero would stand at that door
+    # on the old floor. `hide_sprites` takes every sprite off the screen for that one frame, and
+    # they come back by themselves on the frame after, with the new floor under them.
     climb = lambda do |floor, stairs|
       hero.blocked_by floor
       hero.move :left, by: 2 if held(:left)
@@ -143,6 +146,7 @@ module Tower
       if (hero.x + 4) / 8 == col && (hero.y + 4) / 8 == row
         level += 1
         hero.move_to(*START)
+        hide_sprites
       end
     end
 

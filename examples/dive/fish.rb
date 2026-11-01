@@ -48,6 +48,11 @@ module Dive
     def initialize(build)
       @build = build
       declare_art
+      # The console holds sixteen groups of sprite colours and lends them to whatever is on
+      # screen, so a fish swimming off the edge could give its group up and borrow one back
+      # when it returns. The whole shoal is in this dive, so `colors_in_use` says so, and all
+      # six species keep their groups for as long as the dive lasts.
+      build.colors_in_use SPECIES
       @fish = build.layer(:swimmers) do
         build.pool :fish, x: 0, y: 0, speed: 0, kind: 0, capacity: SHOAL,
                           facing: { right: :fish_right, left: build.mirror(:fish_right) }

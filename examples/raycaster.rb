@@ -131,11 +131,12 @@ module Raycaster
       view += 4 if held(:right)
 
       # Walking. The step is WALK cells in the direction the player faces — a cosine and
-      # a sine, each times the walking speed.
+      # a sine, each times the walking speed. Backing up is the same step with its sign
+      # changed, and `negate!` changes the sign of the variable it names.
       step_x = sin[view + QUARTER] * WALK
       step_y = sin[view] * WALK
-      step_x.flip! if held(:down)
-      step_y.flip! if held(:down)
+      negate! :_step_x if held(:down)
+      negate! :_step_y if held(:down)
 
       if held(:up) || held(:down)
         # Try the step, and take it only if the cell it lands in is empty — otherwise

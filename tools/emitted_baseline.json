@@ -22,7 +22,7 @@
       "data": 0
     },
     "cave": {
-      "code": 40856,
+      "code": 42500,
       "data": 0
     },
     "chip_band": {
@@ -34,7 +34,7 @@
       "data": 13928
     },
     "clock": {
-      "code": 142552,
+      "code": 149506,
       "data": 0
     },
     "corridor": {
@@ -42,7 +42,7 @@
       "data": 0
     },
     "dive": {
-      "code": 54936,
+      "code": 59380,
       "data": 0
     },
     "floating_digits": {
@@ -62,15 +62,15 @@
       "data": 0
     },
     "hero": {
-      "code": 94040,
+      "code": 95636,
       "data": 0
     },
     "jukebox": {
-      "code": 63398,
+      "code": 71834,
       "data": 0
     },
     "lake": {
-      "code": 4164,
+      "code": 5530,
       "data": 0
     },
     "level": {
@@ -82,7 +82,7 @@
       "data": 0
     },
     "meadow": {
-      "code": 32908,
+      "code": 33888,
       "data": 0
     },
     "pacman": {
@@ -138,7 +138,7 @@
       "data": 0
     },
     "shmup": {
-      "code": 41424,
+      "code": 41792,
       "data": 0
     },
     "snake": {
@@ -146,7 +146,7 @@
       "data": 0
     },
     "snake_buffered": {
-      "code": 40476,
+      "code": 42892,
       "data": 0
     },
     "sparks": {
@@ -162,12 +162,12 @@
       "data": 0
     },
     "tower": {
-      "code": 20540,
+      "code": 20692,
       "data": 0
     },
     "tower@gbc": {
       "code": 8574,
-      "data": 15760
+      "data": 15840
     }
   }
 }

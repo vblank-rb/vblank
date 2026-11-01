@@ -173,17 +173,19 @@ module Lake
         ~~~~~|~~
       ART
     end
-    # The hills, upside down in the water and drained of colour the way a reflection is.
-    image :hill_reflection, "#" => rgb(4, 12, 16), "^" => rgb(5, 15, 19) do
+    # The hills again, drained of colour the way a reflection is. They are drawn the right way
+    # up, like the hills they copy; `upside_down` turns them top to bottom where the tiles
+    # below name them, which is what lying in water does to a hill.
+    image :pale_hill, "#" => rgb(4, 12, 16), "^" => rgb(5, 15, 19) do
       <<~ART
-        ########
-        ########
-        ########
-        ########
-        ########
-        ########
-        ########
         ^#^##^#^
+        ########
+        ########
+        ########
+        ########
+        ########
+        ########
+        ########
       ART
     end
     # The sun's reflection: a bright column down the water. This is the tile the ripple
@@ -226,7 +228,7 @@ module Lake
     end
 
     tiles :above, "." => :sky, "o" => :sun, "^" => :hill, "=" => :shore, "~" => :water
-    tiles :below, "~" => :water, "v" => :hill_reflection, "|" => :glint
+    tiles :below, "~" => :water, "v" => upside_down(:pale_hill), "|" => :glint
 
     layers :shore, :surface, :swimmers # the stack, back to front
 
@@ -240,6 +242,11 @@ module Lake
     jellyfish = layer(:swimmers, transparency: SEE_THROUGH) do
       DRIFT.map { |x, depth, speed| [sprite(:jelly, at: [x, depth]), depth, speed] }
     end
+
+    # They drift past one another at different speeds, so which one is in front has to be
+    # worked out as they go. The further down the screen a thing is, the nearer it looks, and
+    # `draw_in_order` says exactly that: each frame the lower jellyfish is drawn in front.
+    draw_in_order(*jellyfish.map(&:first))
 
     # One wave, as a table of sideways offsets worked out at build time. A table is the
     # right home for it: the block below runs 160 times a frame, so anything it has to
