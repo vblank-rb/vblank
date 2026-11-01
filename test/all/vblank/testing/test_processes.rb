@@ -28,7 +28,10 @@ class TestProcesses < Minitest::Test
     command << "-r#{RUNNER}" if processes
     command += [LOADER, FIXTURE, "--no-ractor"]
     command << "--seed=#{seed}" if seed
-    settings = { "VBLANK_LOWERING" => "native", "MT_CPU" => "1", "TEST_PROCESSES" => processes&.to_s }
+    # The fixture is a native run of its own, whichever console the run that plays this test is playing as:
+    # the console settings are left out of what it inherits, since a native run plays a Genesis as nothing.
+    settings = { "VBLANK_LOWERING" => "native", "MT_CPU" => "1", "TEST_PROCESSES" => processes&.to_s,
+                 "CONSOLE" => nil, "VBLANK_CONSOLE" => nil }
     out, status = Open3.capture2e(settings.merge(env), *command, chdir: ROOT)
     [out, status.success?]
   end
