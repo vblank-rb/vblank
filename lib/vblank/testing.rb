@@ -158,7 +158,9 @@ end
 
 # FAIL_FAST=1: stop at the first failing test.
 require_relative "testing/fail_fast"
-if ENV[VBlank::Testing::Lowering::STOPS_AT_FAILURE_SETTING]
+# Taken out of the environment as it is read: it is for this process, and a test that starts a run
+# of its own, to watch that run fail, must not stop at the failure it is there to see.
+if ENV.delete(VBlank::Testing::Lowering::STOPS_AT_FAILURE_SETTING)
   module Minitest
     def self.plugin_fail_fast_init(options)
       children = defined?(VBlank::Testing::Processes) ? VBlank::Testing::Processes.running : nil
