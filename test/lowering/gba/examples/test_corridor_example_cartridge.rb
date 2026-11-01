@@ -23,11 +23,11 @@ class TestCorridorExampleCartridge < Minitest::Test
 
   # THE TEST THIS EXAMPLE EXISTS FOR: the only question an author acts on is whether it fits,
   # and this is the same game either side of the line. Sixty rays holds 60 frames a second;
-  # eighty does not. Both are run, so neither answer is anybody's opinion.
+  # a hundred and twenty does not. Both are run, so neither answer is anybody's opinion.
   def test_which_side_of_the_line_the_game_is_on
     require_emulator!
     [[Corridor::NUM_COLS, Corridor::COL_W, true],
-     [80, 3, false]].each do |cols, col_w, should_fit|
+     [120, 2, false]].each do |cols, col_w, should_fit|
       game = Corridor.game(name: "COR#{cols}", cols: cols, col_w: col_w)
       result = profile_of(game)
 

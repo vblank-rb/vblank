@@ -52,6 +52,8 @@ test/console/snes/vblank/builder/test_music_volume_on_the_super_nintendo.rb
 
 # Each lowering's own
 test/lowering/gba/vblank/diagnostics/test_verifier_passes.rb
+test/lowering/gba/vblank/ir/backends/gba/test_scene_loads_first.rb
+test/lowering/gba/vblank/ir/backends/gba/test_mixer_sound.rb
 test/lowering/native/vblank/ir/backends/native/test_checked_run.rb
 test/lowering/native/vblank/ir/backends/native/test_native_kind_coverage.rb
 test/lowering/js/vblank/ir/backends/js/test_js_checked_run.rb

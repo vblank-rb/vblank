@@ -13,7 +13,7 @@ class TestHandOvers < Minitest::Test
 
   HEAVY = 14 # pictures, 64 by 64 in sixteen colours, two thousand bytes each
   LIGHT = 1
-  WORK = 10_000 # trips round a loop each pass: inside a frame alone, past it with the heavy copy
+  WORK = 15_000 # trips round a loop each pass: inside a frame alone, past it with the heavy copy
 
   # +work_in+ is where the work is done each pass: in the play scene, or in the game loop
   # outside it, where it runs on the pass that copies the pictures too.

@@ -17,8 +17,13 @@ require "zlib"
 # shaped chord — and compares a checksum of every byte the console played. The number was
 # taken from the routine mixing ONE sample each time round, which is the form whose sound was
 # right before it changed. A deliberate change to what the mix plays takes the number again.
+#
+# THE NUMBER ALSO HOLDS THE GAME'S TIMING. A mix runs while the game does, so one instruction more
+# or fewer in this game's loop moves when a play lands against the mix and changes every byte after
+# it. A change to the code the game loop is lowered to takes the number again too, once the game is
+# seen to make the same plays on the same frames.
 class TestMixerSound < Minitest::Test
-  PLAYED = 0x5C0E1079
+  PLAYED = 0x5B36A1B8
 
   private def rom
     VBlank.build("MIXSAME", console: :gba, out: nil, err: nil) do

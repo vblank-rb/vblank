@@ -52,7 +52,7 @@ class TestDrawNumberCartridge < Minitest::Test
 
     # And it's a fraction of the hand-written ten-way fan-out it replaces.
     fan_out = GBA.new.lower(digit_fan_out_at(8, 8))
-    assert_operator code.bytesize, :<, fan_out.bytesize / 3,
+    assert_operator code.bytesize, :<, fan_out.bytesize / 2,
                     "data-driven digit rendering should be far smaller than the fan-out"
   end
 

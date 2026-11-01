@@ -15,7 +15,7 @@ require "test_helper"
 class TestSceneLoadsFirst < Minitest::Test
   HEAVY = 14 # pictures, 64 by 64 in sixteen colours, two thousand bytes each
   LIGHT = 1
-  WORK = 10_000 # trips round a loop each pass: inside a frame alone, past it with the heavy copy
+  WORK = 15_000 # trips round a loop each pass: inside a frame alone, past it with the heavy copy
   FRAMES = 30
 
   private def hand_over(pictures:, loads_first:)

@@ -190,8 +190,10 @@ class TestMeasuredPlacement < Minitest::Test
     game = VBlank.game("MSAV", consoles: %i[gba]) do
       screen :bitmap
       score = 0
+      saved = Array.new(40) { |n| var :"saved#{n}", 0 } # enough to write that its writing is worth the room
       files = save_data :file, copies: 2 do
         keep score
+        saved.each { |value| keep value }
       end
       var :state, 0
       scene(:files) { files[0].save if pressed(:a) }
