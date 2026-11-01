@@ -416,6 +416,35 @@ module VBlank
       # otherwise (ColorReading).
       private def variable_kept_at(_name, address) = var_at(address)
 
+      # A GAME'S LISTS AND POOLS, BY THE NAMES IT GAVE THEM, in the interpreter's own words: `list`
+      # reads everything in a list now, oldest first, and `pool` one field of a pool, an entry for
+      # each slot and nil for a free one (Reference::ReadingBack, which is what asks these). Where a
+      # list landed is what the build wrote down, so a list the build moved is read where it went.
+      # Each console keeps a list its own way (#kept_list_items).
+      include IR::Backends::Reference::ReadingBack
+
+      private def list_names
+        refuse_missing_build_record!("where its lists are")
+        @rom.built.lists.keys
+      end
+
+      private def list_items(name)
+        place = @rom.built.lists[name] if list_names.include?(name)
+        kept_list_items(place) if place
+      end
+
+      private def variables_now = list_of_variables.to_h { |name| [name, var(name)] }
+
+      private def list_of_variables
+        refuse_missing_build_record!("where its variables are") unless @var_addresses
+        @var_addresses.keys
+      end
+
+      private def little_slot(address, bytes)
+        raw = (0...bytes).sum { |i| mem8(address + i) << (8 * i) }
+        raw >= 1 << ((bytes * 8) - 1) ? raw - (1 << (bytes * 8)) : raw
+      end
+
       # The variable at an address, with its sign put back — the rule above, kept in one place so
       # that anything reading a variable the program never named (the framework keeps a few of its
       # own) reads it the same way a game's own variable is read.

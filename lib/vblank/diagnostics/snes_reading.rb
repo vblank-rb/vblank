@@ -10,6 +10,9 @@ module VBlank
     # memory, sprites, passes and sound are read as the other consoles' are.
     module SNESReading
       include CountedPasses
+      include RuntimeLists
+
+      private def list_layout = IR::Backends::SNES::Runtime::Lists
 
       # Eight lists of sixteen colours for the backgrounds, then eight for the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 128, group: 16)

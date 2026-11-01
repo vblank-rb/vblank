@@ -18,6 +18,15 @@ module VBlank
       # draws from — so these are what turns "group 4" into a place in the table.
       PALETTE = Verifier::PaletteLayout.new(half: 256, group: 16)
 
+      # A list here is its slots, with its length and, for one the game shifts, where its oldest
+      # item is, kept apart from them (IR::Backends::GBA::Lists#list_places).
+      private def kept_list_items(place)
+        front = place.head_at ? var_at(place.head_at) : 0
+        Array.new(var_at(place.length_at)) do |i|
+          little_slot(place.base + (((front + i) % place.slots) * place.bytes), place.bytes)
+        end
+      end
+
       # How many instructions {#run_until} runs before it gives up: several frames of a game
       # that never sleeps.
       RUN_UNTIL_LIMIT = 2_000_000

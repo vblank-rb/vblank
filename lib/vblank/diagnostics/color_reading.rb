@@ -26,6 +26,9 @@ module VBlank
       SAVE_FILE = Verifier::SaveFileLayout.new(whole: Console::GBCHardware::SRAM_BANK_SIZE, clock_bytes: 48)
 
       include CountedPasses
+      include RuntimeLists
+
+      private def list_layout = IR::Backends::GBC::Runtime::Lists
 
       # A VARIABLE THE GAME SAID IS NARROW is kept in a byte or two here, with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.

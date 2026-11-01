@@ -16,6 +16,7 @@ require_relative "diagnostics/verifier" # ...and reading real pixels and real so
 require_relative "diagnostics/sound_recording" # what a game sounds like on the cartridge, the desktop build or as Ruby
 require_relative "diagnostics/counted_passes" # ...the passes of a console whose runtime counts them
 require_relative "diagnostics/snes_probe" # ...a running Super Nintendo cartridge, as the reader asks of one
+require_relative "diagnostics/runtime_lists" # ...a list as the Color's and the Super Nintendo's runtimes keep it
 require_relative "diagnostics/advance_reading" # ...what an Advance cartridge keeps its own way
 require_relative "diagnostics/color_reading" # ...and what a Game Boy Color cartridge does
 require_relative "diagnostics/snes_reading" # ...and what a Super Nintendo cartridge does

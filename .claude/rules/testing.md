@@ -116,6 +116,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `settings_root_cases.rb` (where a player's settings folders are, the table the Ruby and C rules are both held to),
 `repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),
 `clock_tests.rb` (the clock's tests, played by each console that has one),
+`list_reading_tests.rb` (a game's lists and pools read off a running cartridge, played by each console that has a cartridge),
 `song_instrument_tests.rb` (a song part playing a recorded instrument, played by each console that mixes them),
 `note_envelope_tests.rb` (recorded notes with a loudness shape falling away on their voices, played by each console that mixes them),
 `sound_effect_recording_tests.rb` (sound effects whose parts play a recording, sharing the voices by rank, played by each console that mixes them),
