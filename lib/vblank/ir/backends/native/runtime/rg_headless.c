@@ -73,6 +73,8 @@
 static long frames_to_play;
 static long frame; /* frames started so far */
 static int every_picture; /* print the picture at every frame, not only at the end */
+static int asked;         /* say nothing between frames but what is asked (see answer_until_buttons) */
+static const char *asked_name; /* the one variable or list being asked about just now */
 static FILE *sound_out;   /* where each frame's sound is written, if anywhere */
 static FILE *picture_out; /* where each moment's picture is written, if anywhere */
 static const char *save_path; /* the file save memory is read from and written back to, if any */
@@ -239,7 +241,37 @@ static void read_buttons(void) {
   rg_buttons_read((uint32_t)mask);
 }
 
+/* ASKED: the game prints nothing of itself between frames, and says what it holds when asked. Printing
+ * everything each frame is what a run read frame by frame wants, and for a game with long lists
+ * reading that back is most of the run. So here each frame says only that it wants its buttons, and
+ * until they come a line "? name" is answered with that variable or list, then a ".". */
+static void answer_until_buttons(void) {
+  char line[256];
+  puts("buttons?");
+  fflush(stdout);
+  while (fgets(line, sizeof line, stdin)) {
+    if (line[0] != '?') {
+      rg_buttons_read((uint32_t)strtoul(line, NULL, 10));
+      return;
+    }
+    line[strcspn(line, "\n")] = '\0';
+    asked_name = line + 2;
+    rg_game_dump_state();
+    asked_name = NULL;
+    puts(".");
+    fflush(stdout);
+  }
+  finish();
+}
+
 static void headless_wait_vblank(void) {
+  if (asked) {
+    if (frame >= frames_to_play) finish();
+    rg_frame_begins();
+    frame++;
+    answer_until_buttons();
+    return;
+  }
   write_frame_sound();
   if (frame >= frames_to_play) finish();
   rg_frame_begins();
@@ -263,7 +295,10 @@ static void headless_fault(const char *format, va_list args) {
 
 /* "var" first, so no name a game gives a variable can be read as one of the other lines: a game
  * may well call one `frame`, or `picture`. */
-static void headless_dump_variable(const char *name, int32_t value) { printf("var %s %d\n", name, (int)value); }
+static void headless_dump_variable(const char *name, int32_t value) {
+  if (asked_name && strcmp(name, asked_name) != 0) return;
+  printf("var %s %d\n", name, (int)value);
+}
 
 /* "sound" first, for the same reason a variable's line starts with "var"; printed as it happens,
  * among the frames, so a test reading the log mid-run sees it up to the frame it is on. */
@@ -274,6 +309,7 @@ static void headless_sound_logged(const char *line) { printf("sound %s\n", line)
  * come this way too, a slot an item, under the names the build gave them. The tab ends the name,
  * since a pool's field may be called anything, spaces and all. */
 static void headless_dump_list(const rg_list *list) {
+  if (asked_name && strcmp(list->name, asked_name) != 0) return;
   printf("list %s\t", list->name);
   for (int32_t i = 0; i < list->length; i++) printf(i ? " %d" : "%d", (int)list->items[rg_list_slot(list, i)]);
   fputc('\n', stdout);
@@ -291,6 +327,8 @@ int rg_headless_main(int argc, char **argv) {
   for (int i = 2; i < argc; i++) {
     if (strcmp(argv[i], "--every-picture") == 0) {
       every_picture = 1;
+    } else if (strcmp(argv[i], "--asked") == 0) {
+      asked = 1;
     } else if (strcmp(argv[i], "--sound-out") == 0 && i + 1 < argc) {
       sound_out = fopen(argv[++i], "wb");
       if (!sound_out) {

@@ -36,6 +36,7 @@ require_relative "ir/fading" # ...and the one rule saying which part of the disp
 require_relative "ir/light_scenes" # ...and which scenes a light is off in, to let one of those have it
 require_relative "ir/tunes" # which tunes a program plays, and the mixer voices they keep
 require_relative "ir/mixing" # ...and how its recordings are added together into one stream
+require_relative "ir/rules_only" # a program with nothing to see or hear, for a bot to play fast
 require_relative "ir/verifier"
 require_relative "ir/portability"
 require_relative "ir/backends"

@@ -527,7 +527,10 @@ module VBlank
                                  --script, even with --tape.
         --on WAY                 #{VBlank::Playthroughs::LoweredGame.ways.join(', ')}: how
                                  to run the game. With no window it goes as fast
-                                 as this computer can.
+                                 as this computer can. logic plays the rules with
+                                 no picture and no sound, for a bot: far faster,
+                                 and it makes no tape, since a cartridge's frames
+                                 fall differently. Needs zig.
         --window                 Show the game in the window of vblank run, at the
                                  console's frame rate. The menu, pause and fast
                                  forward work. The script holds the buttons, so

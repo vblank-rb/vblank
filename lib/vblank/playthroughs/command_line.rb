@@ -30,6 +30,7 @@ module VBlank
       def play(cartridge_file)
         saying_errors_plainly do
           refuse_missing_cartridges!(cartridge_file)
+          refuse_what_logic_cannot_make!
           playing = tape_or_playthrough(lead_in_flag: :lead_in)
           lead_in = lead_in_named(options[:lead_in])
           %i[write_tape write_save].each { |flag| refuse_unwritable_file!(flag) }
@@ -116,6 +117,18 @@ module VBlank
 
       # Every file has to be there before anything is built: building the first game file
       # takes a while, and the second file's name can be the one spelled wrong.
+      # `--on logic` has no picture and no sound, and its frames are not the console's, so a tape
+      # made there does not play on a cartridge. It finds tactics and seeds.
+      def refuse_what_logic_cannot_make!
+        return unless options[:on] == LoweredGame::LOGIC
+
+        said = %i[window pictures_in write_tape write_save].find { |flag| options[flag] }
+        return unless said
+
+        raise Refused, "#{flag_of(said)} cannot go with --on logic, which plays a game's rules with no picture and no " \
+                       "sound, and whose frames are not the console's. To fix this, play that on another way."
+      end
+
       def refuse_missing_cartridges!(*files)
         missing = files.find { |file| !File.file?(file) } or return
 

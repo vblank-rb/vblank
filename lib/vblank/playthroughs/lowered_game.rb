@@ -3,7 +3,7 @@
 module VBlank
   module Playthroughs
     # A PLAYTHROUGH ON ANOTHER WAY OF RUNNING A GAME than the emulator: the interpreter, or the game
-    # built as C, as JavaScript played by node, or as Ruby. It answers what a playthrough asks of a
+    # built as C, as JavaScript played by node, or as Ruby, or its rules alone (Native::RulesRun). It answers what a playthrough asks of a
     # running game (a frame played, a number read) the way the emulator's reader does, so a script
     # and its steering blocks need no change. Each of these runs a game from start to end, asking
     # for each frame's buttons as it goes, so the run sits in a Fiber, stopped at that question,
@@ -15,10 +15,14 @@ module VBlank
     class LoweredGame
       # The ways, by the word `vblank play --on` takes, and the run each is.
       RUNS = { "interpreter" => -> { IR::Backends::Reference }, "native" => -> { IR::Backends::Native::HeadlessRun },
-               "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun } }.freeze
+               "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun },
+               "logic" => -> { IR::Backends::Native::RulesRun } }.freeze
 
       # The way that plays the cartridge itself, which is no LoweredGame.
       EMULATOR = "emulator"
+
+      # The way with nothing to see or hear, for a bot playing one long run many times.
+      LOGIC = "logic"
 
       def self.ways = [EMULATOR, *RUNS.keys]
 

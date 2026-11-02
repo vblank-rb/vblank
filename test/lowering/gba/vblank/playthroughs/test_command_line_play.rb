@@ -247,6 +247,8 @@ class TestCommandLinePlay < Minitest::Test
         ["walker.rb", "--script", "walk.rb", "--lead-in", "nobody"] => /no playthrough named "nobody"/,
         ["walker.rb", "--script", "walk.rb", "--write-tape", "nowhere/walk.tape"] => /--write-tape nowhere\/walk\.tape cannot be written/,
         ["walker.rb", "--script", "walk.rb", "--write-save", "."] => /--write-save \. is a folder/,
+        ["walker.rb", "--script", "walk.rb", "--on", "logic", "--write-tape", "walk.tape"] => /--write-tape cannot go with --on logic/,
+        ["walker.rb", "--script", "walk.rb", "--on", "logic", "--pictures-in", "shots"] => /--pictures-in cannot go with --on logic/,
       }.each do |args, says|
         out, status = cli("play", *args, dir: dir)
 

@@ -15,6 +15,7 @@ require_relative "native/sound"
 require_relative "native/saving"
 require_relative "native/lowering"
 require_relative "native/headless_run"
+require_relative "native/rules_run" # ...and a game's rules alone, read only as asked
 require_relative "native/differences"
 require_relative "native/checked_run"
 require_relative "native/menu_data"
