@@ -183,11 +183,14 @@ module VBlank
 
         # --- sound and music ---
         enable_sound: works,
-        define_sound: works("a Genesis plays a square on its PSG, which has three square voices."),
+        define_sound: works("a Genesis plays a square on its PSG, which has three square voices. Each square is " \
+                            "half up and half down, so `duty:` is not heard, and a PSG voice sounds from both " \
+                            "speakers. A fade or a swell moves in the same time as on the Advance. The lowest " \
+                            "square note is 109 Hz."),
         beep: works("see `define_sound`."),
-        noise: works("a hiss is played on the PSG's noise voice."),
-        wave: works("a Genesis has no wave voice: the six voices of its FM chip play each waveform as a tone " \
-                    "of their own."),
+        noise: works("a hiss is played on the PSG's noise voice, and `metallic:` is its rattle."),
+        wave: works("a Genesis has no wave voice: the first voice of its FM chip plays each waveform as a tone of " \
+                    "its own, the first four harmonics of the waveform."),
         stop_wave: works,
         song: works("see `define_sound` for the square and wave voices."),
         play_song: works,

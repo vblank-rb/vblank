@@ -56,6 +56,7 @@ module VBlank
       VDP_CONTROL = 0xC00004 # commands and register writes; read, it is the status
       VDP_COUNTER = 0xC00008 # the beam's place: vertical counter in the high byte
       PSG = 0xC00011 # the sound chip's square voices, written a byte at a time
+      FM = 0xA04000 # the FM chip's two parts, a register port and a value port each
 
       # A register write is one word to the control port: $80 + the register's number in the high
       # byte, and the value in the low byte (`VDP_REGISTER | (number << 8) | value`).

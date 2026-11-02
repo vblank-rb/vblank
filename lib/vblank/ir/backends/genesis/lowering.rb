@@ -39,6 +39,7 @@ module VBlank
           include Paint
           include Picture
           include Collision
+          include Sound
 
           STATEMENTS = Ractor.make_shareable({
                                                program: :emit_children, set: :emit_set, add: :emit_add,
@@ -65,7 +66,7 @@ module VBlank
                                                show_picture_group: :emit_nothing,
                                                # a tiled screen is the one the console is set up for at power-on
                                                screen: :emit_nothing
-                                             }.merge(Paint::STATEMENTS).merge(Picture::STATEMENTS)
+                                             }.merge(Paint::STATEMENTS).merge(Picture::STATEMENTS).merge(Sound::STATEMENTS)
                                               .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))
 
           VALUES = Ractor.make_shareable({
@@ -91,9 +92,7 @@ module VBlank
                                                     "the picture" => %i[draw_column_at],
                                                     "save memory" => %i[save_init save_store save_write save_erase
                                                                         save_read save_sum],
-                                                    "sound" => %i[enable_sound beep noise wave stop_wave play_song
-                                                                  stop_music hold_music play_from_list
-                                                                  play_sound_effect play_sample stop_sample]
+                                                    "recordings" => %i[play_sample stop_sample]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by
@@ -154,6 +153,7 @@ module VBlank
             prepare_paint
             prepare_picture
             prepare_collision
+            prepare_sound
             @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES,
                                     most_part_bytes: MOST_PART_BYTES) { |statements| bytes_of(statements) }
           end
@@ -431,7 +431,7 @@ module VBlank
           # What the lowering only reads while it makes a statement, shared as it is: numbers, names,
           # the program and what is worked out from it before any statement is made.
           SHARED_WHEN_MEASURING = [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, SpriteNames,
-                                   M68000, RoutineCuts::PartCall, LoweringPlan].freeze
+                                   M68000, Music, RoutineCuts::PartCall, LoweringPlan].freeze
 
           # What the lowering keeps that making a statement never changes, shared as it is: the
           # statements already cut into parts, which only cutting adds to.

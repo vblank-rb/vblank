@@ -138,10 +138,10 @@ and a test fails when the two differ. The Advance's answers are in
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
 - `enable_sound` — works: the same as on the Advance.
-- `define_sound` — works: a Genesis plays a square on its PSG, which has three square voices.
+- `define_sound` — works: a Genesis plays a square on its PSG, which has three square voices. Each square is half up and half down, so `duty:` is not heard, and a PSG voice sounds from both speakers. A fade or a swell moves in the same time as on the Advance. The lowest square note is 109 Hz.
 - `beep` — works: see `define_sound`.
-- `noise` — works: a hiss is played on the PSG's noise voice.
-- `wave` — works: a Genesis has no wave voice: the six voices of its FM chip play each waveform as a tone of their own.
+- `noise` — works: a hiss is played on the PSG's noise voice, and `metallic:` is its rattle.
+- `wave` — works: a Genesis has no wave voice: the first voice of its FM chip plays each waveform as a tone of its own, the first four harmonics of the waveform.
 - `stop_wave` — works: the same as on the Advance.
 - `song` — works: see `define_sound` for the square and wave voices.
 - `play_song` — works: the same as on the Advance.
@@ -167,7 +167,7 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - layers see-through: `see_through`
 - the picture: `draw_column_at`
 - save memory: `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`
-- sound: `enable_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
+- recordings: `play_sample`, `stop_sample`
 
 Parts of the picture are refused the same way, naming the part:
 

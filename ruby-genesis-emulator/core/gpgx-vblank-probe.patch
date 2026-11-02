@@ -1,11 +1,40 @@
+diff --git a/core/sound/psg.c b/core/sound/psg.c
+--- a/core/sound/psg.c
++++ b/core/sound/psg.c
+@@ -223,6 +223,8 @@
+ 
+   return bufferptr;
+ }
++
++int *probe_psg_registers(void) { return psg.regs; } /* THE PROBE PATCH: the chip's eight registers */
+ 
+ void psg_write(unsigned int clocks, unsigned int data)
+ {
+diff --git a/core/sound/ym2612.c b/core/sound/ym2612.c
+--- a/core/sound/ym2612.c
++++ b/core/sound/ym2612.c
+@@ -1954,9 +1954,13 @@
+ /* n = number  */
+ /* a = address */
+ /* v = value   */
++unsigned char probe_fm_registers[0x200]; /* THE PROBE PATCH: what each register was last told */
++
+ void YM2612Write(unsigned int a, unsigned int v)
+ {
+   v &= 0xff;  /* adjust to 8 bit bus */
++
++  if (a & 1) probe_fm_registers[ym2612.OPN.ST.address & 0x1ff] = v;
+ 
+   switch( a )
+   {
 diff --git a/libretro/libretro.c b/libretro/libretro.c
-index 798c6cc5..653ee469 100644
 --- a/libretro/libretro.c
 +++ b/libretro/libretro.c
-@@ -3743,10 +3743,40 @@ void retro_unload_game(void)
+@@ -3742,11 +3742,48 @@
+ }
  
  unsigned retro_get_region(void) { return vdp_pal ? RETRO_REGION_PAL : RETRO_REGION_NTSC; }
- 
++
 +/* THE PROBE PATCH: the console's own memories, which libretro has no names for. Video RAM, colour
 +   RAM, vertical scroll RAM, the VDP's registers, and the 68000's registers (data registers, then
 +   address registers, then the program counter and the status register, 32 bits each). */
@@ -15,6 +44,11 @@ index 798c6cc5..653ee469 100644
 +#define PROBE_VDP_REGS  0x8004
 +#define PROBE_M68K_REGS 0x8005
 +#define PROBE_SAT       0x8006
++#define PROBE_PSG_REGS  0x8007
++#define PROBE_FM_REGS   0x8008
+ 
++extern int *probe_psg_registers(void);
++extern unsigned char probe_fm_registers[0x200];
 +
 +static unsigned int probe_m68k_regs[18];
 +
@@ -39,11 +73,13 @@ index 798c6cc5..653ee469 100644
 +      case PROBE_VSRAM:     return vsram;
 +      case PROBE_VDP_REGS:  return reg;
 +      case PROBE_SAT:       return sat;
++      case PROBE_PSG_REGS:  return probe_psg_registers();
++      case PROBE_FM_REGS:   return probe_fm_registers;
 +      case PROBE_M68K_REGS: probe_read_m68k_regs(); return probe_m68k_regs;
        case RETRO_MEMORY_SAVE_RAM:
           return sram.on ? sram.sram : NULL;
        case RETRO_MEMORY_SYSTEM_RAM:
-@@ -3762,6 +3792,12 @@ size_t retro_get_memory_size(unsigned id)
+@@ -3762,6 +3799,14 @@
  
     switch (id)
     {
@@ -52,6 +88,8 @@ index 798c6cc5..653ee469 100644
 +      case PROBE_VSRAM:     return 0x50;
 +      case PROBE_VDP_REGS:  return 0x20;
 +      case PROBE_SAT:       return 0x400;
++      case PROBE_PSG_REGS:  return 8 * sizeof(int);
++      case PROBE_FM_REGS:   return 0x200;
 +      case PROBE_M68K_REGS: return sizeof(probe_m68k_regs);
        case RETRO_MEMORY_SAVE_RAM:
        {

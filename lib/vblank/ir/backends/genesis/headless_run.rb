@@ -20,10 +20,46 @@ module VBlank
           # A Genesis cartridge has no rumble motor, so it never runs (Reference#motor_on?).
           def motor_on? = false
 
-          # Nothing sounds on a Genesis build yet: the sound log and the recordings sounding are empty.
-          def audio = []
+          # The sound log up to the moment the run ended, or the one at the frame boundary a watching block is
+          # asked at, in the interpreter's words (the build's sound_entries, by the number the cartridge's own
+          # log keeps: Runtime::Sound, read as Music.interpreter_entry). It is the test's to clear as it
+          # watches, as the interpreter's is: what comes after is added to what the test left.
+          def audio
+            @audio.concat(in_interpreter_words(@logged_entries[@audio_handed...@sounds])) if @sounds > @audio_handed
+            @audio_handed = [@audio_handed, @sounds].max
+            @audio
+          end
+          
+          # The sound log up to the moment the run ended, every entry, whatever a test did to #audio.
+          def audio_played = in_interpreter_words(@logged_entries.take(@sounds))
+          
+          # Every entry the cartridge logged, as it logged them: a stop names the tune it stopped
+          # ([:stop_music, name], Music.stop_entry), which the writes the stop means depend on.
+          def audio_as_logged = @logged_entries.dup
+          
+          # What the chips held each time the game was found waiting at a pass's end, each with how many
+          # entries the sound log held then: [entries, [the PSG's registers, the FM chip's]], oldest first. A
+          # checked run holds them to the interpreter's sound log as far as those entries (ChipWrites.after).
+          # Empty for a game that makes no sound.
+          attr_reader :chip_reads
+          
+          # WHAT WAS HEARD: the loudest sample in each screen frame from power-on, left or right, as a number
+          # from 0 to 32768. A frame is the finest it sees.
+          attr_reader :loudest_each_frame
+          
+          # Every sample the console made in a run that asked for them (+keep_sound+), left and right in turn.
+          attr_reader :sound_made
+          
+          # Nothing sounds as a recording on a Genesis build yet.
           def active_samples = []
-
+          
+          # +keep_sound+ keeps every sample the console makes, for a test of what they are: a run plays a good
+          # deal of them, so only a test that asks for them pays for it.
+          def initialize(save: SaveImage.new, keep_sound: false)
+            super(save: save)
+            @keep_sound = keep_sound
+          end
+          
           # The rest of what the interpreter answers, each refused by name.
           refuses :clock_at, :mixed_sound
 
@@ -53,6 +89,49 @@ module VBlank
                                                               camera_x: camera[0], camera_y: camera[1]), sounds)
           end
 
+          # A pass's moment waits for the count of its sounds (#sounds_counted?), but for the moment the run
+          # ends on.
+          def moment_ready?(pass, frames) = pass > frames || sounds_counted?(pass)
+          
+          # How many entries the cartridge's sound log holds now, those read into the log in the interpreter's
+          # words, and the chips' registers kept beside the count (#chip_reads); 0 for a game that makes no sound.
+          def read_sounds
+            return 0 unless sound?
+          
+            logged = half(runtime_place(Runtime::Sound::LOGGED))
+            read_sound_entries(logged)
+            @chip_reads << [logged, [@core.psg_registers, @core.fm_registers]]
+            logged
+          end
+          
+          def sound? = @places.runtime.key?(Runtime::Sound::LOGGED)
+          
+          # How many entries the sound log held as pass +pass+'s wait ended.
+          def logged_by_pass(pass) = half(logged_slot(pass) + 2)
+          
+          # Whether the cartridge has kept that count for +pass+ yet: its slot carries the pass's number. True
+          # for a game that makes no sound.
+          def sounds_counted?(pass) = !sound? || half(logged_slot(pass)) == (pass & 0xFFFF)
+          
+          def logged_slot(pass)
+            runtime_place(Runtime::Sound::LOGGED_BY_PASS) + ((pass % Runtime::Frame::STEPS_KEPT) * Runtime::Sound::LOGGED_SLOT_BYTES)
+          end
+          
+          # The cartridge's sound log read into the interpreter's words as far as +logged+ entries.
+          def read_sound_entries(logged)
+            if logged - @logged_entries.size > Runtime::Sound::LOG_LENGTH
+              raise CannotAnswer, "the Genesis cartridge logged more than #{Runtime::Sound::LOG_LENGTH} sounds in one pass, " \
+                                  "more than its sound log holds"
+            end
+          
+            ring = runtime_place(Runtime::Sound::LOG)
+            (@logged_entries.size...logged).each do |count|
+              @logged_entries << @places.sound_entries.fetch(half(ring + ((count % Runtime::Sound::LOG_LENGTH) * 2)))
+            end
+          end
+          
+          def in_interpreter_words(entries) = entries.map { |entry| Music.interpreter_entry(entry) }
+          
           # THE BUTTONS ARE THE ONES HELD FROM POWER-ON for the first emulated frame, which is where the
           # cartridge reads them (Runtime::Boot), and from the second on each frame's own, decided before
           # the frame is played. The frames the runtime counts (Frame::FRAMES) start as the screen comes
@@ -62,17 +141,30 @@ module VBlank
           def start_run(_program)
             @frames_played = 0
             @deciding = true
+            @logged_entries = []
+            @sounds = 0
+            @audio = []
+            @audio_handed = 0
+            @chip_reads = []
+            @loudest_each_frame = []
+            @sound_made = []
           end
 
           def next_screen_frame = screen_on? ? super : 1
 
-          # The moment of +frame+ — a pass's number, or :end for the moment the run ended on.
+          # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
+          # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
+          # INCLUDE ITS FRAME BOUNDARY'S MUSIC, which the cartridge plays where the wait ends, after the game
+          # was found waiting, so a pass's moment takes the count the cartridge kept as that wait ended
+          # (Runtime::Sound::LOGGED_BY_PASS). The moment the run ended on has no boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
             @vars = variables
             @lists = lists
             @screen = picture
+            @sounds = frame == :end || !sound? ? sounds : logged_by_pass(frame)
+            read_sound_entries(@sounds) if sound?
             @moments << Moment.new(frame: frame, variables: variables, picture: picture_check_of(picture.shown),
-                                   sounds: sounds, sprites: @sprites, collections: game_state.except(:vars), sounding: [])
+                                   sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars), sounding: [])
             @on_vblank&.call(frame) unless frame == :end
           end
 
@@ -93,6 +185,9 @@ module VBlank
             @frames_played += 1
             decide_buttons unless @frames_played == 1
             @core.run_frame
+            sound = @core.take_audio
+            @loudest_each_frame << (sound.map(&:abs).max || 0)
+            @sound_made.concat(sound) if @keep_sound
           end
 
           def screen_on? = half(runtime_place(Runtime::Frame::DISPLAY_ON)) == 1

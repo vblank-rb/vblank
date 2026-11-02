@@ -40,6 +40,13 @@ module RubyGenesisEmulator
     VDP_REGISTERS = 0x8004
     M68K_REGISTERS = 0x8005
     SPRITE_CACHE = 0x8006
+    PSG_REGISTERS = 0x8007
+    FM_REGISTERS = 0x8008
+
+    # How much each of the PSG's sixteen loudness steps is in the core's numbers, the last being silence,
+    # and the bits of its noise setting.
+    PSG_LOUDNESS = (Array.new(15) { |step| (2800 * (10**(-step / 10.0))).to_i } + [0]).freeze
+    NOISE_SETTING = 7
 
     # libretro's joypad: the number it asks about each button by, for the buttons of the console's
     # pad as the core lays them out (its own "B" is the Genesis's B, its "A" the Genesis's C, and
@@ -85,6 +92,7 @@ module RubyGenesisEmulator
       @buttons = Array.new(2) { [] }
       @frames = 0
       @picture = nil
+      @audio = "".b
       @width = WIDTH
       @height = HEIGHT
       @kept = [] # what the core holds a pointer to, kept from the garbage collector
@@ -151,6 +159,30 @@ module RubyGenesisEmulator
 
     # The sprite table as the video chip keeps its own copy of it (1K, as the chip reads it).
     def sprite_cache = memory(SPRITE_CACHE)
+
+    # The PSG's eight registers as a cartridge wrote them: for each of its three square voices the length of
+    # its wave then its loudness (fifteen is silent), then the noise voice's setting and its loudness. The
+    # core keeps a loudness as how much that step of two decibels is, so it is turned back into the step.
+    def psg_registers
+      memory(PSG_REGISTERS).unpack("l<*").each_with_index.map do |value, register|
+        next value & NOISE_SETTING if register == 6
+        next value if register.even?
+
+        PSG_LOUDNESS.index(PSG_LOUDNESS.min_by { |loudness| (loudness - value).abs })
+      end
+    end
+
+    # The FM chip's registers as it was last told them, a byte each: 256 for its first three voices
+    # and the settings for the whole chip, and 256 for its other three. The chip has no way to read
+    # them back, so the probe patch keeps this copy as they are written.
+    def fm_registers = memory(FM_REGISTERS)
+
+    # Every sample of sound made since the last call, as signed numbers: left, right, left, right.
+    def take_audio
+      samples = @audio.unpack("s<*")
+      @audio = "".b
+      samples
+    end
 
     # The 68000's registers by name (REGISTER_NAMES): the data registers, the address registers,
     # the program counter and the status register.
@@ -228,7 +260,7 @@ module RubyGenesisEmulator
         retro_set_video_refresh: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
                                                              Fiddle::TYPE_SIZE_T]) { |*args| take_picture(*args) },
         retro_set_audio_sample: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]) { nil },
-        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) { |_data, frames| frames },
+        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) { |data, frames| take_sound(data, frames) },
         retro_set_input_poll: closure(Fiddle::TYPE_VOID, []) { nil },
         retro_set_input_state: closure(Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
                                                               Fiddle::TYPE_UINT]) do |port, device, _index, id|
@@ -294,6 +326,13 @@ module RubyGenesisEmulator
       @height = height
       rows = Fiddle::Pointer.new(data.to_i)[0, pitch * height]
       @picture = pitch == width * 2 ? rows : (0...height).map { |y| rows.byteslice(y * pitch, width * 2) }.join
+    end
+
+    # A batch of sound, +frames+ pairs of 16-bit samples, kept until #take_audio asks for it. It says
+    # how many pairs it took, which is all of them.
+    def take_sound(data, frames)
+      @audio << Fiddle::Pointer.new(data.to_i)[0, frames * 4]
+      frames
     end
 
     # libretro's retro_game_info: the path, the bytes and their count, and nothing for meta.

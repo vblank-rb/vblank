@@ -18,10 +18,13 @@ require_relative "genesis/linker"
 require_relative "genesis/memory"
 require_relative "genesis/art"
 require_relative "genesis/painted_art"
+require_relative "genesis/chip_writes"
+require_relative "genesis/music"
 require_relative "genesis/runtime"
 require_relative "genesis/lowering/picture"
 require_relative "genesis/lowering/paint"
 require_relative "genesis/lowering/collision"
+require_relative "genesis/lowering/sound"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
 require_relative "genesis/checked_run"
@@ -43,10 +46,14 @@ module VBlank
         # variable by the game's name (its address in work RAM), every list ([its address, its
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built from,
-        # and each sprite picture's number as SpriteNames numbers the picture it shows.
+        # each sprite picture's number as SpriteNames numbers the picture it shows, each entry of the
+        # interpreter's sound log by the number the cartridge's own log keeps it as (empty for a game that
+        # makes no sound), and what the chip writes for those entries are worked out with
+        # (ChipWrites::Voicing).
         # +bytes+ says what the cartridge's sections come to, as :code (what the processor runs) and :data
         # (what it only reads), for the cost recorded in tools/emitted_baseline.json.
-        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes) do
+        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
+                             :sound_entries, :sound_voicing) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
         end
@@ -59,18 +66,30 @@ module VBlank
           memory = Memory.new
           picture = Lowering.picture_of(program)
           colors = Lowering.changing_colors?(program)
-          Runtime.reserve(memory, picture: picture, colors: colors)
+          sound = Lowering::Sound.sounds?(program)
+          songs = Lowering::Sound.songs?(program)
+          follows_level = songs && Music.follows_level?(program)
+          effects = songs ? IR::Tunes.effects(program).uniq.size : 0
+          Runtime.reserve(memory, picture: picture, colors: colors, sound: sound, songs: songs, music_follows_level: follows_level,
+                                  effects: effects, holds_music: Lowering::Sound.holds_music?(program),
+                                  wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
+                                  swells: Music.swells_under_level?(program), slides: Music.slides?(program),
+                                  sides: Music.sides_under_level?(program))
           lowering = Lowering.new(program, memory: memory)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
                                              columns: lowering.plane_size.first, collision: lowering.collides?, fractions: lowering.fractions?,
-                                             camera: lowering.camera?, colors: colors)
+                                             camera: lowering.camera?, colors: colors, sound: sound,
+                                             music: (lowering.music_section if songs),
+                                             music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level),
+                                             effects: effects)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, sprite_picture_names: picture == :tiled ? lowering.sprite_picture_names : {},
-                             bytes: byte_counts(linked))
+                             bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
+                             sound_voicing: lowering.sound_voicing)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
         end
 
@@ -79,7 +98,7 @@ module VBlank
         # How many bytes of the cartridge are code and how many are data: the sections that hold the
         # game's tables and pictures (Lowering::DATA and Lowering::ART) are data, and the rest code.
         def byte_counts(linked)
-          data, code = linked.sections.values.partition { |placed| [Lowering::DATA, Lowering::ART].include?(placed.section.holds) }
+          data, code = linked.sections.values.partition { |placed| [Lowering::DATA, Lowering::ART, Music::SONGS].include?(placed.section.holds) }
           { code: code.sum { |placed| placed.section.size }, data: data.sum { |placed| placed.section.size } }
         end
 

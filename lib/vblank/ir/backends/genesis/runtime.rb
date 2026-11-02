@@ -9,6 +9,9 @@ require_relative "runtime/tiles"
 require_relative "runtime/tint"
 require_relative "runtime/picture"
 require_relative "runtime/collide"
+require_relative "runtime/sound"
+require_relative "runtime/music"
+require_relative "runtime/effects"
 
 module VBlank
   module IR
@@ -25,10 +28,19 @@ module VBlank
         module Runtime
           module_function
 
-          # The runtime's own places in work RAM, asked for before the game's.
-          def reserve(memory, picture: :none, colors: false)
+          # The runtime's own places in work RAM, asked for before the game's. A game that makes sound
+          # (+sound+) keeps its log and its voices' loudness (Sound); one with songs (+songs+) their player's
+          # places, as much of them as what its songs do asks for (Music), and those of its +effects+ sound
+          # effects (Effects).
+          def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
+                      holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false)
             Frame.reserve(memory)
             Picture.reserve(memory, picture: picture, colors: colors)
+            Sound.reserve(memory) if sound
+            return unless songs
+          
+            Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
+                                  steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides)
           end
 
           # The runtime's sections: the vectors' entry points first, then everything else in one.
@@ -42,20 +54,25 @@ module VBlank
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
           # +registers+ is how many words of the video chip's register table the game writes
           # ("rt_vdp_registers", which the lowering makes).
+          # +sound+ for a game that makes sound; +music+ the section of its songs (Genesis::Music#section),
+          # for a game with songs, whose player it then carries, with +music_level_at+ where it keeps its
+          # music volume if it sets one, and +effects+ how many sound effects it has.
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
-                         colors: false)
+                         colors: false, sound: false, music: nil, music_level_at: nil, effects: 0)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
             Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD))
             Int32.emit(asm, fractions: fractions)
-            Frame.emit(asm, memory)
+            Frame.emit(asm, memory, sound: sound)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors)
             Collide.emit(asm, memory) if collision
+            Sound.emit(asm, memory, songs: !music.nil?) if sound
+            Music.emit(asm, memory, level_at: music_level_at, effects: effects) if music
             emit_start(asm)
             emit_frame_begins(asm, frame_begins)
-            [entry.section, asm.section]
+            [entry.section, asm.section, music].compact
           end
 
           # What a game needs before its first line: its variables that do not start at nought (the
