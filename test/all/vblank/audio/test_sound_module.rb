@@ -11,7 +11,7 @@ class TestSoundModule < Minitest::Test
   include VBlank::Console::Hardware
 
   Sound = VBlank::Audio::Sound
-  Registers = VBlank::Audio::Sound::Registers
+  Registers = VBlank::IR::Backends::GameBoySound
 
   # ---- musical resolution ----
 
@@ -47,32 +47,31 @@ class TestSoundModule < Minitest::Test
   def test_enable_writes_the_master_registers
     # 0xFF77 routes all four channels to both speakers (so a channel-2 music voice
     # or a channel-4 noise hit is heard), at full master volume.
-    assert_equal [[REG_SOUNDCNT_X, 0x0080], [REG_SOUNDCNT_L, 0xFF77], [REG_SOUNDCNT_H, 0x0002]],
-                 Registers.enable
+    assert_equal [[:sound_power, 0x0080], [:speakers, 0xFF77]], Registers.enable
   end
 
   def test_channel2_encodes_duty_volume_decay_and_frequency
     # duty :half=2<<6, volume 15<<12, decay :fast=1<<8 => 0xF180.
     # freq 880 -> period 2048 - round(131072/880) = 1899, plus trigger bit => 0x876B.
-    assert_equal [[REG_SOUND2CNT_L, 0xF180], [REG_SOUND2CNT_H, 0x876B]],
+    assert_equal [[:square2_control, 0xF180], [:square2_trigger, 0x876B]],
                  Registers.beep_writes(frequency: 880, duty: :half, decay: :fast, volume: 15)
   end
 
   def test_channel1_note_sustains_with_no_decay
     # music notes carry no decay: control = duty(2<<6) | volume(12<<12) = 0xC080.
-    assert_equal [[REG_SOUND1CNT_L, 0x0000], [REG_SOUND1CNT_H, 0xC080], [REG_SOUND1CNT_X, 0x86D6]],
+    assert_equal [[:square1_sweep, 0x0000], [:square1_control, 0xC080], [:square1_trigger, 0x86D6]],
                  Registers.channel1_note(frequency: 440, duty: :half, volume: 12)
   end
 
   def test_a_zero_frequency_note_is_a_rest
-    assert_equal [[REG_SOUND1CNT_H, 0x0000], [REG_SOUND1CNT_X, 0x8000]],
+    assert_equal [[:square1_control, 0x0000], [:square1_trigger, 0x8000]],
                  Registers.channel1_note(frequency: 0, duty: :half, volume: 12)
   end
 
   # Channel 2 as a sustaining music voice mirrors channel 1 (same control word),
   # but has no sweep register, so it's just control + trigger.
   def test_channel2_note_sustains_like_channel_one_without_sweep
-    assert_equal [[REG_SOUND2CNT_L, 0xC080], [REG_SOUND2CNT_H, 0x86D6]],
+    assert_equal [[:square2_control, 0xC080], [:square2_trigger, 0x86D6]],
                  Registers.channel2_note(frequency: 440, duty: :half, volume: 12)
   end
 
@@ -113,7 +112,7 @@ class TestSoundModule < Minitest::Test
   def test_channel4_encodes_the_noise_registers
     # volume 15 (0xF<<12) + fast decay (step 1 <<8) = 0xF100; trigger sets the
     # restart bit, the low-pitch shift (8<<4 = 0x80), and 15-bit width (metallic off).
-    assert_equal [[REG_SOUND4CNT_L, 0xF100], [REG_SOUND4CNT_H, 0x8080]],
+    assert_equal [[:noise_control, 0xF100], [:noise_trigger, 0x8080]],
                  Registers.noise_hit_writes(pitch: :low, decay: :fast, volume: 15, metallic: false)
   end
 
@@ -177,14 +176,14 @@ class TestSoundModule < Minitest::Test
   def test_wave_play_uploads_the_table_and_triggers_the_channel
     writes = Registers.wave_start_writes(Sound.wavetable(:sine), frequency: 440, volume: :full)
     assert_equal 21, writes.length, "two bank uploads (8 words each) plus 5 control writes"
-    assert_equal [REG_SOUND3CNT_L, 0x0000], writes.first, "starts with the DAC off to load wave RAM"
-    assert_includes writes, [REG_SOUND3CNT_L, 0x0080], "turns the DAC on to play"
-    assert_includes writes, [REG_SOUND3CNT_H, 0x2000], "full volume"
-    assert_equal [REG_SOUND3CNT_X, 0x8000 | Registers.wave_rate(440)], writes.last, "restart + sample rate last"
+    assert_equal [:wave_switch, 0x0000], writes.first, "starts with the DAC off to load wave RAM"
+    assert_includes writes, [:wave_switch, 0x0080], "turns the DAC on to play"
+    assert_includes writes, [:wave_level, 0x2000], "full volume"
+    assert_equal [:wave_trigger, 0x8000 | Registers.wave_rate(440)], writes.last, "restart + sample rate last"
   end
 
   def test_wave_stop_switches_the_dac_off
-    assert_equal [[REG_SOUND3CNT_L, 0x0000]], Registers.wave_stop
+    assert_equal [[:wave_switch, 0x0000]], Registers.wave_stop
   end
 
   def test_unknown_wave_volume_is_a_friendly_error

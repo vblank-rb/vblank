@@ -123,7 +123,7 @@ class TestMusicVolumeCartridge < Minitest::Test
   def test_the_console_sets_the_wave_voice_to_the_nearest_of_its_volumes
     program = held_note_game(plays: :triangle) { |pass| music_volume 50 if pass == 5 }
     console = assert_emulator_loads_rom(assemble_rom(program, name: "MUSVOLW"), frames: 20)
-    nearest = VBlank::Audio::Sound::Registers::WAVE_VOLUMES.fetch(VBlank::Audio::Sound.wave_level(6))
+    nearest = VBlank::IR::Backends::GameBoySound::WAVE_VOLUMES.fetch(VBlank::Audio::Sound.wave_level(6))
 
     assert_equal nearest, console.mem16(VBlank::Console::Hardware::REG_SOUND3CNT_H) & 0xE000
   end

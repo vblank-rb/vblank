@@ -415,7 +415,7 @@ module VBlank
             case voice
             when WAVE_VOICE then waveforms.index(part.wave)
             when NOISE_VOICE then sound.fade_step(part.decay) | (part.metallic ? 0x80 : 0)
-            else sound::Registers.duty_bits(part.duty) << 6
+            else GameBoySound.duty_bits(part.duty) << 6
             end
           end
 
@@ -427,11 +427,11 @@ module VBlank
 
             sound = VBlank::Audio::Sound
             case voice
-            when WAVE_VOICE then sound::Registers.wave_rate(pitch)
+            when WAVE_VOICE then GameBoySound.wave_rate(pitch)
             when NOISE_VOICE
               divisor, shift = clock || sound.noise_rung(pitch)
               (shift << 4) | divisor
-            else sound::Registers.frequency_value(pitch)
+            else GameBoySound.frequency_value(pitch)
             end
           end
 

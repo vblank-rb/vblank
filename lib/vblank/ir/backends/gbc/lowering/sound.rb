@@ -161,7 +161,7 @@ module VBlank
             def emit_stop_music(_node) = @asm.call("rt_music_stop")
             def emit_hold_music(node) = @asm.call(node.held ? "rt_music_hold_tune" : "rt_music_release_tune")
 
-            def emit_enable_sound(_node) = sound_writes(VBlank::Audio::Sound::Registers.enable, [:enabled])
+            def emit_enable_sound(_node) = sound_writes(GameBoySound.enable, [:enabled])
 
             # Reference#exec_rumble: the cartridge's motor, a frame at a time (Runtime::Rumble).
             def emit_rumble(node) = runtime_call("rt_rumble", [node.frames, node.pattern])
@@ -182,7 +182,7 @@ module VBlank
               Runtime::Music.emit_end_shapes(@asm, @memory, BEEP_VOICE)
               Runtime::Music.emit_end_swell(@asm, @memory, BEEP_VOICE)
               emit_speakers_both(BEEP_VOICE)
-              sound_writes(VBlank::Audio::Sound::Registers.beep_writes(**effect.to_h), [:beep, effect])
+              sound_writes(GameBoySound.beep_writes(**effect.to_h), [:beep, effect])
             end
 
             # The game's own sound on +voice+ plays from both speakers, whichever a song's note left
@@ -217,21 +217,21 @@ module VBlank
               hit = VBlank::Audio::Sound.resolve_noise(node.preset, pitch: node.pitch, decay: node.decay,
                                                         volume: node.volume, metallic: node.metallic)
               emit_speakers_both(GBC::Music::NOISE_VOICE)
-              sound_writes(VBlank::Audio::Sound::Registers.noise_hit_writes(**hit), [:noise, hit])
+              sound_writes(GameBoySound.noise_hit_writes(**hit), [:noise, hit])
             end
 
             def emit_wave(node)
               samples = VBlank::Audio::Sound.wavetable(node.shape)
               emit_stop_wobble(GBC::Music::WAVE_VOICE)
               emit_speakers_both(GBC::Music::WAVE_VOICE)
-              sound_writes(VBlank::Audio::Sound::Registers.wave_start_writes(samples, frequency: node.frequency,
+              sound_writes(GameBoySound.wave_start_writes(samples, frequency: node.frequency,
                                                                                         volume: node.volume),
                            [:wave, { shape: node.shape, frequency: node.frequency, volume: node.volume }])
             end
 
             def emit_stop_wave(_node)
               emit_stop_wobble(GBC::Music::WAVE_VOICE)
-              sound_writes(VBlank::Audio::Sound::Registers.wave_stop, [:stop_wave])
+              sound_writes(GameBoySound.wave_stop, [:stop_wave])
             end
 
             # The writes as a table of the Color's (SoundRegisters), made where the game says the word;

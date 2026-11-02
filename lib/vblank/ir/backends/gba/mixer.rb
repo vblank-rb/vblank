@@ -1395,8 +1395,8 @@ module VBlank
           # WHICH BITS OF SOUNDCNT_H SEND THE RECORDED SOUND TO THE SPEAKERS: channel A at full
           # volume, out to both, clocked by timer 0. They are asked for from outside because
           # SOUNDCNT_H is a SHARED register — its low bits are the PSG's volume — and whoever
-          # writes it whole has to put these back or the recordings stop (see Sound::Registers
-          # .enable). Nothing at all for a program that plays no recording.
+          # writes it whole has to put these back or the recordings stop (see
+          # Audio#emit_enable_sound). Nothing at all for a program that plays no recording.
           def direct_sound_routing
             return 0 unless plays_samples?
 

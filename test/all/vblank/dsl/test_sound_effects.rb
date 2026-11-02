@@ -15,9 +15,9 @@ module SoundEffectsGames
   # A voice's setting that reads back: a square voice's tone, and the volume — or for a +tone+ of
   # :wave, the nearest of the wave voice's five volumes.
   def self.setting(tone, volume)
-    return VBlank::Audio::Sound::Registers::WAVE_VOLUMES.fetch(VBlank::Audio::Sound.wave_level(volume)) if tone == :wave
+    return VBlank::IR::Backends::GameBoySound::WAVE_VOLUMES.fetch(VBlank::Audio::Sound.wave_level(volume)) if tone == :wave
 
-    ((tone ? VBlank::Audio::Sound::Registers.duty_bits(tone) : 0) << 6) | (volume << 12)
+    ((tone ? VBlank::IR::Backends::GameBoySound.duty_bits(tone) : 0) << 6) | (volume << 12)
   end
 
   # Who plays each voice in what tone, by who, for #interpreted_changes.
@@ -211,7 +211,7 @@ module SoundEffectsGames
 
   # A waveform as the number wave RAM holds for it, reading its four words in order.
   private def waveform(shape)
-    VBlank::Audio::Sound::Registers.wavetable_halfwords(shape).each_slice(2).each_with_index.sum do |(low, high), word|
+    VBlank::IR::Backends::GameBoySound.wavetable_halfwords(shape).each_slice(2).each_with_index.sum do |(low, high), word|
       (low | (high << 16)) << (32 * word)
     end
   end

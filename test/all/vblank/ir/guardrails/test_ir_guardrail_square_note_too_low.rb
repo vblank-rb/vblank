@@ -12,7 +12,7 @@ class TestSquareNoteTooLowGuardrail < Minitest::Test
   include VBlank::IR::Build
 
   Check = VBlank::IR::Guardrails::Checks::SquareNoteTooLow
-  Registers = VBlank::Audio::Sound::Registers
+  Registers = VBlank::IR::Backends::GameBoySound
   Part = VBlank::Audio::Score::Part
   Note = VBlank::Audio::Score::Note
 

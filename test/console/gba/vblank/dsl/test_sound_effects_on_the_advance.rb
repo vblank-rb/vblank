@@ -36,7 +36,7 @@ module SoundEffectsOnTheAdvanceGames
 
   # A waveform as the number wave RAM holds for it, reading its four words in order.
   private def waveform(shape)
-    VBlank::Audio::Sound::Registers.wavetable_halfwords(shape).each_slice(2).each_with_index.sum do |(low, high), word|
+    VBlank::IR::Backends::GameBoySound.wavetable_halfwords(shape).each_slice(2).each_with_index.sum do |(low, high), word|
       (low | (high << 16)) << (32 * word)
     end
   end

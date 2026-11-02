@@ -51,11 +51,21 @@ module VBlank
             writes.each { |address, value| @emitter.write_reg16(address, value) }
           end
 
+          # GameBoySound's writes, at the Advance's addresses.
+          def emit_chip_writes(writes) = emit_register_writes(SoundRegisters.at_addresses(writes))
+
           # Power on the audio hardware — keeping whatever sends the recorded sound to the
           # speakers, since switching sound ON must never switch part of it off. The mixer says
           # what that is, and says nothing for a program with no recording in it.
+          #
+          # SOUNDCNT_H is the Advance's alone, and it is written whole. Its low bits are the Game
+          # Boy voices' volume, which this verb sets, and its high bits route the recordings, which
+          # are the mixer's. Written with the low bits alone, a program that switches sound on after
+          # the mixer came up switches every recording off, silently, since the Game Boy voices of
+          # the same tune keep playing.
           def emit_enable_sound(_node = nil)
-            emit_register_writes(VBlank::Audio::Sound::Registers.enable(direct_sound: @mixer.direct_sound_routing))
+            emit_chip_writes(GameBoySound.enable)
+            @emitter.write_reg16(REG_SOUNDCNT_H, PSG_VOLUME_FULL | @mixer.direct_sound_routing)
           end
 
           # A one-off sound effect on channel 2. Resolve the beep to concrete musical
@@ -68,7 +78,7 @@ module VBlank
             emit_end_shapes(Lane.new(:square, BEEP_CHANNEL))
             emit_end_swell(Lane.new(:square, BEEP_CHANNEL))
             emit_speakers_both(BEEP_CHANNEL)
-            emit_register_writes(VBlank::Audio::Sound::Registers.beep_writes(**effect.to_h))
+            emit_chip_writes(GameBoySound.beep_writes(**effect.to_h))
           end
 
           # The square voice a `beep` plays on: the song's second square part's.
@@ -81,7 +91,7 @@ module VBlank
             hit = VBlank::Audio::Sound.resolve_noise(node.preset, pitch: node.pitch, decay: node.decay,
                                                      volume: node.volume, metallic: node.metallic)
             emit_speakers_both(NOISE_CHANNEL)
-            emit_register_writes(VBlank::Audio::Sound::Registers.noise_hit_writes(**hit))
+            emit_chip_writes(GameBoySound.noise_hit_writes(**hit))
           end
 
           # Play a sustained wavetable tone on channel 3. Resolve the shape to its
@@ -90,14 +100,14 @@ module VBlank
             samples = VBlank::Audio::Sound.wavetable(node.shape)
             emit_stop_wobble(Lane.new(:wave, WAVE_CHANNEL))
             emit_speakers_both(WAVE_CHANNEL)
-            emit_register_writes(VBlank::Audio::Sound::Registers.wave_start_writes(samples, frequency: node.frequency, volume: node.volume))
+            emit_chip_writes(GameBoySound.wave_start_writes(samples, frequency: node.frequency, volume: node.volume))
             emit_forget_waveform
           end
 
           # Silence the wave voice.
           def emit_stop_wave(_node = nil)
             emit_stop_wobble(Lane.new(:wave, WAVE_CHANNEL))
-            emit_register_writes(VBlank::Audio::Sound::Registers.wave_stop)
+            emit_chip_writes(GameBoySound.wave_stop)
             emit_forget_waveform
           end
 
@@ -1778,7 +1788,7 @@ module VBlank
           MUSIC_WAVE_LEVELS = :__music_wave_levels
 
           def wave_levels_blob
-            (0..15).map { |volume| VBlank::Audio::Sound::Registers::WAVE_VOLUMES.fetch(VBlank::Audio::Sound.wave_level(volume)) }
+            (0..15).map { |volume| GameBoySound::WAVE_VOLUMES.fetch(VBlank::Audio::Sound.wave_level(volume)) }
                    .pack("v*")
           end
 
@@ -2539,7 +2549,7 @@ module VBlank
               shape = nil if shape&.plain?
               [0, info.length, shape ? shape.packed : 0, info.loop_length].pack("VVVV")
             end.join
-            table += shapes.map { |shape| VBlank::Audio::Sound::Registers.wavetable_halfwords(shape).pack("v*") }.join
+            table += shapes.map { |shape| GameBoySound.wavetable_halfwords(shape).pack("v*") }.join
             events = [NEVER, 0, 0, 0].pack("VVvv") # a row any lane can wait on
             @song_numbers.each_key do |name|
               song = @songs.fetch(name)
@@ -2716,16 +2726,16 @@ module VBlank
           # note's +fade+ (IR::Tunes.said_fade) is in its control value, which the voice counts by
           # itself, and so is a square note's +duty+ — its own first shape, or its part's.
           def console_note(lane, part, frequency, volume, fade: nil, duty: nil, clock: nil)
-            case lane.kind
+            SoundRegisters.at_addresses(case lane.kind
             when :square
-              VBlank::Audio::Sound::Registers.channel_note(lane.index, frequency: frequency, duty: duty || part.duty,
+              GameBoySound.channel_note(lane.index, frequency: frequency, duty: duty || part.duty,
                                                                        volume: volume, fade: fade || VBlank::Audio::NoteFade::HOLD)
             when :wave
-              VBlank::Audio::Sound::Registers.wave_note(frequency: frequency, volume: volume)
+              GameBoySound.wave_note(frequency: frequency, volume: volume)
             else
-              VBlank::Audio::Sound::Registers.noise_note(frequency: frequency, volume: volume,
+              GameBoySound.noise_note(frequency: frequency, volume: volume,
                                           decay: part.decay, metallic: part.metallic, fade: fade, clock: clock)
-            end
+            end)
           end
 
           # A part's volume, 0..15 like the square voices', as the mix's 0..512.

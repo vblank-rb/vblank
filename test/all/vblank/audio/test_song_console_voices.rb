@@ -20,7 +20,7 @@ require "test_helper"
 module SongConsoleVoicesGames
   include SharedConstants # Builder, which a game below names from inside the module
 
-  Registers = VBlank::Audio::Sound::Registers
+  Registers = VBlank::IR::Backends::GameBoySound
 
   # THE NAMED SHAPES ARE A CONVENIENCE, NOT THE TRUTH. The console's wave voice is 32 steps of
   # four bits that a game writes, so a game whose music came from somewhere else — decoded out
@@ -82,9 +82,9 @@ class TestSongConsoleVoices < Minitest::Test
 
   # A rest silences the voice rather than leaving the last hit ringing.
   def test_a_rest_on_either_voice_silences_it
-    assert_equal [[REG_SOUND3CNT_H, 0], [REG_SOUND3CNT_X, 0]],
+    assert_equal [[:wave_level, 0], [:wave_trigger, 0]],
                  Registers.wave_note(frequency: 0, volume: 12)
-    assert_equal [[REG_SOUND4CNT_L, 0], [REG_SOUND4CNT_H, 0x8000]],
+    assert_equal [[:noise_control, 0], [:noise_trigger, 0x8000]],
                  Registers.noise_note(frequency: 0, decay: :fast, volume: 12, metallic: false)
   end
 

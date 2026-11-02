@@ -8,7 +8,7 @@ module VBlank
     # once the note has sounded for +after+ frames, it moves the voice's pitch number up by half
     # the +depth+ (rounded up) and holds it there for +speed+ frames, then down by the other half
     # below where the note began for +speed+ frames, and back up, until the part's next note. The
-    # pitch number is the one the voice is tuned by (Sound::Registers.frequency_value), the same on
+    # pitch number is the one the voice is tuned by (GameBoySound.frequency_value), the same on
     # the Advance and the Color, so a step is the voice's own smallest change of pitch: small on a
     # low note and larger on a high one, which is how the console's own music engines wobble.
     #

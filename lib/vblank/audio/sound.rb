@@ -4,21 +4,15 @@ module VBlank
   module Audio
     # The shared meaning of the sound ops — the one place that knows what a "beep"
     # or a note *is*, so every backend agrees on it (the audio counterpart to how
-    # Int32 pins arithmetic). It has two layers:
-    #
-    #   * the musical layer (this module directly): named sound-effect presets, the
-    #     rule for resolving a beep's tone + overrides into concrete musical values —
-    #     a frequency in Hz, a wave shape, a fade, a volume — and what each kind of
-    #     voice can actually do, which every backend has to honour whether or not it
-    #     writes a register (wave_level). This layer is hardware-free,
-    #     so a headless interpreter can use it to say "an 880 Hz blip played" without
-    #     any notion of registers.
-    #
-    #   * Registers: the console-specific encoding — turning those musical values
-    #     into the exact sound-register writes the hardware needs. A backend that
-    #     lowers to a real ROM uses this; the interpreter never does, and a test says
-    #     so rather than leaving it to whoever edits next
-    #     (test/all/vblank/audio/test_registers_seam.rb).
+    # Int32 pins arithmetic): named sound-effect presets, the rule for resolving a beep's
+    # tone + overrides into concrete musical values — a frequency in Hz, a wave shape, a
+    # fade, a volume — and what each kind of voice can actually do, which every backend has
+    # to honour whether or not it writes a register (wave_level). It is hardware-free, so a
+    # headless interpreter can use it to say "an 880 Hz blip played" without any notion of
+    # registers. Turning those values into the writes a chip needs is each lowering's own
+    # (Backends::GameBoySound for the two consoles with the Game Boy's chip), and a test says
+    # so rather than leaving it to whoever edits next
+    # (test/all/vblank/audio/test_registers_seam.rb).
     module Sound
       # One resolved beep, purely musical — no hardware in sight. The four parts are fixed
       # here rather than named by a caller, so it is a value object and asking it for anything
@@ -148,7 +142,7 @@ module VBlank
       WAVE_STEP_MAX = 15
 
       # WHAT THE TWO KINDS OF VOICE CAN ACTUALLY DO. These are limits, not encodings, which is
-      # why they sit out here with the musical half rather than inside Registers: a backend that
+      # why they sit out here with the musical half rather than inside a lowering: a backend that
       # never writes a register still has to honour them, or the two backends disagree about
       # what a game sounds like.
       #
@@ -165,7 +159,7 @@ module VBlank
 
       # WHAT A SQUARE VOICE SOUNDS LIKE, for a backend that has to make the sound itself rather
       # than tell a chip to: the pitch it really plays, how thin its tone is, and how fast it
-      # fades. A cartridge writes these to the sound chip as bit patterns (Registers, below); a
+      # fades. A cartridge writes these to the sound chip as bit patterns (Backends::GameBoySound); a
       # desktop build has no chip and builds the wave from the same three facts.
       #
       # THE PITCH IS A WHOLE NUMBER OF TICKS, not any frequency at all. The voice counts a clock
@@ -332,241 +326,6 @@ module VBlank
 
         raise ArgumentError, "A waveform step is a whole number from 0 to #{WAVE_STEP_MAX}. " \
                              "Step #{steps.index(bad)} is #{bad.inspect}."
-      end
-
-      # The console-specific half: encode musical values into sound-register writes.
-      # Each method returns a list of [register_address, 16-bit value] pairs in the
-      # order they must be written; a backend just stores each one.
-      module Registers
-        include VBlank::Console::Hardware
-        module_function
-
-        # Wave shape → the 2-bit duty field the hardware wants.
-        DUTY_CYCLES = {
-          eighth: 0, quarter: 1, half: 2, square: 2, three_quarter: 3
-        }.freeze
-
-        # Noise pitch → the noise generator's shift-clock exponent. The hiss's
-        # frequency divides down as the exponent grows, so a bigger number is a
-        # lower, rumblier noise and a smaller one a higher hiss.
-        NOISE_SHIFTS = NOISE_HIT_HALVINGS
-
-        # The console tunes a channel by a period value, not a frequency:
-        # freq_hz = 131072 / (2048 - value). Invert that and keep it in range.
-        def frequency_value(freq_hz)
-          SQUARE_LONGEST_WAVE - Sound.square_wave_ticks(freq_hz)
-        end
-
-        def duty_bits(duty)
-          DUTY_CYCLES.fetch(duty) { raise ArgumentError, "unknown duty cycle #{duty.inspect}" }
-        end
-
-        def decay_step(decay) = Sound.fade_step(decay)
-
-        # Power on the sound hardware: master enable, all four PSG channels routed to
-        # both speakers at full volume, PSG output at 100%. Routing every channel
-        # (0xFF..) rather than just the first two means a music voice on channel 2 or
-        # a noise hit on channel 4 is actually heard; a channel stays silent until it
-        # is triggered, so routing an unused one costs nothing.
-        # +direct_sound+ is the SOUNDCNT_H routing that must SURVIVE being switched on — the bits
-        # that send recorded sound to the speakers. They matter because this writes that register
-        # whole, and the register is shared: its low bits are the PSG's volume, which is this
-        # verb's to set, and its high bits route the recordings, which are the mixer's. Written
-        # whole with the PSG bits alone, a program that switches sound on after the mixer came up
-        # switches every recording off — silently, since the PSG parts of the same tune keep
-        # playing. The caller that knows whether a recording plays hands the bits in
-        # (GBA::Audio#emit_enable_sound); a program with no recording hands in nothing.
-        def enable(direct_sound: 0)
-          [
-            [REG_SOUNDCNT_X, SOUND_MASTER_ENABLE],
-            [REG_SOUNDCNT_L, 0xFF77],
-            [REG_SOUNDCNT_H, PSG_VOLUME_FULL | direct_sound],
-          ]
-        end
-
-        # A one-off sound effect on channel 2 (the SFX channel): duty + volume +
-        # fade, then frequency with the trigger bit that restarts the note.
-        def beep_writes(frequency:, duty:, decay:, volume:)
-          control = (duty_bits(duty) << 6) | (volume << 12) | (decay_step(decay) << 8)
-          trigger = 0x8000 | frequency_value(frequency)
-          [[REG_SOUND2CNT_L, control], [REG_SOUND2CNT_H, trigger]]
-        end
-
-        # A single music note on one of the two square-wave voices (the music
-        # channels): channel 1 or channel 2. A note holds its pitch until the next note
-        # replaces it, so both voices of a layered tune hold between events; its loudness
-        # holds too, unless +fade+ (an Audio::NoteFade) says it fades out or swells in.
-        # A song's parts map to these in order; +channel+ is chosen by the backend, not
-        # the score.
-        def channel_note(channel, frequency:, duty:, volume:, fade: NoteFade::HOLD)
-          case channel
-          when 1 then channel1_note(frequency: frequency, duty: duty, volume: volume, fade: fade)
-          when 2 then channel2_note(frequency: frequency, duty: duty, volume: volume, fade: fade)
-          else raise ArgumentError, "no music voice on channel #{channel}"
-          end
-        end
-
-        # A square voice's control value: its tone, the way it fades (the voice's four bits of it,
-        # under the volume), and the volume it starts at.
-        def square_control(duty, volume, fade) = (duty_bits(duty) << 6) | (fade.bits << 8) | (volume << 12)
-
-        # A single music note on channel 1 (the first music voice). A frequency of 0
-        # is a rest — silence the voice.
-        def channel1_note(frequency:, duty:, volume:, fade: NoteFade::HOLD)
-          return [[REG_SOUND1CNT_H, 0x0000], [REG_SOUND1CNT_X, 0x8000]] if frequency.zero?
-
-          control = square_control(duty, volume, fade)
-          trigger = 0x8000 | frequency_value(frequency)
-          [
-            [REG_SOUND1CNT_L, 0x0000], # no sweep
-            [REG_SOUND1CNT_H, control],
-            [REG_SOUND1CNT_X, trigger],
-          ]
-        end
-
-        # A single music note on channel 2 (the second music voice), for a layered
-        # tune's harmony/bass part. Same as channel 1, but this voice has no sweep
-        # register, so it's just control + trigger. A frequency of 0 is a rest.
-        # (Channel 2 doubles as the SFX voice; a two-part song and beeps can't both use
-        # it at once.)
-        def channel2_note(frequency:, duty:, volume:, fade: NoteFade::HOLD)
-          return [[REG_SOUND2CNT_L, 0x0000], [REG_SOUND2CNT_H, 0x8000]] if frequency.zero?
-
-          control = square_control(duty, volume, fade)
-          trigger = 0x8000 | frequency_value(frequency)
-          [[REG_SOUND2CNT_L, control], [REG_SOUND2CNT_H, trigger]]
-        end
-
-        # A SINGLE MUSIC NOTE ON THE WAVE VOICE (channel 3), for a song part that plays it.
-        #
-        # Two register values, like a square note, and for the same reason: the player copies two
-        # halfwords out of the score and the waveform itself is already in wave RAM, uploaded once
-        # when the tune started. The level holds the note and the trigger restarts the waveform.
-        # A frequency of 0 is a rest, which mutes the voice without disturbing the table.
-        #
-        # It reaches LOWER than a square voice: this one tunes by a sample rate, so its bottom is
-        # 32 Hz against the square voices' 64 — an octave further down, which is most of why a
-        # tune puts its bass here.
-        # +volume+ is 0..15, the same scale a square part's is written on — the wave voice has
-        # four fixed levels and off rather than a range, so it is rounded to the nearest.
-        def wave_note(frequency:, volume:)
-          return [[REG_SOUND3CNT_H, 0x0000], [REG_SOUND3CNT_X, 0x0000]] if frequency.zero?
-
-          [[REG_SOUND3CNT_H, WAVE_VOLUMES.fetch(Sound.wave_level(volume))],
-           [REG_SOUND3CNT_X, 0x8000 | wave_rate(frequency)]]
-        end
-
-        # Put a waveform in wave RAM and switch the voice on — the once-per-tune half of the pair
-        # above, split out because a note must not pay for it. Answers the eight halfwords the
-        # table packs into; which register they go to, and in what order, is the player's to emit
-        # (see Audio#emit_upload_wavetable): both banks get the table, so whichever one the voice
-        # loops, it loops this waveform.
-        def wavetable_halfwords(shape) = pack_wavetable(VBlank::Audio::Sound.wavetable(shape))
-
-        # A SINGLE MUSIC NOTE ON THE NOISE VOICE (channel 4), for a song part that plays it — the
-        # drums. Two register values again, so the player copies two halfwords here too.
-        #
-        # WHAT A NOTE MEANS HERE is the one thing about this voice that has to be decided rather
-        # than followed: the noise voice makes a hiss, not a tone, so there is no pitch in the way
-        # a melody has one. What it does have is a CLOCK, and a faster clock is a higher, thinner
-        # hiss where a slower one is a low rumble. So a note's pitch picks the clock nearest to it
-        # (#noise_clock), which is what a tracker's noise channel does and what makes a low note a
-        # kick and a high one a hat. A drum hit rings out as its part's +decay+ says, and is not
-        # held until the next one — unless +fade+ (an Audio::NoteFade) says how this one fades.
-        #
-        # A frequency of 0 is a rest: the voice restarts at no volume at all, which stops a hit
-        # that was still ringing.
-        def noise_note(frequency:, decay:, volume:, metallic:, fade: nil, clock: nil)
-          return [[REG_SOUND4CNT_L, 0x0000], [REG_SOUND4CNT_H, 0x8000]] if frequency.zero?
-
-          divisor, shift = clock || noise_clock(frequency)
-          control = (volume << 12) | ((fade ? fade.bits : decay_step(decay)) << 8)
-          [[REG_SOUND4CNT_L, control],
-           [REG_SOUND4CNT_H, 0x8000 | (shift << 4) | (metallic ? 0x0008 : 0x0000) | divisor]]
-        end
-
-        # The noise voice's clock is 524288 Hz divided by a small number and then halved +shift+
-        # times over, so the rates it can make are a fixed ladder rather than a range. This finds
-        # the rung nearest a wanted pitch. A divisor of 0 means a half, which is the one rung
-        # above the rest of the ladder. The ladder itself is a fact about the voice that every
-        # backend keeps (Sound.noise_rung); what is the console's alone is that the two numbers
-        # go into a register.
-        NOISE_CLOCK = NOISE_CLOCK_HZ
-        NOISE_DIVISORS = NOISE_DIVIDERS
-        NOISE_SHIFT_RANGE = (NOISE_HALVINGS.first..NOISE_HALVINGS.last).freeze
-
-        def noise_clock(frequency) = Sound.noise_rung(frequency)
-
-        def noise_frequency(divisor, shift) = Sound.noise_rung_hz(divisor, shift)
-
-        # A percussion / explosion hit on channel 4 (the noise voice). Channel 4
-        # makes pseudo-random noise rather than a pitched tone: a control word sets
-        # the starting volume and how fast it fades (the envelope, same layout as the
-        # square channels), and a trigger word sets how high the hiss sits (the shift
-        # clock), whether it's the tighter 7-bit "metallic" noise or the full 15-bit
-        # hiss, and the restart bit. The envelope fades it to silence, so no note
-        # length is needed.
-        def noise_hit_writes(pitch:, decay:, volume:, metallic:)
-          shift = NOISE_SHIFTS.fetch(pitch) { raise ArgumentError, "unknown noise pitch #{pitch.inspect}" }
-          control = (volume << 12) | (decay_step(decay) << 8)  # fades out (envelope counts down)
-          trigger = 0x8000 | (shift << 4) | (metallic ? 0x0008 : 0x0000)
-          [[REG_SOUND4CNT_L, control], [REG_SOUND4CNT_H, trigger]]
-        end
-
-        # Channel 3's output levels — it has no envelope like the other channels,
-        # just a fixed volume: full, three-quarter, half, quarter, or silent.
-        WAVE_VOLUMES = {
-          mute:          0x0000,
-          full:          0x2000, # bits 13-14 = 1 (100%)
-          half:          0x4000, # bits 13-14 = 2 (50%)
-          quarter:       0x6000, # bits 13-14 = 3 (25%)
-          three_quarter: 0x8000, # bit 15 forces 75%
-        }.freeze
-
-        # Play a wavetable on channel 3 (the wave voice). +samples+ is 32 values
-        # (0-15) that the hardware loops as one waveform period. Unlike the square and
-        # noise voices there's no envelope: the tone holds at +volume+ until it is
-        # replaced or stopped.
-        #
-        # The waveform lives in a small block of "wave RAM" split into two banks; the
-        # CPU can reach one bank while the channel plays the other, which is a classic
-        # source of silence (upload to the bank that isn't playing and you hear
-        # nothing). To sidestep that entirely we write the same table to *both* banks,
-        # so whichever one the channel loops, it loops our waveform.
-        def wave_start_writes(samples, frequency:, volume:)
-          level = WAVE_VOLUMES.fetch(volume) { raise ArgumentError, "unknown wave volume #{volume.inspect}" }
-          halfwords = pack_wavetable(samples)
-
-          writes = []
-          writes << [REG_SOUND3CNT_L, 0x0000]                 # DAC off, CPU reaches bank 0
-          halfwords.each_with_index { |hw, i| writes << [REG_WAVE_RAM + (i * 2), hw] }
-          writes << [REG_SOUND3CNT_L, 0x0040]                 # DAC off, CPU reaches bank 1
-          halfwords.each_with_index { |hw, i| writes << [REG_WAVE_RAM + (i * 2), hw] }
-          writes << [REG_SOUND3CNT_L, 0x0080]                 # DAC on, one 32-sample bank
-          writes << [REG_SOUND3CNT_H, level]
-          writes << [REG_SOUND3CNT_X, 0x8000 | wave_rate(frequency)] # restart bit + sample rate
-          writes
-        end
-
-        # Silence the wave voice — switch its DAC off.
-        def wave_stop
-          [[REG_SOUND3CNT_L, 0x0000]]
-        end
-
-        # Channel 3 tunes by a sample rate, and a 32-sample waveform completes one
-        # cycle every 32 samples, so the tone works out to 65536/(2048-value) Hz.
-        # Invert that for the register value and keep it in range.
-        def wave_rate(freq_hz)
-          WAVE_LONGEST_WAVE - Sound.wave_voice_ticks(freq_hz)
-        end
-
-        # Pack 32 four-bit samples into wave RAM's eight 16-bit words. Two samples to
-        # a byte (the earlier sample in the high nibble), two bytes to a little-endian
-        # word.
-        def pack_wavetable(samples)
-          bytes = samples.each_slice(2).map { |hi, lo| ((hi & 0xF) << 4) | (lo & 0xF) }
-          bytes.each_slice(2).map { |low, high| ((high || 0) << 8) | low }
-        end
       end
     end
   end

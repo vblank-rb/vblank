@@ -38,6 +38,7 @@ require_relative "gba/top_of_quick_memory" # what the build holds back at its to
 require_relative "gba/scene_quick_memory" # each scene its own share of the quick memory, swapped as it takes over
 require_relative "gba/placement"
 require_relative "gba/buffered"
+require_relative "gba/sound_registers"
 require_relative "gba/audio"
 require_relative "gba/reciprocal"
 require_relative "gba/divide"
