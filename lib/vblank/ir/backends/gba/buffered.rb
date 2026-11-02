@@ -616,16 +616,60 @@ module VBlank
             x, y = constant_ints!(node, x: node.x, y: node.y)
             index = @layout.palette.index_of(node.color) unless node.picked
             @framebuffer.emit_text_color(node, TEXT_INDEX) { |color| @layout.palette.index_of(color) } if node.picked
+            points = @framebuffer.text_points(node, x, y)
+            return emit_text_points_call(points, index) if points.length >= Framebuffer::TEXT_POINTS_LINE
+
             base = 6
             load_var(base, BACKBUF) # the hidden page base, held for the whole line
 
-            node.fonts.get(node.font).each_pixel(node.text) do |dx, dy|
-              px = x + dx
-              py = y + dy
-              next unless @framebuffer.in_bounds?(px, py)
-
-              emit_write_index_pixel_const(base, px, py, index || TEXT_INDEX, held: node.picked)
+            points.each do |point|
+              emit_write_index_pixel_const(base, point % SCREEN_WIDTH, point / SCREEN_WIDTH, index || TEXT_INDEX, held: node.picked)
             end
+          end
+
+          # A line in a table: the colour's slot in r0, then the table and how many it holds.
+          def emit_text_points_call(points, index)
+            index ? emit_number(ACC, index) : emit(ASM.mov_reg(ACC, TEXT_INDEX))
+            emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
+            emit_number(SPARE, points.length)
+            @text_points_used = true
+            emit_call_cold_routine(TEXT_POINTS)
+          end
+
+          TEXT_POINTS = Messages::MadeNames.make(:buffered_text_points_routine)
+
+          # THE ROUTINE THAT STAMPS A TABLE OF PIXELS onto the hidden page: r0 the colour's slot, r1
+          # the table, r2 how many. Each pixel is half of a 16-bit unit, read, spliced and written
+          # back, and which half is the pixel's column being odd.
+          def emit_text_points_routine
+            return unless @text_points_used
+
+            pixel = gensym
+            odd = gensym
+            write = gensym
+            emit(ASM.loop_forever) # fall-through guard
+            place_label(TEXT_POINTS)
+            emit(ASM.push(14))
+            load_var(9, BACKBUF)
+            place_label(pixel)
+            emit(ASM.load_halfword(3, 1))
+            emit(ASM.add_imm(1, 1, 2))
+            emit(ASM.add_reg(10, 9, 3))             # the pixel's byte
+            emit(ASM.lsr_imm(10, 10, 1))
+            emit(ASM.lsl_imm(10, 10, 1))            # r10 = the 16-bit unit it is in
+            emit(ASM.load_halfword(11, 10))
+            emit(ASM.tst_imm(3, 1))
+            emit_branch(:bcond, odd, cond: :ne)
+            emit_splice_index_reg(11, 0, false)
+            emit_branch(:b, write)
+            place_label(odd)
+            emit_splice_index_reg(11, 0, true)
+            place_label(write)
+            emit(ASM.store_halfword(11, 10))
+            emit(ASM.subs_imm(2, 2, 1))
+            emit_branch(:bcond, pixel, cond: :ne)
+            emit(ASM.pop(15))
+            place_label(:"#{TEXT_POINTS}_end")
           end
 
           # Where a two-colour line's slot waits while its pixels are written: clear of the

@@ -1523,14 +1523,44 @@ module VBlank
             x, y = constant_ints!(node, x: node.x, y: node.y)
             @framebuffer.emit_text_color(node, ACC) { |color| Graphics::Color.resolve(color) }
 
-            node.fonts.get(node.font).each_pixel(node.text) do |dx, dy|
-              px = x + dx
-              py = y + dy
-              next unless @framebuffer.in_bounds?(px, py)
+            points = @framebuffer.text_points(node, x, y)
+            return emit_text_points_call(points) if points.length >= Framebuffer::TEXT_POINTS_LINE
 
-              emit_number(TMP, VRAM_START + ((py * SCREEN_WIDTH) + px) * 2)
+            points.each do |point|
+              emit_number(TMP, VRAM_START + (point * 2))
               emit(ASM.store_halfword(ACC, TMP))
             end
+          end
+
+          # A line in a table: the colour already in r0, then the table and how many it holds.
+          def emit_text_points_call(points)
+            emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
+            emit_number(SPARE, points.length)
+            @text_points_used = true
+            emit_call_cold_routine(TEXT_POINTS)
+          end
+
+          TEXT_POINTS = Messages::MadeNames.make(:text_points_routine)
+
+          # THE ROUTINE THAT STAMPS A TABLE OF PIXELS: r0 the colour, r1 the table, r2 how many.
+          # Only ever entered by a call, and made only for a game with such a line.
+          def emit_text_points_routine
+            return unless @text_points_used
+
+            pixel = gensym
+            emit(ASM.loop_forever) # fall-through guard
+            place_label(TEXT_POINTS)
+            emit_number(12, VRAM_START)
+            place_label(pixel)
+            emit(ASM.load_halfword(3, 1))
+            emit(ASM.add_imm(1, 1, 2))
+            emit(ASM.lsl_imm(3, 3, 1))              # two bytes a pixel
+            emit(ASM.add_reg(3, 3, 12))
+            emit(ASM.store_halfword(0, 3))
+            emit(ASM.subs_imm(2, 2, 1))
+            emit_branch(:bcond, pixel, cond: :ne)
+            emit(ASM.return)
+            place_label(:"#{TEXT_POINTS}_end")
           end
           # Draw the run-time digit held in +value+ (0..9). A font can't be indexed by a
           # run-time value the way an array is, so there are two ways to render it, and

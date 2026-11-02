@@ -1077,6 +1077,8 @@ module VBlank
           # digit routine one of them alone reaches would still be unregistered any earlier.
           @drawing.emit_digit_routines  # the shared glyph loop each font's draw_number/draw_digit calls
           @buffered.emit_digit_routines # ...and its tear-free counterpart
+          @drawing.emit_text_points_routine # the loop a long line of big letters calls
+          @buffered.emit_text_points_routine # ...and its tear-free counterpart
           @background_drawing.emit_set_swap_routines # bringing another set of tiles in, a routine a background
           @sprite_drawing.emit_shared_room_routines # giving a sprite a room for its pose, two routines a set of rooms
           @sprite_drawing.emit_lend_colors_routine # lending a group of sprite colours to the list a sprite wears

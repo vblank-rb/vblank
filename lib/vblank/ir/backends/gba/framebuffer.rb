@@ -179,6 +179,33 @@ module VBlank
             @emitter.place_label(done)
           end
 
+          # A LINE OF FIXED TEXT WITH THIS MANY LIT PIXELS OR MORE IS A TABLE. Written out, a pixel is an
+          # address loaded and a store, right where the line is drawn; in a table it is two bytes,
+          # and a pass round a shared loop that reads them from the cartridge, which is slower. So
+          # a short line, which a game may well draw every frame, stays as it is, and what goes in
+          # a table is the line in a game's own big letters that is most of a cartridge's code.
+          TEXT_POINTS_LINE = 256
+
+          # Where on the screen each lit pixel of +node+'s line drawn at +x+, +y+ lands, counting
+          # pixels along the rows from the top left, the ones off the screen left out.
+          def text_points(node, x, y)
+            points = []
+            node.fonts.get(node.font).each_pixel(node.text) do |dx, dy|
+              points << (((y + dy) * SCREEN_WIDTH) + x + dx) if in_bounds?(x + dx, y + dy)
+            end
+            points
+          end
+
+          # The table of +points+, as the routine reads them: one line's, kept once however many
+          # places draw it. The name is handed out in turn, so a build makes the same bytes.
+          def text_points_blob(points)
+            @text_point_blobs ||= {}
+            bytes = points.pack("v*")
+            @text_point_blobs[bytes] ||= :"__text_points_#{@text_point_blobs.length}".tap do |blob|
+              @emitter.data_blobs[blob] = bytes
+            end
+          end
+
           # Everything a column needs before its first row: how many rows, how far down
           # the picture each one moves, where it starts on screen, and where its pixels
           # come from.
