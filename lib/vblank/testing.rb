@@ -137,10 +137,16 @@ module VBlank
       raise MissingFeature, "#{Console.for(named).title} cannot do this: #{why}" if Testing.console == named
     end
 
-    # THE ONE KIND OF SKIP A RUN TAKES: its lowering lacks the feature the test plays — its build
-    # does not make it yet, or its hardware cannot. A checked player raises it for what its
-    # lowering does not make or answer, and skip_on_<run> for what a test says it cannot play.
-    # Any other skip is a test in the wrong place, and fails the run (SkipsByReason).
+    # This test cannot play on the machine running the suite, saying +why+: something that is not
+    # installed, another operating system, a copy of a game's data it cannot ship. It says nothing
+    # about a lowering, so it is no test in the wrong place (see SkipsByReason).
+    def skip_on_this_machine(why) = raise(NotOnThisMachine, why)
+
+    # THE TWO KINDS OF SKIP A RUN TAKES. The first: its lowering lacks the feature the test plays —
+    # its build does not make it yet, or its hardware cannot. A checked player raises it for what
+    # its lowering does not make or answer, and skip_on_<run> for what a test says it cannot play.
+    # The second is NotOnThisMachine, below. Any other skip is a test in the wrong place, and fails
+    # the run (SkipsByReason).
     #
     # It is a plain Minitest::Skip with a mark on it, not a kind of its own: minitest counts a
     # run's skips by the exact class of each, so one of its own would go uncounted. The mark is an
@@ -151,6 +157,16 @@ module VBlank
 
       # Whether +failure+ is one.
       def self.===(failure) = failure.is_a?(Minitest::Skip) && failure.instance_variable_get(:@missing_feature) == true
+    end
+
+    # What this machine lacks, marked as MissingFeature is. `skip_on_this_machine "why"` raises one.
+    module NotOnThisMachine
+      def self.exception(message)
+        Minitest::Skip.new(message).tap { |skip| skip.instance_variable_set(:@not_on_this_machine, true) }
+      end
+
+      # Whether +failure+ is one.
+      def self.===(failure) = failure.is_a?(Minitest::Skip) && failure.instance_variable_get(:@not_on_this_machine) == true
     end
   end
 end

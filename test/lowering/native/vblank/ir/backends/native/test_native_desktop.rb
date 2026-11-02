@@ -115,7 +115,7 @@ class TestNativeDesktop < Minitest::Test
   # person's files are, in the two ways a Mac and a Linux machine are told, so nothing is
   # written among the files of whoever runs it.
   def test_the_program_a_player_runs_keeps_its_save_among_the_files_of_whoever_plays
-    skip "only a Mac and Linux can be told where a person's files are" unless RUBY_PLATFORM.match?(/darwin|linux/)
+    skip_on_this_machine "only a Mac and Linux can be told where a person's files are" unless RUBY_PLATFORM.match?(/darwin|linux/)
 
     game = game_that_keeps_a_count
     saved = SaveImage.new
@@ -240,7 +240,7 @@ class TestNativeDesktop < Minitest::Test
   # lands at half its size in the top left, away from the mouse, with its text cut off. A real
   # window opens on this Mac's screen for a few seconds.
   def test_the_menu_is_drawn_at_the_screens_own_scale
-    skip "only a Mac's own screen is checked here; the stand-in display has no scale" unless RUBY_PLATFORM.include?("darwin")
+    skip_on_this_machine "only a Mac's own screen is checked here; the stand-in display has no scale" unless RUBY_PLATFORM.include?("darwin")
 
     Dir.mktmpdir do |dir|
       exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)
@@ -259,7 +259,7 @@ class TestNativeDesktop < Minitest::Test
   # the person's files are, in the two ways a Mac and a Linux machine are told, so nothing is
   # written among the files of whoever runs it.
   def test_the_players_settings_file_and_the_games_own
-    skip "only a Mac and Linux can be told where a person's files are" unless RUBY_PLATFORM.match?(/darwin|linux/)
+    skip_on_this_machine "only a Mac and Linux can be told where a person's files are" unless RUBY_PLATFORM.match?(/darwin|linux/)
 
     Dir.mktmpdir do |dir|
       exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)

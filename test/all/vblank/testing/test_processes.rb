@@ -49,6 +49,18 @@ class TestProcesses < Minitest::Test
     refute spread_passed, "a run with a failure has to fail across processes too"
   end
 
+  # A skip about the machine is counted with the rest, and neither way of playing calls it a test in
+  # the wrong place, however it reached the process that reports.
+  def test_a_skip_about_the_machine_is_counted_and_is_no_test_in_the_wrong_place
+    alone, = run_fixture
+    spread, = run_fixture(processes: 2)
+
+    [alone, spread].each do |out|
+      assert_match(/1  cannot yet: the second reason/, out)
+      refute_match(/test_skips_three/, report_of(out))
+    end
+  end
+
   # Each test the native run plays leaves a file named for the process that played it.
   private def processes_that_played(processes, env = {}, seed: 7)
     Dir.mktmpdir do |folder|

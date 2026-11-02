@@ -309,7 +309,8 @@ module VBlank
         end
 
         plain = if MissingFeature === failure then MissingFeature.exception(failure.message)
-                else (failure.is_a?(Minitest::Skip) ? Minitest::Skip : Minitest::Assertion).new(failure.message)
+                elsif NotOnThisMachine === failure then NotOnThisMachine.exception(failure.message)
+                else(failure.is_a?(Minitest::Skip) ? Minitest::Skip : Minitest::Assertion).new(failure.message)
                 end
         plain.set_backtrace(backtrace)
         plain

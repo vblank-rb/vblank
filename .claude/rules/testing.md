@@ -67,7 +67,7 @@ but `test/all/` on the runs that do not load it and names each test that passed 
 playing a game: a test that could come back to `test/all/` (narrow it with `ONLY=` and `RUNS=`).
 
 **Skips are for the machine, not the console.** A test that cannot run on the machine playing the
-suite skips saying why — "this test is for macOS only", a tool that is not installed. A test of
+suite says so with `skip_on_this_machine "why"` — "this test is for macOS only", a tool that is not installed, a game's data it cannot ship. A test of
 something one console cannot do is never a skip: it is in the wrong place, and moves to the folders
 of the consoles that can (`test/console/<console>/`), its game and tests kept once in a module the
 files include (`test/clock_tests.rb`). The one lowering skip there is: **a part the run's build does

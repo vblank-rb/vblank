@@ -65,6 +65,6 @@ class ProcessesFixtureMixed < Minitest::Test
 
   def test_skips_three
     note_process
-    skip "cannot yet: the second reason"
+    skip_on_this_machine "cannot yet: the second reason"
   end
 end

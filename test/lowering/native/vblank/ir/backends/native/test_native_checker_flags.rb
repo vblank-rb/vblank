@@ -54,7 +54,7 @@ class TestNativeCheckerFlags < Minitest::Test
   end
 
   def test_the_windows_file_passes_once_sdl_has_been_fetched
-    skip "SDL has not been fetched on this machine: build a game for the desktop once" if Zig.sdl_include_dir.nil?
+    skip_on_this_machine "SDL has not been fetched on this machine: build a game for the desktop once" if Zig.sdl_include_dir.nil?
 
     assert_nil complaints_about(File.join(Zig::RUNTIME_DIR, WINDOW_FILE))
   end
