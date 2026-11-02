@@ -442,6 +442,12 @@ module VBlank
               asm.dec
               asm.tay
               asm.label("rt_recordings_note_found")
+              if memory.reserved?(Sound::AHEAD)
+                asm.lda(at.call(Sound::ASKING_AHEAD))
+                asm.beq("rt_recordings_note_nothing_to_forget")
+                asm.jsl(asm.long("rt_sound_forget_place"))
+                asm.label("rt_recordings_note_nothing_to_forget")
+              end
               asm.lda(at.call(NOTE_OWNER))
               asm.sta(place.call(OWNER))
               asm.lda(at.call(NOTE_RANK))

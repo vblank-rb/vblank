@@ -394,6 +394,12 @@ module VBlank
               m = SNES::Music
               state = ->(field) { asm.abs_y(memory[STATES], field) }
               asm.label("rt_sfx_frame")
+              asm.lda(1)
+              asm.sta(at.call(Sound::ASKING_AHEAD)) # what it asks of the chip goes ahead of a song's
+              asm.jsr(asm.abs("rt_sfx_frame_played"))
+              asm.stz(at.call(Sound::ASKING_AHEAD))
+              asm.rts
+              asm.label("rt_sfx_frame_played")
               asm.lda(state.call(STOPPING))
               asm.beq("rt_sfx_frame_not_cut")
               asm.lda(0)

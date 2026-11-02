@@ -48,7 +48,7 @@ module VBlank
                                     scene_background_tiles: c.scene_background_tiles)
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
             Chip.reserve(memory) if c.chip?
-            Sound.reserve(memory, queued: c.songs) if c.sound
+            Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides) if c.samples
           end

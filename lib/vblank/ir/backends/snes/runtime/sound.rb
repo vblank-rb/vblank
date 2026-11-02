@@ -122,6 +122,19 @@ module VBlank
             # The room a write leaves in the queue, so an entry at the front can always become its writes.
             QUEUE_ROOM = (NOTE_START_WRITES + 1) * ENTRY_BYTES
             QUEUE_TAIL_KEPT = "rt sound queue tail kept"
+            # THE LINE AHEAD OF IT, in a game with sound effects (#emit_write_ahead), a ring laid out
+            # the same way. ASKING_AHEAD is set while an effect plays, FRONT_LEFT counts what is at the
+            # front of the queue to go before the next can be moved there, and FORGOTTEN is what an
+            # entry becomes that nothing wants any more.
+            AHEAD = "rt sound ahead"
+            AHEAD_HEAD = "rt sound ahead head"
+            AHEAD_TAIL = "rt sound ahead tail"
+            AHEAD_ENTRIES = 32
+            AHEAD_MASK = (AHEAD_ENTRIES * ENTRY_BYTES) - 1
+            ASKING_AHEAD = "rt sound asking ahead"
+            FRONT_LEFT = "rt sound front left"
+            FORGOTTEN = 7
+            AHEAD_TRIES = 64
 
             # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the
             # number the lowering gave its entry of the interpreter's log (Lowering::Sound), the
@@ -158,12 +171,16 @@ module VBlank
               [SET_BITS_COMMANDS.fetch(target), mask, bits]
             end
 
-            def reserve(memory, queued: false)
+            def reserve(memory, queued: false, effects: false)
               if queued
                 memory.reserve(QUEUE, QUEUE_ENTRIES * ENTRY_BYTES)
                 memory.reserve(QUEUE_HEAD, 2)
                 memory.reserve(QUEUE_TAIL, 2)
                 memory.reserve(QUEUE_TAIL_KEPT, 2)
+              end
+              if queued && effects
+                memory.reserve(AHEAD, AHEAD_ENTRIES * ENTRY_BYTES)
+                [AHEAD_HEAD, AHEAD_TAIL, ASKING_AHEAD, FRONT_LEFT].each { |name| memory.reserve(name, 2) }
               end
               memory.reserve(LIVE, 2)
               memory.reserve(SENT, 2)
@@ -273,6 +290,7 @@ module VBlank
                 asm.bne("rt_sound_frame_tick")
               end
               asm.jsr(asm.abs("rt_recordings_kept_for_pass")) if samples
+              emit_ahead_sent_at_frame(asm, memory) if memory.reserved?(AHEAD)
               asm.lda(asm.abs(memory[Frame::PASSES]))
               asm.and_a(Frame::STEPS_KEPT - 1)
               asm.asl
@@ -388,7 +406,12 @@ module VBlank
               asm.label("rt_sound_command") # the command in A, its two numbers in R0 and R1
               asm.sta(asm.direct(R2))
               asm.lda(asm.abs(memory[LIVE]))
-              asm.beq("rt_sound_write_done")
+              if memory.reserved?(AHEAD)
+                asm.branch_long(:beq, "rt_sound_write_done")
+                emit_write_ahead(asm, memory)
+              else
+                asm.beq("rt_sound_write_done")
+              end
               memory.reserved?(QUEUE) ? emit_queued_write(asm, memory) : emit_write_at_once(asm, memory)
               asm.label("rt_sound_write_done")
               asm.rtl
@@ -401,6 +424,123 @@ module VBlank
               asm.rtl
               emit_queue_room_made(asm, memory, samples)
               emit_send_queued(asm, memory, samples)
+              emit_forget_place(asm, memory) if memory.reserved?(AHEAD) && samples
+            end
+
+            # A SOUND EFFECT GOES AHEAD. An effect answers a press, and a song's chord and every
+            # note's loudness can fill the queue for frames in a game with little time to spare to
+            # send it. So what is asked for while an effect plays (ASKING_AHEAD) waits in a short line
+            # of its own, and #emit_move_ahead puts its oldest at the very front of the queue. In
+            # game terms nothing changes: the two lines reach different voices.
+            #
+            # A game with no time to spare has no wait to send it in either, so while anything of an
+            # effect's is waiting, a frame spends up to AHEAD_TRIES looks at the mailbox on it, whether
+            # the game has time or not, and stops as soon as it has all gone. That is what an effect's
+            # note costs a frame, and a frame with nothing of an effect's waiting spends a compare.
+            def emit_ahead_sent_at_frame(asm, memory)
+              asm.ldy(AHEAD_TRIES)
+              asm.label("rt_sound_ahead_try")
+              asm.lda(asm.abs(memory[FRONT_LEFT]))
+              asm.bne("rt_sound_ahead_waiting")
+              asm.lda(asm.abs(memory[AHEAD_HEAD]))
+              asm.cmp(asm.abs(memory[AHEAD_TAIL]))
+              asm.beq("rt_sound_ahead_sent")
+              asm.label("rt_sound_ahead_waiting")
+              asm.jsl(asm.long("rt_sound_send_queued"))
+              asm.dey
+              asm.bne("rt_sound_ahead_try")
+              asm.label("rt_sound_ahead_sent")
+            end
+
+            # The command in R2, into that line, unless it is full or nothing is asking.
+            def emit_write_ahead(asm, memory)
+              asm.lda(asm.abs(memory[ASKING_AHEAD]))
+              asm.beq("rt_sound_write_in_line")
+              asm.ldx(asm.abs(memory[AHEAD_TAIL]))
+              asm.txa
+              asm.clc
+              asm.adc(ENTRY_BYTES)
+              asm.and_a(AHEAD_MASK)
+              asm.cmp(asm.abs(memory[AHEAD_HEAD]))
+              asm.beq("rt_sound_write_in_line")
+              asm.sta(asm.abs(memory[AHEAD_TAIL]))
+              asm.lda(asm.direct(R2))
+              asm.sta(asm.abs_x(memory[AHEAD], ENTRY_COMMAND))
+              asm.lda(asm.direct(R0))
+              asm.sta(asm.abs_x(memory[AHEAD], ENTRY_REGISTER))
+              asm.lda(asm.direct(R1))
+              asm.sta(asm.abs_x(memory[AHEAD], ENTRY_VALUE))
+              asm.brl("rt_sound_write_done")
+              asm.label("rt_sound_write_in_line")
+            end
+
+            # The oldest of the line ahead moved to the very front of the queue, once what is at the
+            # front has all gone (FRONT_LEFT): a note's writes are not to be split, or the rest of one
+            # would land on another's voice over it.
+            def emit_move_ahead(asm, memory)
+              asm.lda(asm.abs(memory[FRONT_LEFT]))
+              asm.bne("rt_sound_move_ahead_done")
+              asm.ldx(asm.abs(memory[AHEAD_HEAD]))
+              asm.cpx(asm.abs(memory[AHEAD_TAIL]))
+              asm.beq("rt_sound_move_ahead_done")
+              [ENTRY_COMMAND, ENTRY_REGISTER, ENTRY_VALUE].each do |field|
+                asm.lda(asm.abs_x(memory[AHEAD], field))
+                asm.pha
+              end
+              asm.txa
+              asm.clc
+              asm.adc(ENTRY_BYTES)
+              asm.and_a(AHEAD_MASK)
+              asm.sta(asm.abs(memory[AHEAD_HEAD]))
+              asm.lda(asm.abs(memory[QUEUE_HEAD]))
+              asm.sec
+              asm.sbc(ENTRY_BYTES)
+              asm.and_a(QUEUE_MASK)
+              asm.sta(asm.abs(memory[QUEUE_HEAD]))
+              asm.tax
+              [ENTRY_VALUE, ENTRY_REGISTER, ENTRY_COMMAND].each do |field|
+                asm.pla
+                asm.sta(asm.abs_x(memory[QUEUE], field))
+              end
+              asm.lda(1)
+              asm.sta(asm.abs(memory[FRONT_LEFT]))
+              asm.label("rt_sound_move_ahead_done")
+            end
+
+            # One thing gone from the front of the queue.
+            def emit_front_gone(asm, memory)
+              return unless memory.reserved?(AHEAD)
+
+              asm.lda(asm.abs(memory[FRONT_LEFT]))
+              asm.beq(label = "rt_sound_front_counted_#{asm.here}")
+              asm.dec(asm.abs(memory[FRONT_LEFT]))
+              asm.label(label)
+            end
+
+            # rt_sound_forget_place (JSL): anything the queue still has to tell the voice of the place
+            # Y holds forgotten, since an effect has taken that place: a song's note arriving after
+            # the effect's would strike over it. X is the routine's, and Y stays.
+            def emit_forget_place(asm, memory)
+              asm.label("rt_sound_forget_place")
+              asm.ldx(asm.abs(memory[QUEUE_HEAD]))
+              asm.label("rt_sound_forget_next")
+              asm.cpx(asm.abs(memory[QUEUE_TAIL]))
+              asm.beq("rt_sound_forget_done")
+              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.cmp(START_NOTE)
+              asm.bcc("rt_sound_forget_past")
+              asm.tya
+              asm.cmp(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.bne("rt_sound_forget_past")
+              asm.lda(FORGOTTEN)
+              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.label("rt_sound_forget_past")
+              asm.txa
+              emit_advance_queue_place(asm)
+              asm.tax
+              asm.bra("rt_sound_forget_next")
+              asm.label("rt_sound_forget_done")
+              asm.rtl
             end
 
             # A game with a sound queue sends from it while it waits; any other sleeps until an
@@ -477,7 +617,7 @@ module VBlank
               asm.sec
               asm.sbc(asm.stack(past_end))
               asm.and_a(QUEUE_MASK)
-              asm.cmp(QUEUE_ROOM)
+              asm.cmp(memory.reserved?(AHEAD) ? QUEUE_ROOM * 2 : QUEUE_ROOM) # an effect's note can go in front too
             end
 
             # rt_sound_queue_make_room, with the queue nearly full and the place past its end on the
@@ -510,6 +650,7 @@ module VBlank
               asm.lda(asm.abs(memory[QUEUE_HEAD]))
               emit_advance_queue_place(asm)
               asm.sta(asm.abs(memory[QUEUE_HEAD]))
+              emit_front_gone(asm, memory)
               emit_queue_room_left(asm, memory, 5)
               asm.bcc("rt_sound_queue_drop")
               asm.label("rt_sound_queue_room_made")
@@ -523,11 +664,22 @@ module VBlank
             def emit_send_queued(asm, memory, samples)
               h = Console::SNESHardware
               asm.label("rt_sound_send_queued")
+              emit_move_ahead(asm, memory) if memory.reserved?(AHEAD)
               asm.ldx(asm.abs(memory[QUEUE_HEAD]))
               asm.cpx(asm.abs(memory[QUEUE_TAIL]))
               asm.beq("rt_sound_send_queued_done")
               if samples
                 asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+                if memory.reserved?(AHEAD)
+                  asm.cmp(FORGOTTEN)
+                  asm.bne("rt_sound_send_queued_not_forgotten")
+                  asm.txa
+                  emit_advance_queue_place(asm)
+                  asm.sta(asm.abs(memory[QUEUE_HEAD]))
+                  emit_front_gone(asm, memory)
+                  asm.rtl
+                  asm.label("rt_sound_send_queued_not_forgotten")
+                end
                 voice_told(memory).each_key do |command|
                   asm.cmp(command)
                   asm.bne("rt_sound_send_queued_not_#{command}")
@@ -553,6 +705,7 @@ module VBlank
               asm.txa
               emit_advance_queue_place(asm)
               asm.sta(asm.abs(memory[QUEUE_HEAD]))
+              emit_front_gone(asm, memory)
               asm.rtl
               asm.label("rt_sound_send_queued_unanswered")
               asm.widths(a16: false, xy16: true) # reached by the branch above, with A still 8 bits wide
@@ -571,6 +724,7 @@ module VBlank
             # the game's, if the game is in the middle of queueing a write, so it is kept.
             def emit_entry_into_writes(asm, memory, command, writes, routine)
               kept = [Recordings::PLACE, Recordings::ROW, Recordings::REGISTERS, Recordings::BEST]
+              kept << ASKING_AHEAD if memory.reserved?(AHEAD) # these writes take the entry's place in line
               scratch = [R0, R1, R2]
               asm.label("rt_sound_entry_into_writes_#{command}")
               asm.phy
@@ -594,6 +748,11 @@ module VBlank
               asm.and_a(QUEUE_MASK)
               asm.sta(asm.abs(memory[QUEUE_HEAD]))
               asm.sta(asm.abs(memory[QUEUE_TAIL]))
+              if memory.reserved?(AHEAD) # the writes are the front now, however it came to be there
+                asm.stz(asm.abs(memory[ASKING_AHEAD]))
+                asm.lda(writes)
+                asm.sta(asm.abs(memory[FRONT_LEFT]))
+              end
               asm.jsl(asm.long(routine))
               asm.lda(asm.abs(memory[QUEUE_TAIL_KEPT]))
               asm.sta(asm.abs(memory[QUEUE_TAIL]))
