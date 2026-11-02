@@ -103,7 +103,8 @@ module VBlank
 
             def prepare_picture
               refuse_backdrops_of_its_own!
-              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares)
+              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
+                             screen_colors: @screen_colors)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
@@ -215,20 +216,75 @@ module VBlank
             end
 
             # Reference#exec_background_colors: the background's lists, each written over its palette.
-            def emit_background_colors(node) = for_background(node) { |bg| emit_background_colors_on(node, bg) }
+            # In a game of screen colours a scene's background keeps the number it was told, since its
+            # scene's colours come in again each time it arrives (#emit_scene_colors).
+            def emit_background_colors(node)
+              which = node.which
+              told = @background_colors_told[node.name]
+              if told
+                statement(Build.set(told, which))
+                which = Build.var_ref(told)
+              end
+              for_background(node) { |bg| emit_background_colors_on(which, bg) }
+            end
 
-            def emit_background_colors_on(node, bg)
+            def emit_background_colors_on(which, bg)
               label = held_colors_label([:background, bg.object_id]) do
                 [nil, *bg.recolors.each_index].map { |step| background_held_set(bg, step) }
               end
-              runtime_call("rt_colors_hold", [LongAddress.new(label), node.which])
+              runtime_call("rt_colors_hold", [LongAddress.new(label), which])
+            end
+
+            # Each background a scene shows and draws with other colours, in a game of screen colours:
+            # the number it was told last, by its name, from power-on the one naming none, as the
+            # interpreter keeps it by name (Reference @bg_colors).
+            def keep_background_colors_told
+              recolored = @screen_colors ? backgrounds_declared.select { |bg| bg.scene && !Array(bg.recolors).empty? } : []
+              @background_colors_told = recolored.map(&:name).uniq.to_h do |name|
+                [name, keep_local(:"colors_of_#{name}", start: Build::NO_RECOLOR)]
+              end
+            end
+
+            # Every background of the game, a name two scenes declare once for each.
+            def backgrounds_declared = @backgrounds_declared ||= @program.walk.select { |node| node.kind == :background }
+
+            # The scene whose colours +bg+ is drawn from, in a game of screen colours; nil for the sets
+            # every screen keeps.
+            def colors_scene_of(bg) = @screen_colors ? bg.scene : nil
+
+            # What +bg+'s lists are kept under: a name two scenes declare is two backgrounds with sets
+            # of their own, in a game of screen colours.
+            def held_lists_key(bg) = [colors_scene_of(bg), bg.name]
+
+            # THE COLOURS EVERY SCREEN KEEPS, in a game of screen colours: all of them made before any
+            # scene takes its copy (Art#background_palettes), every tile a background has among them,
+            # since one the game only changes a cell to at run time may be drawn on any screen.
+            def make_every_screens_colors
+              return unless @screen_colors
+
+              backgrounds_declared.reject(&:scene).each { |bg| bg.tiles.each_index { |tile| cell_of(bg, tile) } }
+            end
+
+            # A scene taking over, in a game of screen colours: its sets into the colours drawn now and
+            # the copy the blank sends, through whatever fade is in force, and the lists its
+            # backgrounds were told said again over them. They go out in the blank that sends its
+            # maps' registers (Runtime::Picture's "Together"), so no frame shows the two out of step.
+            def emit_scene_colors(scene, arrival)
+              return if !@screen_colors || arrival.scenery.empty?
+
+              label = held_colors_label(:scenes) { @scenes.sort_by(&:last).map { |name, _| @art.scene_colors(name) } }
+              runtime_call("rt_colors_hold", [LongAddress.new(label), Build.int(@scenes.fetch(scene) - 1)])
+              arrival.scenery.each do |bg|
+                told = @background_colors_told[bg.name]
+                emit_background_colors_on(Build.var_ref(told), bg) if told
+              end
             end
 
             # What a background's palettes hold at its step +step+ (nil for its own colours): each list
             # it is drawn from, by place, as the list named for that step says (Assets::Recolor).
             def background_held_set(bg, step)
               swaps = step && bg.list_swaps(step)
-              ((@background_lists || {})[bg.name] || {}).map do |list, (palette, image)|
+              ((@background_lists || {})[held_lists_key(bg)] || {}).map do |list, (palette, image)|
                 swapped = swaps && swaps[list]
                 colors = (1...image.colors.length).map { |place| (swapped && swapped[place]) || image.colors[place] }
                 [@art.background_palette_at(palette), colors]
@@ -242,15 +298,20 @@ module VBlank
 
               list = image.list_drawn_from
               colors = image.colors.drop(1).map { |color| color & 0x7FFF }
-              palette = held_palette_or_refuse { @art.held_background_palette([:backgrounds, bg.name, list], colors) }
-              ((@background_lists ||= {})[bg.name] ||= {})[list] = [palette, image]
+              palette = held_palette_or_refuse do
+                @art.held_background_palette([:backgrounds, *held_lists_key(bg), list], colors, scene: colors_scene_of(bg))
+              end
+              ((@background_lists ||= {})[held_lists_key(bg)] ||= {})[list] = [palette, image]
               palette
             end
 
-            # A list that changes keeps a palette for the whole game, and the console has eight. The
-            # Color's build brings each scene's colours in with it; this one does not yet.
+            # A list that changes keeps a palette, and the console has eight for backgrounds and eight
+            # for sprites. Backgrounds that fill theirs go on to bring each scene's colours in
+            # (SNES#build); past that, or for sprites, the game is refused.
             def held_palette_or_refuse
               yield
+            rescue Art::TooManyBackgroundColors
+              raise
             rescue Art::TooMuch
               refuse_unmade!("more lists of colours changing as the game runs than a Super Nintendo has palettes")
             end
@@ -649,6 +710,7 @@ module VBlank
 
               emit_layers_straight_for(arrival)
               emit_tile_sizes_for(arrival)
+              emit_scene_colors(scene, arrival)
               arrival.map_choices.each { |var| store_number(place_of(var), 0) }
               arrival.scenery.each { |bg| emit_put_up(bg) }
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
@@ -694,7 +756,8 @@ module VBlank
               @run_cells.fetch(name) do
                 image = Assets::Image.of(picture_named(name))
                 held = held_background_palette(bg, image)
-                bg.tile_w == BIG_TILE ? @art.background_big_cell(image, held: held) : @art.background_cell(image, held: held)
+                scene = colors_scene_of(bg)
+                bg.tile_w == BIG_TILE ? @art.background_big_cell(image, held: held, scene: scene) : @art.background_cell(image, held: held, scene: scene)
               end
             end
 

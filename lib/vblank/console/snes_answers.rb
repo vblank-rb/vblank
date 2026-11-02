@@ -93,9 +93,10 @@ module VBlank
         rgb: works,
         rgb8: works,
         colors: works("a list of colours holds sixteen places on a Super Nintendo, the first see-through " \
-                      "on a sprite. The console holds eight lists for sprites and eight for backgrounds."),
-        recolor: works("a list told to hold other colours keeps a palette to itself for the whole game, so " \
-                       "a game can change eight lists of backgrounds and eight of sprites."),
+                      "on a sprite. The console holds eight lists for sprites, for the whole game, and eight " \
+                      "for backgrounds on each screen."),
+        recolor: works("a list told to hold other colours keeps a palette to itself, so a game can change " \
+                       "eight lists of backgrounds on each screen and eight of sprites."),
         color_walk: works,
         colors_in_use: works,
         mirror: works,

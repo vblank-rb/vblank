@@ -80,6 +80,10 @@ module VBlank
           # Raised for art the console cannot hold.
           class TooMuch < LoweringError; end
 
+          # The game's backgrounds need more sets of colours than one list of eight can hold, which
+          # is not yet the end of it: built again, each scene brings its own in (+screen_colors+).
+          class TooManyBackgroundColors < TooMuch; end
+
           attr_reader :background_tiles, :sprite_tiles, :grids, :sprite_pictures
 
           # The backdrop of a game that says none: black, as the interpreter's empty screen is.
@@ -89,8 +93,19 @@ module VBlank
           # a 15-bit colour, or nil for black. +sprite_squares+ draws a sprite's squares of 16×16 as
           # one row each. A square keeps its four tiles together, so it shares them less often than
           # 8×8 pieces do, and a game that only just fits is built without (SNES#build).
-          def initialize(backdrop: nil, sprite_squares: true)
+          #
+          # EACH SCREEN'S COLOURS (+screen_colors+). The console draws a background from eight sets
+          # of colours at once, and nothing says they cannot change between two screens, so a game's
+          # own screens load theirs as they load their maps: dozens across a game, and never more
+          # than eight up. A game that does not fit the eight is built that way (SNES#build). What
+          # every screen shows takes its sets first (#background_palettes). Then each scene starts
+          # from a copy of them and adds its own, so it can hand out all that are left and even
+          # add to one of theirs, and what it brings in as it takes over is whatever differs from
+          # those (#scene_colors).
+          def initialize(backdrop: nil, sprite_squares: true, screen_colors: false)
             @sprite_squares = sprite_squares
+            @screen_colors = screen_colors
+            @scene_palettes = {}
             @sprite_square_numbers = {}
             @square_tile_numbers = {}
             @backdrop = (backdrop || BACKDROP) & 0x7FFF
@@ -103,6 +118,7 @@ module VBlank
             @sprite_palettes_for = { false => (0...PALETTES), true => (0...PALETTES) }
             @held_palettes = {} # whose list => its palette (#held_palette)
             @held = { backgrounds: [], sprites: [] }
+            @scene_held = {} # a scene -> the same, for its own copy of the background palettes
             @sprite_pictures = {}
             @grids = []
           end
@@ -119,14 +135,16 @@ module VBlank
           # The cell +image+ (an Assets::Image of 8×8) makes in a map: its tile number and its
           # palette, as two numbers.
           # +held+ is the palette of a list the game changes (#held_background_palette), whose
-          # tiles are drawn from it place for place.
-          def background_cell(image, held: nil)
+          # tiles are drawn from it place for place. +scene+ is the scene whose own background this
+          # is, in a game of +screen_colors+, and nil for what every screen shows.
+          def background_cell(image, held: nil, scene: nil)
+            palettes = background_palettes(scene)
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
-            palette = held || palette_for(@background_palettes, drawn.map { |at| image.color_at(at) }.uniq, "backgrounds")
+            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_named(scene))
             places = Array.new(64) do |at|
               if image.tile_see_through_at?(at) then 0
               elsif held then place_in_list(image, at)
-              else @background_palettes[palette].index(image.color_at(at)) + 1
+              else palettes[palette].index(image.color_at(at)) + 1
               end
             end
             bytes = tile_bytes(places)
@@ -145,15 +163,16 @@ module VBlank
           # So the four quarters of +image+ (an Assets::Image of 16×16) go in four places that
           # pattern takes, the first of them at an even place in an even row, and the whole tile is
           # drawn from one palette. Its tile number (the top left quarter's) and the palette.
-          def background_big_cell(image, held: nil)
+          def background_big_cell(image, held: nil, scene: nil)
+            palettes = background_palettes(scene)
             drawn = (0...256).reject { |at| image.tile_see_through_at?(at) }
-            palette = held || palette_for(@background_palettes, drawn.map { |at| image.color_at(at) }.uniq, "backgrounds")
+            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_named(scene))
             quarters = (0...4).map do |quarter|
               tile_bytes(Array.new(64) do |at|
                 pixel = ((((quarter / 2) * 8) + (at / 8)) * 16) + ((quarter % 2) * 8) + (at % 8)
                 if image.tile_see_through_at?(pixel) then 0
                 elsif held then place_in_list(image, pixel)
-                else @background_palettes[palette].index(image.color_at(pixel)) + 1
+                else palettes[palette].index(image.color_at(pixel)) + 1
                 end
               end)
             end
@@ -171,7 +190,29 @@ module VBlank
           # be the place it was drawn at, and nothing else's colours can share it. +key+ says whose
           # it is, a background's name and a list or a sprites' list. Its colours are the first ones
           # it holds; the rest go in as the game runs (Runtime::Tint's rt_colors_hold).
-          def held_background_palette(key, colors) = held_palette(@background_palettes, key, colors, "backgrounds", 0...PALETTES)
+          def held_background_palette(key, colors, scene: nil)
+            held_palette(background_palettes(scene), key, colors, backgrounds_named(scene), 0...PALETTES)
+          end
+
+          # The sets of colours +scene+'s own backgrounds are drawn from: in a game of +screen_colors+
+          # a copy of what every screen shows, taken the first time it is asked for, by when those
+          # are all made (Lowering::Picture#make_every_screens_colors). Otherwise the game's.
+          def background_palettes(scene)
+            return @background_palettes unless scene
+
+            @scene_held[scene] ||= @held[:backgrounds].dup
+            @scene_palettes[scene] ||= @background_palettes.map { |list| list&.dup }
+          end
+
+          # What +scene+ brings in as it takes over, as [where in the colour memory, its colours] for
+          # each set: those that are not as every screen left them. Never none, since the routine
+          # that copies them counts down from how many (Runtime::Tint's rt_colors_hold).
+          def scene_colors(scene)
+            palettes = background_palettes(scene)
+            changed = palettes.each_index.select { |palette| palettes[palette] && palettes[palette] != @background_palettes[palette] }
+            changed = [(0...PALETTES).find { |palette| !@scene_held[scene].include?(palette) } || 0] if changed.empty?
+            changed.map { |palette| [background_palette_at(palette), palettes[palette] || []] }
+          end
 
           def held_sprite_palette(key, colors, mixed: false)
             held_palette(@sprite_palettes, key, colors, "sprites", @sprite_palettes_for.fetch(mixed))
@@ -187,11 +228,12 @@ module VBlank
 
           def held_palette(palettes, key, colors, what, within)
             @held_palettes.fetch(key) do
-              held = @held[palettes.equal?(@sprite_palettes) ? :sprites : :backgrounds]
+              held = held_in(palettes)
               free = within.find { |p| palettes[p].nil? || (palettes[p].empty? && !held.include?(p)) }
               unless free
-                raise TooMuch, "The #{what} hold more lists of colors the game changes than a Super Nintendo can " \
-                               "show. It holds #{PALETTES} sets of #{OWN_COLORS} colours. To fix this, change fewer lists."
+                raise too_much_for(palettes), "The #{what} hold more lists of colors the game changes than a Super " \
+                                              "Nintendo can show. It holds #{PALETTES} sets of #{OWN_COLORS} colours. " \
+                                              "To fix this, change fewer lists."
               end
 
               palettes[free] = colors.dup
@@ -328,7 +370,7 @@ module VBlank
           # backdrop and the backgrounds' palettes the game's pictures use, then the sprites'. The
           # rest are never drawn from, so a fade has no need to move them.
           def colors_shown
-            runs = [[0, @background_palettes.length * PLACES]]
+            runs = [[0, [@background_palettes, *@scene_palettes.values].map(&:length).max * PLACES]]
             runs << [PALETTES * PLACES, @sprite_palettes.length * PLACES] unless @sprite_palettes.empty?
             runs
           end
@@ -339,6 +381,23 @@ module VBlank
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
+
+          # The palettes of +palettes+ that hold a list the game changes, which nothing else can share.
+          def held_in(palettes)
+            return @held[:sprites] if palettes.equal?(@sprite_palettes)
+            return @held[:backgrounds] if palettes.equal?(@background_palettes)
+
+            @scene_held.fetch(@scene_palettes.find { |_, own| own.equal?(palettes) }.first)
+          end
+
+          # What the words of a refusal call +scene+'s backgrounds.
+          def backgrounds_named(scene) = scene ? "backgrounds of the scene :#{Modes.strip_scene_prefix(scene)}" : "backgrounds"
+
+          # The refusal for +palettes+ being full: the one that builds the game again with each scene
+          # bringing its own colours in, where that has not been tried and is what would help.
+          def too_much_for(palettes)
+            palettes.equal?(@background_palettes) && !@screen_colors ? TooManyBackgroundColors : TooMuch
+          end
 
           def sprite_tile_number(bytes)
             @sprite_tile_numbers[bytes] ||= begin
@@ -447,7 +506,7 @@ module VBlank
                              "Super Nintendo tile shows #{OWN_COLORS} and see-through. To fix this, draw it in #{OWN_COLORS} colours or fewer."
             end
 
-            held = @held[palettes.equal?(@sprite_palettes) ? :sprites : :backgrounds]
+            held = held_in(palettes)
             used = within.select { |p| palettes[p] && !held.include?(p) }
             found = used.find { |p| (colors - palettes[p]).empty? }
             return found if found
@@ -460,9 +519,9 @@ module VBlank
             end
             unused = within.find { |p| palettes[p].nil? }
             unless unused
-              raise TooMuch, "The pictures of the #{what} use more colours than a Super Nintendo can show for them. " \
-                             "It holds #{PALETTES} sets of #{OWN_COLORS} colours. To fix this, use fewer colours in " \
-                             "the #{what}' pictures."
+              raise too_much_for(palettes), "The pictures of the #{what} use more colours than a Super Nintendo can " \
+                                            "show for them. It holds #{PALETTES} sets of #{OWN_COLORS} colours. To fix " \
+                                            "this, use fewer colours in those pictures."
             end
 
             palettes[unused] = colors.dup
@@ -479,9 +538,10 @@ module VBlank
             empty = within.find { |p| palettes[p].nil? || palettes[p].empty? }
             return empty.tap { palettes[empty] = own.dup } if empty
 
-            raise TooMuch, "The pictures of the #{what} use more colours than a Super Nintendo can show for them. " \
-                           "It holds #{PALETTES} sets of #{OWN_COLORS} colours, and each list of colours a game " \
-                           "paints with takes a set of its own. To fix this, use fewer colours or fewer lists."
+            raise too_much_for(palettes), "The pictures of the #{what} use more colours than a Super Nintendo can show " \
+                                          "for them. It holds #{PALETTES} sets of #{OWN_COLORS} colours, and each list " \
+                                          "of colours a game paints with takes a set of its own. To fix this, use " \
+                                          "fewer colours or fewer lists."
           end
 
           def refuse_too_many!(count, most, what)

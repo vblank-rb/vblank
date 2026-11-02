@@ -103,7 +103,11 @@ module VBlank
         # pieces do and a game that only just fits its sprite tiles can run out. It is built again
         # in 8×8 pieces, which fits, and takes more of the sprite table, which it says, since a
         # game that needed the squares to fit the table has now lost sprites with no error.
-        def build(program, title: "VBLANK", sprite_squares: true)
+        #
+        # A game whose backgrounds need more than the console's eight sets of colours is built again
+        # with each scene bringing its own in (+screen_colors+, Art), which a game that fits has no
+        # need of and is not built with: it stays the bytes it was.
+        def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false)
           board = board_for(program)
           memory = Memory.new
           painted = Lowering::Paint.painted?(program)
@@ -117,8 +121,8 @@ module VBlank
           bar = Lowering::Picture.status_bar?(program)
           bends = Lowering::Picture.bends?(program)
           tile_runs = Lowering::Picture.tile_run_bytes(program)
-          changing_colors = Lowering::Picture.changing_colors?(program)
-          dims = Lowering::Picture.fades_to_black?(program)
+          changing_colors = screen_colors || Lowering::Picture.changing_colors?(program)
+          dims =Lowering::Picture.fades_to_black?(program)
           math_turns = Lowering::Picture.see_through_turns_solid?(program)
           Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
@@ -130,14 +134,16 @@ module VBlank
                                   changing_colors: changing_colors, dims: dims, math_turns: math_turns,
                                   bar_covers: Lowering::Picture.bar_covers_sprites?(program),
                                   tile_sizes: Lowering::Picture.two_tile_sizes?(program))
-          lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares)
+          lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors)
           begin
             game = lowering.sections + lowering.art_sections
+          rescue Art::TooManyBackgroundColors
+            return build(program, title: title, sprite_squares: sprite_squares, screen_colors: true)
           rescue Art::TooMuch
             raise unless sprite_squares
 
             findings << small_pieces_finding
-            return build(program, title: title, sprite_squares: false)
+            return build(program, title: title, sprite_squares: false, screen_colors: screen_colors)
           end
           findings.concat(lowering.sprite_table_findings)
           recording_voices = Music.recording_voices(program)

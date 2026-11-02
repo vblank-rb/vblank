@@ -120,10 +120,12 @@ module VBlank
           attr_reader :variables, :lists, :frame_begins, :section_routines
 
           # +sprite_squares+ draws sprites' squares of 16×16 as one row of the table each (Art).
-          def initialize(program, memory:, sprite_squares: true)
+          # +screen_colors+ has each scene bring its own background colours in (Art).
+          def initialize(program, memory:, sprite_squares: true, screen_colors: false)
             @program = program
             @memory = memory
             @sprite_squares = sprite_squares
+            @screen_colors = screen_colors
             # What the program is before any instruction is made, worked out as the Color's is
             # (LoweringPlan), and kept here under the names the rest of the lowering reads.
             @plan = LoweringPlan.new(program, console: Console::SUPER_NINTENDO, error: LoweringError)
@@ -160,6 +162,7 @@ module VBlank
             refuse_unsupported_save_memory!
             assign_background_layers unless painted?
             make_sprite_art
+            make_every_screens_colors
             reserve_patches
             # ...and the ones a game loop keeps of its own in the console's order (IR::Frames::ConsoleLoop).
             loops = @plan.game_loops.flat_map { |node| console_loop(node).variables }
@@ -172,6 +175,7 @@ module VBlank
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
             keep_corner_notes
+            keep_background_colors_told
             keep_loop_running
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
