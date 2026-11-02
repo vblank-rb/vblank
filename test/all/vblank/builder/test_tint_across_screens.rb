@@ -21,7 +21,7 @@ class TestTintAcrossScreens < Minitest::Test
   end
 
   GREEN = 0x03E0
-  HALF_RED = 0x01EF # green half way to red
+  HALF_RED = VBlank::Testing.shown(0x01EF) # green half way to red
 
   PAIRS = [%i[plain tiled], %i[tiled plain], %i[plain tear_free], %i[tear_free plain],
            %i[tear_free tiled], %i[tiled tear_free]].freeze
@@ -119,6 +119,6 @@ class TestTintAcrossScreens < Minitest::Test
 
   def test_a_coloured_flash_on_a_tiled_scene_of_a_painted_game
     assert_backends_agree(flash_on_tiles, frames: 10, console_frames: 12, name: "FLASH")
-    assert_equal 0x007B, game_player.run(flash_on_tiles, frames: 10).screen.pixel(120, 80) # red on its way back to green
+    assert_equal VBlank::Testing.shown(0x007B), game_player.run(flash_on_tiles, frames: 10).screen.pixel(120, 80) # red on its way back to green
   end
 end

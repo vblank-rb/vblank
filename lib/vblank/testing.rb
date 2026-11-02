@@ -148,6 +148,14 @@ module VBlank
     # about a lowering, so it is no test in the wrong place (see SkipsByReason).
     def skip_on_this_machine(why) = raise(NotOnThisMachine, why)
 
+    # A test of an example +game+ (a VBlank.game) skips on a console the game does not name yet: it is
+    # laid out for its own consoles, so there is nothing to play.
+    def skip_unless_written_for(game)
+      return if game.consoles.include?(Testing.console)
+
+      raise MissingFeature, "#{Console.for(Testing.console).title} cannot play this yet: #{game.title} is not written for it"
+    end
+
     # THE TWO KINDS OF SKIP A RUN TAKES. The first: its lowering lacks the feature the test plays —
     # its build does not make it yet, or its hardware cannot. A checked player raises it for what
     # its lowering does not make or answer, and skip_on_<run> for what a test says it cannot play.

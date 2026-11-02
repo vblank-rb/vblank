@@ -529,17 +529,16 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # A console no runtime draws is refused in words for every build made on one, rather than shown wrong.
-  def test_a_console_no_runtime_draws_is_refused_for_each_runtime_build
+  # A console whose screen is wider than a background's grid is made as a web page like any other.
+  def test_web_makes_the_page_as_the_genesis
     Dir.mktmpdir do |dir|
       cli("new", "demo", dir: dir)
-      %w[web native ruby].each do |format|
-        out, status = cli("build", "demo.rb", "--format", format, "--console", "genesis", dir: dir)
+      game = File.join(dir, "demo.rb")
+      File.write(game, File.read(game).sub("consoles: %i[gba gbc]", "consoles: %i[gba gbc genesis]"))
+      out, status = cli("build", "demo.rb", "--format", "web", "--console", "genesis", "-o", "demo.html", dir: dir)
 
-        refute status.success?, format
-        assert_match(/Sega Genesis cannot play a game in a window, a web page or a program/, out)
-        assert_match(/add --console gba/, out)
-      end
+      assert status.success?, out
+      assert_match(/<canvas id="screen" width="320" height="224"/, File.read(File.join(dir, "demo.html")))
     end
   end
 

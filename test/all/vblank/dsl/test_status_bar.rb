@@ -118,7 +118,8 @@ class TestStatusBarHandle < Minitest::Test
 
     assert_equal GREEN, picture(prog, 2).pixel(28, row)
     assert_equal BLUE, picture(prog, 6).pixel(28, row)
-    assert_equal BLUE, picture(prog, 6).pixel(screen_width - 4, screen_height - 4), "the second row too"
+    # The bar's grid is 256 pixels across, and a wider screen shows nothing past it.
+    assert_equal BLUE, picture(prog, 6).pixel([screen_width, 256].min - 4, screen_height - 4), "the second row too"
     assert_backends_agree(prog, frames: 6, name: "BARMAP")
   end
 

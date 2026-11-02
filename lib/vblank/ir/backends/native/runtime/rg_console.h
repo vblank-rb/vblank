@@ -21,6 +21,11 @@
 #define RG_SCREEN_HEIGHT 160
 #endif
 
+/* How many bits of each colour channel the console shows, from the top. */
+#ifndef RG_COLOR_BITS
+#define RG_COLOR_BITS 5
+#endif
+
 /* The console's own clock, and how many of its ticks one frame — a picture drawn and the gap
  * after it — takes. Together they are how long a frame is; no console shows exactly sixty a
  * second. */

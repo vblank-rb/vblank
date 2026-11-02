@@ -27,7 +27,20 @@ module VBlank
       end
 
       def run(program, max_steps: nil, frames: nil)
-        super(self.class.program_played(program), max_steps: max_steps, frames: frames)
+        played = self.class.program_played(program)
+        refuse_recordings_without_clock!(played)
+        super(played, max_steps: max_steps, frames: frames)
+      end
+
+      private
+
+      # A console with nothing yet to clock a recording by (Console::Description#sample_clock?) cannot
+      # answer for a game that plays one, so neither can the interpreter it is checked against.
+      def refuse_recordings_without_clock!(program)
+        return unless program.kind == :program && IR::Mixing.mixes?(program)
+
+        console = program.described_console
+        raise MissingFeature, "#{console.title} build does not make yet: recordings" unless console.sample_clock?
       end
     end
 

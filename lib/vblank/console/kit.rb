@@ -56,8 +56,6 @@ module VBlank
     #   routine_lister          what lists a routine of its cartridges (`dump_func`), or nil
     #   inspector              what prints one of its cartridges' header and first instructions
     #                           (`vblank inspect`), or nil for a console with none yet
-    #   plays_on_runtimes?      whether the C, JavaScript and Ruby builds (`--format`, `vblank run`)
-    #                           can play a game as it
     #
     # What every console's cartridge answers, whichever kind it is, and all a caller that has not
     # asked which console it is for can ask of one:
@@ -88,7 +86,6 @@ module VBlank
       def measured_builds? = false
       def compared_side_by_side? = false
       def inspector = nil
-      def plays_on_runtimes? = true
 
       # The emulator core its cartridges play in, opened on a cartridge file
       # (Diagnostics::Emulator), and how the file the core keeps battery-backed RAM in is named
@@ -249,9 +246,6 @@ module VBlank
       def save_file_extension = ".srm"
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
-      # The runtimes do not repeat a background across a screen wider than it, as its planes do. This
-      # says the same as Testing::Lowering::RUNS, whose records a Rakefile reads without the library.
-      def plays_on_runtimes? = false
     end
 
     KITS =Ractor.make_shareable({ gba: AdvanceKit.new(ADVANCE), gbc: ColorKit.new(COLOR),

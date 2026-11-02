@@ -125,6 +125,10 @@ module VBlank
         recording_voice_hz ? SampleClock.on_voices(recording_voice_hz, self) : SampleClock.nearest(hz, self)
       end
 
+      # Whether it has a clock to play a recording by: voices that read one, or a timer that hands
+      # the sound samples. A console with neither cannot say how a recording plays yet.
+      def sample_clock? = !recording_voice_hz.nil? || !samples_a_copy.nil?
+
       # Whether any of its backgrounds can turn and resize.
       def turns_backgrounds? = turning_backgrounds.positive?
 

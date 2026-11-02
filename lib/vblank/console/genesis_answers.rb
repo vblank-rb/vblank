@@ -223,12 +223,6 @@ module VBlank
           - **refused** — the build stops before anything is made, naming the hardware the Genesis
             lacks and what to use instead. Nothing is shown differently.
 
-          **Only the interpreter and the cartridge play a Genesis game.** The desktop, web and Ruby builds
-          (`--format`) and `vblank run` do not play one as a Genesis yet: they do not draw its backgrounds
-          as the console does, whose planes come round across a screen wider than they are. So
-          `--console genesis` is refused there, and so is a game that names the Genesis first. A game for
-          `consoles: %i[gba genesis]` is built for those formats as the Advance.
-
           This file is `Console::GenesisAnswers.reference` written out (`ruby tools/console_answers.rb`),
           and a test fails when the two differ. The Advance's answers are in
           `.claude/dsl/game-boy-advance.md`.

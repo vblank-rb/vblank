@@ -931,15 +931,18 @@ def rg_tile_pixel(background, cell, tx, ty)
   @rg_game_tile_pixels[rg_background_field(background, RG_BG_TILES_START) + (tile * tile_w * tile_h) + (ty * tile_w) + tx]
 end
 
-# Reference#stamp_background: the whole map onto the picture, cell by cell.
-def rg_background_stamp(background)
-  # Reference#stamp_background: a status bar is painted from its own top as the view is built.
-  return rg_request_repaint if rg_bar?(background)
+# Reference#grid_repeats: how many times the grid is seen along one side of the screen.
+def rg_grid_repeats(background, grid_cells, screen_side)
+  return 1 if rg_background_field(background, RG_BG_NEVER_WRAPS) != 0 ||
+              rg_background_field(background, RG_BG_TILE_W) != 8 || rg_background_field(background, RG_BG_TILE_H) != 8
 
+  (screen_side + (grid_cells * 8) - 1) / (grid_cells * 8)
+end
 
+# The map onto the picture with its corner at (left, top), cell by cell.
+def rg_stamp_map_at(background, left, top)
   tile_w = rg_background_field(background, RG_BG_TILE_W)
   tile_h = rg_background_field(background, RG_BG_TILE_H)
-  rg_mix_as_layer(rg_background_field(background, RG_BG_SEE_THROUGH))
   rg_map_rows(background).times do |row|
     rg_map_cols(background).times do |col|
       cell = rg_map_cell(background, row, col)
@@ -948,10 +951,25 @@ def rg_background_stamp(background)
       tile_h.times do |ty|
         tile_w.times do |tx|
           color = rg_tile_pixel(background, cell, tx, ty)
-          rg_set_pixel((col * tile_w) + tx, (row * tile_h) + ty, color) if color != RG_SEE_THROUGH
+          rg_set_pixel(left + (col * tile_w) + tx, top + (row * tile_h) + ty, color) if color != RG_SEE_THROUGH
         end
       end
     end
+  end
+end
+
+# Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it.
+def rg_background_stamp(background)
+  # Reference#stamp_background: a status bar is painted from its own top as the view is built.
+  return rg_request_repaint if rg_bar?(background)
+
+  rg_mix_as_layer(rg_background_field(background, RG_BG_SEE_THROUGH))
+  map = rg_map_now(background)
+  grid_cols = @rg_game_maps[map + RG_MAP_GRID_COLS]
+  grid_rows = @rg_game_maps[map + RG_MAP_GRID_ROWS]
+  across = rg_grid_repeats(background, grid_cols, RG_SCREEN_WIDTH)
+  rg_grid_repeats(background, grid_rows, RG_SCREEN_HEIGHT).times do |round_down|
+    across.times { |round_across| rg_stamp_map_at(background, round_across * grid_cols * 8, round_down * grid_rows * 8) }
   end
   rg_mix_nothing
 end
@@ -2251,6 +2269,28 @@ end
 # With nothing over the picture — no tint, no fade, no light, not in blocks — every row is the
 # stored row moved by the window, and is copied as one, which is most frames of most games.
 def rg_screen_shown
+  rg_keep_console_colors(rg_screen_shown_in_five_bits)
+end
+
+# Framebuffer#displayed: +shown+ as a console that keeps fewer than five bits of a channel shows it.
+# Each colour's answer is kept, since a picture holds few colours and is read every frame.
+def rg_keep_console_colors(shown)
+  return shown if RG_COLOR_BITS >= 5
+
+  kept = (@rg_kept_colors ||= {})
+  shown.map! { |color| kept[color] ||= rg_kept_color(color) }
+end
+
+# +color+ with the top RG_COLOR_BITS of each channel, widened back to five by repeating them.
+def rg_kept_color(color)
+  lost = 5 - RG_COLOR_BITS
+  [0, 5, 10].sum do |channel|
+    level = (color >> (channel + lost)) & ((1 << RG_COLOR_BITS) - 1)
+    ((level << lost) | (level >> (RG_COLOR_BITS - lost))) << channel
+  end
+end
+
+def rg_screen_shown_in_five_bits
   rg_screen_paint_owed_rebuild
   shown = @rg_shown
   viewed = @rg_viewed

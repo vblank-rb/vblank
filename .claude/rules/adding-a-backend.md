@@ -83,10 +83,7 @@ a console of its own needs beyond a lowering:
   the date. The rest the lowering decides from the program's console, as the interpreter does (the
   game loop's order, `IR::Frames.loop_in_console_order`). Those runs play the suite once for each
   console (`Lowering::Run#plays_any_console?`), which is how a gap between a runtime and the
-  interpreter on that console is found; `CONSOLE=gbc` keeps only the runs playing as one. The
-  Genesis is the one gap in that today: the runtimes do not repeat a background across a screen wider
-  than it, so `Run#except` leaves the Genesis out of those three runs, and `Kit#plays_on_runtimes?` has
-  the command line refuse those builds. A console in `except` is unfinished work, not a design.
+  interpreter on that console is found; `CONSOLE=gbc` keeps only the runs playing as one.
 - **No console by default.** A game names its consoles, a build (`VBlank.build(..., console:)`)
   and a Rakefile (`t.consoles`) name theirs, and a name is held as its Symbol however it was
   written (`Console.named`). Only an unbound program, a tree built for a test (a Builder told

@@ -26,7 +26,7 @@ module VBlank
               "RG_CONSOLE_TICKS_A_FRAME" => console.cycles_a_frame,
               "RG_CONSOLE_BLENDS" => console.blends, "RG_CONSOLE_DIMS" => console.fades_by_brightness,
               "RG_CONSOLE_RUMBLES" => console.rumbles,
-              "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date }
+              "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date, "RG_COLOR_BITS" => console.color_bits }
           end
 
           # +value+ as C and JavaScript write it: true and false as 1 and 0.

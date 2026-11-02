@@ -37,17 +37,11 @@ module VBlank
       #            the classes are loaded with the whole library, and a Rakefile reads these
       #            records without it. Nil for a run that plays its console's own cartridge,
       #            whose player is made from the console's kit (CartridgeCheckedPlayer.for)
-      #   except   the consoles a run that can play any console cannot play yet: the C, JavaScript and
-      #            Ruby builds do not draw a Genesis's picture as the interpreter does (its planes come
-      #            round across a screen wider than they are, which only the interpreter and the
-      #            cartridge do), so they are not asked to, and the command line refuses those builds
-      #            (Console::Kit#plays_on_runtimes?). A console named here is a gap in the
-      #            cross-backend rule that is still to close, not an answer
-      #   yjit    whether YJIT, Ruby's compiler of hot methods to machine code, makes the run
+      #   yjit   whether YJIT, Ruby's compiler of hot methods to machine code, makes the run
       #            faster, as measured: it does for the native and JavaScript runs and makes the
       #            Game Boy Color's slower. A run in Ractors is played without it whatever this
       #            says (TestTask#yjit?)
-      Run = Data.define(:name, :title, :console, :checked, :does, :needs, :player, :yjit, :except) do
+      Run = Data.define(:name, :title, :console, :checked, :does, :needs, :player, :yjit) do
         alias_method :checked?, :checked
         alias_method :yjit?, :yjit
 
@@ -60,37 +54,37 @@ module VBlank
         # when nothing says otherwise.
         def plays_any_console? = checked && !player.nil?
 
-        # Whether the run plays a game as +played+: any console it is not told it cannot, for a run that plays any;
-        # its own and no other for the rest.
-        def plays?(played) = plays_any_console? ? !except.include?(played) : played == console
+        # Whether the run plays a game as +played+: any console, for a run that plays any; its own and no
+        # other for the rest.
+        def plays?(played) = plays_any_console? || played == console
       end
 
       # In the order `rake test` plays them.
       RUNS = Ractor.make_shareable([
                                      Run.new(name: :gba, title: "GBA", console: :gba, checked: false,
                                              does: "the game on the interpreter", needs: nil,
-                                             player: "IR::Backends::Reference", yjit: true, except: []),
+                                             player: "IR::Backends::Reference", yjit: true),
                                      Run.new(name: :native, title: "native", console: :gba, checked: true,
                                              does: "the game built as C, checked against the interpreter",
-                                             needs: "zig", player: "Testing::CheckedPlayer", yjit: true, except: %i[genesis]),
+                                             needs: "zig", player: "Testing::CheckedPlayer", yjit: true),
                                      Run.new(name: :js, title: "JavaScript", console: :gba, checked: true,
                                              does: "the game built as JavaScript, checked against the interpreter",
-                                             needs: "node", player: "Testing::JSCheckedPlayer", yjit: true, except: %i[genesis]),
+                                             needs: "node", player: "Testing::JSCheckedPlayer", yjit: true),
                                      Run.new(name: :ruby, title: "Ruby", console: :gba, checked: true,
                                              does: "the game built as Ruby, checked against the interpreter",
-                                             needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true, except: %i[genesis]),
+                                             needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true),
                                      Run.new(name: :gbc, title: "Game Boy Color", console: :gbc, checked: true,
                                              does: "the game built as a Game Boy Color cartridge, played in the " \
                                                    "emulator and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: false, except: []),
+                                             needs: nil, player: nil, yjit: false),
                                      Run.new(name: :snes, title: "Super Nintendo", console: :snes, checked: true,
                                              does: "the game built as a Super Nintendo cartridge, played in bsnes " \
                                                    "and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: true, except: []),
+                                             needs: nil, player: nil, yjit: true),
                                      Run.new(name: :genesis, title: "Sega Genesis", console: :genesis, checked: true,
                                              does: "the game built as a Sega Genesis cartridge, played in Genesis " \
                                                    "Plus GX and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: true, except: [])
+                                             needs: nil, player: nil, yjit: true)
                                    ])
 
       # The setting a run's lowering is read from: each run but the GBA lowering's sets it to its

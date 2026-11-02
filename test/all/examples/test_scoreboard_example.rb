@@ -14,7 +14,7 @@ class TestScoreboardExample < Minitest::Test
 
   # The picture after +frames+ passes with +keys+ held throughout.
   private def picture(frames, keys = [])
-    skip_on_genesis "the status bar is not made for the Genesis yet, so the game is not written for it"
+    skip_unless_written_for Scoreboard::GAME
     player = game_player
     player.hold(*keys) unless keys.empty?
     player.run(Scoreboard::GAME.program(console: game_console), frames: frames).screen

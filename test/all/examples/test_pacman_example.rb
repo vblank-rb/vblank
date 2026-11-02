@@ -23,7 +23,7 @@ class TestPacmanExample < Minitest::Test
 
   # The game as this run's console plays it, and where it lays itself out on that console's screen.
   private def program
-    skip_on_genesis "sound and save memory are not made for the Genesis yet, so the game is not written for it"
+    skip_unless_written_for Pacman::GAME
     Pacman::GAME.program(console: game_console)
   end
 

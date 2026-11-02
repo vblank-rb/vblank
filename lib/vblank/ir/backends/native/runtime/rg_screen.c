@@ -852,15 +852,20 @@ static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t
   return rg_game_tile_pixels[at];
 }
 
-/* Reference#stamp_background: the whole map onto the picture, cell by cell. */
-void rg_background_stamp(int32_t background) {
-  /* Reference#stamp_background: a status bar is painted from its own top as the view is built. */
-  if (background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR) {
-    request_repaint();
-    return;
-  }
+/* Reference#grid_repeats: how many times the grid is seen along one side of the screen. A grid of
+ * 8-by-8 tiles comes round, so where the screen is wider or taller than the grid (a Genesis's 320
+ * across is wider than 32 cells of 8 pixels) the map is seen again past the grid's edge. */
+static int32_t grid_repeats(int32_t background, int32_t grid_cells, int32_t screen_side) {
+  if (background_field(background, RG_BG_NEVER_WRAPS) || background_field(background, RG_BG_TILE_W) != 8 ||
+      background_field(background, RG_BG_TILE_H) != 8)
+    return 1;
+  int32_t grid_side = grid_cells * 8;
+  return (screen_side + grid_side - 1) / grid_side;
+}
+
+/* The map onto the picture with its corner at (left, top), cell by cell. */
+static void stamp_map_at(int32_t background, int64_t left, int64_t top) {
   int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
-  mix_as_layer(background_field(background, RG_BG_SEE_THROUGH));
   for (int32_t row = 0; row < map_rows(background); row++) {
     for (int32_t col = 0; col < map_cols(background); col++) {
       int32_t cell = map_cell(background, row, col);
@@ -868,10 +873,26 @@ void rg_background_stamp(int32_t background) {
       for (int32_t ty = 0; ty < tile_h; ty++)
         for (int32_t tx = 0; tx < tile_w; tx++) {
           uint16_t color = tile_pixel(background, cell, tx, ty);
-          if (color != RG_SEE_THROUGH) set_pixel((int64_t)col * tile_w + tx, (int64_t)row * tile_h + ty, color);
+          if (color != RG_SEE_THROUGH) set_pixel(left + (int64_t)col * tile_w + tx, top + (int64_t)row * tile_h + ty, color);
         }
     }
   }
+}
+
+/* Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it. */
+void rg_background_stamp(int32_t background) {
+  /* Reference#stamp_background: a status bar is painted from its own top as the view is built. */
+  if (background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR) {
+    request_repaint();
+    return;
+  }
+  mix_as_layer(background_field(background, RG_BG_SEE_THROUGH));
+  int32_t grid_cols = map_now(background)[RG_MAP_GRID_COLS], grid_rows = map_now(background)[RG_MAP_GRID_ROWS];
+  int32_t across = grid_repeats(background, grid_cols, RG_SCREEN_WIDTH);
+  int32_t down = grid_repeats(background, grid_rows, RG_SCREEN_HEIGHT);
+  for (int32_t round_down = 0; round_down < down; round_down++)
+    for (int32_t round_across = 0; round_across < across; round_across++)
+      stamp_map_at(background, (int64_t)round_across * grid_cols * 8, (int64_t)round_down * grid_rows * 8);
   mix_nothing();
 }
 
@@ -2136,6 +2157,22 @@ static void shown_plain(void) {
   }
 }
 
+/* Framebuffer#displayed: the picture as a console that keeps fewer than five bits of a channel (the
+ * Genesis keeps three) shows it, each channel's top bits repeated to widen it back to five. Rounded
+ * here, as the picture is read, so a fade or a mix still works on the colour the game named. */
+static void keep_console_colors(void) {
+  if (RG_COLOR_BITS >= 5) return;
+  int32_t lost = 5 - RG_COLOR_BITS, kept_mask = (1 << RG_COLOR_BITS) - 1;
+  for (int32_t at = 0; at < RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT; at++) {
+    int32_t color = shown[at], kept = 0;
+    for (int32_t channel = 0; channel <= 10; channel += 5) {
+      int32_t level = (color >> (channel + lost)) & kept_mask;
+      kept |= ((level << lost) | (level >> (RG_COLOR_BITS - lost))) << channel;
+    }
+    shown[at] = (uint16_t)kept;
+  }
+}
+
 /* Framebuffer#shown and #pixel: the page a viewer is looking at, read through the window — off
  * the edge of the picture the backdrop shows — with the fade or tint in force mixed in, in blocks
  * when a painted screen is shown in them, and darkened outside a light's span. A switched-off
@@ -2148,6 +2185,7 @@ const uint16_t *rg_screen_shown(void) {
   rg_screen_paint_owed_rebuild();
   if (!held && tint_mode == TINT_NONE && fade_steps == 0 && read_block == 1 && every_pixel_lit()) {
     shown_plain();
+    keep_console_colors();
     return shown;
   }
   for (int32_t y = 0; y < RG_SCREEN_HEIGHT; y++)
@@ -2158,5 +2196,6 @@ const uint16_t *rg_screen_shown(void) {
       uint16_t color = on_screen(from_x, from_y) ? shown_color(at, viewed[at], fade_here) : faded_where(0, fade_here);
       shown[y * RG_SCREEN_WIDTH + x] = held ? (uint16_t)0x7FFF : lit(x, y) ? color : darkened_by_display(color, shade_steps);
     }
+  keep_console_colors();
   return shown;
 }

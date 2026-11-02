@@ -172,7 +172,7 @@ class TestTiledColorLists < Minitest::Test
     game = faded_in_eight
 
     assert_backends_agree(game, frames: [2, 6], name: "FADE8")
-    assert_equal VBlank::Graphics::Color.rgb(10, 0, 0), game_player.run(game, frames: 6).screen.pixel(0, 0)
+    assert_equal VBlank::Testing.shown(VBlank::Graphics::Color.rgb(10, 0, 0)), game_player.run(game, frames: 6).screen.pixel(0, 0)
   end
 
   # Two scenes of eight such lists each: each scene brings its own eight in as it comes up.
@@ -180,7 +180,7 @@ class TestTiledColorLists < Minitest::Test
     game = faded_in_eight(scenes: 2)
 
     assert_backends_agree(game, frames: [4, 12], name: "FADE88")
-    assert_equal VBlank::Graphics::Color.rgb(10, 0, 1), game_player.run(game, frames: 14).screen.pixel(0, 0)
+    assert_equal VBlank::Testing.shown(VBlank::Graphics::Color.rgb(10, 0, 1)), game_player.run(game, frames: 14).screen.pixel(0, 0)
   end
 
   # A SCENE WITH NO BACKGROUND OF ITS OWN after them shows nothing but black, the colour of a cell

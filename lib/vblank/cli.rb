@@ -899,22 +899,8 @@ module VBlank
     # which is said when there were others to choose.
     def console_to_play(game)
       console = options[:console]&.to_sym || game.consoles.first
-      refuse_console_off_runtimes!(console, offered: game.consoles)
       say_console_chosen(game, console) unless options[:console]
       console
-    end
-
-    # A window, a web page or a program for this computer plays the game on a runtime, and not every
-    # console's picture is drawn by one (Kit#plays_on_runtimes?). Refused here, or the game would be
-    # shown wrong with nothing to say so.
-    def refuse_console_off_runtimes!(console, offered:)
-      kit = VBlank::Console.for(console)
-      return if kit.plays_on_runtimes?
-
-      instead = offered.find { |name| VBlank::Console.for(name).plays_on_runtimes? }
-      fix = instead ? "add --console #{instead}" : "build the #{kit.title} cartridge with `vblank build`"
-      raise Thor::Error, "The #{kit.title} cannot play a game in a window, a web page or a program for this computer yet. " \
-                         "It plays only as a cartridge. To fix this, #{fix}."
     end
 
     def say_console_chosen(game, console)
@@ -953,7 +939,6 @@ module VBlank
     def serve_in_browser(game_file)
       raise Thor::Error, "I cannot find the game file #{game_file}." unless File.file?(game_file)
 
-      refuse_console_off_runtimes!(options[:console], offered: []) if options[:console]
       port = options[:port] || 8000
       server =VBlank::IR::Backends::JS::Preview.new(game_file, settings: options[:set], template: options[:template],
                                                                  console: options[:console], port: port)

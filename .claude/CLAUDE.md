@@ -125,8 +125,7 @@ what its runtime cannot do yet skips saying what), then the
 Game Boy Color lowering's (every game built as a Color cartridge, played in the emulator and
 checked against the interpreter after every pass; a game the Color cannot play skips saying
 why). The native, JavaScript and Ruby runs each play the suite once for every console, since
-their builds are told the console when they are made; the Genesis is the exception for now
-(`Run#except`), and those builds refuse it. It ends
+their builds are told the console when they are made. It ends
 with a line for each and fails if any did. It needs zig 0.17 (`mise use zig@0.17.0`) and node
 18 or later as well as the emulator, and SDL3 (`brew install sdl3`) for the tests that open a window.
 

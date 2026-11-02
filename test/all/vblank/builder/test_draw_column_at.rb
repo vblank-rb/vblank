@@ -114,7 +114,7 @@ class TestDrawColumnAt < Minitest::Test
 
     assert_equal %i[white white other other other other white white],
                  column_on_screen(run, 10, 0, 8).map { |c| c == :other ? :other : c }
-    assert_equal VBlank::Graphics::Color.resolve(:gray), run.screen.pixel(10, 3),
+    assert_equal VBlank::Testing.shown(:gray), run.screen.pixel(10, 3),
                  "the see-through rows must show what was already there"
   end
 end
