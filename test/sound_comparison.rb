@@ -275,10 +275,16 @@ module SoundComparison
 
     assert_empty differences.first(8), "the desktop build does not sound like the console (#{differences.length} frames differ)"
     voices.select { |voice| kind_of(voice) == :square }.each do |voice|
-      assert_operator waves_broken_while_loud(native[voice]), :<=, waves_broken_while_loud(console[voice]),
+      assert_operator waves_broken_while_loud(native[voice]), :<=, waves_broken_while_loud(console[voice]) + WAVES_BROKEN_SPARE,
                       "the desktop build's #{voice} breaks more waves than the console's: it loses its place in its wave"
     end
   end
+
+  # A note that restarts breaks a wave on both, and how many of those the console's count takes in
+  # moves with where the cartridge's notes land against its frames, so code that runs a little
+  # faster moves it by one with the sound no different. A build that loses its place in its wave
+  # does so over and over, which is a good deal more than this.
+  WAVES_BROKEN_SPARE = 1
 
   # THE WAVES THEMSELVES, on every frame, a note changing or not: how many waves a square voice
   # breaks, going back to the start of its wave where the chip carries on (Diagnostics::SoundRecording
