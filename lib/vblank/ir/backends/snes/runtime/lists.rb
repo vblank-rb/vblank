@@ -370,6 +370,19 @@ module VBlank
               asm.label("rt_list_slot_outside")
               asm.jmp(asm.abs("rt_list_index_fault"))
 
+              # An index the lowering's own read or write found outside the list (Lowering#
+              # value_of_list_get): the list's place in X and Y, the index in R0 or R1. Never returns.
+              asm.label("rt_list_outside_from_r0")
+              asm.lda(asm.direct(R0))
+              asm.sta(asm.direct(R1))
+              asm.lda(asm.direct(R0 + 2))
+              asm.sta(asm.direct(R1 + 2))
+              asm.label("rt_list_outside")
+              asm.stx(asm.direct(R0))
+              asm.sty(asm.direct(R0 + 2))
+              asm.jsr(asm.abs("rt_list_pointer"))
+              asm.jmp(asm.abs("rt_list_index_fault"))
+
               asm.label("rt_list_slot_of_a")
               asm.clc
               asm.ldy(FRONT)

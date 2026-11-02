@@ -744,9 +744,108 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
-          def emit_list_set(node) = list_call("rt_list_set", node, node.index, node.value)
-          def value_of_list_get(node) = list_call("rt_list_get", node, node.index)
           def value_of_list_len(node) = list_call("rt_list_length", node)
+
+          # A LIST NOTHING TAKES FROM THE FRONT keeps its first item in its first slot for good, so an
+          # item's slot is its index, and its place is known here: one load with X as the index, past
+          # one test that the index is inside the list. The runtime's way finds the place from the
+          # list's header, which takes as long as ten sums, and a game walking a map held in a list
+          # does this many times a pass.
+          def value_of_list_get(node)
+            return list_call("rt_list_get", node, node.index) if front_dropped_lists.include?(node.name)
+
+            place, _capacity, width = list_placed(node)
+            value(node.index)
+            emit_slot_into_x(place, width, R0, "rt_list_outside_from_r0")
+            emit_read_slot_at_x(place + Runtime::Lists::HEADER, width)
+          end
+
+          # Reference#exec_list_set: the index worked out, then the value, then the test.
+          def emit_list_set(node)
+            return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
+
+            place, _capacity, width = list_placed(node)
+            halves = operand_halves(node.value)
+            if halves
+              value(node.index)
+              emit_slot_into_x(place, width, R0, "rt_list_outside_from_r0")
+            else
+              push_value(node.index)
+              value(node.value)
+              pull_into(R1)
+              emit_slot_into_x(place, width, R1, "rt_list_outside")
+              halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
+            end
+            emit_write_slot_at_x(place + Runtime::Lists::HEADER, width, halves)
+          end
+
+          def front_dropped_lists
+            @front_dropped_lists ||= @reachable.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }.uniq
+          end
+
+          def list_placed(node)
+            @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
+          end
+
+          # X at how far into its slots the item the number at +index+ names is. An index outside the
+          # list goes to +outside+, which stops the game in the interpreter's words and never returns.
+          def emit_slot_into_x(place, width, index, outside)
+            inside = fresh("inside_the_list")
+            out = fresh("outside_the_list")
+            @asm.lda(@asm.direct(index + 2))
+            @asm.bne(out)
+            @asm.lda(@asm.direct(index))
+            @asm.cmp(@asm.long(place, Runtime::Lists::LENGTH))
+            @asm.bcc(inside)
+            @asm.label(out)
+            @asm.ldx(place & 0xFFFF)
+            @asm.ldy(place >> 16)
+            call_routine(outside)
+            @asm.label(inside)
+            (width - 1).bit_length.times { @asm.asl }
+            @asm.tax
+          end
+
+          # R0 = the slot at +slots+ plus X. A slot narrower than a word reads back with its top bit
+          # as the sign (Reference::ListValue#wrap_to_width).
+          def emit_read_slot_at_x(slots, width)
+            if width == 4
+              @asm.lda(@asm.long_x(slots, 2))
+              @asm.sta(@asm.direct(R0 + 2))
+              @asm.lda(@asm.long_x(slots))
+              return @asm.sta(@asm.direct(R0))
+            end
+
+            read = fresh("slot_read")
+            @asm.stz(@asm.direct(R0 + 2))
+            @asm.lda(@asm.long_x(slots))
+            if width == 1
+              @asm.and_a(0x00FF)
+              @asm.cmp(0x0080)
+              @asm.bcc(read)
+              @asm.ora(0xFF00)
+            else
+              @asm.bpl(read)
+            end
+            @asm.dec(@asm.direct(R0 + 2))
+            @asm.label(read)
+            @asm.sta(@asm.direct(R0))
+          end
+
+          def emit_write_slot_at_x(slots, width, halves)
+            @asm.lda(halves.first)
+            if width == 1
+              @asm.sep(0x20)
+              @asm.sta(@asm.long_x(slots))
+              return @asm.rep(0x20)
+            end
+
+            @asm.sta(@asm.long_x(slots))
+            return unless width == 4
+
+            @asm.lda(halves.last)
+            @asm.sta(@asm.long_x(slots, 2))
+          end
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its
           # entries, so the runtime reads them as a run does.
