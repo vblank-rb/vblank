@@ -393,7 +393,9 @@ module VBlank
 
         def write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
-          return "#{prefix}#{second_name_write(node.name, "(#{value_text(node.value)})")}" if promoted?(node)
+          # A name kept for a read past its `if` can stay a plain name under a test further out, so
+          # it keeps its answer the way any plain name does.
+          return "#{prefix}#{second_name_write(node.name, "(#{promoted_value_text(node)})")}" if promoted?(node)
           return picked_into_text(node) if picks_into_variable?(node)
           return joined_into_text(node, prefix) if joins_into_variable?(node)
 
@@ -405,6 +407,8 @@ module VBlank
           else "#{prefix}#{noted_if_handed(node, kept_value_text(node.value, node))}"
           end
         end
+
+        def promoted_value_text(node) = @names.read_after_it_changes?(node) ? kept_value_text(node.value, node) : value_text(node.value)
 
         # A write to a plain name that already holds something, which may turn out to be a game
         # variable it was handed (Writes.note_handed_name_written). The name's first line holds

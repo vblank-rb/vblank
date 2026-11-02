@@ -179,6 +179,63 @@ class TestValuesWorkedOutOnce < Minitest::Test
     assert_equal 1, run[:column]
   end
 
+  # The shape the game met, whole: the name's later read, in the next `if`, makes the first `if`'s
+  # write a name that lasts beyond it, and that write is the one that has to keep its answer.
+  def test_a_name_read_again_in_a_later_if_keeps_what_it_was
+    run = played do
+      facts = { cell: 97 }
+      first = 0
+      second = 0
+      column = var :column, 0
+      column_two = var :column_two, 0
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        if tick % 2 == 0 && first < 3
+          burnt = facts[:cell] + first
+          first += 1
+          column = burnt % 32
+        end
+        if tick % 2 == 0 && second < 3
+          burnt = facts[:cell] - second
+          second += 1
+          column_two = burnt % 32
+        end
+      end
+    end
+
+    assert_equal [1, 1], [run[:column], run[:column_two]]
+  end
+
+  # ...and all of it under a test the game makes, as the game's is.
+  def test_a_name_read_again_in_a_later_if_under_another_if_keeps_what_it_was
+    run = played do
+      facts = { cell: 97 }
+      first = 0
+      second = 0
+      column = var :column, 0
+      column_two = var :column_two, 0
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        if tick >= 2
+          if tick % 2 == 0 && first < 3
+            burnt = facts[:cell] + first
+            first += 1
+            column = burnt % 32
+          end
+          if tick % 2 == 0 && second < 3
+            burnt = facts[:cell] - second
+            second += 1
+            column_two = burnt % 32
+          end
+        end
+      end
+    end
+
+    assert_equal [1, 1], [run[:column], run[:column_two]]
+  end
+
   def test_a_value_used_as_a_place_keeps_what_it_was
     run = played do
       fact = var :fact, 97
