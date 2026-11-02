@@ -184,8 +184,27 @@ module VBlank
             # CGADSUB's bit that halves the sum.
             MATH_HALVES = 0x40
 
+            # A SCENE'S OWN SPRITE TILES, in a game whose sprites do not fit video memory all at once,
+            # waiting for the next blank to go in: where they are on the cartridge (three bytes and
+            # a spare), how many bytes are left, where the next goes in video memory, and the byte
+            # the sprite table is filled with while they go in.
+            SCENE_TILES = "rt scene sprite tiles"
+            SCENE_TILES_FROM = 0
+            SCENE_TILES_LEFT = 4
+            SCENE_TILES_PLACE = 6
+            SCENE_TILES_FILL = 8
+            SCENE_TILES_BYTES = 10
+
+            # A row of the sprite table filled with this has every sprite below the bottom of the
+            # screen, whatever its size.
+            NO_SPRITE_FILL = 0xF0F0
+
+            # The copying engine's mode bit that reads one place over and over.
+            DMA_ONE_SOURCE = 0x08
+
             def reserve(memory, bar: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
-                        tile_sizes: false)
+                        tile_sizes: false, scene_tiles: false)
+              memory.reserve(SCENE_TILES, SCENE_TILES_BYTES) if scene_tiles
               memory.reserve(TILE_SIZES, 2) if tile_sizes
               memory.reserve(LAYERS_STRAIGHT, 2) if scene_bends
               memory.reserve(BAR_COVERS, 2) if bar_covers
@@ -223,6 +242,7 @@ module VBlank
                      math_turns: false, scene_bars: false)
               emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns)
               emit_see_through_math(asm, memory) if math_turns
+              emit_scene_tiles_noted(asm, memory) if memory.reserved?(SCENE_TILES)
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
               emit_backgrounds(asm, memory, work)
               emit_bar(asm, memory, scene_bars: scene_bars) if bar
@@ -314,6 +334,81 @@ module VBlank
               asm.lda(asm.direct(Memory.register(0)))
               asm.sta(asm.abs(memory[MATH]))
               asm.rtl
+            end
+
+            # rt_scene_sprite_tiles(tiles, bytes, place): the tiles a scene taking over keeps to itself,
+            # for the next blank (#emit_scene_tiles_upload).
+            def emit_scene_tiles_noted(asm, memory)
+              at = memory[SCENE_TILES]
+              asm.label("rt_scene_sprite_tiles")
+              asm.lda(asm.direct(Memory.register(0)))
+              asm.sta(asm.abs(at + SCENE_TILES_FROM))
+              asm.lda(asm.direct(Memory.register(0) + 2))
+              asm.sta(asm.abs(at + SCENE_TILES_FROM + 2))
+              asm.lda(asm.direct(Memory.register(1)))
+              asm.sta(asm.abs(at + SCENE_TILES_LEFT))
+              asm.lda(asm.direct(Memory.register(2)))
+              asm.sta(asm.abs(at + SCENE_TILES_PLACE))
+              asm.lda(NO_SPRITE_FILL)
+              asm.sta(asm.abs(at + SCENE_TILES_FILL))
+              asm.rtl
+            end
+
+            # In the blank after a scene takes over: its own tiles over the last scene's, a piece of
+            # MAP_PIECE bytes at a time, however many blanks that takes (rt_blank_room waits for the
+            # next), which is a pass that runs late. The sprites shown meanwhile would be drawn from
+            # tiles that are changing under them, so the sprite table goes empty first, and the
+            # table the pass made goes in with the rest of its picture as the last piece is in.
+            def emit_scene_tiles_upload(asm, memory, work)
+              h = Console::SNESHardware
+              at = memory[SCENE_TILES]
+              asm.lda(asm.abs(at + SCENE_TILES_LEFT))
+              asm.branch_long(:beq, "rt_upload_scene_tiles_done")
+              asm.lda(544)
+              asm.jsr(asm.abs("rt_blank_room"))
+              asm.stz(asm.abs(h::OAMADDL))
+              fill = memory[SCENE_TILES] + SCENE_TILES_FILL
+              emit_dma(asm, h::DMA_TO_ONE_PORT | DMA_ONE_SOURCE, h::OAMDATA, asm.imm(fill & 0xFFFF), fill >> 16, 544)
+              asm.label("rt_upload_scene_tiles_piece")
+              asm.lda(asm.abs(at + SCENE_TILES_LEFT))
+              asm.branch_long(:beq, "rt_upload_scene_tiles_done")
+              asm.cmp(MAP_PIECE)
+              asm.bcc("rt_upload_scene_tiles_bytes")
+              asm.lda(MAP_PIECE)
+              asm.label("rt_upload_scene_tiles_bytes")
+              asm.sta(asm.direct(work))
+              asm.jsr(asm.abs("rt_blank_room"))
+              asm.lda(asm.direct(work))
+              asm.sta(asm.abs(h::DMA_BASE + h::DASL))
+              asm.lda(asm.abs(at + SCENE_TILES_PLACE))
+              asm.sta(asm.abs(h::VMADDL))
+              asm.lda(asm.abs(at + SCENE_TILES_FROM))
+              asm.sta(asm.abs(h::DMA_BASE + h::A1TL))
+              asm.sep(0x20)
+              asm.lda(asm.abs(at + SCENE_TILES_FROM + 2))
+              asm.sta(asm.abs(h::DMA_BASE + h::A1B))
+              asm.lda(h::DMA_TO_TWO_PORTS)
+              asm.sta(asm.abs(h::DMA_BASE + h::DMAP))
+              asm.lda(h::VMDATAL & 0xFF)
+              asm.sta(asm.abs(h::DMA_BASE + h::BBAD))
+              asm.lda(1)
+              asm.sta(asm.abs(h::MDMAEN))
+              asm.rep(0x20)
+              asm.lda(asm.abs(at + SCENE_TILES_FROM))
+              asm.clc
+              asm.adc(asm.direct(work))
+              asm.sta(asm.abs(at + SCENE_TILES_FROM))
+              asm.lda(asm.direct(work))
+              asm.lsr # a word of video RAM for every two bytes
+              asm.clc
+              asm.adc(asm.abs(at + SCENE_TILES_PLACE))
+              asm.sta(asm.abs(at + SCENE_TILES_PLACE))
+              asm.lda(asm.abs(at + SCENE_TILES_LEFT))
+              asm.sec
+              asm.sbc(asm.direct(work))
+              asm.sta(asm.abs(at + SCENE_TILES_LEFT))
+              asm.jmp(asm.abs("rt_upload_scene_tiles_piece"))
+              asm.label("rt_upload_scene_tiles_done")
             end
 
             # A scroll register written with the 16-bit number in A: its low byte, then its high.
@@ -1258,6 +1353,7 @@ module VBlank
                 asm.label(done)
               end
 
+              emit_scene_tiles_upload(asm, memory, work) if memory.reserved?(SCENE_TILES)
               emit_tile_run_upload(asm, memory, work, tile_runs)
 
               # The cells changed, each a word at its address. Many take more than a blank, so they

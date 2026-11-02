@@ -104,7 +104,7 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
-                             screen_colors: @screen_colors, sprite_colors: @sprite_colors)
+                             screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
@@ -158,56 +158,67 @@ module VBlank
               refuse_unmade!("a picture shown both by a see-through sprite and by another") if mixed.intersect?(solid)
 
               painted = @tile_runs.filter_map(&:picture)
-              reserve_shared_sprite_colors(mixed, painted)
-              @sprite_pictures.each do |name|
+              reserve_shared_sprite_art(mixed, painted)
+              @sprite_pictures.each_with_index do |name, number|
+                run = @tile_runs.index { |tile_run| tile_run.picture == name }
                 if painted.include?(name)
-                  make_run_art(@tile_runs.index { |run| run.picture == name })
+                  make_run_art(run) unless @run_places[run]
                 else
-                  @art.sprite_picture(name, Assets::Image.of(picture_named(name)), mixed: mixed.include?(name),
-                                                                                  scene: colors_scene_of_picture(name))
+                  @art.sprite_picture(name, Assets::Image.of(picture_named(name)), mixed: mixed.include?(name), number: number,
+                                                                                  scene: colors_scene_of_picture(name),
+                                                                                  tile_scene: tiles_scene_of_picture(name))
                 end
               end
               @tile_runs.each_with_index { |run, number| make_run_art(number) unless @run_places[number] || colors_scene_of_run(run) }
               make_recolored_art(mixed)
             end
 
-            # THE SPRITE COLOURS EVERY SCREEN KEEPS, in a game of a screen's own sprite colours: all of
-            # them placed before any scene takes its copy (Art#sprite_palettes), as the backgrounds' are
-            # (#make_shared_background_colors). Lists the game changes first, which want a set each.
-            def reserve_shared_sprite_colors(mixed, painted)
-              return unless @sprite_colors
+            # THE SPRITE ART EVERY SCREEN KEEPS, in a game of a screen's own sprite colours or tiles: all
+            # of it placed before any scene takes its copies (Art#sprite_palettes), as the backgrounds'
+            # colours are (#make_shared_background_colors). Lists the game changes first, which want
+            # a set each, and pictures painted from a list, which keep their tiles for good.
+            def reserve_shared_sprite_art(mixed, painted)
+              return unless @sprite_colors || @sprite_tiles
 
               each_recolored_picture do |pose, list, swapped|
-                next if colors_scene_of_recolored(pose, list)
-                next if held_sprite_palette(list, mixed.include?(pose))
+                next if scene_of_recolored(pose, list)
 
                 image = Assets::Image.of(picture_named(pose))
-                @art.reserve_sprite_colors(RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)),
-                                           mixed: mixed.include?(pose))
+                held = held_sprite_palette(list, mixed.include?(pose))
+                image = RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
+                @art.reserve_shared_sprite_picture(image, mixed: mixed.include?(pose), held: held)
               end
-              @tile_runs.select(&:picture).each { |run| @art.reserve_sprite_run_colors(run.colors) }
+              @tile_runs.each_with_index { |run, number| make_run_art(number) if @sprite_pictures.include?(run.picture) }
               @sprite_pictures.each do |name|
-                next if painted.include?(name) || colors_scene_of_picture(name)
+                next if painted.include?(name) || scene_of_picture(name)
 
-                @art.reserve_sprite_colors(Assets::Image.of(picture_named(name)), mixed: mixed.include?(name))
+                @art.reserve_shared_sprite_picture(Assets::Image.of(picture_named(name)), mixed: mixed.include?(name))
               end
             end
 
-            # The one scene whose sprites alone show the picture +name+, whose colours it is then drawn
-            # from; nil where every screen keeps them. Not a picture painted from a list, whose
-            # palette has its colours in its places.
-            def colors_scene_of_picture(name)
-              return nil unless @sprite_colors && @tile_runs.none? { |run| run.picture == name }
+            # The one scene whose sprites alone show the picture +name+; nil where every screen keeps
+            # it. Not a picture painted from a list, whose palette has its colours in its places and
+            # whose tiles the game fills.
+            def scene_of_picture(name)
+              return nil unless @tile_runs.none? { |run| run.picture == name }
 
               one_scene_of(@objects.values.select { |obj| obj.poses.include?(name) })
             end
 
-            # The same for the copy of the picture +pose+ drawn with +list+.
-            def colors_scene_of_recolored(pose, list)
-              return nil unless @sprite_colors
+            def colors_scene_of_picture(name) = @sprite_colors ? scene_of_picture(name) : nil
+            def tiles_scene_of_picture(name) = @sprite_tiles ? scene_of_picture(name) : nil
 
+            # The same for the copy of the picture +pose+ drawn with +list+.
+            def scene_of_recolored(pose, list)
               one_scene_of(@objects.values.select { |obj| obj.poses.include?(pose) && obj.recolors.include?(list) })
             end
+
+            def colors_scene_of_recolored(pose, list) = @sprite_colors ? scene_of_recolored(pose, list) : nil
+            def tiles_scene_of_recolored(pose, list) = @sprite_tiles ? scene_of_recolored(pose, list) : nil
+
+            # Whether some picture is shown only by the sprites of one scene, so that bringing each
+            # scene's tiles in as it takes over can leave room (SNES#build).
+            public def sprites_of_one_scene? = @sprite_pictures.any? { |name| scene_of_picture(name) }
 
             # The same for a list of colours the game changes.
             def colors_scene_of_list(list)
@@ -231,12 +242,11 @@ module VBlank
             def make_recolored_art(mixed)
               each_recolored_picture do |pose, list, swapped|
                 image = Assets::Image.of(picture_named(pose))
-                scene = colors_scene_of_recolored(pose, list)
                 held = held_sprite_palette(list, mixed.include?(pose))
-                next @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held, scene: scene) if held
-
-                @art.sprite_picture([pose, swapped], RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)),
-                                    mixed: mixed.include?(pose), scene: scene)
+                image = RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
+                @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held,
+                                                            scene: colors_scene_of_recolored(pose, list),
+                                                            tile_scene: tiles_scene_of_recolored(pose, list))
               end
             end
 
@@ -480,7 +490,8 @@ module VBlank
             def make_run_art(number)
               run = @tile_runs.fetch(number)
               if run.picture
-                picture = @art.sprite_run_picture(run.picture, run.width, run.height, run.colors)
+                in_table = @sprite_pictures.index(run.picture) || @art.sprite_pictures.length
+                picture = @art.sprite_run_picture(run.picture, run.width, run.height, run.colors, number: in_table)
                 @run_places[number] = Runtime::Picture::SPRITE_TILES + (picture.pieces.first.tile * Art::TILE_BYTES / 2)
               else
                 first, palette = @art.background_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run))
@@ -539,8 +550,9 @@ module VBlank
                 data.data_bytes(@art.cgram.bytes)
               end
               data.label("art sprite pictures")
-              data.data_longs(@art.sprite_pictures.each_value.map { |picture| pieces_label(picture.number) })
-              @art.sprite_pictures.each_value do |picture|
+              pictures = @art.sprite_pictures.values.sort_by(&:number)
+              data.data_longs(pictures.map { |picture| pieces_label(picture.number) })
+              pictures.each do |picture|
                 data.label(pieces_label(picture.number))
                 data.data_words(picture.pieces.length)
                 picture.pieces.each do |piece|
@@ -571,9 +583,34 @@ module VBlank
                                 *obj.poses.map { |pose| @art.sprite_pictures.fetch(swapped ? [pose, swapped] : pose).number })
               end
               [data.section, *bytes_section("art background tiles", @art.background_tile_data),
-               *bytes_section("art sprite tiles", @art.sprite_tile_data),
+               *bytes_section("art sprite tiles", @art.sprite_tile_data), *scene_sprite_tile_sections,
                *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
                *(painted? ? paint_sections : []), *collision_sections]
+            end
+
+            # What each scene brings into video memory as it takes over (#emit_scene_sprite_tiles).
+            def scene_sprite_tile_sections
+              return [] unless @sprite_tiles
+
+              @scenes.keys.filter_map do |scene|
+                _, bytes = @art.scene_sprite_tiles(scene)
+                bytes_section(scene_sprite_tiles_label(scene), bytes) if bytes
+              end
+            end
+
+            def scene_sprite_tiles_label(scene) = "art sprite tiles of #{scene}"
+
+            # A scene taking over, in a game of a screen's own sprite tiles: the ones it keeps to itself
+            # go in over the last scene's, in the blanks after this pass (Runtime::Picture's
+            # rt_scene_sprite_tiles).
+            def emit_scene_sprite_tiles(scene)
+              return unless @sprite_tiles
+
+              first, bytes = @art.scene_sprite_tiles(scene)
+              return unless first
+
+              place = Runtime::Picture::SPRITE_TILES + (first * Art::TILE_BYTES / 2)
+              runtime_call("rt_scene_sprite_tiles", [LongAddress.new(scene_sprite_tiles_label(scene)), Build.int(bytes.bytesize), Build.int(place)])
             end
 
             ART = W65816::Holding.new(what: "the game's pictures", fix: "use fewer different pictures and maps")
@@ -831,6 +868,7 @@ module VBlank
               return if painted?
 
               arrival = @handover.arrival(scene)
+              emit_scene_sprite_tiles(scene)
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
               emit_scene_backdrop(arrival)

@@ -107,8 +107,10 @@ module VBlank
         # A game whose backgrounds need more than the console's eight sets of colours is built again
         # with each scene bringing its own in (+screen_colors+, and +sprite_colors+ for a game whose
         # sprites are what does not fit; Art), which a game that fits has no
-        # need of and is not built with: it stays the bytes it was.
-        def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false)
+        # need of and is not built with: it stays the bytes it was. A game whose sprites do not fit
+        # the console's 512 tiles has each scene's in video memory while it is up (+sprite_tiles+),
+        # before it gives up squares.
+        def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false)
           board = board_for(program)
           memory = Memory.new
           painted = Lowering::Paint.painted?(program)
@@ -135,20 +137,23 @@ module VBlank
                                   sides: Music.sides_under_level?(program),
                                   changing_colors: changing_colors, dims: dims, math_turns: math_turns,
                                   bar_covers: Lowering::Picture.bar_covers_sprites?(program),
-                                  tile_sizes: Lowering::Picture.two_tile_sizes?(program))
+                                  tile_sizes: Lowering::Picture.two_tile_sizes?(program), scene_tiles: sprite_tiles)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
-                                                sprite_colors: sprite_colors)
+                                                sprite_colors: sprite_colors, sprite_tiles: sprite_tiles)
+          choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
+                      sprite_tiles: sprite_tiles }
           begin
             game = lowering.sections + lowering.art_sections
           rescue Art::TooManyBackgroundColors
-            return build(program, title: title, sprite_squares: sprite_squares, screen_colors: true, sprite_colors: sprite_colors)
+            return build(program, title: title, **choices, screen_colors: true)
           rescue Art::TooManySpriteColors
-            return build(program, title: title, sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: true)
-          rescue Art::TooMuch
+            return build(program, title: title, **choices, sprite_colors: true)
+          rescue Art::TooMuch => e
+            return build(program, title: title, **choices, sprite_tiles: true) if e.is_a?(Art::TooManySpriteTiles) && lowering.sprites_of_one_scene?
             raise unless sprite_squares
 
             findings << small_pieces_finding
-            return build(program, title: title, sprite_squares: false, screen_colors: screen_colors, sprite_colors: sprite_colors)
+            return build(program, title: title, **choices, sprite_squares: false)
           end
           findings.concat(lowering.sprite_table_findings)
           recording_voices = Music.recording_voices(program)

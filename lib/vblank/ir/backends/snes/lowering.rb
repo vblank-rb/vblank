@@ -121,13 +121,14 @@ module VBlank
 
           # +sprite_squares+ draws sprites' squares of 16×16 as one row of the table each (Art).
           # +screen_colors+ has each scene bring its own background colours in, and +sprite_colors+ its
-          # own sprite colours (Art).
-          def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false)
+          # own sprite colours, and +sprite_tiles+ its own sprite tiles (Art).
+          def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false)
             @program = program
             @memory = memory
             @sprite_squares = sprite_squares
             @screen_colors = screen_colors
             @sprite_colors = sprite_colors
+            @sprite_tiles = sprite_tiles
             # What the program is before any instruction is made, worked out as the Color's is
             # (LoweringPlan), and kept here under the names the rest of the lowering reads.
             @plan = LoweringPlan.new(program, console: Console::SUPER_NINTENDO, error: LoweringError)
