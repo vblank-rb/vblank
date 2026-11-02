@@ -172,6 +172,25 @@ module VBlank
             self
           end
 
+          # Hand each frame's sound over as it is played (#last_frame_samples), for a speaker, and keep
+          # none of it for the end of the run. Gives back self.
+          def sounding_as_played
+            @records_sound = true
+            @sounds_as_played = true
+            self
+          end
+
+          # The sound the frames played since this was last asked made, the left speaker's sample
+          # then the right's, a moment at a time. The program writes it as it plays, so it is on
+          # its file by the time the program asks for the next frame's buttons.
+          def last_frame_samples
+            return [] unless @sound_file
+
+            bytes = File.binread(@sound_file, nil, @sound_read) || ""
+            @sound_read += bytes.bytesize
+            bytes.byteslice(0, bytes.bytesize & ~3).unpack("s<*")
+          end
+
           # Keep no record of each frame, which a checked run compares and a playing of hours has no
           # room for. Gives back self.
           def forgetting_moments
@@ -348,14 +367,17 @@ module VBlank
             Dir.mktmpdir("vblank-run") do |dir|
               File.open(File.join(dir, "picture"), "w+b") do |pictures|
                 @pictures = pictures
+                @sound_file = File.join(dir, "sound") if @sounds_as_played
+                @sound_read = 0
                 play_frames(exe, frames, [*frame_options(pictures.path), *sound_options(dir), *save_options(dir),
                                           *held_options, *clock_options])
               end
-              read_sound(File.join(dir, "sound")) if @records_sound
+              read_sound(File.join(dir, "sound")) if @records_sound && !@sounds_as_played
               @save.replace_with_sav(File.binread(save_file(dir)), from: "The save memory the program wrote") if @keeps_save
             end
           ensure
             @pictures = nil
+            @sound_file = nil
           end
 
           # What the program is told about what it says each frame.

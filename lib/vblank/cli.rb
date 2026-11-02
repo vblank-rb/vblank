@@ -538,8 +538,8 @@ module VBlank
                                  console's frame rate. The menu, pause and fast
                                  forward work. The script holds the buttons, so
                                  the keyboard and gamepads do not reach the game.
-                                 Close the window to stop. Needs SDL3. Only the
-                                 emulator plays sound there. The others are silent.
+                                 Close the window to stop. Needs SDL3. Every way
+                                 but the interpreter plays the game's sound there.
         --save PATH              Start from this save file.
         --pictures-in DIR        Write the screen at each moment to DIR, as a PNG
                                  named for the moment.

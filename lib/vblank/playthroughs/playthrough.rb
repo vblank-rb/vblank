@@ -147,14 +147,14 @@ module VBlank
       # +on+ and +window+ are as for #play.
       def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil)
         game = if on && on != LoweredGame::EMULATOR
-                 lowered_game(cartridge, on, save)
+                 lowered_game(cartridge, on, save, speaker: !window.nil?)
                else
                  power_on(cartridge, save: save, count_passes: !window.nil?)
                end
         if window
           console = cartridge_from(cartridge).console
-          game = WatchedGame.new(game, window, frame_seconds: Console.described(console).frame_seconds,
-                                               sound_rate: Diagnostics::SoundRecording::CARTRIDGE_RATES.fetch(console))
+          rate = (game.sound_rate if game.respond_to?(:sound_rate)) || Diagnostics::SoundRecording::CARTRIDGE_RATES.fetch(console)
+          game = WatchedGame.new(game, window, frame_seconds: Console.described(console).frame_seconds, sound_rate: rate)
         end
         lead_in&.play_as_lead_in(game)
         game
@@ -162,7 +162,7 @@ module VBlank
 
       # The game inside +cartridge+ run the way +on+ says. That takes the game, so a cartridge
       # somebody else made, which is only its bytes, plays on the emulator alone.
-      def self.lowered_game(cartridge, on, save)
+      def self.lowered_game(cartridge, on, save, speaker: false)
         cartridge = cartridge_from(cartridge)
         unless LoweredGame::RUNS.key?(on)
           raise ArgumentError, "There is no way to run a game called #{on.inspect}. The ways are " \
@@ -172,7 +172,7 @@ module VBlank
           raise ArgumentError, "A cartridge file plays on the emulator alone. To play on #{on}, give the game file."
         raise ArgumentError, "A save plays on the emulator alone. To play on #{on}, leave the save out." if save
 
-        LoweredGame.new(program, on)
+        LoweredGame.new(program, on, speaker: speaker)
       end
 
       def self.refuse_lead_in_not_playthrough!(lead_in)

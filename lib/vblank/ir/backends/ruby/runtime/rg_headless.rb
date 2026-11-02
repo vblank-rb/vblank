@@ -143,6 +143,7 @@ end
 def rg_headless_write_frame_sound
   left, right = rg_sound_render_frame
   @rg_sound_out&.write(left.zip(right).flatten.pack("s<*"))
+  @rg_sound_out&.flush # a speaker reads it as the game plays
 end
 
 # For a game that mixes recordings: the slice made since the last moment ("mix" and its samples),

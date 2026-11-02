@@ -131,7 +131,9 @@ static void write_frame_sound(void) {
     both[2 * i] = left[i];
     both[(2 * i) + 1] = right[i];
   }
-  if (sound_out) fwrite(both, sizeof both[0], (size_t)(2 * count), sound_out);
+  if (!sound_out) return;
+  fwrite(both, sizeof both[0], (size_t)(2 * count), sound_out);
+  fflush(sound_out); /* a speaker reads it as the game plays */
 }
 
 /* A whole picture as one line: +word+ and then every pixel, row by row, as four hex digits. */

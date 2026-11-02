@@ -32,10 +32,14 @@ module VBlank
       # Said into the run's Fiber to end a run the playing has finished with.
       class Finished < StandardError; end
 
-      def initialize(program, way)
+      # +speaker+ says somebody is listening, so a way that makes its sound as a file hands it over
+      # a frame at a time (#last_frame_samples).
+      def initialize(program, way, speaker: false)
         @console = program.described_console
         @run = RUNS.fetch(way).call.new
         @run.forgetting_moments if @run.respond_to?(:forgetting_moments)
+        @speaker = speaker && @run.respond_to?(:sounding_as_played)
+        @run.sounding_as_played if @speaker
         @held = []
         @run.input_each_frame do
           Fiber.yield
@@ -63,6 +67,11 @@ module VBlank
       def screen_width = @console.screen_width
       def screen_height = @console.screen_height
       def frame_gba = @run.screen.shown
+
+      # The sound of the frames just played, the two speakers' samples a moment at a time, and how
+      # many moments a second that is; nothing and nil where nobody is listening or the way has none.
+      def last_frame_samples = @speaker ? @run.last_frame_samples : []
+      def sound_rate = (IR::Backends::Native::HeadlessRun::SOUND_RATE if @speaker)
 
       # These runs keep no save memory a playthrough can take away.
       def save_bytes = nil

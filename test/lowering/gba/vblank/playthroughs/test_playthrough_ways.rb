@@ -142,6 +142,40 @@ class TestPlaythroughWays < Minitest::Test
     assert_equal [frame, rate, frame], sound.first
   end
 
+  # A note that sounds from the first frame, and a script that plays long enough to hear it.
+  private def tuneful_cartridge
+    VBlank.build("TUNE", console: :gba, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:dot, "#" => :white) { (["#" * 8] * 8).join("\n") }
+      sprite :dot, at: [8, 8]
+      enable_sound
+      song(:tune) do
+        voice(:lead) { note :C5, :whole }
+      end
+      play_song :tune
+      game_loop { nil }
+    end
+  end
+
+  private def a_few_frames
+    VBlank::Playthroughs::Playthrough.new("listen") { wait frames: 40 }
+  end
+
+  %w[native web ruby].each do |way|
+    define_method(:"test_a_window_hears_the_game_on_#{way}") do
+      heard = []
+      window = Screen.new
+      window.define_singleton_method(:play_sound) { |left, rate, right| heard << [left, rate, right] }
+      a_few_frames.play(tuneful_cartridge, on: way, window: window)
+
+      rate = VBlank::IR::Backends::Native::HeadlessRun::SOUND_RATE
+      frame = (rate * VBlank::Console::ADVANCE.frame_seconds).round
+      assert_equal [rate], heard.map { |_, said, _| said }.uniq
+      assert_in_delta frame, heard.last.first.length, 2, "a frame's sound, for each speaker"
+      assert heard.last(10).any? { |left, _, _| left.any? { |sample| !sample.zero? } }, "the note reached the speaker"
+    end
+  end
+
   # A game whose every pass takes the console several frames.
   private def slow_cartridge
     VBlank.build("SLOW", console: :gba, validate: false, out: StringIO.new, err: StringIO.new) do

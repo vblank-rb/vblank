@@ -11,8 +11,8 @@ module VBlank
     # keys and gamepads still work the menu, which the window keeps for itself. Closing the window,
     # or Escape, ends the playing (#step raises WindowClosed).
     #
-    # The sound is the emulator's alone. The other ways of running a game keep theirs to the end of
-    # the run, or write it to a file, so they hand the speaker silence, which paces them the same.
+    # The sound is the game's own on the emulator and the computer builds. The interpreter makes
+    # none a speaker can play, so it hands the speaker silence, which paces it the same.
     #
     # THE FRAME RATE SAYS HOW OFTEN THE GAME MAKES A NEW PICTURE. The emulator is stepped a screen
     # refresh at a time, sixty a second whatever the game does, and a game whose pass takes two
@@ -82,7 +82,7 @@ module VBlank
         nil
       end
 
-      # The two speakers' sound of the frame just played: the emulator's, or silence.
+      # The two speakers' sound of the frame just played, or silence.
       def sound_of_frame
         return [@silence, @silence] unless @game.respond_to?(:last_frame_samples)
 

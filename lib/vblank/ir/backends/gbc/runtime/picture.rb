@@ -792,7 +792,6 @@ module VBlank
             # picture memory by the console's own copy, a tile at a time, since a run's tiles need not
             # sit side by side there — a background's or a sprite's picture's.
             def emit_tile_runs(asm, runs)
-              h = Console::GBCHardware
               asm.label("rt_repack_tiles")
               asm.load(:a, :b)
               asm.or_a(:c)
