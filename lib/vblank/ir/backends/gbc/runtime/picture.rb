@@ -40,9 +40,11 @@ module VBlank
             # colours. A pass that fills it has the list written where it asks, each cell waiting
             # for the display, and goes on keeping. Kept to what the blank has time for beside the sprites
             # and the rest of the pass's picture: a cell is 35 of the blank's 2280 instruction
-            # cycles, and one it does not reach waits for the display, in the frame it then shows.
+            # cycles, so the blank holds fewer than this keeps. One it does not reach waits for the
+            # display at the top of the frame it shows, which is still whole for a bar low on the
+            # screen. Filling the list writes it on the frame before instead, and tears the pass.
             CELLS = "rt picture cells"
-            CELLS_KEPT = 64
+            CELLS_KEPT = 160
             # A painted screen has no cells to change, and every byte it keeps low stays out of the
             # half of work memory its pictures take turns in (Paint).
             PAINTED_CELLS_ROOM = 32
@@ -1405,11 +1407,10 @@ module VBlank
               asm.inc(:a)
               asm.load([memory[CELLS]], :a)
               asm.dec(:a)
-              asm.add_a(:a)
-              asm.add_a(:a) # four bytes a cell
               asm.push(:hl)
               asm.load(:l, :a)
               asm.load(:h, 0)
+              2.times { asm.add_hl(:hl) } # four bytes a cell
               asm.load(:de, memory[CELLS] + 1)
               asm.add_hl(:de)
               asm.pop(:de)

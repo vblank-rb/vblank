@@ -10,8 +10,12 @@ require "test_helper"
 class TestGBCCellsInTheBlank < Minitest::Test
   GBC = VBlank::IR::Backends::GBC
 
+  # Cells on the top rows that land before the display reaches them. A pass keeps more than this
+  # (CELLS_KEPT), for a bar low on the screen, where those land in time too.
+  CELLS_A_BLANK_REACHES = 64
+
   def test_the_blank_holds_as_many_cells_as_a_pass_keeps_beside_every_sprite_moving
-    kept = GBC::Runtime::Picture::CELLS_KEPT
+    kept = CELLS_A_BLANK_REACHES
 
     GBC::CheckedRun.new.run(cells_game(kept), frames: 12)
     pass
@@ -37,20 +41,27 @@ class TestGBCCellsInTheBlank < Minitest::Test
   # The blank does more in a game with a bar, and much more with every sprite moving, so it can
   # end before the kept cells do. A cell it does not reach still goes in.
   def test_every_cell_kept_goes_in_when_the_blank_runs_out
-    kept = GBC::Runtime::Picture::CELLS_KEPT
+    kept = CELLS_A_BLANK_REACHES
 
     GBC::CheckedRun.new.run(bar_cells_game(kept), frames: 12)
     pass
   end
 
-  private def bar_cells_game(cells)
+  # Past what a blank reaches, a pass's cells all still show on one frame: a bar low on the screen
+  # is whole, with no part of the pass a frame ahead of the rest.
+  def test_a_pass_of_many_cells_on_a_low_bar_shows_whole_on_one_frame
+    GBC::CheckedRun.new.run(bar_cells_game(120, top: 96), frames: 12)
+    pass
+  end
+
+  private def bar_cells_game(cells, top: 0)
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do
       screen :tiled
       image(:red_art, "#" => :red) { "########\n" * 8 }
       image(:blue_art, "#" => :blue) { "########\n" * 8 }
       tiles :set, "#" => :red_art, "." => :blue_art
-      board = status_bar :bar, tiles: :set, map: Array.new(18) { "#" * 20 }, top: 0
+      board = status_bar :bar, tiles: :set, map: Array.new(18) { "#" * 20 }, top: top
       image(:dot, "#" => :white) { "##\n##" }
       dots = Array.new(40) { |i| sprite :dot, at: [(i % 8) * 8, 8 * (i / 8)] }
       turn = var :turn, 0
