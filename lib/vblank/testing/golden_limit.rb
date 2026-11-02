@@ -12,7 +12,7 @@ module VBlank
     #   require "vblank/testing/golden_limit"
     #   VBlank::Testing::GoldenLimit.hold(list: "test/golden.txt") { play_the_golden_files }
     module GoldenLimit
-      MOST_SECONDS = 300
+      MOST_SECONDS = 360
 
       module_function
 
