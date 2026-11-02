@@ -153,7 +153,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `music_volume` — works: the same as on the Advance.
 - `fade_music_in` — works: the same as on the Advance.
 - `fade_music_out` — works: the same as on the Advance.
-- `songs` — works: see `song`. A recorded note with `glides: true` carries on the note sounding at a new pitch: the chip's envelope goes on falling, and the voice is not struck again.
+- `songs` — works: see `song`. A recorded note with `glides: true` carries on the note sounding at a new pitch: it fades as it was, and the voice is not struck again.
 - `sound_effects` — works: see `song`.
 - `sample` — works: each recording plays on a voice of the sound chip. The sound chip has eight voices. Four always play recordings, and each of the other four does when the game never uses it for a beep, a wave, noise or a song's own part. If every one of those plays a recording, the next recording is not heard. It still ends or loops as on the Advance.
 - `instrument` — works: see `sample`.

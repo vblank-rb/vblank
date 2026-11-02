@@ -242,8 +242,8 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("see `song` for recordings. A recorded note with `glides: true` is refused: this build " \
-                     "does not make it yet."),
+        songs: works("a recorded note with `glides: true` is refused: this build does not make it yet. For " \
+                     "the rest of recordings, see `song`."),
         sound_effects: works("see `song` for recordings. A game can have as many effects as the " \
                              "cartridge's banks hold. If the effects do not fit in the part of the " \
                              "cartridge always in view, the build keeps them in the banks."),

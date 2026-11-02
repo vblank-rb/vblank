@@ -2,45 +2,33 @@
 
 require "test_helper"
 
-# `glides:` as far as every console agrees: which notes can say it, and what a console that cannot do
-# it says. What it does is test/console/snes/vblank/audio/test_gliding_notes_on_the_super_nintendo.rb.
+# Which notes can say `glides:`. What it does is
+# test/console/snes/vblank/audio/test_gliding_notes_on_the_super_nintendo.rb, and what a console that
+# cannot do it says is test/all/vblank/ir/guardrails/test_glides_refused.rb.
 class TestGlidingNoteOption < Minitest::Test
   Score = VBlank::Audio::Score
 
-  private def gliding_game(console, err: StringIO.new)
-    VBlank.build("GLIDE", console: console, out: StringIO.new, err: err) do
-      enable_sound
-      instrument :tone, pcm: [60, -60] * 400, rate: 8000, note: :C4
-      score = Score.new(parts: [Score::Part.new(plays: :tone, notes: [Score::Note.new(at: 0, key: :C4),
-                                                                      Score::Note.new(at: 24, key: :C5, glides: true)])])
-      music = songs :music, [score]
-      music.play 0
-      game_loop { nil }
-    end
-  end
-
-  def test_a_console_that_cannot_do_it_refuses_in_plain_words
-    %i[gba gbc genesis].each do |console|
-      said = StringIO.new
-      assert_raises(VBlank::BuildError, console.to_s) { gliding_game(console, err: said) }
-
-      assert_match(/glides/, said.string)
-    end
+  private def error_of(note, **part)
+    assert_raises(ArgumentError) { Score.new(parts: [Score::Part.new(notes: [note], **part)]).to_song }
   end
 
   def test_only_true_or_false_is_taken
-    error = assert_raises(ArgumentError) do
-      Score.new(parts: [Score::Part.new(plays: :tone, notes: [Score::Note.new(at: 0, key: :C4, glides: :yes)])]).to_song
-    end
-
-    assert_match(/true or false/, error.message)
+    assert_match(/true or false/, error_of(Score::Note.new(at: 0, key: :C4, glides: :yes), plays: :tone).message)
   end
 
   def test_a_square_part_cannot_glide
-    error = assert_raises(ArgumentError) do
-      Score.new(parts: [Score::Part.new(notes: [Score::Note.new(at: 0, key: :C4, glides: true)])]).to_song
-    end
+    assert_match(/plays a recording/, error_of(Score::Note.new(at: 0, key: :C4, glides: true)).message)
+  end
 
-    assert_match(/plays a recording/, error.message)
+  def test_a_note_that_glides_says_nothing_but_its_pitch
+    [{ instrument: :other }, { volume: 8 }, { envelope: { attack: 1, decay: 1, sustain: 8, release: 1 } }].each do |said|
+      note = Score::Note.new(at: 0, key: :C4, glides: true, **said)
+
+      assert_match(/carries on/, error_of(note, plays: :tone).message, said.keys.first.to_s)
+    end
+  end
+
+  def test_a_recordings_hz_out_of_range_is_told_as_a_pitch
+    assert_match(/pitch of the note/, error_of(Score::Note.new(at: 0, hz: -1), plays: :tone).message)
   end
 end

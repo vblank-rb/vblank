@@ -453,7 +453,7 @@ module VBlank
 
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has one, reads on at
             # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and its
-            # voice's pitch registers, with no key-on, so the chip's envelope goes on falling. A = 1
+            # voice's pitch registers, with no key-on, so its fade goes on where it was. A = 1
             # when it had a note, nought when not.
             def emit_glide(asm, at, memory, heard)
               place = place_field(asm, memory)

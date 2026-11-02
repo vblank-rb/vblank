@@ -154,7 +154,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `music_volume` — works: the same as on the Advance.
 - `fade_music_in` — works: the same as on the Advance.
 - `fade_music_out` — works: the same as on the Advance.
-- `songs` — works: see `song` for recordings. A recorded note with `glides: true` is refused: this build does not make it yet.
+- `songs` — works: a recorded note with `glides: true` is refused: this build does not make it yet. For the rest of recordings, see `song`.
 - `sound_effects` — works: see `song` for recordings. A game can have as many effects as the cartridge's banks hold. If the effects do not fit in the part of the cartridge always in view, the build keeps them in the banks.
 - `sample` — works: it plays one recording at a time, on the wave voice. Each sample turns the voice full on or off, so the sound is rough, as a Color game's voice clips are. A play while a recording sounds is not heard. A recording can loop and play at another note (`pitch:`). The wave voice has no three quarters, so a recording at three quarters of its volume plays at full. A recording with a shape (`envelope:`) is refused. The wave voice is the recording's while it plays: a `wave` or `stop_wave` said then takes effect as the recording ends, a wave the game was sounding comes back then, and so does a wave note a song is holding. A sound effect's wave part is not heard while a recording plays, and its next note after the recording sounds.
 - `instrument` — **refused**: an instrument plays a recording as a part of a song, and a Game Boy Color plays a song's parts on its square, wave and noise voices only (see `song`). Write the part for the square or wave voice.

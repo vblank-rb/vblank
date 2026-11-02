@@ -393,8 +393,8 @@ module VBlank
                                  "more than 0, or nothing for a note that lasts until the next one."
           end
           key!(note.key, where)
-          noise_rate!(note, where, voice) if note.hz
-          glide!(note, where, voice) unless note.glides.nil?
+          refuse_bad_hz!(note, where, voice) if note.hz
+          refuse_bad_glide!(note, where, voice) unless note.glides.nil?
           pitch_number!(note, where, voice) unless note.pitch_number.nil?
           noise_clock!(note, where, voice) unless note.noise_clock.nil?
           volume!(note.volume, where, recording?(voice)) if note.volume
@@ -410,21 +410,29 @@ module VBlank
         NOISE_CLOCK_HZ_TEXT = Ractor.make_shareable(Sound::NOISE_CLOCK_HZ.digits.each_slice(3).map(&:join)
                                                                          .join(",").reverse)
 
-        # A note that says +glides+ plays a recording, and has a pitch to glide to.
-        def glide!(note, where, voice)
+        # A note that says +glides+ plays a recording and has a pitch to glide to. Everything else
+        # about the note it carries on is that note's, so it says nothing else: an instrument, a
+        # volume or a shape here would have nothing to act on.
+        def refuse_bad_glide!(note, where, voice)
           unless [true, false].include?(note.glides)
             raise ArgumentError, "#{where} has `glides: #{note.glides.inspect}`. It must be true or false."
           end
           return unless note.glides
-          return if recording?(voice) && (note.key || note.hz)
 
-          raise ArgumentError, "#{where} has `glides: true`. Only a note of a part that plays a recording can glide, " \
-                               "and it needs a `key:` or `hz:` to glide to."
+          unless recording?(voice) && (note.key || note.hz)
+            raise ArgumentError, "#{where} has `glides: true`. Only a note of a part that plays a recording can glide. " \
+                                 "It must have a `key:` or `hz:` to glide to."
+          end
+          return unless note.instrument || note.volume || note.envelope
+
+          raise ArgumentError, "#{where} has `glides: true` and its own instrument, volume or envelope. A note that " \
+                               "glides carries on the note that sounds, so it keeps that note's. Remove them, or " \
+                               "remove `glides: true` to strike a new note."
         end
 
         # A note that gives +hz+ is on the noise voice or a recording, gives no key as well, and
-        # names a rate the voice can step at.
-        def noise_rate!(note, where, voice)
+        # names a rate in range.
+        def refuse_bad_hz!(note, where, voice)
           unless noise?(voice) || recording?(voice)
             raise ArgumentError, "#{where} gives its pitch with `hz:`. Only a part on the noise voice " \
                                  "(`plays: :noise`) or a part that plays a recording can do that. Give the " \
@@ -435,9 +443,9 @@ module VBlank
           end
           return if note.hz.is_a?(Numeric) && note.hz.real? && note.hz.positive? && note.hz <= Sound::NOISE_CLOCK_HZ
 
-          raise ArgumentError, "#{where} has `hz: #{note.hz.inspect}`. On the noise voice, `hz:` is how many " \
-                               "times a second the hiss steps: a number more than 0, and #{NOISE_CLOCK_HZ_TEXT} " \
-                               "or less. Give a number in that range."
+          meaning = noise?(voice) ? "On the noise voice, `hz:` is how many times a second the hiss steps" : "On a recording, `hz:` is the pitch of the note"
+          raise ArgumentError, "#{where} has `hz: #{note.hz.inspect}`. #{meaning}: a number more than 0, and " \
+                               "#{NOISE_CLOCK_HZ_TEXT} or less. Give a number in that range."
         end
 
         # A note that gives +pitch_number+ plays a square part or the wave part, gives no key as

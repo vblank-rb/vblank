@@ -214,7 +214,7 @@ module VBlank
         fade_music_in: works,
         fade_music_out: works,
         songs: works("see `song`. A recorded note with `glides: true` carries on the note sounding at a new " \
-                     "pitch: the chip's envelope goes on falling, and the voice is not struck again."),
+                     "pitch: it fades as it was, and the voice is not struck again."),
         sound_effects: works("see `song`."),
         sample: works("each recording plays on a voice of the sound chip. The sound chip has eight voices. Four " \
                       "always play recordings, and each of the other four does when the game never uses it for a " \

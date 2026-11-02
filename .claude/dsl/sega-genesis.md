@@ -153,7 +153,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `music_volume` — works: the same as on the Advance.
 - `fade_music_in` — works: the same as on the Advance.
 - `fade_music_out` — works: the same as on the Advance.
-- `songs` — works: see `song`. A recorded note with `glides: true` is refused: this build does not make it yet.
+- `songs` — works: a recorded note with `glides: true` is refused: this build does not make it yet. For the rest, see `song`.
 - `sound_effects` — works: see `song`.
 - `sample` — works: a recording is played on the FM chip's sixth voice, which can play a recording of eight bits. The sound processor reads it 13000 samples a second. Only one recording plays at a time, at one loudness, and a recording cannot have a shape (`envelope:`).
 - `instrument` — works: see `sample`.

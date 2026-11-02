@@ -106,6 +106,27 @@ module SongInstrumentsTests
     assert_equal [:piano], seen[25], "the next note plays it again"
   end
 
+  def test_a_note_of_a_recording_can_give_its_pitch_in_hz
+    seen = sounding_by_frame(hz_game, 30)
+
+    assert_equal [:piano], seen[5]
+  end
+
+  private def hz_game
+    score = VBlank::Audio::Score
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      instrument :piano, pcm: [60, -60] * 4000, rate: 8000, note: :C4
+      music = songs :music, [score.new(parts: [score::Part.new(plays: :piano, notes: [score::Note.new(at: 0, hz: 300)])], plays_once: true, length: 96)]
+      music.play 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
   # --- the voices, which the music and the game's own sounds share ---
   #
   # Each of these is asked of the run's own player; the Advance's cartridge is held to the same

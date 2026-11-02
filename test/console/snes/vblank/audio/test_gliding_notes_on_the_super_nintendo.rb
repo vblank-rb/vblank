@@ -32,12 +32,13 @@ class TestGlidingNotesOnTheSuperNintendo < Minitest::Test
   private def second_note(**said) = Score::Note.new(at: 3, hz: ROOT * 2, length: 20, **said)
 
   # The same notes as a song, which the music's player walks and not the effects'.
-  private def song_of(*notes)
+  private def song_of(*notes, envelope: nil)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
     b.instance_eval do
       enable_sound
       instrument :tone, pcm: [60, -60] * (RATE * FRAMES / 60 / 2), rate: RATE, note: :C4
-      music = songs :music, [Score.new(parts: [Score::Part.new(plays: :tone, notes: notes)], tempo: 150, ticks_per_beat: 4, plays_once: true)]
+      music = songs :music, [Score.new(parts: [Score::Part.new(plays: :tone, envelope: envelope, notes: notes)], tempo: 150,
+                                       ticks_per_beat: 4, plays_once: true)]
       music.play 0
       game_loop { nil }
     end
@@ -50,6 +51,17 @@ class TestGlidingNotesOnTheSuperNintendo < Minitest::Test
     glided = song_of(Score::Note.new(at: 0, hz: ROOT), second_note(glides: true))
 
     assert_operator frame_it_ends(glided), :<, frame_it_ends(steady)
+  end
+
+  # A note falling away goes on falling through a glide, where a strike starts it over.
+  def test_a_glide_keeps_the_fade_a_strike_starts_over
+    fade = { decay: 0.5, sustain: 0.2 }
+    level_of = lambda do |*notes|
+      game_player.tap { |run| run.run(song_of(*notes, envelope: fade), frames: 24) }.level_of(:tone)
+    end
+    first = Score::Note.new(at: 0, hz: ROOT)
+
+    assert_operator level_of.call(first, second_note(glides: true)), :<, level_of.call(first, second_note)
   end
 
   # The frame the note stops sounding, played a frame at a time.
