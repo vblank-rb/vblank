@@ -327,7 +327,7 @@ module VBlank
               amount = fade_amount(level)
               if active == 1
                 if color == BLACK
-                  fade :black, amount, under: @fade_place, **(@fade_rectangle || {})
+                  fade :black, amount_toward_black(amount), under: @fade_place, **(@fade_rectangle || {})
                 end
                 if color == WHITE
                   fade :white, amount, under: @fade_place, **(@fade_rectangle || {})
@@ -366,6 +366,15 @@ module VBlank
           longest_fade_frames > DISPLAY_LEVELS || console.fades_by_brightness ? level : level.to_i
         end
 
+        # WHY A FADE TO BLACK ON A DISPLAY THAT DIMS IS NUDGED. The ramp lands on each brightness to
+        # the last bit of its fraction, then 256ths and level fifteenths each drop what is left over,
+        # so a level the ramp reaches exactly reads as the one below it. Going down that holds a level
+        # a frame too long, and going up it skips one. This is a little more than the most those two
+        # can lose, and less than any fade of a frame or more moves between two levels.
+        BRIGHTNESS_NUDGE = 0.4
+
+        def amount_toward_black(amount) = console.fades_by_brightness ? amount + BRIGHTNESS_NUDGE : amount
+
         # The most frames any fade in this game can take.
         #
         # A bare `fade_out` or `flash_screen` records its own length like any other. A bare
@@ -386,6 +395,11 @@ module VBlank
         # fewer step than that gets from one end to the other, so the level lands exactly
         # on the target on the final frame rather than a hair short of it — the same
         # reckoning the pulse pack makes for the same reason.
+        #
+        # A DISPLAY THAT DIMS TAKES ONE STEP FOR EACH FRAME INSTEAD. It has fifteen moves from full to
+        # black, and a game with a fade of its own counts those: fifteen frames is a level a frame and
+        # thirty is a level every second frame, up or down. So there, a length that is a multiple of
+        # the moves holds every level alike (Console::Description#fades_by_brightness).
         def fade_step_count(frames, duration, default)
           raise ArgumentError, "a fade takes frames: or duration:, not both." if frames && duration
 
@@ -400,7 +414,7 @@ module VBlank
           end
 
           record_fade_length(count)
-          [count - 1, 1].max.to_f
+          (console.fades_by_brightness ? count : [count - 1, 1].max).to_f
         end
 
         # WHERE THIS GAME'S SCREEN FADE SITS, and there is one of it.

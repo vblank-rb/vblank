@@ -82,10 +82,49 @@ class TestFadeOnTheSuperNintendo < Minitest::Test
     end
   end
 
-  # ...and one twice as long keeps each level for two: thirty moves down, over thirty-one frames.
+  # ...and one twice as long keeps each level for two.
   def test_a_fade_of_twice_the_levels_holds_each_level_two_frames
-    prog = fading_game_beside_long_fade(frames: 31, long: 31)
+    prog = fading_game_beside_long_fade(frames: 30, long: 30)
     shown = (1..35).map { |frames| blue_after(prog, frames) }
+    held = shown.chunk_while { |a, b| a == b }.map(&:size)
+
+    assert_equal 16, held.size, "every level shows: #{shown.inspect}"
+    assert_equal [2], held[1..-2].uniq, "and each between the ends for two frames: #{shown.inspect}"
+  end
+
+  # A game told black from the start, which then comes up: the title of a game on this console.
+  private def rising_game(frames:)
+    tile = (["#" * 8] * 8).join("\n")
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    builder.instance_eval do
+      screen :tiled
+      image(:art, "#" => rgb(0, 0, 31)) { tile }
+      tiles :set, "#" => :art
+      field = background :field, tiles: :set, map: Array.new(32) { "#" * 32 }
+      field.scroll_to 0, 0
+      started = var :started, 0
+      game_loop do
+        started += 1
+        flash_screen :black, frames: frames if started == 2
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  private def rising_blues(frames) = ((1..(frames + 6)).map { |frame| blue_after(rising_game(frames: frames), frame) })
+
+  # The same way up as down: every level once, from black, none skipped.
+  def test_a_fade_up_of_fifteen_frames_moves_a_level_every_frame
+    shown = rising_blues(15)
+
+    assert_equal [0, 2, 4, 6, 8, 10, 12, 14, 17, 19, 21, 23, 25, 27, 29, 31], shown.drop_while { |blue| blue == 31 }.uniq,
+                 "from #{shown.inspect}"
+  end
+
+  # ...and a fade up of twice the levels holds each for two frames, black and full aside.
+  def test_a_fade_up_of_twice_the_levels_holds_each_level_two_frames
+    shown = rising_blues(30).drop_while { |blue| blue == 31 }
     held = shown.chunk_while { |a, b| a == b }.map(&:size)
 
     assert_equal 16, held.size, "every level shows: #{shown.inspect}"
