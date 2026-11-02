@@ -447,7 +447,7 @@ module VBlank
             asked = steps || walk_steps_value(amount, fraction_bits)
             emit_tint_state(color, asked, done) # r0 = the steps, when the game works them out
             emit_tint_shares(color, steps)
-            tint_tables(mode).each { |blob, dest, units| emit_tint_table(blob, dest, units) }
+            tint_tables(mode).each { |blob, dest, units| emit_tint_table(blob, dest, units, steps: steps) }
             emit_recolored_banks # ...and put back what those walks wrote over
             emit_recolored_obj_banks if walks_obj_table?(mode)
             @emitter.place_label(done)
@@ -557,9 +557,41 @@ module VBlank
           # Doing it channel by channel would be three times this; masking red and blue
           # together (they sit far enough apart that a multiply cannot run one into the
           # other, and neither can the sum) does two of them in one multiply.
-          def emit_tint_table(blob_name, dest, units)
+          #
+          # A TINT AT FULL KEEPS NOTHING OF ANY ORIGINAL, so every colour of the table comes to the
+          # one answer, and one fill by the copy engine puts it everywhere for what the walk spends
+          # on a handful of colours. That is the tint that has to be quick. A pass starts well into
+          # the gap between frames, since the sprites and the mixer go first, and a table of hundreds
+          # of colours walked from the cartridge can run on past the top of the picture. One
+          # tint step a frame hides that. A jump, such as a screen gone white coming back from
+          # black as a scene takes over, shows the old colours on the lines drawn meanwhile.
+          #
+          # +steps+ is how far the tint goes, where the author wrote it down: a build then says
+          # only the half it needs. Nil when the game works it out.
+          def emit_tint_table(blob_name, dest, units, steps: nil)
+            return emit_tint_table_fill(dest, units) if steps == walk_levels
+
+            walk = @emitter.gensym
+            done = @emitter.gensym
+            unless steps
+              @emitter.emit(ASM.cmp_imm(TINT_KEEP, 0))
+              @emitter.emit_branch(:bcond, walk, cond: :ne)
+              emit_tint_table_fill(dest, units)
+              @emitter.emit_branch(:b, done)
+            end
+            @emitter.place_label(walk)
             emit_table_source(TINT_SRC, blob_name)
             emit_blend_run(dest, units)
+            @emitter.place_label(done)
+          end
+
+          # Every colour of a table the one a tint at full comes to.
+          def emit_tint_table_fill(dest, units)
+            @emitter.emit_number(ACC, 0)
+            emit_blended_color
+            @primitives.store_var(ACC, Primitives::FILL_SCRATCH)
+            @primitives.emit_start_copy_engine(from: @primitives.var_addr(Primitives::FILL_SCRATCH), to: dest,
+                                               control: units | DMA_ENABLE | DMA_SRC_FIXED)
           end
 
           # Point +reg+ at a table's originals: the sprite table the console is holding now,
@@ -584,6 +616,16 @@ module VBlank
             top = @emitter.gensym
             @emitter.place_label(top)
             @emitter.emit(ASM.load_halfword(ACC, TINT_SRC))        # r0 = the original color
+            emit_blended_color
+            @emitter.emit(ASM.store_halfword(ACC, TINT_DST))
+            @emitter.emit(ASM.add_imm(TINT_SRC, TINT_SRC, 2))
+            @emitter.emit(ASM.add_imm(TINT_DST, TINT_DST, 2))
+            @emitter.emit(ASM.cmp_reg(TINT_SRC, TINT_END))
+            @emitter.emit_branch(:bcond, top, cond: :ne)
+          end
+
+          # The color in r0, blended, back into r0.
+          def emit_blended_color
             @fine ? emit_fine_red_and_blue : emit_coarse_red_and_blue
             @emitter.emit(ASM.and_reg(ACC, ACC, TINT_G))
             @emitter.emit(ASM.mul(ACC, TINT_KEEP, ACC))            # ...then green
@@ -591,11 +633,6 @@ module VBlank
             @emitter.emit(ASM.lsr_imm(ACC, ACC, @fine ? FINE_SHIFT : COARSE_SHIFT))
             @emitter.emit(ASM.and_reg(ACC, ACC, TINT_G))
             @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
-            @emitter.emit(ASM.store_halfword(ACC, TINT_DST))
-            @emitter.emit(ASM.add_imm(TINT_SRC, TINT_SRC, 2))
-            @emitter.emit(ASM.add_imm(TINT_DST, TINT_DST, 2))
-            @emitter.emit(ASM.cmp_reg(TINT_SRC, TINT_END))
-            @emitter.emit_branch(:bcond, top, cond: :ne)
           end
 
           # The red and blue of the color in r0, blended, into TMP where they sit in a color.

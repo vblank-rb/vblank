@@ -127,13 +127,13 @@ class TestTintCartridge < Minitest::Test
     b = VBlank::Builder.new
     b.instance_eval do
       screen :bitmap, tear_free: tear_free
-      level = 100
+      level = 90 # short of full, which fills its tables and walks no colors
       colors.times { |i| pixel i, 0, i + 1 } # one pixel per color, painted once at boot
       game_loop do
         # The same two statements either way, so the loop itself cancels. One walks the
         # level to 0 and back on alternate frames; the other puts it straight back.
         level.flip!
-        moving ? level += 100 : level.flip!
+        moving ? level += 90 : level.flip!
         tint :red, level if tinting
       end
     end
@@ -240,5 +240,42 @@ class TestTintCartridge < Minitest::Test
     computed = cost_of { |g| g.tint :red, g.var(:level, 50) }
 
     assert_operator computed, :>, written
+  end
+
+  # A screen of many colours, tinted one way on odd passes and the other on even ones, so every
+  # colour moves on every pass.
+  private def turning_tint(first, second, level)
+    VBlank.build("TURN", console: :gba, validate: false, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      lists = Array.new(14) { |n| [:transparent, *(1..15).map { |place| Color.rgb(n * 2, place * 2, 31 - place) }] }
+      lists.each_with_index do |list, n|
+        colors(:"list#{n}", list)
+        image(:"tile#{n}", width: 8, height: 8, colors: :"list#{n}", places: Array.new(64) { |i| 1 + (i % 15) })
+      end
+      tiles :set, lists.each_index.to_h { |n| [(97 + n).chr, :"tile#{n}"] }
+      background :field, tiles: :set, map: [lists.each_index.map { |n| (97 + n).chr }.join] * 4
+      turn = var :turn, 0
+      game_loop do
+        turn = 1 - turn
+        tint first, level if turn == 0
+        tint second, level if turn == 1
+      end
+    end
+  end
+
+  # At full, every colour of a table is the same one, so one fill of the table does what the walk
+  # does a colour at a time, and a big change of tint is in before the picture starts.
+  def test_a_tint_at_full_fills_its_tables_rather_than_walking_them
+    idle = ->(rom) { VBlank::Diagnostics::Profiler.run(rom, frames: 30, picture: false).idle_share }
+
+    assert_operator idle.call(turning_tint(:white, :black, 100)), :>, idle.call(turning_tint(:white, :black, 90)) + 0.02
+  end
+
+  # What the fill leaves is what the walk leaves.
+  def test_a_tint_at_full_shows_the_tints_own_color
+    rom = turning_tint(:white, :red, 100)
+    console = assert_emulator_loads_rom(rom, frames: 8)
+
+    assert_equal 0x001F, console.pixel_gba(4, 4)
   end
 end
