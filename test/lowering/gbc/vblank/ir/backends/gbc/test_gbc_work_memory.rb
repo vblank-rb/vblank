@@ -25,6 +25,23 @@ class TestGBCWorkMemory < Minitest::Test
     (0xD800...0xE000).reject { |address| reader.mem8(address).zero? }
   end
 
+  # A game's own variables that spill past the low half read nought from its first frame, as the
+  # interpreter's do: the check against the interpreter from power-on finds them nowhere else.
+  def test_variables_in_the_banked_half_agree_with_the_interpreter_from_power_on
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      many = Array.new(900) { |n| var :"many_#{n}", 0 }
+      spilled = 0
+      game_loop do
+        many.each_slice(50) { |some| spilled += 1 if some.reduce(:+) == 0 }
+      end
+    end
+    b.finalize_program
+
+    assert_equal 18 * 3, game_player.run(b.program, frames: 3)[:spilled]
+  end
+
   def test_the_banked_half_starts_at_nought_on_a_tiled_screen
     assert_empty bytes_left_over(rom(:tiled))
   end
