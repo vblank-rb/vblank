@@ -215,6 +215,8 @@ module VBlank
               @variables[name] = @memory.reserve("the variable #{name.inspect}", kept_bytes(name) || 4)
             end
             @declared_lists.each_value do |node|
+              next if held_run_on_list(node.name)
+
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
               # Named as the game names it, since running out of room says which list asked.
               place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
@@ -257,10 +259,6 @@ module VBlank
 
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
-          # Does the game show tile pictures held in the Color's own form, whose bytes go from a table
-          # to a list many at a time (Runtime::Lists#emit_byte_copy)?
-          def copies_held_tiles? = @program.walk.any? { |node| node.kind == :tile_run && node.console_format && node.held_in }
-
           def fills_byte_lists?
             lists = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }
             names = lists.map(&:name)
@@ -412,8 +410,8 @@ module VBlank
           # +table+'s bytes as the cartridge keeps them, in parts of Runtime::Calls::TABLE_PART_BYTES.
           def table_parts(table)
             bytes, = table_keeping(table)
-            table.values.flat_map { |entry| little_endian(Int32.wrap(entry), bytes) }
-                 .each_slice(Runtime::Calls::TABLE_PART_BYTES).to_a
+            kept = held_pictures_as_tiles(table) || table.values.flat_map { |entry| little_endian(Int32.wrap(entry), bytes) }
+            kept.each_slice(Runtime::Calls::TABLE_PART_BYTES).to_a
           end
 
           def table_keeping(table) = @plan.table_keeping(table)
@@ -852,6 +850,7 @@ module VBlank
 
           # Reference::ListValue.of: empty, or holding its capacity of the one number it is full of.
           def emit_list_new(node)
+            return if held_run_on_list(node.name)
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -881,6 +880,9 @@ module VBlank
           # A run of a table's entries copied into a list: the table's place and how it keeps its
           # entries, so the runtime reads them as a run does.
           def emit_list_copy(node)
+            held = held_run_on_list(node.name)
+            return emit_held_picture_copy(held, node) if held
+
             table = @tables.fetch(node.table) { raise LoweringError, "the table #{node.table.inspect} is copied and never declared" }
             kept, = TABLE_KEPT.fetch(table_keeping(table))
             list_call("rt_list_copy", node, Address.new(table_label(table.name)), Build.int(kept), Build.int(table.values.length),

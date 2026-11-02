@@ -174,7 +174,7 @@ module VBlank
             # is its pictures alone. Its screens then come up as they would with every picture already
             # in, a grid a few rows a blank (Runtime::Picture#emit_rooms).
             def plan_tile_rooms
-              tile_runs.each_value { |run| run.tiles.each { |tile| @art.run_tile(tile, run.colors) } unless run.picture }
+              tile_runs.each_value { |run| run.tiles.each { |tile| painted_tile(tile, run) } unless run.picture }
               if @plans_background_rooms
                 every = tiled_scenery.reject(&:scene)
                 every.reject(&:several_sets?).each { |bg| tiles_shown(bg).each { |name| background_tile_named(name, bg) } }
@@ -1586,9 +1586,9 @@ module VBlank
               run = run_painting(name)
               if run
                 swapped = swaps && swaps[run.list_drawn_from]
-                own = run.colors.drop(1).first(Art::OWN_COLORS)
+                own = run.colors.drop(1).first(solid_run?(run) ? Art::PLACES : Art::OWN_COLORS)
                 shown = own.each_with_index.map { |color, i| swapped && swapped[i + 1] || color }
-                return padded_colors(shown)
+                return solid_run?(run) ? shown.map { |color| color & 0x7FFF } : padded_colors(shown)
               end
 
               image = Assets::Image.of(@pictures.fetch(name))

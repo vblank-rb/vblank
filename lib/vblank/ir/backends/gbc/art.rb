@@ -877,20 +877,26 @@ module VBlank
           # shared with another tile however alike the two start, since the game writes it as it
           # runs; empty until the game's first copy, as the interpreter's is. +colors+ is the run's
           # list, see-through first, and gives its palette: the backdrop where it is see-through.
-          def run_tile(name, colors)
+          # +solid+ says no picture of the tile draws see-through, so the list's first place is
+          # never shown and the four after it fill the palette, as a solid tile's do.
+          def run_tile(name, colors, solid: false)
             @run_tile_of[name] ||= begin
               if colors.length > PLACES
-                raise LoweringError, "the tiles painted from a list with #{colors.length} colours (#{name.inspect}) " \
-                                     "are more than a Game Boy Color tile holds: #{OWN_COLORS} and the backdrop. " \
-                                     "To fix this, give `colors:` #{PLACES} colours or fewer, the first meaning " \
-                                     "see-through. If one colour is the backdrop's, remove it from the list and " \
-                                     "draw see-through there, which shows the same colour."
+                refuse_too_many_run_colors!(name, colors) unless solid && colors.length == PLACES + 1
               end
 
               own = colors.drop(1).map { |color| color & 0x7FFF }
               [(@background_tiles << Array.new(16, 0)).length - 1,
-               background_palette_number(padded([@backdrop, *own]))]
+               solid ? background_palette_number(padded(own), keeps_backdrop: false) : background_palette_number(padded([@backdrop, *own]))]
             end
+          end
+
+          def refuse_too_many_run_colors!(name, colors)
+            raise LoweringError, "the tiles painted from a list with #{colors.length} colours (#{name.inspect}) " \
+                                 "are more than a Game Boy Color tile holds: #{OWN_COLORS} and the backdrop. " \
+                                 "To fix this, give `colors:` #{PLACES} colours or fewer, the first meaning " \
+                                 "see-through. A group of `tile_pictures` can have one more, if no picture " \
+                                 "draws see-through."
           end
 
           # The number of a grid of 32×32 cells, each [tile number, palette number] or nil for a

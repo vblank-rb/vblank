@@ -31,11 +31,10 @@ module VBlank
 
             # +byte_fills+ says the game fills a list of bytes (Lowering#fills_byte_lists?), and
             # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?).
-            # +byte_copies+ that it copies many bytes from a table (Lowering#copies_held_tiles?).
-            def emit(asm, memory, byte_fills: false, queues: false, byte_copies: false)
+            def emit(asm, memory, byte_fills: false, queues: false)
               q = Quick.for(memory)
               emit_helpers(asm, memory, q)
-              emit_routines(asm, memory, q, byte_fills, byte_copies)
+              emit_routines(asm, memory, q, byte_fills)
               emit_queue_routines(asm, memory, q) if queues
               emit_start(asm)
             end
@@ -252,7 +251,7 @@ module VBlank
               asm.call("rt_take_args")
             end
 
-            def emit_routines(asm, memory, q, byte_fills, byte_copies)
+            def emit_routines(asm, memory, q, byte_fills)
               # rt_list_empty(list)
               asm.label("rt_list_empty")
               emit_args_read(asm, 1)
@@ -380,7 +379,7 @@ module VBlank
               asm.jump("rt_list_fault")
 
               emit_fill(asm, memory, q, byte_fills)
-              emit_copy(asm, memory, q, byte_copies)
+              emit_copy(asm, memory, q)
             end
 
             # A QUEUE OF BYTES is the commonest list on a machine this small, and the routines above
@@ -676,7 +675,7 @@ module VBlank
 
             # rt_list_copy(list, table, kept, table_length, at, count): the list made to hold the
             # +count+ entries of the table from +at+ (held inside the table), oldest first.
-            def emit_copy(asm, memory, q, byte_copies)
+            def emit_copy(asm, memory, q)
               asm.label("rt_list_copy")
               emit_args_read(asm, 6)
               asm.load(:a, arg_at(memory, 0, 6))
@@ -739,7 +738,6 @@ module VBlank
               asm.load_high(:a, count + 1)
               asm.load_high(q.length + 1, :a)
               asm.call("rt_list_close")
-              emit_byte_copy(asm, memory, q, count, at) if byte_copies
               asm.load(:de, 0)
               asm.label("rt_list_copy_loop")
               asm.load_high(:a, count) # done when the slot reaches the count
@@ -799,39 +797,6 @@ module VBlank
                 asm.load_high(q.entry + i, :a)
               end
               asm.ret
-            end
-
-            # BYTES OF A TABLE INTO A LIST OF BYTES, in one block: the loop below reads each entry the
-            # way any table keeps it and writes it the way any list does, which is a good part of a
-            # frame for a tile picture's few hundred bytes. The list's first slot was just made its
-            # front, so the slots are side by side and the copy is one run.
-            def emit_byte_copy(asm, memory, q, count, at)
-              asm.load_high(:a, arg(memory, 2, 6))
-              asm.cp_a(1) # GBC::Lowering::TABLE_KEPT's byte
-              asm.jump_relative(:nz, "rt_list_copy_by_entry")
-              asm.load_high(:a, q.width)
-              asm.cp_a(1)
-              asm.jump_relative(:nz, "rt_list_copy_by_entry")
-              asm.load(:de, 0)
-              asm.call("rt_list_slot_address")
-              asm.load(:d, :h)
-              asm.load(:e, :l)
-              table = arg(memory, 1, 6)
-              asm.load_high(:a, table)
-              asm.load(:l, :a)
-              asm.load_high(:a, table + 1)
-              asm.load(:h, :a)
-              asm.load_high(:a, at)
-              asm.load(:c, :a)
-              asm.load_high(:a, at + 1)
-              asm.load(:b, :a)
-              asm.add_hl(:bc)
-              asm.load_high(:a, count)
-              asm.load(:c, :a)
-              asm.load_high(:a, count + 1)
-              asm.load(:b, :a)
-              asm.jump("rt_copy_bc")
-              asm.label("rt_list_copy_by_entry")
             end
 
             def emit_start(asm)

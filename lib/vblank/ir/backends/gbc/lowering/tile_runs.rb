@@ -18,6 +18,13 @@ module VBlank
           # tile has a tile of its own in picture memory (GBC::Art#run_tile), and so does every piece
           # of a sprite's picture painted from a list (GBC::Art#painted_sprite_picture), whose list
           # keeps its tiles in the order a sprite's pieces are kept.
+          #
+          # A GROUP OF `tile_pictures` needs none of that. Its pictures are all known when the
+          # cartridge is built, so its table is written in the Color's own form, and its list is never
+          # made here: a show copies the chosen picture from the table straight to the stretch of
+          # work memory, with nothing turned. On the Color a frame turns about 30 tiles, and copies
+          # many times that. Everything above the lowering still sees the list and the Advance's form,
+          # so the interpreter and the computer builds play a group as any other painted run.
           module TileRuns
             STATEMENTS = Ractor.make_shareable({ copy_tiles: :emit_copy_tiles, copy_owed_tiles: :emit_copy_owed_tiles })
 
@@ -39,6 +46,40 @@ module VBlank
             private
 
             def tile_runs = @tile_runs ||= by_name(@program.walk, :tile_run)
+
+            # The group of `tile_pictures` the list +name+ stands for, or nil.
+            def held_run_on_list(name) = tile_runs.each_value.find { |run| run.held_in && run.list == name }
+
+            # Whether +run+'s list is see-through first and four colours after, which only a group
+            # whose pictures are turned at build time can be: each place moves one down, so the
+            # four fill the palette (GBC::Art#run_tile).
+            def solid_run?(run) = !run.held_in.nil? && run.colors.length == Art::PLACES + 1
+
+            def painted_tile(name, run) = @art.run_tile(name, run.colors, solid: solid_run?(run))
+
+            # +table+'s bytes in the Color's own form, if it holds a group's pictures, or nil. The
+            # table is written as painted tiles are: 4 bytes a row, two places a byte, the left one in
+            # the low four bits. The Color's row is two bytes: the low bit of each place, then the
+            # high bit, the leftmost place in the top bit.
+            def held_pictures_as_tiles(table)
+              run = tile_runs.each_value.find { |each| each.held_in == table.name }
+              return unless run
+
+              table.values.each_slice(4).flat_map do |row|
+                places = row.flat_map { |byte| [byte & 0xF, byte >> 4] }.map { |place| color_place(place, run) }
+                (0...2).map { |plane| places.reduce(0) { |byte, place| (byte << 1) | place[plane] } }
+              end
+            end
+
+            def color_place(place, run)
+              return place unless solid_run?(run)
+              return place - 1 if place.positive?
+
+              raise LoweringError, "tile_pictures :#{run.name} has a list of #{run.colors.length} colours, and one of its " \
+                                   "pictures draws see-through. A Game Boy Color tile holds #{Art::PLACES} colours with " \
+                                   "no see-through, or #{Art::OWN_COLORS} and the backdrop. To fix this, draw every " \
+                                   "picture from the #{Art::PLACES} colours, or give `colors:` #{Art::PLACES} colours."
+            end
 
             # The run a painted tile is one of, or nil for a tile drawn when the game was built.
             def run_painting(name) = tile_runs.each_value.find { |run| run.tiles.include?(name) }
@@ -72,7 +113,7 @@ module VBlank
                 end
               else
                 run.tiles.map do |tile|
-                  number = @art.run_tile(tile, run.colors).first
+                  number = painted_tile(tile, run).first
                   m = number % 256
                   [number / 256, (m < 128 ? 0x9000 : 0x8000) + (m * TILE_BYTES)]
                 end
@@ -90,7 +131,7 @@ module VBlank
             # two palettes.
             def background_tile_named(name, bg, room = nil)
               run = run_painting(name)
-              return @art.run_tile(name, run.colors) if run
+              return painted_tile(name, run) if run
 
               @art.background_tile(name, Assets::Image.of(@pictures.fetch(name)), room: room, recolor_steps: recolor_steps_of(name, bg),
                                                                                   empty_cells_shown: empty_cells_shown_with?(room))
@@ -126,15 +167,34 @@ module VBlank
             end
 
             def emit_run_copy(run)
-              list, = @lists.fetch(run.list) { raise LoweringError, "the list #{run.list.inspect} is painted from and never declared" }
               owed, staging = @run_places.fetch(run.name)
+              emit_list_to_staging(run, staging) unless run.held_in
+              @asm.load(:a, 1)
+              @asm.load([owed], :a)
+            end
+
+            def emit_list_to_staging(run, staging)
+              list, = @lists.fetch(run.list) { raise LoweringError, "the list #{run.list.inspect} is painted from and never declared" }
               @asm.load(:hl, list + Runtime::Lists::HEADER)
               @asm.load(:de, staging)
               # A list in the Color's own form (`console_format: true`) is copied as it stands.
               @asm.load(:bc, run.console_format ? run_tile_count(run) * TILE_BYTES : run_tile_count(run))
               @asm.call(run.console_format ? "rt_copy_bc" : "rt_repack_tiles")
-              @asm.load(:a, 1)
-              @asm.load([owed], :a)
+            end
+
+            # A group's `show`: the game asked for the picture at +node.at+ in the Advance's form, whose
+            # tiles are twice the Color's, so the place in the table is half that. It waits in work
+            # memory for the copy into picture memory the same line goes on to ask for.
+            def emit_held_picture_copy(run, node)
+              _, staging = @run_places.fetch(run.name)
+              value(node.at)
+              @asm.srl(:d)
+              @asm.rr(:e)
+              @asm.load(:hl, table_label(run.held_in))
+              @asm.add_hl(:de)
+              @asm.load(:de, staging)
+              @asm.load(:bc, node.count / 2)
+              @asm.call("rt_copy_bc")
             end
           end
         end
