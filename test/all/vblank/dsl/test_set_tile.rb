@@ -41,6 +41,45 @@ class TestSetTile < Minitest::Test
     screen.pixel((cell_col * 8) + 4, (cell_row * 8) + 4)
   end
 
+  # A cell shown from three tiles by a number the game works out, and the cell's column worked out
+  # too. A number that names no tile changes nothing.
+  private def picked_tile_program(picks)
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:red_tile, "#" => :red) { SOLID_TILE }
+      image(:green_tile, "#" => :green) { SOLID_TILE }
+      image(:blue_tile, "#" => :blue) { SOLID_TILE }
+      tiles :paints, "r" => :red_tile, "g" => :green_tile, "b" => :blue_tile
+      board = background :board, tiles: :paints, map: Array.new(6) { "rrrrrr" }
+      chosen = table :chosen, picks
+      pass = var :pass, 0
+      column = var :column, 2
+      game_loop do
+        board.set_tile column + 1, 1, chosen[pass]
+        pass += 1
+        wait_vblank
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  private def color_picked(picks)
+    pixel_at(3, 1, game_player.run(picked_tile_program(picks), frames: picks.length + 2).screen)
+  end
+
+  def test_a_tile_can_be_picked_by_a_number_counting_through_the_tileset
+    assert_equal Color.resolve(:red), color_picked([1, 0, 0, 0])
+    assert_equal Color.resolve(:green), color_picked([0, 1, 1, 1])
+    assert_equal Color.resolve(:blue), color_picked([0, 2, 2, 2])
+  end
+
+  def test_a_number_that_names_no_tile_changes_nothing
+    assert_equal Color.resolve(:green), color_picked([1, 3, 3, 3])
+    assert_equal Color.resolve(:green), color_picked([1, -1, -1, -1])
+  end
+
   # --- it changes ---
 
   def test_the_cell_holds_the_new_tile_afterwards

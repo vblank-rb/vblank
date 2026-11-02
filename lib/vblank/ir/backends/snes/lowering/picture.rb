@@ -1087,15 +1087,34 @@ module VBlank
               value(node.row)
               store(row)
               outside = fresh("cell_outside")
-              inside = Build.binop(:and, Build.binop(:and, Build.binop(:>=, Build.var_ref(column), Build.int(0)),
-                                                         Build.binop(:<, Build.var_ref(column), Build.int(columns))),
-                                   Build.binop(:and, Build.binop(:>=, Build.var_ref(row), Build.int(0)),
-                                               Build.binop(:<, Build.var_ref(row), Build.int(rows))))
-              jump_unless(inside, outside)
+              emit_jump_unless_below(column, columns, outside)
+              emit_jump_unless_below(row, rows, outside)
               tile, palette = cell_of(bg, node.tile)
               word = tile ? tile | (palette << Art::PALETTE_SHIFT) | (cells_in_front?(bg) ? Art::CELL_IN_FRONT : 0) : 0
-              runtime_call("rt_set_cell", [Build.int(layer_of(bg)), Build.var_ref(column), Build.var_ref(row), Build.int(word)])
+              emit_set_cell_call(layer_of(bg), column, row, word)
               @asm.label(outside)
+            end
+
+            # A BLAST CHANGES TWENTY CELLS A STEP, so this is written for what it is. A number from
+            # nought up to +limit+ has an empty top half and a low half below the limit, and a negative
+            # one has its top half full, so one test of each half stands for the two a place on a map
+            # would otherwise take, each of 32 bits.
+            def emit_jump_unless_below(name, limit, label)
+              at = place_of(name)
+              @asm.lda(@asm.abs(at + 2))
+              @asm.branch_long(:bne, label)
+              @asm.lda(@asm.abs(at))
+              @asm.cmp(limit)
+              @asm.branch_long(:bcs, label)
+            end
+
+            # rt_set_cell, which reads only the low half of each number.
+            def emit_set_cell_call(layer, column, row, word)
+              [@asm.imm(layer), @asm.abs(place_of(column)), @asm.abs(place_of(row)), @asm.imm(word)].each_with_index do |from, i|
+                @asm.lda(from)
+                @asm.sta(@asm.direct(Memory.register(i)))
+              end
+              call_routine("rt_set_cell")
             end
 
             # Reference#exec_place_bar: a background that is not a status bar has no top to place.

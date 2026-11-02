@@ -1466,11 +1466,18 @@ module VBlank
               # The cells changed, each a word at its address. Many take more than a blank, so they
               # go before the colours: a frame between shows some of the cells in the old colours,
               # which is the pass's change arriving, and never the new colours over an old cell.
+              #
+              # Asking the line takes as long as writing the cell, so it is asked once for each
+              # eight cells, which is what a blast of twenty cells does not have time to pay for.
               asm.ldx(0)
               asm.label("rt_upload_cell")
               asm.lda(asm.abs(memory[CELLS]))
               asm.beq("rt_upload_cells_done")
-              asm.jsr(asm.abs("rt_blank_time"))
+              asm.txa
+              asm.and_a((Blank::CELLS_A_LOOK - 1) * 4)
+              asm.bne("rt_upload_cell_in_time")
+              asm.jsr(asm.abs("rt_blank_time_for_cells"))
+              asm.label("rt_upload_cell_in_time")
               asm.dec(asm.abs(memory[CELLS]))
               asm.lda(asm.abs_x(memory[CELLS] + 2))
               asm.sta(asm.abs(h::VMADDL))

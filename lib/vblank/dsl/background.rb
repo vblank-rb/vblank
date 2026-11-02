@@ -95,12 +95,44 @@ module VBlank
                 "of its own and use show_map."
         end
         refuse_set_tile_on_streamed_map!
+        return set_tile_picked_by(col, row, tile, now) if tile.is_a?(Value)
+
         index = @tile_index[tile]
         raise ArgumentError, unknown_tile_message(tile) if index.nil?
 
         record(Build.set_tile(@name, Value.node_for(col), Value.node_for(row), index, now: now))
         record_wall_change(col, row, index)
         self
+      end
+
+      # A TILE PICKED BY A NUMBER THE GAME WORKS OUT, counting from nought through the tileset's
+      # keys in the order they were written, which a number that names no key leaves the cell alone
+      # for. A cell's word differs from tile to tile and console to console, so this is written as
+      # the tests a game would write by hand, halving the keys each time: six tests for 43 tiles, and
+      # one `set_tile` for each of them in the cartridge.
+      def set_tile_picked_by(col, row, number, now)
+        keys = @tile_index.reject { |_, index| index.nil? }.keys
+        in_range = PlainRuby::Steps::GameTest.new(number >= 0)
+        in_range.open_yes_side
+        below_end = PlainRuby::Steps::GameTest.new(number < keys.length)
+        below_end.open_yes_side
+        set_tile_between(col, row, number, keys, now)
+        below_end.close_side(nil)
+        in_range.close_side(nil)
+        self
+      end
+
+      def set_tile_between(col, row, number, keys, now, first: 0)
+        return set_tile(col, row, keys.first, now: now) if keys.one?
+
+        lower, upper = keys.each_slice(keys.length.ceildiv(2)).to_a
+        which = PlainRuby::Steps::GameTest.new(number < first + lower.length)
+        which.open_yes_side
+        set_tile_between(col, row, number, lower, now, first: first)
+        which.close_side(nil)
+        which.open_no_side
+        set_tile_between(col, row, number, upper, now, first: first + lower.length)
+        which.close_side(nil)
       end
 
       # THE WALLS FOLLOW THE CELL. A mover is stopped by the walls the tileset's `solid:` tiles

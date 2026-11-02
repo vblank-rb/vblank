@@ -26,6 +26,7 @@ module VBlank
           #   rt_blank_room   before each piece (JSR): A is its bytes; returns once there is room
           #   rt_blank_time   before a write that is not a copy (JSR): returns once the blank has a
           #                   line left for it
+          #   rt_blank_time_for_cells (JSR): the same, for CELLS_A_LOOK cells of a map
           #   rt_blank_left   (JSR) A = the bytes this blank still has room and time for, 0 for none,
           #                   so a run of pieces can be sent together (rt_blank_room then lets
           #                   them go at once)
@@ -35,6 +36,11 @@ module VBlank
             # The lines of a North American frame, 0 to 261; the blank is 225 to 261.
             LINES = 262
             FIRST_BLANK_LINE = 225
+            # How many cells of a map go on one look at the line, and the lines left that asks for:
+            # a cell is about fifty of the processor's cycles and a line about 190, so eight take
+            # about two lines, and one more is kept for the look itself.
+            CELLS_A_LOOK = 8
+            LINES_FOR_CELLS = 4
 
             # The direct page it works on: the piece's bytes, the bytes sent in this blank, and
             # the line the picture is on.
@@ -99,6 +105,20 @@ module VBlank
               asm.label("rt_blank_time_wait")
               emit_next_blank(asm, s)
               asm.label("rt_blank_time_there")
+              asm.rts
+
+              # The same, for CELLS_A_LOOK cells of a map, written one after another.
+              asm.label("rt_blank_time_for_cells")
+              asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.beq("rt_blank_cells_there")
+              emit_line_now(asm)
+              asm.cmp(FIRST_BLANK_LINE)
+              asm.bcc("rt_blank_cells_wait")
+              asm.cmp(LINES - LINES_FOR_CELLS)
+              asm.bcc("rt_blank_cells_there")
+              asm.label("rt_blank_cells_wait")
+              emit_next_blank(asm, s)
+              asm.label("rt_blank_cells_there")
               asm.rts
 
               # The bytes the lines left allow, at 146 a line as rt_blank_room counts them (a 128th
