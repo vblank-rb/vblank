@@ -878,8 +878,10 @@ module VBlank
           # runs; empty until the game's first copy, as the interpreter's is. +colors+ is the run's
           # list, see-through first, and gives its palette: the backdrop where it is see-through.
           # +solid+ says no picture of the tile draws see-through, so the list's first place is
-          # never shown and the four after it fill the palette, as a solid tile's do.
-          def run_tile(name, colors, solid: false)
+          # never shown and the four after it fill the palette, as a solid tile's do. +swaps+ is what
+          # the palette shows with each list a background draws it with, so two runs that start in
+          # the same colours and are told different ones have a palette each.
+          def run_tile(name, colors, solid: false, swaps: nil)
             @run_tile_of[name] ||= begin
               if colors.length > PLACES
                 refuse_too_many_run_colors!(name, colors) unless solid && colors.length == PLACES + 1
@@ -887,7 +889,7 @@ module VBlank
 
               own = colors.drop(1).map { |color| color & 0x7FFF }
               [(@background_tiles << Array.new(16, 0)).length - 1,
-               solid ? background_palette_number(padded(own), keeps_backdrop: false) : background_palette_number(padded([@backdrop, *own]))]
+               background_palette_number(padded(solid ? own : [@backdrop, *own]), keeps_backdrop: !solid, swaps: swaps)]
             end
           end
 

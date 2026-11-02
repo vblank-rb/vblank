@@ -55,7 +55,13 @@ module VBlank
             # four fill the palette (GBC::Art#run_tile).
             def solid_run?(run) = !run.held_in.nil? && run.colors.length == Art::PLACES + 1
 
-            def painted_tile(name, run) = @art.run_tile(name, run.colors, solid: solid_run?(run))
+            def painted_tile(name, run) = @art.run_tile(name, run.colors, solid: solid_run?(run), swaps: painted_tile_swaps(name))
+
+            # What painted tile +name+'s palette shows with the lists its background is drawn with.
+            def painted_tile_swaps(name)
+              bg = tiled_scenery.find { |each| each.tiles.include?(name) }
+              bg && recolor_steps_of(name, bg)
+            end
 
             # +table+'s bytes in the Color's own form, if it holds a group's pictures, or nil. The
             # table is written as painted tiles are: 4 bytes a row, two places a byte, the left one in
