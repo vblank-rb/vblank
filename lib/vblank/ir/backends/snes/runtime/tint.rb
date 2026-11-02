@@ -106,12 +106,25 @@ module VBlank
             # (Lowering::Picture#colors_shown): the colours the fade moves.
             # +changing_colors+ for a game that changes colours as it runs, which then fades from
             # COLORS_NOW and carries rt_colors_start and rt_colors_hold.
-            def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false, dims: false)
+            def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false, dims: false, scene_backdrops: false)
               emit_tint(asm, memory, s, dims)
               emit_table(asm, memory, s)
               emit_apply(asm, memory, colors_shown, changing_colors ? memory[COLORS_NOW] : "art colors")
               emit_upload(asm, memory)
               emit_colors_held(asm, memory) if changing_colors
+              emit_backdrop_held(asm, memory) if scene_backdrops
+            end
+
+            # rt_backdrop_hold(color), for a game whose scenes differ in their backdrop: colour 0 is
+            # +color+ in the place colours change in and in the copy the blank sends, and the rest is
+            # rt_colors_hold's end, so a fade in force moves it on the same pass.
+            def emit_backdrop_held(asm, memory)
+              asm.label("rt_backdrop_hold")
+              asm.lda(asm.direct(R.call(0)))
+              asm.ldx(0)
+              asm.sta(asm.long_x(memory[COLORS_NOW]))
+              asm.sta(asm.long_x(memory[SHADOW]))
+              asm.jmp(asm.abs("rt_colors_hold_noted"))
             end
 
             # rt_colors_start (JSL, at power-on): the game's colours, into the place they change in and
@@ -189,6 +202,7 @@ module VBlank
               asm.bne("rt_colors_hold_color")
               asm.dec(asm.direct(palettes))
               asm.bne("rt_colors_hold_palette")
+              asm.label("rt_colors_hold_noted")
               asm.lda(asm.abs(state + STEPS_AT))
               asm.bne("rt_colors_hold_faded")
               asm.lda(asm.abs(state + CHANGED))

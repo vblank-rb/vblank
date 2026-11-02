@@ -399,14 +399,33 @@ module VBlank
               end
             end
 
-            # A `screen` other than the game's own that says a backdrop the game's does not: a scene's
-            # own. Colour 0 is the console's one backdrop, set once for the game here, so one that
-            # changes as a scene comes up is not made yet.
+            # A `screen` other than the game's own that says a backdrop the game's does not, somewhere
+            # it cannot come up by: on a painted screen, or anywhere but the top of a scene.
             def refuse_backdrops_of_its_own!
-              game_backdrop = IR::SceneHandover.of(@program).game_backdrop
-              return unless @program.walk.any? { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
+              handover = IR::SceneHandover.of(@program)
+              game_backdrop = handover.game_backdrop
+              said = @program.walk.select { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
+              return if said.empty? || (!painted? && said.all? { |node| handover.scene_screen?(node) })
 
               refuse_unmade!("a scene that says a backdrop of its own (`screen ... backdrop:`)")
+            end
+
+            # Whether a scene of +program+ says a backdrop the game's does not, which colour 0 is
+            # changed to as it takes over (Runtime::Tint's rt_backdrop_hold).
+            def self.scene_backdrops?(program)
+              return false if Lowering::Paint.painted?(program)
+
+              handover = IR::SceneHandover.of(program)
+              handover.scene_screens.any? { |_, screen| screen.backdrop && screen.backdrop != handover.game_backdrop }
+            end
+
+            # A scene taking over, in a game whose scenes differ in their backdrop: colour 0 changed
+            # to its own, or the game's where it says none. It goes out with the scene's colours and
+            # maps (Runtime::Picture's "Together"), through whatever fade is in force.
+            def emit_scene_backdrop(arrival)
+              return unless Picture.scene_backdrops?(@program)
+
+              runtime_call("rt_backdrop_hold", [Build.int(arrival.backdrop & 0x7FFF)])
             end
 
             def refuse_unmade!(what)
@@ -724,6 +743,7 @@ module VBlank
               arrival = @handover.arrival(scene)
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
+              emit_scene_backdrop(arrival)
               return if @scene_layers.zero?
 
               emit_layers_straight_for(arrival)

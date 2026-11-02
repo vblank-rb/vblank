@@ -91,7 +91,7 @@ module VBlank
                        sprite_depths: false, big_tiles: 0,
                        colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
                        dims: false, extra_buttons: false, math_turns: false, scene_bars: false,
-                       recording_voices: DSPWrites::RECORDING_VOICES)
+                       recording_voices: DSPWrites::RECORDING_VOICES, scene_backdrops: false)
             chip = board.name == :super_fx
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
@@ -109,7 +109,8 @@ module VBlank
                                       sprite_squares: sprite_squares, changing_colors: changing_colors,
                                       math_turns: math_turns, scene_bars: scene_bars)
             Paint.emit(asm, memory, Paint.scratch(memory), chip: chip) if painted
-            Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: colors_shown, changing_colors: changing_colors, dims: dims)
+            Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: colors_shown, changing_colors: changing_colors, dims: dims,
+                               scene_backdrops: scene_backdrops)
             Collide.emit(asm, memory, Collide.scratch(memory))
             Chip.emit(asm, memory) if chip
             Saving.emit(asm, memory, Saving.scratch(memory)) if saves
