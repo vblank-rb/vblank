@@ -220,16 +220,41 @@ module VBlank
           def emit_present_objects(node)
             by_scene = @layout.scene_sprites
             emit_switch_sprite_layer
-            @scene_entry.emit_unless_scene_is_loading do
-              @picture_group_copying.emit_calls_to_routines
-              emit_count_lending_frame
-              emit_hide_scene_rows_on_change
-              emit_write_sprite_rows(node.names - @layout.movement.still - by_scene.flat_map(&:names))
-              by_scene.each { |group| emit_scene_sprites(group) }
-              emit_refresh_still_sprites
-              @layout.draw_runs.each { |run| emit_copy_draw_run(run) }
-              emit_call_held_table_copy
+            emit_unless_set_just_came_in do
+              @scene_entry.emit_unless_scene_is_loading do
+                @picture_group_copying.emit_calls_to_routines
+                emit_count_lending_frame
+                emit_hide_scene_rows_on_change
+                emit_write_sprite_rows(node.names - @layout.movement.still - by_scene.flat_map(&:names))
+                by_scene.each { |group| emit_scene_sprites(group) }
+                emit_refresh_still_sprites
+                @layout.draw_runs.each { |run| emit_copy_draw_run(run) }
+                emit_call_held_table_copy
+              end
             end
+          end
+
+          # BRINGING AN AREA'S TILES IN IS THE LONGEST THING A FRAME EVER DOES, and it comes just
+          # before the frame's sprite work, in the same gap. So the sprite work waits a frame: the
+          # sprites stay as they stood while the area arrives, and the frame after writes the same
+          # numbers. A game whose frames only just hold that copy is then well inside them, and how
+          # many sprites it sorts cannot push the pass over. A game that stays in one area emits
+          # nothing here.
+          def emit_unless_set_just_came_in
+            return yield unless @layout.screen.walks_areas?
+
+            came_in = BackgroundDrawing::SET_CAME_IN
+            work = gensym
+            past = gensym
+            load_var(ACC, came_in)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, work, cond: :eq)
+            emit_number(ACC, 0)
+            store_var(ACC, came_in)
+            emit_branch(:b, past)
+            place_label(work)
+            yield
+            place_label(past)
           end
 
           # EVERY SPRITE OFF FOR A FRAME (see Builder::Sprites#hide_sprites).

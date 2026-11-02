@@ -364,6 +364,10 @@ module VBlank
           # ...and where the number of the map coming in is kept while its set is brought in.
           SET_SWAP_MAP = :_set_swap_map
 
+          # ...and whether a set came in in this gap, for the sprite work after it (see
+          # SpriteDrawing#emit_unless_set_just_came_in).
+          SET_CAME_IN = :_set_came_in
+
           # Registers held while a set is brought in: the set that is coming in, and the size
           # of one set's colour table. Nothing reading a variable or a cartridge address touches
           # either, so they last across those.
@@ -456,6 +460,8 @@ module VBlank
             store_var(ACC, SET_SWAP_MAP)
             emit(ASM.mov_reg(ACC, SET_PICKED))
             store_var(ACC, swap.var)
+            emit_number(ACC, 1)
+            store_var(ACC, SET_CAME_IN)
 
             emit_number(TMP, REG_DISPCNT)
             emit(ASM.load_halfword(ACC, TMP))

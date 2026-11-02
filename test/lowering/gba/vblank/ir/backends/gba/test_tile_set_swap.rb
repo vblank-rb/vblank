@@ -60,6 +60,44 @@ class TestTileSetSwap < Minitest::Test
     end
   end
 
+  # An area's tiles coming in is the longest thing a frame does, so the sprites hold still for that
+  # frame, and the frame after moves them by the two steps. +ARRIVES+ is the pass the game walks.
+  ARRIVES = 8
+
+  private def sprite_over_walk
+    arrives = ARRIVES
+    VBlank.build("WALKSPR", console: :gba, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:shrine_floor, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:clearing_grass, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      tiles :shrine, "#" => :shrine_floor
+      tiles :clearing, "#" => :clearing_grass
+      ground = background :ground, tiles: { shrine: :shrine, clearing: :clearing },
+                                   map: { shrine: { hall: ["#" * 32] }, clearing: { glade: ["#" * 32] } }
+      hero = sprite :hero, at: [0, 40], facing: { floor: :shrine_floor }
+      passes = var :passes, 0
+      game_loop do
+        passes += 1
+        hero.x += 1
+        ground.show_map 1 if passes == arrives
+      end
+    end
+  end
+
+  def test_the_sprites_wait_a_frame_while_an_area_comes_in
+    rom = sprite_over_walk
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 1, vars: rom.var_addresses)
+    across = (1..(ARRIVES + 6)).map do
+      reader.step
+      reader.mem16(0x0700_0002) & 0x01FF
+    end
+    steps = across.each_cons(2).map { |before, after| after - before }
+
+    assert_equal 1, steps.count(0), "the sprite held still once: #{across}"
+    assert_equal 1, steps.count(2), "and caught up the frame after: #{across}"
+    assert_equal steps.index(0) + 1, steps.index(2), across.to_s
+  end
+
   private def game_loop_bytes(rom) = rom.built.routines.fetch(FRAME_ROUTINE).size
 
   private def words(name) = VBlank::Messages::MadeNames.words_for_made_name(name)
