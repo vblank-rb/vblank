@@ -23,37 +23,9 @@ module VBlank
         # compared over the Color's screen, the top-left 160×144 of it: what is past that the
         # cartridge cannot show. (Whether a test of a program built for the Advance is played here at
         # all is VBlank::Testing's decision.)
-        class CheckedRun
-          extend RunComparison
-
-          Moment = HeadlessRun::Moment
-
-          # The cartridge and the interpreter disagreed. The message says the pass and everything
-          # that differs there.
-          Disagreement = RunComparison::Disagreement
-
+        class CheckedRun < CartridgeCheckedRun
           def initialize(save: SaveImage.new)
-            @save = save
-            @cartridge = HeadlessRun.new(save: save)
-            @played = {}
-            @held = []
-            @cartridge.input_each_frame { |frame| @played[frame] = buttons_for(frame) }
-          end
-
-          def hold(*buttons)
-            @held = buttons
-            @cartridge.hold(*buttons)
-            self
-          end
-
-          def input_each_frame(&script)
-            @script = script
-            self
-          end
-
-          def each_vblank(&block)
-            @cartridge.each_vblank(&block)
-            self
+            super(HeadlessRun, save: save)
           end
 
           # The same clock on both sides, started at the same moment: the Color's chip, which keeps
@@ -65,86 +37,28 @@ module VBlank
             self
           end
 
-          def run(program, max_steps: nil, frames: nil)
-            frames ||= max_steps ? frames_within(program, max_steps) : Reference::DEFAULT_FRAMES
-            refuse_endless_game_without_frames!(program)
-            before = @save.dup # the interpreter starts from the save memory the cartridge started from
-            @cartridge.run(program, frames: frames)
-            width, height = @cartridge.screen.then { |picture| [picture.width, picture.height] }
-            moments, saved, sounds = play_on_interpreter(program, frames, width, height, before)
-            difference = self.class.first_difference(moments, @cartridge.moments)
-            # A log that grew differently says which entry it first differs at, read to the end.
-            heard = self.class.sounds_difference(sounds, @cartridge.whole_audio)
-            difference = [difference, heard].compact.join(", and ") if difference&.include?("sound log")
-            difference ||= self.class.sounds_difference(sounds, @cartridge.audio_played)
-            difference ||= self.class.save_difference(saved, @save) if SaveLayout.named_by?(program)
-            raise Disagreement, "the Game Boy Color lowering and the interpreter disagree at #{difference}" if difference
-
-            self
-          end
-
-          def [](name) = @cartridge[name]
-          def screen = @cartridge.screen
-
-          def method_missing(name, ...) = @cartridge.public_send(name, ...)
-          def respond_to_missing?(name, include_private = false) = @cartridge.respond_to?(name, include_private)
-
-          def self.lowered_side = "cartridge"
-
           private
 
-          def buttons_for(frame) = @script ? Array(@script.call(frame)) : @held
+          # A log that grew differently says which entry it first differs at, read to the end.
+          def moments_difference(moments)
+            difference = super
+            return difference unless difference&.include?("sound log")
 
-          # A game that never waits for the screen has no frames to count, so it is played on the
-          # interpreter first, with the buttons held from power-on, to find whether it comes to an
-          # end by itself — as the native lowering's checked run does, and for the same reason: the
-          # cartridge keeps no count of its steps. A game the interpreter stops with an error stops here
-          # with it.
-          def refuse_endless_game_without_frames!(program)
-            return if program.walk.any? { |node| node.kind == :wait_vblank }
-            return unless Reference.new(save: @save.dup).hold(*@held).run(program).stopped_at_budget?
-
-            raise RunComparison::AsksTheInterpreter, "its step budget to stop a game that never waits for the screen"
+            [difference, self.class.sounds_difference(@interpreter_sounds, @cartridge.whole_audio)].compact.join(", and ")
           end
 
-          # A STEP BUDGET IS PLAYED AS THE FRAMES IT COVERS, as the native lowering's checked run
-          # plays it: the interpreter plays the game first with the test's buttons and stops at the
-          # frame boundary after the budget runs out, and the cartridge then plays that many frames.
-          # A game that spends the whole budget before it first waits has no frame to stop at.
-          def frames_within(program, max_steps)
-            lead = Reference.new(save: @save.dup).hold(*@held).input_each_frame { |frame| buttons_for(frame) }
-                            .run(program, max_steps: max_steps)
-            return lead.frame unless lead.frame.zero? && lead.stopped_at_budget?
-
-            raise RunComparison::AsksTheInterpreter, "its step budget to stop a game before it first waits for the screen"
+          def further_difference(program, before)
+            difference = self.class.sounds_difference(@interpreter_sounds, @cartridge.audio_played)
+            difference || (self.class.save_difference(before, @save) if SaveLayout.named_by?(program))
           end
 
-          # The interpreter is told how many frames each pass took on the cartridge, so whatever
-          # keeps real time — the music, `once_a_frame`, a beat, the buttons read on every frame —
-          # moves on by the same frames on both.
-          def play_on_interpreter(program, frames, width, height, save)
-            interpreter = Reference.new(save: save).hold(*@held)
+          def prepare_interpreter(interpreter)
             interpreter.clock_at(@clock_started, set: @clock_set, keeps_date: false) if @clock_started
-            moments = []
-            interpreter.frames_each_pass { |pass| @cartridge.frames_took(pass) }
             interpreter.frames_setting_up(@cartridge.dark_frames_counted)
-            interpreter.input_each_frame { |frame| @played.fetch(frame, []) }
-                       .each_vblank { |frame| moments << moment_of(interpreter, frame, width, height) }
-                       .run(program, frames: frames)
-            [moments << moment_of(interpreter, :end, width, height), save, interpreter.audio]
           end
 
-          def moment_of(interpreter, frame, width, height)
-            Moment.new(frame: frame, variables: interpreter.vars.dup, picture: picture_check(interpreter.screen, width, height),
-                       sounds: interpreter.audio.size, sprites: interpreter.sprites_by_depth,
-                       collections: interpreter.game_state.except(:vars), sounding: interpreter.active_samples.dup,
-                       motor: interpreter.motor_on?)
-          end
-
-          # The interpreter's picture over the cartridge's screen.
-          def picture_check(screen, width, height)
-            RunComparison.picture_check(RunComparison.pixels_over(screen, width, height))
-          end
+          def sounding_levels(run) = run.active_samples.dup
+          def motor_of(run) = run.motor_on?
         end
       end
     end

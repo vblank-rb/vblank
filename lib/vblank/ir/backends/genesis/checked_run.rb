@@ -14,19 +14,12 @@ module VBlank
         # compared over the Genesis's, 320×224, each colour as the three bits of each channel the
         # console keeps (Console::Description#color_bits).
         class CheckedRun < CartridgeCheckedRun
-          Moment = HeadlessRun::Moment
-
           def initialize(save: SaveImage.new)
             super(HeadlessRun, save: save)
           end
-          
+
           private
-          
-          def play_on_interpreter(program, frames, width, height, save)
-            @interpreter = nil
-            super
-          end
-          
+
           # THE SOUND LOG AND THE CHIPS THEMSELVES, past the moments: every entry of the log, and the first time
           # the game was found waiting with a chip's register holding something other than what the
           # interpreter's log says it must, as far as the entries the cartridge had logged then
@@ -37,7 +30,7 @@ module VBlank
             difference ||= chip_difference
             difference || (self.class.save_difference(before, @save) if SaveLayout.named_by?(program))
           end
-          
+
           # The recording sounding, as the cartridge's moments keep it.
           def sounding_levels(run) = run.active_samples
 
@@ -47,7 +40,7 @@ module VBlank
             logged_entries = @cartridge.audio_as_logged.take(@interpreter_sounds.size)
             stop = ChipWrites.misnamed_stop(logged_entries, voicing)
             return "entry #{stop + 1} of the sound log: the cartridge stopped #{logged_entries[stop][1].inspect}, not the tune playing" if stop
-          
+
             @cartridge.chip_reads.each_with_index do |(logged, (psg, fm)), i|
               wrong = ChipWrites.after(logged_entries.take(logged), voicing).filter_map do |(chip, register), value|
                 got = chip == :psg ? psg.fetch(register) : fm.getbyte(register)
@@ -56,11 +49,6 @@ module VBlank
               return "the wait at the end of pass #{i + 1}: the sound chips: #{wrong.join(', ')}" unless wrong.empty?
             end
             nil
-          end
-          
-          def moment_of(interpreter, frame, width, height)
-            @interpreter_sounds = interpreter.audio.dup
-            super
           end
         end
       end

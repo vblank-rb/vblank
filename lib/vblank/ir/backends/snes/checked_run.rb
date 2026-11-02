@@ -18,105 +18,22 @@ module VBlank
         #
         # The interpreter plays the program on the screen of the console it was built for, and the
         # two pictures are compared over the Super Nintendo's screen, the top-left 256×224 of it.
-        class CheckedRun
-          extend RunComparison
-
-          Moment = HeadlessRun::Moment
-
-          # The cartridge and the interpreter disagreed. The message says the pass and everything
-          # that differs there.
-          Disagreement = RunComparison::Disagreement
-
+        class CheckedRun < CartridgeCheckedRun
           def initialize(save: SaveImage.new)
-            @save = save
-            @cartridge = HeadlessRun.new(save: save)
-            @played = {}
-            @held = []
-            @cartridge.input_each_frame { |frame| @played[frame] = buttons_for(frame) }
-          end
-
-          def hold(*buttons)
-            @held = buttons
-            @cartridge.hold(*buttons)
-            self
-          end
-
-          def input_each_frame(&script)
-            @script = script
-            self
-          end
-
-          def each_vblank(&block)
-            @cartridge.each_vblank(&block)
-            self
+            super(HeadlessRun, save: save)
           end
 
           def run(program, max_steps: nil, frames: nil)
-            frames ||= max_steps ? frames_within(program, max_steps) : Reference::DEFAULT_FRAMES
-            refuse_endless_game_without_frames!(program)
-            before = @save.dup # the interpreter starts from the save memory the cartridge started from
             @near = HeadlessRun.near_pictures?(program)
-            @cartridge.run(program, frames: frames)
-            width, height = @cartridge.screen.then { |picture| [picture.width, picture.height] }
-            moments = play_on_interpreter(program, frames, width, height, before)
-            difference = self.class.first_difference(moments, @cartridge.moments)
-            difference ||= self.class.sounds_difference(@interpreter_sounds, @cartridge.audio_played)
-            difference ||= dsp_difference
-            difference ||= self.class.save_difference(before, @save) if SaveLayout.named_by?(program)
-            raise Disagreement, "the Super Nintendo lowering and the interpreter disagree at #{difference}" if difference
-
-            self
+            super
           end
-
-          def [](name) = @cartridge[name]
-          def screen = @cartridge.screen
-
-          def method_missing(name, ...) = @cartridge.public_send(name, ...)
-          def respond_to_missing?(name, include_private = false) = @cartridge.respond_to?(name, include_private)
-
-          def self.lowered_side = "cartridge"
 
           private
 
-          def buttons_for(frame) = @script ? Array(@script.call(frame)) : @held
-
-          # A game that never waits for the screen has no frames to count, so it is played on the
-          # interpreter first, with the buttons held from power-on, to find whether it comes to an
-          # end by itself: the cartridge keeps no count of its steps.
-          def refuse_endless_game_without_frames!(program)
-            return if program.walk.any? { |node| node.kind == :wait_vblank }
-            return unless Reference.new(save: @save.dup).hold(*@held).run(program).stopped_at_budget?
-
-            raise RunComparison::AsksTheInterpreter, "its step budget to stop a game that never waits for the screen"
-          end
-
-          # A step budget is played as the frames it covers, as GBC::CheckedRun#frames_within plays it.
-          def frames_within(program, max_steps)
-            lead = Reference.new(save: @save.dup).hold(*@held).input_each_frame { |frame| buttons_for(frame) }
-                            .run(program, max_steps: max_steps)
-            return lead.frame unless lead.frame.zero? && lead.stopped_at_budget?
-
-            raise RunComparison::AsksTheInterpreter, "its step budget to stop a game before it first waits for the screen"
-          end
-
-          # The interpreter is told how many frames each pass took on the cartridge, so whatever keeps
-          # real time moves on by the same frames on both. It plays on +save+, which it leaves as the
-          # save memory it ended with.
-          def play_on_interpreter(program, frames, width, height, save)
-            interpreter = Reference.new(save: save).hold(*@held)
-            moments = []
-            interpreter.frames_each_pass { |pass| @cartridge.frames_took(pass) }
-            interpreter.input_each_frame { |frame| @played.fetch(frame, []) }
-                       .each_vblank { |frame| moments << moment_of(interpreter, frame, width, height) }
-                       .run(program, frames: frames)
-            @interpreter_sounds = interpreter.audio.dup
-            moments << moment_of(interpreter, :end, width, height)
-          end
-
-          def moment_of(interpreter, frame, width, height)
-            Moment.new(frame: frame, variables: interpreter.vars.dup, picture: picture_check(interpreter.screen, width, height),
-                       sounds: interpreter.audio.size, sprites: interpreter.sprites_by_depth,
-                       collections: interpreter.game_state.except(:vars), sounding: sounding_levels(interpreter))
+          def further_difference(program, before)
+            difference = self.class.sounds_difference(@interpreter_sounds, @cartridge.audio_played)
+            difference ||= dsp_difference
+            difference || (self.class.save_difference(before, @save) if SaveLayout.named_by?(program))
           end
 
           # The recordings sounding, each with how far through its shape the first place sounding it

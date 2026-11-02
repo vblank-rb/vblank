@@ -16,8 +16,10 @@ module VBlank
       #   run[:x]
       #
       # The interpreter plays the program on the screen of the console it was built for, and the two
-      # pictures are compared over that console's screen. What a console adds to the comparison (its
-      # sound unit, its save memory) is a subclass's to say, in +further_difference+.
+      # pictures are compared over that console's screen. What a console adds to the comparison is a
+      # subclass's to say: #further_difference for its sound unit and save memory, #prepare_interpreter
+      # for what the interpreter is told before it plays, #sounding_levels, #motor_of and #picture_check
+      # for what a moment holds, and #moments_difference for what it says of them.
       class CartridgeCheckedRun
         extend RunComparison
 
@@ -60,7 +62,7 @@ module VBlank
           @cartridge.run(program, frames: frames)
           width, height = @cartridge.screen.then { |picture| [picture.width, picture.height] }
           moments = play_on_interpreter(program, frames, width, height, before)
-          difference = self.class.first_difference(moments, @cartridge.moments)
+          difference = moments_difference(moments)
           difference ||= further_difference(program, before)
           raise Disagreement, "the #{kit.title} lowering and the interpreter disagree at #{difference}" if difference
 
@@ -91,9 +93,16 @@ module VBlank
           nil
         end
 
+        # The first moment the two sides differ at, in words, or nil.
+        def moments_difference(moments) = self.class.first_difference(moments, @cartridge.moments)
+
         # What else the console's cartridge is held to the interpreter on, past the moments: the first
-        # difference in words, or nil. +before+ is the save memory the run started from.
+        # difference in words, or nil. +before+ is the save memory the run started from, and the
+        # interpreter's log of sounds is @interpreter_sounds.
         def further_difference(_program, _before) = nil
+
+        # What the interpreter is told before it plays, past what every console tells it.
+        def prepare_interpreter(_interpreter) = nil
 
         def buttons_for(frame) = @script ? Array(@script.call(frame)) : @held
 
@@ -125,20 +134,26 @@ module VBlank
           interpreter = Reference.new(save: save).hold(*@held)
           moments = []
           interpreter.frames_each_pass { |pass| @cartridge.frames_took(pass) }
+          prepare_interpreter(interpreter)
           interpreter.input_each_frame { |frame| @played.fetch(frame, []) }
                      .each_vblank { |frame| moments << moment_of(interpreter, frame, width, height) }
                      .run(program, frames: frames)
+          @interpreter_sounds = interpreter.audio.dup
           moments << moment_of(interpreter, :end, width, height)
         end
 
         def moment_of(interpreter, frame, width, height)
           Moment.new(frame: frame, variables: interpreter.vars.dup, picture: picture_check(interpreter.screen, width, height),
                      sounds: interpreter.audio.size, sprites: interpreter.sprites_by_depth,
-                     collections: interpreter.game_state.except(:vars), sounding: sounding_levels(interpreter))
+                     collections: interpreter.game_state.except(:vars), sounding: sounding_levels(interpreter),
+                     motor: motor_of(interpreter))
         end
 
         # The recordings sounding at a moment: none for a console whose build makes no sound.
         def sounding_levels(_run) = []
+
+        # Whether the cartridge's motor runs at a moment: off on a console without one.
+        def motor_of(_run) = false
 
         # The interpreter's picture over the cartridge's screen, as the cartridge's Moments hold it.
         def picture_check(screen, width, height) = RunComparison.picture_check(RunComparison.pixels_over(screen, width, height))
