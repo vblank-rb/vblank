@@ -109,6 +109,48 @@ class TestGBCSpriteLists < Minitest::Test
     assert_match(/254 lists of colours/, error.message)
   end
 
+  # Eight things in a pool, each drawn in a list of its own, seven standing still and the last
+  # walking off the left of the screen and back. Every one of them has its fields read on every
+  # pass, so this is what a pool costs when it is doing no more than being looked at.
+  def self.walking_things
+    VBlank.game("WALKING THINGS", consoles: %i[gbc]) do
+      screen :tiled
+      image :ship, width: 8, height: 8, data: SHIP, colors: %i[transparent red green]
+      names = (0...8).map { |n| :"kind#{n}" }
+      names.each_with_index { |name, n| colors name, [:transparent, Color.rgb(21, 10, n), Color.rgb(31 - n, n, 9)] }
+      things = pool :thing, x: 0, y: 0, kind: 0, capacity: 8, image: :ship
+      7.times { |n| things.spawn x: 20 + (n * 16), y: 40, kind: n }
+      things.spawn x: 20, y: 80, kind: 7
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        things.each do |thing|
+          thing.draw_with names, showing: thing.kind
+          if thing.kind == 7
+            if tick <= 20
+              thing.x -= 3
+            else
+              thing.x += 3
+            end
+          end
+        end
+      end
+    end
+  end
+
+  def test_a_thing_walking_off_the_screen_and_back_keeps_its_colours
+    run = game_player.run(TestGBCSpriteLists.walking_things.program(console: :gbc), frames: 40)
+
+    assert_equal Color.rgb(21, 10, 7), run.screen.pixel(21, 81)
+  end
+
+  def test_eight_things_in_a_pool_fit_each_frame
+    rom = TestGBCSpriteLists.walking_things.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
+    result = rom.profile(out: StringIO.new, frames: 60, settle: 10)
+
+    assert_equal result.frames, result.passes
+  end
+
   private
 
   # A pool of things each wearing one of +count+ lists, all of them in one set, beside a set of one.
