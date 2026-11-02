@@ -977,6 +977,8 @@ module VBlank
           # made for the scenery and the sprites (see PaletteTint's class comment).
           @palette_tint.layout = PaletteTint::Layout.new(palette: @palette, screen: @screen, blob_codecs: @blob_codecs)
           @palette_tint.prepare_palette_tint(program, fading: @fading)
+          held_runs = program.walk.select { |node| node.kind == :tile_run && node.held_in }
+          @lists.held_tile_lists = held_runs.to_h { |run| [run.list, ScreenLayout::PaintedRun.held_var(run.name)] }
           @uses_pressed = self.class.reads_button_edges?(program)
           # Everything the prepare passes above decided that Drawing/Buffered read, bundled
           # into one record rather than twenty keyword arguments (see Drawing's class

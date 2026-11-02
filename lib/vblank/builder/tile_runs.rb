@@ -78,6 +78,7 @@ module VBlank
         count = tile_map.delete(:count)
         given = tile_map.delete(:colors)
         own_form = tile_map.delete(:console_format) == true
+        held_in = tile_map.delete(:held_in)
         if tile_map.key?(:black)
           raise ArgumentError,
                 "tiles :#{name}: black: has no use here. These tiles are painted as places in colors:, so place 0 " \
@@ -97,7 +98,7 @@ module VBlank
           @painted_colors_names[image] = colors_name
         end
         record(Build.tile_run(name, list: list.name, tiles: images, colors: colors, colors_name: colors_name,
-                                    console_format: own_form))
+                                    console_format: own_form, held_in: held_in))
         register_tile_run(name)
 
         tiles(name, images.each_with_index.to_h { |image, i| [i + 1, image] }.merge(tile_map))

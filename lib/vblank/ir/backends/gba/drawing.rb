@@ -546,6 +546,7 @@ module VBlank
           def emit_painted_run_places(name)
             (@layout.screen&.painted_vram || {}).each do |run_name, run|
               next unless run.moves?
+              next @background_drawing.emit_walking_run_place(run_name, run, shown: run.shown_in?(name)) if run.walk
 
               at = run.places[name]
               store_word_immediate(at ? VRAM_START + at : 0, @primitives.var_addr(ScreenLayout::PaintedRun.place_var(run_name)))

@@ -108,6 +108,7 @@ module VBlank
                                     words: ->(_) { "copying the sprites that show into the console's table" }),
         tile_run_tile: Kind.new(spelling: "__tile_run_%{run}__%{number}", parts: { run: ANY, number: "\\d+" },
                                 words: nil),
+        tile_pictures_part: Kind.new(spelling: "__tile_pictures_%{group}__%{part}", parts: { group: ANY, part: PLAIN }, words: nil),
         pose_rows: Kind.new(spelling: "__pose_rows_%{number}", parts: { number: "\\d+" }, words: nil),
         tile_run_pending: Kind.new(spelling: "__tile_runs_pending_%{number}", parts: { number: "\\d+" }, words: nil),
         painted_copies: Kind.new(spelling: "__painted_copies", parts: {},
@@ -211,6 +212,7 @@ module VBlank
         when :save_record, :save_directory then save_record_words(parts[:record])
         when :save_table, :save_places, :save_jobs then SAVE_BOOKKEEPING_WORDS
         when :canvas_part then "canvas :#{parts[:canvas]}"
+        when :tile_pictures_part then "tile_pictures :#{parts[:group]}"
         when :draw_order then "draw_in_order ##{parts[:number]}"
         else "list :#{list_name}"
         end

@@ -644,13 +644,25 @@ module VBlank
           # screen shows, which sits in one place throughout; for a run that belongs to scenes
           # it is nil, and the copy reads where it goes from a variable each scene sets as it
           # runs (see Drawing#emit_painted_run_places).
-          PaintedRun = Data.define(:at, :bytes, :list, :what, :places) do
+          #
+          # +walk+ is for a run in a background that walks between areas (see WalkingRun): where it
+          # sits changes with the set of tiles in place, so it moves wherever it is shown.
+          #
+          # +held_in+ is the table of a group of `tile_pictures`, whose bytes come straight from the
+          # cartridge (see .held_var), and nil for a run painted from its list.
+          PaintedRun = Data.define(:at, :bytes, :list, :what, :places, :walk, :held_in) do
             # +earlier+ is what was noted for the run before, if anything: one more screen's
             # place is added to its places.
-            def self.with_place(earlier, scene:, at:, **rest)
+            def self.with_place(earlier, scene:, at:, walk: nil, held_in: nil, **rest)
               places = (earlier&.places || {}).merge(scene => at)
-              new(at: places.key?(nil) ? at : nil, places: places, **rest)
+              new(at: places.key?(nil) && !walk ? at : nil, places: places, walk: walk, held_in: held_in, **rest)
             end
+
+            # The variable a group of `tile_pictures` keeps the place of its picture in, in the cartridge.
+            def self.held_var(name) = :"__painted_#{name}_from"
+
+            # Is it shown on +scene+'s screen?
+            def shown_in?(scene) = places.key?(scene) || places.key?(nil)
 
             # The variable a run that moves keeps its address in: where it sits on the screen
             # up now, as a whole address, or 0 on a screen that does not show it.
@@ -658,6 +670,12 @@ module VBlank
 
             def moves? = at.nil?
           end
+
+          # A RUN OF PAINTED TILES IN A BACKGROUND THAT WALKS BETWEEN AREAS. Each set of tiles lays
+          # the room out afresh, so the run sits somewhere else in each, or nowhere in a set
+          # that leaves it out. +table+ is a word for each set, the address the run starts at, or
+          # 0; +var+ says which set is in place.
+          WalkingRun = Data.define(:table, :var)
 
           # THE SCENERY EVERY SCREEN SHOWS GOES IN FIRST, and stays for the whole game: its
           # pictures are sent at boot and its maps are set up once. What it takes is what
@@ -1167,7 +1185,7 @@ module VBlank
               end
               @painted_vram[run.name] = PaintedRun.with_place(earlier, scene: node.scene, at: first,
                                                               bytes: run.tiles.size * SMALL_TILE_BYTES,
-                                                              list: run.list, what: "tiles")
+                                                              list: run.list, what: "tiles", held_in: run.held_in)
             end
           end
 
@@ -1177,6 +1195,30 @@ module VBlank
           def one_place_per_screen?(places, scene, first)
             same = places.select { |shown_in, _| shown_in == scene || shown_in.nil? || scene.nil? }
             same.values.all?(first)
+          end
+
+          # WHERE EACH RUN OF PAINTED TILES LANDED IN EACH SET of a background that walks between
+          # areas (see WalkingRun).
+          def note_walking_painted_runs(node, images, painted_at)
+            images.map { |image| @painted_runs.fetch(image) }.uniq.each do |run|
+              starts = painted_at.map { |landed| walking_run_start(node, run, landed) }
+              table = :"__painted_places_#{run.name}_#{declaration_tag(node)}"
+              @blobs[table] = starts.map { |at| at ? VRAM_START + at : 0 }.pack("V*")
+              keep_unpacked!(table)
+              walk = WalkingRun.new(table: table, var: IR::Nodes::Background.set_var(node.name))
+              @painted_vram[run.name] = PaintedRun.with_place(@painted_vram[run.name], scene: node.scene, at: starts.compact.first,
+                                                              walk: walk, bytes: run.tiles.size * SMALL_TILE_BYTES,
+                                                              list: run.list, what: "tiles", held_in: run.held_in)
+            end
+          end
+
+          # Where +run+ starts in one set, or nil for a set that leaves it out.
+          def walking_run_start(node, run, landed)
+            first = landed[run.tiles.first] or return nil
+            return first if run.tiles.each_with_index.all? { |tile, k| landed[tile] == first + (k * SMALL_TILE_BYTES) }
+
+            raise LoweringError, "background :#{node.name} shows only part of tiles :#{run.name}, or shows them " \
+                                 "out of order. Each of its tilesets that holds one must hold all #{run.tiles.size} of them."
           end
 
           def refuse_painted_run_in_two_places!(run, node)
@@ -1248,10 +1290,13 @@ module VBlank
             # Each set of tiles the background draws from, as how its map names them: one for
             # nearly every background, and one per area for one that walks between areas.
             if node.several_sets?
-              refuse_painted_tiles_in_sets!(node) unless painted.empty?
               drawn = tile_pictures(node, banks)
+              painted_sets = node.sets.each_index.map do |set|
+                node.set_tiles(set).each_with_index.filter_map { |i, k| [k, painted[i]] if painted.key?(i) }.to_h
+              end
               laid = store.add_sets(name, node.sets.each_index.map { |set| node.set_tiles(set).map { |i| drawn[i] } },
-                                    unit: unit)
+                                    unit: unit, painted: painted_sets)
+              note_walking_painted_runs(node, painted.values, laid.painted_at)
               set_stores = laid.stored.each_with_index.map { |stored, set| [stored, node.set_tiles(set).first] }
             else
               stored = store.add(name, tile_pictures(node, banks), unit: unit, painted: painted, mirrors: true)
@@ -1384,13 +1429,6 @@ module VBlank
                             var: IR::Nodes::Background.set_var(node.name),
                             colors: colors, color_units: tables.first.size,
                             routine: BackgroundDrawing.set_swap_routine(node.name, scene: own_scene(node)))
-          end
-
-          def refuse_painted_tiles_in_sets!(node)
-            raise LoweringError,
-                  "background :#{node.name} walks between areas, and some of its tiles are painted from a list. " \
-                  "A painted tile cannot change area with the rest. To fix this, show the painted tiles on a " \
-                  "background of their own."
           end
 
           # Lay out the other lists of colours a background can be drawn from (see

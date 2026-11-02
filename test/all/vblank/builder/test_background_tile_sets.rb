@@ -242,23 +242,6 @@ class TestBackgroundTileSets < Minitest::Test
     assert_match(/turns or resizes, and it walks between areas/, error.message)
   end
 
-  def test_a_walking_background_with_painted_tiles_is_refused
-    error = refused(VBlank::IR::Backends::GBA::LoweringError) do
-      screen :tiled
-      image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
-      colors :ink, %i[transparent white]
-      canvas = list :canvas, capacity: 32, width: :byte
-      repeat(32) { canvas.push 0 }
-      tiles :box, from: canvas, count: 1, colors: :ink
-      tiles :two, "#" => :a
-      background :ground, tiles: { shrine: :box, clearing: :two },
-                          map: { shrine: { hall: [[1]] }, clearing: { glade: ["#"] } }
-      game_loop { nil }
-    end
-
-    assert_match(/painted from a list/, error.message)
-  end
-
   def test_walking_backgrounds_that_start_in_different_areas_are_refused
     error = refused(VBlank::IR::Backends::GBA::LoweringError) do
       screen :tiled

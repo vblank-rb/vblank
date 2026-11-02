@@ -26,6 +26,7 @@ VBlank.require_game_file "builder/collision"
 require_relative "builder/tiled"
 require_relative "builder/tile_runs"
 require_relative "builder/canvases"
+require_relative "builder/tile_pictures"
 require_relative "builder/composition"
 require_relative "builder/timers"
 require_relative "builder/clocks"
@@ -83,6 +84,7 @@ module VBlank
     include Tiled      # tiles, background (tiled-graphics surface; hardware lowering to follow)
     include TileRuns   # tiles from: a list — tiles the game paints as it runs
     include Canvases   # canvas — the same, drawn into with words
+    include TilePictures # tile_pictures — tiles taking turns through pictures in the cartridge
     include Composition # pool (a component + a pool of instances, per-instance update)
     include Timers     # timer (a hardware counter running at a chosen rate)
     include Clocks     # clock (the date and time, from the clock a cartridge carries)

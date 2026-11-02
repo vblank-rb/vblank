@@ -471,6 +471,7 @@ module VBlank
             emit_start_copy_engine(from: in_register(ACC), to: VRAM_START + swap.at,
                                    control: (swap.stride / 4) | DMA_ENABLE | DMA_32BIT)
             emit_set_char_base(bg, swap) if swap.char_base_table
+            emit_walking_runs_again(swap)
 
             layers_back_on = gensym
             emit_map_copy(Build.show_map(name, which: Build.var_ref(SET_SWAP_MAP)), bg, layers_back_on)
@@ -533,18 +534,47 @@ module VBlank
             emit_copy_painted_run(node.name, run)
           end
 
+          # The set just brought in holds its painted tiles blank, and the game's list holds what
+          # they show, so each is copied over again, to where it sits in this set.
+          def emit_walking_runs_again(swap)
+            (@layout&.screen&.painted_vram || {}).each do |name, run|
+              emit_copy_painted_run(name, run) if run.walk&.var == swap.var
+            end
+          end
+
+          # Say where a run in a background that walks between areas sits now, from the set of
+          # tiles in place (see ScreenLayout::WalkingRun), or 0 on a screen that does not show it.
+          def emit_walking_run_place(name, run, shown: true)
+            place = ScreenLayout::PaintedRun.place_var(name)
+            return @primitives.store_word_immediate(0, var_addr(place)) unless shown
+
+            load_var(TMP, run.walk.var)
+            emit_load_data_address(ACC, run.walk.table)
+            emit(ASM.ldr_reg_lsl(ACC, ACC, TMP, 2))
+            store_var(ACC, place)
+          end
+
           def emit_copy_painted_run(name, run)
             list = painted_run_list(name, run)
 
+            emit_walking_run_place(name, run) if run.walk
             if run.moves?
               done = gensym
               emit_load_painted_run_place(ScreenLayout::PaintedRun.place_var(name), done)
             end
             @emitter.note_video_copy("painting #{run.what} :#{name}", run.bytes)
-            emit_start_copy_engine(from: list[:base], to: run.moves? ? in_register(ACC) : VRAM_START + run.at,
+            from = list[:base]
+            if held_tile_run?(run)
+              load_var(2, ScreenLayout::PaintedRun.held_var(name))
+              from = in_register(2)
+            end
+            emit_start_copy_engine(from: from, to: run.moves? ? in_register(ACC) : VRAM_START + run.at,
                                    control: (run.bytes / 4) | DMA_ENABLE | DMA_32BIT)
             place_label(done) if done
           end
+
+          # Is +run+ a group of `tile_pictures`, shown from the cartridge?
+          def held_tile_run?(run) = !run.held_in.nil?
 
           # EVERY PAINTED RUN OWED A COPY, AS ONE WALK OVER A TABLE (see Nodes::CopyOwedTiles).
           # Written out run by run, a test and a copy came to about thirty instructions each, so a
@@ -606,6 +636,14 @@ module VBlank
             # own instruction, further down, and that call makes all three in one place.
             emit_number(ADDR, REG_DMA3SAD)
             emit(ASM.ldr_offset(TMP, 2, 8))
+            if rows.any? { |row| row[:held] } # a group of `tile_pictures`: the place in the cartridge is in a variable
+              from_list = gensym
+              emit(ASM.tst_imm(TMP, 1))
+              emit_branch(:bcond, from_list, cond: :eq)
+              emit(ASM.bic_imm(TMP, TMP, 1))
+              emit(ASM.ldr(TMP, TMP))
+              place_label(from_list)
+            end
             emit(ASM.str_offset(TMP, ADDR, 0))                        # from its list
             emit(ASM.str_offset(ACC, ADDR, Primitives::COPY_TO_STEP)) # to its place
             emit(ASM.ldr_offset(TMP, 2, 16))        # how much, and go
@@ -644,8 +682,10 @@ module VBlank
 
               list = painted_run_list(name, run)
               place = run.moves? ? var_addr(ScreenLayout::PaintedRun.place_var(name)) | 1 : VRAM_START + run.at
-              { name: name, what: run.what, bytes: run.bytes,
-                words: [var_addr(node.masks.fetch(i / per)), 1 << (i % per), list[:base], place,
+              held = held_tile_run?(run)
+              from = held ? var_addr(ScreenLayout::PaintedRun.held_var(name)) | 1 : list[:base]
+              { name: name, what: run.what, bytes: run.bytes, held: held,
+                words: [var_addr(node.masks.fetch(i / per)), 1 << (i % per), from, place,
                         (run.bytes / 4) | DMA_ENABLE | DMA_32BIT] }
             end
           end

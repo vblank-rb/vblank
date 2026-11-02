@@ -104,6 +104,12 @@ module VBlank
           # table, the same as the interpreter holds it, and the run always lands at the front
           # of the list — so a ring's head goes back to its first slot and the copy is still
           # one block of memory. The bytes are handed to one routine (see #emit_copy_routine).
+          # THE LIST OF A GROUP OF `tile_pictures` IS NEVER WRITTEN. Every picture is in the cartridge
+          # in the form video memory keeps, so the copy that shows one is from there, and all a
+          # "copy into the list" has to do is say where that picture starts: +held+ is each such
+          # list's variable for it (see BackgroundDrawing#emit_copy_painted_run).
+          attr_writer :held_tile_lists
+
           def emit_list_copy(node, table)
             info = list_info(node.name)
             # The builder refuses these (Builder#copy_table_run); this is the lowering's own
@@ -124,6 +130,9 @@ module VBlank
             @emitter.emit(ASM.lsl_imm(ACC, ACC, shift)) if shift.positive?   # r0 = its distance in bytes
             @emitter.emit_load_data_address(TMP, node.table)
             @emitter.emit(ASM.add_reg(ACC, TMP, ACC))                        # r0 = where it is in the cartridge
+            held = (@held_tile_lists || {})[node.name]
+            return @primitives.store_var(ACC, held) if held
+
             @primitives.emit_list_base(info[:base])
             @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))                       # r1 = the list's first slot
             @emitter.emit_number(2, node.count * table.elem_bytes) # r2 = bytes to copy

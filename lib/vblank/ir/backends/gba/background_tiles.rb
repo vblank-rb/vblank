@@ -130,14 +130,17 @@ module VBlank
           #
           # Returns where the room starts, and for each set how its map names its tiles and the
           # bytes that go in the room when that set is brought in.
-          SetTiles = Data.define(:start, :stored, :bytes)
+          #
+          # +painted+ is, for each set, the tiles of it the game paints, as #add takes them, and
+          # +painted_at+ where they landed in each.
+          SetTiles = Data.define(:start, :stored, :bytes, :painted_at)
 
-          def add_sets(name, drawn_sets, unit:, most: TileVram::MOST_TILES)
+          def add_sets(name, drawn_sets, unit:, most: TileVram::MOST_TILES, painted: drawn_sets.map { {} })
             pad_to(@vram.tile_bytes)
             start = @bytes.bytesize
-            laid = drawn_sets.map do |drawn|
+            laid = drawn_sets.each_with_index.map do |drawn, set|
               copy = dup
-              [copy.add(name, drawn, unit: unit, most: most, mirrors: true), copy]
+              [copy.add(name, drawn, unit: unit, most: most, mirrors: true, painted: painted[set]), copy]
             end
             room = laid.map { |_, copy| copy.vram.tile_bytes }.max
             bytes = laid.map { |_, copy| copy.pad_to(room).bytes.byteslice(start..) }
@@ -145,7 +148,7 @@ module VBlank
             @bytes << bytes.first
             @shared += laid.sum { |_, copy| copy.shared - @shared }
             @mirrored += laid.sum { |_, copy| copy.mirrored - @mirrored }
-            SetTiles.new(start: start, stored: laid.map(&:first), bytes: bytes)
+            SetTiles.new(start: start, stored: laid.map(&:first), bytes: bytes, painted_at: laid.map { |_, copy| copy.painted_at })
           end
 
           # Grow the run with nothing to +offset+, where it falls short of it.
