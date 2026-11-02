@@ -24,6 +24,20 @@ class TestGBCRefusals < Minitest::Test
     assert_match(/cannot show one layer through another/, error.message)
   end
 
+  # The Color draws ten sprite pieces on a row of the screen, so this one could never show whole.
+  def test_a_sprite_picture_wider_than_ten_pieces_is_refused_saying_so
+    error = assert_raises(GBC::LoweringError) do
+      GBC.new.build(color_program do
+        screen :tiled
+        image(:beam, "r" => :red) { (["r" * 88] * 8).join("\n") }
+        sprite :beam, at: [4, 40]
+        game_loop { wait_vblank }
+      end)
+    end
+
+    assert_match(/10 pieces of 8 on one row/, error.message)
+  end
+
   def test_a_shoulder_button_is_refused_in_plain_words
     error = assert_raises(GBC::LoweringError) do
       GBC.new.build(color_program do

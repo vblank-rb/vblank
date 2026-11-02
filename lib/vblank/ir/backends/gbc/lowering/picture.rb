@@ -1890,15 +1890,11 @@ module VBlank
               end
             end
 
-            # How deep an item sits: a sprite's level, and a run's, which its sprites share.
+            # How deep an item sits: a sprite's level, and a run's, which its sprites share: `draw_in_order`
+            # refuses sprites of different layers, and one that changes layer goes by
+            # #emit_layer_changing_sprites.
             def item_level(item, object)
-              return sprite_level(item) unless item.is_a?(Build::DrawOrder)
-
-              levels = item.objects.map { |name| sprite_level(object.call(name)) }.uniq
-              return levels.first if levels.one?
-
-              raise LoweringError, "sprites put in order as the game runs (`draw_in_order`) sit at different depths, which " \
-                                   "#{build_name} cannot make yet."
+              sprite_level(item.is_a?(Build::DrawOrder) ? object.call(item.objects.first) : item)
             end
 
             # A run's sprites front-most first: the list's last entry first, each the number of the

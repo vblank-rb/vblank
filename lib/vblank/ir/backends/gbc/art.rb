@@ -456,9 +456,10 @@ module VBlank
                                      "#{Console::GBCHardware::SPRITES} " \
                                      "at once. To fix this, make the picture smaller."
               end
-              if too_big
-                raise LoweringError, "the sprite picture #{name.inspect} is #{image.width}×#{image.height}, and a " \
-                                     "Game Boy Color sprite is at most #{LARGEST_SPRITE}×#{LARGEST_SPRITE}."
+              if ((image.width + 7) / 8) > Console::COLOR.sprites_a_row
+                raise LoweringError, "the sprite picture #{name.inspect} is #{image.width} pixels wide, and a Game Boy " \
+                                     "Color draws #{Console::COLOR.sprites_a_row} pieces of 8 on one row of the " \
+                                     "screen. To fix this, make the picture narrower."
               end
 
               places = sprite_places(name, image)
