@@ -200,7 +200,7 @@ module VBlank
               asm.sta(at.call(DISPLAY_ON))
               asm.bra("rt_show_pass_shown")
               asm.label("rt_show_pass_on")
-              asm.jsr(asm.abs("rt_sleep_until_vblank"))
+              asm.jsr(asm.abs(memory.reserved?(Sound::QUEUE) ? "rt_sleep_unless_in_blank" : "rt_sleep_until_vblank"))
               asm.jsl(asm.long("rt_upload"))
               # After it, since a big change takes several blanks and the brightness belongs to
               # the picture it arrives with, as the colours do.
@@ -219,6 +219,7 @@ module VBlank
               asm.sta(at.call(SHOWN, 2))
               asm.rts
 
+              emit_sleep_unless_in_blank(asm, at) if memory.reserved?(Sound::QUEUE)
               asm.label("rt_sleep_until_vblank")
               asm.stz(at.call(VBLANK))
               asm.label("rt_sleep_until_vblank_wait")
@@ -238,6 +239,28 @@ module VBlank
 
               emit_buttons(asm, memory, pad, extra_buttons)
               emit_stopping(asm, memory)
+            end
+
+            # A PASS THAT ENDS A LITTLE INTO THE BLANK STILL MAKES IT. Music plays where a wait ends,
+            # so a frame on which many parts start their notes takes a good part of the time the next
+            # pass was counting on, and that pass can end a few lines after the blank begins. Sleeping
+            # then would lose a whole frame over those few lines, with most of the blank unused. So in
+            # a game with music (Sound::QUEUE), a pass that finds the blank it was aiming for still
+            # going goes straight on to the copying, whose every piece asks the line first and waits
+            # for the next blank if it has run out of time (Blank).
+            #
+            # FRAMES still at FRAMES_MARK means no blank has begun since the last wait ended: a pass
+            # so short that it ends in the blank it started in, which is still the frame before's,
+            # and it sleeps.
+            def emit_sleep_unless_in_blank(asm, at)
+              asm.label("rt_sleep_unless_in_blank")
+              asm.lda(at.call(FRAMES))
+              asm.cmp(at.call(FRAMES_MARK))
+              asm.beq("rt_sleep_until_vblank")
+              Blank.emit_line_now(asm)
+              asm.cmp(Blank::FIRST_BLANK_LINE)
+              asm.bcc("rt_sleep_until_vblank")
+              asm.rts
             end
 
             # BUTTONS. The controller is read by hand, through its serial port: a write of 1 and then
