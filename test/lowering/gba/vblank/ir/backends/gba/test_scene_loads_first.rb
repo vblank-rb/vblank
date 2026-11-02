@@ -54,6 +54,24 @@ class TestSceneLoadsFirst < Minitest::Test
     assert_emulator_loads_rom(rom, frames: FRAMES, count_passes: true).passes
   end
 
+  # THE PASS THAT COPIES DOES NO SPRITE WORK: it shows nothing new, and the pictures are not in
+  # video memory yet. So nothing the scene's sprites write reaches the sprite table until the pass
+  # after, which has the frame's time for them. A game's copy that only just fits its frame
+  # is that much further from running over.
+  def test_the_sprite_table_waits_for_the_pass_after_the_copy
+    rom = assemble_rom(hand_over(pictures: LIGHT, loads_first: true), name: "LOADFRST")
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 1, vars: rom.var_addresses)
+    frames_shown = (1..14).map do |frame|
+      reader.step
+      [frame, reader.mem16(0x0700_0000), reader.var(:state)]
+    end
+    took_over = frames_shown.find { |_, _, state| state == 1 }.first
+    first_row = frames_shown.find { |_, row, _| row & 0x0200 == 0 }&.first
+
+    assert first_row, "the sprite is drawn in the end: #{frames_shown}"
+    assert_operator first_row, :>=, took_over + 2, "it waited out the copying pass: #{frames_shown}"
+  end
+
   def test_a_hand_over_costs_a_frame_more_for_more_art
     light = passes_finished(pictures: LIGHT, loads_first: false)
 

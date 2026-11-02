@@ -106,6 +106,33 @@ module VBlank
             end
           end
 
+          # RUN THE BLOCK'S CODE UNLESS THE PASS ABOUT TO START IS A SCENE'S COPY. The game chose a scene
+          # that loads first, and it has not run yet: it was not the last to, and a note of
+          # nobody's is power-on, where its work starts on the first pass. That pass shows nothing
+          # new and the pictures are not in video memory yet, so the frame's sprite work is left for
+          # the pass after, which finds the same numbers. A game none of whose scenes load first
+          # emits nothing here.
+          def emit_unless_scene_is_loading
+            choices = handover.choices_loading_first
+            return yield if choices.empty?
+
+            past = @emitter.gensym
+            choices.each do |var, value, scene|
+              not_this = @emitter.gensym
+              @primitives.load_var(ACC, var)
+              @emitter.emit(ASM.cmp_imm(ACC, value))
+              @emitter.emit_branch(:bcond, not_this, cond: :ne)
+              @primitives.load_var(ACC, MARKERS.fetch(:pass))
+              @emitter.emit(ASM.cmp_imm(ACC, scene_number(scene)))
+              @emitter.emit_branch(:bcond, not_this, cond: :eq)
+              @emitter.emit(ASM.cmp_imm(ACC, 0))
+              @emitter.emit_branch(:bcond, past, cond: :ne)
+              @emitter.place_label(not_this)
+            end
+            yield
+            @emitter.place_label(past)
+          end
+
           # Run the block's code unless +var+ holds +value+. The cost when it does is the
           # compare and the branch.
           def emit_unless_holds(var, value)

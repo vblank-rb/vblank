@@ -103,6 +103,7 @@ module VBlank
         @objects = picture.objects
         @tile_runs, @picture_runs = program.walk.select { |node| node.kind == :tile_run }.partition { |run| run.picture.nil? }
         @funcs = program.children.select { |node| node.kind == :func }.to_h { |func| [func.name, func] }
+        @cases = program.walk.select { |node| node.kind == :case }
         @game_screen = program.children.find { |node| node.kind == :screen }
         @backdrops = program.walk.any? { |node| node.kind == :screen && node.backdrop }
         @modes = Modes.resolve(program)
@@ -165,6 +166,13 @@ module VBlank
 
       # Whether any scene loads first.
       def any_loads_first? = @funcs.each_value.any? { |func| loads_first_in_loop?(func) }
+
+      # What says a scene that loads first is up, as [variable, value, scene], for each one.
+      def choices_loading_first
+        @cases.flat_map do |choice|
+          choice.clauses.filter_map { |value, scene| [choice.var, value, scene] if arrival(scene).loads_first? }
+        end
+      end
 
       # What to put up again on arriving at a screen drawn from tiles from a screen of another
       # kind (see AlwaysUp).
