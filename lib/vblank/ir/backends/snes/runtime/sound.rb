@@ -135,7 +135,7 @@ module VBlank
             FRONT_LEFT = "rt sound front left"
             FORGOTTEN = 7
             FORGET_KEEPS = "rt sound forget keeps"
-            AHEAD_TRIES = 64
+            AHEAD_TRIES = 32
 
             # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the
             # number the lowering gave its entry of the interpreter's log (Lowering::Sound), the
@@ -677,7 +677,16 @@ module VBlank
             def emit_send_queued(asm, memory, samples)
               h = Console::SNESHardware
               asm.label("rt_sound_send_queued")
-              emit_move_ahead(asm, memory) if memory.reserved?(AHEAD)
+              if memory.reserved?(AHEAD)
+                # The first thing asked, and the quickest: this is called again and again while the
+                # game waits, and how soon it sees an answer is how many writes a frame can send.
+                asm.sep(0x20)
+                asm.lda(asm.abs(h::APUIO0))
+                asm.cmp(asm.abs(memory[SENT]))
+                asm.rep(0x20)
+                asm.branch_long(:bne, "rt_sound_send_queued_done")
+                emit_move_ahead(asm, memory)
+              end
               asm.ldx(asm.abs(memory[QUEUE_HEAD]))
               asm.cpx(asm.abs(memory[QUEUE_TAIL]))
               asm.beq("rt_sound_send_queued_done")

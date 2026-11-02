@@ -291,6 +291,10 @@ module VBlank
               asm.beq("rt_sfx_above_live_known")
               asm.jsr(asm.abs("rt_sfx_live_list"))
               asm.label("rt_sfx_above_live_known")
+              asm.lda(asm.abs(memory[LIVE]))
+              asm.bne("rt_sfx_above_live")
+              asm.rts # nothing live: nothing here or in rt_sfx_below has a thing to do
+              asm.label("rt_sfx_above_live")
               emit_live_walk(asm, at, memory, "rt_sfx_asked") do
                 asm.lda(asm.abs_y(memory[STATES], ASKED))
                 asm.sta(asm.abs_y(memory[STATES], ASKED_NOW))
