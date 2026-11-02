@@ -435,8 +435,10 @@ module VBlank
             runs
           end
 
-          def sprite_tile_data = @sprite_tiles.map { |bytes| bytes || blank_tile }.join
-          def background_tile_data = @background_tiles.map { |bytes| bytes || blank_tile }.join
+          # The tiles in video memory from power-on: those every screen keeps, with those of +scene+,
+          # the scene the game opens on, already beside them in a game that keeps tiles by scene.
+          def sprite_tile_data(scene = nil) = ((@scene_sprite_stores.dig(scene, 0) || @sprite_tiles).map { |bytes| bytes || blank_tile }.join)
+          def background_tile_data(scene = nil) = ((@scene_background_stores.dig(scene, 0) || @background_tiles).map { |bytes| bytes || blank_tile }.join)
 
           private
 

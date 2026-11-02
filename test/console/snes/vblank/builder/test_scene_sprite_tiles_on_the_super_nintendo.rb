@@ -60,6 +60,36 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
     pass
   end
 
+  # The scene the game opens on has its tiles from power-on, so its first pass has nothing to load
+  # and a game's frames count from where they would.
+  def test_the_opening_scene_loads_nothing_on_its_first_pass
+    test = self.class
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      first = test.declare_pictures(self, :one, 1)
+      second = test.declare_pictures(self, :two, 301)
+      opened = var :opened, -1
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:one) { sprite first.first, at: [0, 0], frames: first, rate: 2 }
+      scene(:two) { sprite second.first, at: [0, 0], frames: second, rate: 2 }
+      game_loop do
+        tick += 1
+        opened = frames_since_power_on if tick == 2
+        state = 1 if tick == 5
+        case_var(:state) do
+          when_val 0, :one
+          when_val 1, :two
+        end
+      end
+    end
+    b.finalize_program
+
+    game_player.run(b.program, frames: 8)
+    pass
+  end
+
   def test_a_picture_both_scenes_show_stays_in_video_memory
     screen = game_player.run(two_scenes(shared: true), frames: SWITCH_AT * 5).screen
 

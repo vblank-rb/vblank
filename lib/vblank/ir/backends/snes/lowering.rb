@@ -183,6 +183,7 @@ module VBlank
             keep_corner_notes
             keep_background_color_choices
             keep_sprite_color_choices
+            keep_scene_tiles_up
             keep_loop_running
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil

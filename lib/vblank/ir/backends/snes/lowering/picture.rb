@@ -558,9 +558,9 @@ module VBlank
             def art_sections
               data = W65816.new("art", holds: ART)
               data.label("art background tiles bytes")
-              data.data_words(@art.background_tile_data.bytesize)
+              data.data_words(@art.background_tile_data(opening_scene).bytesize)
               data.label("art sprite tiles bytes")
-              data.data_words(@art.sprite_tile_data.bytesize)
+              data.data_words(@art.sprite_tile_data(opening_scene).bytesize)
               unless painted? # Lowering::Paint's colours, then
                 data.label("art colors")
                 data.data_bytes(@art.cgram.bytes)
@@ -599,10 +599,33 @@ module VBlank
                 data.data_words(obj.poses.length,
                                 *obj.poses.map { |pose| @art.sprite_pictures.fetch(swapped ? [pose, swapped] : pose).number })
               end
-              [data.section, *bytes_section("art background tiles", @art.background_tile_data),
-               *bytes_section("art sprite tiles", @art.sprite_tile_data), *scene_sprite_tile_sections,
+              [data.section, *bytes_section("art background tiles", @art.background_tile_data(opening_scene)),
+               *bytes_section("art sprite tiles", @art.sprite_tile_data(opening_scene)), *scene_sprite_tile_sections,
                *scene_background_tile_sections, *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
                *(painted? ? paint_sections : []), *collision_sections]
+            end
+
+            # The scene first declared, whose own tiles go in at power-on with the rest: the game opens
+            # on it, so the first pass has nothing to load and lands on the frame it would. A game that
+            # opens on another loads that one's as any scene does.
+            def opening_scene = @scenes.min_by(&:last)&.first
+
+            # Which scene's own tiles are in video memory, in a game that keeps tiles by scene.
+            def keep_scene_tiles_up
+              @scene_tiles_up = keep_local(:scene_tiles_up, start: @scenes.fetch(opening_scene)) if @sprite_tiles || @scene_background_tiles
+            end
+
+            # A scene taking over brings in its tiles, unless they are the ones in video memory.
+            def emit_scene_tiles(scene)
+              return unless @scene_tiles_up
+
+              number = Build.int(@scenes.fetch(scene))
+              same = fresh("scene_tiles_up")
+              jump_unless(Build.binop(:!=, Build.var_ref(@scene_tiles_up), number), same)
+              statement(Build.set(@scene_tiles_up, number))
+              emit_scene_sprite_tiles(scene)
+              emit_scene_background_tiles(scene)
+              @asm.label(same)
             end
 
             # What each scene brings into video memory as it takes over (#emit_scene_sprite_tiles).
@@ -921,8 +944,7 @@ module VBlank
               return if painted?
 
               arrival = @handover.arrival(scene)
-              emit_scene_sprite_tiles(scene)
-              emit_scene_background_tiles(scene)
+              emit_scene_tiles(scene)
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
               emit_scene_backdrop(arrival)
