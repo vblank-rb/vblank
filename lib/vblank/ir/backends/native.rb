@@ -57,8 +57,8 @@ module VBlank
         # The cartridge is for +console+, one the game names, and the first it names when that is
         # left out. The program is then built as that console: the runtime's screen is its size
         # (ConsoleNumbers), and the program does what the game does on it.
-        def checked_program(game, console: nil, settings: {}, err: $stderr)
-          game.build_rom(profile: false, out: nil, err: err, settings: settings,
+        def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent)
+          game.build_rom(profile: false, out: nil, err: err, settings: settings, progress: progress,
                          console: console || game.consoles.first).source_program
         end
 

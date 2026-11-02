@@ -43,9 +43,7 @@ module VBlank
 
           # Answers one browser after another until stopped (Ctrl-C, or #stop from another thread).
           def serve
-            @out.puts "Playing #{File.basename(@game_file)} at #{url} — reload the page to play it as the file is now. " \
-                      "Ctrl-C stops."
-            @out.flush # a server has no end for buffered words to wait for
+            tell "Playing #{File.basename(@game_file)} at #{url} — reload the page to play it as the file is now. Ctrl-C stops."
             loop do
               client = @server.accept
               answer(client)
@@ -82,15 +80,36 @@ module VBlank
 
           # The page as the game file says now, or what stopped the build.
           def page
+            tell "Building #{File.basename(@game_file)}"
             Dir.mktmpdir("vblank-preview") do |dir|
               path = File.join(dir, "game.html")
-              said, status = Open3.capture2e(RbConfig.ruby, VBlank.root.join("bin", "vblank").to_s, "build", @game_file,
-                                             "--format", "web", "-o", path, *(["--template", @template] if @template),
-                                             *(["--console", @console] if @console), *settings_arguments)
+              said, status = run_build(path)
               built = status.success? && File.exist?(path)
-              @out.puts(built ? "Built #{File.basename(@game_file)}" : "The build stopped:\n#{said}")
+              tell(built ? "Built #{File.basename(@game_file)}" : "The build stopped.")
               built ? File.read(path, encoding: Encoding::UTF_8) : stopped_page(said)
             end
+          end
+
+          # WHAT THE BUILD SAYS REACHES THE TERMINAL AS IT SAYS IT, because a big game takes a while
+          # and somebody is watching a browser tab spin. Through a pipe its progress is one finished
+          # line for each phase, with nothing redrawn (Messages::Progress::Printed), so every line
+          # can go on to the terminal and into the page if the build stops. Gives back all it said
+          # and how it ended. Its last word names the folder this build happened in, which is of no
+          # use to anybody: #page says "Built" itself.
+          def run_build(path)
+            Open3.popen2e(RbConfig.ruby, VBlank.root.join("bin", "vblank").to_s, "build", @game_file,
+                          "--format", "web", "-o", path, *(["--template", @template] if @template),
+                          *(["--console", @console] if @console), *settings_arguments) do |input, output, ended|
+              input.close
+              said = output.each_line.map { |line| line.tap { tell(line) unless line.include?(path) } }.join
+              [said, ended.value]
+            end
+          end
+
+          # A server has no end for buffered words to wait for.
+          def tell(words)
+            @out.puts words
+            @out.flush
           end
 
           # Every setting after one --set: the command line keeps only the last of several --set

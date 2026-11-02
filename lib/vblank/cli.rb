@@ -1214,13 +1214,14 @@ module VBlank
       path = options[:output] || file_beside(game, game_file, console, WEB_OUTPUTS.fetch(js))
       web = VBlank::IR::Backends::JS.new
       data = options[:data].to_sym
+      progress = VBlank::Messages::Progress.to($stderr)
       case js
-      when "module" then web.build_module(game, path, console: console, settings: given_settings, data: data)
+      when "module" then web.build_module(game, path, console: console, settings: given_settings, data: data, progress: progress)
       when "script" then web.build_script(game, path, name: options[:global] || File.basename(path, ".*"),
-                                                      console: console, settings: given_settings, data: data)
+                                                      console: console, settings: given_settings, data: data, progress: progress)
       else
         template = options[:template] ? File.expand_path(options[:template]) : VBlank::IR::Backends::JS::Page::DEFAULT
-        web.build_page(game, path, console: console, settings: given_settings, template: template, data: data)
+        web.build_page(game, path, console: console, settings: given_settings, template: template, data: data, progress: progress)
       end
       say "Built #{path}"
     rescue VBlank::BuildError => e

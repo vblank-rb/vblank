@@ -88,8 +88,8 @@ module VBlank
         # made for a browser instead — and then for the steps only the console can run
         # (Guardrails::Checks::WebPortability), each said with its line, which stop the build.
         # +console+ is the one the game is built as, the first it names when left out.
-        def checked_program(game, console: nil, settings: {}, err: $stderr)
-          program = Native.new.checked_program(game, console: console, settings: settings, err: err)
+        def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent)
+          program = Native.new.checked_program(game, console: console, settings: settings, err: err, progress: progress)
           refuse_console_only_steps!(program, err)
           program
         end
@@ -153,12 +153,13 @@ module VBlank
         # written as JavaScript, and put in a page which plays it in a canvas when opened. +scale+ is
         # how many times the console's picture is enlarged, and +template+ the one the page is
         # written from (see Page for what one is handed).
-        def build_page(game, path, console: nil, settings: {}, scale: 3, template: Page::DEFAULT, data: :inline, err: $stderr)
+        def build_page(game, path, console: nil, settings: {}, scale: 3, template: Page::DEFAULT, data: :inline, err: $stderr,
+                       progress: Messages::Progress.silent)
           unless File.file?(template)
             raise LoweringError, "There is no page template at #{template}. Name an .html.erb file that exists."
           end
 
-          write_output(game, path, console: console, settings: settings, data: data, err: err) do |text, data_file, described|
+          write_output(game, path, console: console, settings: settings, data: data, err: err, progress: progress) do |text, data_file, described|
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
             Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.screen_size,
@@ -170,8 +171,8 @@ module VBlank
         # the module's default, and the game's title, for a page of the author's own to import —
         # through a bundler, a framework, or a <script type="module"> — and call with its canvas.
         # A data file is fetched from beside the module, wherever the page is.
-        def build_module(game, path, console: nil, settings: {}, data: :inline, err: $stderr)
-          write_output(game, path, console: console, settings: settings, data: data, err: err) do |text, data_file|
+        def build_module(game, path, console: nil, settings: {}, data: :inline, err: $stderr, progress: Messages::Progress.silent)
+          write_output(game, path, console: console, settings: settings, data: data, err: err, progress: progress) do |text, data_file|
             beside = "new URL(#{JSON.generate(data_file_name(path))}, import.meta.url).href"
             [WRITTEN_BY, data_beside_declaration(data_file, beside), text,
              "export const title = #{JSON.generate(game.title.to_s)};\n",
@@ -185,8 +186,9 @@ module VBlank
         # else in the page's global scope. The page then calls VBlank.<name>.createGame. A data
         # file is fetched from beside the script, read from the script's own address as it loads —
         # or, for a script written into the page itself, which has no address, beside the page.
-        def build_script(game, path, name: File.basename(path, ".*"), console: nil, settings: {}, data: :inline, err: $stderr)
-          write_output(game, path, console: console, settings: settings, data: data, err: err) do |text, data_file|
+        def build_script(game, path, name: File.basename(path, ".*"), console: nil, settings: {}, data: :inline, err: $stderr,
+                         progress: Messages::Progress.silent)
+          write_output(game, path, console: console, settings: settings, data: data, err: err, progress: progress) do |text, data_file|
             file = JSON.generate(data_file_name(path))
             beside = "typeof document !== \"undefined\" && document.currentScript && document.currentScript.src " \
                      "? new URL(#{file}, document.currentScript.src).href : #{file}"
@@ -219,12 +221,14 @@ module VBlank
         # What every output does: +game+ checked and written as createGame, the text the block
         # makes of it (handed createGame's text and the data file, or nil) written to +path+, and
         # the data file beside it. Gives back +path+.
-        def write_output(game, path, console:, settings:, data:, err:)
+        def write_output(game, path, console:, settings:, data:, err:, progress:)
           refuse_folder!(path)
-          program = checked_program(game, console: console, settings: settings, err: err)
+          program = checked_program(game, console: console, settings: settings, err: err, progress: progress)
+          progress.step("the game as JavaScript")
           text, data_file = factory_and_data_file(program, title: game.title, data: data, menu: game.menu?)
           File.write(path, yield(text, data_file, program.described_console))
           File.binwrite(File.join(File.dirname(path), data_file_name(path)), data_file) if data_file
+          progress.done
           path
         end
 

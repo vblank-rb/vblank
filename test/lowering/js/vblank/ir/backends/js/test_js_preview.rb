@@ -21,8 +21,8 @@ class TestJSPreview < Minitest::Test
   end
 
   # Serves +file+ for the length of the block, which is handed a way to fetch the page.
-  private def serving(file, settings: [], template: nil, console: nil)
-    preview = Preview.new(file, settings: settings, template: template, console: console, port: 0, out: StringIO.new)
+  private def serving(file, settings: [], template: nil, console: nil, out: StringIO.new)
+    preview = Preview.new(file, settings: settings, template: template, console: console, port: 0, out: out)
     server = Thread.new { preview.serve }
     yield -> { Net::HTTP.get_response(URI(preview.url)) }
   ensure
@@ -125,12 +125,45 @@ class TestJSPreview < Minitest::Test
     Dir.mktmpdir do |dir|
       file = File.join(dir, "game.rb")
       File.write(file, "VBlank.game \"BROKEN\", consoles: %i[gba] do\n  screen :bitmap\n  game_loop { clear_screen :no_such_color }\nend\n")
-      serving(file) do |fetch|
+      said = StringIO.new
+      serving(file, out: said) do |fetch|
         page = fetch.call.body.force_encoding(Encoding::UTF_8)
 
         assert_match(/The game did not build/, page)
         assert_match(/no_such_color/, page)
+        refute_match(/\r|\e/, page, "a line redrawn in place would be noise in the page")
+        assert_match(/no_such_color/, said.string, "the terminal is told as well")
       end
     end
+  end
+
+  # A page takes as long as the game takes to build, and a browser tab spinning over a silent
+  # terminal looks like a hang. This game cannot finish building until the test lets it, so the
+  # words can only have reached the terminal while the build was going.
+  def test_the_terminal_is_told_a_build_has_begun_while_it_runs
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, "game.rb")
+      go_on = File.join(dir, "go_on")
+      File.write(file, "sleep 0.01 until File.exist?(#{go_on.inspect})\n#{game_source('SLOW', :blue)}")
+      said = StringIO.new
+      serving(file, out: said) do |fetch|
+        page = Thread.new { fetch.call }
+        begin
+          wait_until { said.string.include?("Building game.rb") }
+          refute_includes said.string, "Built game.rb"
+        ensure
+          File.write(go_on, "") # whatever happened, the build it started must not wait for ever
+        end
+        assert_match(/<title>SLOW<\/title>/, page.value.body.force_encoding(Encoding::UTF_8))
+      end
+      assert_match(/Building game\.rb\n.*the guardrails.*\nBuilt game\.rb\n/m, said.string, "the build's progress comes between the two")
+      refute_includes said.string, "vblank-preview", "the folder a page is built in is nobody's business"
+    end
+  end
+
+  private def wait_until
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
+    sleep 0.01 until yield || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+    assert yield, "it did not happen in time"
   end
 end
