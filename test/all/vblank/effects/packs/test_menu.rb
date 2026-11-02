@@ -32,8 +32,8 @@ class TestMenu < Minitest::Test
   DIMMED = VBlank::Testing.shown(:red) # a colour of its own, so "dimmed" is visible in a test
 
   # Why a test that taps on frames a pass apart skips on the Super Nintendo.
-  SLOW_PASS = "clearing the painted screen every pass takes a Super Nintendo several frames, so a tap on a " \
-              "frame between two passes is never read"
+  SLOW_PASS = "painting four rows of text on a painted screen takes a Super Nintendo several frames, so a tap " \
+              "on a frame between two passes is never read"
 
   # A four-row menu whose second row cannot be picked. `chose` records which row's
   # block ran, so the action half is observable too. The same program is built for
