@@ -134,6 +134,36 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(pool_program, frames: 2)
   end
 
+  # A POOL ALONE, SORTED AMONG ITSELF, beside an order of other things, the way one kind of thing in
+  # a world of many stands higher in front, whatever the rest do. The younger of two puffs stands
+  # lower, and a pool draws its older thing in front: here the higher, older one would be in front
+  # with no order at all, so the younger is made the higher.
+  private def puffs_program(ordered:)
+    block = BLOCK
+    program do
+      screen :tiled
+      colors :puff_colors, %i[transparent red]
+      colors :young_colors, %i[transparent green]
+      image(:puff, "#" => :red, colors: :puff_colors) { block }
+      image(:hero, "#" => :blue) { block }
+      image(:enemy, "#" => :white) { block }
+      puffs = pool :puffs, x: 0, y: 0, capacity: 4, image: :puff
+      hero = sprite :hero, at: [0, 100]
+      enemy = sprite :enemy, at: [20, 100]
+      draw_in_order hero, enemy
+      draw_in_order(puffs, front: :lowest) { |puff| puff.y } if ordered
+      puffs.spawn(x: 60, y: 62)
+      puffs.spawn(x: 64, y: 54)
+      game_loop { puffs.each { |puff| puff.draw_with :young_colors if puff.y == 54 } }
+    end
+  end
+
+  def test_a_pool_alone_is_ordered_among_itself_beside_another_order
+    assert_equal RED, shown(puffs_program(ordered: false), frames: 3), "the older thing of a pool is in front"
+    assert_equal GREEN, shown(puffs_program(ordered: true), frames: 3), "the higher thing is in front"
+    assert_backends_agree(puffs_program(ordered: true), frames: 3)
+  end
+
   # --- what the build refuses ---
 
   private def refusal(&block)
