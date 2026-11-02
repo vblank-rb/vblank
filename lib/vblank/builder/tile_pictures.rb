@@ -29,11 +29,14 @@ module VBlank
         bytes = (0...pictures).flat_map { |picture| tiles.values.flat_map { |row| tile_picture_bytes(name, row[picture], colors) } }
         held = table(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :pictures), bytes, width: :byte, signed: false)
         run = self.tiles(name, { from: list, count: count, colors: colors, held_in: held.name })
+        # At power-on, not here: this line can be inside a scene, whose body runs every pass, and
+        # the first picture would be put back every time. A scene's screen copies a run in as it
+        # comes up, so only a group declared outside any scene has its first copy to ask for.
+        at_boot(Build.list_copy(list_name, table: held.name, at: Build.int(0), count: count * TILE_BYTES))
+        run.changed(now: true) unless recording_game_code?
         shown = var(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :picture), 0)
-        group = DSL::TilePictureGroup.new(self, name: name, keys: tiles.keys, pictures: pictures, list: list, held: held, run: run,
-                                                shown: shown)
-        group.show_first
-        group
+        DSL::TilePictureGroup.new(self, name: name, keys: tiles.keys, pictures: pictures, list: list, held: held, run: run,
+                                        shown: shown)
       end
 
       # The block's statements, run where +test+ holds, for a group's `show`.

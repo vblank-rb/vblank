@@ -44,12 +44,6 @@ module VBlank
         nil
       end
 
-      # What the tiles hold before the first frame: their first pictures, in place at once.
-      def show_first
-        copy_picture(Build.int(0))
-        @run.changed(now: true)
-      end
-
       private
 
       def copy_picture(which)

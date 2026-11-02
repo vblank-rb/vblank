@@ -74,6 +74,43 @@ class TestTilePictures < Minitest::Test
     assert_equal [GREEN, RED, GREEN], shown(program, 8)
   end
 
+  # The same tiles declared inside the scene that shows them, as a game with a screen of its own
+  # for play does: what the declaration sets going happens once, however many passes the scene runs.
+  private def scene_water_game(&step)
+    test = self.class
+    b = Builder.new
+    b.instance_eval do
+      colors :pond, %i[transparent red blue green]
+      test.solid(self, :red_tile, 1)
+      test.solid(self, :blue_tile, 2)
+      test.solid(self, :green_tile, 3)
+      tick = var :tick, 0
+      var :where, 0
+      scene :play do
+        screen :tiled
+        water = tile_pictures :water, colors: :pond, tiles: { left: %i[red_tile blue_tile green_tile],
+                                                              right: %i[blue_tile green_tile red_tile] }
+        tiles :field, "l" => water[:left], "r" => water[:right], "#" => :green_tile
+        background :ground, tiles: :field, map: ["lr#"]
+        tick += 1
+        instance_exec(water, tick, &step)
+      end
+      game_loop { case_var(:where) { when_val 0, :play } }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_tiles_declared_in_a_scene_show_their_first_pictures
+    assert_equal [RED, BLUE, GREEN], shown(scene_water_game { |_, _| nil }, 3)
+  end
+
+  def test_tiles_declared_in_a_scene_stay_on_the_picture_shown
+    program = scene_water_game { |water, tick| water.show 1 if tick == 3 }
+
+    assert_equal [BLUE, GREEN, GREEN], shown(program, 8)
+  end
+
   # Two areas of tiles on one background, each with the group among them at a place of its own.
   private def walking_game(&step)
     test = self.class
@@ -127,6 +164,12 @@ class TestTilePictures < Minitest::Test
     program = water_game { |water, tick| water.show((tick / 2) % 3) }
 
     assert_backends_agree(program, frames: 9, name: "PICTURES")
+  end
+
+  def test_the_console_shows_a_group_declared_in_a_scene_as_the_interpreter_does
+    program = scene_water_game { |water, tick| water.show((tick / 2) % 3) }
+
+    assert_backends_agree(program, frames: 9, name: "PICTURESC")
   end
 
   def test_the_console_shows_the_group_in_the_area_walked_into
