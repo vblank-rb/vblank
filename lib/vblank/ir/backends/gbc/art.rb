@@ -883,7 +883,8 @@ module VBlank
                 raise LoweringError, "the tiles painted from a list with #{colors.length} colours (#{name.inspect}) " \
                                      "are more than a Game Boy Color tile holds: #{OWN_COLORS} and the backdrop. " \
                                      "To fix this, give `colors:` #{PLACES} colours or fewer, the first meaning " \
-                                     "see-through."
+                                     "see-through. If one colour is the backdrop's, remove it from the list and " \
+                                     "draw see-through there, which shows the same colour."
               end
 
               own = colors.drop(1).map { |color| color & 0x7FFF }
