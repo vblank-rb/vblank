@@ -31,6 +31,41 @@ class TestSNESSongOverABusyPass < Minitest::Test
     assert_empty long, "passes that ran long"
   end
 
+  # The music volume falling tells every note a new loudness, many frames running, and a pass this
+  # busy leaves little time to send them. One word waiting a voice keeps that from filling the queue.
+  def test_music_fading_over_a_busy_pass_keeps_its_frames_between_the_notes
+    run = SNES::HeadlessRun.new.run(fading_game(score(envelope: SHAPE)), frames: 150)
+    long = (30...150).select { |pass| run.frames_took(pass) > 1 }
+
+    assert_operator long.length, :<=, MOST_LONG_UNDER_A_FADE, "passes that ran long: #{long.inspect}"
+  end
+
+  def test_music_fading_agrees_with_the_interpreter
+    SNES::CheckedRun.new.run(fading_game(score(envelope: SHAPE), steps: 1), frames: 100)
+    pass
+  end
+
+  # A pass this size runs long where the notes start whatever is done about the loudness; more than
+  # this many means the words about loudness are filling the queue again.
+  FADING_PASS = 315
+  MOST_LONG_UNDER_A_FADE = 5
+
+  private def fading_game(tune, steps: FADING_PASS)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      instrument :piano, pcm: [60, -60] * 200, rate: 8000, note: :C4, holds_from: 100
+      music = songs :music, [tune]
+      music.play 0
+      fade_music_out frames: 120
+      work = var :work, 0
+      game_loop { repeat(steps) { work += 1 } }
+    end
+    b.finalize_program
+    b.program
+  end
+
   def test_a_shaped_song_and_notes_that_end_agree_with_the_interpreter
     SNES::CheckedRun.new.run(short_notes_game, frames: 120)
     pass

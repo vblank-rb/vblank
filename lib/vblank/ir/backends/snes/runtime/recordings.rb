@@ -492,8 +492,12 @@ module VBlank
               asm.lda(at.call(PLACE))
               asm.cmp(heard)
               asm.bcs("rt_recordings_heard_volume_done")
-              emit_registers(asm, at)
-              asm.jsr(asm.abs("rt_recordings_volume"))
+              if memory.reserved?(Music::LEVEL_SET) # only a music volume moves many notes at once
+                emit_told_new_volume(asm, at, memory, place, "rt_recordings_heard_volume_done")
+              else
+                emit_registers(asm, at)
+                asm.jsr(asm.abs("rt_recordings_volume"))
+              end
               asm.label("rt_recordings_heard_volume_done")
               asm.rts
 
@@ -685,16 +689,7 @@ module VBlank
                 asm.cpy(heard)
                 asm.branch_long(:bcs, next_place)
                 asm.sty(at.call(PLACE))
-                if memory.reserved?(Sound::QUEUE)
-                  asm.lda(place.call(VOLUME_WAITING))
-                  asm.branch_long(:bne, next_place)
-                  asm.lda(1)
-                  asm.sta(place.call(VOLUME_WAITING))
-                  emit_queued_entry(asm, at, Sound::NOTE_VOLUME)
-                else
-                  emit_registers(asm, at)
-                  asm.jsr(asm.abs("rt_recordings_volume"))
-                end
+                emit_told_new_volume(asm, at, memory, place, next_place)
                 asm.ldy(at.call(PLACE))
               end
               asm.rts
@@ -730,6 +725,23 @@ module VBlank
                 emit_voice_write(asm, at, register) { asm.lda(at.call(BEST)) }
               end
               asm.rts
+            end
+
+            # The voice of the place at PLACE told its loudness, with Y that place. In a game with a
+            # sound queue that is one word waiting, or none if one is, so a music volume falling on
+            # eight notes fills the queue no more than their shapes do. On to +past+ if one is.
+            def emit_told_new_volume(asm, at, memory, place, past)
+              unless memory.reserved?(Sound::QUEUE)
+                emit_registers(asm, at)
+                asm.jsr(asm.abs("rt_recordings_volume"))
+                return
+              end
+
+              asm.lda(place.call(VOLUME_WAITING))
+              asm.branch_long(:bne, past)
+              asm.lda(1)
+              asm.sta(place.call(VOLUME_WAITING))
+              emit_queued_entry(asm, at, Sound::NOTE_VOLUME)
             end
 
             # A walk over every place, Y each one's offset: the block's code for each, given the label
