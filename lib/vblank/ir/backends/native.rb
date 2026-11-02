@@ -60,7 +60,7 @@ module VBlank
         # (ConsoleNumbers), and the program does what the game does on it.
         def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent)
           game.build_rom(profile: false, out: nil, err: err, settings: settings, progress: progress,
-                         console: console || game.consoles.first).source_program
+                         console: console || game.consoles.first, for_computer: true).source_program
         end
 
         # The runtime's C files each kind of build compiles beside the game's. The desktop build

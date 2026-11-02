@@ -44,6 +44,7 @@ module VBlank
                       "`screen :rotozoom` is refused: " \
                       "a Game Boy Color cannot turn or resize a background."),
         setting: works,
+        built_for_computer?: works("false on a cartridge."),
         screen_width: works("160 on a Game Boy Color."),
         screen_height: works("144 on a Game Boy Color."),
         wait_vblank: works("in a game loop, the sprites and scroll of a pass show on the frame after the wait. " \

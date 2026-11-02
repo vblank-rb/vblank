@@ -32,6 +32,7 @@ module VBlank
                       "console whole before it shows. `screen :rotozoom` is refused: the build does " \
                       "not use the one layer a Super Nintendo can turn."),
         setting: works,
+        built_for_computer?: works("false on a cartridge."),
         screen_width: works("256 on a Super Nintendo."),
         screen_height: works("224 on a Super Nintendo."),
         wait_vblank: works("in a game loop, the sprites and scroll of a pass show on the frame after the wait. " \

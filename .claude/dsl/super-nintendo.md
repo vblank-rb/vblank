@@ -18,6 +18,7 @@ and a test fails when the two differ. The Advance's answers are in
 
 - `screen` — works: `screen :tiled` and `screen :bitmap` work. A Super Nintendo has no painted screen, so a painted (bitmap) screen is made of tiles internally. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. `screen :rotozoom` is refused: the build does not use the one layer a Super Nintendo can turn.
 - `setting` — works: the same as on the Advance.
+- `built_for_computer?` — works: false on a cartridge.
 - `screen_width` — works: 256 on a Super Nintendo.
 - `screen_height` — works: 224 on a Super Nintendo.
 - `wait_vblank` — works: in a game loop, the sprites and scroll of a pass show on the frame after the wait. If a game writes the wait in a scene or an `if`, they show a frame later than that.

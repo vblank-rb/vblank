@@ -36,6 +36,7 @@ module VBlank
                       "picture, because the picture is copied to the console whole before it shows. " \
                       "`screen :rotozoom` is refused: a Genesis cannot turn a background."),
         setting: works,
+        built_for_computer?: works("false on a cartridge."),
         screen_width: works("320 on a Genesis."),
         screen_height: works("224 on a Genesis."),
         wait_vblank: works("in a game loop, the sprites and scroll of a pass show on the frame after the wait. " \

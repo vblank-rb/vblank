@@ -18,6 +18,7 @@ and a test fails when the two differ. The Advance's answers are in
 
 - `screen` — works: `screen :tiled` and `screen :bitmap` work. A Genesis has no painted screen, so a painted (bitmap) screen is made of tiles internally, which holds fifteen colours and black: a game that paints more is refused. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. `screen :rotozoom` is refused: a Genesis cannot turn a background.
 - `setting` — works: the same as on the Advance.
+- `built_for_computer?` — works: false on a cartridge.
 - `screen_width` — works: 320 on a Genesis.
 - `screen_height` — works: 224 on a Genesis.
 - `wait_vblank` — works: in a game loop, the sprites and scroll of a pass show on the frame after the wait. If a game writes the wait in a scene or an `if`, they show a frame later than that.

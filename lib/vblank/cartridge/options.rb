@@ -36,10 +36,14 @@ module VBlank
     # (`{ gbc: [8, 16] }`); a console it does not name draws them the size its kit gives first
     # (Console::Kit#sprite_piece_sizes). It is by console because each has sizes of its own, so one
     # game for two consoles can name a size for each. A size a console does not draw is refused here.
+    #
+    # +for_computer+ says the game is being built to play on a computer (as C, for a web page, or as
+    # Ruby) rather than as a cartridge. It changes nothing by itself: the game asks with
+    # `built_for_computer?` and picks its own default.
     Options = Data.define(:frame_sync, :fast_cartridge, :fast_code, :save_memory, :stack_room, :console,
-                          :variant, :sprite_piece_size) do
+                          :variant, :sprite_piece_size, :for_computer) do
       def initialize(frame_sync: :auto, fast_cartridge: nil, fast_code: nil, save_memory: nil, stack_room: nil,
-                     console: nil, variant: nil, sprite_piece_size: {})
+                     console: nil, variant: nil, sprite_piece_size: {}, for_computer: false)
         console = Console.named(console) unless console.nil?
         sprite_piece_size = Console.refuse_unusable_sprite_piece_sizes!(sprite_piece_size).freeze
         unless variant.nil?

@@ -95,7 +95,7 @@ module VBlank
         # the next script built; SCRIPT_PARTS lists them, and a script that names something none of
         # them defines fails when it gets there (test_ruby_script.rb plays one).
         def build_script(game, path, console:, settings: {}, err: $stderr)
-          program = game.build_rom(profile: false, settings: settings, console: console, err: err).source_program
+          program = game.build_rom(profile: false, settings: settings, console: console, err: err, for_computer: true).source_program
           File.write(path, script(program, title: game.title, menu: game.menu?))
           path
         end

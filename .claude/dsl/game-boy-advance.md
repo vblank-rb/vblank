@@ -10,6 +10,7 @@ verbs were written for the Advance first. The answers are decided in
 This file is `Console::AdvanceAnswers.reference` written out (`ruby tools/console_answers.rb`),
 and a test fails when the two differ.
 
+- `built_for_computer?` — works: false on a cartridge.
 - `screen_width` — works: 240 on a Game Boy Advance.
 - `screen_height` — works: 160 on a Game Boy Advance.
 - `status_bar` — works: the bar takes one of the four background layers. A game with a bar cannot also have a light, a fade held to part of the screen, or a fade under a layer, because these need the same part of the display.

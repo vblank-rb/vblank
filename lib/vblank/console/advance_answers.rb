@@ -19,7 +19,7 @@ module VBlank
 
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
-        screen: works, setting: works,
+        screen: works, setting: works, built_for_computer?: works("false on a cartridge."),
         screen_width: works("240 on a Game Boy Advance."),
         screen_height: works("160 on a Game Boy Advance."),
         wait_vblank: works, halt: works, debug_halt: works,

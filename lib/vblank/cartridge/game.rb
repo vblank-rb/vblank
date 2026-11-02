@@ -115,7 +115,7 @@ module VBlank
       # +progress+, +settings+ and +console+ are as for #build_rom.
       def checked_program(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first)
         build_rom(out: nil, err: err, progress: progress, profile: false, settings: settings, console: console,
-                  cartridge: false)
+                  cartridge: false, for_computer: true)
       end
 
       # The variant the game names for +console+ in `variants:`, or nil.
@@ -146,10 +146,14 @@ module VBlank
       # build's own, so on a console that cannot use one it is refused.
       #
       # +variant+ is as for #program; the command line's `--variant` hands one here.
+      #
+      # +for_computer+ is for a build that goes on to play on a computer, which the game can ask
+      # about (`built_for_computer?`).
       def build_rom(out: $stdout, err: $stderr, validate: true, progress: Messages::Progress.silent,
-                    profile: true, settings: {}, console: @consoles.first, variant: variant_for(console), cartridge: true)
+                    profile: true, settings: {}, console: @consoles.first, variant: variant_for(console), cartridge: true,
+                    for_computer: false)
         console = refuse_console_not_for!(console)
-        options = { code: @code, maker: @maker, **@options.with(console: console, variant: variant).to_h }
+        options = { code: @code, maker: @maker, **@options.with(console: console, variant: variant, for_computer: for_computer).to_h }
         options = options.except(*(Console.console_settings - Console.for(console).console_settings))
         VBlank.build(@title, validate: validate, out: out, err: err, progress: progress, profile: profile,
                               settings: settings, cartridge: cartridge, **options, &@block)

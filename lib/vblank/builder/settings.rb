@@ -14,6 +14,13 @@ module VBlank
     # a value while the game is BUILT — a Ruby value, like the numbers a game computes its
     # tables from — not a variable the game keeps while it runs.
     module Settings
+      # WHETHER THIS BUILD PLAYS ON A COMPUTER, as C, in a web page or as Ruby, rather than on a
+      # console from a cartridge: a Ruby true or false while the game is built, as a setting is,
+      # for something that costs a cartridge frames and costs a computer nothing.
+      #
+      #   music = var :music, built_for_computer? ? 1 : 0
+      def built_for_computer? = @for_computer
+
       # The value this build was given for +name+, or +default+ when it was given none. With
       # no default the setting has to be given.
       #

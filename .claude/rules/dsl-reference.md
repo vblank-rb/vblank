@@ -28,6 +28,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 - `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default.
 - `screen_width` / `screen_height` — the screen the game is being built for, to lay it out from.
 - `setting :floors, 60` — a value handed to one build (`settings:`, `--set`).
+- `built_for_computer?` — true in a build that plays on a computer, false in a cartridge, for a default that differs.
 - `wait_vblank`, `halt`, `debug_halt` (truncate the ROM, for bisecting).
 
 ## Drawing — `.claude/dsl/drawing.md`
