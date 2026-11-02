@@ -112,6 +112,9 @@ lowering made the routines a bend calls and the other did not):
   and the words for a cartridge too full for the game. Each linker keeps its bank geometry and how
   it fills in a hole.
 - `Backends::SpritePieces` — a sprite picture cut into 8×8 squares, blank ones left out.
+- `Backends::SongTable` — a game's songs and effects as the table a player reads, for the Super
+  Nintendo and the Genesis. Each subclass says its chip writes and its limits; each player stays its
+  own. The Color's table is another shape and is not one of them.
 - `IR::Tunes.ranks_in_order`, `Backends::FadeSteps` — the order sound ranks are kept in, and a
   fade's steps.
 
