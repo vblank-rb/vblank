@@ -92,6 +92,24 @@ class TestSNESProfile < Minitest::Test
     end
   end
 
+  # A routine of the game's that does most of the work there is.
+  BUSY = VBlank.game("BUSY", consoles: %i[snes]) do
+    total = 0
+    func(:hard_work) { repeat(100) { total += 3 } }
+    game_loop { call :hard_work }
+  end
+
+  def test_the_report_says_which_routine_took_the_time_and_what_was_left
+    result = rom_of(BUSY).profile(out: StringIO.new, frames: 20)
+
+    assert_equal "hard_work", result.game.first.routine.to_s[/hard_work/]
+    assert_operator result.game.first.share, :>, 0.05
+    assert_operator result.idle_share, :>, 0.1
+    assert_operator result.idle_share, :<, 1
+    assert_operator result.fewest_lines_spare, :>, 10
+    assert_operator result.fewest_lines_spare, :<, 262
+  end
+
   def test_effects_nothing_plays_cost_a_pass_nothing
     [false, true].each do |playing|
       out = StringIO.new

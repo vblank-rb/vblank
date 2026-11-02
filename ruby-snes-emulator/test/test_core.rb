@@ -35,6 +35,17 @@ class TestCore < Minitest::Test
     0x80, 0xFE        # BRA -2
   ].freeze
 
+  # The cartridge goes round its last line for ever, so nearly all of a frame's 262 lines of 1364
+  # clocks are spent at one address, once the count has started.
+  def test_the_processors_time_is_counted_by_address
+    assert_empty @core.take_processor_time, "the first ask starts the count"
+
+    2.times { @core.run_frame }
+    spent = @core.take_processor_time.values.max
+
+    assert_in_delta 262 * 1364 * 2, spent, 262 * 1364 * 2 * 0.1
+  end
+
   def setup
     @dir = Dir.mktmpdir
     @core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, RED_BACKDROP))

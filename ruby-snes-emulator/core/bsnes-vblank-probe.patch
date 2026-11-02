@@ -1,3 +1,73 @@
+diff --git a/bsnes/sfc/cpu/cpu.cpp b/bsnes/sfc/cpu/cpu.cpp
+--- a/bsnes/sfc/cpu/cpu.cpp
++++ b/bsnes/sfc/cpu/cpu.cpp
+@@ -3,6 +3,47 @@
+ namespace SuperFamicom {
+
+ CPU cpu;
++
++//VBLANK PROBE: where the 65816's time goes, for a profiler. Every step of the processor is counted,
++//DMA and the rest it stands still for included, and each instruction's clocks are added to the
++//address it started at. Nothing is kept until the first time it is asked for. vblankProfileTake
++//hands over what was counted since it last was, each address as a little-endian word of 32 bits
++//and one of 64.
++uint64 vblankClocks = 0;
++static uint64* vblankSpent = nullptr;
++static uint32* vblankTouched = nullptr;
++static uint32 vblankTouchedCount = 0;
++static uint8* vblankTaken = nullptr;
++
++static auto vblankProfileAdd(uint32 address, uint64 before) -> void {
++  if(!vblankSpent) return;
++  address &= 0xffffff;
++  uint64 clocks = vblankClocks - before;
++  if(!clocks) return;
++  if(!vblankSpent[address]) vblankTouched[vblankTouchedCount++] = address;
++  vblankSpent[address] += clocks;
++}
++
++auto vblankProfileTake(uint& size) -> uint8* {
++  size = 0;
++  if(!vblankSpent) {
++    vblankSpent = (uint64*)calloc(1 << 24, sizeof(uint64));
++    vblankTouched = (uint32*)calloc(1 << 24, sizeof(uint32));
++    return nullptr;
++  }
++  vblankTaken = (uint8*)realloc(vblankTaken, 12 * (vblankTouchedCount + 1));
++  for(uint n : range(vblankTouchedCount)) {
++    uint32 address = vblankTouched[n];
++    uint64 clocks = vblankSpent[address];
++    for(uint byte : range(4)) vblankTaken[n * 12 + byte] = address >> (byte * 8);
++    for(uint byte : range(8)) vblankTaken[n * 12 + 4 + byte] = clocks >> (byte * 8);
++    vblankSpent[address] = 0;
++  }
++  size = vblankTouchedCount * 12;
++  vblankTouchedCount = 0;
++  return vblankTaken;
++}
++
+ #include "dma.cpp"
+ #include "memory.cpp"
+ #include "io.cpp"
+@@ -27,7 +68,10 @@ auto CPU::synchronizeCoprocessors() -> void {
+ auto CPU::Enter() -> void {
+   while(true) {
+     scheduler.synchronize();
++    uint32 address = cpu.r.pc.d;
++    uint64 before = vblankClocks;
+     cpu.main();
++    vblankProfileAdd(address, before);
+   }
+ }
+
+diff --git a/bsnes/sfc/cpu/timing.cpp b/bsnes/sfc/cpu/timing.cpp
+--- a/bsnes/sfc/cpu/timing.cpp
++++ b/bsnes/sfc/cpu/timing.cpp
+@@ -18,3 +18,4 @@
+ template<uint Clocks, bool Synchronize>
+ auto CPU::step() -> void {
++  vblankClocks += Clocks;
+   static_assert(Clocks == 2 || Clocks == 4 || Clocks == 6 || Clocks == 8 || Clocks == 10 || Clocks == 12);
 diff --git a/bsnes/sfc/ppu/ppu.cpp b/bsnes/sfc/ppu/ppu.cpp
 index dc8d135fc..50cd40d2b 100644
 --- a/bsnes/sfc/ppu/ppu.cpp
@@ -142,7 +212,7 @@ index fc7f32118..afb26a717 100644
  }
  
  RETRO_API size_t retro_serialize_size()
-@@ -769,14 +780,53 @@ RETRO_API unsigned retro_get_region()
+@@ -769,14 +780,60 @@ RETRO_API unsigned retro_get_region()
  	return program->superFamicom.region == "NTSC" ? RETRO_REGION_NTSC : RETRO_REGION_PAL;
  }
  
@@ -161,10 +231,15 @@ index fc7f32118..afb26a717 100644
 +#define RETRO_MEMORY_VBLANK_APU_RAM   0x8004
 +#define RETRO_MEMORY_VBLANK_DSP       0x8005
 +#define RETRO_MEMORY_VBLANK_MANIFEST  0x8006
++#define RETRO_MEMORY_VBLANK_PROFILE   0x8007
 +
-+namespace SuperFamicom { auto vblankProbe(uint id, uint8* out, uint& size) -> uint8*; }
++namespace SuperFamicom {
++auto vblankProbe(uint id, uint8* out, uint& size) -> uint8*;
++auto vblankProfileTake(uint& size) -> uint8*;
++}
 +
 +static uint8 vblank_copy[64 * 1024];
++static uint8 *vblank_profile = nullptr;
 +
 +static uint8 *vblank_memory(unsigned id, uint &size)
 +{
@@ -190,13 +265,15 @@ index fc7f32118..afb26a717 100644
  {
 -	return nullptr;
 +	uint size;
++	if (id == RETRO_MEMORY_VBLANK_PROFILE) return vblank_profile;
 +	return vblank_memory(id, size);
  }
- 
+
  RETRO_API size_t retro_get_memory_size(unsigned id)
  {
 -	return 0;
 +	uint size;
++	if (id == RETRO_MEMORY_VBLANK_PROFILE) { vblank_profile = SuperFamicom::vblankProfileTake(size); return size; }
 +	vblank_memory(id, size);
 +	return size;
  }

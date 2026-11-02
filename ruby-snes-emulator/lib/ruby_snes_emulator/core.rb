@@ -39,6 +39,7 @@ module RubySNESEmulator
     APU_RAM = 0x8004
     DSP_REGISTERS = 0x8005
     MANIFEST = 0x8006
+    PROCESSOR_TIME = 0x8007
 
     # libretro's joypad: the number it asks about each button by.
     BUTTONS = { b: 0, y: 1, select: 2, start: 3, up: 4, down: 5, left: 6, right: 7,
@@ -132,6 +133,15 @@ module RubySNESEmulator
       samples = @audio.join.unpack("s<*")
       @audio.clear
       samples
+    end
+
+    # WHERE THE PROCESSOR'S TIME WENT since this was last asked: each address an instruction started
+    # at, as its bank × 0x10000 plus its address, and the master clocks spent there, whatever it
+    # stood still for included, so a copy to video memory is charged to the line that started it. A
+    # scanline is 1364 of them. The first ask starts the count and answers nothing.
+    def take_processor_time
+      bytes = memory(PROCESSOR_TIME)
+      bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
     end
 
     # --- the memories ---
