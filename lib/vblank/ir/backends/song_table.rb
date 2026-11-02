@@ -572,7 +572,8 @@ module VBlank
           volume ||= part.volume
           sounds = IR::Tunes.note_sounds?(:recorded, frequency, volume, nil)
           head = keep_group([[GROUP_LOG, number_of.call([:note, song.name, frequency]), 0]])
-          row = sounds ? @recording_row.call(instrument || part.instrument, frequency, volume, envelope || part.envelope) + 1 : 0
+          walks = part.events.any? { |note| IR::Tunes.glides?(note) } ? { walks: true } : {}
+          row = sounds ? @recording_row.call(instrument || part.instrument, frequency, volume, envelope || part.envelope, **walks) + 1 : 0
           row |= GLIDES if sounds && IR::Tunes.glides?(event)
           levels = recorded_level_record(channel, sounds ? IR::Tunes.mix_loudness(volume) : 0, &number_of) if follows
           [frame, head, keep_group([]), frequency.zero? ? 0 : volume, sounds, row, levels]

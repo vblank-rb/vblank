@@ -90,8 +90,10 @@ module VBlank
             # read at +frequency+, from its start, back to where it holds from at its end (or played
             # once, for one that does not hold), at its written +volume+ as a mixer voice's loudness,
             # shaped by +envelope+ (the note's or its part's), or by the recording's own when it has none.
-            # Nothing is logged as it comes round. Its number in "recording_plays".
-            def recorded_note_row(name, frequency, volume, envelope = nil)
+            # Nothing is logged as it comes round. Its number in "recording_plays". A note of a part
+            # that glides +walks+ its samples, which every frame pays for while it sounds, since its
+            # end cannot be counted ahead; every other note counts its frames.
+            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false)
               declared = declared_sample(name)
               info = Assets::Sample.of(declared)
               clock = Console::SUPER_NINTENDO.sample_clock(declared.rate)
@@ -105,7 +107,7 @@ module VBlank
                 volume: (IR::Tunes.mix_loudness(volume) * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
                 logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope),
-                walks: SNES::Music.glides?(@program)
+                walks: walks
               )
               @plays << row unless @plays.include?(row)
               @plays.index(row)

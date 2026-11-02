@@ -139,7 +139,7 @@ module VBlank
             # a frame, in samples and 65536ths (48 bits, of which the whole samples take 32); the
             # number of its +logged+ entry; the +name+'s number; and its +shape+ (an Audio::Envelope), or
             # nil for a note that sounds flat out from its first sample to its last. +walks+ counts its
-            # samples whatever it is, for a game whose notes change pitch part way through, so that no
+            # samples whatever it is, for a note whose pitch can change part way through, so that no
             # count of frames made at the start holds.
             def row(source:, pitch:, volume:, length:, back:, advance:, logged:, name:, shape: nil, walks: false)
               words = Array.new(ROW_BYTES / 2, 0)
