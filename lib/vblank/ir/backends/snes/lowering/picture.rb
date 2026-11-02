@@ -104,7 +104,7 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
-                             screen_colors: @screen_colors)
+                             screen_colors: @screen_colors, sprite_colors: @sprite_colors)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
@@ -158,15 +158,67 @@ module VBlank
               refuse_unmade!("a picture shown both by a see-through sprite and by another") if mixed.intersect?(solid)
 
               painted = @tile_runs.filter_map(&:picture)
+              reserve_shared_sprite_colors(mixed, painted)
               @sprite_pictures.each do |name|
                 if painted.include?(name)
                   make_run_art(@tile_runs.index { |run| run.picture == name })
                 else
-                  @art.sprite_picture(name, Assets::Image.of(picture_named(name)), mixed: mixed.include?(name))
+                  @art.sprite_picture(name, Assets::Image.of(picture_named(name)), mixed: mixed.include?(name),
+                                                                                  scene: colors_scene_of_picture(name))
                 end
               end
               @tile_runs.each_with_index { |run, number| make_run_art(number) unless @run_places[number] || colors_scene_of_run(run) }
               make_recolored_art(mixed)
+            end
+
+            # THE SPRITE COLOURS EVERY SCREEN KEEPS, in a game of a screen's own sprite colours: all of
+            # them placed before any scene takes its copy (Art#sprite_palettes), as the backgrounds' are
+            # (#make_shared_background_colors). Lists the game changes first, which want a set each.
+            def reserve_shared_sprite_colors(mixed, painted)
+              return unless @sprite_colors
+
+              each_recolored_picture do |pose, list, swapped|
+                next if colors_scene_of_recolored(pose, list)
+                next if held_sprite_palette(list, mixed.include?(pose))
+
+                image = Assets::Image.of(picture_named(pose))
+                @art.reserve_sprite_colors(RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)),
+                                           mixed: mixed.include?(pose))
+              end
+              @tile_runs.select(&:picture).each { |run| @art.reserve_sprite_run_colors(run.colors) }
+              @sprite_pictures.each do |name|
+                next if painted.include?(name) || colors_scene_of_picture(name)
+
+                @art.reserve_sprite_colors(Assets::Image.of(picture_named(name)), mixed: mixed.include?(name))
+              end
+            end
+
+            # The one scene whose sprites alone show the picture +name+, whose colours it is then drawn
+            # from; nil where every screen keeps them. Not a picture painted from a list, whose
+            # palette has its colours in its places.
+            def colors_scene_of_picture(name)
+              return nil unless @sprite_colors && @tile_runs.none? { |run| run.picture == name }
+
+              one_scene_of(@objects.values.select { |obj| obj.poses.include?(name) })
+            end
+
+            # The same for the copy of the picture +pose+ drawn with +list+.
+            def colors_scene_of_recolored(pose, list)
+              return nil unless @sprite_colors
+
+              one_scene_of(@objects.values.select { |obj| obj.poses.include?(pose) && obj.recolors.include?(list) })
+            end
+
+            # The same for a list of colours the game changes.
+            def colors_scene_of_list(list)
+              return nil unless @sprite_colors
+
+              one_scene_of(@objects.values.select { |obj| obj.recolors.include?(list) })
+            end
+
+            def one_scene_of(objects)
+              scenes = objects.map(&:scene).uniq
+              scenes.first if scenes.one?
             end
 
             # A SPRITE DRAWN WITH OTHER COLOURS (`draw_with`): each of its lists made, ahead of time,
@@ -177,21 +229,28 @@ module VBlank
             # names each copy as the picture it copies. A list's colours never change as the game
             # runs: a list told to hold others (`holds`) is not made yet.
             def make_recolored_art(mixed)
+              each_recolored_picture do |pose, list, swapped|
+                image = Assets::Image.of(picture_named(pose))
+                scene = colors_scene_of_recolored(pose, list)
+                held = held_sprite_palette(list, mixed.include?(pose))
+                next @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held, scene: scene) if held
+
+                @art.sprite_picture([pose, swapped], RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)),
+                                    mixed: mixed.include?(pose), scene: scene)
+              end
+            end
+
+            # Each picture of each sprite with each list it is drawn with: the picture's name, the
+            # list as the game named it, and its colours.
+            def each_recolored_picture
               painted = @tile_runs.filter_map(&:picture)
               @objects.each_value do |obj|
                 if !obj.recolors.empty? && obj.poses.intersect?(painted)
                   refuse_unmade!("a picture painted from a list and drawn with other colours (`draw_with`)")
                 end
-                obj.recolors.each_with_index do |list, which|
+                obj.recolors.each do |list|
                   swapped = list.is_a?(Symbol) ? color_list_named(list).colors : list
-                  obj.poses.each do |pose|
-                    image = Assets::Image.of(picture_named(pose))
-                    held = held_sprite_palette(list, mixed.include?(pose))
-                    next @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held) if held
-
-                    @art.sprite_picture([pose, swapped], RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)),
-                                        mixed: mixed.include?(pose))
-                  end
+                  obj.poses.each { |pose| yield pose, list, swapped }
                 end
               end
             end
@@ -202,17 +261,43 @@ module VBlank
               return nil unless list.is_a?(Symbol) && !color_list_named(list).recolors.empty?
 
               colors = color_list_named(list).colors.drop(1).map { |color| color & 0x7FFF }
-              held_palette_or_refuse { @art.held_sprite_palette([:sprites, list], colors, mixed: mixed) }
+              held_palette_or_refuse do
+                @art.held_sprite_palette([:sprites, list], colors, mixed: mixed, scene: colors_scene_of_list(list))
+              end
             end
 
             # Reference#exec_color_list_holds: the sets the list can hold, written over its palette. A
             # list nothing is drawn with has no palette, and nothing to show.
+            #
+            # A list one scene keeps to itself has a palette only while that scene is up, and another
+            # scene's colours in it otherwise: the number is kept, and said again as the scene arrives
+            # (#emit_scene_colors), so it writes only with its scene up.
             def emit_color_list_holds(node)
-              palette = @art.held_palette_of([:sprites, node.name]) or return
+              return unless @art.held_palette_of([:sprites, node.name])
 
-              list = color_list_named(node.name)
+              choice = @sprite_color_choices[node.name]
+              return emit_sprite_list_write(node.name, node.which) unless choice
+
+              statement(Build.set(choice, node.which))
+              other = fresh("not_scene")
+              jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(@scenes.fetch(colors_scene_of_list(node.name)))), other)
+              emit_sprite_list_write(node.name, Build.var_ref(choice))
+              @asm.label(other)
+            end
+
+            def emit_sprite_list_write(name, which)
+              palette = @art.held_palette_of([:sprites, name])
+              list = color_list_named(name)
               sets = [list.colors, *list.recolors].map { |colors| [[@art.sprite_palette_at(palette), colors.drop(1)]] }
-              runtime_call("rt_colors_hold", [LongAddress.new(held_colors_label([:sprites, node.name]) { sets }), node.which])
+              runtime_call("rt_colors_hold", [LongAddress.new(held_colors_label([:sprites, name]) { sets }), which])
+            end
+
+            # Each list of sprite colours a scene keeps to itself: the number it was told last, by its
+            # name, from power-on the one naming none, as the interpreter keeps it (Reference @held_colors).
+            def keep_sprite_color_choices
+              lists = @sprite_colors ? @objects.values.flat_map(&:recolors).grep(Symbol).uniq : []
+              held = lists.select { |list| !color_list_named(list).recolors.empty? && colors_scene_of_list(list) }
+              @sprite_color_choices = held.to_h { |list| [list, keep_local(:"sprite_colors_of_#{list}", start: Build::NO_RECOLOR)] }
             end
 
             # Reference#exec_background_colors: the background's lists, each written over its palette.
@@ -293,13 +378,16 @@ module VBlank
             # sends its maps' registers (Runtime::Picture's "Together"), so no frame shows the two out
             # of step.
             def emit_scene_colors(scene, arrival)
-              return if !@screen_colors || arrival.scenery.empty?
+              return unless @sprite_colors || (@screen_colors && !arrival.scenery.empty?)
 
               label = held_colors_label(:scenes) { @scenes.sort_by(&:last).map { |name, _| @art.scene_colors(name) } }
               runtime_call("rt_colors_hold", [LongAddress.new(label), Build.int(@scenes.fetch(scene) - 1)])
               arrival.scenery.each do |bg|
                 choice = @background_color_choices[bg.name]
                 emit_background_colors_on(Build.var_ref(choice), bg) if choice
+              end
+              @sprite_color_choices.each do |list, choice|
+                emit_sprite_list_write(list, Build.var_ref(choice)) if colors_scene_of_list(list) == scene
               end
             end
 
@@ -326,10 +414,12 @@ module VBlank
               palette
             end
 
-            # A list of sprite colours that changes keeps a palette for the whole game, and the console
-            # has eight. Bringing each scene's colours in is done for backgrounds alone (SNES#build).
+            # A list of sprite colours that changes keeps a palette, and the console has eight on a
+            # screen. Too many for the whole game is not yet the end of it (SNES#build).
             def held_palette_or_refuse
               yield
+            rescue Art::TooManySpriteColors
+              raise
             rescue Art::TooMuch
               refuse_unmade!("more lists of colours changing as the game runs than a Super Nintendo has palettes")
             end
@@ -744,6 +834,7 @@ module VBlank
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
               emit_scene_backdrop(arrival)
+              emit_scene_colors(scene, arrival) if @scene_layers.zero?
               return if @scene_layers.zero?
 
               emit_layers_straight_for(arrival)

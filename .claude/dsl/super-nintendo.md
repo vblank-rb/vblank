@@ -62,7 +62,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `color` — works: the same as on the Advance.
 - `rgb` — works: the same as on the Advance.
 - `rgb8` — works: the same as on the Advance.
-- `colors` — works: a list of colours holds sixteen places on a Super Nintendo, the first see-through on a sprite. The console holds eight lists for sprites, for the whole game, and eight for backgrounds on each screen.
+- `colors` — works: a list of colours holds sixteen places on a Super Nintendo, the first see-through on a sprite. The console holds eight lists for sprites and eight for backgrounds on each screen.
 - `recolor` — works: a list told to hold other colours keeps a palette to itself, so a game can change eight lists of backgrounds on each screen and eight of sprites.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
