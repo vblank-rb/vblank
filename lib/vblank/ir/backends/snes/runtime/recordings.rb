@@ -183,7 +183,7 @@ module VBlank
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               heard = voices.size * PLACE_BYTES
               emit_play(asm, at, memory, heard)
-              emit_note(asm, at, memory)
+              emit_note(asm, at, memory, heard)
               emit_glide(asm, at, memory, heard) if memory.reserved?(GLIDES)
               emit_note_release(asm, at, memory, heard)
               emit_stop(asm, at, memory, heard)
@@ -383,7 +383,7 @@ module VBlank
             # part's own (+owner+'s), the first free, or the place of the lowest-ranked sound ranked
             # below +rank+ — by its rank, then its ticket, the first of two alike. A = 1 when it found
             # one, nought when the note is not played.
-            def emit_note(asm, at, memory)
+            def emit_note(asm, at, memory, heard)
               place = place_field(asm, memory)
               asm.label("rt_recordings_note")
               asm.lda(asm.direct(Sound::R0))
@@ -445,6 +445,15 @@ module VBlank
               if memory.reserved?(Sound::AHEAD)
                 asm.lda(at.call(Sound::ASKING_AHEAD))
                 asm.beq("rt_recordings_note_nothing_to_forget")
+                asm.lda(0)
+                asm.sta(place.call(VOLUME_WAITING)) # it is about to be forgotten
+                asm.cpy(heard)
+                asm.bcs("rt_recordings_note_bit_known") # no voice, and A still nought
+                asm.sty(at.call(PLACE))
+                asm.phy
+                emit_voice_bit(asm, at)
+                asm.ply
+                asm.label("rt_recordings_note_bit_known")
                 asm.jsl(asm.long("rt_sound_forget_place"))
                 asm.label("rt_recordings_note_nothing_to_forget")
               end

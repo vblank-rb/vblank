@@ -198,7 +198,10 @@ module VBlank
               asm.beq("rt_sfx_play_now_walk")
               asm.lda(0)
               asm.sta(asm.abs_y(memory[STATES], STOPPING))
+              asm.lda(1)
+              asm.sta(at.call(Sound::ASKING_AHEAD)) # let go ahead of the song, as what cuts it is
               asm.jsr(asm.abs("rt_sfx_finish"))
+              asm.stz(at.call(Sound::ASKING_AHEAD))
               asm.label("rt_sfx_play_now_walk")
               asm.inc(at.call(WALK))
               asm.lda(at.call(WALK))

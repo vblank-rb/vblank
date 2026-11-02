@@ -134,6 +134,7 @@ module VBlank
             ASKING_AHEAD = "rt sound asking ahead"
             FRONT_LEFT = "rt sound front left"
             FORGOTTEN = 7
+            FORGET_KEEPS = "rt sound forget keeps"
             AHEAD_TRIES = 64
 
             # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the
@@ -180,7 +181,7 @@ module VBlank
               end
               if queued && effects
                 memory.reserve(AHEAD, AHEAD_ENTRIES * ENTRY_BYTES)
-                [AHEAD_HEAD, AHEAD_TAIL, ASKING_AHEAD, FRONT_LEFT].each { |name| memory.reserve(name, 2) }
+                [AHEAD_HEAD, AHEAD_TAIL, ASKING_AHEAD, FRONT_LEFT, FORGET_KEEPS].each { |name| memory.reserve(name, 2) }
               end
               memory.reserve(LIVE, 2)
               memory.reserve(SENT, 2)
@@ -430,8 +431,9 @@ module VBlank
             # A SOUND EFFECT GOES AHEAD. An effect answers a press, and a song's chord and every
             # note's loudness can fill the queue for frames in a game with little time to spare to
             # send it. So what is asked for while an effect plays (ASKING_AHEAD) waits in a short line
-            # of its own, and #emit_move_ahead puts its oldest at the very front of the queue. In
-            # game terms nothing changes: the two lines reach different voices.
+            # of its own, and #emit_move_ahead puts its oldest at the very front of the queue. The
+            # two lines reach different voices, once rt_sound_forget_place has cleared the queue of
+            # what it held for a voice an effect has taken.
             #
             # A game with no time to spare has no wait to send it in either, so while anything of an
             # effect's is waiting, a frame spends up to AHEAD_TRIES looks at the mailbox on it, whether
@@ -519,14 +521,25 @@ module VBlank
 
             # rt_sound_forget_place (JSL): anything the queue still has to tell the voice of the place
             # Y holds forgotten, since an effect has taken that place: a song's note arriving after
-            # the effect's would strike over it. X is the routine's, and Y stays.
+            # the effect's would strike over it, and a song's key-off, which A's bit of the voice is
+            # taken out of, would cut it short. A is nought for a place with no voice. X is the
+            # routine's, and Y stays.
             def emit_forget_place(asm, memory)
               asm.label("rt_sound_forget_place")
+              asm.eor(0xFFFF)
+              asm.sta(asm.abs(memory[FORGET_KEEPS]))
               asm.ldx(asm.abs(memory[QUEUE_HEAD]))
               asm.label("rt_sound_forget_next")
               asm.cpx(asm.abs(memory[QUEUE_TAIL]))
               asm.beq("rt_sound_forget_done")
               asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.cmp(SET_KEY_OFF_BITS)
+              asm.bne("rt_sound_forget_not_key_off")
+              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.and_a(asm.abs(memory[FORGET_KEEPS]))
+              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.bra("rt_sound_forget_past")
+              asm.label("rt_sound_forget_not_key_off")
               asm.cmp(START_NOTE)
               asm.bcc("rt_sound_forget_past")
               asm.tya
@@ -617,7 +630,7 @@ module VBlank
               asm.sec
               asm.sbc(asm.stack(past_end))
               asm.and_a(QUEUE_MASK)
-              asm.cmp(memory.reserved?(AHEAD) ? QUEUE_ROOM * 2 : QUEUE_ROOM) # an effect's note can go in front too
+              asm.cmp(memory.reserved?(AHEAD) ? QUEUE_ROOM + ENTRY_BYTES : QUEUE_ROOM) # an effect's note goes in front of it
             end
 
             # rt_sound_queue_make_room, with the queue nearly full and the place past its end on the
