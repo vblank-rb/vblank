@@ -55,7 +55,7 @@ module VBlank
       def passes_after_hand_over(path, address, from, to, keys)
         probe = Emulator.probe(path)
         begin
-          probe.step(BOOT_FRAMES, keys: keys)
+          Profiler.step_past_power_on(probe, keys, at_least: BOOT_FRAMES)
           probe.write32(address, from)
           probe.step(FROM_FRAMES, keys: keys)
           probe.write32(address, to)

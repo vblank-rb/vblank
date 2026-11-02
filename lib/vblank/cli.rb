@@ -438,7 +438,9 @@ module VBlank
                                  from this same build of the game.
         --frames N               Measure this many frames. Default: #{VBlank::Diagnostics::Profiler::FRAMES}.
         --settle N               Run this many frames first, so the game is past
-                                 its start. Default: #{VBlank::Diagnostics::Profiler::SETTLE}.
+                                 its start. With --scene, the frames the scene
+                                 runs first. 0 from power-on measures the start.
+                                 Default: #{VBlank::Diagnostics::Profiler::SETTLE}.
         --format FORMAT          human or json. Default: human. json is the
                                  same numbers, to compare two builds.
         #{SET}

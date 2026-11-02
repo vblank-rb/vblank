@@ -198,7 +198,7 @@ module VBlank
               if from
                 profile_from_saved_state(probe, from, path, frames, held, losses)
               elsif holding
-                profile_holding_words(probe, holding, frames, held, losses, starting)
+                profile_holding_words(probe, holding, frames, settle, held, losses, starting)
               else
                 profile_from_boot(probe, frames, settle, held, losses)
               end
@@ -460,9 +460,24 @@ module VBlank
       # The settling is stepped here rather than handed to the probe, so there is a moment
       # between it and the measuring for the counters to be put back to nothing.
       def self.profile_from_boot(probe, frames, settle, held, losses = nil)
-        probe.step(settle, keys: held) if settle.positive?
+        step_past_power_on(probe, held, at_least: settle) if settle.positive?
         clear_losses(probe, losses)
         probe.profile(frames: frames, keys: held)
+      end
+
+      # RUN THE GAME UNTIL ITS FIRST PASS HAS ENDED, and at least +at_least+ frames. What a game
+      # does before its first pass it does once: copying its pictures in, and looking every copy
+      # of its save records over, which is a read of each byte and can take the console most of a
+      # second. A window of frames that lands on that reads as a slow game, and a player who has
+      # just turned the console on never sees it again.
+      #
+      # WATCHED, NOT COUNTED, because how long it takes is the game's own: it grows with what the
+      # records keep. A frame at a time, since all that asks is whether a pass ended in it. A game
+      # that never ends a pass (one that halts at once) is given POWER_ON_LIMIT frames and measured
+      # from there.
+      def self.step_past_power_on(probe, held, at_least:)
+        stepped = (1..POWER_ON_LIMIT).find { probe.profile(frames: 1, keys: held).passes.any? } || POWER_ON_LIMIT
+        probe.step(at_least - stepped, keys: held) if stepped < at_least
       end
 
       # The word to write to put the game in a named scene, as [[address, value]] (none for no
@@ -511,11 +526,11 @@ module VBlank
       # hold a collection full the same way (see FullCollections): a list the game pops from is
       # back at its capacity on the next frame. +starting+ are words written once, as the
       # measured frames begin, rather than held: a save set running (see SaveStarts), which goes
-      # on by itself from there.
-      def self.profile_holding_words(probe, writes, frames, held, losses = nil, starting = [])
-        probe.step(BOOT_FRAMES, keys: held)
+      # on by itself from there. +settle+ is how long the scene runs before those frames.
+      def self.profile_holding_words(probe, writes, frames, settle, held, losses = nil, starting = [])
+        step_past_power_on(probe, held, at_least: BOOT_FRAMES)
         writes.each { |address, value| probe.write32(address, value) }
-        probe.step(SETTLE, keys: held)
+        probe.step(settle, keys: held) if settle.positive?
         clear_losses(probe, losses) # the scene starts here; what it lost before it does not count
         starting.each { |address, value| probe.write32(address, value) }
 
@@ -552,6 +567,10 @@ module VBlank
       # Frames to run before setting the scene, so the game is past its own start-up and the
       # variable exists to be written.
       BOOT_FRAMES = 8
+
+      # The most frames power-on is waited for (see #step_past_power_on): five seconds, a good deal
+      # longer than reading the largest save memory takes.
+      POWER_ON_LIMIT = 300
 
       # MEASURE THE WHOLE GAME, one scene at a time, and answer what it spends its frames on.
       #
