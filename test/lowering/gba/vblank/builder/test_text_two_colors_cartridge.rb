@@ -47,11 +47,15 @@ class TestTextTwoColorsCartridge < Minitest::Test
   # pixel writes. So a second colour must not come anywhere near a second copy of the words.
   A_HANDFUL = 16 * 4 # instructions, at four bytes each
 
+  # A line this long is kept in a table, two bytes a pixel (Framebuffer::TEXT_POINTS_LINE), so this
+  # is the table's size and not the instructions it once was: still many handfuls.
+  MOST_OF_THE_PROGRAM = 500
+
   def test_a_two_colour_label_on_a_bitmap_screen_paints_its_words_once
     one = words_cost(tear_free: false, colors: [:gray])
     two = words_cost(tear_free: false, colors: %i[gray white])
 
-    assert_operator one, :>, 1000, "the words really are most of the program"
+    assert_operator one, :>, MOST_OF_THE_PROGRAM, "the words really are most of the program"
     assert_operator two - one, :<=, A_HANDFUL,
                     "a second colour costs a handful of instructions (#{one} bytes for one, #{two} for two)"
   end
@@ -60,7 +64,7 @@ class TestTextTwoColorsCartridge < Minitest::Test
     one = words_cost(tear_free: true, colors: [:gray])
     two = words_cost(tear_free: true, colors: %i[gray white])
 
-    assert_operator one, :>, 1000, "the words really are most of the program"
+    assert_operator one, :>, MOST_OF_THE_PROGRAM, "the words really are most of the program"
     assert_operator two - one, :<=, A_HANDFUL,
                     "a second colour costs a handful of instructions (#{one} bytes for one, #{two} for two)"
   end
