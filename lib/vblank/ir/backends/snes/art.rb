@@ -90,6 +90,9 @@ module VBlank
           # The same for the sprites' tiles (+scene_tiles+).
           class TooManySpriteTiles < TooMuch; end
 
+          # The same for the backgrounds' tiles (+background_tiles+).
+          class TooManyBackgroundTiles < TooMuch; end
+
           attr_reader :background_tiles, :sprite_tiles, :grids, :sprite_pictures
 
           # The backdrop of a game that says none: black, as the interpreter's empty screen is.
@@ -114,13 +117,17 @@ module VBlank
           # EACH SCREEN'S SPRITE TILES (+scene_tiles+). Video memory holds 512 sprite tiles at once, and
           # nothing says they stay the same ones. Those of what every screen keeps go in at power-on
           # and stay. Each scene starts from a copy of that list and adds its own in the places left
-          # (#with_sprite_tiles_of), and those come in as it takes over (#scene_sprite_tiles).
-          def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false)
+          # (#with_sprite_tiles_of), and those come in as it takes over (#scene_sprite_tiles). The
+          # backgrounds' 1024 tiles go the same way (+background_tiles+, #with_background_tiles_of).
+          def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false,
+                         background_tiles: false)
             @sprite_squares = sprite_squares
             @screen_colors = screen_colors
             @sprite_colors = sprite_colors
             @scene_tiles = scene_tiles
+            @scene_background_tiles = background_tiles
             @scene_sprite_stores = {}
+            @scene_background_stores = {}
             @scene_palettes = {}
             @scene_sprite_palettes = {}
             @scene_sprite_held = {}
@@ -154,8 +161,9 @@ module VBlank
           # palette, as two numbers.
           # +held+ is the palette of a list the game changes (#held_background_palette), whose
           # tiles are drawn from it place for place. +scene+ is the scene whose own background this
-          # is, in a game of +screen_colors+, and nil for what every screen shows.
-          def background_cell(image, held: nil, scene: nil)
+          # is, in a game of +screen_colors+, and nil for what every screen shows; +tile_scene+ the
+          # same for its tiles, in a game of +background_tiles+.
+          def background_cell(image, held: nil, scene: nil, tile_scene: nil)
             palettes = background_palettes(scene)
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
             palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_in_message(scene))
@@ -166,11 +174,13 @@ module VBlank
               end
             end
             bytes = tile_bytes(places)
-            number = @background_tile_numbers[bytes] ||= begin
-              at = @background_tiles.index(nil) || @background_tiles.length
-              refuse_too_many!(at, MOST_BACKGROUND_TILES, "backgrounds")
-              @background_tiles[at] = bytes
-              at
+            number = with_background_tiles_of(tile_scene) do
+              @background_tile_numbers[bytes] ||= begin
+                at = @background_tiles.index(nil) || @background_tiles.length
+                refuse_too_many!(at, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+                @background_tiles[at] = bytes
+                at
+              end
             end
             [number, palette]
           end
@@ -181,7 +191,7 @@ module VBlank
           # So the four quarters of +image+ (an Assets::Image of 16×16) go in four places that
           # pattern takes, the first of them at an even place in an even row, and the whole tile is
           # drawn from one palette. Its tile number (the top left quarter's) and the palette.
-          def background_big_cell(image, held: nil, scene: nil)
+          def background_big_cell(image, held: nil, scene: nil, tile_scene: nil)
             palettes = background_palettes(scene)
             drawn = (0...256).reject { |at| image.tile_see_through_at?(at) }
             palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_in_message(scene))
@@ -194,11 +204,13 @@ module VBlank
                 end
               end)
             end
-            number = @background_tile_numbers[quarters.join] ||= begin
-              at = free_big_place
-              refuse_too_many!(at + BIG_TILE_PLACES.last, MOST_BACKGROUND_TILES, "backgrounds")
-              BIG_TILE_PLACES.zip(quarters) { |offset, bytes| @background_tiles[at + offset] = bytes }
-              at
+            number = with_background_tiles_of(tile_scene) do
+              @background_tile_numbers[quarters.join] ||= begin
+                at = free_big_place
+                refuse_too_many!(at + BIG_TILE_PLACES.last, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+                BIG_TILE_PLACES.zip(quarters) { |offset, bytes| @background_tiles[at + offset] = bytes }
+                at
+              end
             end
             [number, palette]
           end
@@ -257,11 +269,10 @@ module VBlank
 
           # What +scene+ brings into video memory as it takes over, as [the first tile, its tiles'
           # bytes], or nil for a scene with none of its own.
-          def scene_sprite_tiles(scene)
-            own = @scene_sprite_stores.dig(scene, 0) or return nil
-            first = own.each_index.find { |at| own[at] != @sprite_tiles[at] } or return nil
-            [first, own[first..].map { |bytes| bytes || blank_tile }.join]
-          end
+          def scene_sprite_tiles(scene) = tiles_past_shared(@scene_sprite_stores.dig(scene, 0), @sprite_tiles)
+
+          # The same for its background tiles.
+          def scene_background_tiles(scene) = tiles_past_shared(@scene_background_stores.dig(scene, 0), @background_tiles)
 
           # The palette kept under +key+, or nil for a list nothing is drawn with.
           def held_palette_of(key) = @held_palettes[key]
@@ -374,11 +385,14 @@ module VBlank
 
           # +count+ background tiles for a run in +colors+ (place 0 first): the first's number, and
           # the palette.
-          def background_run(colors, count, scene: nil)
+          def background_run(colors, count, scene: nil, tile_scene: nil)
             palette = run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
-            first = @background_tiles.length
-            refuse_too_many!(first + count - 1, MOST_BACKGROUND_TILES, "backgrounds")
-            count.times { @background_tiles << blank_tile }
+            first = with_background_tiles_of(tile_scene) do
+              at = @background_tiles.length
+              refuse_too_many!(at + count - 1, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+              count.times { @background_tiles << blank_tile }
+              at
+            end
             [first, palette]
           end
 
@@ -468,6 +482,30 @@ module VBlank
           # The refusal for the sprites' tiles being full: the one that builds the game again with each
           # scene bringing its own in, where that has not been tried.
           def sprite_tiles_error = @scene_tiles ? TooMuch : TooManySpriteTiles
+          def background_tiles_error = @scene_background_tiles ? TooMuch : TooManyBackgroundTiles
+
+          # [the first tile of +own+ that is not as +shared+ has it, every tile's bytes from there], or
+          # nil for a scene with no copy, or nothing added to it.
+          def tiles_past_shared(own, shared)
+            return nil unless own
+
+            first = own.each_index.find { |at| own[at] != shared[at] } or return nil
+            [first, own[first..].map { |bytes| bytes || blank_tile }.join]
+          end
+
+          # The block, with the background tiles it makes kept in +scene+'s copy of the list. As
+          # #with_sprite_tiles_of.
+          def with_background_tiles_of(scene)
+            return yield unless @scene_background_tiles && scene
+
+            shared = [@background_tiles, @background_tile_numbers]
+            @background_tiles, @background_tile_numbers = (@scene_background_stores[scene] ||= shared.map(&:dup))
+            begin
+              yield
+            ensure
+              @background_tiles, @background_tile_numbers = shared
+            end
+          end
 
           # The block, with the sprite tiles it makes kept in +scene+'s copy of the list, taken the
           # first time it is asked for. For nil, or in a game not built that way, in the list every

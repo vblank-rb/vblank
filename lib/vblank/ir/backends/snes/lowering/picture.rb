@@ -104,7 +104,8 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
-                             screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles)
+                             screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
+                             background_tiles: @scene_background_tiles)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
@@ -169,7 +170,9 @@ module VBlank
                                                                                   tile_scene: tiles_scene_of_picture(name))
                 end
               end
-              @tile_runs.each_with_index { |run, number| make_run_art(number) unless @run_places[number] || colors_scene_of_run(run) }
+              @tile_runs.each_with_index do |run, number|
+                make_run_art(number) unless @run_places[number] || colors_scene_of_run(run) || tiles_scene_of_run(run)
+              end
               make_recolored_art(mixed)
             end
 
@@ -359,12 +362,25 @@ module VBlank
             # from; nil where every screen keeps them, for a run two scenes show as well as one that
             # what every screen shows draws from. A palette a run takes has its colours in its places, so
             # two scenes can only share one by both keeping it.
-            def colors_scene_of_run(run)
-              return nil if !@screen_colors || run.picture
+            def colors_scene_of_run(run) = @screen_colors ? scene_of_run(run) : nil
+
+            # The same for where its tiles are kept, in a game of a screen's own background tiles.
+            def tiles_scene_of_run(run) = @scene_background_tiles ? scene_of_run(run) : nil
+
+            def scene_of_run(run)
+              return nil if run.picture
 
               scenes = backgrounds_declared.select { |bg| bg.tiles.intersect?(run.tiles) }.map(&:scene).uniq
               scenes.first if scenes.one?
             end
+
+            # The scene whose tiles +bg+ is drawn from, in a game of a screen's own background tiles;
+            # nil for those every screen keeps.
+            def tiles_scene_of(bg) = @scene_background_tiles ? bg.scene : nil
+
+            # Whether some background belongs to one scene, so that bringing each scene's tiles in as
+            # it takes over can leave room (SNES#build).
+            public def backgrounds_of_one_scene? = backgrounds_declared.any?(&:scene)
 
             # THE COLOURS EVERY SCREEN KEEPS, in a game of screen colours: all of them made before any
             # scene takes its copy (Art#background_palettes): each tile on the maps of what every screen
@@ -372,7 +388,7 @@ module VBlank
             # is never drawn, so it takes no colours. Then the runs a scene keeps to itself, which are
             # the first to take a copy.
             def make_shared_background_colors
-              return unless @screen_colors
+              return unless @screen_colors || @scene_background_tiles
 
               backgrounds_declared.reject(&:scene).each do |bg|
                 shown = bg.every_map.flat_map { |map| map.flat_map { |row| Array(row) } }
@@ -494,7 +510,7 @@ module VBlank
                 picture = @art.sprite_run_picture(run.picture, run.width, run.height, run.colors, number: in_table)
                 @run_places[number] = Runtime::Picture::SPRITE_TILES + (picture.pieces.first.tile * Art::TILE_BYTES / 2)
               else
-                first, palette = @art.background_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run))
+                first, palette = @art.background_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run), tile_scene: tiles_scene_of_run(run))
                 run.tiles.each_with_index { |image, k| @run_cells[image] = [first + k, palette] }
                 @run_places[number] = Runtime::Picture::BG_TILES + (first * Art::TILE_BYTES / 2)
               end
@@ -568,6 +584,7 @@ module VBlank
                 data.data_bytes(0)
                 data.data_words(grid.bytes.bytesize, grid.size_bits, grid.columns)
               end
+              write_scene_background_tile_tables(data)
               data.label("art tile runs")
               @tile_runs.each_with_index do |run, number|
                 list = @lists.fetch(run.list).first
@@ -584,7 +601,7 @@ module VBlank
               end
               [data.section, *bytes_section("art background tiles", @art.background_tile_data),
                *bytes_section("art sprite tiles", @art.sprite_tile_data), *scene_sprite_tile_sections,
-               *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
+               *scene_background_tile_sections, *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
                *(painted? ? paint_sections : []), *collision_sections]
             end
 
@@ -611,6 +628,42 @@ module VBlank
 
               place = Runtime::Picture::SPRITE_TILES + (first * Art::TILE_BYTES / 2)
               runtime_call("rt_scene_sprite_tiles", [LongAddress.new(scene_sprite_tiles_label(scene)), Build.int(bytes.bytesize), Build.int(place)])
+            end
+
+            # What each scene brings in of its background tiles (#emit_scene_background_tiles).
+            def scene_background_tile_sections
+              return [] unless @scene_background_tiles
+
+              @scenes.keys.filter_map do |scene|
+                _, bytes = @art.scene_background_tiles(scene)
+                bytes_section(scene_background_tiles_label(scene), bytes) if bytes
+              end
+            end
+
+            def scene_background_tiles_label(scene) = "art background tiles of #{scene}"
+            def scene_background_table_label(scene) = "art background table of #{scene}"
+
+            # For each scene where its background tiles are on the cartridge, how many bytes and where
+            # they go, written last since a game can draw a tile no map shows (`set_tile`).
+            def write_scene_background_tile_tables(data)
+              return unless @scene_background_tiles
+
+              @scenes.each_key do |scene|
+                first, bytes = @art.scene_background_tiles(scene)
+                data.label(scene_background_table_label(scene))
+                bytes ? data.data_longs(scene_background_tiles_label(scene)) : data.data_bytes(0, 0, 0)
+                data.data_bytes(0)
+                data.data_words(bytes.to_s.bytesize, Runtime::Picture::BG_TILES + (first.to_i * Art::TILE_BYTES / 2))
+              end
+            end
+
+            # A scene taking over, in a game of a screen's own background tiles: the ones it keeps to
+            # itself go in over the last scene's, with the picture off (Runtime::Picture's
+            # rt_scene_background_tiles).
+            def emit_scene_background_tiles(scene)
+              return unless @scene_background_tiles
+
+              runtime_call("rt_scene_background_tiles", [LongAddress.new(scene_background_table_label(scene))])
             end
 
             ART = W65816::Holding.new(what: "the game's pictures", fix: "use fewer different pictures and maps")
@@ -869,6 +922,7 @@ module VBlank
 
               arrival = @handover.arrival(scene)
               emit_scene_sprite_tiles(scene)
+              emit_scene_background_tiles(scene)
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
               emit_scene_backdrop(arrival)
@@ -923,8 +977,8 @@ module VBlank
               @run_cells.fetch(name) do
                 image = Assets::Image.of(picture_named(name))
                 held = held_background_palette(bg, image)
-                scene = colors_scene_of(bg)
-                bg.tile_w == BIG_TILE ? @art.background_big_cell(image, held: held, scene: scene) : @art.background_cell(image, held: held, scene: scene)
+                places = { held: held, scene: colors_scene_of(bg), tile_scene: tiles_scene_of(bg) }
+                bg.tile_w == BIG_TILE ? @art.background_big_cell(image, **places) : @art.background_cell(image, **places)
               end
             end
 

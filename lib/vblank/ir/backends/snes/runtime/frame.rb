@@ -204,7 +204,14 @@ module VBlank
               asm.jsl(asm.long("rt_upload"))
               # After it, since a big change takes several blanks and the brightness belongs to
               # the picture it arrives with, as the colours do.
-              Tint.emit_brightness(asm, memory) if dims
+              if dims
+                Tint.emit_brightness(asm, memory)
+              elsif memory.reserved?(Picture::SCENE_BACKGROUND_TILES) # the picture was off for a scene's tiles
+                asm.sep(0x20)
+                asm.lda(h::FULL_BRIGHTNESS)
+                asm.sta(asm.abs(h::INIDISP))
+                asm.rep(0x20)
+              end
               asm.label("rt_show_pass_shown")
               asm.lda(at.call(PASSES))
               asm.sta(at.call(SHOWN))

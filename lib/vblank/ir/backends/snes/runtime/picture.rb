@@ -195,6 +195,13 @@ module VBlank
             SCENE_TILES_FILL = 8
             SCENE_TILES_BYTES = 10
 
+            # THE SAME FOR ITS BACKGROUND TILES, where they go, how many bytes and from where.
+            SCENE_BACKGROUND_TILES = "rt scene background tiles"
+
+            # INIDISP's bit that turns the picture off, which is also what lets video memory be written
+            # on any line.
+            DISPLAY_FORCED_OFF = 0x80
+
             # A row of the sprite table filled with this has every sprite below the bottom of the
             # screen, whatever its size.
             NO_SPRITE_FILL = 0xF0F0
@@ -203,8 +210,9 @@ module VBlank
             DMA_ONE_SOURCE = 0x08
 
             def reserve(memory, bar: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
-                        tile_sizes: false, scene_tiles: false)
+                        tile_sizes: false, scene_tiles: false, scene_background_tiles: false)
               memory.reserve(SCENE_TILES, SCENE_TILES_BYTES) if scene_tiles
+              memory.reserve(SCENE_BACKGROUND_TILES, SCENE_TILES_BYTES) if scene_background_tiles
               memory.reserve(TILE_SIZES, 2) if tile_sizes
               memory.reserve(LAYERS_STRAIGHT, 2) if scene_bends
               memory.reserve(BAR_COVERS, 2) if bar_covers
@@ -243,6 +251,7 @@ module VBlank
               emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns)
               emit_see_through_math(asm, memory) if math_turns
               emit_scene_tiles_noted(asm, memory) if memory.reserved?(SCENE_TILES)
+              emit_scene_background_tiles_noted(asm, memory) if memory.reserved?(SCENE_BACKGROUND_TILES)
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
               emit_backgrounds(asm, memory, work)
               emit_bar(asm, memory, scene_bars: scene_bars) if bar
@@ -369,13 +378,60 @@ module VBlank
               asm.stz(asm.abs(h::OAMADDL))
               fill = memory[SCENE_TILES] + SCENE_TILES_FILL
               emit_dma(asm, h::DMA_TO_ONE_PORT | DMA_ONE_SOURCE, h::OAMDATA, asm.imm(fill & 0xFFFF), fill >> 16, 544)
-              asm.label("rt_upload_scene_tiles_piece")
+              emit_scene_tile_pieces(asm, at, work, "rt_upload_scene_tiles")
+              asm.label("rt_upload_scene_tiles_done")
+            end
+
+            # rt_scene_background_tiles(table): the tiles a scene taking over keeps to itself, for the
+            # next blank. The table says where they are on the cartridge, how many bytes and where they
+            # go in video memory, since a scene's list is not finished as its arrival is written.
+            def emit_scene_background_tiles_noted(asm, memory)
+              at = memory[SCENE_BACKGROUND_TILES]
+              asm.label("rt_scene_background_tiles")
+              [SCENE_TILES_FROM, SCENE_TILES_FROM + 2, SCENE_TILES_LEFT, SCENE_TILES_PLACE].each do |field|
+                asm.ldy(field)
+                asm.lda(asm.ind_long_y(Memory.register(0)))
+                asm.sta(asm.abs(at + field))
+              end
+              asm.rtl
+            end
+
+            # First of all in the blank after a scene takes over: its own background tiles over the
+            # last scene's. The maps on the screen are drawn from those tiles, so the picture goes
+            # off, as a Super Nintendo's own games turn it off to load a screen, and stays off until
+            # the pass's whole picture has gone in (Frame's rt_show_pass turns it on). With it off
+            # video memory takes writes on any line, so the copy need not wait for a blank, which
+            # Blank's routines are told by the display being off.
+            def emit_scene_background_tiles_upload(asm, memory, work)
+              h = Console::SNESHardware
+              at = memory[SCENE_BACKGROUND_TILES]
               asm.lda(asm.abs(at + SCENE_TILES_LEFT))
-              asm.branch_long(:beq, "rt_upload_scene_tiles_done")
+              asm.branch_long(:beq, "rt_upload_scene_background_tiles_done")
+              asm.sep(0x20)
+              asm.lda(DISPLAY_FORCED_OFF)
+              asm.sta(asm.abs(h::INIDISP))
+              asm.rep(0x20)
+              asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.pha
+              asm.stz(asm.abs(memory[Frame::DISPLAY_ON]))
+              emit_scene_tile_pieces(asm, at, work, "rt_upload_scene_background_tiles_pieces")
+              asm.label("rt_upload_scene_background_tiles_pieces_done")
+              asm.pla
+              asm.sta(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.label("rt_upload_scene_background_tiles_done")
+            end
+
+            # What is left at +at+ (a SCENE_TILES record), a piece of MAP_PIECE bytes at a time, as the
+            # blanks have room. +name+ the labels' start; it leaves by #{name}_done.
+            def emit_scene_tile_pieces(asm, at, work, name)
+              h = Console::SNESHardware
+              asm.label("#{name}_piece")
+              asm.lda(asm.abs(at + SCENE_TILES_LEFT))
+              asm.branch_long(:beq, "#{name}_done")
               asm.cmp(MAP_PIECE)
-              asm.bcc("rt_upload_scene_tiles_bytes")
+              asm.bcc("#{name}_bytes")
               asm.lda(MAP_PIECE)
-              asm.label("rt_upload_scene_tiles_bytes")
+              asm.label("#{name}_bytes")
               asm.sta(asm.direct(work))
               asm.jsr(asm.abs("rt_blank_room"))
               asm.lda(asm.direct(work))
@@ -407,8 +463,7 @@ module VBlank
               asm.sec
               asm.sbc(asm.direct(work))
               asm.sta(asm.abs(at + SCENE_TILES_LEFT))
-              asm.jmp(asm.abs("rt_upload_scene_tiles_piece"))
-              asm.label("rt_upload_scene_tiles_done")
+              asm.jmp(asm.abs("#{name}_piece"))
             end
 
             # A scroll register written with the 16-bit number in A: its low byte, then its high.
@@ -1301,6 +1356,8 @@ module VBlank
                 asm.jmp(asm.abs("rt_paint_upload"))
                 return
               end
+
+              emit_scene_background_tiles_upload(asm, memory, work) if memory.reserved?(SCENE_BACKGROUND_TILES)
 
               # Each layer's map, if one is waiting, a piece at a time: X is how far it has got.
               LAYER_MAPS.each_with_index do |at, layer|

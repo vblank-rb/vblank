@@ -109,8 +109,9 @@ module VBlank
         # sprites are what does not fit; Art), which a game that fits has no
         # need of and is not built with: it stays the bytes it was. A game whose sprites do not fit
         # the console's 512 tiles has each scene's in video memory while it is up (+sprite_tiles+),
-        # before it gives up squares.
-        def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false)
+        # before it gives up squares, and the same for 1024 background tiles (+background_tiles+).
+        def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
+                  background_tiles: false)
           board = board_for(program)
           memory = Memory.new
           painted = Lowering::Paint.painted?(program)
@@ -137,11 +138,13 @@ module VBlank
                                   sides: Music.sides_under_level?(program),
                                   changing_colors: changing_colors, dims: dims, math_turns: math_turns,
                                   bar_covers: Lowering::Picture.bar_covers_sprites?(program),
-                                  tile_sizes: Lowering::Picture.two_tile_sizes?(program), scene_tiles: sprite_tiles)
+                                  tile_sizes: Lowering::Picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
+                                  scene_background_tiles: background_tiles)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
-                                                sprite_colors: sprite_colors, sprite_tiles: sprite_tiles)
+                                                sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
+                                                background_tiles: background_tiles)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
-                      sprite_tiles: sprite_tiles }
+                      sprite_tiles: sprite_tiles, background_tiles: background_tiles }
           begin
             game = lowering.sections + lowering.art_sections
           rescue Art::TooManyBackgroundColors
@@ -150,6 +153,7 @@ module VBlank
             return build(program, title: title, **choices, sprite_colors: true)
           rescue Art::TooMuch => e
             return build(program, title: title, **choices, sprite_tiles: true) if e.is_a?(Art::TooManySpriteTiles) && lowering.sprites_of_one_scene?
+            return build(program, title: title, **choices, background_tiles: true) if e.is_a?(Art::TooManyBackgroundTiles) && lowering.backgrounds_of_one_scene?
             raise unless sprite_squares
 
             findings << small_pieces_finding
