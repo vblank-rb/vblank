@@ -603,7 +603,25 @@ module VBlank
 
             # The art, and each sprite's table of pictures, as sections for the Linker.
             def art_sections
+              tables, *pieces = art_tables(pieces_apart: false)
+              tables, *pieces = art_tables(pieces_apart: true) if tables.size > Linker::BANK_SIZE
+              [tables, *pieces, *bytes_section("art background tiles", @art.background_tile_data(opening_scene)),
+               *bytes_section("art sprite tiles", @art.sprite_tile_data(opening_scene)), *scene_sprite_tile_sections,
+               *scene_background_tile_sections, *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
+               *(painted? ? paint_sections : []), *collision_sections]
+            end
+
+            # How many bytes of a game's sprite pieces go in one section, when they do not fit beside
+            # its other tables.
+            PIECES_A_SECTION = 16_384
+
+            # THE ART'S TABLES, then the sections of sprite pieces moved out of them. A game with many
+            # pictures, each cut into pieces, can have more pieces than a bank holds. A picture finds
+            # its pieces by a full address, so with +pieces_apart+ they go in banks of their own, which
+            # a game that fits has no use for.
+            def art_tables(pieces_apart:)
               data = W65816.new("art", holds: ART)
+              apart = []
               data.label("art background tiles bytes")
               data.data_words(@art.background_tile_data(opening_scene).bytesize)
               data.label("art sprite tiles bytes")
@@ -616,13 +634,12 @@ module VBlank
               pictures = @art.sprite_pictures.values.sort_by(&:number)
               data.data_longs(pictures.map { |picture| pieces_label(picture.number) })
               pictures.each do |picture|
-                data.label(pieces_label(picture.number))
-                data.data_words(picture.pieces.length)
-                picture.pieces.each do |piece|
-                  data.data_words(piece.dx, piece.dy,
-                                  piece.tile | (piece.palette << 9) | SPRITE_IN_FRONT)
-                  data.data_words(piece.big ? Runtime::Picture::SPRITE_SIZE_BIT : 0) if sprite_squares?
+                holder = data
+                if pieces_apart
+                  apart << W65816.new("art pieces part #{apart.length + 1}", holds: ART) if apart.empty? || apart.last.here > PIECES_A_SECTION
+                  holder = apart.last
                 end
+                write_sprite_pieces(holder, picture)
               end
               write_held_colors(data)
               data.label("art grids")
@@ -656,10 +673,16 @@ module VBlank
                 data.data_words(obj.poses.length,
                                 *obj.poses.map { |pose| @art.sprite_pictures.fetch(swapped ? [pose, swapped] : pose).number })
               end
-              [data.section, *bytes_section("art background tiles", @art.background_tile_data(opening_scene)),
-               *bytes_section("art sprite tiles", @art.sprite_tile_data(opening_scene)), *scene_sprite_tile_sections,
-               *scene_background_tile_sections, *@art.grids.map { |grid| bytes_section(grid_label(grid.number), grid.bytes) },
-               *(painted? ? paint_sections : []), *collision_sections]
+              [data.section, *apart.map(&:section)]
+            end
+
+            def write_sprite_pieces(data, picture)
+              data.label(pieces_label(picture.number))
+              data.data_words(picture.pieces.length)
+              picture.pieces.each do |piece|
+                data.data_words(piece.dx, piece.dy, piece.tile | (piece.palette << 9) | SPRITE_IN_FRONT)
+                data.data_words(piece.big ? Runtime::Picture::SPRITE_SIZE_BIT : 0) if sprite_squares?
+              end
             end
 
             # The scene first declared, whose own tiles go in at power-on with the rest: the game opens
@@ -1080,8 +1103,10 @@ module VBlank
               return if node.tile && node.tile >= bg.tiles.length
 
               columns, rows = TileMap.size_of(bg.every_map.first)
-              column = keep_local(:column)
-              row = keep_local(:row)
+              # One pair for every cell the game changes, each used only until its cell is noted: a
+              # tile picked by a number is a line for each key, and a pair each ran a game out of memory.
+              column = @cell_column ||= keep_local(:column)
+              row = @cell_row ||= keep_local(:row)
               value(node.col)
               store(column)
               value(node.row)
