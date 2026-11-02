@@ -218,7 +218,7 @@ module VBlank
             # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers). +sprite_squares+ for a
             # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
             # +banded+ says the game's bends are kept as steps (Lowering::Picture#bends_by_bands?).
-            def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil,
+            def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil, straight_tile_runs: false,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
                      math_turns: false, scene_bars: false)
               emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns)
@@ -228,6 +228,7 @@ module VBlank
               emit_bar(asm, memory, scene_bars: scene_bars) if bar
               emit_bends_prepare(asm, memory, work, bent, banded) unless bent.empty?
               emit_tile_run_copy(asm, memory, run_scratch) if tile_runs.positive?
+              emit_tile_run_straight(asm, memory, run_scratch) if straight_tile_runs
               emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns, scene_bars)
               asm.label("rt_picture_prepare")
               if painted
@@ -1012,39 +1013,8 @@ module VBlank
             # tiles in the console's form, at its staging, and owed to video RAM in the next blank.
             # Bytes past what the list holds are nought, see-through, as the interpreter reads them.
             def emit_tile_run_copy(asm, memory, s)
-              r = ->(n) { Memory.register(n) }
               asm.label("rt_tile_run_copy")
-              asm.lda(asm.direct(r.call(0)))
-              asm.asl
-              asm.tax
-              asm.lda(1)
-              asm.sta(asm.abs_x(memory[TILE_RUNS_OWED]))
-              asm.txa
-              3.times { asm.asl } # an entry of the table
-              asm.tax
-              [[RUN_LIST, s.list], [RUN_STAGING, s.out]].each do |at, to|
-                asm.lda(asm.long_x("art tile runs", at))
-                asm.sta(asm.direct(to))
-                asm.lda(asm.long_x("art tile runs", at + 2))
-                asm.sta(asm.direct(to + 2))
-              end
-              asm.lda(asm.long_x("art tile runs", RUN_TILES))
-              asm.sta(asm.direct(s.tiles))
-              # The bytes the list holds, its run's bytes at most; then from its first byte, past the
-              # header (a list never straddles a bank, Memory#reserve_far).
-              asm.ldy(Lists::LENGTH)
-              asm.lda(asm.ind_long_y(s.list))
-              asm.cmp(asm.long_x("art tile runs", RUN_BYTES))
-              asm.bcc("rt_tile_run_copy_held")
-              asm.lda(asm.long_x("art tile runs", RUN_BYTES))
-              asm.label("rt_tile_run_copy_held")
-              asm.sta(asm.direct(s.held))
-              asm.lda(asm.direct(s.list))
-              asm.clc
-              asm.adc(Lists::HEADER)
-              asm.sta(asm.direct(s.list))
-              asm.stz(asm.direct(s.tile))
-              asm.ldy(0) # the list's byte
+              emit_tile_run_opening(asm, memory, s, "rt_tile_run_copy")
               asm.label("rt_tile_run_copy_tile")
               asm.ldx(0) # the row, two bytes a row
               asm.label("rt_tile_run_copy_row")
@@ -1092,6 +1062,69 @@ module VBlank
               asm.dec(asm.direct(s.tiles))
               asm.branch_long(:bne, "rt_tile_run_copy_tile")
               asm.rtl
+            end
+
+            # rt_tile_run_straight(run): a list already in the console's own form
+            # (`console_format: true`), byte for byte into the run's staging, a byte past the
+            # list's length reading nought as it does above. A game has this only if it asks for it.
+            def emit_tile_run_straight(asm, memory, s)
+              asm.label("rt_tile_run_straight")
+              emit_tile_run_opening(asm, memory, s, "rt_tile_run_straight")
+              asm.lda(asm.direct(s.tiles))
+              5.times { asm.asl } # 32 bytes a tile
+              asm.sta(asm.direct(s.tile))
+              asm.sep(0x20)
+              asm.label("rt_tile_run_straight_byte")
+              asm.cpy(asm.direct(s.held))
+              asm.bcs("rt_tile_run_straight_past")
+              asm.lda(asm.ind_long_y(s.list))
+              asm.bra("rt_tile_run_straight_read")
+              asm.label("rt_tile_run_straight_past")
+              asm.lda(0)
+              asm.label("rt_tile_run_straight_read")
+              asm.sta(asm.ind_long_y(s.out))
+              asm.iny
+              asm.cpy(asm.direct(s.tile))
+              asm.bne("rt_tile_run_straight_byte")
+              asm.rep(0x20)
+              asm.rtl
+            end
+
+            # What both copies start with: the run noted as owed, and its list, staging, tiles and
+            # the bytes its list holds read out of its entry in "art tile runs". Leaves Y nought.
+            def emit_tile_run_opening(asm, memory, s, name)
+              r = ->(n) { Memory.register(n) }
+              asm.lda(asm.direct(r.call(0)))
+              asm.asl
+              asm.tax
+              asm.lda(1)
+              asm.sta(asm.abs_x(memory[TILE_RUNS_OWED]))
+              asm.txa
+              3.times { asm.asl } # an entry of the table
+              asm.tax
+              [[RUN_LIST, s.list], [RUN_STAGING, s.out]].each do |at, to|
+                asm.lda(asm.long_x("art tile runs", at))
+                asm.sta(asm.direct(to))
+                asm.lda(asm.long_x("art tile runs", at + 2))
+                asm.sta(asm.direct(to + 2))
+              end
+              asm.lda(asm.long_x("art tile runs", RUN_TILES))
+              asm.sta(asm.direct(s.tiles))
+              # The bytes the list holds, its run's bytes at most; then from its first byte, past the
+              # header (a list never straddles a bank, Memory#reserve_far).
+              asm.ldy(Lists::LENGTH)
+              asm.lda(asm.ind_long_y(s.list))
+              asm.cmp(asm.long_x("art tile runs", RUN_BYTES))
+              asm.bcc("#{name}_held")
+              asm.lda(asm.long_x("art tile runs", RUN_BYTES))
+              asm.label("#{name}_held")
+              asm.sta(asm.direct(s.held))
+              asm.lda(asm.direct(s.list))
+              asm.clc
+              asm.adc(Lists::HEADER)
+              asm.sta(asm.direct(s.list))
+              asm.stz(asm.direct(s.tile))
+              asm.ldy(0) # the list's byte
             end
 
             # In the blank: each run owed a copy, its staging to its tiles in video RAM, a piece of

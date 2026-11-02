@@ -835,7 +835,8 @@ module VBlank
             # The run named +name+ copied from its list (Runtime::Picture's rt_tile_run_copy), by the
             # number the runtime knows it by.
             def emit_tile_run_copy(name)
-              runtime_call("rt_tile_run_copy", [Build.int(@tile_runs.index { |run| run.name == name })])
+              number = @tile_runs.index { |run| run.name == name }
+              runtime_call(@tile_runs[number].console_format ? "rt_tile_run_straight" : "rt_tile_run_copy", [Build.int(number)])
             end
 
             # Reference#exec_copy_owed_tiles: every run whose bit of the masks is set, in the order

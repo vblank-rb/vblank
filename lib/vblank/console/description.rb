@@ -29,6 +29,10 @@ module VBlank
     # +sprite_sizes+ is the sizes one sprite of the console is drawn at whole, in pixels across and
     # down, which a picture the game paints from a list has to be; nil where its build draws every
     # sprite's picture in pieces of 8×8, so such a picture can be any size in whole pieces.
+    # +tile_planes+ is how many bit planes the console keeps a tile in, which a list a game paints
+    # in the console's own form (`console_format: true`) holds as they are: eight bytes a plane, a
+    # row's two planes side by side and the second pair after the first. nil where the console
+    # keeps a tile as a list already holds one, two pixels a byte, so there is nothing to choose.
     # +blends+ says whether its display can mix colours as it draws —
     # fade the finished picture, mix one layer into another — rather than only change the colours
     # in its lists. +fades_by_brightness+ says whether a fade to black is its display's own brightness,
@@ -87,7 +91,7 @@ module VBlank
     # +rumbles+ says a game's `rumble` is felt: the cartridge carries a motor the game turns on and
     # off. Where it is not, the verb does nothing, since a game plays the same without it.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :sprites, :sprite_places,
-                              :sprites_a_row, :turning_sprites, :sprite_sizes, :backgrounds, :turning_backgrounds,
+                              :sprites_a_row, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
@@ -131,7 +135,7 @@ module VBlank
                               # What limits a row on the Advance is the time the display has to
                               # draw it, which depends on how wide each sprite is and whether it
                               # turns, and the build does not work that out.
-                              sprites_a_row: nil, turning_sprites: true, sprite_sizes: Hardware::OBJ_SIZES.keys,
+                              sprites_a_row: nil, turning_sprites: true, sprite_sizes: Hardware::OBJ_SIZES.keys, tile_planes: nil,
                               # Four layers that scroll, or two that scroll and one that turns.
                               backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
                               # A status bar is one of those layers.
@@ -165,7 +169,7 @@ module VBlank
     # each verb does on it is Console::ColorAnswers's to say.
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, sprites: 40, sprite_places: 40,
-                            sprites_a_row: 10, turning_sprites: false, sprite_sizes: nil,
+                            sprites_a_row: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false,
@@ -210,7 +214,7 @@ module VBlank
                                      # 8-pixel pieces; a piece is what this counts.
                                      sprites_a_row: 34, turning_sprites: false,
                                      # Every sprite picture is cut into 8×8 pieces (Backends::SNES::Art).
-                                     sprite_sizes: nil,
+                                     sprite_sizes: nil, tile_planes: 4,
                                      # The build shows a game's backgrounds on the arrangement of
                                      # layers called mode 1: two of sixteen colours and one of four.
                                      # Mode 7 turns one layer, alone; the build does not use it.

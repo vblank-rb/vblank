@@ -1398,8 +1398,22 @@ static int16_t *painted_pixels_of(int32_t image, int32_t count) {
 }
 
 /* Reference#run_tile_places: the 64 places of tile +which+ of a run's list, row by row. Each byte
- * is two pixels, the left one in its low four bits; a byte the list does not hold reads as 0. */
-static void read_tile_places(const rg_list *list, int32_t which, uint8_t *places) {
+ * is two pixels, the left one in its low four bits; a byte the list does not hold reads as 0. A
+ * list in the console's own form has +planes+ bit planes (Reference#planar_tile_places). */
+static void read_tile_places(const rg_list *list, int32_t which, int32_t planes, uint8_t *places) {
+  if (planes > 0) {
+    int32_t first = which * planes * 8;
+    for (int32_t pixel = 0; pixel < RUN_TILE_PIXELS; pixel++) {
+      int32_t place = 0;
+      for (int32_t plane = 0; plane < planes; plane++) {
+        int32_t index = first + (plane / 2) * 16 + (pixel / RUN_TILE_SIDE) * 2 + plane % 2;
+        int32_t byte = index < rg_list_length(list) ? rg_list_get(list, index) & 0xFF : 0;
+        place |= ((byte >> (7 - pixel % RUN_TILE_SIDE)) & 1) << plane;
+      }
+      places[pixel] = (uint8_t)place;
+    }
+    return;
+  }
   for (int32_t at = 0; at < RUN_TILE_PIXELS / 2; at++) {
     int32_t index = which * (RUN_TILE_PIXELS / 2) + at;
     int32_t byte = index < rg_list_length(list) ? rg_list_get(list, index) & 0xFF : 0;
@@ -1417,13 +1431,13 @@ void rg_tiles_copy(int32_t run, const rg_list *list) {
   uint8_t *places = places_of(run);
   int32_t width = fields[RG_RUN_WIDTH], height = fields[RG_RUN_HEIGHT];
   if (width == 0) {
-    for (int32_t which = 0; which < fields[RG_RUN_TILES]; which++) read_tile_places(list, which, places + which * RUN_TILE_PIXELS);
+    for (int32_t which = 0; which < fields[RG_RUN_TILES]; which++) read_tile_places(list, which, fields[RG_RUN_PLANES], places + which * RUN_TILE_PIXELS);
     return;
   }
   int32_t across = width / RUN_TILE_SIDE;
   for (int32_t which = 0; which < across * (height / RUN_TILE_SIDE); which++) {
     uint8_t tile[RUN_TILE_PIXELS];
-    read_tile_places(list, which, tile);
+    read_tile_places(list, which, fields[RG_RUN_PLANES], tile);
     int32_t left = (which % across) * RUN_TILE_SIDE, top = (which / across) * RUN_TILE_SIDE;
     for (int32_t i = 0; i < RUN_TILE_PIXELS; i++)
       places[(top + i / RUN_TILE_SIDE) * width + left + i % RUN_TILE_SIDE] = tile[i];

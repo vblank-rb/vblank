@@ -87,7 +87,8 @@ module VBlank
           # turns a see-through layer solid (Picture's rt_see_through_math).
           def sections(memory, main:, frame_begins: nil, painted: false, board: Cartridge::SNESROM::PLAIN, saves: false,
                        sound: false, sound_waves: [], music: nil, music_level_at: nil, effects: 0, recordings: [],
-                       plays: nil, bar: false, bent: [], banded: false, tile_runs: 0, see_through: nil, sprite_depths: false, big_tiles: 0,
+                       plays: nil, bar: false, bent: [], banded: false, tile_runs: 0, straight_tile_runs: false, see_through: nil,
+                       sprite_depths: false, big_tiles: 0,
                        colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
                        dims: false, extra_buttons: false, math_turns: false, scene_bars: false,
                        recording_voices: DSPWrites::RECORDING_VOICES)
@@ -102,6 +103,7 @@ module VBlank
             Blank.emit(asm, memory, Blank.scratch(memory))
             Lists.emit(asm, memory, Lists.scratch(memory))
             Picture.emit(asm, memory, work: memory.scratch(8), painted: painted, bar: bar, bent: bent, banded: banded, tile_runs: tile_runs,
+                                      straight_tile_runs: straight_tile_runs,
                                       run_scratch: (Picture.run_scratch(memory) if tile_runs.positive?),
                                       see_through: see_through, sprite_depths: sprite_depths, big_tiles: big_tiles,
                                       sprite_squares: sprite_squares, changing_colors: changing_colors,

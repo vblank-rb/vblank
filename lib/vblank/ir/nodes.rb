@@ -188,7 +188,7 @@ module VBlank
         declaration!
         category :data
         operands name: :name, list: :name, tiles: :list, colors: :list, picture: :name, width: :int,
-                 height: :int, colors_name: :name
+                 height: :int, colors_name: :name, console_format: :flag
 
         # The list of colours its tiles are drawn from, as a background's recolouring keeps them
         # apart (Assets::Image#list_drawn_from).

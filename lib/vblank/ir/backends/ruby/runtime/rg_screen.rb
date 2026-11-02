@@ -100,7 +100,8 @@ RG_RUN_HEIGHT = 2
 RG_RUN_PLACES = 3
 RG_RUN_FIRST_IMAGE = 4
 RG_RUN_IMAGES = 5
-RG_RUN_FIELDS = 6
+RG_RUN_PLANES = 6
+RG_RUN_FIELDS = 7
 RG_RUN_IMAGE_FIELDS = 17
 RG_RUN_TILE_SIDE = 8
 RG_RUN_TILE_PIXELS = RG_RUN_TILE_SIDE * RG_RUN_TILE_SIDE
@@ -1517,7 +1518,20 @@ end
 
 # Reference#run_tile_places: the 64 places of tile +which+ of a run's list, row by row. Each byte
 # is two pixels, the left one in its low four bits; a byte the list does not hold reads as 0.
-def rg_read_tile_places(list, which, places, into)
+def rg_read_tile_places(list, which, planes, places, into)
+  if planes.positive?
+    first = which * planes * 8
+    RG_RUN_TILE_PIXELS.times do |pixel|
+      place = 0
+      planes.times do |plane|
+        index = first + ((plane / 2) * 16) + ((pixel / RG_RUN_TILE_SIDE) * 2) + (plane % 2)
+        byte = index < rg_list_length(list) ? rg_list_get(list, index) & 0xFF : 0
+        place |= ((byte >> (7 - (pixel % RG_RUN_TILE_SIDE))) & 1) << plane
+      end
+      places[into + pixel] = place
+    end
+    return
+  end
   (RG_RUN_TILE_PIXELS / 2).times do |at|
     index = (which * (RG_RUN_TILE_PIXELS / 2)) + at
     byte = index < rg_list_length(list) ? rg_list_get(list, index) & 0xFF : 0
@@ -1536,13 +1550,13 @@ def rg_tiles_copy(run, list)
   width = rg_run_field(run, RG_RUN_WIDTH)
   height = rg_run_field(run, RG_RUN_HEIGHT)
   if width == 0
-    rg_run_field(run, RG_RUN_TILES).times { |which| rg_read_tile_places(list, which, places, first + (which * RG_RUN_TILE_PIXELS)) }
+    rg_run_field(run, RG_RUN_TILES).times { |which| rg_read_tile_places(list, which, rg_run_field(run, RG_RUN_PLANES), places, first + (which * RG_RUN_TILE_PIXELS)) }
     return
   end
   across = width / RG_RUN_TILE_SIDE
   tile = Array.new(RG_RUN_TILE_PIXELS, 0)
   (across * (height / RG_RUN_TILE_SIDE)).times do |which|
-    rg_read_tile_places(list, which, tile, 0)
+    rg_read_tile_places(list, which, rg_run_field(run, RG_RUN_PLANES), tile, 0)
     left = (which % across) * RG_RUN_TILE_SIDE
     top = (which / across) * RG_RUN_TILE_SIDE
     RG_RUN_TILE_PIXELS.times do |i|

@@ -289,12 +289,13 @@ module VBlank
             runs = @tile_runs.each_value.flat_map do |run|
               start = pixels
               pixels += run_pixels(run)
-              next [run.tiles.length, 0, 0, start, 0, 0] unless run.picture
+              planes = run.console_format ? @program.described_console.tile_planes.to_i : 0
+              next [run.tiles.length, 0, 0, start, 0, 0, planes] unless run.picture
 
               first = images.length / (PLACES_IN_RUN_COLORS + 1)
               shown_as = @images.select { |(name, _), _| name == run.picture }
               shown_as.each { |(_, colors), number| images.push(number, *sprite_pixels(every_place_of(run), colors)) }
-              [0, run.width, run.height, start, first, shown_as.size]
+              [0, run.width, run.height, start, first, shown_as.size, planes]
             end
             [runtime_array("tile_runs", "int32_t", runs), runtime_array("run_images", "int32_t", images)]
           end

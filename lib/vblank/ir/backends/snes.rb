@@ -155,6 +155,7 @@ module VBlank
                                              effects: effects, recordings: lowering.sound_recordings,
                                              plays: (lowering.recordings_section if samples), bar: bar,
                                              bent: lowering.bent_layers, banded: lowering.bends_by_bands?, tile_runs: tile_runs.length,
+                                             straight_tile_runs: Lowering::Picture.tile_runs(program).any?(&:console_format),
                                              see_through: lowering.see_through_layers, big_tiles: lowering.big_tile_layers,
                                              recorded_parts: songs && lowering.recorded_parts?,
                                              colors_shown: lowering.colors_shown,

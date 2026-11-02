@@ -16,6 +16,13 @@ module VBlank
     # plain copy and a game can match another cartridge's buffer byte for byte: one byte is two
     # pixels, the left one in the low four bits, and each four bits is a place in the run's
     # colour list, place 0 see-through. A tile is eight rows of four bytes.
+    #
+    # THAT FORM IS THE ADVANCE'S, and every other console converts it as it copies, which is
+    # work for each tile on each `changed`. A game that repaints many tiles a frame on one of
+    # those says `console_format: true` and writes the bytes the console keeps instead
+    # (Console::Description#tile_planes), which are copied with nothing converted. It changes
+    # nothing on the Advance, whose copy is plain already. It is off unless asked for, because
+    # such a list means something different on each console.
     module TileRuns
       # Bytes one tile of a run takes in its list: 8 rows of 8 pixels, two pixels a byte.
       TILE_BYTES = 32
@@ -70,6 +77,7 @@ module VBlank
         list = tile_map.delete(:from)
         count = tile_map.delete(:count)
         given = tile_map.delete(:colors)
+        own_form = tile_map.delete(:console_format) == true
         if tile_map.key?(:black)
           raise ArgumentError,
                 "tiles :#{name}: black: has no use here. These tiles are painted as places in colors:, so place 0 " \
@@ -79,7 +87,7 @@ module VBlank
         colors_name = given if given.is_a?(Symbol)
         refuse_tile_run_on_bitmap_screen!(name)
         refuse_bad_tile_run_count!(name, count)
-        refuse_tile_run_list_unfit!(name, list, count)
+        refuse_tile_run_list_unfit!(name, list, count, own_form: own_form)
         refuse_tile_run_key_taken!(name, tile_map, count)
 
         images = (1..count).map { |number| Messages::MadeNames.make(:tile_run_tile, run: name, number: number) }
@@ -88,7 +96,8 @@ module VBlank
           @painted_colors[image] = colors
           @painted_colors_names[image] = colors_name
         end
-        record(Build.tile_run(name, list: list.name, tiles: images, colors: colors, colors_name: colors_name))
+        record(Build.tile_run(name, list: list.name, tiles: images, colors: colors, colors_name: colors_name,
+                                    console_format: own_form))
         register_tile_run(name)
 
         tiles(name, images.each_with_index.to_h { |image, i| [i + 1, image] }.merge(tile_map))
@@ -125,12 +134,13 @@ module VBlank
         colors = tile_run_colors(name, opts[:colors], what: "image")
         refuse_tile_run_on_bitmap_screen!(name, what: "image")
         refuse_picture_run_size!(name, width, height)
-        refuse_tile_run_list_unfit!(name, list, (width / 8) * (height / 8), what: "image")
+        own_form = opts[:console_format] == true
+        refuse_tile_run_list_unfit!(name, list, (width / 8) * (height / 8), what: "image", own_form: own_form)
 
         @images[name] = [width, height]
         @painted_colors[name] = colors
         record(Build.tile_run(name, list: list.name, tiles: [], colors: colors, picture: name,
-                                    width: width, height: height))
+                                    width: width, height: height, console_format: own_form))
         register_tile_run(name)
         DSL::TileRun.new(self, name)
       end
@@ -231,16 +241,17 @@ module VBlank
                              "number, 1 or more. Got #{count.inspect}."
       end
 
-      def refuse_tile_run_list_unfit!(name, list, count, what: "tiles")
-        made = (@program.walk.to_a + @boot_inits).find { |node| node.kind == :list_new && node.name == list.name }
+      def refuse_tile_run_list_unfit!(name, list, count, what: "tiles", own_form: false)
+        tile_bytes = own_form && console.tile_planes ? console.tile_planes * 8 : TILE_BYTES
+        made =(@program.walk.to_a + @boot_inits).find { |node| node.kind == :list_new && node.name == list.name }
         unless made&.width == :byte
           raise ArgumentError, "#{what} :#{name} gets its pixels from list :#{list.name}, which must hold bytes. " \
                                "To fix this, declare it with `width: :byte`."
         end
-        needed = count * TILE_BYTES
+        needed = count * tile_bytes
         return if made.capacity >= needed
 
-        raise ArgumentError, "#{what} :#{name} has #{count} tiles, and each tile is #{TILE_BYTES} bytes of its " \
+        raise ArgumentError, "#{what} :#{name} has #{count} tiles, and each tile is #{tile_bytes} bytes of its " \
                              "list, so list :#{list.name} needs a capacity of #{needed}. It has " \
                              "#{made.capacity}. To fix this, give the list a capacity of #{needed}."
       end

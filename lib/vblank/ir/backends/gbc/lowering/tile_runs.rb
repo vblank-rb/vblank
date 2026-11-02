@@ -130,8 +130,9 @@ module VBlank
               owed, staging = @run_places.fetch(run.name)
               @asm.load(:hl, list + Runtime::Lists::HEADER)
               @asm.load(:de, staging)
-              @asm.load(:bc, run_tile_count(run))
-              @asm.call("rt_repack_tiles")
+              # A list in the Color's own form (`console_format: true`) is copied as it stands.
+              @asm.load(:bc, run.console_format ? run_tile_count(run) * TILE_BYTES : run_tile_count(run))
+              @asm.call(run.console_format ? "rt_copy_bc" : "rt_repack_tiles")
               @asm.load(:a, 1)
               @asm.load([owed], :a)
             end

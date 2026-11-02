@@ -1668,7 +1668,7 @@ module VBlank
           return copy_run_picture(run, bytes) if run.picture
 
           run.tiles.each_with_index do |tile, k|
-            @bitmaps[tile] = run_tile_from_places(run, run_tile_places(bytes, k))
+            @bitmaps[tile] = run_tile_from_places(run, run_tile_places(run, bytes, k))
           end
           forget_colors_worked_out_from(run.tiles)
         end
@@ -1682,10 +1682,25 @@ module VBlank
         end
 
         # The 64 places of tile +k+ of a run's bytes, row by row.
-        def run_tile_places(bytes, k)
+        def run_tile_places(run, bytes, k)
+          planes = run.console_format && @console.tile_planes
+          return planar_tile_places(bytes, k, planes) if planes
+
           (0...RUN_TILE_BYTES).flat_map do |at|
             byte = (bytes[(k * RUN_TILE_BYTES) + at] || 0) & 0xFF
             [byte & 0x0F, byte >> 4]
+          end
+        end
+
+        # The 64 places of tile +k+ of a list in the console's own form (`console_format: true`,
+        # Console::Description#tile_planes): each pixel one bit of each plane, the leftmost in bit 7.
+        def planar_tile_places(bytes, k, planes)
+          first = k * planes * 8
+          Array.new(64) do |pixel|
+            (0...planes).sum do |plane|
+              byte = bytes[first + ((plane / 2) * 16) + ((pixel / 8) * 2) + (plane % 2)] || 0
+              (byte & 0xFF)[7 - (pixel % 8)] << plane
+            end
           end
         end
 
@@ -1697,7 +1712,7 @@ module VBlank
           (across * (run.height / 8)).times do |k|
             left = (k % across) * 8
             top = (k / across) * 8
-            run_tile_places(bytes, k).each_with_index do |place, i|
+            run_tile_places(run, bytes, k).each_with_index do |place, i|
               places[((top + (i / 8)) * run.width) + left + (i % 8)] = place
             end
           end

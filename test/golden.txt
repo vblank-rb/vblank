@@ -50,6 +50,8 @@ test/console/gba/vblank/ir/test_cross_backend_conformance_on_the_advance.rb
 test/console/snes/vblank/builder/test_fade_on_the_super_nintendo.rb
 test/console/snes/vblank/builder/test_music_volume_on_the_super_nintendo.rb
 test/console/snes/vblank/builder/test_scene_colors_on_the_super_nintendo.rb
+test/console/snes/vblank/builder/test_console_format_tiles_on_the_super_nintendo.rb
+test/console/gbc/vblank/builder/test_console_format_tiles_on_the_color.rb
 
 # Each lowering's own
 test/lowering/gba/vblank/diagnostics/test_verifier_passes.rb

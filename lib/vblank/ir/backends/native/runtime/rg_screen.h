@@ -420,7 +420,7 @@ extern const uint16_t rg_game_run_colors[];
  * with. RG_RUN_IMAGES of them are listed in rg_game_run_images from entry RG_RUN_FIRST_IMAGE on,
  * each RG_RUN_IMAGE_FIELDS numbers: the image, and the sixteen colors its places show, the first
  * being RG_NOT_DRAWN. */
-enum { RG_RUN_TILES, RG_RUN_WIDTH, RG_RUN_HEIGHT, RG_RUN_PLACES, RG_RUN_FIRST_IMAGE, RG_RUN_IMAGES, RG_RUN_FIELDS };
+enum { RG_RUN_TILES, RG_RUN_WIDTH, RG_RUN_HEIGHT, RG_RUN_PLACES, RG_RUN_FIRST_IMAGE, RG_RUN_IMAGES, RG_RUN_PLANES, RG_RUN_FIELDS };
 enum { RG_RUN_IMAGE_FIELDS = 17 };
 extern const int32_t rg_game_tile_runs[];
 extern const int32_t rg_game_run_images[];
