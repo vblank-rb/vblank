@@ -73,6 +73,34 @@ class TestSNESProfile < Minitest::Test
     end
   end
 
+  # Thirty-two sound effects, the most of them asked for nothing, and a pass with little room left.
+  # What an effect costs is for the frames it plays; one nothing has asked for costs none.
+  private def many_effects_game(playing:)
+    score = VBlank::Audio::Score
+    VBlank.game("MANY EFFECTS", consoles: %i[snes]) do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * 4000, rate: 8000, note: :C4
+      note = score::Note.new(at: 0, key: :C4, length: 240)
+      sfx = sound_effects :sfx, (0...32).to_h { |n| [:"effect#{n}", score.new(parts: [score::Part.new(plays: :tone, notes: [note])], tempo: 150, ticks_per_beat: 4)] }
+      passes = var :passes, 0
+      work = var :work, 0
+      game_loop do
+        passes += 1
+        sfx.play 0 if playing && passes == 2
+        repeat(320) { work += 1 }
+      end
+    end
+  end
+
+  def test_effects_nothing_plays_cost_a_pass_nothing
+    [false, true].each do |playing|
+      out = StringIO.new
+      rom_of(many_effects_game(playing: playing)).profile(format: :json, out: out, frames: 30, settle: 10)
+
+      assert_equal ["1"], JSON.parse(out.string).fetch("passes_by_frames").keys, "playing: #{playing}"
+    end
+  end
+
   private def rom_of(game) = game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
 
   def test_a_fade_to_black_keeps_a_pass_a_frame
