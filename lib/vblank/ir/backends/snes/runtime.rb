@@ -93,7 +93,8 @@ module VBlank
             emit_sound_routines(asm, memory, c, lowered)
             emit_start(asm, chip: c.chip?, sound: c.sound)
             emit_frame_begins(asm, lowering.frame_begins)
-            [vectors.section, asm.section] + (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings]) : []) +
+            [vectors.section, asm.section] +
+              (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings], whole_notes: memory.reserved?(Sound::AHEAD)) : []) +
               [lowered[:music], lowered[:plays]].compact
           end
 

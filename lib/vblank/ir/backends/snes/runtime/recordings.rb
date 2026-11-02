@@ -323,7 +323,7 @@ module VBlank
                 emit_queued_entry(asm, at, Sound::START_NOTE)
                 asm.lda(1)
                 asm.rtl
-                emit_voice_routines(asm, at, row, place)
+                memory.reserved?(Sound::AHEAD) ? emit_whole_voice_routines(asm, at, row, place) : emit_voice_routines(asm, at, row, place)
               else
                 emit_voice_start(asm, at, row)
                 asm.lda(1)
@@ -347,6 +347,63 @@ module VBlank
               emit_registers(asm, at)
               asm.jsr(asm.abs("rt_recordings_volume"))
               asm.rtl
+            end
+
+            # The same two where the sound unit's program writes the registers (Sound.driver): a note in
+            # two commands, the pitch and then the rest, and a loudness in one.
+            def emit_whole_voice_routines(asm, at, row, place)
+              told = lambda do |command, first, second|
+                first.call
+                asm.and_a(0xFF)
+                asm.sta(asm.direct(Sound::R0))
+                second.call
+                asm.and_a(0xFF)
+                asm.sta(asm.direct(Sound::R1))
+                command.call
+                asm.jsl(asm.long("rt_sound_command"))
+              end
+              voice_command = lambda do |number|
+                lambda do
+                  asm.lda(at.call(REGISTERS))
+                  asm.ora(number)
+                end
+              end
+              pitch = lambda do
+                asm.ldx(at.call(ROW))
+                asm.lda(row.call(PITCH))
+              end
+              loudness = -> { asm.jsr(asm.abs("rt_recordings_loudness")) }
+
+              asm.label("rt_recordings_voice_start")
+              emit_registers(asm, at)
+              told.call(-> { asm.lda(Sound::HOLD_PITCH) }, pitch, lambda {
+                pitch.call
+                asm.xba
+              })
+              told.call(voice_command.call(Sound::WHOLE_NOTE), lambda {
+                asm.ldx(at.call(ROW))
+                asm.lda(row.call(SOURCE))
+              }, loudness)
+              asm.rtl
+
+              asm.label("rt_recordings_voice_volume")
+              asm.ldy(at.call(PLACE))
+              asm.lda(0)
+              asm.sta(place.call(VOLUME_WAITING))
+              emit_registers(asm, at)
+              told.call(voice_command.call(Sound::VOICE_LOUDNESS), -> { asm.lda(0) }, loudness)
+              asm.rtl
+
+              asm.label("rt_recordings_loudness")
+              asm.ldy(at.call(PLACE))
+              asm.lda(place.call(LEVEL))
+              asm.cmp(FULL)
+              asm.bne("rt_recordings_loudness_scaled")
+              asm.lda(place.call(LOUD))
+              asm.rts
+              asm.label("rt_recordings_loudness_scaled")
+              asm.lda(place.call(LOUD))
+              asm.jmp(asm.abs("rt_recordings_level_times"))
             end
 
             # The place's voice told all about its note, key-on last.

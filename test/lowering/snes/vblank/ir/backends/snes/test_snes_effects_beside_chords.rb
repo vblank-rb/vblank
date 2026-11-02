@@ -63,7 +63,7 @@ class TestSNESEffectsBesideChords < Minitest::Test
   # A note is many writes, and a frame with no time to spare sends only a few of them, since a late
   # picture is worse than a late note.
   def test_an_effect_goes_ahead_of_a_chord
-    assert_operator frames_late(work: 300), :<=, 4
+    assert_operator frames_late(work: 300), :<=, 3
   end
 
   # The voice holding the effect's pitch, as [its left volume, how loud its envelope is], or nil.

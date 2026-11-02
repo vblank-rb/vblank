@@ -38,7 +38,7 @@ module VBlank
           # (PATIENCE tries); a sound unit that has not answered by then has its write dropped and
           # counted in DROPPED, and the game goes on.
           #
-          # A NOTE IS NINE WRITES, and each still waits for the one before, so parts starting notes
+          # A NOTE IS NINE WRITES (two commands in a game with sound effects, #driver says why), and each still waits for the one before, so parts starting notes
           # together would stand in a game's way. So a game with music queues its writes (QUEUE) and
           # the queue is sent while the game waits for the screen, one write each time the sound
           # unit has answered (#emit_idle_step). A recorded note, or its loudness, is one entry until
@@ -70,6 +70,13 @@ module VBlank
             WRITE_DSP = 1
             SET_FLAG_BITS = 2
             SET_KEY_OFF_BITS = 3
+            # A note told whole (#driver): the pitch of the note coming, and then, with a voice's number
+            # in the command's high half, the note itself, or a new loudness for the voice.
+            HOLD_PITCH = 8
+            WHOLE_NOTE = 9
+            VOICE_LOUDNESS = 10
+            COMMAND_BITS = 0x0F
+            VOICE_BITS = 0x70
 
             # Which command sets bits of which register, and the routine that sends each command.
             SET_BITS_COMMANDS = { DSPWrites::FLAGS => SET_FLAG_BITS, DSPWrites::KEY_OFF => SET_KEY_OFF_BITS }.freeze
@@ -86,6 +93,8 @@ module VBlank
             # that stay while it works out the new ones.
             LAST_ANSWERED = 0x00
             KEPT_BITS = 0x01
+            # ...and the pitch of the note it is about to be told, two bytes.
+            NEXT_PITCH = 0x02
 
             # How many times rt_sound_write reads mailbox 0 for the answer to the write before.
             PATIENCE = 256
@@ -117,6 +126,9 @@ module VBlank
             NOTE_PITCH_WRITES = 2
             VOICE_TOLD = { START_NOTE => [NOTE_START_WRITES, "rt_recordings_voice_start"],
                            NOTE_VOLUME => [NOTE_VOLUME_WRITES, "rt_recordings_voice_volume"] }.freeze
+            # ...told whole, where the sound unit's program takes them (#driver).
+            VOICE_TOLD_WHOLE = { START_NOTE => [2, "rt_recordings_voice_start"],
+                                 NOTE_VOLUME => [1, "rt_recordings_voice_volume"] }.freeze
             # ...and in a game with a note that glides, its new pitch.
             VOICE_TOLD_OF_GLIDES = { NOTE_PITCH => [NOTE_PITCH_WRITES, "rt_recordings_voice_pitch"] }.freeze
             # The room a write leaves in the queue, so an entry at the front can always become its writes.
@@ -135,7 +147,7 @@ module VBlank
             FRONT_LEFT = "rt sound front left"
             FORGOTTEN = 7
             FORGET_KEEPS = "rt sound forget keeps"
-            AHEAD_TRIES = 32
+            AHEAD_TRIES = 16
 
             # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the
             # number the lowering gave its entry of the interpreter's log (Lowering::Sound), the
@@ -197,8 +209,8 @@ module VBlank
             # (Samples.recording's pairs) last (Samples.image). #sections and #emit are each handed the
             # same lists, since rt_sound_start sends as many bytes as it says. What does not fit in the
             # sound unit's memory, below the part its built-in program is kept in, is refused.
-            def image(waves, recordings: [])
-              program = driver.assembled.bytes
+            def image(waves, recordings: [], whole_notes: false)
+              program = driver(whole_notes: whole_notes).assembled.bytes
               room = TABLE_AT - DRIVER_AT
               raise ArgumentError, "the sound program is #{program.size} bytes, more than #{room}" if program.size > room
 
@@ -213,8 +225,16 @@ module VBlank
               program + Array.new(room - program.size, 0) + table
             end
 
-            # The program the SPC700 runs once it has been sent.
-            def driver
+            # A NOTE TOLD WHOLE. The two chips talk a byte at a time, and a note is nine registers, so
+            # a chord of seven is sixty-three turns of the mailbox the game has to wait for, and in a
+            # game with no time to spare they fall behind what the music is doing. In a game with sound
+            # effects, which have to answer a press, the sound unit's program does that work itself,
+            # as a console game's own sound program does: told the pitch, and then a voice, a
+            # recording and a loudness, it writes the nine registers, and the game has sent two
+            # turns. A note's loudness, which changes every frame, is one turn and not two.
+            #
+            # The program the SPC700 runs once it has been sent. +whole_notes+ is one that takes them.
+            def driver(whole_notes: false)
               ports = PORTS
               spc = SPC700.new(origin: DRIVER_AT)
               spc.instance_eval do
@@ -238,7 +258,7 @@ module VBlank
                 bra "set_bits"
                 label "key_off_bits"
                 cmp :a, imm(SET_KEY_OFF_BITS)
-                bne "answer"
+                bne(whole_notes ? "whole" : "answer")
                 mov direct(DSP_ADDRESS), imm(DSPWrites::KEY_OFF)
                 label "set_bits"
                 mov :a, direct(ports[2]) # which bits change
@@ -254,14 +274,81 @@ module VBlank
                 mov direct(ports[0]), :a
                 bra "wait"
               end
+              emit_whole_note_commands(spc) if whole_notes
               spc
             end
 
+            # What the sound unit does with a note told whole, a voice's number being the high half of
+            # its command. The registers of a voice sit in order, so each is the one after.
+            def emit_whole_note_commands(spc)
+              ports = PORTS
+              dsp = DSPWrites
+              unless [dsp::VOLUME_LEFT, dsp::VOLUME_RIGHT, dsp::PITCH_LOW, dsp::PITCH_HIGH, dsp::SOURCE, dsp::ADSR1] == (0..5).to_a && dsp::GAIN == 7
+                raise ArgumentError, "a voice's registers are not in the order the sound program writes them"
+              end
+
+              spc.instance_eval do
+                label "whole"
+                cmp :a, imm(HOLD_PITCH)
+                bne "whole_voice"
+                mov direct(NEXT_PITCH), direct(ports[2])
+                mov direct(NEXT_PITCH + 1), direct(ports[3])
+                bra "answer"
+                label "whole_voice"
+                mov :x, :a
+                and_ :a, imm(COMMAND_BITS)
+                cmp :a, imm(VOICE_LOUDNESS)
+                beq "whole_loudness"
+                mov :a, :x
+                and_ :a, imm(VOICE_BITS)
+                mov direct(DSP_ADDRESS), :a
+                mov direct(DSP_DATA), direct(ports[3])
+                inc direct(DSP_ADDRESS)
+                mov direct(DSP_DATA), direct(ports[3])
+                inc direct(DSP_ADDRESS)
+                mov direct(DSP_DATA), direct(NEXT_PITCH)
+                inc direct(DSP_ADDRESS)
+                mov direct(DSP_DATA), direct(NEXT_PITCH + 1)
+                inc direct(DSP_ADDRESS)
+                mov direct(DSP_DATA), direct(ports[2])
+                inc direct(DSP_ADDRESS)
+                mov direct(DSP_DATA), imm(dsp::ADSR_OFF)
+                inc direct(DSP_ADDRESS)
+                inc direct(DSP_ADDRESS)
+                mov direct(DSP_DATA), imm(dsp::FIXED_TOP)
+                mov :a, :x
+                lsr :a
+                lsr :a
+                lsr :a
+                lsr :a
+                mov :x, :a
+                mov :a, abs_x("voice_bits")
+                mov direct(KEPT_BITS), :a
+                eor :a, imm(0xFF)
+                mov direct(DSP_ADDRESS), imm(dsp::KEY_OFF)
+                and_ :a, direct(DSP_DATA)
+                mov direct(DSP_DATA), :a
+                mov direct(DSP_ADDRESS), imm(dsp::KEY_ON)
+                mov direct(DSP_DATA), direct(KEPT_BITS)
+                jmp "answer"
+                label "whole_loudness"
+                mov :a, :x
+                and_ :a, imm(VOICE_BITS)
+                mov direct(DSP_ADDRESS), :a
+                mov direct(DSP_DATA), direct(ports[3])
+                inc direct(DSP_ADDRESS)
+                mov direct(DSP_DATA), direct(ports[3])
+                jmp "answer"
+                label "voice_bits"
+                data_bytes((0...8).map { |voice| 1 << voice })
+              end
+            end
+
             # What is sent across, in the cartridge, for rt_sound_start to send.
-            def sections(waves, recordings: [])
+            def sections(waves, recordings: [], whole_notes: false)
               asm = W65816.new("sound driver")
               asm.label("sound driver")
-              asm.data_bytes(image(waves, recordings: recordings))
+              asm.data_bytes(image(waves, recordings: recordings, whole_notes: whole_notes))
               [asm.section]
             end
 
@@ -542,6 +629,8 @@ module VBlank
               asm.label("rt_sound_forget_not_key_off")
               asm.cmp(START_NOTE)
               asm.bcc("rt_sound_forget_past")
+              asm.cmp(FORGOTTEN) # past the three that say a place, and a command told whole
+              asm.bcs("rt_sound_forget_past")
               asm.tya
               asm.cmp(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
               asm.bne("rt_sound_forget_past")
@@ -737,7 +826,10 @@ module VBlank
               voice_told(memory).each { |command, (writes, routine)| emit_entry_into_writes(asm, memory, command, writes, routine) } if samples
             end
 
-            def voice_told(memory) = memory.reserved?(Recordings::GLIDES) ? VOICE_TOLD.merge(VOICE_TOLD_OF_GLIDES) : VOICE_TOLD
+            def voice_told(memory)
+              told = memory.reserved?(AHEAD) ? VOICE_TOLD_WHOLE : VOICE_TOLD
+              memory.reserved?(Recordings::GLIDES) ? told.merge(VOICE_TOLD_OF_GLIDES) : told
+            end
 
             # THE ENTRY AT THE FRONT OF THE QUEUE BECOMES ITS WRITES, in the place it stood and before
             # anything queued after it: the front of the queue moves back by as many entries as there
