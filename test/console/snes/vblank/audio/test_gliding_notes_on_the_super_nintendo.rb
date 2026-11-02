@@ -31,6 +31,27 @@ class TestGlidingNotesOnTheSuperNintendo < Minitest::Test
   # effect going past the recording's end, so that the recording ending is what is measured.
   private def second_note(**said) = Score::Note.new(at: 3, hz: ROOT * 2, length: 20, **said)
 
+  # The same notes as a song, which the music's player walks and not the effects'.
+  private def song_of(*notes)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      enable_sound
+      instrument :tone, pcm: [60, -60] * (RATE * FRAMES / 60 / 2), rate: RATE, note: :C4
+      music = songs :music, [Score.new(parts: [Score::Part.new(plays: :tone, notes: notes)], tempo: 150, ticks_per_beat: 4, plays_once: true)]
+      music.play 0
+      game_loop { nil }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_song_note_that_glides_reads_on_too
+    steady = song_of(Score::Note.new(at: 0, hz: ROOT, length: 23))
+    glided = song_of(Score::Note.new(at: 0, hz: ROOT), second_note(glides: true))
+
+    assert_operator frame_it_ends(glided), :<, frame_it_ends(steady)
+  end
+
   # The frame the note stops sounding, played a frame at a time.
   private def frame_it_ends(program)
     (1..60).find { |frames| frames > 3 && game_player.run(program, frames: frames).active_samples.empty? }
