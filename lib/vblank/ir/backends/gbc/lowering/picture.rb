@@ -174,7 +174,13 @@ module VBlank
             # is its pictures alone. Its screens then come up as they would with every picture already
             # in, a grid a few rows a blank (Runtime::Picture#emit_rooms).
             def plan_tile_rooms
-              tile_runs.each_value { |run| run.tiles.each { |tile| painted_tile(tile, run) } unless run.picture }
+              # Where screens bring their own colours in, a painted tile's list is its screen's, so
+              # only its number is settled here.
+              tile_runs.each_value do |run|
+                next if run.picture
+
+                run.tiles.each { |tile| @art.room_colors? ? @art.run_tile_number(tile) : painted_tile(tile, run) }
+              end
               if @plans_background_rooms
                 every = tiled_scenery.reject(&:scene)
                 every.reject(&:several_sets?).each { |bg| tiles_shown(bg).each { |name| background_tile_named(name, bg) } }

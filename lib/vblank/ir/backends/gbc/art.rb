@@ -219,7 +219,8 @@ module VBlank
             @background_palettes = []
             @black_held = false # the first palette is black alone, until one that can be first comes
             @background_tile_of = {} # [room, picture name, its recolour steps] -> [tile number, palette number]
-            @run_tile_of = {} # a painted tile's name -> [tile number, palette number]
+            @run_tile_numbers = {} # a painted tile's name -> its tile number
+            @run_tile_of = {} # [a painted tile's name, the room it is in] -> [tile number, palette number]
             @grids = []               # 2048 bytes each: the cells' tiles, then their attributes
             @big_maps = []            # [bytes, columns, rows] of each map bigger than the grid
             background_tile_number(Array.new(16, 0)) # tile 0: nothing but the backdrop, for an empty cell
@@ -880,18 +881,22 @@ module VBlank
           # +solid+ says no picture of the tile draws see-through, so the list's first place is
           # never shown and the four after it fill the palette, as a solid tile's do. +swaps+ is what
           # the palette shows with each list a background draws it with, so two runs that start in
-          # the same colours and are told different ones have a palette each.
-          def run_tile(name, colors, solid: false, swaps: nil)
-            @run_tile_of[name] ||= begin
+          # the same colours and are told different ones have a palette each. +room+ is the one whose
+          # tiles it draws, so in a game whose screens bring their colours in, the palette is in that
+          # screen's alone; the tile stays one tile, as the game writes it whichever screen is up.
+          def run_tile(name, colors, solid: false, swaps: nil, room: nil)
+            @run_tile_of[[name, room&.id]] ||= begin
               if colors.length > PLACES
                 refuse_too_many_run_colors!(name, colors) unless solid && colors.length == PLACES + 1
               end
 
               own = colors.drop(1).map { |color| color & 0x7FFF }
-              [(@background_tiles << Array.new(16, 0)).length - 1,
-               background_palette_number(padded(solid ? own : [@backdrop, *own]), keeps_backdrop: !solid, swaps: swaps)]
+              [run_tile_number(name),
+               background_palette_number(padded(solid ? own : [@backdrop, *own]), keeps_backdrop: !solid, swaps: swaps, room: room)]
             end
           end
+
+          def run_tile_number(name) = @run_tile_numbers[name] ||= (@background_tiles << Array.new(16, 0)).length - 1
 
           def refuse_too_many_run_colors!(name, colors)
             raise LoweringError, "the tiles painted from a list with #{colors.length} colours (#{name.inspect}) " \

@@ -55,6 +55,47 @@ class TestTilePicturesOfFourSolidColors < Minitest::Test
     b.program
   end
 
+  # A title that fills the console's lists, seven solid ones and black for an empty cell, and a
+  # group in another scene.
+  private def full_title_beside_group
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled, backdrop: :black
+      7.times do |list|
+        colors :"title#{list}", [:transparent, rgb((list * 3) + 1, 0, 0), rgb(0, (list * 3) + 1, 0), rgb(0, 0, (list * 3) + 1)]
+        image :"title_tile#{list}", width: 8, height: 8, colors: :"title#{list}", places: Array.new(64) { |at| (at % 3) + 1 }
+      end
+      tiles :title_set, Array.new(7) { |list| ["abcdefg"[list], :"title_tile#{list}"] }.to_h
+      colors :board, %i[transparent yellow orange cyan white]
+      image :first, width: 8, height: 8, colors: :board, places: Array.new(64) { |at| (at % 4) + 1 }
+      image :second, width: 8, height: 8, colors: :board, places: Array.new(64) { |at| ((at + 1) % 4) + 1 }
+      passes = var :passes, 0
+      state = var :state, 0
+      scene(:title) { background :words, tiles: :title_set, map: ["abcdefg"] }
+      scene(:field) do
+        group = tile_pictures :billboard, tiles: { a: %i[first second] }, colors: :board
+        tiles :field_set, "a" => group[:a]
+        background :ground, tiles: :field_set, map: ["aa"]
+        group.show(passes / 4 % 2)
+      end
+      game_loop do
+        passes += 1
+        state = 1 if passes == 6
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :field
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_group_in_one_scene_takes_no_list_from_another_scene
+    game_player.run(full_title_beside_group, frames: 20)
+    pass
+  end
+
   def test_the_group_shows_its_four_colours_and_fades_as_the_interpreter_shows_them
     game_player.run(field, frames: 24)
     pass

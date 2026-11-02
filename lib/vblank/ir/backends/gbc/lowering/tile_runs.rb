@@ -21,8 +21,8 @@ module VBlank
           #
           # A GROUP OF `tile_pictures` needs none of that. Its pictures are all known when the
           # cartridge is built, so its table is written in the Color's own form, and its list is never
-          # made here: a show copies the chosen picture from the table straight to the stretch of
-          # work memory, with nothing turned. On the Color a frame turns about 30 tiles, and copies
+          # made here: where a list stood, two bytes say which picture, and the run's copy takes it from
+          # the table straight to the stretch of work memory, with nothing turned. On the Color a frame turns about 30 tiles, and copies
           # many times that. Everything above the lowering still sees the list and the Advance's form,
           # so the interpreter and the computer builds play a group as any other painted run.
           module TileRuns
@@ -55,7 +55,9 @@ module VBlank
             # four fill the palette (GBC::Art#run_tile).
             def solid_run?(run) = !run.held_in.nil? && run.colors.length == Art::PLACES + 1
 
-            def painted_tile(name, run) = @art.run_tile(name, run.colors, solid: solid_run?(run), swaps: painted_tile_swaps(name))
+            def painted_tile(name, run, room = nil)
+              @art.run_tile(name, run.colors, solid: solid_run?(run), swaps: painted_tile_swaps(name), room: room)
+            end
 
             # What painted tile +name+'s palette shows with the lists its background is drawn with.
             def painted_tile_swaps(name)
@@ -119,7 +121,7 @@ module VBlank
                 end
               else
                 run.tiles.map do |tile|
-                  number = painted_tile(tile, run).first
+                  number = @art.run_tile_number(tile)
                   m = number % 256
                   [number / 256, (m < 128 ? 0x9000 : 0x8000) + (m * TILE_BYTES)]
                 end
@@ -137,7 +139,7 @@ module VBlank
             # two palettes.
             def background_tile_named(name, bg, room = nil)
               run = run_painting(name)
-              return painted_tile(name, run) if run
+              return painted_tile(name, run, room) if run
 
               @art.background_tile(name, Assets::Image.of(@pictures.fetch(name)), room: room, recolor_steps: recolor_steps_of(name, bg),
                                                                                   empty_cells_shown: empty_cells_shown_with?(room))
@@ -146,6 +148,9 @@ module VBlank
             # Each run's flag and its repacked tiles' stretch of work memory, which the console's copy
             # reads from an address that is a multiple of 16.
             def keep_tile_runs
+              @held_pictures = tile_runs.values.select(&:held_in).to_h do |run|
+                [run.name, @memory.reserve("the picture #{run.name.inspect} shows", 2)]
+              end
               @run_places = tile_runs.values.to_h do |run|
                 owed = @memory.reserve("the painted tiles #{run.name.inspect}, waiting", 1)
                 room = @memory.reserve("the painted tiles #{run.name.inspect}", (run_tile_count(run) * TILE_BYTES) + 15)
@@ -174,7 +179,7 @@ module VBlank
 
             def emit_run_copy(run)
               owed, staging = @run_places.fetch(run.name)
-              emit_list_to_staging(run, staging) unless run.held_in
+              run.held_in ? emit_held_picture_to_staging(run, staging) : emit_list_to_staging(run, staging)
               @asm.load(:a, 1)
               @asm.load([owed], :a)
             end
@@ -189,17 +194,31 @@ module VBlank
             end
 
             # A group's `show`: the game asked for the picture at +node.at+ in the Advance's form, whose
-            # tiles are twice the Color's, so the place in the table is half that. It waits in work
-            # memory for the copy into picture memory the same line goes on to ask for.
+            # tiles are twice the Color's, so the place in the table is half that. Only the place is
+            # kept here, which is what the group's list stands for: the picture is copied when the
+            # run is, as a list's would be, so a screen coming up on this pass shows the picture it
+            # had and the new one on the next.
             def emit_held_picture_copy(run, node)
-              _, staging = @run_places.fetch(run.name)
+              picture = @held_pictures.fetch(run.name)
               value(node.at)
               @asm.srl(:d)
               @asm.rr(:e)
+              @asm.load(:a, :e)
+              @asm.load([picture], :a)
+              @asm.load(:a, :d)
+              @asm.load([picture + 1], :a)
+            end
+
+            def emit_held_picture_to_staging(run, staging)
+              picture = @held_pictures.fetch(run.name)
+              @asm.load(:a, [picture])
+              @asm.load(:e, :a)
+              @asm.load(:a, [picture + 1])
+              @asm.load(:d, :a)
               @asm.load(:hl, table_label(run.held_in))
               @asm.add_hl(:de)
               @asm.load(:de, staging)
-              @asm.load(:bc, node.count / 2)
+              @asm.load(:bc, run_tile_count(run) * TILE_BYTES)
               @asm.call("rt_copy_bc")
             end
           end
