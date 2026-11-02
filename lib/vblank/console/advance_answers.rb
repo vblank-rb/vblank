@@ -42,7 +42,8 @@ module VBlank
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
 
         # --- backgrounds and layers ---
-        tiles: works, background: works, canvas: works, tile_pictures: works, layers: works, layer: works,
+        tiles: works, canvas: works, tile_pictures: works, layers: works, layer: works,
+        background: works("`above_row:` is refused: this build does not make it yet."),
         status_bar: works("the bar takes one of the four background layers. A game with a bar cannot also " \
                           "have a light, a fade held to part of the screen, or a fade under a layer, because " \
                           "these need the same part of the display."),

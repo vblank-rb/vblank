@@ -13,6 +13,7 @@ and a test fails when the two differ.
 - `built_for_computer?` — works: false on a cartridge.
 - `screen_width` — works: 240 on a Game Boy Advance.
 - `screen_height` — works: 160 on a Game Boy Advance.
+- `background` — works: `above_row:` is refused: this build does not make it yet.
 - `status_bar` — works: the bar takes one of the four background layers. A game with a bar cannot also have a light, a fade held to part of the screen, or a fade under a layer, because these need the same part of the display.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `dump_func` — works: it lists the ARM a routine was made into.
@@ -32,8 +33,8 @@ These work as their group files say:
 `shake_screen`, `pixelate`, `pixelate_in`, `pixelate_out`, `pixelate_size`, `spotlight`,
 `iris_in`, `iris_out`, `iris_shut?`, `pulse`, `camera_follows`, `image`, `color`, `rgb`, `rgb8`,
 `colors`, `recolor`, `colors_in_use`, `color_walk`, `mirror`, `upside_down`, `blit`, `sprite`,
-`draw_in_order`, `hide_sprites`, `picture_groups`, `pool`, `box`, `tiles`, `background`,
-`canvas`, `tile_pictures`, `layers`, `layer`, `draw_text`, `draw_number`, `font`, `text_width`,
+`draw_in_order`, `hide_sprites`, `picture_groups`, `pool`, `box`, `tiles`, `canvas`,
+`tile_pictures`, `layers`, `layer`, `draw_text`, `draw_number`, `font`, `text_width`,
 `text_height`, `menu`, `var`, `save_var`, `save_data`, `clock`, `saves_keep_everything`, `set`,
 `add`, `add_var`, `sub`, `sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`,
 `negate_abs`, `negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `if_eq`,

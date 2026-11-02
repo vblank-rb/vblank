@@ -47,10 +47,10 @@ module VBlank
                       effects: 0, samples: false, bar: false, bends: false, scene_bends: false, tile_runs: [], holds_music: false,
                       changing_colors: false, dims: false, math_turns: false, bar_covers: false, wobbles: false,
                       steps_shapes: false, swells: false, slides: false, sides: false, tile_sizes: false, scene_tiles: false,
-                      scene_background_tiles: false, held_runs: {}, second_controller: false)
+                      scene_background_tiles: false, held_runs: {}, second_controller: false, row_held: false)
             Paint.reserve(memory, chip: chip) if painted
             Frame.reserve(memory, second_controller: second_controller)
-            Picture.reserve(memory, bar: bar, bends: bends, scene_bends: scene_bends, tile_runs: tile_runs, held_runs: held_runs,
+            Picture.reserve(memory, bar: bar, row_held: row_held, bends: bends, scene_bends: scene_bends, tile_runs: tile_runs, held_runs: held_runs,
                                     math_turns: math_turns,
                                     bar_covers: bar_covers, tile_sizes: tile_sizes, scene_tiles: scene_tiles,
                                     scene_background_tiles: scene_background_tiles)

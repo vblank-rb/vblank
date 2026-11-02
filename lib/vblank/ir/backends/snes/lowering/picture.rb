@@ -33,6 +33,9 @@ module VBlank
             # (Runtime::Picture's rt_bar_place).
             def self.status_bar?(program) = program.walk.any? { |node| node.kind == :background && node.bar? }
 
+            # Whether +program+ holds a background above a row, which takes the bar's line table.
+            def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
+
             # Whether +program+ changes colours as it runs, which the runtime then keeps a place for
             # (Runtime::Tint's rt_colors_hold).
             def self.changing_colors?(program) = program.walk.any? { |node| %i[background_colors color_list_holds].include?(node.kind) }
@@ -907,6 +910,7 @@ module VBlank
               runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
               # A status bar put up shows from the top it was declared with (Reference#bar_top_shown).
               runtime_call("rt_bar_place", [Build.int(layer_of(bg)), Build.int(bg.bar_top)]) if bg.bar?
+              runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row)]) if bg.above_row
               [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
             end
 
@@ -962,7 +966,8 @@ module VBlank
               if always.length + @scene_layers > BACKGROUND_LAYERS
                 refuse_unmade!("more than two backgrounds on the screen at once")
               end
-              @scene_bars = own.flatten.any?(&:bar?)
+              @scene_bars = own.flatten.any? { |bg| bg.bar? || bg.above_row }
+              refuse_unmade!("a background kept above a row beside a status bar") if Picture.background_rows_held?(@program) && Picture.status_bar?(@program)
               refuse_unmade_stacking!(always)
               refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
@@ -1039,7 +1044,7 @@ module VBlank
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
-              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none?(&:bar?)
+              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none? { |bg| bg.bar? || bg.above_row }
             end
 
             # The layers some scene bends and the one taking over does not: their rows go straight.

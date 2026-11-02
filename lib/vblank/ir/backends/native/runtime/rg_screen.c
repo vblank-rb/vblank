@@ -881,8 +881,10 @@ static void stamp_map_at(int32_t background, int64_t left, int64_t top) {
 
 /* Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it. */
 void rg_background_stamp(int32_t background) {
-  /* Reference#stamp_background: a status bar is painted from its own top as the view is built. */
-  if (background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR) {
+  /* Reference#stamp_background: a status bar is painted from its own top as the view is built, and
+   * a background held above a row stops at it. */
+  if (background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
+      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR) {
     request_repaint();
     return;
   }
@@ -1042,7 +1044,7 @@ void rg_background_put_up(int32_t background) {
   mark_from_corner(background);
   scenery_kept = 0;
   if (turns[keeper_of(background)].turned || background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
-      bar_showing() >= 0) {
+      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || bar_showing() >= 0) {
     request_repaint();
     return;
   }
@@ -1120,6 +1122,13 @@ static int32_t bar_showing(void) {
 static int64_t scenery_rows(void) {
   int32_t bar = bar_showing();
   return bar < 0 ? RG_SCREEN_HEIGHT : bar_top_shown(bar);
+}
+
+/* Reference#rows_shown_of */
+static int64_t rows_shown_of(int32_t background) {
+  int32_t above = background_field(background, RG_BG_ABOVE_ROW);
+  int64_t rows = scenery_rows();
+  return above != RG_NOT_A_BAR && above < rows ? above : rows;
 }
 
 /* Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. */
@@ -1281,7 +1290,7 @@ static int64_t bend_at(int32_t background, int64_t py) {
 static void paint_window_without_wrapping(int32_t background) {
   int64_t map_h = (int64_t)map_rows(background) * background_field(background, RG_BG_TILE_H);
   background_scroll scroll = scroll_shown(background);
-  for (int64_t py = 0, rows = scenery_rows(); py < rows; py++) {
+  for (int64_t py = 0, rows = rows_shown_of(background); py < rows; py++) {
     int64_t my = (int64_t)scroll.y + row_drawn_from(py);
     if (my < 0 || my >= map_h) continue;
     int64_t off_x = (int64_t)scroll.x + bend_at(background, py);
@@ -1302,7 +1311,7 @@ static void paint_window(int32_t background) {
   if (map_w == 0 || map_h == 0) return;
   background_scroll scroll = scroll_shown(background);
   int64_t off_y = floor_mod(scroll.y, map_h);
-  for (int64_t py = 0, rows = scenery_rows(); py < rows; py++) {
+  for (int64_t py = 0, rows = rows_shown_of(background); py < rows; py++) {
     int64_t off_x = floor_mod((int64_t)scroll.x + bend_at(background, py), map_w);
     paint_map_row(background, (off_y + row_drawn_from(py)) % map_h, off_x, map_w, py);
   }

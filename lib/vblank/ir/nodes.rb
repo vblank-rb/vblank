@@ -77,9 +77,13 @@ module VBlank
         # +bar_top+ makes it a STATUS BAR: fixed to the screen from that row down to the bottom,
         # in front of every other background and behind every sprite, never scrolled (see
         # PlaceBar for how it moves). Absent on every other background.
+        #
+        # +above_row+ shows it only on the rows of the screen above that row. Below it the background
+        # is not drawn at all and what is behind shows. Absent on every other background.
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
-                 palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int
+                 palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
+                 above_row: :int
 
         # Each of +palettes+ as a tile drawn from it says which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.

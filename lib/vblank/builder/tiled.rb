@@ -289,8 +289,9 @@ module VBlank
       # @param walls [String, Array<String>, Array<Array>, Hash, nil] which cells stop a
       #   mover, apart from the picture. One grid, or a Hash keyed like `map:`.
       # @return [Background] a handle: scroll_by / scroll_to / show_map
-      def background(name, tiles:, map: nil, from: nil, walls: nil)
-        declare_background(name, tiles: tiles, map: map, from: from, walls: walls)
+      def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil)
+        refuse_bad_above_row!(name, above_row)
+        declare_background(name, tiles: tiles, map: map, from: from, walls: walls, above_row: above_row)
       end
 
       # A STATUS BAR: a strip of tiles fixed to the screen from row +top+ down to the bottom,
@@ -391,8 +392,15 @@ module VBlank
               "a different name."
       end
 
+      def refuse_bad_above_row!(name, above_row)
+        return if above_row.nil? || (above_row.is_a?(Integer) && above_row.between?(1, screen_height - 1))
+
+        raise ArgumentError, "background :#{name} has `above_row: #{above_row.inspect}`, and that is not a row of the " \
+                             "screen. Give a number written in the program, from 1 to #{screen_height - 1}."
+      end
+
       # The body of {#background}, and of {#status_bar}, which is a background with +bar_top+.
-      def declare_background(name, tiles:, map: nil, from: nil, walls: nil, bar_top: nil)
+      def declare_background(name, tiles:, map: nil, from: nil, walls: nil, bar_top: nil, above_row: nil)
         refuse_background_in_game_loop!(name)
         if tiles.is_a?(Hash)
           set, map_names, drawn, tile_names, grids, sets = background_from_sets(name, tiles, map, from)
@@ -441,7 +449,7 @@ module VBlank
           record(Build.background(name, tiles: tile_names, map: grids.first,
                                         maps: map_names.size > 1 ? grids : [], choice: choice,
                                         tile_w: set[:tile_w], tile_h: set[:tile_h],
-                                        scene: declaring_scene, bar_top: bar_top,
+                                        scene: declaring_scene, bar_top: bar_top, above_row: above_row,
                                         affine: @screen_mode == :rotozoom, **(sets || {})))
         # WHICH SCENE THIS BACKGROUND BELONGS TO, so that everything written for it each
         # frame is written only while that scene is the live one. Where a background sits

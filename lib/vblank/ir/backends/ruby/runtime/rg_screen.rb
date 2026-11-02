@@ -91,7 +91,8 @@ RG_BG_CAN_TURN = 17
 RG_BG_PAINTED = 18
 RG_BG_RUN_COLORS = 19
 RG_BG_BAR_TOP = 20
-RG_BG_FIELDS = 21
+RG_BG_ABOVE_ROW = 21
+RG_BG_FIELDS = 22
 
 # Each run of tiles the game paints from a list is RG_RUN_FIELDS numbers in @rg_game_tile_runs.
 RG_RUN_TILES = 0
@@ -961,7 +962,7 @@ end
 # Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it.
 def rg_background_stamp(background)
   # Reference#stamp_background: a status bar is painted from its own top as the view is built.
-  return rg_request_repaint if rg_bar?(background)
+  return rg_request_repaint if rg_bar?(background) || rg_held_above_row?(background)
 
   rg_mix_as_layer(rg_background_field(background, RG_BG_SEE_THROUGH))
   map = rg_map_now(background)
@@ -1097,7 +1098,8 @@ def rg_background_put_up(background)
   @rg_shown_backgrounds << background
   rg_mark_from_corner(background)
   @rg_scenery_kept = false
-  return rg_request_repaint if @rg_turns[rg_keeper_of(background)].turned || rg_bar?(background) || rg_bar_showing
+  return rg_request_repaint if @rg_turns[rg_keeper_of(background)].turned || rg_bar?(background) ||
+                               rg_held_above_row?(background) || rg_bar_showing
 
   rg_background_stamp(background)
   rg_stamp_in_stack_order(background)
@@ -1180,6 +1182,15 @@ def rg_scenery_rows
   bar = rg_bar_showing
   bar ? rg_bar_top_shown(bar) : RG_SCREEN_HEIGHT
 end
+
+# Reference#rows_shown_of
+def rg_rows_shown_of(background)
+  above = rg_background_field(background, RG_BG_ABOVE_ROW)
+  above == RG_NOT_A_BAR ? rg_scenery_rows : [rg_scenery_rows, above].min
+end
+
+# Whether a background is held above a row of the screen.
+def rg_held_above_row?(background) = rg_background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR
 
 # Reference#paint_status_bar: from its top row to the bottom of the screen, its map from its own
 # corner, never scrolled; past the end of its map the backdrop stays.
@@ -1289,7 +1300,7 @@ end
 def rg_paint_window_without_wrapping(background)
   map_h = rg_map_rows(background) * rg_background_field(background, RG_BG_TILE_H)
   scroll_x, scroll_y = rg_scroll_shown(background)
-  rg_scenery_rows.times do |py|
+  rg_rows_shown_of(background).times do |py|
     my = scroll_y + rg_row_drawn_from(py)
     next if my < 0 || my >= map_h
 
@@ -1394,7 +1405,7 @@ def rg_paint_window(background)
 
   scroll_x, scroll_y = rg_scroll_shown(background)
   off_y = scroll_y % map_h
-  rg_scenery_rows.times do |py|
+  rg_rows_shown_of(background).times do |py|
     off_x = (scroll_x + rg_bend_at(background, py)) % map_w
     my = (off_y + rg_row_drawn_from(py)) % map_h
     rg_paint_map_row(background, my, off_x, map_w, py)

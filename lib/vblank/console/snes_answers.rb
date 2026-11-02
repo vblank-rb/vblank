@@ -119,7 +119,9 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works("tiles of sixteen colours each."),
-        background: works("two backgrounds at a time, scrolled and changed as on the Advance. `rotate` and " \
+        background: works("two backgrounds at a time, scrolled and changed as on the Advance. `above_row:` " \
+                          "keeps a background to the rows above that row, and takes no processor time as the " \
+                          "screen is drawn. A game with it cannot have a status bar yet. `rotate` and " \
                           "`scale` are refused: the build does not use the one layer a Super Nintendo can turn. " \
                           "A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. " \
                           "A cell of its map is then one 16×16 tile. A `scroll_each_row` block runs for all 224 rows " \

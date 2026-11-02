@@ -1566,7 +1566,7 @@ module VBlank
           # only scenery turns had nothing else to say it.
           # ...and so is a status bar, which is painted from its own top rather than the screen's,
           # and anything put up while one shows, which a stamp would paint over the bar's rows.
-          return request_repaint if @bg_affine.key?(node.name) || node.bar? || bar_showing
+          return request_repaint if @bg_affine.key?(node.name) || node.bar? || node.above_row || bar_showing
 
           stamp_background(node)
           in_stack_order(over).each { |bg| stamp_background(bg) }
@@ -1772,8 +1772,9 @@ module VBlank
         # Paint one background's whole map onto the screen, cell by cell.
         def stamp_background(node)
           # A status bar is painted from its own top, with nothing under it, as the whole view is
-          # built (#repaint_view), never stamped from the screen's corner.
-          return request_repaint if node.bar?
+          # built (#repaint_view), never stamped from the screen's corner. A background held above a
+          # row is the same, since a stamp would reach past its row.
+          return request_repaint if node.bar? || node.above_row
 
           tiles = node.tiles
           tile_w = node.tile_w
@@ -1947,6 +1948,8 @@ module VBlank
         # into blocks: every row then shows the picture row at the top of its block, and
         # is still placed by its own bend (see #paint_scenery_in_blocks). One row, which
         # is the picture as drawn, unless said.
+        def rows_shown_of(bg) = bg.above_row ? [scenery_rows, bg.above_row].min : scenery_rows
+
         def paint_background_window(bg, tall = 1)
           turn = @bg_affine[bg.name]
           return paint_affine_background_window(bg, turn, tall) if turn
@@ -1967,7 +1970,7 @@ module VBlank
           off_y %= map_h
           width = @screen.width
 
-          scenery_rows.times do |py|
+          rows_shown_of(bg).times do |py|
             # A bending background sits somewhere different on every row: this row's own
             # sideways offset, on top of wherever the background is scrolled to.
             off_x = (base_x + bend_offset_at(bg.name, py)) % map_w # Ruby % wraps negatives into 0..map_w-1
@@ -2010,7 +2013,7 @@ module VBlank
           base_x, off_y = scroll_shown(bg)
           width = @screen.width
 
-          scenery_rows.times do |py|
+          rows_shown_of(bg).times do |py|
             my = off_y + py - (py % tall)
             next if my.negative? || my >= map_h
 

@@ -119,6 +119,9 @@ module VBlank
             # In a game that tells its bar to cover sprites: whether it does. The table then leaves
             # the sprites out of TM from the bar down, so the console draws none on those lines.
             BAR_COVERS = "rt bar covers"
+            # Kept in a game that holds a background above a row, whose runtime then makes the table
+            # that way round (#emit_background_held_above).
+            ROW_HELD = "rt row held"
             BAR_CHANNEL = 0x10 # channel 1's registers, past channel 0's
             # Which layers TM shows on a tiled screen: BG1 and BG2 (a bit each) and the sprites.
             LAYERS_SHOWN = 0x13
@@ -214,8 +217,9 @@ module VBlank
             # The copying engine's mode bit that reads one place over and over.
             DMA_ONE_SOURCE = 0x08
 
-            def reserve(memory, bar: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
+            def reserve(memory, bar: false, row_held: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
                         tile_sizes: false, scene_tiles: false, scene_background_tiles: false, held_runs: {})
+              memory.reserve(ROW_HELD, 2) if row_held
               memory.reserve(SCENE_TILES, SCENE_TILES_BYTES) if scene_tiles
               memory.reserve(SCENE_BACKGROUND_TILES, SCENE_TILES_BYTES) if scene_background_tiles
               memory.reserve(TILE_SIZES, 2) if tile_sizes
@@ -900,6 +904,7 @@ module VBlank
               asm.lda(1)
               asm.sta(asm.abs(bar + BAR_CHANGED))
               asm.rtl
+              emit_background_held_above(asm, memory, r, bar) if memory.reserved?(ROW_HELD)
               if scene_bars
                 # rt_bar_gone(): a scene with no bar has taken over, so from the next blank the
                 # line table stops and both layers and the sprites show on every line.
@@ -919,6 +924,21 @@ module VBlank
               asm.rtl
             end
 
+            # A BACKGROUND HELD ABOVE A ROW (`above_row:`) is the bar's line table turned over: every
+            # layer shows above the row, and from it down that one layer is switched off, so what is
+            # under it shows and nothing the layer's scroll does can reach those rows. No processor
+            # time goes on it once the table is made. rt_background_held_above(layer, row).
+            def emit_background_held_above(asm, memory, r, bar)
+              asm.label("rt_background_held_above")
+              asm.lda(asm.direct(r.call(1)))
+              asm.sta(asm.abs(bar + BAR_TOP))
+              asm.lda(asm.direct(r.call(0)))
+              asm.sta(asm.abs(bar + BAR_LAYER))
+              asm.lda(1)
+              asm.sta(asm.abs(bar + BAR_CHANGED))
+              asm.rtl
+            end
+
             # In the blank, if the bar moved: its table of lines made again, and channel 1 set to
             # write TM from it on every frame from the next. +work+'s words: the bar's layer's bit,
             # TM above the bar, TM from it down.
@@ -928,7 +948,7 @@ module VBlank
               table = bar + BAR_TABLE
               channel = h::DMA_BASE + BAR_CHANNEL
               asm.lda(asm.abs(bar + BAR_CHANGED))
-              if memory.reserved?(BAR_COVERS) || scene_bars # the table's code is past a short branch's reach then
+              if memory.reserved?(BAR_COVERS) || memory.reserved?(ROW_HELD) || scene_bars # the table's code is past a short branch's reach then
                 asm.bne("rt_bar_table_changed")
                 asm.brl("rt_bar_table_kept")
                 asm.label("rt_bar_table_changed")
@@ -964,6 +984,12 @@ module VBlank
                 asm.lda(asm.direct(work))
                 asm.sta(asm.direct(work + 4))
                 asm.label("rt_bar_table_sprites_kept")
+              end
+              if memory.reserved?(ROW_HELD)
+                asm.lda(asm.direct(work + 2))
+                asm.sta(asm.direct(work + 4))
+                asm.lda(LAYERS_SHOWN)
+                asm.sta(asm.direct(work + 2))
               end
               # The lines above the bar, in one step or two; none for a bar at the top.
               asm.ldx(0)

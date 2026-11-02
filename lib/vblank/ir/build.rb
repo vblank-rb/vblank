@@ -646,12 +646,12 @@ module VBlank
       # that say which of them is showing (see Nodes::Background).
       def background(name, tiles:, map:, tile_w:, tile_h:, maps: [], choice: [], layer: nil, scene: nil,
                      affine: false, recolors: [], palettes: [], sets: [], set_starts: [], map_sets: [],
-                     bar_top: nil)
+                     bar_top: nil, above_row: nil)
         Nodes.build(:background, name: name, tiles: tiles, map: map, maps: maps, choice: choice,
                                  recolors: recolors, palettes: palettes,
                                  tile_w: tile_w, tile_h: tile_h, affine: affine, scene: scene,
                                  **layer_field(layer), **tile_set_fields(sets, set_starts, map_sets),
-                                 **(bar_top ? { bar_top: bar_top } : {}))
+                                 **(bar_top ? { bar_top: bar_top } : {}), **(above_row ? { above_row: above_row } : {}))
       end
 
       # The status bar +name+'s top at row +top+ (see Nodes::PlaceBar).

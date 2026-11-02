@@ -123,7 +123,8 @@ module VBlank
           follows_level = songs && Music.follows_level?(program)
           effects = IR::Tunes.effects(program).uniq.size
           samples = Lowering::Sound.samples?(program)
-          bar = Lowering::Picture.status_bar?(program)
+          row_held = Lowering::Picture.background_rows_held?(program)
+          bar = Lowering::Picture.status_bar?(program) || row_held
           bends = Lowering::Picture.bends?(program)
           tile_runs = Lowering::Picture.tile_run_bytes(program)
           held_runs = Lowering::Picture.held_runs(program)
@@ -132,7 +133,7 @@ module VBlank
           dims = Lowering::Picture.fades_to_black?(program)
           math_turns = Lowering::Picture.see_through_turns_solid?(program)
           second_controller = Runtime::Frame.reads_second_controller?(program)
-          Runtime.reserve(memory, second_controller: second_controller, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
+          Runtime.reserve(memory, second_controller: second_controller, row_held: row_held, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
                                   bends: bends, scene_bends: Lowering::Picture.scene_bends?(program), tile_runs: tile_runs,
                                   held_runs: held_runs, holds_music: Lowering::Sound.holds_music?(program),

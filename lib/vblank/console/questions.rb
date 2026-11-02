@@ -53,6 +53,10 @@ module VBlank
         when :held, :pressed then button_question(node, console)
         when :fade
           Question.new(:fade, "This line fades part of the screen", console.blends) if node.under || node.reaches
+        when :background
+          if node.above_row
+            Question.new(:background, "This background shows only above a row (`above_row:`)", console.holds_background_above_row)
+          end
         when :affine_background
           Question.new(:background, "This line turns or resizes a background", console.turns_backgrounds?)
         when :screen
