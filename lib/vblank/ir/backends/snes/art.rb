@@ -90,6 +90,19 @@ module VBlank
           # The same for the sprites' tiles (+scene_tiles+).
           class TooManySpriteTiles < TooMuch; end
 
+          # One screen's sprites do not fit video memory cut into squares of 16×16, in a game whose
+          # screens each keep their own. That screen alone is cut small, and the others keep their
+          # squares: a title's words in squares take half the rows of the sprite table they take
+          # cut small, and it has only 128.
+          class ScreenSpritesFull < TooMuch
+            attr_reader :scene
+
+            def initialize(message, scene:)
+              super(message)
+              @scene = scene
+            end
+          end
+
           # The same for the backgrounds' tiles (+background_tiles+).
           class TooManyBackgroundTiles < TooMuch; end
 
@@ -120,8 +133,10 @@ module VBlank
           # (#with_sprite_tiles_of), and those come in as it takes over (#scene_sprite_tiles). The
           # backgrounds' 1024 tiles go the same way (+background_tiles+, #with_background_tiles_of).
           def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false,
-                         background_tiles: false)
+                         background_tiles: false, small_sprite_scenes: [])
             @sprite_squares = sprite_squares
+            @small_sprite_scenes = small_sprite_scenes
+            @scene_of_sprite_tiles = nil
             @screen_colors = screen_colors
             @sprite_colors = sprite_colors
             @scene_tiles = scene_tiles
@@ -365,7 +380,7 @@ module VBlank
                 end
               end
               squares = cut.to_h { |across, down, places| [[across, down], places] }
-              pieces = @sprite_squares ? square_pieces(squares, image, palette) : []
+              pieces = squares_here? ? square_pieces(squares, image, palette) : []
               pieces += squares.map do |(across, down), places|
                 Piece.new(dx: across, dy: down, tile: sprite_tile_number(tile_bytes(places)), palette: palette)
               end
@@ -490,7 +505,7 @@ module VBlank
           def sprite_image_colors(image)
             return (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }.map { |at| image.color_at(at) }.uniq unless image.pieces
 
-            pieces = (@sprite_squares ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
+            pieces = (squares_here? ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
             pieces.flat_map { |_, _, own| own.bytes }.uniq.reject(&:zero?).map { |place| image.colors.fetch(place) & 0x7FFF }
           end
 
@@ -542,12 +557,21 @@ module VBlank
             shared = [@sprite_tiles, @sprite_tile_numbers, @sprite_square_numbers, @square_tile_numbers]
             @sprite_tiles, @sprite_tile_numbers, @sprite_square_numbers, @square_tile_numbers =
               (@scene_sprite_stores[scene] ||= shared.map(&:dup))
+            @scene_of_sprite_tiles = scene
             begin
               yield
+            rescue TooMuch => e
+              raise unless e.instance_of?(TooMuch) && squares_here?
+
+              raise ScreenSpritesFull.new(e.message, scene: scene)
             ensure
+              @scene_of_sprite_tiles = nil
               @sprite_tiles, @sprite_tile_numbers, @sprite_square_numbers, @square_tile_numbers = shared
             end
           end
+
+          # Are the sprite pictures being made now cut into squares where they can be?
+          def squares_here? = @sprite_squares && !@small_sprite_scenes.include?(@scene_of_sprite_tiles)
 
           def sprite_tile_number(bytes)
             @sprite_tile_numbers[bytes] ||= begin
@@ -592,7 +616,7 @@ module VBlank
           # Its colours are read from the pieces rather than the composed pixels: all of a piece can
           # lie under another, and its tile still needs them.
           def pieced_sprite_picture(name, image, mixed, held, scene, number)
-            given = (@sprite_squares ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
+            given = (squares_here? ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
             palettes = sprite_palettes(scene)
             palette = held || palette_for(palettes, sprite_image_colors(image), "sprites", @sprite_palettes_for.fetch(mixed))
             # Last given first: sprites go into the table back-most first (Lowering::Picture

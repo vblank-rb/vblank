@@ -124,8 +124,9 @@ module VBlank
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own
           # background tiles (Art).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                         background_tiles: false)
+                         background_tiles: false, small_sprite_scenes: [])
             @program = program
+            @small_sprite_scenes = small_sprite_scenes
             @memory = memory
             @sprite_squares = sprite_squares
             @screen_colors = screen_colors

@@ -110,8 +110,9 @@ module VBlank
         # need of and is not built with: it stays the bytes it was. A game whose sprites do not fit
         # the console's 512 tiles has each scene's in video memory while it is up (+sprite_tiles+),
         # before it gives up squares, and the same for 1024 background tiles (+background_tiles+).
+        # A screen that still does not fit is cut small alone (+small_sprite_scenes+).
         def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                  background_tiles: false)
+                  background_tiles: false, small_sprite_scenes: [])
           board = board_for(program)
           memory = Memory.new
           painted = Lowering::Paint.painted?(program)
@@ -143,11 +144,14 @@ module VBlank
                                   scene_background_tiles: background_tiles)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
-                                                background_tiles: background_tiles)
+                                                background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
-                      sprite_tiles: sprite_tiles, background_tiles: background_tiles }
+                      sprite_tiles: sprite_tiles, background_tiles: background_tiles,
+                      small_sprite_scenes: small_sprite_scenes }
           begin
             game = lowering.sections + lowering.art_sections
+          rescue Art::ScreenSpritesFull => e
+            return build(program, title: title, **choices, small_sprite_scenes: [*small_sprite_scenes, e.scene])
           rescue Art::TooManyBackgroundColors
             return build(program, title: title, **choices, screen_colors: true)
           rescue Art::TooManySpriteColors

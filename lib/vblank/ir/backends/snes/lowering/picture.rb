@@ -123,7 +123,7 @@ module VBlank
               refuse_backdrops_of_its_own!
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
-                             background_tiles: @scene_background_tiles)
+                             background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
