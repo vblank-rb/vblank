@@ -14,7 +14,7 @@
       "data": 0
     },
     "breakout@gbc": {
-      "code": 11500,
+      "code": 11511,
       "data": 48036
     },
     "buffered_bounce": {
@@ -30,7 +30,7 @@
       "data": 0
     },
     "chip_band@gbc": {
-      "code": 13382,
+      "code": 13393,
       "data": 13928
     },
     "clock": {
@@ -90,7 +90,7 @@
       "data": 0
     },
     "pacman@gbc": {
-      "code": 8219,
+      "code": 8230,
       "data": 14336
     },
     "parallax": {
@@ -110,7 +110,7 @@
       "data": 0
     },
     "pong_gbc@gbc": {
-      "code": 13571,
+      "code": 13582,
       "data": 28000
     },
     "raycaster": {
@@ -126,7 +126,7 @@
       "data": 0
     },
     "scoreboard@gbc": {
-      "code": 7925,
+      "code": 7936,
       "data": 7664
     },
     "scroll": {
@@ -166,7 +166,7 @@
       "data": 0
     },
     "tower@gbc": {
-      "code": 8593,
+      "code": 8604,
       "data": 15840
     }
   }

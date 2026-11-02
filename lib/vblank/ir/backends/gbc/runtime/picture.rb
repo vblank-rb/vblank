@@ -39,8 +39,8 @@ module VBlank
             # how many, then for each where it is in the console's grid (16 bits), its tile and its
             # colours. A pass that fills it has the list written where it asks, each cell waiting
             # for the display, and goes on keeping. Kept to what the blank has time for beside the sprites
-            # and the rest of the pass's picture: a cell is 28 of the blank's 2280 instruction
-            # cycles, and one it does not reach is lost.
+            # and the rest of the pass's picture: a cell is 35 of the blank's 2280 instruction
+            # cycles, and one it does not reach waits for the display, in the frame it then shows.
             CELLS = "rt picture cells"
             CELLS_KEPT = 64
             # A painted screen has no cells to change, and every byte it keeps low stays out of the
@@ -1090,7 +1090,12 @@ module VBlank
               asm.load(:b, :a)
               asm.xor_a(:a)
               asm.load([:hli], :a)
+              # As long as the blank lasts each goes straight in. What it does not reach waits for
+              # the display, and shows from the rows the display has not drawn yet.
               asm.label("rt_picture_cells_next")
+              asm.load_high(:a, h::LY)
+              asm.cp_a(h::SCREEN_HEIGHT)
+              asm.jump(:c, "rt_cells_write_rest")
               asm.load(:a, [:hli])
               asm.load(:e, :a)
               asm.load(:a, [:hli])
@@ -1453,14 +1458,19 @@ module VBlank
             # not reading, with the interrupt held off from the wait to the write and open between
             # cells. The blank can come while this runs, write the list itself and empty it: writing
             # what is left of the list again changes nothing, since nothing is added to it meanwhile.
-            # Keeps HL, and comes back with A nought, the list's new length.
+            # rt_cells_write_now(A, how many there are) keeps HL, and comes back with A nought, the
+            # list's new length. rt_cells_write_rest is its loop, for the blank's own writing of the
+            # list to hand over to when the blank runs out: HL the next cell, B how many are left.
             def emit_cells_write_now(asm, memory)
               h = Console::GBCHardware
               asm.label("rt_cells_write_now")
               asm.push(:hl)
               asm.load(:b, :a)
               asm.load(:hl, memory[CELLS] + 1)
-              asm.label("rt_cells_write_now_next")
+              asm.call("rt_cells_write_rest")
+              asm.pop(:hl)
+              asm.ret
+              asm.label("rt_cells_write_rest")
               asm.load(:a, [:hli])
               asm.load(:e, :a)
               asm.load(:a, [:hli])
@@ -1482,9 +1492,8 @@ module VBlank
               asm.load_high(h::VBK, :a)
               asm.ei
               asm.dec(:b)
-              asm.jump_relative(:nz, "rt_cells_write_now_next")
+              asm.jump_relative(:nz, "rt_cells_write_rest")
               asm.load([memory[CELLS]], :a)
-              asm.pop(:hl)
               asm.ret
             end
 
