@@ -418,17 +418,16 @@ module VBlank
 
       # The buttons a script can press: the Advance's, since those are the bits key_mask knows.
       # IR::Buttons is every console's, and a script pressing one of the rest would get past
-      # the checks and stop with a Ruby error once it played.
-      def self.pressable_buttons = Console::ADVANCE.buttons
+      # the checks and stop with a Ruby error once it played. The second controller's are the
+      # same buttons, written :p2_start, for a console that has one.
+      def self.pressable_buttons = Console::ADVANCE.buttons + IR::Buttons::SECOND_PLAYER.values_at(*Console::ADVANCE.buttons)
 
       # The buttons as the console reads them: one bit apiece, each named for its button.
-      def self.key_mask(buttons)
-        buttons.reduce(0) { |mask, button| mask | Console::Hardware.const_get(:"KEY_#{button.upcase}") }
-      end
+      def self.key_mask(buttons) = IR::Buttons.mask(buttons)
 
       # +buttons+ once each, in the order the console numbers them — so two holds of the same
       # buttons are the same hold however they were written.
-      def self.in_console_order(buttons) = IR::Buttons::NAMES & buttons
+      def self.in_console_order(buttons) = IR::Buttons::HOLDABLE & buttons
 
       # Buttons kept down for a number of frames — none at all, for a wait. It is also a line
       # of a tape, and says the three things a tape asks of a line: the moments it names

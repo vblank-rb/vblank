@@ -180,7 +180,7 @@ module VBlank
 
         # --- input ---
         held: works("the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has " \
-                    "twelve."),
+                    "twelve. `player: 2` reads the second controller, and `player: :any` reads either."),
         pressed: works("see `held`."),
         if_held: works("see `held`."),
         if_pressed: works("see `held`."),

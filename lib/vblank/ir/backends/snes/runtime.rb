@@ -47,9 +47,9 @@ module VBlank
                       effects: 0, samples: false, bar: false, bends: false, scene_bends: false, tile_runs: [], holds_music: false,
                       changing_colors: false, dims: false, math_turns: false, bar_covers: false, wobbles: false,
                       steps_shapes: false, swells: false, slides: false, sides: false, tile_sizes: false, scene_tiles: false,
-                      scene_background_tiles: false, held_runs: {})
+                      scene_background_tiles: false, held_runs: {}, second_controller: false)
             Paint.reserve(memory, chip: chip) if painted
-            Frame.reserve(memory)
+            Frame.reserve(memory, second_controller: second_controller)
             Picture.reserve(memory, bar: bar, bends: bends, scene_bends: scene_bends, tile_runs: tile_runs, held_runs: held_runs,
                                     math_turns: math_turns,
                                     bar_covers: bar_covers, tile_sizes: tile_sizes, scene_tiles: scene_tiles,
@@ -86,14 +86,15 @@ module VBlank
           # +sprite_squares+ for a game with sprites' squares of 16×16 (Art::Piece#big); +changing_colors+
           # for a game that changes colours as it runs (Tint's rt_colors_hold); +dims+ for a game that
           # fades to black, which sets the display's brightness (Tint); +extra_buttons+ for a
-          # game that can ask about X and Y (Frame.reads_extra_buttons?); +math_turns+ for a game that
-          # turns a see-through layer solid (Picture's rt_see_through_math).
+          # game that can ask about X and Y (Frame.reads_extra_buttons?); +second_controller+ for a game
+          # that reads it (Frame.reads_second_controller?); +math_turns+ for a game that turns a
+          # see-through layer solid (Picture's rt_see_through_math).
           def sections(memory, main:, frame_begins: nil, painted: false, board: Cartridge::SNESROM::PLAIN, saves: false,
                        sound: false, sound_waves: [], music: nil, music_level_at: nil, effects: 0, recordings: [],
                        plays: nil, bar: false, bent: [], banded: false, tile_runs: 0, straight_tile_runs: false, see_through: nil,
                        sprite_depths: false, big_tiles: 0,
                        colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
-                       dims: false, extra_buttons: false, math_turns: false, scene_bars: false,
+                       dims: false, extra_buttons: false, second_controller: false, math_turns: false, scene_bars: false,
                        recording_voices: DSPWrites::RECORDING_VOICES, scene_backdrops: false, held_runs: {})
             chip = board.name == :super_fx
             vectors = W65816.new("runtime vectors", home: :first)
@@ -102,7 +103,8 @@ module VBlank
             Boot.emit(asm, main: main, fast: board.fast)
             Boot.emit_zero(asm)
             Int32.emit(asm, Int32.scratch(memory))
-            Frame.emit(asm, memory, pad: memory.scratch(4), sound: sound, extra_buttons: extra_buttons, dims: dims)
+            Frame.emit(asm, memory, pad: memory.scratch(4), sound: sound, extra_buttons: extra_buttons,
+                                    second_controller: second_controller, dims: dims)
             Blank.emit(asm, memory, Blank.scratch(memory))
             Lists.emit(asm, memory, Lists.scratch(memory))
             Picture.emit(asm, memory, work: memory.scratch(8), painted: painted, bar: bar, bent: bent, banded: banded, tile_runs: tile_runs,

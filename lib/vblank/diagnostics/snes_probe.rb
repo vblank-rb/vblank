@@ -22,7 +22,9 @@ module VBlank
 
       # +keys+ is a button mask (IR::Buttons.mask).
       def step(frames, keys: 0)
-        @core.set_buttons(IR::Buttons::NAMES.select.with_index { |_, bit| keys.anybits?(1 << bit) })
+        first, second = IR::Buttons.by_controller(IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) })
+        @core.set_buttons(first)
+        @core.set_buttons(second, port: 1)
         @last_audio = Array.new(frames) do
           @core.run_frame
           @core.take_audio.pack("s<*")

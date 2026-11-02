@@ -172,7 +172,8 @@ module VBlank
 
         # --- input ---
         held: works("the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has " \
-                    "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them."),
+                    "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` is refused: " \
+                    "this build reads the first pad only."),
         pressed: works("see `held`."),
         if_held: works("see `held`."),
         if_pressed: works("see `held`."),

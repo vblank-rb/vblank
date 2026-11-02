@@ -50,6 +50,7 @@ module VBlank
         color:   ->(v) { v.is_a?(Symbol) || v.is_a?(String) || v.is_a?(Integer) },
         mode:    ->(v) { v.is_a?(Symbol) || v.is_a?(Integer) }, # a screen-mode name or raw register value
         tone:    ->(v) { v.is_a?(Symbol) || v.is_a?(Integer) }, # a defined-sound name or raw frequency
+        player:  ->(v) { v.is_a?(Symbol) || v.is_a?(Integer) }, # whose controller: a number, or :any
         list:    ->(v) { v.is_a?(Array) },                     # a case dispatch table
         score:   ->(v) { v.is_a?(Array) && v.all?(Audio::Music::Part) }, # a song's parts, each resolved
         save:    ->(v) { v.is_a?(Array) && v.all?(SavedVar) },    # the variables that survive power-off

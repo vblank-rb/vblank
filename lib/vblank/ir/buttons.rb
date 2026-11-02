@@ -28,6 +28,18 @@ module VBlank
       # is how a game leaves an attract screen.
       ANY = :any
 
+      # THE SECOND PLAYER'S BUTTONS. A game asks with `held(:left, player: 2)`, and whoever plays
+      # the game for it (a test, a tape) holds :p2_left. They are names of their own so that a
+      # list of buttons held stays one plain list, whichever controller each is on, on its way
+      # through every run to the console.
+      SECOND_PLAYER = NAMES.to_h { |name| [name, :"p2_#{name}"] }.freeze
+
+      # Every button a player can hold, on either controller.
+      HOLDABLE = (NAMES + SECOND_PLAYER.values).freeze
+
+      # In a mask, the second player's buttons sit this many bits above the first's.
+      SECOND_PLAYER_SHIFT = 16
+
       module_function
 
       # Whether +name+ is a button a program can read.
@@ -38,10 +50,36 @@ module VBlank
       # Whether `held` and `pressed` can ask about +name+: a button, or any of them.
       def readable?(name) = known?(name) || name == ANY
 
+      # Whether a test or a tape can hold +name+: a button of either player.
+      def holdable?(name) = HOLDABLE.include?(name)
+
+      # Whether `held` and `pressed` can ask about +player+: the first, the second, or either.
+      def player?(player) = [1, 2, ANY].include?(player)
+
+      # The first player's buttons among +held+, and then the second's, by the plain names each
+      # has on its own controller: what a console's two ports are told.
+      def by_controller(held)
+        first = held & NAMES
+        [first, SECOND_PLAYER.select { |_name, theirs| held.include?(theirs) }.keys]
+      end
+
+      # Every name a test of +button+ for +player+ looks for among the buttons held: `pressed(:any,
+      # player: 2)` is all of the second player's, and `held(:left, player: ANY)` is two.
+      def names_asked(button, player)
+        buttons = button == ANY ? NAMES : [button]
+        first = player == 2 ? [] : buttons
+        second = player == 1 ? [] : SECOND_PLAYER.values_at(*buttons)
+        first + second
+      end
+
       # +held+ buttons as one number, a bit each in the order NAMES lists them — for the first ten
       # the order the Advance's key register has them in, which the emulator's keys and the native
-      # lowering's runtime both read.
-      def mask(held) = Array(held).sum { |button| 1 << NAMES.index(button) }
+      # lowering's runtime both read — and the second player's the same, SECOND_PLAYER_SHIFT up.
+      def mask(held) = Array(held).reduce(0) { |bits, button| bits | (1 << bit_of(button)) }
+
+      def bit_of(button)
+        NAMES.index(button) || (SECOND_PLAYER_SHIFT + SECOND_PLAYER.values.index(button))
+      end
     end
   end
 end

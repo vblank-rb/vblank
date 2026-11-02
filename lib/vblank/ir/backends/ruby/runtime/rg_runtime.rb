@@ -5,8 +5,10 @@
 
 # Every button a program can name (IR::Buttons), a bit each. That is the same ten on every
 # console: a console with fewer has a build that refuses the ones it lacks before there is a game
-# to play, so nothing here needs to know which console it is.
-RG_ALL_BUTTONS = 0xFFF
+# to play, so nothing here needs to know which console it is. The second player's are the same
+# bits 16 higher (IR::Buttons::SECOND_PLAYER_SHIFT).
+RG_ONE_PLAYERS_BUTTONS = 0xFFF
+RG_ALL_BUTTONS = RG_ONE_PLAYERS_BUTTONS | (RG_ONE_PLAYERS_BUTTONS << 16)
 RG_MAX_TIMERS = 32
 RG_SECONDS_A_DAY = 86400
 RG_UNDATED_FIRST_DAY = 10957 # 1 January 2000, in days from the start of 1970
@@ -66,16 +68,20 @@ def rg_buttons_held_from_power_on(now)
   @rg_held = now & RG_ALL_BUTTONS
 end
 
-# A button's bit in +buttons+, or any of them for -1. The buttons are numbered in the order the
-# console's key register holds them: a, b, select, start, right, left, up, down, r, l.
+# A button's bit in +buttons+, or any of the first player's for -1. The buttons are numbered in the
+# order the console's key register holds them: a, b, select, start, right, left, up, down, r, l.
 def rg_button_down(buttons, button)
-  return buttons != 0 ? 1 : 0 if button < 0
+  return (buttons & RG_ONE_PLAYERS_BUTTONS) != 0 ? 1 : 0 if button < 0
 
   (buttons >> button) & 1
 end
 
 def rg_held(button) = rg_button_down(@rg_held, button)
 def rg_pressed(button) = rg_button_down(@rg_pressed, button)
+
+# Whether any of the buttons in +mask+ is down, for a test that names a player.
+def rg_held_among(mask) = (@rg_held & mask) != 0 ? 1 : 0
+def rg_pressed_among(mask) = (@rg_pressed & mask) != 0 ? 1 : 0
 
 # --- frames ---
 

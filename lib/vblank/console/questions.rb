@@ -50,8 +50,7 @@ module VBlank
             Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
                          console.changes_cells_while_drawing)
           end
-        when :held, :pressed
-          Question.new(:held, "This line reads the #{node.button.inspect} button", button?(node.button, console))
+        when :held, :pressed then button_question(node, console)
         when :fade
           Question.new(:fade, "This line fades part of the screen", console.blends) if node.under || node.reaches
         when :affine_background
@@ -78,6 +77,17 @@ module VBlank
         else
           Question.new(:sample, "This game plays a recording", nil)
         end
+      end
+
+      # The button a line reads, and then the controller. `player: :any` asks nothing of a console
+      # with one controller: that one is every controller it has.
+      def button_question(node, console)
+        has_button = button?(node.button, console)
+        if has_button && node.player == 2
+          return Question.new(:held, "This line reads the second controller (`player: 2`)", console.controllers > 1)
+        end
+
+        Question.new(:held, "This line reads the #{node.button.inspect} button", has_button)
       end
 
       # Whether +console+ has the button +button+ names; any button at all, every console has.

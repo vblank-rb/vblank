@@ -52,6 +52,21 @@ class TestSNESVerifier < Minitest::Test
     assert_equal 50, reader.sprites.first.x
   end
 
+  def test_a_step_holds_the_second_controllers_buttons
+    built = VBlank.build("JOINS", console: :snes, out: StringIO.new, err: StringIO.new) do
+      joins = var :joins, 0
+      game_loop { joins += 1 if pressed(:start, player: 2) }
+    end
+    reader = Verifier.new(built, frames: 8, vars: built.var_addresses)
+    reader.step(4, keys: VBlank::IR::Buttons.mask(:start))
+
+    assert_equal 0, reader.var(:joins)
+
+    reader.step(4, keys: VBlank::IR::Buttons.mask(:p2_start))
+
+    assert_equal 1, reader.var(:joins)
+  end
+
   def test_it_counts_the_passes_the_console_finished
     shorter = Verifier.new(rom, frames: 8).passes
     longer = Verifier.new(rom, frames: 18).passes

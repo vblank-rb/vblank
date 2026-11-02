@@ -1146,14 +1146,15 @@ module VBlank
 
       # --- input reads (value operands, e.g. inside an `if_` condition) ---
 
-      # 1 while +button+ is down, else 0.
-      def held(button)
-        Nodes.build(:held, button: button)
+      # 1 while +button+ is down on +player+'s controller (1, 2, or Buttons::ANY), else 0.
+      def held(button, player: 1)
+        Nodes.build(:held, button: button, player: player)
       end
 
-      # 1 only on the frame +button+ first goes down (a fresh press), else 0.
-      def pressed(button)
-        Nodes.build(:pressed, button: button)
+      # 1 only on the frame +button+ first goes down (a fresh press) on +player+'s controller,
+      # else 0.
+      def pressed(button, player: 1)
+        Nodes.build(:pressed, button: button, player: player)
       end
 
       # The scanline the display is drawing right now (0..227) — a hardware-only

@@ -69,6 +69,12 @@ module VBlank
             # one that went down on any of them since the last wait ended.
             PAD_HELD = "rt pad held"
             PAD_PRESSED = "rt pad pressed"
+            # The second controller's of each of those, in a game that reads it.
+            SECOND_HELD = "rt second held"
+            SECOND_SEEN = "rt second seen"
+            SECOND_PRESSED = "rt second pressed"
+            SECOND_PAD_HELD = "rt second pad held"
+            SECOND_PAD_PRESSED = "rt second pad pressed"
             # 1 once the interrupt has come since the game began to wait.
             VBLANK = "rt vblank"
             # 1 once the screen is on: before the end of the first pass it is off.
@@ -94,7 +100,13 @@ module VBlank
               program.walk.any? { |node| %i[held pressed].include?(node.kind) && (EXTRA_BUTTONS + [Buttons::ANY]).include?(node.button) }
             end
 
-            def reserve(memory)
+            # Whether +program+ reads the second controller, on its own or as either of the two. A
+            # game that never does is built without it, the same bytes as before there was one.
+            def reads_second_controller?(program)
+              program.walk.any? { |node| %i[held pressed].include?(node.kind) && node.player != 1 }
+            end
+
+            def reserve(memory, second_controller: false)
               memory.reserve(STATE, 2)
               memory.reserve(WAITING, 2)
               memory.reserve(PASSES, 4)
@@ -114,12 +126,15 @@ module VBlank
               memory.reserve(PAD_PRESSED, 2)
               memory.reserve(VBLANK, 2)
               memory.reserve(DISPLAY_ON, 2)
+              return unless second_controller
+
+              [SECOND_HELD, SECOND_SEEN, SECOND_PRESSED, SECOND_PAD_HELD, SECOND_PAD_PRESSED].each { |name| memory.reserve(name, 2) }
             end
 
             # +pad+ is two words of the direct page, the same on the game's page and the
             # interrupt's, that reading the controller works in. +sound+ for a game that makes sound,
             # whose wait ends in Sound's rt_sound_frame.
-            def emit(asm, memory, pad:, sound: false, extra_buttons: false, dims: false)
+            def emit(asm, memory, pad:, sound: false, extra_buttons: false, second_controller: false, dims: false)
               h = Console::SNESHardware
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
@@ -237,7 +252,7 @@ module VBlank
               asm.label("rt_frame_begins_skipped")
               asm.rts
 
-              emit_buttons(asm, memory, pad, extra_buttons)
+              emit_buttons(asm, memory, pad, extra_buttons, second_controller)
               emit_stopping(asm, memory)
             end
 
@@ -270,53 +285,25 @@ module VBlank
             # come out laid out as the console's own automatic read lays them out (JOYPAD_BITS). That
             # read happens by itself at the start of the blank and takes three lines; reading by hand
             # takes a few dozen instructions and needs nothing waited for.
-            def emit_buttons(asm, memory, pad, extra_buttons)
+            #
+            # The second controller is the same read through JOYSER1, the next port along. Both
+            # controllers take hold of their buttons from the one write to JOYSER0, and each read
+            # here is two bytes wide, which walks the next port on too: so the read of the first
+            # controller has already used the second's up, and the second's read starts by telling
+            # them both to take hold again.
+            def emit_buttons(asm, memory, pad, extra_buttons, second_controller)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
-              joyser = 0x4016
               # rt_buttons_now: A = the buttons held now, a bit each in IR::Buttons's order.
-              asm.label("rt_buttons_now")
-              asm.sep(0x20)
-              asm.lda(1)
-              asm.sta(asm.abs(joyser))
-              asm.stz(asm.abs(joyser))
-              asm.rep(0x20)
-              asm.stz(asm.direct(pad))
-              asm.ldx(16)
-              asm.label("rt_buttons_now_bit")
-              asm.lda(asm.abs(joyser))
-              asm.lsr
-              asm.rol(asm.direct(pad))
-              asm.dex
-              asm.bne("rt_buttons_now_bit")
-              asm.stz(asm.direct(pad + 2))
-              BUTTON_BITS.each do |name, (from, to)|
-                next if EXTRA_BUTTONS.include?(name) && !extra_buttons
-
-                skip = "rt_buttons_now_not_#{to}"
-                asm.lda(asm.direct(pad))
-                asm.bit(from)
-                asm.beq(skip)
-                asm.lda(asm.direct(pad + 2))
-                asm.ora(to)
-                asm.sta(asm.direct(pad + 2))
-                asm.label(skip)
-              end
-              asm.lda(asm.direct(pad + 2))
-              asm.rts
+              emit_controller_read(asm, pad, "rt_buttons_now", 0x4016, extra_buttons)
+              emit_controller_read(asm, pad, "rt_second_buttons_now", 0x4017, extra_buttons) if second_controller
 
               # In the interrupt, every frame: the buttons held now, and every one that went down
               # since the frame before added to those pressed during the pass.
               asm.label("rt_pad_read")
-              asm.jsr(asm.abs("rt_buttons_now"))
-              asm.sta(asm.direct(pad))
-              asm.lda(at.call(SEEN))
-              asm.eor(0xFFFF)
-              asm.and_a(asm.direct(pad))
-              asm.ora(at.call(PAD_PRESSED))
-              asm.sta(at.call(PAD_PRESSED))
-              asm.lda(asm.direct(pad))
-              asm.sta(at.call(PAD_HELD))
-              asm.sta(at.call(SEEN))
+              emit_controller_update(asm, at, pad, "rt_buttons_now", SEEN, PAD_PRESSED, PAD_HELD)
+              if second_controller
+                emit_controller_update(asm, at, pad, "rt_second_buttons_now", SECOND_SEEN, SECOND_PAD_PRESSED, SECOND_PAD_HELD)
+              end
               asm.rts
 
               # Where a pass's wait ends: the buttons for the pass about to start, from every frame
@@ -332,6 +319,13 @@ module VBlank
               asm.stz(at.call(PAD_PRESSED))
               asm.lda(at.call(PAD_HELD))
               asm.sta(at.call(HELD))
+              if second_controller
+                asm.lda(at.call(SECOND_PAD_PRESSED))
+                asm.sta(at.call(SECOND_PRESSED))
+                asm.stz(at.call(SECOND_PAD_PRESSED))
+                asm.lda(at.call(SECOND_PAD_HELD))
+                asm.sta(at.call(SECOND_HELD))
+              end
               asm.lda(at.call(FRAMES))
               asm.tay
               asm.sep(0x20)
@@ -367,7 +361,60 @@ module VBlank
               asm.label("rt_buttons_from_power_on")
               asm.jsr(asm.abs("rt_buttons_now"))
               asm.sta(at.call(HELD))
+              if second_controller
+                asm.jsr(asm.abs("rt_second_buttons_now"))
+                asm.sta(at.call(SECOND_HELD))
+              end
               asm.rtl
+            end
+
+            # The routine at +label+: A = the buttons held now on the controller read through
+            # +port+, a bit each in IR::Buttons's order.
+            def emit_controller_read(asm, pad, label, port, extra_buttons)
+              joyser = 0x4016
+              asm.label(label)
+              asm.sep(0x20)
+              asm.lda(1)
+              asm.sta(asm.abs(joyser))
+              asm.stz(asm.abs(joyser))
+              asm.rep(0x20)
+              asm.stz(asm.direct(pad))
+              asm.ldx(16)
+              asm.label("#{label}_bit")
+              asm.lda(asm.abs(port))
+              asm.lsr
+              asm.rol(asm.direct(pad))
+              asm.dex
+              asm.bne("#{label}_bit")
+              asm.stz(asm.direct(pad + 2))
+              BUTTON_BITS.each do |name, (from, to)|
+                next if EXTRA_BUTTONS.include?(name) && !extra_buttons
+
+                skip = "#{label}_not_#{to}"
+                asm.lda(asm.direct(pad))
+                asm.bit(from)
+                asm.beq(skip)
+                asm.lda(asm.direct(pad + 2))
+                asm.ora(to)
+                asm.sta(asm.direct(pad + 2))
+                asm.label(skip)
+              end
+              asm.lda(asm.direct(pad + 2))
+              asm.rts
+            end
+
+            # One controller's frame: call +reader+, and keep what it says.
+            def emit_controller_update(asm, at, pad, reader, seen, pressed, held)
+              asm.jsr(asm.abs(reader))
+              asm.sta(asm.direct(pad))
+              asm.lda(at.call(seen))
+              asm.eor(0xFFFF)
+              asm.and_a(asm.direct(pad))
+              asm.ora(at.call(pressed))
+              asm.sta(at.call(pressed))
+              asm.lda(asm.direct(pad))
+              asm.sta(at.call(held))
+              asm.sta(at.call(seen))
             end
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is

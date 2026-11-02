@@ -13,7 +13,8 @@
 
 const rg_driver *rg_active_driver;
 
-#define ALL_BUTTONS 0xFFFu
+#define ONE_PLAYERS_BUTTONS 0xFFFu
+#define ALL_BUTTONS (ONE_PLAYERS_BUTTONS | (ONE_PLAYERS_BUTTONS << 16)) /* IR::Buttons::SECOND_PLAYER_SHIFT */
 
 static uint32_t held;    /* buttons down now, a bit each */
 static uint32_t seen;    /* ...and at the last frame boundary, to tell a press from a hold */
@@ -295,11 +296,15 @@ void rg_dump_list(const struct rg_list *list) {
   if (rg_active_driver->dump_list) rg_active_driver->dump_list(list);
 }
 
-/* A button's bit in +buttons+, or any of them for -1. */
+/* A button's bit in +buttons+, or any of the first player's for -1. */
 static int32_t button_down(uint32_t buttons, int32_t button) {
-  if (button < 0) return buttons != 0;
+  if (button < 0) return (buttons & ONE_PLAYERS_BUTTONS) != 0;
   return (int32_t)((buttons >> button) & 1u);
 }
 
 int32_t rg_held(int32_t button) { return button_down(held, button); }
 int32_t rg_pressed(int32_t button) { return button_down(pressed, button); }
+
+/* Whether any of the buttons in +mask+ is down, for a test that names a player. */
+int32_t rg_held_among(int32_t mask) { return (held & (uint32_t)mask) != 0; }
+int32_t rg_pressed_among(int32_t mask) { return (pressed & (uint32_t)mask) != 0; }

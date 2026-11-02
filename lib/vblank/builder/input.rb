@@ -10,9 +10,11 @@ module VBlank
       # Run the block only while a button is held down.
       #
       # @param button [Symbol] :up, :down, :left, :right, :a, :b, :start, :select, :l, :r
-      def if_held(button, &block)
+      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
+      def if_held(button, player: 1, &block)
         check_button!(button)
-        push_container(Build.if_(Build.held(button))) do
+        check_player!(player)
+        push_container(Build.if_(Build.held(button, player: player))) do
           run_block(&block)
         end
       end
@@ -21,30 +23,36 @@ module VBlank
       # frame, up the previous one.
       #
       # @param button [Symbol] button name
-      def if_pressed(button, &block)
+      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
+      def if_pressed(button, player: 1, &block)
         check_button!(button)
-        push_container(Build.if_(Build.pressed(button))) do
+        check_player!(player)
+        push_container(Build.if_(Build.pressed(button, player: player))) do
           run_block(&block)
         end
       end
 
       # A {Condition} that holds while a button is down — branch on it with
-      # `if held(:up)`.
+      # `if held(:up)`, or `if held(:up, player: 2)` for the second controller.
       #
       # @param button [Symbol] button name
-      def held(button)
+      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
+      def held(button, player: 1)
         reject_block!(:held, button) if block_given?
         check_button!(button)
-        DSL::Condition.new(self, Build.held(button))
+        check_player!(player)
+        DSL::Condition.new(self, Build.held(button, player: player))
       end
 
       # A {Condition} true on the frame a button is first pressed (edge-detected).
       #
       # @param button [Symbol] button name
-      def pressed(button)
+      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
+      def pressed(button, player: 1)
         reject_block!(:pressed, button) if block_given?
         check_button!(button)
-        DSL::Condition.new(self, Build.pressed(button))
+        check_player!(player)
+        DSL::Condition.new(self, Build.pressed(button, player: player))
       end
 
       # SHAKE THE PLAYER'S HANDS for +frames+ frames, as a ball hitting a bumper does. +pattern+
@@ -103,6 +111,13 @@ module VBlank
         return if IR::Buttons.readable?(button)
 
         raise ArgumentError, "#{button} is not a known button. Use one of these: :a :b :select :start :right :left :up :down :r :l."
+      end
+
+      def check_player!(player)
+        return if IR::Buttons.player?(player)
+
+        raise ArgumentError, "`player: #{player.inspect}` is not a player. Use 1 for the first controller, " \
+                             "2 for the second, or :any for either."
       end
 
       # held/pressed hand back a Condition and take no block. A block here means a

@@ -692,7 +692,7 @@ module VBlank
         include Node
         kind :held
         category :value
-        operands button: :option
+        operands button: :option, player: :player
       end
 
       class If
@@ -973,7 +973,7 @@ module VBlank
         include Node
         kind :pressed
         category :value
-        operands button: :option
+        operands button: :option, player: :player
       end
 
       # The whole program. +console+ names the console it was built for (see Console::Kit), whose

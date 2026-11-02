@@ -1242,24 +1242,28 @@ module VBlank
           end
 
           # The buttons held, or pressed, through the pass: a bit each, in IR::Buttons's order, and
-          # any of them for Buttons::ANY.
-          def value_of_held(node) = emit_button_truth(Runtime::Frame::HELD, node.button)
-          def value_of_pressed(node) = emit_button_truth(Runtime::Frame::PRESSED, node.button)
+          # any of them for Buttons::ANY. The second controller's are a word of their own, with
+          # the same bits, and either controller is the two words together.
+          def value_of_held(node) = emit_button_truth(Runtime::Frame::HELD, Runtime::Frame::SECOND_HELD, node)
+          def value_of_pressed(node) = emit_button_truth(Runtime::Frame::PRESSED, Runtime::Frame::SECOND_PRESSED, node)
 
-          def emit_button_truth(which, button)
-            mask = if button == Buttons::ANY
-                     Buttons.mask(Console::SUPER_NINTENDO.buttons)
-                   else
-                     1 << (Buttons::NAMES.index(button) or raise LoweringError, "unknown button #{button.inspect}")
-                   end
+          def emit_button_truth(first, second, node)
+            mask = button_truth_mask(node.button)
             nought = fresh("not_down")
-            @asm.lda(@asm.abs(@memory[which]))
+            @asm.lda(@asm.abs(@memory[node.player == 2 ? second : first]))
+            @asm.ora(@asm.abs(@memory[second])) if node.player == Buttons::ANY
             @asm.and_a(mask)
             @asm.beq(nought)
             @asm.lda(1)
             @asm.label(nought)
             @asm.sta(@asm.direct(R0))
             @asm.stz(@asm.direct(R0 + 2))
+          end
+
+          def button_truth_mask(button)
+            return Buttons.mask(Console::SUPER_NINTENDO.buttons) if button == Buttons::ANY
+
+            1 << (Buttons::NAMES.index(button) or raise LoweringError, "unknown button #{button.inspect}")
           end
 
           def load_variable(name)

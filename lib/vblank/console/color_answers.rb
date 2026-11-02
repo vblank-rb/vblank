@@ -212,7 +212,8 @@ module VBlank
 
         # --- input ---
         held: works("the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no " \
-                    "shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button."),
+                    "shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button. " \
+                    "`player: 2` is refused: it has one controller."),
         pressed: works("see `held`."),
         if_held: works("see `held`."),
         if_pressed: works("see `held`."),

@@ -3456,11 +3456,11 @@ module VBlank
         end
 
         def value_of_held(node)
-          flag_int(button_held?(node.button))
+          flag_int(button_down_among?(@held, node.button, node.player))
         end
 
         def value_of_pressed(node)
-          flag_int(button_pressed?(node.button))
+          flag_int(button_down_among?(@pressed, node.button, node.player))
         end
 
         # A chance holds when the random draw lands below the threshold.
@@ -3569,20 +3569,13 @@ module VBlank
         # and nothing was down before the first frame. So a button held while the power comes
         # on is one press on the first frame, and before any frame has been reached — the
         # setting up above a game loop — nothing is pressed yet.
-        def button_held?(button)
-          return !@held.empty? if button == IR::Buttons::ANY
-
-          @held.include?(check_button!(button))
-        end
-
-        def button_pressed?(button)
-          return !@pressed.empty? if button == IR::Buttons::ANY
-
-          @pressed.include?(check_button!(button))
+        def button_down_among?(buttons, button, player)
+          check_button!(button) unless button == IR::Buttons::ANY
+          IR::Buttons.names_asked(button, player).any? { |name| buttons.include?(name) }
         end
 
         def to_button_set(buttons)
-          buttons.each { |b| check_button!(b) }
+          buttons.each { |b| check_holdable_button!(b) }
           Set.new(buttons)
         end
 
@@ -3594,6 +3587,13 @@ module VBlank
 
           raise ProgramError,
                 "unknown button #{button.inspect} — known buttons are #{IR::Buttons::NAMES.join(', ')}"
+        end
+
+        def check_holdable_button!(button)
+          return button if IR::Buttons.holdable?(button)
+
+          raise ProgramError,
+                "unknown button #{button.inspect} — known buttons are #{IR::Buttons::HOLDABLE.join(', ')}"
         end
 
         def resolve_color(color)

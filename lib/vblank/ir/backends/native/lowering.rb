@@ -646,8 +646,16 @@ module VBlank
              assign(IR::Clock::OFFSET_SECONDS, call("rg_clock_kept_seconds", variable(IR::Clock::OFFSET_SECONDS)))]
           end
 
-          def value_of_held(node) = call("rg_held", C::Int.new(button_number(node.button)))
-          def value_of_pressed(node) = call("rg_pressed", C::Int.new(button_number(node.button)))
+          def value_of_held(node) = button_call("rg_held", node)
+          def value_of_pressed(node) = button_call("rg_pressed", node)
+
+          # The first player's button is a bit to look at; anything that names another player is
+          # a mask of the buttons it asks about (IR::Buttons.names_asked).
+          def button_call(reader, node)
+            return call(reader, C::Int.new(button_number(node.button))) if node.player == 1
+
+            call("#{reader}_among", C::Int.new(Buttons.mask(Buttons.names_asked(node.button, node.player))))
+          end
 
           # A chance holds when the random draw lands below the threshold.
           def value_of_chance(node) = call("rg_lt", value(node.draw), C::Int.new(node.percent))

@@ -131,7 +131,8 @@ module VBlank
           changing_colors = screen_colors || sprite_colors || scene_backdrops || Lowering::Picture.changing_colors?(program)
           dims = Lowering::Picture.fades_to_black?(program)
           math_turns = Lowering::Picture.see_through_turns_solid?(program)
-          Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
+          second_controller = Runtime::Frame.reads_second_controller?(program)
+          Runtime.reserve(memory, second_controller: second_controller, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
                                   bends: bends, scene_bends: Lowering::Picture.scene_bends?(program), tile_runs: tile_runs,
                                   held_runs: held_runs, holds_music: Lowering::Sound.holds_music?(program),
@@ -181,6 +182,7 @@ module VBlank
                                              sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
                                              sprite_squares: lowering.sprite_squares?, changing_colors: changing_colors, dims: dims,
                                              extra_buttons: Runtime::Frame.reads_extra_buttons?(program),
+                                             second_controller: second_controller,
                                              math_turns: math_turns, scene_bars: lowering.scene_bars?,
                                              recording_voices: recording_voices, scene_backdrops: scene_backdrops)
           linked =Linker.new(runtime + game, most_banks: board.most_banks).link

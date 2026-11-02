@@ -197,7 +197,11 @@ module VBlank
           def power_on = set_buttons(@held)
 
           # The buttons a game names, on the controller's: the same names, A, B, the shoulders L and R.
-          def set_buttons(buttons) = @core.set_buttons(buttons.map(&:to_sym) - [Buttons::ANY])
+          def set_buttons(buttons)
+            first, second = Buttons.by_controller(buttons.map(&:to_sym))
+            @core.set_buttons(first)
+            @core.set_buttons(second, port: 1)
+          end
 
           # A pass's moment waits for the count of its sounds (#sounds_counted?), but for the moment
           # the run ends on.
