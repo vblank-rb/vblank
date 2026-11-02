@@ -166,6 +166,8 @@ module VBlank
                           "background in it: on a Game Boy Color, a sprite behind a background is behind the " \
                           "bar too."),
         canvas: works("its colours are four, as a background's tiles' are."),
+        tile_pictures: works("its colours are four, and each picture of 8×8 goes through a list, so a change costs what " \
+                             "`changed` costs."),
         layers: works("a layer holds a background or sprites; a background in front of a sprite " \
                       "works. `transparency:` is refused: a Game Boy Color cannot show one layer " \
                       "through another."),

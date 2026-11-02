@@ -44,6 +44,10 @@ class TestMadeNames < Minitest::Test
     painted_copies: {},
     canvas_part: { canvas: :box, part: :pixel },
     canvas_font: { font: :tiny, part: :rows },
+    list_text_part: { number: 1, part: :line },
+    text_points_routine: {},
+    buffered_text_points_routine: {},
+    tile_pictures_part: { group: :water, part: :shown },
     draw_order: { number: 1, part: :sort },
   }.freeze
 

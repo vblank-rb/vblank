@@ -30,10 +30,10 @@ class TestIRContracts < Minitest::Test
     assert_equal advance.screen_size, [VBlank::Console::Hardware::SCREEN_WIDTH, VBlank::Console::Hardware::SCREEN_HEIGHT]
   end
 
-  # Before it plays a program, the interpreter's screen is the one a program that names no
-  # console is played on.
-  def test_an_interpreter_that_has_played_nothing_has_the_advances_screen
+  # Before it plays a program, the interpreter has no console, so it has no screen of any size: the
+  # program says which, and no console stands in for one a program does not name.
+  def test_an_interpreter_that_has_played_nothing_has_no_screen
     screen = VBlank::IR::Backends::Reference.new.screen
-    assert_equal [240, 160], [screen.width, screen.height]
+    assert_equal [0, 0], [screen.width, screen.height]
   end
 end

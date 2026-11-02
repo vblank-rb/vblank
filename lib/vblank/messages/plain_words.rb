@@ -64,6 +64,7 @@ module VBlank
                    __mix_routine: "mixing the sound that is playing",
                    __clock_chip_at_power_on: "asking the cartridge's clock chip whether it is there and set",
                    __clock_chip_each_pass: "reading the date and time off the cartridge's clock chip",
+                   __clock_chip_first_reading: "asking the clock chip the time at the first reading of a pass",
                    __clock_chip_set: "setting the clock to the time the game gave",
                    __clock_chip_add_offset: "adding the time the game set to the clock's reading",
                    __clock_chip_send: "sending the clock chip a command",

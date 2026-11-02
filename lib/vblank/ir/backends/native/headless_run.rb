@@ -315,6 +315,7 @@ module VBlank
           def frames_setting_up(*) = raise(RunComparison::AsksTheInterpreter, "how many frames setting up takes (`frames_setting_up`)")
           def log = refuse_unanswered!(:log)
           def screen_mode = refuse_unanswered!(:screen_mode)
+          def sprites_by_depth = refuse_unanswered!(:sprites_by_depth)
           def write_save_copy(*) = refuse_unanswered!(:write_save_copy)
           def write_save_vars(*) = refuse_unanswered!(:write_save_vars)
 

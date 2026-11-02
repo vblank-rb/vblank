@@ -49,6 +49,14 @@
       "code": 11656,
       "data": 0
     },
+    "flowers": {
+      "code": 2640,
+      "data": 0
+    },
+    "flowers@gbc": {
+      "code": 6630,
+      "data": 4800
+    },
     "font_styles": {
       "code": 2832,
       "data": 0
