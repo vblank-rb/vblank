@@ -165,7 +165,7 @@ module VBlank
                   @art.sprite_picture(name, Assets::Image.of(picture_named(name)), mixed: mixed.include?(name))
                 end
               end
-              @tile_runs.each_index { |number| make_run_art(number) unless @run_places[number] }
+              @tile_runs.each_with_index { |run, number| make_run_art(number) unless @run_places[number] || colors_scene_of_run(run) }
               make_recolored_art(mixed)
             end
 
@@ -220,15 +220,19 @@ module VBlank
             # scene's colours come in again each time it arrives (#emit_scene_colors).
             def emit_background_colors(node)
               which = node.which
-              told = @background_colors_told[node.name]
-              if told
-                statement(Build.set(told, which))
-                which = Build.var_ref(told)
+              choice = @background_color_choices[node.name]
+              if choice
+                statement(Build.set(choice, which))
+                which = Build.var_ref(choice)
               end
               for_background(node) { |bg| emit_background_colors_on(which, bg) }
             end
 
+            # In a game of screen colours each declaration has lists of its own, so one the game never
+            # draws with others has none to write, and a set of none is a set the routine cannot count.
             def emit_background_colors_on(which, bg)
+              return if @screen_colors && Array(bg.recolors).empty?
+
               label = held_colors_label([:background, bg.object_id]) do
                 [nil, *bg.recolors.each_index].map { |step| background_held_set(bg, step) }
               end
@@ -238,9 +242,9 @@ module VBlank
             # Each background a scene shows and draws with other colours, in a game of screen colours:
             # the number it was told last, by its name, from power-on the one naming none, as the
             # interpreter keeps it by name (Reference @bg_colors).
-            def keep_background_colors_told
+            def keep_background_color_choices
               recolored = @screen_colors ? backgrounds_declared.select { |bg| bg.scene && !Array(bg.recolors).empty? } : []
-              @background_colors_told = recolored.map(&:name).uniq.to_h do |name|
+              @background_color_choices = recolored.map(&:name).uniq.to_h do |name|
                 [name, keep_local(:"colors_of_#{name}", start: Build::NO_RECOLOR)]
               end
             end
@@ -256,27 +260,46 @@ module VBlank
             # of their own, in a game of screen colours.
             def held_lists_key(bg) = [colors_scene_of(bg), bg.name]
 
+            # The one scene whose background shows the tiles of +run+, whose colours it is then drawn
+            # from; nil where every screen keeps them, for a run two scenes show as well as one that
+            # what every screen shows draws from. A palette a run takes has its colours in its places, so
+            # two scenes can only share one by both keeping it.
+            def colors_scene_of_run(run)
+              return nil if !@screen_colors || run.picture
+
+              scenes = backgrounds_declared.select { |bg| bg.tiles.intersect?(run.tiles) }.map(&:scene).uniq
+              scenes.first if scenes.one?
+            end
+
             # THE COLOURS EVERY SCREEN KEEPS, in a game of screen colours: all of them made before any
-            # scene takes its copy (Art#background_palettes), every tile a background has among them,
-            # since one the game only changes a cell to at run time may be drawn on any screen.
-            def make_every_screens_colors
+            # scene takes its copy (Art#background_palettes): each tile on the maps of what every screen
+            # shows, and each one the game changes a cell of it to. A tile of its set that is on neither
+            # is never drawn, so it takes no colours. Then the runs a scene keeps to itself, which are
+            # the first to take a copy.
+            def make_shared_background_colors
               return unless @screen_colors
 
-              backgrounds_declared.reject(&:scene).each { |bg| bg.tiles.each_index { |tile| cell_of(bg, tile) } }
+              backgrounds_declared.reject(&:scene).each do |bg|
+                shown = bg.every_map.flat_map { |map| map.flat_map { |row| Array(row) } }
+                changed = @program.walk.select { |node| node.kind == :set_tile && node.name == bg.name }.map(&:tile)
+                (shown + changed).uniq.each { |tile| cell_of(bg, tile) if tile.nil? || tile < bg.tiles.length }
+              end
+              @tile_runs.each_index { |number| make_run_art(number) unless @run_places[number] }
             end
 
             # A scene taking over, in a game of screen colours: its sets into the colours drawn now and
-            # the copy the blank sends, through whatever fade is in force, and the lists its
-            # backgrounds were told said again over them. They go out in the blank that sends its
-            # maps' registers (Runtime::Picture's "Together"), so no frame shows the two out of step.
+            # the copy the blank sends, through whatever fade is in force, and the list each of its
+            # backgrounds was told to draw with said again over them. They go out in the blank that
+            # sends its maps' registers (Runtime::Picture's "Together"), so no frame shows the two out
+            # of step.
             def emit_scene_colors(scene, arrival)
               return if !@screen_colors || arrival.scenery.empty?
 
               label = held_colors_label(:scenes) { @scenes.sort_by(&:last).map { |name, _| @art.scene_colors(name) } }
               runtime_call("rt_colors_hold", [LongAddress.new(label), Build.int(@scenes.fetch(scene) - 1)])
               arrival.scenery.each do |bg|
-                told = @background_colors_told[bg.name]
-                emit_background_colors_on(Build.var_ref(told), bg) if told
+                choice = @background_color_choices[bg.name]
+                emit_background_colors_on(Build.var_ref(choice), bg) if choice
               end
             end
 
@@ -298,20 +321,15 @@ module VBlank
 
               list = image.list_drawn_from
               colors = image.colors.drop(1).map { |color| color & 0x7FFF }
-              palette = held_palette_or_refuse do
-                @art.held_background_palette([:backgrounds, *held_lists_key(bg), list], colors, scene: colors_scene_of(bg))
-              end
+              palette = @art.held_background_palette([:backgrounds, *held_lists_key(bg), list], colors, scene: colors_scene_of(bg))
               ((@background_lists ||= {})[held_lists_key(bg)] ||= {})[list] = [palette, image]
               palette
             end
 
-            # A list that changes keeps a palette, and the console has eight for backgrounds and eight
-            # for sprites. Backgrounds that fill theirs go on to bring each scene's colours in
-            # (SNES#build); past that, or for sprites, the game is refused.
+            # A list of sprite colours that changes keeps a palette for the whole game, and the console
+            # has eight. Bringing each scene's colours in is done for backgrounds alone (SNES#build).
             def held_palette_or_refuse
               yield
-            rescue Art::TooManyBackgroundColors
-              raise
             rescue Art::TooMuch
               refuse_unmade!("more lists of colours changing as the game runs than a Super Nintendo has palettes")
             end
@@ -375,7 +393,7 @@ module VBlank
                 picture = @art.sprite_run_picture(run.picture, run.width, run.height, run.colors)
                 @run_places[number] = Runtime::Picture::SPRITE_TILES + (picture.pieces.first.tile * Art::TILE_BYTES / 2)
               else
-                first, palette = @art.background_run(run.colors, run.tiles.length)
+                first, palette = @art.background_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run))
                 run.tiles.each_with_index { |image, k| @run_cells[image] = [first + k, palette] }
                 @run_places[number] = Runtime::Picture::BG_TILES + (first * Art::TILE_BYTES / 2)
               end

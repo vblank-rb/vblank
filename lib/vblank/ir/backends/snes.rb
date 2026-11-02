@@ -122,7 +122,7 @@ module VBlank
           bends = Lowering::Picture.bends?(program)
           tile_runs = Lowering::Picture.tile_run_bytes(program)
           changing_colors = screen_colors || Lowering::Picture.changing_colors?(program)
-          dims =Lowering::Picture.fades_to_black?(program)
+          dims = Lowering::Picture.fades_to_black?(program)
           math_turns = Lowering::Picture.see_through_turns_solid?(program)
           Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,

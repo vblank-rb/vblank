@@ -2,39 +2,24 @@
 
 require "test_helper"
 require "stringio"
+require "scene_color_lists"
 
 # A SCENE'S COLOURS ARRIVE WITH ITS MAPS, read off the cartridge a frame at a time. A pass is
 # checked against the interpreter whatever the screen did between two of them, so what no frame may
 # show has to be asked here: one screen's cells in another's colours, on a screen that stays lit.
 class TestSNESSceneColors < Minitest::Test
-  LISTS = 8
   SWITCH_AT = 30
   BEFORE = 24
   SETTLED = 40
 
-  private def full_list(n)
-    [:transparent, *(1..15).map { |place| VBlank::Graphics::Color.rgb(n, place * 2, 31 - place) }]
-  end
-
-  private def declare_lists(builder, prefix, numbers)
-    numbers.each do |n|
-      builder.colors(:"#{prefix}_list#{n}", full_list(n))
-      builder.image(:"#{prefix}_tile#{n}", width: 8, height: 8, colors: :"#{prefix}_list#{n}",
-                                           places: Array.new(64) { |i| 1 + (i % 15) })
-    end
-    builder.tiles(prefix, numbers.each_with_index.to_h { |n, at| [(at + 97).chr, :"#{prefix}_tile#{n}"] })
-  end
-
   # Two scenes of eight lists of their own, whose maps cover the screen, in another order in each,
   # so a map in the other's colours is no picture of either.
   private def rom
-    test = self
     switch = SWITCH_AT
-    row = ("a".."h").to_a.join * 4
     VBlank.build("SCNCOLORS", console: :snes, out: StringIO.new, err: StringIO.new) do
       screen :tiled
-      test.declare_lists(self, :one_set, (0...LISTS).to_a)
-      test.declare_lists(self, :two_set, (LISTS...(LISTS * 2)).to_a)
+      row = SceneColorLists.declare(self, :one_set, (0...8).to_a) * 4
+      SceneColorLists.declare(self, :two_set, (8...16).to_a)
       state = var :state, 0
       tick = var :tick, 0
       scene(:one) { background :one, tiles: :one_set, map: Array.new(32) { row } }
@@ -49,7 +34,6 @@ class TestSNESSceneColors < Minitest::Test
       end
     end
   end
-  public :declare_lists
 
   private def picture_at(built, frames) = VBlank::Diagnostics::Verifier.new(built, frames: frames)
 
@@ -81,12 +65,11 @@ class TestSNESSceneColors < Minitest::Test
   end
 
   def test_a_scene_with_more_than_eight_sets_is_refused_naming_it
-    test = self
     error = assert_raises(VBlank::BuildError) do
       VBlank.build("NINE", console: :snes, out: StringIO.new, err: StringIO.new) do
         screen :tiled
-        test.declare_lists(self, :one_set, (0...9).to_a)
-        scene(:crowded) { background :crowded, tiles: :one_set, map: [("a".."i").to_a.join] }
+        row = SceneColorLists.declare(self, :one_set, (0...9).to_a)
+        scene(:crowded) { background :crowded, tiles: :one_set, map: [row] }
         state = var :state, 0
         game_loop do
           case_var(:state) { when_val 0, :crowded }

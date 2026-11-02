@@ -162,7 +162,7 @@ module VBlank
             refuse_unsupported_save_memory!
             assign_background_layers unless painted?
             make_sprite_art
-            make_every_screens_colors
+            make_shared_background_colors
             reserve_patches
             # ...and the ones a game loop keeps of its own in the console's order (IR::Frames::ConsoleLoop).
             loops = @plan.game_loops.flat_map { |node| console_loop(node).variables }
@@ -175,7 +175,7 @@ module VBlank
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
             keep_corner_notes
-            keep_background_colors_told
+            keep_background_color_choices
             keep_loop_running
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil

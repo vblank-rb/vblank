@@ -140,7 +140,7 @@ module VBlank
           def background_cell(image, held: nil, scene: nil)
             palettes = background_palettes(scene)
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
-            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_named(scene))
+            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_in_message(scene))
             places = Array.new(64) do |at|
               if image.tile_see_through_at?(at) then 0
               elsif held then place_in_list(image, at)
@@ -166,7 +166,7 @@ module VBlank
           def background_big_cell(image, held: nil, scene: nil)
             palettes = background_palettes(scene)
             drawn = (0...256).reject { |at| image.tile_see_through_at?(at) }
-            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_named(scene))
+            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_in_message(scene))
             quarters = (0...4).map do |quarter|
               tile_bytes(Array.new(64) do |at|
                 pixel = ((((quarter / 2) * 8) + (at / 8)) * 16) + ((quarter % 2) * 8) + (at % 8)
@@ -191,12 +191,12 @@ module VBlank
           # it is, a background's name and a list or a sprites' list. Its colours are the first ones
           # it holds; the rest go in as the game runs (Runtime::Tint's rt_colors_hold).
           def held_background_palette(key, colors, scene: nil)
-            held_palette(background_palettes(scene), key, colors, backgrounds_named(scene), 0...PALETTES)
+            held_palette(background_palettes(scene), key, colors, backgrounds_in_message(scene), 0...PALETTES)
           end
 
           # The sets of colours +scene+'s own backgrounds are drawn from: in a game of +screen_colors+
           # a copy of what every screen shows, taken the first time it is asked for, by when those
-          # are all made (Lowering::Picture#make_every_screens_colors). Otherwise the game's.
+          # are all made (Lowering::Picture#make_shared_background_colors). Otherwise the game's.
           def background_palettes(scene)
             return @background_palettes unless scene
 
@@ -231,7 +231,7 @@ module VBlank
               held = held_in(palettes)
               free = within.find { |p| palettes[p].nil? || (palettes[p].empty? && !held.include?(p)) }
               unless free
-                raise too_much_for(palettes), "The #{what} hold more lists of colors the game changes than a Super " \
+                raise too_much_error_for(palettes), "The #{what} hold more lists of colours the game changes than a Super " \
                                               "Nintendo can show. It holds #{PALETTES} sets of #{OWN_COLORS} colours. " \
                                               "To fix this, change fewer lists."
               end
@@ -328,8 +328,8 @@ module VBlank
 
           # +count+ background tiles for a run in +colors+ (place 0 first): the first's number, and
           # the palette.
-          def background_run(colors, count)
-            palette = run_palette(@background_palettes, colors, "backgrounds")
+          def background_run(colors, count, scene: nil)
+            palette = run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
             first = @background_tiles.length
             refuse_too_many!(first + count - 1, MOST_BACKGROUND_TILES, "backgrounds")
             count.times { @background_tiles << blank_tile }
@@ -391,11 +391,11 @@ module VBlank
           end
 
           # What the words of a refusal call +scene+'s backgrounds.
-          def backgrounds_named(scene) = scene ? "backgrounds of the scene :#{Modes.strip_scene_prefix(scene)}" : "backgrounds"
+          def backgrounds_in_message(scene) = scene ? "backgrounds of the scene :#{Modes.strip_scene_prefix(scene)}" : "backgrounds"
 
           # The refusal for +palettes+ being full: the one that builds the game again with each scene
           # bringing its own colours in, where that has not been tried and is what would help.
-          def too_much_for(palettes)
+          def too_much_error_for(palettes)
             palettes.equal?(@background_palettes) && !@screen_colors ? TooManyBackgroundColors : TooMuch
           end
 
@@ -519,7 +519,7 @@ module VBlank
             end
             unused = within.find { |p| palettes[p].nil? }
             unless unused
-              raise too_much_for(palettes), "The pictures of the #{what} use more colours than a Super Nintendo can " \
+              raise too_much_error_for(palettes), "The pictures of the #{what} use more colours than a Super Nintendo can " \
                                             "show for them. It holds #{PALETTES} sets of #{OWN_COLORS} colours. To fix " \
                                             "this, use fewer colours in those pictures."
             end
@@ -538,7 +538,7 @@ module VBlank
             empty = within.find { |p| palettes[p].nil? || palettes[p].empty? }
             return empty.tap { palettes[empty] = own.dup } if empty
 
-            raise too_much_for(palettes), "The pictures of the #{what} use more colours than a Super Nintendo can show " \
+            raise too_much_error_for(palettes), "The pictures of the #{what} use more colours than a Super Nintendo can show " \
                                           "for them. It holds #{PALETTES} sets of #{OWN_COLORS} colours, and each list " \
                                           "of colours a game paints with takes a set of its own. To fix this, use " \
                                           "fewer colours or fewer lists."
