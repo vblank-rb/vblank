@@ -274,7 +274,7 @@ module VBlank
                               # across), and a sprite here is one 8-pixel piece of a picture.
                               sprites_a_row: 20, turning_sprites: false,
                               # Every sprite picture is cut into 8×8 pieces (Backends::Genesis::Art).
-                              cuts_sprites: true,
+                              sprite_sizes: nil, tile_planes: nil,
                               # Two planes of tiles that scroll. The window plane is a third, but it
                               # only covers whole rows of tiles and the build does not use it.
                               backgrounds: 2, turning_backgrounds: 0, backgrounds_beside_turning: 0,
