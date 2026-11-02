@@ -601,6 +601,12 @@ module VBlank
         @sound.bytes.unpack("s<*")
       end
 
+      # The samples of the frame played last, the two speakers side by side.
+      def last_frame_samples
+        ensure_rendered!
+        @sound.last_frame.unpack("s<*")
+      end
+
       # True when the run produced no sound at all (energy exactly 0).
       def silent?
         audio_energy.zero?

@@ -51,10 +51,14 @@ module VBlank
 
       # Keep the sound of the frames just played: one String of samples for each, in order.
       def keep(frames)
+        @last_frame = frames.last || @last_frame
         @recent.concat(frames)
         write_recent_frames if @recent.size > @frames_in_memory
         self
       end
+
+      # The sound of the frame played last, which a window plays as it shows that frame.
+      def last_frame = @last_frame || "".b
 
       # Each frame's sound in turn, oldest first, without holding the frames in the file all
       # at once: the way to ask something of every frame of a long run.

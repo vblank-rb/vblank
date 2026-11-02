@@ -8,6 +8,8 @@
 # line between the two is which way each one faces: Diagnostics reads a cartridge back, and
 # what is here drives one.
 require_relative "playthroughs/playthrough" # a game driven from a script
+require_relative "playthroughs/lowered_game" # ...on a way of running a game other than the emulator
+require_relative "playthroughs/watched_game" # ...and shown in a window at the console's frame rate
 require_relative "playthroughs/tape" # ...and the presses it made, written down to play again
 require_relative "playthroughs/playthrough_picture_folder" # ...and the folder its pictures are written into
 require_relative "playthroughs/comparison" # two cartridges played side by side on the same presses

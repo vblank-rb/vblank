@@ -498,6 +498,22 @@ module VBlank
         vblank play game.rb --script walk.rb
         vblank play game.gba --tape walk.tape --pictures-in shots
         vblank play game.rb --console gbc --script walk.rb
+        vblank play game.rb --script walk.rb --on native
+        vblank play game.rb --script walk.rb --window
+
+      Ways to run the game (--on):
+        emulator     The cartridge in the console's emulator. The default.
+        interpreter  The game in the interpreter.
+        native       The game built as C. Needs zig.
+        web          The game built as JavaScript, played by node, since the
+                     steps of a script are Ruby and a browser page cannot run
+                     them. A script does not play in a browser. Needs node.
+        ruby         The game built as Ruby.
+
+      Only the emulator can start from --save, or play a cartridge file. Two ways
+      are two runs: a game that takes longer than a frame over a pass reaches a
+      counted frame at a different moment on each, so a script that steers or
+      waits for the game is the one to use. Each way repeats its own run.
 
       Options:
         #{PRESSES.gsub("\n", "\n  ")}
@@ -507,6 +523,12 @@ module VBlank
         --lead-in NAME           Play this playthrough first, and do not count it:
                                  a way past logos and a title screen. Needs
                                  --script, even with --tape.
+        --on WAY                 #{VBlank::Playthroughs::LoweredGame.ways.join(', ')}: how
+                                 to run the game. With no window it goes as fast
+                                 as this computer can.
+        --window                 Show the game in a window, at the console's
+                                 frame rate. Close the window to stop. Needs
+                                 SDL3. Only the emulator plays the sound there.
         --save PATH              Start from this save file.
         --pictures-in DIR        Write the screen at each moment to DIR, as a PNG
                                  named for the moment.
@@ -515,6 +537,8 @@ module VBlank
         #{SET}
     TEXT
     options_for_playing
+    option :on, banner: "WAY", enum: VBlank::Playthroughs::LoweredGame.ways
+    option :window, type: :boolean, default: false
     option :save, banner: "PATH"
     option :lead_in, banner: "NAME"
     option :pictures_in, banner: "DIR"

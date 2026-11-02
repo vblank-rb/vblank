@@ -34,10 +34,13 @@ module VBlank
           lead_in = lead_in_named(options[:lead_in])
           %i[write_tape write_save].each { |flag| refuse_unwritable_file!(flag) }
           cartridge = cartridge_at(cartridge_file)
-          playing.play(cartridge, **{ save: options[:save], lead_in: lead_in, pictures_in: options[:pictures_in] }.compact)
-                 .tap do |played|
-            say_frames_and_moments(played, playing, cartridge)
-            write_tape_and_save(played)
+          in_window_if_asked(cartridge) do |window|
+            settings = { save: options[:save], lead_in: lead_in, pictures_in: options[:pictures_in], on: options[:on],
+                         window: window }.compact
+            playing.play(cartridge, **settings).tap do |played|
+              say_frames_and_moments(played, playing, cartridge)
+              write_tape_and_save(played)
+            end
           end
         end
       end
@@ -57,6 +60,23 @@ module VBlank
       private
 
       attr_reader :options
+
+      # The block, handed a window on +cartridge+'s screen where --window asks for one, which is
+      # closed however the playing ends. A window takes SDL3, which only this needs, so it is
+      # loaded here. Closing it is how a person stops watching, so that ends the command quietly.
+      def in_window_if_asked(cartridge)
+        return yield(nil) unless options[:window]
+
+        require "vblank/live"
+        console = Console.described(cartridge.console)
+        window = Live::SDL.new(title: Tape.title_and_checksum_of(cartridge).first, width: console.screen_width,
+                               height: console.screen_height, menu: false)
+        yield window
+      rescue WatchedGame::WindowClosed
+        say "The window was closed, so the playing stopped."
+      ensure
+        window&.close
+      end
 
       # Each line goes out as it is said. What a command says and what stops it go to two
       # places, and a line held back would come out after the error that followed it.

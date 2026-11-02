@@ -139,10 +139,11 @@ module VBlank
       # A tape recorded from a save is played from one, and one recorded after a lead-in
       # is played after one: from anywhere else it would be the same presses on a
       # different game.
-      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, &at_each_moment)
+      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, &at_each_moment)
         refuse_missing_save!(save)
         refuse_missing_lead_in!(lead_in)
-        Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, &at_each_moment)
+        Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on,
+                                                           window: window, &at_each_moment)
       end
 
       # Play the tape on +first+ and on +second+ together, comparing the two pictures after

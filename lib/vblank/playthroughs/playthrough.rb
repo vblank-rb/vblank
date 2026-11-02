@@ -73,8 +73,12 @@ module VBlank
       #
       # +lead_in+ is another playthrough, played on the cartridge first and not counted:
       # see `power_on_and_lead_in`.
-      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, &at_each_moment)
-        Playing.play(@name, @steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, &at_each_moment)
+      #
+      # +on+ is the way to run the game (a word of LoweredGame.ways; the emulator unless said), and
+      # +window+ a device to show it on at the console's frame rate (see WatchedGame).
+      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, &at_each_moment)
+        Playing.play(@name, @steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
+                     &at_each_moment)
       end
 
       # Play this script on +game+, a console that is already running, as the lead-in to
@@ -135,10 +139,32 @@ module VBlank
       # watches for the first screen — and what is played or compared starts there. Its
       # frames are not counted and its presses are on no tape: frame 1 is the first frame
       # after it.
-      def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil)
-        game = power_on(cartridge, save: save)
+      #
+      # +on+ and +window+ are as for #play.
+      def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil)
+        game = on && on != LoweredGame::EMULATOR ? lowered_game(cartridge, on, save) : power_on(cartridge, save: save)
+        if window
+          console = cartridge_from(cartridge).console
+          game = WatchedGame.new(game, window, frame_seconds: Console.described(console).frame_seconds,
+                                               sound_rate: Diagnostics::SoundRecording::CARTRIDGE_RATES.fetch(console))
+        end
         lead_in&.play_as_lead_in(game)
         game
+      end
+
+      # The game inside +cartridge+ run the way +on+ says. That takes the game, so a cartridge
+      # somebody else made, which is only its bytes, plays on the emulator alone.
+      def self.lowered_game(cartridge, on, save)
+        cartridge = cartridge_from(cartridge)
+        unless LoweredGame::RUNS.key?(on)
+          raise ArgumentError, "There is no way to run a game called #{on.inspect}. The ways are " \
+                               "#{LoweredGame.ways.join(', ')}."
+        end
+        program = cartridge.source_program or
+          raise ArgumentError, "A cartridge file plays on the emulator alone. To play on #{on}, give the game file."
+        raise ArgumentError, "A save plays on the emulator alone. To play on #{on}, leave the save out." if save
+
+        LoweredGame.new(program, on)
       end
 
       def self.refuse_lead_in_not_playthrough!(lead_in)
@@ -242,16 +268,18 @@ module VBlank
         #
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
-        def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, &at_each_moment)
+        def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
           save = Playthrough.save_from(save)
           save = Playthrough.save_fitted_to(cartridge = Playthrough.cartridge_from(cartridge), save) if save
           folder = PictureFolder.at(pictures_in, steps.flat_map(&:names))
           cartridge = Playthrough.cartridge_from(cartridge)
-          game = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in)
+          game = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window)
           playing = new(title, cartridge, game, at_each_moment, save: save, folder: folder, led_in: !lead_in.nil?)
           steps.each { |step| step.play(playing) }
           playing.played
+        ensure
+          game.finish if game.respond_to?(:finish)
         end
 
         # +game+ is the console, running, with +cartridge+ in it. +save+ is what the

@@ -172,6 +172,13 @@ module VBlank
             self
           end
 
+          # Keep no record of each frame, which a checked run compares and a playing of hours has no
+          # room for. Gives back self.
+          def forgetting_moments
+            @forgets_moments = true
+            self
+          end
+
           # Give the cartridge a clock reading +time+ at power-on, as the interpreter's #clock_at
           # does, moved on a frame of the console's each frame; +set: false+ is a clock that is
           # there and was never set. A run never told has no clock. Gives back self.
@@ -445,9 +452,11 @@ module VBlank
             read_state_from(rows)
             @screen = nil
             check = rows.find { |row| row.start_with?("picture-crc ") }.delete_prefix("picture-crc ").to_i(16)
-            @moments << Moment.new(frame: frame, variables: @vars, picture: check, sounds: @audio_played.size, sprites: @sprites,
-                                   collections: game_state.except(:vars), sounding: active_samples, motor: motor_on?)
-            buttons = @input_script ? @input_script.call(frame) : @held
+            unless @forgets_moments
+              @moments << Moment.new(frame: frame, variables: @vars, picture: check, sounds: @audio_played.size, sprites: @sprites,
+                                     collections: game_state.except(:vars), sounding: active_samples, motor: motor_on?)
+            end
+            buttons =@input_script ? @input_script.call(frame) : @held
             @on_vblank&.call(frame)
             stdin.puts(self.class.button_mask(buttons))
             stdin.flush
