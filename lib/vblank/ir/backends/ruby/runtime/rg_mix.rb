@@ -183,6 +183,15 @@ def rg_mix_start_release(voice)
   true
 end
 
+# Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch. 1 when there was one.
+def rg_mix_glide_music_note(effect, lane, sound)
+  at = rg_mix_sounding_voice(effect, lane)
+  return 0 if at < 0
+
+  @rg_mix_voices[at].step = @rg_game_note_sounds[sound + 1]
+  1
+end
+
 # +sound+ is where the note's eight numbers start in @rg_game_note_sounds. 1 when it is heard.
 def rg_mix_start_music_note(effect, lane, rank, sound, loudness)
   at = rg_mix_sounding_voice(effect, lane)

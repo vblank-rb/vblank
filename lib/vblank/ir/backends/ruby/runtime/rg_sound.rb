@@ -47,6 +47,7 @@ RG_PAN_RIGHT = 2 # ...the right alone, or nought for both
 RG_SAID_DUTY = 1 << 8 # a note's sixth number: set when it or its part said its shapes,
 RG_DUTY_BITS = 0xFF # ...whose eight bits (Audio::Duty#bits) are under it
 RG_CARRIES_VIBRATO = 1 << 9 # ...and above it, set when its vibrato carries its swing on
+RG_GLIDES = 1 << 10 # ...and set on a recorded note that carries on the one sounding
 RG_VIBRATO_CARRIES_LOGGED = 1 << 16 # ...which the log says above the vibrato's bits
 RG_SLIDE_TICK_SAMPLES = RG_SOUND_RATE / 128 # the slide clock ticks 128 times a second
 RG_NUMBERS_PER_NOTE_SOUND = 8
@@ -807,8 +808,12 @@ def rg_play_recorded_note(part, note)
     rg_mix_release_music(-1, part.tone)
   else
     numbers = 1 + (sound * RG_NUMBERS_PER_NOTE_SOUND)
-    heard = rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers,
-                                    @rg_level_variable ? rg_scaled_volume(loudness) : loudness)
+    heard = if music[note + 5].anybits?(RG_GLIDES)
+              rg_mix_glide_music_note(-1, part.tone, numbers)
+            else
+              rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers,
+                                      @rg_level_variable ? rg_scaled_volume(loudness) : loudness)
+            end
     return if heard == 0
   end
   rg_sound_log("note #{@rg_playing} #{pitch}")
@@ -964,10 +969,13 @@ def rg_play_effect_note(effect, part, note)
 
   if part.kind == RG_PART_RECORDED
     sound = music[note + 3]
-    heard = if sounds
-              rg_mix_start_music_note(effect, part.tone, rank, 1 + (sound * RG_NUMBERS_PER_NOTE_SOUND), volume)
-            else
+    numbers = 1 + (sound * RG_NUMBERS_PER_NOTE_SOUND)
+    heard = if !sounds
               rg_mix_release_music(effect, part.tone)
+            elsif music[note + 5].anybits?(RG_GLIDES)
+              rg_mix_glide_music_note(effect, part.tone, numbers)
+            else
+              rg_mix_start_music_note(effect, part.tone, rank, numbers, volume)
             end
     rg_sound_log("note #{number} #{pitch}") if heard != 0
     return

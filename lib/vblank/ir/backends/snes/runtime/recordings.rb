@@ -129,6 +129,8 @@ module VBlank
             BEST_RANK = "rt recordings best rank"
             BEST_TICKET = "rt recordings best ticket"
             ALL = 0xFFFF
+            # Kept in a game with a note that glides, whose runtime then carries what moves one.
+            GLIDES = "rt recordings glides"
 
             module_function
 
@@ -136,10 +138,12 @@ module VBlank
             # the recording's +length+ and the +back+ it reads at its end (32 bits each); the +advance+
             # a frame, in samples and 65536ths (48 bits, of which the whole samples take 32); the
             # number of its +logged+ entry; the +name+'s number; and its +shape+ (an Audio::Envelope), or
-            # nil for a note that sounds flat out from its first sample to its last.
-            def row(source:, pitch:, volume:, length:, back:, advance:, logged:, name:, shape: nil)
+            # nil for a note that sounds flat out from its first sample to its last. +walks+ counts its
+            # samples whatever it is, for a game whose notes change pitch part way through, so that no
+            # count of frames made at the start holds.
+            def row(source:, pitch:, volume:, length:, back:, advance:, logged:, name:, shape: nil, walks: false)
               words = Array.new(ROW_BYTES / 2, 0)
-              words[FRAMES_LEFT / 2] = frames_left(length, back, advance) if logged == NOT_LOGGED
+              words[FRAMES_LEFT / 2] = frames_left(length, back, advance) if logged == NOT_LOGGED && !walks
               { SOURCE => source, PITCH => pitch, VOLUME => volume, LENGTH => length & 0xFFFF, LENGTH + 2 => length >> 16,
                 BACK => back & 0xFFFF, BACK + 2 => back >> 16, ADVANCE => (advance >> 16) & 0xFFFF,
                 ADVANCE + 2 => advance >> 32, ADVANCE_FRACTION => advance & 0xFFFF, LOGGED => logged,
@@ -165,7 +169,8 @@ module VBlank
               frames < NEVER_ENDS ? frames : COUNTS_SAMPLES
             end
 
-            def reserve(memory)
+            def reserve(memory, glides: false)
+              memory.reserve(GLIDES, 2) if glides
               [ROW, PLACE, REGISTERS, STOP_NAME, STOP_LOGGED, TICKETS, NOTE_OWNER, NOTE_RANK, BEST, BEST_RANK,
                BEST_TICKET, DROPS, DROPS_MUSIC].each { |name| memory.reserve(name, 2) }
               memory.reserve(PLACES_STATE, PLACES * PLACE_BYTES)
@@ -179,6 +184,7 @@ module VBlank
               heard = voices.size * PLACE_BYTES
               emit_play(asm, at, memory, heard)
               emit_note(asm, at, memory)
+              emit_glide(asm, at, memory, heard) if memory.reserved?(GLIDES)
               emit_note_release(asm, at, memory, heard)
               emit_stop(asm, at, memory, heard)
               emit_frame(asm, at, memory)
@@ -443,6 +449,55 @@ module VBlank
               asm.lda(0)
               asm.sta(place.call(TICKET))
               asm.jmp(asm.abs("rt_recordings_take"))
+            end
+
+            # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has one, reads on at
+            # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and its
+            # voice's pitch registers, with no key-on, so the chip's envelope goes on falling. A = 1
+            # when it had a note, nought when not.
+            def emit_glide(asm, at, memory, heard)
+              place = place_field(asm, memory)
+              row = ->(field) { asm.long_x("recording_plays", field) }
+              asm.label("rt_recordings_glide")
+              asm.lda(asm.direct(Sound::R0))
+              Music.emit_times(asm, ROW_BYTES)
+              asm.sta(at.call(ROW))
+              asm.lda(asm.direct(Sound::R1))
+              asm.sta(at.call(NOTE_OWNER))
+              asm.jsr(asm.abs("rt_recordings_sounding"))
+              asm.bcc("rt_recordings_glide_found")
+              asm.lda(0)
+              asm.rtl
+              asm.label("rt_recordings_glide_found")
+              asm.sty(at.call(PLACE))
+              asm.ldx(at.call(ROW))
+              { ADVANCE => PLACE_ADVANCE, ADVANCE + 2 => PLACE_ADVANCE + 2, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION }.each do |from, to|
+                asm.lda(row.call(from))
+                asm.sta(place.call(to))
+              end
+              asm.lda(at.call(PLACE))
+              asm.cmp(heard)
+              asm.bcs("rt_recordings_glide_done")
+              emit_queued_entry(asm, at, Sound::NOTE_PITCH)
+              asm.label("rt_recordings_glide_done")
+              asm.lda(1)
+              asm.rtl
+
+              # rt_recordings_voice_pitch (JSL), with PLACE and ROW set: a new pitch for its voice, in
+              # Sound::NOTE_PITCH_WRITES writes.
+              asm.label("rt_recordings_voice_pitch")
+              emit_registers(asm, at)
+              dsp = DSPWrites
+              emit_voice_write(asm, at, dsp::PITCH_LOW) do
+                asm.ldx(at.call(ROW))
+                asm.lda(row.call(PITCH))
+              end
+              emit_voice_write(asm, at, dsp::PITCH_HIGH) do
+                asm.ldx(at.call(ROW))
+                asm.lda(row.call(PITCH))
+                asm.xba
+              end
+              asm.rtl
             end
 
             # rt_recordings_note_release(owner): the place +owner+'s part sounds a note in, if it has

@@ -57,6 +57,10 @@ module VBlank
           if node.above_row
             Question.new(:background, "This background shows only above a row (`above_row:`)", console.holds_background_above_row)
           end
+        when :song
+          if node.voices.any? { |part| part.events.any? { |event| IR::Tunes.glides?(event) } }
+            Question.new(:songs, "This game has a recorded note that glides (`glides: true`)", console.glides_recordings)
+          end
         when :affine_background
           Question.new(:background, "This line turns or resizes a background", console.turns_backgrounds?)
         when :screen

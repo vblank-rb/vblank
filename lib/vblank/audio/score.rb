@@ -159,7 +159,7 @@ module VBlank
       # +slide_down+ how it slides its pitch, +vibrato+ how it wobbles, +pan+ the speaker it plays
       # from, and +duty+ its shape or the shapes it steps through (see Part).
       Note = Data.define(:at, :key, :length, :instrument, :volume, :envelope, :hz, :decay, :swell, :slide_up,
-                         :slide_down, :vibrato, :pan, :duty, :pitch_number, :noise_clock)
+                         :slide_down, :vibrato, :pan, :duty, :pitch_number, :noise_clock, :glides)
 
       class Note
         # A NOTE ON A SQUARE VOICE OR THE WAVE VOICE CAN GIVE +pitch_number+ IN PLACE OF A KEY: the
@@ -179,9 +179,15 @@ module VBlank
         # how many times it is halved 0 to 13 (Sound.noise_rung_hz). Several settings step at one
         # rate — [1, 1] and [0, 2] both 131,072 times a second — and sound the same; a console that
         # is told the setting itself is told this one, as the game the song came from told it.
+        #
+        # A NOTE ON A RECORDING CAN GIVE +hz+ IN PLACE OF A KEY too, for a pitch no key reaches: the
+        # recording's own note, as a frequency, reads it at the rate it was recorded. And it can say
+        # +glides: true+: it does not strike. The note sounding on its part carries on from where
+        # it has got to, fading as it was, at this pitch from here. If the part has no note sounding
+        # by then, nothing sounds.
         def initialize(at:, key: nil, length: nil, instrument: nil, volume: nil, envelope: nil, hz: nil,
                        decay: nil, swell: nil, slide_up: nil, slide_down: nil, vibrato: nil, pan: nil, duty: nil,
-                       pitch_number: nil, noise_clock: nil)
+                       pitch_number: nil, noise_clock: nil, glides: nil)
           super
         end
 
@@ -261,7 +267,7 @@ module VBlank
           kind = Music.kind_played(Music.resolve_plays(part.plays))
           events = notes.each_with_index.flat_map do |note, n|
             said = Music.without_trailing_nils([note.fade(who), note.slide(who), note.wobble(who), note.side(who),
-                                                note.shape(who), note.noise_clock])
+                                                note.shape(who), note.noise_clock, note.glides || nil])
             on = [frames.at(note.at), note.frequency(kind), note.instrument_name, note.volume,
                   Envelope.of(note.envelope, "a note"), *said]
             next [on] unless note.length
@@ -388,6 +394,7 @@ module VBlank
           end
           key!(note.key, where)
           noise_rate!(note, where, voice) if note.hz
+          glide!(note, where, voice) unless note.glides.nil?
           pitch_number!(note, where, voice) unless note.pitch_number.nil?
           noise_clock!(note, where, voice) unless note.noise_clock.nil?
           volume!(note.volume, where, recording?(voice)) if note.volume
@@ -403,13 +410,25 @@ module VBlank
         NOISE_CLOCK_HZ_TEXT = Ractor.make_shareable(Sound::NOISE_CLOCK_HZ.digits.each_slice(3).map(&:join)
                                                                          .join(",").reverse)
 
-        # A note that gives +hz+ is on the noise voice, gives no key as well, and names a rate the
-        # voice can step at.
+        # A note that says +glides+ plays a recording, and has a pitch to glide to.
+        def glide!(note, where, voice)
+          unless [true, false].include?(note.glides)
+            raise ArgumentError, "#{where} has `glides: #{note.glides.inspect}`. It must be true or false."
+          end
+          return unless note.glides
+          return if recording?(voice) && (note.key || note.hz)
+
+          raise ArgumentError, "#{where} has `glides: true`. Only a note of a part that plays a recording can glide, " \
+                               "and it needs a `key:` or `hz:` to glide to."
+        end
+
+        # A note that gives +hz+ is on the noise voice or a recording, gives no key as well, and
+        # names a rate the voice can step at.
         def noise_rate!(note, where, voice)
-          unless noise?(voice)
+          unless noise?(voice) || recording?(voice)
             raise ArgumentError, "#{where} gives its pitch with `hz:`. Only a part on the noise voice " \
-                                 "(`plays: :noise`) can do that. Give the note a MIDI note number with " \
-                                 "`key:`, or play the part on the noise voice."
+                                 "(`plays: :noise`) or a part that plays a recording can do that. Give the " \
+                                 "note a MIDI note number with `key:`, or play the part on the noise voice."
           end
           if note.key
             raise ArgumentError, "#{where} has both a key and `hz:`. A note has one pitch. Remove one of them."

@@ -50,7 +50,7 @@ module VBlank
             Chip.reserve(memory) if c.chip?
             Sound.reserve(memory, queued: c.songs) if c.sound
             reserve_music(memory, c) if c.songs
-            Recordings.reserve(memory) if c.samples
+            Recordings.reserve(memory, glides: c.glides) if c.samples
           end
 
           def reserve_music(memory, carries)

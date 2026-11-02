@@ -104,7 +104,8 @@ module VBlank
                 pitch: [step / RECORDING_STEP_TO_PITCH, 1].max,
                 volume: (IR::Tunes.mix_loudness(volume) * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
-                logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope)
+                logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope),
+                walks: SNES::Music.glides?(@program)
               )
               @plays << row unless @plays.include?(row)
               @plays.index(row)

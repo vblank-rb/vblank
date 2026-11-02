@@ -792,6 +792,17 @@ module VBlank
               asm.jsl(asm.long("rt_recordings_note_release"))
               asm.bra("rt_music_recorded_note_log")
               asm.label("rt_music_recorded_note_plays")
+              if memory.reserved?(Recordings::GLIDES)
+                asm.bpl("rt_music_recorded_note_strikes")
+                asm.and_a(m::GLIDES - 1)
+                asm.dec
+                asm.sta(asm.direct(Sound::R0))
+                asm.jsl(asm.long("rt_recordings_glide"))
+                asm.cmp(0)
+                asm.branch_long(:beq, "rt_music_recorded_note_done")
+                asm.brl("rt_music_recorded_note_log")
+                asm.label("rt_music_recorded_note_strikes")
+              end
               asm.dec
               asm.sta(asm.direct(Sound::R0))
               asm.ldx(at.call(SONG))

@@ -49,6 +49,8 @@ module VBlank
           # ...and above that, set when the note's vibrato carries its swing from the note before
           # (Audio::Vibrato#carries; rg_sound.c's CARRIES_VIBRATO).
           CARRIES_VIBRATO = 1 << 9
+          # ...and set on a recorded note that carries on the one sounding (IR::Tunes.glides?).
+          GLIDES = 1 << 10
 
           private
 
@@ -362,7 +364,7 @@ module VBlank
             side = pitch.zero? ? 0 : Audio::Pan.bits_of(Tunes.note_side(part, note))
             shapes = Tunes.said_duty(part, note) unless pitch.zero?
             [at, @sound_log.pitch_number(pitch), heard, last, Int32.wrap(said | (side << PAN_AT)),
-             (shapes ? SAID_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0)]
+             (shapes ? SAID_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0) | (Tunes.glides?(note) ? GLIDES : 0)]
           end
 
           # EVERYTHING A RECORDED NOTE IS BUT HOW LOUD, the interpreter's way

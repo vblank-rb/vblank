@@ -93,6 +93,7 @@ module VBlank
         RIGHT_ONLY = 0x800
         NOTE_SOUNDS = 8
         NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
+        GLIDES = 0x8000 # ...and in that word: it carries on the note sounding, rather than striking
         NOTE_SWELL = 10 # the same word, on a console voice: where its swell's record is, nought for none
         NOTE_WOBBLE = 12 # where its wobble's record is, nought for a note that holds its pitch
         NOTE_SHAPES = 14 # where its shapes' record is, nought for a note that holds its shape
@@ -180,6 +181,9 @@ module VBlank
           event[1].positive? && IR::Tunes.said_fade(part, event)&.swells_by_itself? &&
             %i[square noise].include?(IR::Tunes.part_kind(part))
         end
+
+        # Whether any note of +program+'s songs carries on the one sounding, and so its player can.
+        def self.glides?(program) = any_note?(program) { |_part, event| IR::Tunes.glides?(event) }
 
         # Whether any note of +program+'s songs slides its pitch, and so the player walks its pitches.
         def self.slides?(program) = any_note?(program) { |part, event| Audio::PitchSlide.moves?(IR::Tunes.said_slide(part, event)) }
@@ -569,6 +573,7 @@ module VBlank
           sounds = IR::Tunes.note_sounds?(:recorded, frequency, volume, nil)
           head = keep_group([[GROUP_LOG, number_of.call([:note, song.name, frequency]), 0]])
           row = sounds ? @recording_row.call(instrument || part.instrument, frequency, volume, envelope || part.envelope) + 1 : 0
+          row |= GLIDES if sounds && IR::Tunes.glides?(event)
           levels = recorded_level_record(channel, sounds ? IR::Tunes.mix_loudness(volume) : 0, &number_of) if follows
           [frame, head, keep_group([]), frequency.zero? ? 0 : volume, sounds, row, levels]
         end

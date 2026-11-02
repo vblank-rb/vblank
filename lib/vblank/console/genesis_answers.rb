@@ -204,7 +204,7 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("see `song`."),
+        songs: works("see `song`. A recorded note with `glides: true` is refused: this build does not make it yet."),
         sound_effects: works("see `song`."),
         sample: works("a recording is played on the FM chip's sixth voice, which can play a recording of eight " \
                       "bits. The sound processor reads it 13000 samples a second. Only one recording plays at a " \

@@ -36,6 +36,7 @@ void rg_mix_play(int32_t recording, int32_t step, int32_t loudness, int32_t back
  * falling away; then the lowest-ranked sound below this one, the game's own first and of those
  * the one playing longest, a one-shot before a loop. Nought when it got none and is not played. */
 int32_t rg_mix_start_music_note(int32_t effect, int32_t lane, int32_t rank, const int32_t *sound, int32_t loudness);
+int32_t rg_mix_glide_music_note(int32_t effect, int32_t lane, const int32_t *sound);
 
 /* A part rests: its note ends, falling away if it has a shape. Nought when it had none sounding.
  * The part is the song's for an +effect+ of -1, else that sound effect's (as above). */

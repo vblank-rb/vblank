@@ -254,6 +254,8 @@ module VBlank
         DUTY_SLOT = 9
         # ...and a drum's own noise setting, [divider, halvings] (Score::Note#noise_clock).
         NOISE_CLOCK_SLOT = 10
+        # ...and true on a recorded note that carries on the one sounding (Score::Note#glides).
+        GLIDE_SLOT = 11
 
         # Does this part, or a note of it, say a slide?
         def slides? = Music.slides_said?(slide, events)

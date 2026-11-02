@@ -111,10 +111,14 @@ module VBlank
             # where it stood, worked out by the routine named (Recordings), with what its name asks.
             START_NOTE = 4
             NOTE_VOLUME = 5
+            NOTE_PITCH = 6
             NOTE_START_WRITES = 9
             NOTE_VOLUME_WRITES = 2
+            NOTE_PITCH_WRITES = 2
             VOICE_TOLD = { START_NOTE => [NOTE_START_WRITES, "rt_recordings_voice_start"],
                            NOTE_VOLUME => [NOTE_VOLUME_WRITES, "rt_recordings_voice_volume"] }.freeze
+            # ...and in a game with a note that glides, its new pitch.
+            VOICE_TOLD_OF_GLIDES = { NOTE_PITCH => [NOTE_PITCH_WRITES, "rt_recordings_voice_pitch"] }.freeze
             # The room a write leaves in the queue, so an entry at the front can always become its writes.
             QUEUE_ROOM = (NOTE_START_WRITES + 1) * ENTRY_BYTES
             QUEUE_TAIL_KEPT = "rt sound queue tail kept"
@@ -524,7 +528,7 @@ module VBlank
               asm.beq("rt_sound_send_queued_done")
               if samples
                 asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
-                VOICE_TOLD.each_key do |command|
+                voice_told(memory).each_key do |command|
                   asm.cmp(command)
                   asm.bne("rt_sound_send_queued_not_#{command}")
                   asm.jmp(asm.abs("rt_sound_entry_into_writes_#{command}"))
@@ -555,8 +559,10 @@ module VBlank
               asm.rep(0x20)
               asm.label("rt_sound_send_queued_done")
               asm.rtl
-              VOICE_TOLD.each { |command, (writes, routine)| emit_entry_into_writes(asm, memory, command, writes, routine) } if samples
+              voice_told(memory).each { |command, (writes, routine)| emit_entry_into_writes(asm, memory, command, writes, routine) } if samples
             end
+
+            def voice_told(memory) = memory.reserved?(Recordings::GLIDES) ? VOICE_TOLD.merge(VOICE_TOLD_OF_GLIDES) : VOICE_TOLD
 
             # THE ENTRY AT THE FRONT OF THE QUEUE BECOMES ITS WRITES, in the place it stood and before
             # anything queued after it: the front of the queue moves back by as many entries as there

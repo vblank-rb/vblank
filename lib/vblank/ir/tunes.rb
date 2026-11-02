@@ -136,6 +136,9 @@ module VBlank
       # console told the setting itself reads it: the rate it makes is the note's pitch already.
       def said_noise_clock(event) = event[Audio::Music::Part::NOISE_CLOCK_SLOT]
 
+      # Whether +event+ carries on the note sounding at a new pitch, rather than striking one.
+      def glides?(event) = event[Audio::Music::Part::GLIDE_SLOT] == true
+
       # A NOTE SETTING ITS VOICE, as every backend's log says it: [:voice, channel, who, frequency,
       # volume], then the note's fade, its slide and its wobble when it said them (#said_fade,
       # #said_slide, #said_vibrato), its side when it is one speaker (#note_side), and its shape

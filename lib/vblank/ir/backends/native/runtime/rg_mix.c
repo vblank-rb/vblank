@@ -256,6 +256,14 @@ int32_t rg_mix_start_music_note(int32_t effect, int32_t lane, int32_t rank, cons
   return 1;
 }
 
+/* Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch. */
+int32_t rg_mix_glide_music_note(int32_t effect, int32_t lane, const int32_t *sound) {
+  int32_t at = sounding_voice(effect, lane);
+  if (at < 0) return 0;
+  voices[at].step = sound[1];
+  return 1;
+}
+
 int32_t rg_mix_release_music(int32_t effect, int32_t lane) {
   int32_t at = sounding_voice(effect, lane);
   if (at < 0) return 0;

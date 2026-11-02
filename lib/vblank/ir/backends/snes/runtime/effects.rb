@@ -91,7 +91,7 @@ module VBlank
               emit_passes(asm, at, memory, count)
               emit_frame(asm, at, memory, level_at, recorded)
               emit_finish(asm, at, memory, recorded)
-              emit_recorded_parts(asm, at) if recorded
+              emit_recorded_parts(asm, at, memory) if recorded
               emit_claim_routine(asm, at, memory)
               emit_select(asm, at, memory)
               emit_effect_holds(asm, at, memory)
@@ -525,7 +525,7 @@ module VBlank
             # it had one (Reference::Player#finish_effect).
             #
             # rt_sfx_owner: R1 = the owner number of the effect's part on channel A.
-            def emit_recorded_parts(asm, at)
+            def emit_recorded_parts(asm, at, memory)
               m = SNES::Music
               asm.label("rt_sfx_recorded_note")
               asm.jsr(asm.abs("rt_sfx_owner"))
@@ -537,6 +537,15 @@ module VBlank
               asm.jsl(asm.long("rt_recordings_note_release"))
               asm.bra("rt_sfx_recorded_note_heard")
               asm.label("rt_sfx_recorded_note_plays")
+              if memory.reserved?(Recordings::GLIDES)
+                asm.bpl("rt_sfx_recorded_note_strikes")
+                asm.and_a(m::GLIDES - 1)
+                asm.dec
+                asm.sta(asm.direct(Sound::R0))
+                asm.jsl(asm.long("rt_recordings_glide"))
+                asm.brl("rt_sfx_recorded_note_heard")
+                asm.label("rt_sfx_recorded_note_strikes")
+              end
               asm.dec
               asm.sta(asm.direct(Sound::R0))
               asm.ldx(at.call(RECORD))

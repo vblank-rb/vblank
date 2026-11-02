@@ -154,6 +154,7 @@
 #define SAID_DUTY (1 << 8)     /* a note's sixth number: set when it or its part said its shapes, */
 #define DUTY_BITS 0xFF         /* ...whose eight bits (Audio::Duty#bits) are under it */
 #define CARRIES_VIBRATO (1 << 9) /* ...and above it, set when its vibrato carries its swing on */
+#define GLIDES (1 << 10)         /* ...and set on a recorded note that carries on the one sounding */
 #define VIBRATO_CARRIES_LOGGED (1 << 16) /* ...which the log says above the vibrato's bits */
 #define NUMBERS_PER_NOTE_SOUND 8
 #define NUMBERS_PER_BEEP 4
@@ -1091,9 +1092,9 @@ static void play_recorded_note(const part_walk *part, const int32_t *note) {
     rg_mix_release_music(-1, part->tone);
   } else {
     const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
-    if (!rg_mix_start_music_note(-1, part->tone, song[3], numbers, level_variable ? scaled_volume(loudness) : loudness)) {
-      return;
-    }
+    int32_t heard = note[5] & GLIDES ? rg_mix_glide_music_note(-1, part->tone, numbers)
+                                     : rg_mix_start_music_note(-1, part->tone, song[3], numbers, level_variable ? scaled_volume(loudness) : loudness);
+    if (!heard) return;
   }
   rg_sound_log("note %d %d", (int)playing, (int)pitch);
   if (level_variable) hold_note((held_note){0, part->tone, pitch == 0 ? 0 : loudness, 0, 0, 0});
@@ -1281,10 +1282,10 @@ static void play_effect_note(int32_t effect, const part_walk *part, const int32_
   if (part->kind == PART_RECORDED) {
     int32_t sound = note[3];    /* its row of rg_game_note_sounds */
     int32_t loudness = note[2]; /* a recorded note's volume is written as its loudness, out of 512 */
-    int32_t heard = sounds ? rg_mix_start_music_note(effect, part->tone, rank,
-                                                     &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)],
-                                                     loudness)
-                           : rg_mix_release_music(effect, part->tone);
+    const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
+    int32_t heard = !sounds            ? rg_mix_release_music(effect, part->tone)
+                    : note[5] & GLIDES ? rg_mix_glide_music_note(effect, part->tone, numbers)
+                                       : rg_mix_start_music_note(effect, part->tone, rank, numbers, loudness);
     if (heard) rg_sound_log("note %d %d", (int)number, (int)pitch);
     return;
   }

@@ -27,12 +27,13 @@ module VBlank
           # backdrop with +scene_backdrops+, and +dims+ fades to black. +math_turns+ turns a see-through
           # layer solid. +bar_covers+ tells a bar to cover sprites. +tile_sizes+ has layers of two tile
           # sizes. +scene_tiles+ and +scene_background_tiles+ bring a scene's tiles in as it arrives.
-          # +extra_buttons+ can ask about X and Y, and +second_controller+ reads it.
+          # +extra_buttons+ can ask about X and Y, and +second_controller+ reads it. +glides+ has a
+          # recorded note that carries on the one sounding at a new pitch (Recordings).
           Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
-                                :scene_background_tiles, :extra_buttons, :second_controller) do
+                                :scene_background_tiles, :extra_buttons, :second_controller, :glides) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             def self.of(program, board:, screen_colors:, sprite_colors:, sprite_tiles:, background_tiles:)
@@ -54,7 +55,7 @@ module VBlank
                   math_turns: picture.see_through_turns_solid?(program), bar_covers: picture.bar_covers_sprites?(program),
                   tile_sizes: picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
                   scene_background_tiles: background_tiles, extra_buttons: Frame.reads_extra_buttons?(program),
-                  second_controller: Frame.reads_second_controller?(program))
+                  second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program))
             end
 
             # A Super FX on the board (Chip).
