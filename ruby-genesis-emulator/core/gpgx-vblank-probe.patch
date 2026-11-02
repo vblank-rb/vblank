@@ -1,3 +1,81 @@
+diff --git a/core/m68k/m68kcpu.c b/core/m68k/m68kcpu.c
+--- a/core/m68k/m68kcpu.c
++++ b/core/m68k/m68kcpu.c
+@@ -18,6 +18,47 @@
+ #include "m68kconf.h"
+ #include "m68kcpu.h"
+ #include "m68kops.h"
++
++/* THE PROBE PATCH: where the 68000's time goes, for a profiler. Each instruction's cycles, in the
++   core's own count of seven to a processor cycle, are added to the address it started at. Nothing
++   is kept until the first time it is asked for. probe_profile_take hands over what was counted
++   since it last was, each address as a little-endian word of 32 bits and one of 64. */
++#include <stdlib.h>
++static unsigned long long *probe_spent = NULL;
++static unsigned int *probe_touched = NULL;
++static unsigned int probe_touched_count = 0;
++unsigned char *probe_profile_bytes = NULL;
++
++static void probe_profile_add(unsigned int address, unsigned int before)
++{
++  unsigned int cycles = m68k.cycles - before;
++  if (!probe_spent || !cycles) return;
++  address &= 0xffffff;
++  if (!probe_spent[address]) probe_touched[probe_touched_count++] = address;
++  probe_spent[address] += cycles;
++}
++
++unsigned int probe_profile_take(void)
++{
++  unsigned int n, byte, size = probe_touched_count * 12;
++  if (!probe_spent)
++  {
++    probe_spent = calloc(1 << 24, sizeof(*probe_spent));
++    probe_touched = calloc(1 << 24, sizeof(*probe_touched));
++    return 0;
++  }
++  probe_profile_bytes = realloc(probe_profile_bytes, size + 12);
++  for (n = 0; n < probe_touched_count; n++)
++  {
++    unsigned int address = probe_touched[n];
++    unsigned long long cycles = probe_spent[address];
++    for (byte = 0; byte < 4; byte++) probe_profile_bytes[n * 12 + byte] = address >> (byte * 8);
++    for (byte = 0; byte < 8; byte++) probe_profile_bytes[n * 12 + 4 + byte] = cycles >> (byte * 8);
++    probe_spent[address] = 0;
++  }
++  probe_touched_count = 0;
++  return size;
++}
+ 
+ /* ======================================================================== */
+ /* ================================= DATA ================================= */
+@@ -268,7 +309,9 @@
+   /* Make sure we're not stopped */
+   if (CPU_STOPPED)
+   {
++    unsigned int probe_stopped_at = m68k.cycles;
+     m68k.cycles = cycles;
++    probe_profile_add(REG_PC, probe_stopped_at);
+     return;
+   }
+ 
+@@ -297,6 +340,8 @@
+ #endif
+ 
+     /* Decode next instruction */
++    unsigned int probe_address = REG_PC;
++    unsigned int probe_before = m68k.cycles;
+     REG_IR = m68ki_read_imm_16();
+ 
+     /* 68K bus access refresh delay (Mega Drive / Genesis specific) */
+@@ -309,6 +354,7 @@
+     /* Execute instruction */
+     m68ki_instruction_jump_table[REG_IR]();
+     USE_CYCLES(CYC_INSTRUCTION[REG_IR]);
++    probe_profile_add(probe_address, probe_before);
+ 
+     /* Trace m68k_exception, if necessary */
+     m68ki_exception_if_trace(); /* auto-disable (see m68kcpu.h) */
 diff --git a/core/sound/psg.c b/core/sound/psg.c
 --- a/core/sound/psg.c
 +++ b/core/sound/psg.c
@@ -30,7 +108,7 @@ diff --git a/core/sound/ym2612.c b/core/sound/ym2612.c
 diff --git a/libretro/libretro.c b/libretro/libretro.c
 --- a/libretro/libretro.c
 +++ b/libretro/libretro.c
-@@ -3742,11 +3742,48 @@
+@@ -3742,11 +3742,52 @@
  }
  
  unsigned retro_get_region(void) { return vdp_pal ? RETRO_REGION_PAL : RETRO_REGION_NTSC; }
@@ -46,9 +124,12 @@ diff --git a/libretro/libretro.c b/libretro/libretro.c
 +#define PROBE_SAT       0x8006
 +#define PROBE_PSG_REGS  0x8007
 +#define PROBE_FM_REGS   0x8008
++#define PROBE_PROFILE   0x8009
  
 +extern int *probe_psg_registers(void);
 +extern unsigned char probe_fm_registers[0x200];
++extern unsigned char *probe_profile_bytes;
++extern unsigned int probe_profile_take(void);
 +
 +static unsigned int probe_m68k_regs[18];
 +
@@ -76,10 +157,11 @@ diff --git a/libretro/libretro.c b/libretro/libretro.c
 +      case PROBE_PSG_REGS:  return probe_psg_registers();
 +      case PROBE_FM_REGS:   return probe_fm_registers;
 +      case PROBE_M68K_REGS: probe_read_m68k_regs(); return probe_m68k_regs;
++      case PROBE_PROFILE:   return probe_profile_bytes;
        case RETRO_MEMORY_SAVE_RAM:
           return sram.on ? sram.sram : NULL;
        case RETRO_MEMORY_SYSTEM_RAM:
-@@ -3762,6 +3799,14 @@
+@@ -3762,6 +3803,15 @@
  
     switch (id)
     {
@@ -91,6 +173,7 @@ diff --git a/libretro/libretro.c b/libretro/libretro.c
 +      case PROBE_PSG_REGS:  return 8 * sizeof(int);
 +      case PROBE_FM_REGS:   return 0x200;
 +      case PROBE_M68K_REGS: return sizeof(probe_m68k_regs);
++      case PROBE_PROFILE:   return probe_profile_take();
        case RETRO_MEMORY_SAVE_RAM:
        {
           /* return 0 if SRAM is disabled */

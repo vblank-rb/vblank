@@ -42,6 +42,7 @@ module RubyGenesisEmulator
     SPRITE_CACHE = 0x8006
     PSG_REGISTERS = 0x8007
     FM_REGISTERS = 0x8008
+    PROCESSOR_TIME = 0x8009
 
     # How much each of the PSG's sixteen loudness steps is in the core's numbers, the last being silence,
     # and the bits of its noise setting.
@@ -182,6 +183,15 @@ module RubyGenesisEmulator
       samples = @audio.unpack("s<*")
       @audio = "".b
       samples
+    end
+
+    # WHERE THE PROCESSOR'S TIME WENT since this was last asked: each address an instruction started
+    # at, and the core's cycles spent there, seven to a cycle of the 68000, whatever it stood still
+    # for included. A line of the picture is 3420 of them. The first ask starts the count and
+    # answers nothing.
+    def take_processor_time
+      bytes = memory(PROCESSOR_TIME)
+      bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
     end
 
     # The 68000's registers by name (REGISTER_NAMES): the data registers, the address registers,
