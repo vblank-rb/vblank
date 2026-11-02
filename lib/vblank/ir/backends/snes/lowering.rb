@@ -199,6 +199,10 @@ module VBlank
             [data_section, *table_sections, *routines, *timers, *main, *placings]
           end
 
+          # Whether the game has a division only a runtime routine can do (Runtime::Int32), once
+          # #sections has lowered it.
+          def divides? = @divides || false
+
           private
 
           # --- refusals ---
@@ -1199,8 +1203,10 @@ module VBlank
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
             return if node.op == :* && emit_product_by_power_of_two(node)
             return if node.op == :% && emit_remainder_by_power_of_two(node)
+            return if node.op == :/ && emit_quotient_by_power_of_two(node)
 
             if (routine = CALLED_SUMS[node.op])
+              @divides ||= %i[/ %].include?(node.op)
               return runtime_call(routine, [node.lhs, node.rhs])
             end
 
@@ -1458,6 +1464,48 @@ module VBlank
 
             value(Build.binop(:&, node.lhs, Build.int(divisor - 1)))
             true
+          end
+
+          # A quotient by a positive power of two written in the program, as a shift. A shift right
+          # rounds down and a quotient rounds towards nought, so a negative number has the divisor
+          # less one added first: -7 / 2 is (-7 + 1) >> 1, which is -3. Two places or fewer are written
+          # here, and rt_shr32 does more. True when it was done so.
+          def emit_quotient_by_power_of_two(node)
+            divisor = folded(node.rhs)
+            return false unless divisor&.positive? && (divisor & (divisor - 1)).zero?
+
+            value(node.lhs)
+            places = divisor.bit_length - 1
+            return true if places.zero?
+
+            positive = fresh("positive")
+            @asm.lda(@asm.direct(R0 + 2))
+            @asm.bpl(positive)
+            @asm.clc
+            2.times do |half|
+              @asm.lda(@asm.direct(R0 + (2 * half)))
+              @asm.adc(((divisor - 1) >> (16 * half)) & 0xFFFF)
+              @asm.sta(@asm.direct(R0 + (2 * half)))
+            end
+            @asm.label(positive)
+            emit_shift_right_of_r0(places)
+            true
+          end
+
+          def emit_shift_right_of_r0(places)
+            if places <= 2
+              places.times do
+                @asm.lda(@asm.direct(R0 + 2))
+                @asm.cmp(0x8000) # the sign into the carry, to come in at the top
+                @asm.ror(@asm.direct(R0 + 2))
+                @asm.ror(@asm.direct(R0))
+              end
+            else
+              @asm.lda(places)
+              @asm.sta(@asm.direct(Memory.register(1)))
+              @asm.stz(@asm.direct(Memory.register(1) + 2))
+              @asm.jsl(@asm.long("rt_shr32"))
+            end
           end
 
           # A product by a power of two up to 16 written in the program, as shifts of the two halves —

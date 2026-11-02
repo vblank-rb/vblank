@@ -17,9 +17,10 @@ module VBlank
           # carry it was left with (ADC), so the carry flag is cleared before the first.
           #
           # The console has a multiplier and a divider of its own, but they take 8 bits by 8 and 16
-          # by 8, so a 32-bit product would be many of them added up. These routines do it the way
-          # it is done on paper: one bit of the multiplier (or of the quotient) at a time, at most
-          # 32 times (64 for a fraction), shifting and adding.
+          # by 8, so a 32-bit product would be many of them added up. These routines use them where
+          # the numbers fit, and otherwise do it the way it is done on paper: one bit of the
+          # multiplier (or of the quotient) at a time, at most 32 times (64 for a fraction), shifting
+          # and adding.
           #
           # Every routine takes its numbers in R0, R1 and R2 (Memory.register) and leaves its answer
           # in R0. They are reached with JSL and return with RTL, with A, X and Y 16 bits wide on
@@ -40,11 +41,15 @@ module VBlank
                           signs: memory.scratch(2))
             end
 
-            def emit(asm, scratch)
+            # +divides+ says whether the game has a division a routine works out. One without has no
+            # use for those routines, and they are not small.
+            def emit(asm, scratch, divides: true)
               emit_mul(asm, scratch)
-              emit_unsigned_divide(asm, scratch)
-              emit_div(asm, scratch)
-              emit_mod(asm, scratch)
+              if divides
+                emit_unsigned_divide(asm, scratch)
+                emit_div(asm, scratch)
+                emit_mod(asm, scratch)
+              end
               emit_shifts(asm)
               emit_mul_fix(asm, scratch)
               emit_div_fix(asm, scratch)
@@ -131,12 +136,49 @@ module VBlank
             # scratch's rest. Long division, a bit at a time: the numerator is shifted into the
             # remainder from the top, and wherever the divisor goes into it, it is taken away and a
             # one goes into the quotient, which fills R0 from the bottom as the numerator leaves it.
+            #
+            # A STEP THAT CAN ONLY GIVE NOUGHT NEED NOT BE WALKED. While what has come over into the
+            # remainder is less than the divisor, the divisor does not go in, so a step does nothing
+            # but move one bit. When the numerator's top half is less than the divisor, the first
+            # sixteen steps are all like that and the half moves across at once; and when that half
+            # was nothing and the divisor is more than a byte, so are the next eight. A divisor of a
+            # byte never gets here (#emit_divide_by_byte), so the second holds whenever it is asked.
             def emit_unsigned_divide(asm, s)
               rest = s.rest
               asm.label("rt_udiv32")
+              asm.lda(asm.direct(R1 + 2))
+              asm.bne("rt_udiv32_words")
+              asm.lda(asm.direct(R1))
+              asm.cmp(0x100)
+              asm.bcs("rt_udiv32_words")
+              asm.brl("rt_udiv32_byte")
+              asm.label("rt_udiv32_words")
               asm.stz(asm.direct(rest))
               asm.stz(asm.direct(rest + 2))
               asm.ldx(32)
+              asm.lda(asm.direct(R0 + 2))
+              asm.ldy(asm.direct(R1 + 2))
+              asm.bne("rt_udiv32_top_half_over")
+              asm.cmp(asm.direct(R1))
+              asm.bcs("rt_udiv32_bit")
+              asm.label("rt_udiv32_top_half_over")
+              asm.sta(asm.direct(rest))
+              asm.tay
+              asm.lda(asm.direct(R0))
+              asm.sta(asm.direct(R0 + 2))
+              asm.stz(asm.direct(R0))
+              asm.ldx(16)
+              asm.tya
+              asm.bne("rt_udiv32_bit")
+              asm.lda(asm.direct(R0 + 2)) # the numerator, under 16 bits: its top byte over too
+              asm.xba
+              asm.tay
+              asm.and_a(0x00FF)
+              asm.sta(asm.direct(rest))
+              asm.tya
+              asm.and_a(0xFF00)
+              asm.sta(asm.direct(R0 + 2))
+              asm.ldx(8)
               asm.label("rt_udiv32_bit")
               asm.asl(asm.direct(R0))
               asm.rol(asm.direct(R0 + 2))
@@ -156,6 +198,59 @@ module VBlank
               asm.dex
               asm.bne("rt_udiv32_bit")
               asm.rts
+              emit_divide_by_byte(asm, s)
+            end
+
+            # THE CONSOLE DIVIDES 16 BITS BY A BYTE BY ITSELF, in sixteen cycles, against dozens of
+            # instructions for a single bit here. So a divisor of a byte goes to it, and a numerator
+            # too long for it goes as long division on paper does, with the remainder of each piece
+            # coming down in front of the next: the top half first, then a byte, then a byte. Each
+            # byte's quotient fits a byte, since what comes down in front of it is less than the
+            # divisor. The divisor is not nought: rt_div32 and rt_mod32 have seen to that.
+            def emit_divide_by_byte(asm, s)
+              h = Console::SNESHardware
+              rest = s.rest
+              asm.label("rt_udiv32_byte")
+              asm.stz(asm.direct(rest + 2))
+              asm.lda(asm.direct(R0 + 2))
+              asm.beq("rt_udiv32_byte_low_half")
+              emit_console_divide(asm)
+              asm.lda(asm.abs(h::RDDIVL))
+              asm.sta(asm.direct(R0 + 2))
+              [1, 0].each do |byte|
+                asm.lda(asm.abs(h::RDMPYL)) # the divider leaves its remainder here
+                asm.xba
+                asm.sep(0x20)
+                asm.lda(asm.direct(R0 + byte))
+                asm.rep(0x20)
+                emit_console_divide(asm)
+                asm.sep(0x20)
+                asm.lda(asm.abs(h::RDDIVL))
+                asm.sta(asm.direct(R0 + byte))
+                asm.rep(0x20)
+              end
+              asm.bra("rt_udiv32_byte_done")
+              asm.label("rt_udiv32_byte_low_half")
+              asm.lda(asm.direct(R0))
+              emit_console_divide(asm)
+              asm.lda(asm.abs(h::RDDIVL))
+              asm.sta(asm.direct(R0))
+              asm.label("rt_udiv32_byte_done")
+              asm.lda(asm.abs(h::RDMPYL))
+              asm.sta(asm.direct(rest))
+              asm.rts
+            end
+
+            # A ÷ R1's low byte on the console's divider, and the wait for its answer: sixteen cycles
+            # from the write, and the REP and these NOPs are all there is to do in them.
+            def emit_console_divide(asm)
+              h = Console::SNESHardware
+              asm.sta(asm.abs(h::WRDIVL)) # both bytes, this and WRDIVH
+              asm.sep(0x20)
+              asm.lda(asm.direct(R1))
+              asm.sta(asm.abs(h::WRDIVB))
+              asm.rep(0x20)
+              7.times { asm.nop }
             end
 
             # rt_div32: R0 ÷ R1, rounded towards nought (Int32.div). By nought it is 1, or -1 for a

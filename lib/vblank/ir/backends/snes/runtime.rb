@@ -72,7 +72,7 @@ module VBlank
             asm = W65816.new("runtime")
             Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast)
             Boot.emit_zero(asm)
-            Int32.emit(asm, Int32.scratch(memory))
+            Int32.emit(asm, Int32.scratch(memory), divides: lowering.divides?)
             Frame.emit(asm, memory, pad: memory.scratch(4), sound: c.sound, extra_buttons: c.extra_buttons,
                                     second_controller: c.second_controller, dims: c.dims)
             Blank.emit(asm, memory, Blank.scratch(memory))

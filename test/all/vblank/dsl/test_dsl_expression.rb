@@ -369,6 +369,26 @@ class TestDSLExpression < Minitest::Test
     assert_equal UNDRAWN, pixel_at(i, 26, 20), "a floored -4 would land here"
   end
 
+  # By a written power of two, either side of nought and on either side of a half's edge. A shift alone
+  # rounds down, so it is the negative numbers that tell the two apart.
+  def test_dividing_by_a_written_power_of_two_truncates_toward_zero
+    numbers = [-1, -2, -3, -4, -5, -7, -8, -9, -65_535, -65_536, -65_537, -1_000_000, 1, 7, 8, 65_537, 1_000_000]
+    divisors = [1, 2, 4, 8, 16, 256, 65_536, 131_072]
+    program = tree do
+      screen :bitmap
+      clear_screen :black
+      wrong = var :wrong, 0
+      numbers.each do |written|
+        number = var :"number#{written.abs}#{written.negative? ? 'n' : 'p'}", written
+        divisors.each do |divisor|
+          wrong += 1 if number / divisor != written.fdiv(divisor).truncate
+        end
+      end
+      halt
+    end
+    assert_equal 0, game_player.run(program, frames: 2)[:wrong]
+  end
+
   # A divisor the game works out can come to nought on some frame, and then there is no
   # answer to give — so one is defined, and it is the same on both backends: 1 (or -1 for
   # a number below nought), and for `%` the number itself. +50 keeps the markers on screen.
