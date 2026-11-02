@@ -119,6 +119,8 @@ module VBlank
                               end),
         canvas_font: Kind.new(spelling: "__letters_%{font}__%{part}", parts: { font: ANY, part: PLAIN },
                               words: nil),
+        list_text_part: Kind.new(spelling: "__list_text_%{number}__%{part}", parts: { number: "\\d+", part: PLAIN },
+                                 words: ->(_) { "drawing words held in a list" }),
         list_fill_routine: Kind.new(spelling: "__list_fill_bytes", parts: {},
                                     words: ->(_) { "filling a run of a list, as a canvas clears or fills a rectangle" }),
         list_copy_routine: Kind.new(spelling: "__list_copy_bytes", parts: {},

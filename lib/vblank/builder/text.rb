@@ -124,11 +124,16 @@ module VBlank
       # @param font [Symbol] a font registered in {Fonts} (defaults to :default)
       # @param within [Range, nil] the columns to place it in (defaults to the screen)
       # @param showing [Condition, Value, Symbol, nil] which of a pair of colors is showing
-      def draw_text(text, x, y, color, font: :default, within: nil, showing: nil)
+      def draw_text(text, x, y, color, font: :default, within: nil, showing: nil, from: nil, length: nil)
+        return draw_list_text(text, x, y, color, font: font, from: from, length: length, placed: within || showing) if text.is_a?(DSL::List)
+
         unless text.is_a?(String)
           raise ArgumentError,
-                "draw_text draws words (a String). For a number like a score or a counter, use " \
-                "draw_number. Got #{text.inspect}."
+                "draw_text draws words (a String, or a list of character codes). For a number like a score or a " \
+                "counter, use draw_number. Got #{text.inspect}."
+        end
+        if from || length
+          raise ArgumentError, "draw_text takes from: and length: with a list of character codes. These words are a String."
         end
         colors = text_colors!(color, showing)
         chosen = IR::FontTable.of(@program).get(font) # fail early with a friendly error on an unknown font name
@@ -339,6 +344,29 @@ module VBlank
         end
 
         [first, within.last - first + (within.exclude_end? ? 0 : 1)]
+      end
+
+      # WORDS HELD IN A LIST (see DSL::ListText): +length+ of its character codes from item +from+,
+      # all of it from there when not said. How wide they come out is known only as they are
+      # drawn, so the left edge is a number or a variable, and each word of it is one colour.
+      def draw_list_text(list, x, y, color, font:, from:, length:, placed:)
+        if TILE_HARDWARE_MODES.include?(@screen_mode)
+          raise ArgumentError, "draw_text cannot draw a list of character codes on a tiled screen, because each letter is a " \
+                               "sprite made while the game is built. To fix this, use a `canvas` and call its draw_letter " \
+                               "for each item of the list."
+        end
+        if x.is_a?(Symbol) && !@program.walk.any? { |node| node.kind == :var && node.name == x } || placed || color.is_a?(Array)
+          raise ArgumentError, "draw_text of a list of character codes takes a column, not :left, :center, :right or within:, " \
+                               "and one color with no showing:, because the words are not known until the game runs."
+        end
+
+        IR::FontTable.of(@program).get(font) # fail early with a friendly error on an unknown font name
+        start = from || 0
+        letters = length || (list.length - start)
+        @list_texts ||= {}
+        text = @list_texts[[list.name, font, color]] ||=
+          DSL::ListText.new(self, number: @list_texts.length + 1, list: list, font: font, color: color)
+        text.draw(x, y, start, letters)
       end
 
       # A number known at build time: right-align its glyphs in the field now. The

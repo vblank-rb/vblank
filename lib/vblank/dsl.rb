@@ -48,3 +48,4 @@ VBlank.require_game_file "dsl/status_bar"
 require_relative "dsl/tile_run" # tiles whose pixels the game paints, in a list of its own
 require_relative "dsl/tile_picture_group" # ...and tiles taking turns through pictures in the cartridge
 VBlank.require_game_file "dsl/canvas" # ...and a picture the game draws into with words, built on them
+VBlank.require_game_file "dsl/list_text" # ...and words held in a list, drawn on a painted screen
