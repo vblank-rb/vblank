@@ -259,6 +259,9 @@ module VBlank
 
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
+          # Does the game keep tile pictures in a bank? Then its runtime carries the copy from one.
+          def copies_from_banks? = @program.walk.any? { |node| node.kind == :tile_run && node.held_in }
+
           def fills_byte_lists?
             lists = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }
             names = lists.map(&:name)
@@ -308,6 +311,8 @@ module VBlank
           def data_section
             asm = SM83.new("game data", home: :fixed, holds: DATA)
             tables_read.each do |table|
+              next if held_picture_table?(table)
+
               if banked_tables.include?(table.name)
                 asm.label(table_parts_label(table.name))
                 table_parts(table).each_index do |part|
@@ -385,6 +390,7 @@ module VBlank
 
           # A section for each part of each table kept in banks.
           def banked_table_sections
+            held = tables_read.select { |table| held_picture_table?(table) }.map { |table| held_pictures_section(table) }
             tables = tables_read.select { |table| banked_tables.include?(table.name) }.flat_map do |table|
               table_parts(table).each_with_index.map do |bytes, part|
                 asm = SM83.new(table_part_label(table.name, part), home: :banked, holds: DATA)
@@ -398,7 +404,7 @@ module VBlank
               emit_drawing_table(asm, table)
               asm.section
             end
-            tables + drawings
+            held + tables + drawings
           end
 
           # A table of the drawing's numbers (Picture#drawing_table), each entry its low bytes.

@@ -52,6 +52,38 @@ class TestTilePicturesOnTheColor < Minitest::Test
     b.program
   end
 
+  # More pictures than the part of the cartridge always in view holds: 2 × 24 × 21 tiles of 16 bytes.
+  private def too_many_for_the_view
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      colors :warm, %i[transparent red yellow white]
+      colors :cool, %i[transparent blue green white]
+      board = {}
+      %i[warm cool].each do |list|
+        3.times { |look| image :"#{list}_#{look}", width: 8, height: 8, colors: list, places: Array.new(64) { |place| ((place + look) % 3) + 1 } }
+        board[list] = Array.new(24) { |tile| [tile, Array.new(21) { |picture| :"#{list}_#{picture % 3}" }] }.to_h
+      end
+      warm = tile_pictures :warm_board, tiles: board[:warm], colors: :warm
+      cool = tile_pictures :cool_board, tiles: board[:cool], colors: :cool
+      tiles :field, "a" => warm[0], "b" => cool[0]
+      background :ground, tiles: :field, map: ["abab"]
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        warm.show((pass / 2) % 21)
+        cool.show((pass / 3) % 21)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_pictures_too_many_for_the_part_always_in_view_are_kept_in_a_bank
+    game_player.run(too_many_for_the_view, frames: 20)
+    pass
+  end
+
   def test_two_groups_show_on_the_console_as_the_interpreter_shows_them
     game_player.run(billboard, frames: 40)
     pass

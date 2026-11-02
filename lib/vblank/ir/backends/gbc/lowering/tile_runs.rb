@@ -36,6 +36,9 @@ module VBlank
             # Bytes a tile takes in the Color's picture memory.
             TILE_BYTES = 16
 
+            # Bytes of the cartridge a bank holds.
+            BANK_BYTES = 0x4000
+
             # Every painted run's copy, for the runtime, once #keep_tile_runs has placed them.
             def run_uploads
               (@run_places || {}).filter_map do |name, (owed, staging)|
@@ -63,6 +66,24 @@ module VBlank
             def painted_tile_swaps(name)
               bg = tiled_scenery.find { |each| each.tiles.include?(name) }
               bg && recolor_steps_of(name, bg)
+            end
+
+            def held_picture_table?(table) = tile_runs.each_value.any? { |run| run.held_in == table.name }
+
+            # A group's pictures in a bank, all of them in one piece, since one show copies across it.
+            # Nothing reads them but that copy, so they ask nothing of the part always in view.
+            def held_pictures_section(table)
+              bytes = held_pictures_as_tiles(table)
+              if bytes.length > BANK_BYTES
+                raise LoweringError, "A group of `tile_pictures` holds #{bytes.length} bytes of pictures, and one bank of " \
+                                     "a Game Boy Color cartridge holds #{BANK_BYTES}. To fix this, use fewer pictures, or " \
+                                     "put the tiles in two groups."
+              end
+
+              asm = SM83.new(table_label(table.name), home: :banked, holds: DATA)
+              asm.label(table_label(table.name))
+              asm.data_bytes(bytes)
+              asm.section
             end
 
             # +table+'s bytes in the Color's own form, if it holds a group's pictures, or nil. The
@@ -219,7 +240,8 @@ module VBlank
               @asm.add_hl(:de)
               @asm.load(:de, staging)
               @asm.load(:bc, run_tile_count(run) * TILE_BYTES)
-              @asm.call("rt_copy_bc")
+              @asm.load_bank_of(:a, table_label(run.held_in))
+              @asm.call("rt_far_copy_bc")
             end
           end
         end

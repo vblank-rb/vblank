@@ -23,6 +23,15 @@ they never *have* to. When adding a feature, this ranks above cleverness or byte
   modes) so nothing corrupts memory or silently fails; keep the low-level escape hatches (raw
   asm-tier ops, explicit modes, raw data arrays) available for people who want them.
 - **Names read like game code**, not assembly — `flip`, `approach`, `blit :ship, x, y`.
+- **High-level verbs, with settings that make the code tight.** These consoles are small, and a
+  verb a real game cannot afford is not finished. So a verb stays plain to call and takes settings
+  that choose how it is built (`width: :half`, `console_format: true`, `above_row:`), and the plain
+  call stays right for a game that never needs them. A setting costs nothing unless a game names it.
+- **General, not fitted to one game.** A change goes in the framework only when it is known to be
+  useful beyond the game that asked: a building block or a setting any game could use. What fits
+  one game's screen, memory or timing is that game's to do with those. Before adding to a verb,
+  ask whether the game can do this with what exists, and what the smallest general piece is if
+  it cannot. A verb grown to fit one field is the wrong fix even when it works.
 
 ## Shell commands — one operation per call
 

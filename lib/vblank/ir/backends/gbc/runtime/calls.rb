@@ -23,7 +23,7 @@ module VBlank
             # Where number +i+ of +n+ handed to a runtime routine is, once rt_take_args has run.
             def arg(memory, i, n) = memory.args + (4 * (n - 1 - i))
 
-            def emit(asm, memory)
+            def emit(asm, memory, far_copies: false)
               # Copy B bytes from (HL) into the arguments' place in quick memory: a number, four
               # bytes, to a turn of the loop.
               asm.label("rt_take_args")
@@ -96,6 +96,8 @@ module VBlank
               asm.push(:de)
               asm.ret
 
+              emit_far_copy(asm) if far_copies
+
               emit_parted_read(asm)
 
               emit_table_readers(asm)
@@ -151,6 +153,28 @@ module VBlank
             end
 
             # BCDE = the table entry at HL, widened to 32 bits with its sign (or without).
+            # BC bytes from HL in bank A to DE, for a game that keeps tile pictures in a bank. The bank
+            # goes in view for the copy and the caller's comes back after it, so the caller can be in
+            # any bank, and this routine in the part always in view is all that has to be.
+            def emit_far_copy(asm)
+              asm.label("rt_far_copy_bc")
+              asm.push(:bc)
+              asm.load(:b, :a)
+              asm.load_high(:a, Memory::CURRENT_BANK)
+              asm.load(:c, :a)
+              asm.load(:a, :b)
+              asm.load_high(Memory::CURRENT_BANK, :a)
+              asm.select_rom_bank
+              asm.load(:a, :c)
+              asm.pop(:bc)
+              asm.push(:af)
+              asm.call("rt_copy_bc")
+              asm.pop(:af)
+              asm.load_high(Memory::CURRENT_BANK, :a)
+              asm.select_rom_bank
+              asm.ret
+            end
+
             def emit_table_readers(asm)
               asm.label("rt_read_int8")
               asm.load(:e, [:hl])
