@@ -112,11 +112,11 @@ module VBlank
         # before it gives up squares, and the same for 1024 background tiles (+background_tiles+).
         # A screen that still does not fit is cut small alone (+small_sprite_scenes+). Before any of
         # those, a game of sprites in several lists of colours is built with one set of their
-        # pictures, worn in every list (+worn_pictures_shared+): what it costs is a whole set of
+        # pictures, worn in every list (+one_sprite_tile_set+): what it costs is a whole set of
         # colours for each list, so it is tried only where the sprites do not fit otherwise, and
         # given up if the lists do not fit that way.
         def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                  background_tiles: false, small_sprite_scenes: [], worn_pictures_shared: false)
+                  background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false)
           board = board_for(program)
           memory = Memory.new
           refuse_save_on_chip_board!(board) if SaveLayout.named_by?(program)
@@ -126,14 +126,14 @@ module VBlank
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
-                                                worn_pictures_shared: worn_pictures_shared)
+                                                one_sprite_tile_set: one_sprite_tile_set)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
-                      small_sprite_scenes: small_sprite_scenes, worn_pictures_shared: worn_pictures_shared }
+                      small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set }
           begin
             game = lowering.sections + lowering.art_sections
           rescue Art::ScreenSpritesFull => e
-            built = build_with_worn_pictures_shared(program, title, choices, lowering)
+            built = build_with_one_sprite_tile_set(program, title, choices, lowering)
             return built if built
 
             return build(program, title: title, **choices, small_sprite_scenes: [*small_sprite_scenes, e.scene])
@@ -142,7 +142,7 @@ module VBlank
           rescue Art::TooManySpriteColors
             return build(program, title: title, **choices, sprite_colors: true)
           rescue Art::TooMuch => e
-            built = build_with_worn_pictures_shared(program, title, choices, lowering) if e.is_a?(Art::TooManySpriteTiles)
+            built = build_with_one_sprite_tile_set(program, title, choices, lowering) if e.is_a?(Art::TooManySpriteTiles)
             return built if built
 
             return build(program, title: title, **choices, sprite_tiles: true) if e.is_a?(Art::TooManySpriteTiles) && lowering.sprites_of_one_scene?
@@ -179,14 +179,14 @@ module VBlank
         # The game built with one set of its sprites' pictures (#build), or nil where that does not
         # apply or does not fit, which leaves the other ways of fitting it to be tried, once, and with
         # nothing the attempt found to say.
-        def build_with_worn_pictures_shared(program, title, choices, lowering)
-          return nil if choices[:worn_pictures_shared] || @worn_pictures_do_not_fit || !lowering.sprites_wear_lists?
+        def build_with_one_sprite_tile_set(program, title, choices, lowering)
+          return nil if choices[:one_sprite_tile_set] || @one_sprite_tile_set_failed || !lowering.sprites_draw_with_lists?
 
           said = findings.length
           begin
-            build(program, title: title, **choices, worn_pictures_shared: true)
-          rescue Art::TooMuch
-            @worn_pictures_do_not_fit = true
+            build(program, title: title, **choices, one_sprite_tile_set: true)
+          rescue Art::TooMuch, Lowering::NotMadeYet
+            @one_sprite_tile_set_failed = true
             findings.slice!(said..)
             nil
           end

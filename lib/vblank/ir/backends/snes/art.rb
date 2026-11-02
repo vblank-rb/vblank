@@ -314,7 +314,10 @@ module VBlank
           end
 
           # Which place of its list pixel +at+ of +image+ was drawn at.
-          def place_in_list(image, at) = image.place_at(at) || image.colors.index(image.color_at(at))
+          # Place 0 is see-through and holds no colour to find, whatever is written there.
+          def place_in_list(image, at)
+            image.place_at(at) || (1...image.colors.length).find { |place| image.colors[place] == image.color_at(at) }
+          end
 
           # Where a big tile's quarters go, from the place its cell names.
           BIG_TILE_PLACES = [0, 1, 16, 17].freeze
