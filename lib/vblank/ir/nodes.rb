@@ -188,11 +188,15 @@ module VBlank
         declaration!
         category :data
         operands name: :name, list: :name, tiles: :list, colors: :list, picture: :name, width: :int,
-                 height: :int, colors_name: :name, console_format: :flag, held_in: :name
+                 height: :int, colors_name: :name, console_format: :flag, held_in: :name, tile_side: :int
 
         # A run of `tile_pictures` says the table its list only ever copies from, in +held_in+. A
         # console that can read that table with its copying engine is free to take the bytes from
         # there rather than through the list (see GBA::BackgroundDrawing#emit_copy_painted_run).
+
+        # How many 8×8 squares its list keeps for one tile: one, or four for a tile of +tile_side+
+        # 16, left to right and then down.
+        def squares_per_tile = (tile_side / 8)**2
 
         # The list of colours its tiles are drawn from, as a background's recolouring keeps them
         # apart (Assets::Image#list_drawn_from).

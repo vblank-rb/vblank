@@ -125,6 +125,7 @@ module VBlank
           bar = Lowering::Picture.status_bar?(program)
           bends = Lowering::Picture.bends?(program)
           tile_runs = Lowering::Picture.tile_run_bytes(program)
+          held_runs = Lowering::Picture.held_runs(program)
           scene_backdrops = Lowering::Picture.scene_backdrops?(program)
           changing_colors = screen_colors || sprite_colors || scene_backdrops || Lowering::Picture.changing_colors?(program)
           dims = Lowering::Picture.fades_to_black?(program)
@@ -132,7 +133,7 @@ module VBlank
           Runtime.reserve(memory, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
                                   music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
                                   bends: bends, scene_bends: Lowering::Picture.scene_bends?(program), tile_runs: tile_runs,
-                                  holds_music: Lowering::Sound.holds_music?(program),
+                                  held_runs: held_runs, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program),
@@ -169,7 +170,7 @@ module VBlank
                                              effects: effects, recordings: lowering.sound_recordings,
                                              plays: (lowering.recordings_section if samples), bar: bar,
                                              bent: lowering.bent_layers, banded: lowering.bends_by_bands?, tile_runs: tile_runs.length,
-                                             straight_tile_runs: Lowering::Picture.tile_runs(program).any?(&:console_format),
+                                             held_runs: held_runs, straight_tile_runs: Lowering::Picture.tile_runs(program).any?(&:console_format),
                                              see_through: lowering.see_through_layers, big_tiles: lowering.big_tile_layers,
                                              recorded_parts: songs && lowering.recorded_parts?,
                                              colors_shown: lowering.colors_shown,

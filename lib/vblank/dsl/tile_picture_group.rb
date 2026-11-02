@@ -8,8 +8,9 @@ module VBlank
     class TilePictureGroup
       attr_reader :name
 
-      def initialize(builder, name:, keys:, pictures:, list:, held:, run:, shown:)
+      def initialize(builder, name:, keys:, pictures:, list:, held:, run:, shown:, bytes_shown:)
         @builder = builder
+        @bytes_shown = bytes_shown
         @name = name
         @keys = keys
         @pictures = pictures
@@ -47,8 +48,7 @@ module VBlank
       private
 
       def copy_picture(which)
-        bytes = @keys.length * Builder::TileRuns::TILE_BYTES
-        @list.copy_from(@held, at: Build.binop(:*, which, Build.int(bytes)), count: bytes)
+        @list.copy_from(@held, at: Build.binop(:*, which, Build.int(@bytes_shown)), count: @bytes_shown)
       end
 
       Build = IR::Build

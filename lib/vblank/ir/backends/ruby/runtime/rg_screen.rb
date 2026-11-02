@@ -915,6 +915,12 @@ def rg_tile_pixel(background, cell, tx, ty)
   if painted != RG_NOT_PAINTED && @rg_game_painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
     run = @rg_game_painted_tiles[painted + (2 * cell)]
     which = @rg_game_painted_tiles[painted + (2 * cell) + 1]
+    # A big tile is kept as four squares, left to right and then down.
+    if rg_background_field(background, RG_BG_TILE_W) == 2 * RG_RUN_TILE_SIDE
+      which = (which * 4) + ((ty / RG_RUN_TILE_SIDE) * 2) + (tx / RG_RUN_TILE_SIDE)
+      tx %= RG_RUN_TILE_SIDE
+      ty %= RG_RUN_TILE_SIDE
+    end
     place = rg_painted_places[rg_run_field(run, RG_RUN_PLACES) + (which * RG_RUN_TILE_PIXELS) + (ty * RG_RUN_TILE_SIDE) + tx]
     set = (rg_tile_set_now(background) * @rg_game_picture_sizes[RG_SIZE_RUNS]) + run
     return @rg_game_run_colors[rg_background_field(background, RG_BG_RUN_COLORS) + (set * RG_PLACES_IN_RUN_COLORS) + place]

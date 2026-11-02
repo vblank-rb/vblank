@@ -836,6 +836,12 @@ static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t
   int32_t painted = background_field(background, RG_BG_PAINTED);
   if (painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED) {
     int32_t run = rg_game_painted_tiles[painted + 2 * cell], which = rg_game_painted_tiles[painted + 2 * cell + 1];
+    /* A big tile is kept as four squares, left to right and then down. */
+    if (background_field(background, RG_BG_TILE_W) == 2 * RUN_TILE_SIDE) {
+      which = which * 4 + (int32_t)(ty / RUN_TILE_SIDE) * 2 + (int32_t)(tx / RUN_TILE_SIDE);
+      tx %= RUN_TILE_SIDE;
+      ty %= RUN_TILE_SIDE;
+    }
     int32_t place = places_of(run)[which * RUN_TILE_PIXELS + ty * RUN_TILE_SIDE + tx];
     int64_t set = (int64_t)tile_set_now(background) * rg_game_picture_sizes[RG_SIZE_RUNS] + run;
     return rg_game_run_colors[background_field(background, RG_BG_RUN_COLORS) + set * PLACES_IN_RUN_COLORS + place];

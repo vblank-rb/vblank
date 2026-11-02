@@ -79,6 +79,7 @@ module VBlank
         given = tile_map.delete(:colors)
         own_form = tile_map.delete(:console_format) == true
         held_in = tile_map.delete(:held_in)
+        side = tile_map.delete(:tile_side) || 8
         if tile_map.key?(:black)
           raise ArgumentError,
                 "tiles :#{name}: black: has no use here. These tiles are painted as places in colors:, so place 0 " \
@@ -88,17 +89,17 @@ module VBlank
         colors_name = given if given.is_a?(Symbol)
         refuse_tile_run_on_bitmap_screen!(name)
         refuse_bad_tile_run_count!(name, count)
-        refuse_tile_run_list_unfit!(name, list, count, own_form: own_form)
+        refuse_tile_run_list_unfit!(name, list, count * ((side / 8)**2), own_form: own_form)
         refuse_tile_run_key_taken!(name, tile_map, count)
 
         images = (1..count).map { |number| Messages::MadeNames.make(:tile_run_tile, run: name, number: number) }
         images.each do |image|
-          @images[image] = [8, 8]
+          @images[image] = [side, side]
           @painted_colors[image] = colors
           @painted_colors_names[image] = colors_name
         end
         record(Build.tile_run(name, list: list.name, tiles: images, colors: colors, colors_name: colors_name,
-                                    console_format: own_form, held_in: held_in))
+                                    console_format: own_form, held_in: held_in, tile_side: side))
         register_tile_run(name)
 
         tiles(name, images.each_with_index.to_h { |image, i| [i + 1, image] }.merge(tile_map))

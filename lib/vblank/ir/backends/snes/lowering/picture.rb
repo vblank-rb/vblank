@@ -56,8 +56,26 @@ module VBlank
             def self.tile_runs(program) = program.walk.select { |node| node.kind == :tile_run }.uniq(&:name)
 
             # The bytes each run's tiles take in the console's form, which the runtime stages a copy in.
+            # A run held in the cartridge is never staged, so it has none.
             def self.tile_run_bytes(program)
-              tile_runs(program).map { |run| (run.picture ? (run.width / 8) * (run.height / 8) : run.tiles.length) * 32 }
+              tile_runs(program).map do |run|
+                next 0 if run.held_in
+
+                (run.picture ? (run.width / 8) * (run.height / 8) : run.tiles.length) * 32
+              end
+            end
+
+            # THE RUNS WHOSE PICTURES ARE HELD IN THE CARTRIDGE (`tile_pictures`), as each run's number
+            # and how many strips of tiles it is copied in. Converting a list's places into the console's
+            # form takes the processor a good part of a frame, and these are known while the game is
+            # built, so they go into the cartridge in that form and the copying engine reads them from
+            # there, in the blank, with nothing for the processor to do. The console reads a run's tiles
+            # in a line of video memory, so a run of 8×8 tiles is one strip. A big tile is a strip for
+            # its top two quarters and one for its bottom two, sixteen tiles further on.
+            def self.held_runs(program)
+              tile_runs(program).each_with_index.select { |run, _| run.held_in }.to_h do |run, number|
+                [number, run.tile_side == BIG_TILE ? run.tiles.length * 2 : 1]
+              end
             end
 
             # The SNES::Art the game's pictures were made into.
@@ -117,6 +135,7 @@ module VBlank
               @tile_runs = Picture.tile_runs(@program)
               @run_cells = {} # a run's tile's image name -> [tile, palette]
               @run_places = [] # each run's first tile's word in video RAM
+              @held_strips = [] # each strip of the runs held in the cartridge (Picture.held_runs)
             end
 
             # Each piece of the picture this lowering does not make yet, refused by name: the
@@ -134,9 +153,6 @@ module VBlank
               @program.walk.select { |node| node.kind == :background }.each do |bg|
                 unless bg.tile_w == bg.tile_h && [8, BIG_TILE].include?(bg.tile_w)
                   refuse_unmade!("background tiles of #{bg.tile_w}×#{bg.tile_h}")
-                end
-                if bg.tile_w == BIG_TILE && @tile_runs.any? { |run| !run.picture && run.tiles.intersect?(bg.tiles) }
-                  refuse_unmade!("16×16 background tiles that the game paints from a list")
                 end
                 refuse_unmade!("a background drawn from several sets of tiles") if bg.several_sets?
                 refuse_unmade!("a background whose maps are of different sizes or too big to hold") if bg.streams?
@@ -509,11 +525,29 @@ module VBlank
                 in_table = @sprite_pictures.index(run.picture) || @art.sprite_pictures.length
                 picture = @art.sprite_run_picture(run.picture, run.width, run.height, run.colors, number: in_table)
                 @run_places[number] = Runtime::Picture::SPRITE_TILES + (picture.pieces.first.tile * Art::TILE_BYTES / 2)
+              elsif run.tile_side == BIG_TILE
+                make_big_run_art(run, number)
               else
                 first, palette = @art.background_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run), tile_scene: tiles_scene_of_run(run))
                 run.tiles.each_with_index { |image, k| @run_cells[image] = [first + k, palette] }
                 @run_places[number] = Runtime::Picture::BG_TILES + (first * Art::TILE_BYTES / 2)
+                @held_strips << [run.tiles.length * Art::TILE_BYTES, @run_places[number], 0] if run.held_in
               end
+            end
+
+            # A run of big tiles, and the two strips each is copied in, as [bytes, where in video RAM,
+            # how far into the picture]: its quarters are kept left to right and then down.
+            def make_big_run_art(run, number)
+              firsts, palette = @art.background_big_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run), tile_scene: tiles_scene_of_run(run))
+              words_a_tile = Art::TILE_BYTES / 2
+              firsts.each_with_index do |first, k|
+                @run_cells[run.tiles.fetch(k)] = [first, palette]
+                place = Runtime::Picture::BG_TILES + (first * words_a_tile)
+                top = k * 4 * Art::TILE_BYTES
+                @held_strips << [2 * Art::TILE_BYTES, place, top]
+                @held_strips << [2 * Art::TILE_BYTES, place + (16 * words_a_tile), top + (2 * Art::TILE_BYTES)]
+              end
+              @run_places[number] = Runtime::Picture::BG_TILES + (firsts.first * words_a_tile)
             end
 
             # A `screen` other than the game's own that says a backdrop the game's does not, somewhere
@@ -589,8 +623,18 @@ module VBlank
               @tile_runs.each_with_index do |run, number|
                 list = @lists.fetch(run.list).first
                 staging = @memory[Runtime::Picture.tile_run_staging(number)]
-                data.data_words(list & 0xFFFF, list >> 16, staging & 0xFFFF, staging >> 16, @run_places[number],
-                                Picture.tile_run_bytes(@program)[number] / 32, Picture.tile_run_bytes(@program)[number], 0)
+                data.data_words(list & 0xFFFF, list >> 16)
+                if run.held_in
+                  data.data_longs(table_label(run.held_in))
+                  data.data_bytes(0)
+                else
+                  data.data_words(staging & 0xFFFF, staging >> 16)
+                end
+                data.data_words(@run_places[number], Picture.tile_run_bytes(@program)[number] / 32, Picture.tile_run_bytes(@program)[number], 0)
+              end
+              unless @held_strips.empty?
+                data.label("art held strips")
+                @held_strips.each { |strip| data.data_words(*strip) }
               end
               @pose_tables.each do |(obj, swapped), label|
                 data.label(label)
@@ -1061,7 +1105,39 @@ module VBlank
             # number the runtime knows it by.
             def emit_tile_run_copy(name)
               number = @tile_runs.index { |run| run.name == name }
+              return emit_held_run_owed(number) if @tile_runs[number].held_in
+
               runtime_call(@tile_runs[number].console_format ? "rt_tile_run_straight" : "rt_tile_run_copy", [Build.int(number)])
+            end
+
+            # A run held in the cartridge has nothing to convert, so being owed a copy is all there is.
+            def emit_held_run_owed(number)
+              @asm.lda(1)
+              @asm.sta(@asm.abs(@memory[Runtime::Picture::TILE_RUNS_OWED] + (number * 2)))
+            end
+
+            # A picture chosen for a run held in the cartridge (Picture.held_runs): how far into the
+            # table it starts, in a word the blank's copy reads. The table is one bank's, so the
+            # copying engine can read from any of it. Held inside the table, as a list copy is.
+            def emit_held_picture_choice(node, number)
+              table = @tables.fetch(node.table)
+              if split?(table)
+                raise LoweringError, "tile_pictures :#{@tile_runs[number].name} holds more pictures than a bank of the " \
+                                     "Super Nintendo cartridge. To fix this, split it into smaller groups."
+              end
+
+              value(Build.clamped(node.at, Build.int(0), Build.int(table.values.length - node.count)))
+              @asm.lda(@asm.direct(Memory.register(0)))
+              @asm.sta(@asm.abs(@memory[Runtime::Picture.tile_run_held(number)]))
+            end
+
+            # The run held in the cartridge that shows the list +name+, by its number, or nil.
+            def held_run_of_list(name) = @tile_runs.index { |run| run.held_in && run.list == name }
+
+            # What a table holds as the cartridge keeps it: a table of pictures held for the copying
+            # engine in the console's form, and any other as the game gave it.
+            def values_kept(table)
+              @tile_runs.any? { |run| run.held_in == table.name } ? @art.in_console_form(table.values) : table.values
             end
 
             # Reference#exec_copy_owed_tiles: every run whose bit of the masks is set, in the order

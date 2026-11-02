@@ -679,10 +679,10 @@ module VBlank
       # +colors_name+ names +colors+ where the game declared them with `colors`. +console_format+
       # says the list holds its tiles in the console's own form (Console::Description#tile_planes).
       def tile_run(name, list:, tiles:, colors:, picture: nil, width: 0, height: 0, colors_name: nil, console_format: false,
-                   held_in: nil)
+                   held_in: nil, tile_side: 8)
         Nodes.build(:tile_run, name: name, list: list, tiles: tiles, colors: colors, picture: picture,
                                width: width, height: height, colors_name: colors_name, console_format: console_format,
-                               held_in: held_in)
+                               held_in: held_in, tile_side: tile_side)
       end
 
       # Show the run +name+'s list on its tiles (see Nodes::CopyTiles).

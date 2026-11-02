@@ -87,6 +87,30 @@ class TestSNESProfile < Minitest::Test
     assert_equal({ 1 => 40 }, result.passes_by_frames)
   end
 
+  # A stage of blocks, every one showing one big tile, whose picture turns every seven frames: one
+  # copy from the cartridge, however many cells show it, so the pass that turns it costs what any
+  # other costs. Five rows of seven blocks, more than a stage holds.
+  BLOCKS = VBlank.game("BLOCKS", consoles: %i[snes]) do
+    screen :tiled
+    colors :block, %i[transparent red green]
+    image(:first, width: 16, height: 16, colors: :block, places: Array.new(256) { |at| 1 + (at % 2) })
+    image(:second, width: 16, height: 16, colors: :block, places: Array.new(256) { |at| 2 - (at % 2) })
+    blocks = tile_pictures :blocks, colors: :block, tiles: { soft: %i[first second] }
+    tiles :stage, "s" => blocks[:soft]
+    background :ground, tiles: :stage, map: Array.new(5) { "s" * 7 }
+    tick = var :tick, 0
+    game_loop do
+      tick += 1
+      blocks.show((tick / 7) % 2)
+    end
+  end
+
+  def test_turning_one_big_tile_shown_in_many_cells_keeps_a_pass_a_frame
+    result = rom_of(BLOCKS).profile(out: StringIO.new, settle: 30, frames: 70)
+
+    assert_equal({ 1 => 70 }, result.passes_by_frames)
+  end
+
   def test_a_light_game_takes_a_frame_a_pass
     result = rom_of(LIGHT).profile(out: StringIO.new, frames: 20)
 

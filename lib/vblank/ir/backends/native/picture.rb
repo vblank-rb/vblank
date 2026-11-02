@@ -259,7 +259,7 @@ module VBlank
           # --- tiles and pictures the game paints from a list (Reference#copy_run_tiles) ---
 
           # How many pixels a run keeps: its picture's, or its tiles'.
-          def run_pixels(run) = run.picture ? run.width * run.height : run.tiles.length * RUN_TILE_PIXELS
+          def run_pixels(run) = run.picture ? run.width * run.height : run.tiles.length * run.squares_per_tile * RUN_TILE_PIXELS
 
           # Reference#run_picture_from_places: a painted picture as everything that draws one
           # reads it, +places+ being each pixel's place in the run's colors. It keeps the run's
@@ -290,7 +290,7 @@ module VBlank
               start = pixels
               pixels += run_pixels(run)
               planes = run.console_format ? @program.described_console.tile_planes.to_i : 0
-              next [run.tiles.length, 0, 0, start, 0, 0, planes] unless run.picture
+              next [run.tiles.length * run.squares_per_tile, 0, 0, start, 0, 0, planes] unless run.picture
 
               first = images.length / (PLACES_IN_RUN_COLORS + 1)
               shown_as = @images.select { |(name, _), _| name == run.picture }
@@ -509,7 +509,9 @@ module VBlank
           # reads what was painted in its place.
           def tile_image(name)
             run = run_painting(name)
-            run ? painted_image(run, Array.new(RUN_TILE_PIXELS, 0), width: RUN_TILE_SIDE, height: RUN_TILE_SIDE) : Assets::Image.of(@data.fetch(name))
+            return Assets::Image.of(@data.fetch(name)) unless run
+
+            painted_image(run, Array.new(run.tile_side * run.tile_side, 0), width: run.tile_side, height: run.tile_side)
           end
 
           def colors_as_tile(image, swaps)

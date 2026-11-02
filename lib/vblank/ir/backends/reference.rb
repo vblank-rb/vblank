@@ -1666,9 +1666,23 @@ module VBlank
           return copy_run_picture(run, bytes) if run.picture
 
           run.tiles.each_with_index do |tile, k|
-            @bitmaps[tile] = run_tile_from_places(run, run_tile_places(run, bytes, k))
+            @bitmaps[tile] = run_tile_from_places(run, big_tile_places(run, bytes, k))
           end
           forget_colors_worked_out_from(run.tiles)
+        end
+
+        # Every pixel's place in tile +k+ of +run+, however many 8×8 squares the list keeps it in.
+        def big_tile_places(run, bytes, k)
+          side = run.tile_side
+          places = Array.new(side * side, 0)
+          run.squares_per_tile.times do |square|
+            left = (square % (side / 8)) * 8
+            top = (square / (side / 8)) * 8
+            run_tile_places(run, bytes, (k * run.squares_per_tile) + square).each_with_index do |place, i|
+              places[((top + (i / 8)) * side) + left + (i % 8)] = place
+            end
+          end
+          places
         end
 
         # A tile's colours, and a swap of colours, are worked out once from a picture's pixels
@@ -1729,7 +1743,7 @@ module VBlank
 
         def blank_run_tile(run) = run_tile_from_places(run, Array.new(64, 0))
 
-        def run_tile_from_places(run, places) = run_picture_from_places(run, places, width: 8, height: 8)
+        def run_tile_from_places(run, places) = run_picture_from_places(run, places, width: run.tile_side, height: run.tile_side)
 
         # A painted picture keeps the run's colour list as its own, because a background told
         # `draw_with` finds the colours to swap in by the list each tile was drawn from (see

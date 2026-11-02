@@ -396,6 +396,30 @@ module VBlank
             [first, palette]
           end
 
+          # +count+ big tiles for a run in +colors+, each in the four places the console draws one from
+          # (#background_big_cell), blank until the game shows a picture: each one's number, and the
+          # palette.
+          def background_big_run(colors, count, scene: nil, tile_scene: nil)
+            palette = run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
+            numbers = with_background_tiles_of(tile_scene) do
+              Array.new(count) do
+                at = free_big_place
+                refuse_too_many!(at + BIG_TILE_PLACES.last, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+                BIG_TILE_PLACES.each { |offset| @background_tiles[at + offset] = blank_tile }
+                at
+              end
+            end
+            [numbers, palette]
+          end
+
+          # +values+, tiles as a painted run's list keeps them (32 bytes each, two places a byte, the
+          # left one low), as the bytes of the console's own form.
+          def in_console_form(values)
+            values.each_slice(TILE_BYTES).flat_map do |tile|
+              tile_bytes(tile.flat_map { |byte| [byte & 0x0F, (byte >> 4) & 0x0F] }).bytes
+            end
+          end
+
           # A sprite's picture +name+ of +width+ × +height+, painted from a list in +colors+: a piece
           # for each 8×8 tile, left to right and then top to bottom, as the list holds them.
           def sprite_run_picture(name, width, height, colors, number: @sprite_pictures.length)

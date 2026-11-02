@@ -47,10 +47,11 @@ module VBlank
                       effects: 0, samples: false, bar: false, bends: false, scene_bends: false, tile_runs: [], holds_music: false,
                       changing_colors: false, dims: false, math_turns: false, bar_covers: false, wobbles: false,
                       steps_shapes: false, swells: false, slides: false, sides: false, tile_sizes: false, scene_tiles: false,
-                      scene_background_tiles: false)
+                      scene_background_tiles: false, held_runs: {})
             Paint.reserve(memory, chip: chip) if painted
             Frame.reserve(memory)
-            Picture.reserve(memory, bar: bar, bends: bends, scene_bends: scene_bends, tile_runs: tile_runs, math_turns: math_turns,
+            Picture.reserve(memory, bar: bar, bends: bends, scene_bends: scene_bends, tile_runs: tile_runs, held_runs: held_runs,
+                                    math_turns: math_turns,
                                     bar_covers: bar_covers, tile_sizes: tile_sizes, scene_tiles: scene_tiles,
                                     scene_background_tiles: scene_background_tiles)
             Tint.reserve(memory, changing_colors: changing_colors, dims: dims)
@@ -93,7 +94,7 @@ module VBlank
                        sprite_depths: false, big_tiles: 0,
                        colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
                        dims: false, extra_buttons: false, math_turns: false, scene_bars: false,
-                       recording_voices: DSPWrites::RECORDING_VOICES, scene_backdrops: false)
+                       recording_voices: DSPWrites::RECORDING_VOICES, scene_backdrops: false, held_runs: {})
             chip = board.name == :super_fx
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
@@ -105,7 +106,7 @@ module VBlank
             Blank.emit(asm, memory, Blank.scratch(memory))
             Lists.emit(asm, memory, Lists.scratch(memory))
             Picture.emit(asm, memory, work: memory.scratch(8), painted: painted, bar: bar, bent: bent, banded: banded, tile_runs: tile_runs,
-                                      straight_tile_runs: straight_tile_runs,
+                                      straight_tile_runs: straight_tile_runs, held_runs: held_runs,
                                       run_scratch: (Picture.run_scratch(memory) if tile_runs.positive?),
                                       see_through: see_through, sprite_depths: sprite_depths, big_tiles: big_tiles,
                                       sprite_squares: sprite_squares, changing_colors: changing_colors,

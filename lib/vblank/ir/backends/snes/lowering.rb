@@ -254,7 +254,7 @@ module VBlank
           def table_sections
             tables_read.flat_map do |table|
               bytes, = table_keeping(table)
-              next [table_section(table_label(table.name), table.values, bytes)] unless split?(table)
+              next [table_section(table_label(table.name), values_kept(table), bytes)] unless split?(table)
 
               per = part_entries(table)
               refuse_copy_longer_than_part!(table)
@@ -750,6 +750,9 @@ module VBlank
           # A run of a table's entries copied into a list: the table's place and how it keeps its
           # entries, so the runtime reads them as a run does.
           def emit_list_copy(node)
+            held = held_run_of_list(node.name)
+            return emit_held_picture_choice(node, held) if held
+
             table = @tables.fetch(node.table) { raise LoweringError, "the table #{node.table.inspect} is copied and never declared" }
             kept = Runtime::Lists::KEPT.fetch(TABLE_KEPT.fetch(table_keeping(table)))
             return emit_list_copy_from_parts(node, table, kept) if split?(table)
