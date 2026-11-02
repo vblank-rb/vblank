@@ -845,27 +845,100 @@ module VBlank
               asm.dec(:bc)
               asm.jump("rt_repack_tiles")
 
-              asm.label("rt_tile_runs_upload")
-              runs.each_with_index do |run, r|
-                past = "rt_tile_runs_upload_past_#{r}"
-                asm.load(:a, [run.owed])
-                asm.and_a(:a)
-                asm.jump(:z, past)
-                asm.xor_a(:a)
-                asm.load([run.owed], :a)
-                run.tiles.each_with_index do |(bank, address), k|
-                  asm.load(:a, bank)
-                  asm.load_high(h::VBK, :a)
-                  asm.load(:hl, run.staging + (k * 16))
-                  asm.load(:de, address)
-                  asm.load(:c, 0) # one block of 16 bytes
-                  asm.call("rt_gdma")
-                end
-                asm.xor_a(:a)
-                asm.load_high(h::VBK, :a)
-                asm.label(past)
+              if runs.empty?
+                asm.label("rt_tile_runs_upload")
+                asm.ret
+                return
               end
-              asm.ret
+
+              emit_tile_runs_upload(asm)
+              emit_tile_runs_table(asm, runs)
+            end
+
+            # A run's copies are numbers, not instructions: rt_tile_runs_upload walks the table
+            # rt_tile_runs_table, so a run of many tiles costs the part of the cartridge always in
+            # view six bytes for each stretch of tiles side by side, where instructions of its own
+            # cost fifteen for each tile.
+            #
+            # Each run is the address of its "owed" flag, then its stretches, each the side of picture
+            # memory, where it goes, where it comes from and how many blocks of 16 bytes less one,
+            # then RUN_ENDS. An address of nought ends the table.
+            def emit_tile_runs_upload(asm)
+              h = Console::GBCHardware
+              read_pair = lambda do |low, high|
+                asm.load(:a, [:hli])
+                asm.load(low, :a)
+                asm.load(:a, [:hli])
+                asm.load(high, :a)
+              end
+              asm.label("rt_tile_runs_upload")
+              asm.load(:hl, "rt_tile_runs_table")
+              asm.label("rt_tile_runs_next")
+              read_pair.call(:e, :d)
+              asm.or_a(:e)
+              asm.ret(:z)
+              asm.load(:a, [:de])
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_tile_runs_owed")
+              asm.label("rt_tile_runs_pass")
+              asm.load(:a, [:hli])
+              asm.cp_a(RUN_ENDS)
+              asm.jump_relative(:z, "rt_tile_runs_next")
+              asm.load(:de, RUN_STRETCH_BYTES - 1)
+              asm.add_hl(:de)
+              asm.jump_relative("rt_tile_runs_pass")
+              asm.label("rt_tile_runs_owed")
+              asm.xor_a(:a)
+              asm.load([:de], :a)
+              asm.label("rt_tile_runs_stretch")
+              asm.load(:a, [:hli])
+              asm.cp_a(RUN_ENDS)
+              asm.jump_relative(:z, "rt_tile_runs_done")
+              asm.load_high(h::VBK, :a)
+              read_pair.call(:e, :d)
+              read_pair.call(:c, :b)
+              asm.load(:a, [:hli])
+              asm.push(:hl)
+              asm.load(:l, :c)
+              asm.load(:h, :b)
+              asm.load(:c, :a)
+              asm.call("rt_gdma")
+              asm.pop(:hl)
+              asm.jump_relative("rt_tile_runs_stretch")
+              asm.label("rt_tile_runs_done")
+              asm.xor_a(:a)
+              asm.load_high(h::VBK, :a)
+              asm.jump_relative("rt_tile_runs_next")
+            end
+
+            RUN_ENDS = 0xFF
+            RUN_STRETCH_BYTES = 6
+
+            def emit_tile_runs_table(asm, runs)
+              asm.label("rt_tile_runs_table")
+              runs.each do |run|
+                asm.data_words(run.owed)
+                tile_stretches(run).each do |bank, address, source, blocks|
+                  asm.data_bytes(bank)
+                  asm.data_words(address, source)
+                  asm.data_bytes(blocks - 1)
+                end
+                asm.data_bytes(RUN_ENDS)
+              end
+              asm.data_words(0)
+            end
+
+            # A run's tiles, joined where they sit side by side in picture memory, as they usually do:
+            # [the side of it, the address, the address of the first tile in staging, the tiles].
+            def tile_stretches(run)
+              run.tiles.each_with_index.with_object([]) do |((bank, address), k), stretches|
+                last = stretches.last
+                if last && last[0] == bank && last[1] + (last[3] * 16) == address
+                  last[3] += 1
+                else
+                  stretches << [bank, address, run.staging + (k * 16), 1]
+                end
+              end
             end
 
             # THE SPRITE TABLE'S COPY WITH INTERRUPTS HELD OFF. While the copy runs the processor can
