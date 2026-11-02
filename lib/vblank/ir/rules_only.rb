@@ -2,33 +2,35 @@
 
 module VBlank
   module IR
-    # A GAME WITH NOTHING TO SEE OR HEAR: the program as a copy, with every step that makes a picture
-    # or a sound left out and every other step just as written. A bot looking for a way through a
-    # game plays one long run many times, and nearly all that time goes on pictures nobody looks at.
+    # A GAME WITH NOTHING TO SEE OR HEAR: the program as a copy, with every step that only makes a
+    # picture or a sound left out and every other step just as written, for a bot that plays one
+    # long run many times (Backends::Native::RulesRun).
     #
     # ONLY THE VERBS GO, NEVER THE CODE AROUND THEM. A game can learn things while it draws: a ray
     # walk that fills a list of how far away each wall is, say, which then decides whether a shot
-    # can land. So a routine that draws stays, with its arithmetic and everything it writes, and
-    # only the steps that touch the screen or the speakers are gone. A game is no different to
-    # itself for it, since nothing a game can read comes back from one of those steps.
+    # can land. So a routine that draws stays, with its arithmetic and everything it writes.
     #
-    # What declares something stays: a sprite's picture, a song, a font. A declaration does nothing
-    # as the game runs, and a sum like two sprites' pixels overlapping reads the pictures themselves.
+    # What declares something stays too: a sprite's picture, a song, a font. A declaration does
+    # nothing as the game runs, and a sum like two sprites' pixels overlapping reads the pictures.
     module RulesOnly
-      # What keeps a run playing at all, though it counts as drawing: the kind of screen a scene shows.
-      STAYS = %i[screen].freeze
+      # Steps that count as drawing and that a game's rules can read back, so they stay. A background
+      # and its maps are what a sprite walks into, and which map is up comes back to its first as a
+      # scene takes over; a bend's rows run a block of the game's own; and a list of colours left
+      # unread is a C build's error. None of them paints anything until a picture is asked for,
+      # and here none is.
+      STAY = %i[screen background show_map set_tile scroll_rows background_colors color_list_holds].freeze
 
       module_function
 
       # A copy of +program+ with its pictures and sounds left out. +program+ is left as it was.
-      def of(program)
+      def copy_of(program)
         copy = program.copy
         copy.walk.to_a.each { |node| node.children.reject! { |child| left_out?(child) } }
         copy
       end
 
       def left_out?(node)
-        %i[draw sound].include?(node.category) && node.class.role == :statement && !STAYS.include?(node.kind)
+        %i[draw sound].include?(node.category) && node.class.role == :statement && !STAY.include?(node.kind)
       end
     end
   end

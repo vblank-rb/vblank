@@ -3,26 +3,26 @@
 module VBlank
   module Playthroughs
     # A PLAYTHROUGH ON ANOTHER WAY OF RUNNING A GAME than the emulator: the interpreter, or the game
-    # built as C, as JavaScript played by node, or as Ruby, or its rules alone (Native::RulesRun). It answers what a playthrough asks of a
-    # running game (a frame played, a number read) the way the emulator's reader does, so a script
-    # and its steering blocks need no change. Each of these runs a game from start to end, asking
-    # for each frame's buttons as it goes, so the run sits in a Fiber, stopped at that question,
-    # and each frame played is one answer.
+    # built as C, as JavaScript played by node, or as Ruby, or its rules alone (Native::RulesRun).
+    # It answers what a playthrough asks of a running game (a frame played, a number read) the way
+    # the emulator's reader does, so a script and its steering blocks need no change. Each of these
+    # runs a game from start to end, asking for each frame's buttons as it goes, so the run sits in
+    # a Fiber, stopped at that question, and each frame played is one answer.
     #
     # Two runs are not the same run. A frame on the console and a frame here are different moments
     # in a game that takes longer than a frame over a pass, so a script of counted frames can come
     # out differently, and one that watches or steers finishes all the same. Each repeats itself.
     class LoweredGame
-      # The ways, by the word `vblank play --on` takes, and the run each is.
-      RUNS = { "interpreter" => -> { IR::Backends::Reference }, "native" => -> { IR::Backends::Native::HeadlessRun },
-               "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun },
-               "logic" => -> { IR::Backends::Native::RulesRun } }.freeze
-
       # The way that plays the cartridge itself, which is no LoweredGame.
       EMULATOR = "emulator"
 
       # The way with nothing to see or hear, for a bot playing one long run many times.
       LOGIC = "logic"
+
+      # The ways, by the word `vblank play --on` takes, and the run each is.
+      RUNS = { "interpreter" => -> { IR::Backends::Reference }, "native" => -> { IR::Backends::Native::HeadlessRun },
+               "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun },
+               LOGIC => -> { IR::Backends::Native::RulesRun } }.freeze
 
       def self.ways = [EMULATOR, *RUNS.keys]
 

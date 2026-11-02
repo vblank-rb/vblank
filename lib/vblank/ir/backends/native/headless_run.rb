@@ -348,7 +348,7 @@ module VBlank
             Dir.mktmpdir("vblank-run") do |dir|
               File.open(File.join(dir, "picture"), "w+b") do |pictures|
                 @pictures = pictures
-                play_frames(exe, frames, ["--picture-out", pictures.path, *sound_options(dir), *save_options(dir),
+                play_frames(exe, frames, [*frame_options(pictures.path), *sound_options(dir), *save_options(dir),
                                           *held_options, *clock_options])
               end
               read_sound(File.join(dir, "sound")) if @records_sound
@@ -357,6 +357,9 @@ module VBlank
           ensure
             @pictures = nil
           end
+
+          # What the program is told about what it says each frame.
+          def frame_options(picture_path) = ["--picture-out", picture_path]
 
           def save_file(dir) = File.join(dir, "save")
 
@@ -422,6 +425,7 @@ module VBlank
           def play_frames(exe, frames, options)
             @moments = []
             Open3.popen3(*program_command(exe), frames.to_s, *options) do |stdin, stdout, stderr, waiter|
+              @program_out = stdout
               complaint = Thread.new { stderr.read }
               # A program that is stopped has its streams closed under this reader, which is
               # reported where the program is (#next_line) and not a second time from here.

@@ -249,6 +249,8 @@ class TestCommandLinePlay < Minitest::Test
         ["walker.rb", "--script", "walk.rb", "--write-save", "."] => /--write-save \. is a folder/,
         ["walker.rb", "--script", "walk.rb", "--on", "logic", "--write-tape", "walk.tape"] => /--write-tape cannot go with --on logic/,
         ["walker.rb", "--script", "walk.rb", "--on", "logic", "--pictures-in", "shots"] => /--pictures-in cannot go with --on logic/,
+        ["walker.rb", "--script", "walk.rb", "--on", "logic", "--window"] => /--window cannot go with --on logic/,
+        ["walker.rb", "--script", "walk.rb", "--on", "logic", "--write-save", "walk.sav"] => /--write-save cannot go with --on logic/,
       }.each do |args, says|
         out, status = cli("play", *args, dir: dir)
 

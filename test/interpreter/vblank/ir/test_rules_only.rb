@@ -60,15 +60,16 @@ class TestRulesOnly < Minitest::Test
   def test_every_pass_ends_with_the_numbers_of_the_whole_game
     whole = numbers_of_each_pass(game, 60)
 
-    assert_equal whole, numbers_of_each_pass(RulesOnly.of(game), 60)
+    assert_equal whole, numbers_of_each_pass(RulesOnly.copy_of(game), 60)
     assert_operator whole.last.first, :>, 0, "the walk's list has to have decided something"
     assert_operator whole.last[1], :>, 0, "...and the sprites have to have met"
   end
 
   def test_only_the_steps_that_make_a_picture_or_a_sound_are_gone
-    kinds = RulesOnly.of(game).walk.map(&:kind).uniq
+    kinds = RulesOnly.copy_of(game).walk.map(&:kind).uniq
 
-    assert_empty kinds & %i[scroll_background beep present_objects background], "all that made a picture or a sound"
+    assert_empty kinds & %i[scroll_background beep present_objects], "all that made a picture or a sound"
+    assert_includes kinds, :background, "a background stays: its walls are what a sprite walks into"
     assert_includes kinds, :object, "a sprite is still there to ask about"
     assert_includes kinds, :bitmap, "...and the pictures its overlaps are worked out from"
     assert_includes kinds, :list_set, "a routine that draws keeps everything it works out"
@@ -78,7 +79,7 @@ class TestRulesOnly < Minitest::Test
     program = game
     before = program.walk.count
 
-    RulesOnly.of(program)
+    RulesOnly.copy_of(program)
 
     assert_equal before, program.walk.count
     assert_includes program.walk.map(&:kind), :scroll_background

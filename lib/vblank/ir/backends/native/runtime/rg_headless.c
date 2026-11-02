@@ -244,18 +244,19 @@ static void read_buttons(void) {
 /* ASKED: the game prints nothing of itself between frames, and says what it holds when asked. Printing
  * everything each frame is what a run read frame by frame wants, and for a game with long lists
  * reading that back is most of the run. So here each frame says only that it wants its buttons, and
- * until they come a line "? name" is answered with that variable or list, then a ".". */
+ * until they come a line "? name" is answered with that variable or list, and "*" with all of them,
+ * then a ".". */
 static void answer_until_buttons(void) {
-  char line[256];
-  puts("buttons?");
+  char line[1024];
+  printf("frame %ld\nbuttons?\n", frame);
   fflush(stdout);
   while (fgets(line, sizeof line, stdin)) {
-    if (line[0] != '?') {
+    if (line[0] != '?' && line[0] != '*') {
       rg_buttons_read((uint32_t)strtoul(line, NULL, 10));
       return;
     }
     line[strcspn(line, "\n")] = '\0';
-    asked_name = line + 2;
+    asked_name = line[0] == '?' ? line + 2 : NULL;
     rg_game_dump_state();
     asked_name = NULL;
     puts(".");
