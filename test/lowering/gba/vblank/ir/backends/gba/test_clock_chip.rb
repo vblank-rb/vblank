@@ -7,7 +7,8 @@ require "stringio"
 # THE CARTRIDGE READS ITS CLOCK CHIP. A cartridge that carries a clock has a small chip with a
 # watch battery of its own, reached through three of four pins the cartridge brings out: the
 # console clocks a command into it a bit at a time and clocks the date and time back out the same
-# way. The cartridge reads it after each wait for the screen, and the game reads that copy.
+# way. The first reading of the time after each wait for the screen reads it, and every reading
+# reads that copy.
 #
 # The emulator gives a cartridge a clock only when told (RubyGBAEmulator::Probe#clock_at), pinned
 # to a moment and moved on a console frame each frame, so what these read is the same every run —
@@ -168,6 +169,38 @@ class TestClockChip < Minitest::Test
   # comes to about a thousand instructions, a few of a frame's lines run from the cartridge — and
   # once a pass however many readings the game makes.
   MOST_A_PASS = 1200
+
+  # A game that asks the time only while a button is held.
+  private def asking_rom
+    VBlank.build("ASKING", console: :gba, out: StringIO.new, err: StringIO.new, profile: false) do
+      screen :bitmap
+      now = clock
+      hour = var :hour, -1
+      game_loop do
+        hour = now.hour if held(:a)
+      end
+    end
+  end
+
+  private def chip_work(**how)
+    result = VBlank::Diagnostics::Profiler.run(asking_rom, frames: 30, picture: false, clock: THURSDAY, **how)
+    VBlank::Diagnostics::Profiler.work_in(result).fetch(:__clock_chip_receive, 0)
+  end
+
+  # Most passes of most games ask nothing of the clock, so the chip is asked by the first reading of
+  # a pass, and a pass with none does not talk to it at all.
+  def test_a_pass_that_reads_no_time_does_not_talk_to_the_chip
+    assert_equal 0, chip_work
+    assert_operator chip_work(keys: [:a]), :>, 0, "a pass that reads the time still does"
+  end
+
+  # The reading is the pass's own, however late in it the game asks.
+  def test_a_reading_asked_for_late_in_the_game_is_the_time_now
+    built = asking_rom
+    v = VBlank::Diagnostics::Verifier.new(built, frames: 10, vars: built.built.var_addresses, clock: THURSDAY, keys: [:a])
+
+    assert_equal 21, v.var(:hour)
+  end
 
   def test_reading_the_chip_costs_about_a_thousand_instructions_a_pass
     result = VBlank::Diagnostics::Profiler.run(rom, frames: 30, picture: false, clock: THURSDAY)

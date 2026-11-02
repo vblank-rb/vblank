@@ -332,8 +332,8 @@ module VBlank
           @expressions.emit_forget_presses if @uses_pressed
         end
 
-        # The cartridge's clock read again after each wait for the screen (see ClockChip).
-        def emit_read_clock_after_wait = @clock_chip.emit_call_after_wait
+        # The cartridge's clock read again by the first reading after each wait (see ClockChip).
+        def emit_mark_clock_copy_old = @clock_chip.emit_mark_copy_old
         def fade_steps_value(amount) = @effects.fade_steps_value(amount)
         def emit_clamp_blend_steps(most = Console::Hardware::BLD_MAX) = @effects.emit_clamp_blend_steps(most)
         def emit_blend_weights_from_acc = @effects.emit_blend_weights_from_acc

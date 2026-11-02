@@ -19,10 +19,12 @@ module VBlank
         #
         # AT POWER-ON the chip is asked whether it is there at all and whether its time was ever
         # set; a cartridge with no chip, or one whose battery ran out, is never asked again, and
-        # every reading stays 0, which is IR::Clock's promise. THEN AFTER EACH WAIT FOR THE SCREEN
-        # the date and time are read into a copy the game reads, so every reading between two waits
-        # is of one moment, as on every backend, and a game reading the time twenty times a pass
-        # talks to the chip once.
+        # every reading stays 0, which is IR::Clock's promise. THEN THE FIRST READING OF THE TIME
+        # AFTER EACH WAIT FOR THE SCREEN puts the date and time into a copy the game reads, so every
+        # reading between two waits is of one moment, as on every backend, a game reading the time
+        # twenty times a pass talks to the chip once, and a pass that does not ask does not talk to
+        # it at all. Most passes of most games do not, and a conversation is about a thousand
+        # instructions run from the cartridge. A wait does no more than say the copy is old.
         #
         # IS THERE A CHIP? With none, the pins are not pins: reading them reads two bytes of the
         # cartridge's own code, which never change, so every bit the console ticks back is the same
@@ -70,11 +72,15 @@ module VBlank
           # names the time spent in it (GBA#lowered_routine_addresses).
           AT_POWER_ON = :__clock_chip_at_power_on
           AFTER_WAIT = :__clock_chip_each_pass
+          FIRST_READING = :__clock_chip_first_reading
           SET = :__clock_chip_set
           ADD_OFFSET = :__clock_chip_add_offset
           SEND = :__clock_chip_send
           RECEIVE = :__clock_chip_receive
-          ROUTINES = [AT_POWER_ON, AFTER_WAIT, SET, ADD_OFFSET, SEND, RECEIVE].freeze
+          ROUTINES = [AT_POWER_ON, AFTER_WAIT, FIRST_READING, SET, ADD_OFFSET, SEND, RECEIVE].freeze
+
+          # 1 once the chip has been read since the last wait for the screen.
+          READ_THIS_PASS = :__clock_read_this_pass
 
           # Where the copy of each reading the game reads is kept...
           def self.var(reading) = :"__clock_#{reading}"
@@ -133,21 +139,27 @@ module VBlank
           # the clock, if the chip was read or the offset changed since it was made. The two
           # questions are never added to, and are read as they are.
           def eval_clock(node)
-            @call_cold_routine.call(ADD_OFFSET) if @sets && IR::Clock::TIME.include?(node.reading)
+            if IR::Clock::TIME.include?(node.reading)
+              emit_read_chip_if_not_yet
+              @call_cold_routine.call(ADD_OFFSET) if @sets
+            end
             @primitives.load_var(ACC, self.class.var(node.reading))
           end
 
-          # At power-on: is there a chip, was it ever set, and the reading before the first wait.
+          # At power-on: is there a chip, and was it ever set. The first reading reads it.
           def emit_call_at_power_on
             return unless @used
 
             @call_cold_routine.call(AT_POWER_ON)
-            @call_cold_routine.call(AFTER_WAIT)
+            emit_mark_copy_old
           end
 
           # After each wait for the screen.
-          def emit_call_after_wait
-            @call_cold_routine.call(AFTER_WAIT) if @used
+          def emit_mark_copy_old
+            return unless @used
+
+            @emitter.emit(ASM.load_immediate(ACC, 0))
+            @primitives.store_var(ACC, READ_THIS_PASS)
           end
 
           # A TIME THE GAME SETS: each part worked out into where it waits, and then the routine
@@ -167,6 +179,7 @@ module VBlank
 
             emit_routine(AT_POWER_ON) { emit_at_power_on_body }
             emit_routine(AFTER_WAIT) { emit_after_wait_body }
+            emit_first_reading_routine
             if @sets
               emit_routine(SET) { emit_set_body }
               emit_add_offset_routine
@@ -176,6 +189,30 @@ module VBlank
           end
 
           private
+
+          # Four instructions on a reading the chip has already answered for this pass.
+          def emit_read_chip_if_not_yet
+            read = @emitter.gensym
+            @primitives.load_var(ACC, READ_THIS_PASS)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, read, cond: :ne)
+            @call_cold_routine.call(FIRST_READING)
+            @emitter.place_label(read)
+          end
+
+          # Called as a value is being worked out, so it keeps every register it might use as it found
+          # it. Marked read before the chip is asked: a timer's routine can ask the time too, in the
+          # middle of this, and the chip cannot be in two conversations at once.
+          def emit_first_reading_routine
+            kept = (1..12).to_a
+            @emitter.place_label(FIRST_READING)
+            @emitter.emit(ASM.push(*kept, LR))
+            @emitter.emit(ASM.load_immediate(ACC, 1))
+            @primitives.store_var(ACC, READ_THIS_PASS)
+            @emitter.emit_branch(:bl, AFTER_WAIT)
+            @emitter.emit(ASM.pop(*kept, PC))
+            @emitter.place_label(:"#{FIRST_READING}_end")
+          end
 
           def emit_routine(label)
             @emitter.place_label(label)
