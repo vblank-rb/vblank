@@ -456,6 +456,19 @@ module VBlank
               palette
             end
 
+            # THE PALETTE OF A RUN ON A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS: the one its list has
+            # on that background, shared with the pictures drawn from the list, so a walk of colours
+            # reaches them all. A run's pixels are places in its list already. A palette is one
+            # background's, so a run two such backgrounds show is not made.
+            def held_palette_of_run(run)
+              shown = backgrounds_declared.select { |bg| bg.tiles.intersect?(run.tiles) && !Array(bg.recolors).empty? }
+              return nil if shown.empty?
+
+              names = shown.map(&:name).uniq
+              refuse_unmade!("a tile painted from a list on two backgrounds drawn with other colours") unless names.one?
+              held_background_palette(shown.first, run)
+            end
+
             # A list of sprite colours that changes keeps a palette, and the console has eight on a
             # screen. Too many for the whole game is not yet the end of it (SNES#build).
             def held_palette_or_refuse
@@ -528,7 +541,7 @@ module VBlank
               elsif run.tile_side == BIG_TILE
                 make_big_run_art(run, number)
               else
-                first, palette = @art.background_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run), tile_scene: tiles_scene_of_run(run))
+                first, palette = @art.background_run(run.colors, run.tiles.length, held: held_palette_of_run(run), scene: colors_scene_of_run(run), tile_scene: tiles_scene_of_run(run))
                 run.tiles.each_with_index { |image, k| @run_cells[image] = [first + k, palette] }
                 @run_places[number] = Runtime::Picture::BG_TILES + (first * Art::TILE_BYTES / 2)
                 @held_strips << [run.tiles.length * Art::TILE_BYTES, @run_places[number], 0] if run.held_in
@@ -538,7 +551,7 @@ module VBlank
             # A run of big tiles, and the two strips each is copied in, as [bytes, where in video RAM,
             # how far into the picture]: its quarters are kept left to right and then down.
             def make_big_run_art(run, number)
-              firsts, palette = @art.background_big_run(run.colors, run.tiles.length, scene: colors_scene_of_run(run), tile_scene: tiles_scene_of_run(run))
+              firsts, palette = @art.background_big_run(run.colors, run.tiles.length, held: held_palette_of_run(run), scene: colors_scene_of_run(run), tile_scene: tiles_scene_of_run(run))
               words_a_tile = Art::TILE_BYTES / 2
               firsts.each_with_index do |first, k|
                 @run_cells[run.tiles.fetch(k)] = [first, palette]
@@ -1039,7 +1052,6 @@ module VBlank
               return nil if tile.nil? || tile.negative?
 
               name = bg.tiles.fetch(tile)
-              refuse_unmade!("a background painted from a list and drawn with other colours") if @run_cells.key?(name) && !Array(bg.recolors).empty?
               @run_cells.fetch(name) do
                 image = Assets::Image.of(picture_named(name))
                 held = held_background_palette(bg, image)

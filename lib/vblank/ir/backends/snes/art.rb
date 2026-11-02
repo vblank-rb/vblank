@@ -384,9 +384,9 @@ module VBlank
           # bits of the list name a place (Runtime::Picture's rt_tile_run_copy), place 0 see-through.
 
           # +count+ background tiles for a run in +colors+ (place 0 first): the first's number, and
-          # the palette.
-          def background_run(colors, count, scene: nil, tile_scene: nil)
-            palette = run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
+          # the palette: +held+ for a run in a list the game changes (#held_background_palette).
+          def background_run(colors, count, held: nil, scene: nil, tile_scene: nil)
+            palette = held || run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
             first = with_background_tiles_of(tile_scene) do
               at = @background_tiles.length
               refuse_too_many!(at + count - 1, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
@@ -399,8 +399,8 @@ module VBlank
           # +count+ big tiles for a run in +colors+, each in the four places the console draws one from
           # (#background_big_cell), blank until the game shows a picture: each one's number, and the
           # palette.
-          def background_big_run(colors, count, scene: nil, tile_scene: nil)
-            palette = run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
+          def background_big_run(colors, count, held: nil, scene: nil, tile_scene: nil)
+            palette = held || run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
             numbers = with_background_tiles_of(tile_scene) do
               Array.new(count) do
                 at = free_big_place

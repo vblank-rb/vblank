@@ -75,6 +75,48 @@ class TestBigTilePicturesOnTheSuperNintendo < Minitest::Test
     assert_equal [RED, GREEN, BLUE, WHITE], quarters(game_player.run(program, frames: 17).screen, 32)
   end
 
+  # A stage rising out of the dark: its colours walk from one list to another while a big tile in the
+  # same list as the walls goes on turning. Colours and pictures have nothing to do with each other.
+  private def walking_game(&step)
+    test = self.class
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    builder.instance_eval do
+      screen :tiled
+      colors :block, %i[transparent red green blue white]
+      colors :block_lit, %i[transparent white blue green red]
+      test.quartered(self, :first, 1, 2, 3, 4)
+      test.quartered(self, :second, 4, 3, 2, 1)
+      test.quartered(self, :wall, 3, 3, 3, 3)
+      blocks = tile_pictures :blocks, colors: :block, tiles: { soft: %i[first second] }
+      tiles :stage, "s" => blocks[:soft], "#" => :wall
+      ground = background :ground, tiles: :stage, map: ["s#s"]
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        instance_exec(blocks, ground, tick, &step)
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_colour_walk_reaches_a_big_tile_and_the_tiles_beside_it
+    program = walking_game { |_, ground, _| ground.draw_with %i[block block_lit], showing: 1 }
+    screen = game_player.run(program, frames: 4).screen
+
+    assert_equal [WHITE, BLUE, GREEN, RED], quarters(screen, 0)
+    assert_equal [GREEN, GREEN, GREEN, GREEN], quarters(screen, 16)
+  end
+
+  def test_a_big_tile_goes_on_turning_under_other_colours
+    program = walking_game do |blocks, ground, tick|
+      ground.draw_with %i[block block_lit], showing: 1
+      blocks.show 1 if tick == 3
+    end
+
+    assert_equal [RED, GREEN, BLUE, WHITE], quarters(game_player.run(program, frames: 8).screen, 32)
+  end
+
   def test_pictures_of_two_sizes_in_one_group_are_refused
     error = assert_raises(ArgumentError) do
       builder = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
