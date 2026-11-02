@@ -131,6 +131,7 @@ module VBlank
                           "`set_tile` with `now: true` is refused: a Genesis writes its video memory only " \
                           "between frames, so a change shows on the frame after the pass."),
         canvas: works,
+        tile_pictures: works,
         layers: works("a layer holds a background or sprites. A layer cannot be see-through: a Genesis " \
                       "cannot mix one layer into another, so `transparency:`, `shows:` and `shows_behind:` " \
                       "are refused."),
