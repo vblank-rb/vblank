@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "runtime/carries"
 require_relative "runtime/boot"
 require_relative "runtime/int32"
 require_relative "runtime/frame"
@@ -34,100 +35,86 @@ module VBlank
         module Runtime
           module_function
 
-          # The runtime's own places in work RAM, asked for before the game's. A game whose screen is
-          # +painted+ (Paint) keeps its copy of the screen in work RAM's last bank. A cartridge with a
-          # Super FX (+chip+) keeps the chip's waiting loop and its counts (Chip), after the rest so
-          # a plain cartridge's places do not move. A game with +songs+ keeps their player's places
-          # (Music), those of the music volume if it sets one (+music_follows_level+), and those of
-          # its +effects+ sound effects (Effects); one that plays its own recordings (+samples+) keeps
-          # their count (Recordings); one with a status bar (+bar+) keeps where it is, and one with a
-          # background bent row by row (+bends+) its rows and line tables, and one that paints tiles
-          # from lists the bytes of each run (+tile_runs+) staged for the blank (Picture).
-          def reserve(memory, painted: false, chip: false, sound: false, songs: false, music_follows_level: false,
-                      effects: 0, samples: false, bar: false, bends: false, scene_bends: false, tile_runs: [], holds_music: false,
-                      changing_colors: false, dims: false, math_turns: false, bar_covers: false, wobbles: false,
-                      steps_shapes: false, swells: false, slides: false, sides: false, tile_sizes: false, scene_tiles: false,
-                      scene_background_tiles: false, held_runs: {}, second_controller: false, row_held: false)
-            Paint.reserve(memory, chip: chip) if painted
-            Frame.reserve(memory, second_controller: second_controller)
-            Picture.reserve(memory, bar: bar, row_held: row_held, bends: bends, scene_bends: scene_bends, tile_runs: tile_runs, held_runs: held_runs,
-                                    math_turns: math_turns,
-                                    bar_covers: bar_covers, tile_sizes: tile_sizes, scene_tiles: scene_tiles,
-                                    scene_background_tiles: scene_background_tiles)
-            Tint.reserve(memory, changing_colors: changing_colors, dims: dims)
-            Chip.reserve(memory) if chip
-            Sound.reserve(memory, queued: songs) if sound
-            Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
-                                  steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides) if songs
-            Recordings.reserve(memory) if samples
+          # The runtime's own places in work RAM, asked for before the game's, for a cartridge that
+          # carries +carries+ (Carries). A cartridge with a Super FX keeps the chip's waiting loop and
+          # its counts after the rest, so a plain cartridge's places do not move.
+          def reserve(memory, carries)
+            c = carries
+            Paint.reserve(memory, chip: c.chip?) if c.painted
+            Frame.reserve(memory, second_controller: c.second_controller)
+            Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, bends: c.bends, scene_bends: c.scene_bends,
+                                    tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,
+                                    bar_covers: c.bar_covers, tile_sizes: c.tile_sizes, scene_tiles: c.scene_tiles,
+                                    scene_background_tiles: c.scene_background_tiles)
+            Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
+            Chip.reserve(memory) if c.chip?
+            Sound.reserve(memory, queued: c.songs) if c.sound
+            reserve_music(memory, c) if c.songs
+            Recordings.reserve(memory) if c.samples
           end
 
-          # The runtime's sections: the entry points in the first bank, and everything else in one.
-          # +main+ is the label of the game's main routine; +frame_begins+ the label of the game's
-          # routine run at each frame boundary (its timers moving on), or nil for none; +painted+
-          # for a game whose screen is painted rather than drawn from tiles; +board+ the cartridge's
-          # board (Cartridge::SNESROM::BOARDS); +saves+ for a game that reaches save memory, whose
-          # routines a game that does not is made without, so its cartridge is the same bytes; +sound+
-          # for a game that makes sound, which sends the sound unit its program at power-on, with
-          # +sound_waves+, the wave voice's waveforms, recorded beside it; +music+ the section of its
-          # songs (SNES::Music#section), for a game with songs, whose player (Music) it then carries;
-          # +music_level_at+ where such a game keeps its music volume, if it sets one; +effects+ how many
-          # sound effects it has; +recordings+ its own recordings as the sound unit keeps them
-          # (Samples.recording), sent with the rest, and +plays+ the section of its plays of them
-          # (Lowering::Sound#recordings_section), for a game that plays them, which carries their count;
-          # +bar+ for a game with a status bar, which carries what places it (Picture's rt_bar_place);
-          # +bent+ the layers a game bends row by row, whose line tables it then makes; +tile_runs+ how
-          # many runs of tiles a game paints from lists, whose copy it then carries; +see_through+ the
-          # colour math of a game's see-through layer, which its power-on sets; +sprite_depths+ for a
-          # game with a sprite behind a background, whose sprites are placed with their priority (Picture);
-          # +colors_shown+ the runs of the colour memory a picture can show, which a fade moves (Tint); +big_tiles+
-          # the size bits of the layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers); +recorded_parts+
-          # for a game whose songs have parts that play recordings (Lowering::Sound#recorded_parts?);
-          # +sprite_squares+ for a game with sprites' squares of 16×16 (Art::Piece#big); +changing_colors+
-          # for a game that changes colours as it runs (Tint's rt_colors_hold); +dims+ for a game that
-          # fades to black, which sets the display's brightness (Tint); +extra_buttons+ for a
-          # game that can ask about X and Y (Frame.reads_extra_buttons?); +second_controller+ for a game
-          # that reads it (Frame.reads_second_controller?); +math_turns+ for a game that turns a
-          # see-through layer solid (Picture's rt_see_through_math).
-          def sections(memory, main:, frame_begins: nil, painted: false, board: Cartridge::SNESROM::PLAIN, saves: false,
-                       sound: false, sound_waves: [], music: nil, music_level_at: nil, effects: 0, recordings: [],
-                       plays: nil, bar: false, bent: [], banded: false, tile_runs: 0, straight_tile_runs: false, see_through: nil,
-                       sprite_depths: false, big_tiles: 0,
-                       colors_shown: [[0, 256]], recorded_parts: false, sprite_squares: false, changing_colors: false,
-                       dims: false, extra_buttons: false, second_controller: false, math_turns: false, scene_bars: false,
-                       recording_voices: DSPWrites::RECORDING_VOICES, scene_backdrops: false, held_runs: {})
-            chip = board.name == :super_fx
+          def reserve_music(memory, carries)
+            c = carries
+            Music.reserve(memory, follows_level: c.follows_level, effects: c.effects, holds: c.holds_music, wobbles: c.wobbles,
+                                  steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides)
+          end
+
+          # The runtime's sections: the entry points in the first bank, and everything else in one, for
+          # a cartridge that carries +carries+. +lowering+ says what only lowering the game finds out:
+          # the routine run at each frame boundary, the wave voice's waveforms, the sections of its
+          # songs and of its plays of recordings, where it keeps its music volume, the layers it bends,
+          # and how its layers and sprites are drawn.
+          def sections(memory, carries, lowering)
+            c = carries
+            lowered = lowered_facts(c, lowering)
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
             asm = W65816.new("runtime")
-            Boot.emit(asm, main: main, fast: board.fast)
+            Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast)
             Boot.emit_zero(asm)
             Int32.emit(asm, Int32.scratch(memory))
-            Frame.emit(asm, memory, pad: memory.scratch(4), sound: sound, extra_buttons: extra_buttons,
-                                    second_controller: second_controller, dims: dims)
+            Frame.emit(asm, memory, pad: memory.scratch(4), sound: c.sound, extra_buttons: c.extra_buttons,
+                                    second_controller: c.second_controller, dims: c.dims)
             Blank.emit(asm, memory, Blank.scratch(memory))
             Lists.emit(asm, memory, Lists.scratch(memory))
-            Picture.emit(asm, memory, work: memory.scratch(8), painted: painted, bar: bar, bent: bent, banded: banded, tile_runs: tile_runs,
-                                      straight_tile_runs: straight_tile_runs, held_runs: held_runs,
-                                      run_scratch: (Picture.run_scratch(memory) if tile_runs.positive?),
-                                      see_through: see_through, sprite_depths: sprite_depths, big_tiles: big_tiles,
-                                      sprite_squares: sprite_squares, changing_colors: changing_colors,
-                                      math_turns: math_turns, scene_bars: scene_bars)
-            Paint.emit(asm, memory, Paint.scratch(memory), chip: chip) if painted
-            Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: colors_shown, changing_colors: changing_colors, dims: dims,
-                               scene_backdrops: scene_backdrops)
+            run_count = c.tile_runs.length
+            Picture.emit(asm, memory, work: memory.scratch(8), painted: c.painted, bar: c.bar?, bent: lowered[:bent], banded: lowered[:banded],
+                                      tile_runs: run_count, straight_tile_runs: c.straight_tile_runs, held_runs: c.held_runs,
+                                      run_scratch: (Picture.run_scratch(memory) if run_count.positive?),
+                                      see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
+                                      sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
+                                      math_turns: c.math_turns, scene_bars: lowered[:scene_bars])
+            Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?) if c.painted
+            Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
+                               scene_backdrops: c.scene_backdrops)
             Collide.emit(asm, memory, Collide.scratch(memory))
-            Chip.emit(asm, memory) if chip
-            Saving.emit(asm, memory, Saving.scratch(memory)) if saves
-            if sound
-              Sound.emit(asm, memory, sound_waves, recordings: recordings, songs: !music.nil?, samples: !plays.nil?)
+            Chip.emit(asm, memory) if c.chip?
+            Saving.emit(asm, memory, Saving.scratch(memory)) if c.saves
+            emit_sound_routines(asm, memory, c, lowered)
+            emit_start(asm, chip: c.chip?, sound: c.sound)
+            emit_frame_begins(asm, lowering.frame_begins)
+            [vectors.section, asm.section] + (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings]) : []) +
+              [lowered[:music], lowered[:plays]].compact
+          end
+
+          # What +lowering+ says the runtime needs, asked once and in this order, since a section
+          # asked for is made then.
+          def lowered_facts(carries, lowering)
+            { waves: lowering.sound_waves, music: (lowering.music_section if carries.songs),
+              level_at: (lowering.variables.fetch(IR::Tunes::LEVEL) if carries.follows_level),
+              recordings: lowering.sound_recordings, plays: (lowering.recordings_section if carries.samples),
+              bent: lowering.bent_layers, banded: lowering.bends_by_bands?, see_through: lowering.see_through_layers,
+              big_tiles: lowering.big_tile_layers, recorded_parts: carries.songs && lowering.recorded_parts?,
+              colors_shown: lowering.colors_shown, sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
+              sprite_squares: lowering.sprite_squares?, scene_bars: lowering.scene_bars? }
+          end
+
+          def emit_sound_routines(asm, memory, carries, lowered)
+            if carries.sound
+              Sound.emit(asm, memory, lowered[:waves], recordings: lowered[:recordings], songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?)
             end
-            Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
-            Recordings.emit(asm, memory, voices: recording_voices) if plays
-            emit_start(asm, chip: chip, sound: sound)
-            emit_frame_begins(asm, frame_begins)
-            [vectors.section, asm.section] + (sound ? Sound.sections(sound_waves, recordings: recordings) : []) +
-              [music, plays].compact
+            Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts]) if lowered[:music]
+            Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
           end
 
           # What a game needs before its first line: its variables that do not start at nought (the

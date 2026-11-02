@@ -115,35 +115,10 @@ module VBlank
                   background_tiles: false, small_sprite_scenes: [])
           board = board_for(program)
           memory = Memory.new
-          painted = Lowering::Paint.painted?(program)
-          saves = SaveLayout.named_by?(program)
-          refuse_save_on_chip_board!(board) if saves
-          sound = Lowering::Sound.sounds?(program)
-          songs = Lowering::Sound.songs?(program)
-          follows_level = songs && Music.follows_level?(program)
-          effects = IR::Tunes.effects(program).uniq.size
-          samples = Lowering::Sound.samples?(program)
-          row_held = Lowering::Picture.background_rows_held?(program)
-          bar = Lowering::Picture.status_bar?(program) || row_held
-          bends = Lowering::Picture.bends?(program)
-          tile_runs = Lowering::Picture.tile_run_bytes(program)
-          held_runs = Lowering::Picture.held_runs(program)
-          scene_backdrops = Lowering::Picture.scene_backdrops?(program)
-          changing_colors = screen_colors || sprite_colors || scene_backdrops || Lowering::Picture.changing_colors?(program)
-          dims = Lowering::Picture.fades_to_black?(program)
-          math_turns = Lowering::Picture.see_through_turns_solid?(program)
-          second_controller = Runtime::Frame.reads_second_controller?(program)
-          Runtime.reserve(memory, second_controller: second_controller, row_held: row_held, painted: painted, chip: board.name == :super_fx, sound: sound, songs: songs,
-                                  music_follows_level: follows_level, effects: effects, samples: samples, bar: bar,
-                                  bends: bends, scene_bends: Lowering::Picture.scene_bends?(program), tile_runs: tile_runs,
-                                  held_runs: held_runs, holds_music: Lowering::Sound.holds_music?(program),
-                                  wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
-                                  swells: Music.swells_under_level?(program), slides: Music.slides?(program),
-                                  sides: Music.sides_under_level?(program),
-                                  changing_colors: changing_colors, dims: dims, math_turns: math_turns,
-                                  bar_covers: Lowering::Picture.bar_covers_sprites?(program),
-                                  tile_sizes: Lowering::Picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
-                                  scene_background_tiles: background_tiles)
+          refuse_save_on_chip_board!(board) if SaveLayout.named_by?(program)
+          carries = Runtime::Carries.of(program, board: board, screen_colors: screen_colors, sprite_colors: sprite_colors,
+                                                 sprite_tiles: sprite_tiles, background_tiles: background_tiles)
+          Runtime.reserve(memory, carries)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes)
@@ -167,25 +142,7 @@ module VBlank
             return build(program, title: title, **choices, sprite_squares: false)
           end
           findings.concat(lowering.sprite_table_findings)
-          recording_voices = Music.recording_voices(program)
-          runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins, painted: painted,
-                                             board: board, saves: saves, sound: sound,
-                                             sound_waves: lowering.sound_waves,
-                                             music: (lowering.music_section if songs),
-                                             music_level_at: (lowering.variables.fetch(IR::Tunes::LEVEL) if follows_level),
-                                             effects: effects, recordings: lowering.sound_recordings,
-                                             plays: (lowering.recordings_section if samples), bar: bar,
-                                             bent: lowering.bent_layers, banded: lowering.bends_by_bands?, tile_runs: tile_runs.length,
-                                             held_runs: held_runs, straight_tile_runs: Lowering::Picture.tile_runs(program).any?(&:console_format),
-                                             see_through: lowering.see_through_layers, big_tiles: lowering.big_tile_layers,
-                                             recorded_parts: songs && lowering.recorded_parts?,
-                                             colors_shown: lowering.colors_shown,
-                                             sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
-                                             sprite_squares: lowering.sprite_squares?, changing_colors: changing_colors, dims: dims,
-                                             extra_buttons: Runtime::Frame.reads_extra_buttons?(program),
-                                             second_controller: second_controller,
-                                             math_turns: math_turns, scene_bars: lowering.scene_bars?,
-                                             recording_voices: recording_voices, scene_backdrops: scene_backdrops)
+          runtime = Runtime.sections(memory, carries, lowering)
           linked =Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
@@ -197,13 +154,13 @@ module VBlank
                              sound_entries: lowering.sound_entries, sound_voicing: lowering.sound_voicing,
                              recording_names: lowering.recording_names,
                              sprite_picture_names: lowering.sprite_picture_names,
-                             console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - recording_voices))
+                             console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices))
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }
           Cartridge::SNESROM.new(linked.banks, title: title, vectors: vectors.transform_values { |at| at & 0xFFFF },
                                                built: built, board: board,
-                                               save_bytes: saves ? Runtime::Saving::SIZE : 0)
+                                               save_bytes: carries.saves ? Runtime::Saving::SIZE : 0)
         end
 
         private
