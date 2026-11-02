@@ -15,8 +15,8 @@ module VBlank
           # one in the top four bits. The tiles follow each other across the screen and then down, so the
           # picture is one run of 35,840 bytes that is copied to the same bytes in video RAM. Painting is
           # work done on that copy, and what it changes is noted a tile at a time (DIRTY), so a pass
-          # that changed two tiles copies two tiles in the blank after it (rt_upload) and a whole
-          # picture is copied only while the screen is still off (rt_upload_whole).
+          # that changed two tiles copies two tiles in the blank after it, by DMA (rt_upload). A pass
+          # that changed more than a blank holds is several blanks' copying, and the game waits for it.
           #
           # THE COLOURS. A tile's pixel is four bits, a place in a list of sixteen colours, and the first
           # is see-through. So a painted screen shows up to fifteen colours and black: black is place 0,
@@ -44,6 +44,10 @@ module VBlank
 
             SCREEN = "rt paint screen"
             DIRTY = "rt paint dirty"
+            # A byte a tile: its one colour plus one where the copy holds it all that colour, and nought
+            # for a tile with anything else painted on it. A game that clears the screen every pass
+            # changes almost nothing, and this is how the clear knows it (rt_paint_clear).
+            SOLID = "rt paint solid"
             ANY_DIRTY = "rt paint any dirty"
             AREA = "rt paint area"
             COLORS = "rt paint colors"
@@ -69,6 +73,7 @@ module VBlank
             def reserve(memory)
               memory.reserve_last(SCREEN, SCREEN_BYTES)
               memory.reserve_last(DIRTY, TILES)
+              memory.reserve_last(SOLID, TILES)
               memory.reserve(ANY_DIRTY, 2)
               memory.reserve(AREA, AREA_BYTES)
               memory.reserve(SCRATCH, 4)
@@ -123,6 +128,7 @@ module VBlank
               asm.dbra(asm.d(3), "rt_picture_start_blank")
               asm.dbra(asm.d(2), "rt_picture_start_row")
               emit_patches_emptied(asm)
+              emit_solid_at_power_on(asm, memory)
               asm.rts
 
               asm.label("rt_picture_prepare")
@@ -130,6 +136,17 @@ module VBlank
               asm.label("rt_tint_prepare")
               asm.jmp(asm.abs_l("rt_colors_prepared")) if colors
               asm.rts unless colors
+            end
+
+            # The copy starts all nought, as work RAM does and as video RAM does, so every tile is all
+            # colour place 0 before a game paints: a first clear to black has nothing to do.
+            def emit_solid_at_power_on(asm, memory)
+              asm.lea(asm.abs_l(memory[SOLID]), asm.a(0))
+              asm.move(:l, asm.imm(0x01010101), asm.d(0))
+              asm.move(:w, asm.imm(TILES / 4 - 1), asm.d(1))
+              asm.label("rt_picture_start_solid")
+              asm.move(:l, asm.d(0), asm.post(0))
+              asm.dbra(asm.d(1), "rt_picture_start_solid")
             end
 
             # Where plane A's map is in video RAM, and how many cells across it is (64, whatever shows).
@@ -196,10 +213,16 @@ module VBlank
               asm.rts
             end
 
-            # rt_upload: every tile marked as changed copied to video RAM, in the blank, and its mark
-            # taken off. The marks are looked at four at a time, so a pass that changed nothing near
-            # most of the screen skips most of it in a few instructions. rt_upload_whole: the whole
-            # picture, while the screen is still off.
+            # How many tiles one blank's copy holds, with room to spare: the blank's lines are not all
+            # the copy's by the time the interrupt has run and the tiles are found, and a copy still
+            # going when the picture starts is half a picture on the screen. A whole screen is several
+            # blanks' worth, and the game waits through them.
+            TILES_A_BLANK = 100
+
+            # rt_upload: every tile marked as changed copied to video RAM by DMA, and its mark taken off,
+            # a run of neighbouring tiles at a time and TILES_A_BLANK in a blank. The marks are looked at
+            # four at a time, so a pass that changed nothing near most of the screen skips most of it
+            # in a few instructions. rt_upload_whole: the whole picture, while the screen is still off.
             def emit_upload(asm, memory, at, camera: false, colors: false)
               h = Console::GenesisHardware
               asm.label("rt_upload")
@@ -209,47 +232,51 @@ module VBlank
               asm.branch(:eq, "rt_upload_done")
               asm.clr(:w, at.call(ANY_DIRTY))
               asm.lea(asm.abs_l(memory[DIRTY]), asm.a(1))
-              asm.moveq(0, asm.d(6)) # the first tile of the four looked at
-              asm.move(:w, asm.imm(TILES / 4 - 1), asm.d(7))
-              asm.label("rt_upload_group")
+              asm.moveq(0, asm.d(6)) # the tile looked at
+              asm.move(:w, asm.imm(TILES_A_BLANK), asm.d(4)) # how many more this blank can take
+
+              asm.label("rt_upload_find")
+              asm.cmp(:w, asm.imm(TILES), asm.d(6))
+              asm.branch(:cc, "rt_upload_done")
+              asm.move(:b, asm.d(6), asm.d(0))
+              asm.and(:b, asm.imm(3), asm.d(0))
+              asm.branch(:ne, "rt_upload_look")
               asm.tst(:l, asm.ind(1))
-              asm.branch(:eq, "rt_upload_group_clean")
-              asm.moveq(3, asm.d(5))
-              asm.label("rt_upload_tile")
-              asm.tst(:b, asm.ind(1))
-              asm.branch(:eq, "rt_upload_tile_clean")
-              asm.clr(:b, asm.ind(1))
-              asm.jsr(asm.abs_l("rt_upload_one"))
-              asm.label("rt_upload_tile_clean")
-              asm.addq(:l, 1, asm.a(1))
-              asm.addq(:l, 1, asm.d(6))
-              asm.dbra(asm.d(5), "rt_upload_tile")
-              asm.bra("rt_upload_group_next")
-              asm.label("rt_upload_group_clean")
+              asm.branch(:ne, "rt_upload_look")
               asm.addq(:l, 4, asm.a(1))
-              asm.addq(:l, 4, asm.d(6))
-              asm.label("rt_upload_group_next")
-              asm.dbra(asm.d(7), "rt_upload_group")
+              asm.addq(:w, 4, asm.d(6))
+              asm.bra("rt_upload_find")
+              asm.label("rt_upload_look")
+              asm.tst(:b, asm.ind(1))
+              asm.branch(:ne, "rt_upload_run")
+              asm.addq(:l, 1, asm.a(1))
+              asm.addq(:w, 1, asm.d(6))
+              asm.bra("rt_upload_find")
+
+              asm.label("rt_upload_run")
+              asm.move(:w, asm.d(6), asm.d(3)) # the run's first tile
+              asm.moveq(0, asm.d(2)) # how many it has
+              asm.label("rt_upload_run_tile")
+              asm.clr(:b, asm.post(1))
+              asm.addq(:w, 1, asm.d(6))
+              asm.addq(:w, 1, asm.d(2))
+              asm.subq(:w, 1, asm.d(4))
+              asm.branch(:eq, "rt_upload_send")
+              asm.cmp(:w, asm.imm(TILES), asm.d(6))
+              asm.branch(:cc, "rt_upload_send")
+              asm.tst(:b, asm.ind(1))
+              asm.branch(:ne, "rt_upload_run_tile")
+              asm.label("rt_upload_send")
+              asm.jsr(asm.abs_l("rt_upload_dma"))
+              asm.tst(:w, asm.d(4))
+              asm.branch(:ne, "rt_upload_find")
+              asm.jsr(asm.abs_l("rt_sleep_until_vblank"))
+              asm.move(:w, asm.imm(TILES_A_BLANK), asm.d(4))
+              asm.bra("rt_upload_find")
               asm.label("rt_upload_done")
               asm.rts
 
-              # rt_upload_one: tile D6 (counted from nought) of the copy into video RAM, 32 bytes.
-              asm.label("rt_upload_one")
-              asm.move(:l, asm.d(6), asm.d(0))
-              asm.lsl(:l, 5, asm.d(0)) # the tile's place in the copy, and in video RAM past tile 0
-              asm.lea(asm.abs_l(memory[SCREEN]), asm.a(0))
-              asm.add(:l, asm.d(0), asm.a(0))
-              asm.add(:l, asm.imm(FIRST_TILE_AT), asm.d(0))
-              asm.move(:l, asm.d(0), asm.d(1))
-              asm.and(:l, asm.imm(0x3FFF), asm.d(1))
-              asm.swap(asm.d(1))
-              asm.lsr(:l, 8, asm.d(0))
-              asm.lsr(:l, 6, asm.d(0))
-              asm.or(:l, asm.d(0), asm.d(1))
-              asm.or(:l, asm.imm(h::WRITE_VRAM), asm.d(1))
-              asm.move(:l, asm.d(1), asm.abs_l(h::VDP_CONTROL))
-              8.times { asm.move(:l, asm.post(0), asm.abs_l(h::VDP_DATA)) }
-              asm.rts
+              emit_upload_dma(asm, memory)
 
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
@@ -261,6 +288,49 @@ module VBlank
               asm.move(:l, asm.post(0), asm.abs_l(h::VDP_DATA))
               asm.dbra(asm.d(0), "rt_upload_whole_long")
               emit_dirty_cleared(asm, memory, at)
+              asm.rts
+            end
+
+            # rt_upload_dma: D2 tiles from tile D3 (counted from nought) of the copy into video RAM. The
+            # video chip is told how many words, where they are in work RAM (halved, since it counts in
+            # words), and then where they go, and that last write starts it.
+            def emit_upload_dma(asm, memory)
+              h = Console::GenesisHardware
+              register = ->(number) { h::VDP_REGISTER | (number << 8) }
+              asm.label("rt_upload_dma")
+              asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(2))
+              asm.move(:w, asm.d(2), asm.d(0))
+              asm.lsl(:w, 4, asm.d(0)) # sixteen words to a tile
+              asm.move(:w, asm.imm(register.call(h::REG_DMA_LENGTH_LOW)), asm.d(1))
+              asm.move(:b, asm.d(0), asm.d(1))
+              asm.move(:w, asm.d(1), asm.ind(2))
+              asm.lsr(:w, 8, asm.d(0))
+              asm.or(:w, asm.imm(register.call(h::REG_DMA_LENGTH_HIGH)), asm.d(0))
+              asm.move(:w, asm.d(0), asm.ind(2))
+              asm.moveq(0, asm.d(5))
+              asm.move(:w, asm.d(3), asm.d(5))
+              asm.lsl(:l, 5, asm.d(5)) # the tile's place in the copy, and in video RAM past tile 0
+              asm.move(:l, asm.d(5), asm.d(0))
+              asm.add(:l, asm.imm(memory[SCREEN]), asm.d(0))
+              asm.lsr(:l, 1, asm.d(0))
+              [h::REG_DMA_SOURCE_LOW, h::REG_DMA_SOURCE_MIDDLE].each do |number|
+                asm.move(:w, asm.imm(register.call(number)), asm.d(1))
+                asm.move(:b, asm.d(0), asm.d(1))
+                asm.move(:w, asm.d(1), asm.ind(2))
+                asm.lsr(:l, 8, asm.d(0))
+              end
+              asm.and(:w, asm.imm(0x7F), asm.d(0))
+              asm.or(:w, asm.imm(register.call(h::REG_DMA_SOURCE_HIGH)), asm.d(0))
+              asm.move(:w, asm.d(0), asm.ind(2))
+              asm.add(:l, asm.imm(FIRST_TILE_AT), asm.d(5))
+              asm.move(:l, asm.d(5), asm.d(1))
+              asm.and(:l, asm.imm(0x3FFF), asm.d(1))
+              asm.swap(asm.d(1))
+              asm.lsr(:l, 8, asm.d(5))
+              asm.lsr(:l, 6, asm.d(5))
+              asm.or(:l, asm.d(5), asm.d(1))
+              asm.or(:l, asm.imm(h::WRITE_VRAM | h::COMMAND_DMA), asm.d(1))
+              asm.move(:l, asm.d(1), asm.ind(2))
               asm.rts
             end
 
@@ -277,7 +347,9 @@ module VBlank
 
             # rt_paint_clear(color): the whole screen one colour — or, where painting is held to an
             # area, that and no more. The whole screen is the colour's four bits repeated through
-            # the copy, eight longs at a time, and every tile marked as changed.
+            # the copy, eight longs at a time, last tile first, and a tile already all that colour
+            # (SOLID) is passed over: it costs nothing to write or to copy, so a game that clears
+            # every pass pays for what it drew over the colour and no more.
             def emit_clear(asm, memory, at)
               asm.label("rt_paint_clear")
               asm.tst(:w, at.call(AREA, AREA_LEFT))
@@ -289,24 +361,46 @@ module VBlank
               asm.cmp(:w, asm.imm(HEIGHT), at.call(AREA, AREA_BOTTOM))
               asm.branch(:ne, "rt_paint_clear_area")
               asm.and(:l, asm.imm(0xF), asm.d(0))
+              asm.move(:l, asm.d(0), asm.d(7))
+              asm.addq(:l, 1, asm.d(7)) # what SOLID says of a tile all this colour...
+              asm.mulu(asm.imm(0x0101), asm.d(7))
+              asm.move(:l, asm.d(7), asm.d(1))
+              asm.swap(asm.d(1))
+              asm.or(:l, asm.d(1), asm.d(7)) # ...four times, for four tiles looked at together
               asm.mulu(asm.imm(0x1111), asm.d(0))
               asm.move(:l, asm.d(0), asm.d(1))
               asm.swap(asm.d(1))
               asm.or(:l, asm.d(1), asm.d(0)) # the colour in all eight nibbles
-              (1..7).each { |register| asm.move(:l, asm.d(0), asm.d(register)) }
+              (1..6).each { |register| asm.move(:l, asm.d(0), asm.d(register)) }
               asm.movea(:l, asm.d(0), asm.a(1))
+              asm.movea(:l, asm.d(0), asm.a(3))
               asm.lea(asm.abs_l(memory[SCREEN], SCREEN_BYTES), asm.a(0))
-              asm.move(:w, asm.imm(TILES - 1), asm.d(0))
-              asm.label("rt_paint_clear_tile")
-              asm.movem_push(:l, :d1, :d2, :d3, :d4, :d5, :d6, :d7, :a1, via: 0)
-              asm.dbra(asm.d(0), "rt_paint_clear_tile")
-              asm.lea(asm.abs_l(memory[DIRTY], TILES), asm.a(0))
-              asm.move(:l, asm.imm(0x01010101), asm.d(0))
-              asm.move(:w, asm.imm(TILES / 4 - 1), asm.d(1))
-              asm.label("rt_paint_clear_mark")
-              asm.move(:l, asm.d(0), asm.pre(0))
-              asm.dbra(asm.d(1), "rt_paint_clear_mark")
-              asm.move(:w, asm.imm(1), at.call(ANY_DIRTY))
+              asm.lea(asm.abs_l(memory[SOLID], TILES), asm.a(2))
+              asm.lea(asm.abs_l(memory[DIRTY], TILES), asm.a(4))
+              asm.move(:w, asm.imm(TILES / 4 - 1), asm.d(0))
+              asm.label("rt_paint_clear_four")
+              asm.cmp(:l, asm.pre(2), asm.d(7))
+              asm.branch(:eq, "rt_paint_clear_four_same")
+              asm.addq(:l, 4, asm.a(2))
+              4.times do |tile|
+                asm.cmp(:b, asm.pre(2), asm.d(7))
+                asm.branch(:eq, "rt_paint_clear_same_#{tile}")
+                asm.movem_push(:l, :d1, :d2, :d3, :d4, :d5, :d6, :a1, :a3, via: 0)
+                asm.move(:b, asm.d(7), asm.ind(2))
+                asm.move(:b, asm.imm(1), asm.pre(4))
+                asm.move(:w, asm.imm(1), at.call(ANY_DIRTY))
+                asm.bra("rt_paint_clear_next_#{tile}")
+                asm.label("rt_paint_clear_same_#{tile}")
+                asm.lea(asm.disp(0, -TILE_BYTES), asm.a(0))
+                asm.subq(:l, 1, asm.a(4))
+                asm.label("rt_paint_clear_next_#{tile}")
+              end
+              asm.dbra(asm.d(0), "rt_paint_clear_four")
+              asm.rts
+              asm.label("rt_paint_clear_four_same")
+              asm.lea(asm.disp(0, -4 * TILE_BYTES), asm.a(0))
+              asm.subq(:l, 4, asm.a(4))
+              asm.dbra(asm.d(0), "rt_paint_clear_four")
               asm.rts
 
               asm.label("rt_paint_clear_area")
@@ -473,6 +567,7 @@ module VBlank
               asm.move(:w, asm.d(6), asm.d(7))
               asm.movea(:l, asm.a(2), asm.a(3))
               asm.label("rt_paint_mark_tile")
+              asm.clr(:b, asm.disp(3, memory[SOLID] - memory[DIRTY]))
               asm.move(:b, asm.imm(1), asm.post(3))
               asm.dbra(asm.d(7), "rt_paint_mark_tile")
               asm.lea(asm.disp(2, ACROSS), asm.a(2))
@@ -493,6 +588,8 @@ module VBlank
               asm.add(:l, asm.d(4), asm.d(3)) # the tile, counted from nought
               asm.lea(asm.abs_l(memory[DIRTY]), asm.a(3))
               asm.move(:b, asm.imm(1), asm.idx(3, 0, 3))
+              asm.lea(asm.abs_l(memory[SOLID]), asm.a(3))
+              asm.clr(:b, asm.idx(3, 0, 3))
               asm.move(:w, asm.imm(1), at.call(ANY_DIRTY))
               asm.lsl(:l, 5, asm.d(3)) # ...and its place in the copy
               asm.move(:l, asm.d(1), asm.d(4))
@@ -585,6 +682,7 @@ module VBlank
               asm.subq(:w, 1, asm.d(5))
               asm.movea(:l, asm.d(1), asm.a(4)) # the left
               asm.movea(:l, asm.d(2), asm.a(6)) # the row it is at
+              emit_blit_inside_area(asm, memory, at)
               asm.label("rt_paint_blit_row")
               asm.moveq(0, asm.d(6))
               asm.label("rt_paint_blit_pixel")
@@ -603,6 +701,93 @@ module VBlank
               asm.branch(:lt, "rt_paint_blit_pixel")
               asm.addq(:l, 1, asm.a(6))
               asm.dbra(asm.d(5), "rt_paint_blit_row")
+              asm.rts
+            end
+
+            # A PICTURE WHOLLY INSIDE THE AREA, which is nearly every picture and all the text. The tiles it
+            # touches are marked once and nothing needs clipping, so each row walks the copy from byte to
+            # byte, in a few instructions a pixel where the pixel-by-pixel way below takes a routine for
+            # each. A byte is two pixels and a tile's row four bytes, so past a row's fourth byte the walk
+            # jumps to the same row of the next tile. Falls through to that way for any other picture.
+            # A1 = the pixels, D7 = the width, D5 = the height less one, A4 = the left, A6 = the top.
+            def emit_blit_inside_area(asm, memory, at)
+              asm.tst(:l, asm.d(7))
+              asm.branch(:eq, "rt_paint_blit_row")
+              asm.tst(:w, asm.d(5))
+              asm.branch(:mi, "rt_paint_blit_row")
+              asm.move(:l, asm.a(4), asm.d(0))
+              asm.move(:l, asm.a(6), asm.d(1))
+              asm.move(:l, asm.d(0), asm.d(2))
+              asm.add(:l, asm.d(7), asm.d(2)) # the right edge
+              asm.moveq(1, asm.d(3))
+              asm.add(:w, asm.d(5), asm.d(3))
+              asm.add(:l, asm.d(1), asm.d(3)) # the bottom edge
+              [[0, AREA_LEFT, :lt], [1, AREA_TOP, :lt], [2, AREA_RIGHT, :gt], [3, AREA_BOTTOM, :gt]].each do |register, place, leaves|
+                asm.move(:w, at.call(AREA, place), asm.d(6))
+                asm.ext(:l, asm.d(6))
+                asm.cmp(:l, asm.d(6), asm.d(register))
+                asm.branch(leaves, "rt_paint_blit_row")
+              end
+              asm.movem_push(:l, :d5, :d7)
+              asm.jsr(asm.abs_l("rt_paint_mark"))
+              asm.movem_pop(:l, :d5, :d7)
+
+              asm.label("rt_paint_blit_fast_row")
+              asm.move(:l, asm.a(6), asm.d(0))
+              asm.move(:l, asm.d(0), asm.d(6))
+              asm.lsr(:l, 3, asm.d(0))
+              asm.mulu(asm.imm(ROW_BYTES), asm.d(0))
+              asm.and(:l, asm.imm(7), asm.d(6))
+              asm.lsl(:l, 2, asm.d(6))
+              asm.add(:l, asm.d(6), asm.d(0))
+              asm.move(:l, asm.a(4), asm.d(6))
+              asm.lsr(:l, 3, asm.d(6))
+              asm.lsl(:l, 5, asm.d(6))
+              asm.add(:l, asm.d(6), asm.d(0))
+              asm.move(:l, asm.a(4), asm.d(4))
+              asm.lsr(:l, 1, asm.d(4))
+              asm.and(:l, asm.imm(3), asm.d(4)) # the byte of the tile's row
+              asm.add(:l, asm.d(4), asm.d(0))
+              asm.movea(:l, asm.imm(memory[SCREEN]), asm.a(2))
+              asm.add(:l, asm.d(0), asm.a(2))
+              asm.move(:w, asm.d(7), asm.d(3))
+              asm.subq(:w, 1, asm.d(3))
+              # Two loops that hand on to each other, one for each half of a byte, so nothing asks
+              # which half a pixel is: most of a letter is pixels not drawn, and those must cost least.
+              asm.move(:l, asm.a(4), asm.d(1))
+              asm.btst(0, asm.d(1))
+              asm.branch(:ne, "rt_paint_blit_fast_right")
+
+              asm.label("rt_paint_blit_fast_left")
+              asm.move(:b, asm.post(1), asm.d(2))
+              asm.cmp(:b, asm.imm(NOT_DRAWN), asm.d(2))
+              asm.branch(:eq, "rt_paint_blit_fast_left_next")
+              asm.and(:b, asm.imm(0x0F), asm.ind(2))
+              asm.lsl(:b, 4, asm.d(2))
+              asm.or(:b, asm.d(2), asm.ind(2))
+              asm.label("rt_paint_blit_fast_left_next")
+              asm.dbra(asm.d(3), "rt_paint_blit_fast_right")
+              asm.bra("rt_paint_blit_fast_row_done")
+
+              asm.label("rt_paint_blit_fast_right")
+              asm.move(:b, asm.post(1), asm.d(2))
+              asm.cmp(:b, asm.imm(NOT_DRAWN), asm.d(2))
+              asm.branch(:eq, "rt_paint_blit_fast_right_next")
+              asm.and(:b, asm.imm(0xF0), asm.ind(2))
+              asm.or(:b, asm.d(2), asm.ind(2))
+              asm.label("rt_paint_blit_fast_right_next")
+              asm.addq(:l, 1, asm.a(2))
+              asm.addq(:b, 1, asm.d(4))
+              asm.cmp(:b, asm.imm(4), asm.d(4))
+              asm.branch(:ne, "rt_paint_blit_fast_same_tile")
+              asm.moveq(0, asm.d(4))
+              asm.lea(asm.disp(2, TILE_BYTES - 4), asm.a(2))
+              asm.label("rt_paint_blit_fast_same_tile")
+              asm.dbra(asm.d(3), "rt_paint_blit_fast_left")
+
+              asm.label("rt_paint_blit_fast_row_done")
+              asm.addq(:l, 1, asm.a(6))
+              asm.dbra(asm.d(5), "rt_paint_blit_fast_row")
               asm.rts
             end
 

@@ -92,6 +92,13 @@ module VBlank
       MODE2_SCREEN_ON = 0x44 # mode 5, the screen on, no interrupt
       MODE2_SCREEN_OFF = 0x04
       MODE2_VBLANK_INTERRUPT = 0x20 # added to switch the vertical blank's interrupt on
+      MODE2_DMA = 0x10 # added to let the video chip copy from work RAM by itself
+
+      # Added to a write command, it starts that copy: the video chip takes the bus and moves the
+      # words the DMA registers name, with the processor stopped until it is done. In the blank it
+      # moves 205 bytes a line, and the blank is 38 lines: about 240 tiles.
+      COMMAND_DMA = 0x80
+
       MODE4_40_CELLS = 0x81 # 320 pixels across
       INCREMENT_WORD = 2
 

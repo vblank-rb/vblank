@@ -24,11 +24,6 @@ module ScreenFadeGames
   BLUE = VBlank::Graphics::Color.resolve(:blue)
   BLACK = 0
 
-  # Why a game that clears its painted screen every pass skips on the Genesis. test_genesis_fade.rb
-  # plays the same fades over a screen painted once.
-  SLOW_PASS_ON_GENESIS = "its build does not copy a painted screen by DMA yet, so a pass that redraws the screen " \
-                         "takes many frames and a tap between two passes is never read"
-
   private def program(&block)
     b = Builder.new
     b.instance_eval(&block)
@@ -165,7 +160,6 @@ class TestScreenFade < Minitest::Test
   # the way to full would read as a soft glow rather than a hit, so the level is applied
   # before it is moved and this is what says so.
   def test_a_flash_is_at_full_on_the_frame_it_is_seen_first
-    skip_on_genesis SLOW_PASS_ON_GENESIS
     seen = ramp(fading_game { flash_screen :white, frames: 6 }, 12)
     lit = seen.index { |px| px != RED }
 
@@ -180,7 +174,6 @@ class TestScreenFade < Minitest::Test
   end
 
   def test_a_bare_flash_lasts_as_long_as_a_six_frame_flash_whatever_came_before
-    skip_on_genesis SLOW_PASS_ON_GENESIS
     bare = frames_not_red(after_a_slow_fade { flash_screen :white }, from: 99, to: 160)
     six = frames_not_red(after_a_slow_fade { flash_screen :white, frames: 6 }, from: 99, to: 160)
 
@@ -210,7 +203,6 @@ class TestScreenFade < Minitest::Test
   end
 
   def test_a_flash_toward_black_is_the_scene_change_cut
-    skip_on_genesis SLOW_PASS_ON_GENESIS
     seen = ramp(fading_game { flash_screen :black, frames: 8 }, 20)
 
     assert_equal BLACK, seen[seen.index { |px| px != RED }], "it cuts to black at once"
@@ -291,7 +283,6 @@ class TestScreenFade < Minitest::Test
   # ramp; only the verb the branch reaches for changes.
 
   def test_a_flash_in_a_colour_goes_full_on_the_frame_it_is_seen_first
-    skip_on_genesis SLOW_PASS_ON_GENESIS
     seen = ramp(fading_game { flash_screen :green, frames: 6 }, 12)
     lit = seen.index { |px| px != RED }
 
@@ -303,7 +294,6 @@ class TestScreenFade < Minitest::Test
   # Each colour a game asks for gets a branch of its own, so two of them in one game do
   # not collapse into whichever was asked for last.
   def test_two_colours_in_one_game_each_get_their_own_flash
-    skip_on_genesis SLOW_PASS_ON_GENESIS
     prog = program do
       screen :bitmap
       frame = var :frame, 0
@@ -494,7 +484,6 @@ class TestScreenFade < Minitest::Test
   # Finer steps, and not a different fade: the screen is white on the same frames, and red
   # again on the same frames, as the display's own fade makes it.
   def test_a_long_fade_is_white_and_back_on_the_same_frames
-    skip_on_genesis SLOW_PASS_ON_GENESIS
     tiled = ramp(long_fade(:tiled), 90)
     plain = ramp(long_fade(:bitmap), 90)
 
@@ -506,7 +495,6 @@ class TestScreenFade < Minitest::Test
   # A short fade has no more than seventeen levels to show, so it keeps the display's
   # fade, which costs nothing. It cannot tell the two apart, and nor can the player.
   def test_a_short_fade_draws_what_the_display_would
-    skip_on_genesis SLOW_PASS_ON_GENESIS
     tiled = ramp(long_fade(:tiled, frames: 17), 50)
     plain = ramp(long_fade(:bitmap, frames: 17), 50)
 

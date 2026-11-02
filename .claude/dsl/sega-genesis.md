@@ -40,7 +40,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
 - `camera` — works: a painted screen is the size of the screen, so moving the view over it shows the backdrop past the picture's edge. The view can move 192 pixels across and 32 down, either way. If a game moves it further, the game stops and says so. To move over a bigger world, use a tiled background and `scroll_to`.
-- `keep_showing` — works: a painted screen is copied to the console in the blank between frames, and only the squares that changed. A pass that changes much of the screen can take several frames to show.
+- `keep_showing` — works: a painted screen is copied to the console in the blank between frames, and only the squares that changed. A blank holds about a tenth of the screen, so a pass that changes all of it takes about eleven frames to show.
 - `fade` — works: `fade` and `tint` change the colours the console shows, not the picture: the colour memory is written again for each step, since a Genesis has no brightness control. `inside:`, `outside:` and `under:` are refused: the build cannot fade part of the screen on a Genesis.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.

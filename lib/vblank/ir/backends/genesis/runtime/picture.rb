@@ -44,7 +44,7 @@ module VBlank
             def emit_screen_on(asm, _memory)
               h = Console::GenesisHardware
               asm.label("rt_screen_on")
-              asm.move(:w, asm.imm(h::VDP_REGISTER | (h::REG_MODE2 << 8) | h::MODE2_SCREEN_ON | h::MODE2_VBLANK_INTERRUPT),
+              asm.move(:w, asm.imm(h::VDP_REGISTER | (h::REG_MODE2 << 8) | h::MODE2_SCREEN_ON | h::MODE2_VBLANK_INTERRUPT | h::MODE2_DMA),
                        asm.abs_l(h::VDP_CONTROL))
               asm.rts
             end

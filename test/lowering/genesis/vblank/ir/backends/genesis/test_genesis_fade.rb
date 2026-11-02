@@ -98,8 +98,7 @@ class TestGenesisFade < Minitest::Test
     Genesis::CheckedRun.new.run(program, frames: 30)
   end
 
-  # The fades of test_screen_fade.rb, over a screen painted once: there a game clears it every pass,
-  # which takes this build many frames a pass, so those skip here.
+  # The fades of test_screen_fade.rb, over a screen painted once.
   def test_flashes_and_a_fade_there_and_back_agree_on_every_pass
     program = program_of(screen_kind: :bitmap) do
       clear_screen :red
