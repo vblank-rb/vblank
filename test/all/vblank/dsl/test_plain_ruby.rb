@@ -518,6 +518,46 @@ class TestPlainRuby < Minitest::Test
     assert_equal 7, player[:seen]
   end
 
+  # The name is read only inside the first test, so that test leaves it alone, and the second has to
+  # give it a number of its own: the variable it was started from belongs to the caller.
+  def test_a_name_given_an_argument_and_changed_under_a_test_inside_a_test_leaves_the_caller_alone
+    player = played do
+      def slowed(counter, blinks)
+        slow = 0
+        if blinks >= 1
+          frames = counter
+          frames = counter >> 2 if blinks >= 2
+          slow = frames
+        end
+        slow
+      end
+      counter = var :counter, 8
+      blinks = var :blinks, 2
+      seen = var :seen, 0
+      game_loop { seen = slowed(counter, blinks) }
+    end
+
+    assert_equal 8, player[:counter]
+    assert_equal 2, player[:seen]
+  end
+
+  def test_a_number_changed_under_a_test_inside_a_test_follows_the_test
+    player = played do
+      passes = var :passes, 0
+      seen = var :seen, 0
+      game_loop do
+        passes += 1
+        if passes >= 1
+          amount = 3
+          amount = 5 if passes >= 2
+          seen = amount
+        end
+      end
+    end
+
+    assert_equal 5, player[:seen]
+  end
+
   def test_a_number_changed_in_a_game_loop_inside_a_method_follows_the_test
     player = played do
       def count_up(limit)

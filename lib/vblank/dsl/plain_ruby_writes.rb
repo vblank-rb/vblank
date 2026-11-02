@@ -194,9 +194,13 @@ module VBlank
         # A plain name is about to be changed under +test+. A test the game makes runs both sides
         # while building, so a plain name would end up with the last side's value whichever way
         # the game goes. It gets a hidden variable holding its value now, and the sides change that.
-        # Tests already open around this one have seen to it, in +outer+.
+        #
+        # Tests already open around this one have seen to a name read after them, in +outer+. One read
+        # only inside them, and still holding a variable it was handed, gets its own here: the sides
+        # would otherwise write the variable it came from, which is somebody else's.
         def promote(value, test, *outer, may_stay_nil: false)
-          return value unless test.game? && outer.none?(&:game?)
+          return value unless test.game?
+          return value if outer.any?(&:game?) && !(Steps.variable?(value) && handed?(value))
           return value unless number_kept?(value)
 
           own = test.hidden_variable(:promoted, like: value.is_a?(Value) ? value : nil)
