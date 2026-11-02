@@ -12,10 +12,23 @@ module VBlank
       # Enable the GBA sound hardware. Call once at the top of your build block.
       # Without this, all beep calls are silent.
       def enable_sound
-        raise ArgumentError, "enable_sound is already on. Call enable_sound one time only." if @sound_enabled
+        raise ArgumentError, "enable_sound is already on. Call enable_sound one time only." if @sound_enabled && !@sound_on_by_itself
+
+        @sound_on_by_itself = false
+        return if @sound_enabled
 
         @sound_enabled = true
         record(Build.enable_sound)
+      end
+
+      # SOUNDS HANDED OVER AS DATA TURN THE SOUND ON THEMSELVES, as a recording does: a game that
+      # names them plainly means to hear them. At power-on, since a list can be declared in a scene.
+      private def turn_sound_on
+        return if @sound_enabled
+
+        @sound_enabled = true
+        @sound_on_by_itself = true
+        at_boot(Build.enable_sound)
       end
 
       # Define a named sound preset for use with beep.

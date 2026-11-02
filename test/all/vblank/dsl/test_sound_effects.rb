@@ -316,6 +316,39 @@ class TestSoundEffects < Minitest::Test
 
   # Asked for on pass 3, it starts on the frame after, the way a song does, plays each note once
   # and goes quiet at its end rather than coming round again.
+  # Sound comes on by itself for sounds handed over as data, as it does for a recording, in either
+  # order with a line that asks for it.
+  def test_effects_and_songs_sound_with_no_line_asking_for_sound
+    effects = { ping: every_ten_ticks(:C4) }
+    tune = every_ten_ticks(:E4)
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      music = songs :music, [tune]
+      sfx = sound_effects :sfx, effects
+      pass = 0
+      game_loop do
+        pass += 1
+        music.play 0
+        sfx.play :ping if pass == 10
+      end
+    end
+    b.finalize_program
+
+    assert_operator notes_by_frame(b.program, 30).length, :>=, 2
+  end
+
+  def test_a_line_asking_for_sound_after_effects_is_no_mistake
+    effects = { ping: every_ten_ticks(:C4) }
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      sound_effects :sfx, effects
+      enable_sound
+    end
+    pass
+  end
+
   def test_an_effect_plays_once_from_the_frame_it_is_asked_for
     program = game([every_ten_ticks(:C5, :E5)]) { |sfx, pass| sfx.play 0 if pass == 3 }
 

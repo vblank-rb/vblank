@@ -178,11 +178,15 @@ module VBlank
       # memory are worth a `func` (see SplitHints). Only the printed report says so, and working
       # it out reads every address the run touched, so the build's own runs of each scene leave
       # it off.
+      #
+      # +press+ are buttons that go down as the measured frames begin, where +keys+ are down from
+      # power-on: a button a game reads on its edge, a trigger, never fires when held from the start.
       def self.run(rom, frames: FRAMES, settle: SETTLE, keys: [], scene: nil, from: nil,
-                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true)
+                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true, press: [])
         routines = rom.built.routines
         loaded_sets = 0 # which scenes' own routines were in the quick memory; read as the run ends
         held = Array(keys)
+        pressed = held | Array(press)
         raise ArgumentError, "give `scene:` or `from:`, not both. A saved moment already says " \
                              "which scene the game was in." if from && scene
         holding = scene_state(rom, scene) + Array(holding) if scene
@@ -196,11 +200,11 @@ module VBlank
           begin
             measured =
               if from
-                profile_from_saved_state(probe, from, path, frames, held, losses)
+                profile_from_saved_state(probe, from, path, frames, pressed, losses)
               elsif holding
-                profile_holding_words(probe, holding, frames, settle, held, losses, starting)
+                profile_holding_words(probe, holding, frames, settle, held, losses, starting, pressed)
               else
-                profile_from_boot(probe, frames, settle, held, losses)
+                profile_from_boot(probe, frames, settle, held, losses, pressed)
               end
             # Looked at AFTER the profiling, from wherever it left the game — so the frames
             # judged are the same frames that were measured, doing the same work.
@@ -459,10 +463,10 @@ module VBlank
 
       # The settling is stepped here rather than handed to the probe, so there is a moment
       # between it and the measuring for the counters to be put back to nothing.
-      def self.profile_from_boot(probe, frames, settle, held, losses = nil)
+      def self.profile_from_boot(probe, frames, settle, held, losses = nil, pressed = held)
         step_past_power_on(probe, held, at_least: settle) if settle.positive?
         clear_losses(probe, losses)
-        probe.profile(frames: frames, keys: held)
+        probe.profile(frames: frames, keys: pressed)
       end
 
       # RUN THE GAME UNTIL ITS FIRST PASS HAS ENDED, and at least +at_least+ frames. What a game
@@ -527,7 +531,7 @@ module VBlank
       # back at its capacity on the next frame. +starting+ are words written once, as the
       # measured frames begin, rather than held: a save set running (see SaveStarts), which goes
       # on by itself from there. +settle+ is how long the scene runs before those frames.
-      def self.profile_holding_words(probe, writes, frames, settle, held, losses = nil, starting = [])
+      def self.profile_holding_words(probe, writes, frames, settle, held, losses = nil, starting = [], pressed = held)
         step_past_power_on(probe, held, at_least: BOOT_FRAMES)
         writes.each { |address, value| probe.write32(address, value) }
         probe.step(settle, keys: held) if settle.positive?
@@ -536,7 +540,7 @@ module VBlank
 
         frames.times.map do
           writes.each { |address, value| probe.write32(address, value) }
-          probe.profile(frames: 1, keys: held)
+          probe.profile(frames: 1, keys: pressed)
         end.reduce { |a, b| add_profiles(a, b) }
       end
 

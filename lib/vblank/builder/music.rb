@@ -143,6 +143,7 @@ module VBlank
       # `songs :music, { title: TITLE, forest: FOREST }`, then `music.play :forest`. Returns a
       # {VBlank::DSL::SongList}.
       def songs(name, scores)
+        turn_sound_on
         keys, members = record_scores(name: name, scores: scores, verb: :songs, entry: "Song") do |key, score|
           refuse_song_keeping_voices!(name, key, score)
           next unless score.group
@@ -173,6 +174,7 @@ module VBlank
       # When an effect and the song, or two effects, want the same voice at once, the Score with
       # the higher `priority:` sounds on it. Returns a {VBlank::DSL::SoundEffectList}.
       def sound_effects(name, scores)
+        turn_sound_on
         keys, members = record_scores(name: name, scores: scores, verb: :sound_effects,
                                       entry: "Sound effect") do |key, score|
           refuse_looping_sound_effect!(effect: "Sound effect #{key.inspect} of :#{name}", score: score)
@@ -184,8 +186,6 @@ module VBlank
       # The hook behind SoundEffectList#play: record that effect number +which+ of the list starts
       # now — a number already checked against the list when it was written, or a Value.
       def play_sound_effect(name, which, this_frame: false)
-        raise ArgumentError, "Sound is off. Call enable_sound before playing :#{name}." unless @sound_enabled
-
         refuse_unknown_this_frame!(this_frame)
         record(Build.play_sound_effect(name, which: DSL::Value.node_for(which), this_frame: this_frame))
       end
@@ -193,8 +193,6 @@ module VBlank
       # The hook behind SongList#play: record that the tune playing now is number +which+ of
       # the list — a number already checked against the list when it was written, or a Value.
       def play_from_list(name, which, this_frame: false)
-        raise ArgumentError, "Sound is off. Call enable_sound before playing :#{name}." unless @sound_enabled
-
         refuse_unknown_this_frame!(this_frame)
         record(Build.play_from_list(name, which: DSL::Value.node_for(which), this_frame: this_frame))
       end

@@ -172,7 +172,8 @@ module VBlank
       #
       # +keys+ are held throughout, and it is worth passing them: a game costs what the player
       # makes it cost, and a profile with nothing held is a profile of a game standing still.
-      # +settle+ runs that many frames first, and +frames+ is how many to measure over.
+      # +settle+ runs that many frames first, and +frames+ is how many to measure over. +press+ are
+      # buttons that go down as those frames begin, for one a game reads the moment it goes down.
       #
       # +format+ is :human to print it or :json for the same numbers as data.
       #
@@ -180,10 +181,10 @@ module VBlank
       # addresses each routine runs at cannot be recovered from the bytes, because a routine kept
       # in the console's quick memory was copied there at boot.
       def profile(format: :human, out: $stdout, frames: Diagnostics::Profiler::FRAMES,
-                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil)
+                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil, press: [])
         require_build_record! # a cartridge with no record cannot name its own routines
         result = Diagnostics::Profiler.run(self, frames: frames, settle: settle, keys: keys, scene: scene,
-                              from: from)
+                              from: from, press: press)
         case format
         when :human then Diagnostics::Profiler.render(result, out: out, rom: self)
         when :json

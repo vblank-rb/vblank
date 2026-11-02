@@ -432,6 +432,8 @@ module VBlank
         --keys BUTTON ...        Hold these buttons for the whole run. The
                                  buttons are:
                                  #{BUTTONS}
+        --press BUTTON ...       Press these buttons as the measuring starts, for
+                                 a button the game reads as it goes down.
         --scene NAME             Hold the game in this scene, and measure that.
         --from PATH              Start from an emulator save state, made by
                                  playing to that moment once. The state must come
@@ -450,6 +452,7 @@ module VBlank
     option :frames, type: :numeric, banner: "N", default: VBlank::Diagnostics::Profiler::FRAMES
     option :settle, type: :numeric, banner: "N", default: VBlank::Diagnostics::Profiler::SETTLE
     option :keys, type: :array, banner: "BUTTON", default: []
+    option :press, type: :array, banner: "BUTTON", default: []
     option :scene, banner: "NAME"
     option :from, banner: "PATH"
     option :set, type: :array, banner: "NAME=VALUE", default: []
@@ -461,7 +464,7 @@ module VBlank
       # the cartridge somebody would actually ship, not a differently-placed one.
       game.build_rom(settings: given_settings, console: console_to_run(game, "profile"))
           .profile(format: format, frames: options[:frames], settle: options[:settle], scene: options[:scene],
-                   from: options[:from], keys: held_buttons || [])
+                   from: options[:from], keys: held_buttons || [], press: buttons_named(options[:press]))
     rescue ArgumentError, VBlank::BuildError => e
       raise Thor::Error, e.message
     end
@@ -1253,7 +1256,12 @@ module VBlank
     def held_buttons
       return nil if options[:keys].empty?
 
-      buttons = options[:keys].map { |name| name.to_s.downcase.to_sym }
+      buttons_named(options[:keys])
+    end
+
+    # The buttons +names+ say, each checked.
+    def buttons_named(names)
+      buttons = names.map { |name| name.to_s.downcase.to_sym }
       unknown = buttons.reject { |button| VBlank::IR::Buttons.known?(button) }
       unless unknown.empty?
         raise Thor::Error, "#{unknown.first} is not a button. The buttons are: " \

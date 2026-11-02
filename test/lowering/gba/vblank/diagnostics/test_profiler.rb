@@ -98,6 +98,19 @@ class TestProfiler < Minitest::Test
     end
 
     still = game.profile(out: StringIO.new, frames: 10)
+    trigger = VBlank.build("TRIGGER", console: :gba, out: StringIO.new, err: StringIO.new, profile: false) do
+      screen :bitmap
+      shots = var :shots, 0
+      func(:fire) { repeat(400) { shots += 1 } }
+      game_loop { call :fire if pressed(:a) }
+    end
+    held_fire = trigger.profile(format: :json, out: StringIO.new, frames: 10, keys: [:a])
+    pressed_fire = trigger.profile(format: :json, out: StringIO.new, frames: 10, press: [:a])
+    fired = ->(measured) { measured.lines.any? { |line| line.name.to_s == "fire" } }
+
+    refute fired.call(held_fire), "a button held from power-on has no moment it goes down"
+    assert fired.call(pressed_fire), "one pressed as the measuring starts does"
+
     walking = game.profile(out: StringIO.new, frames: 10, keys: [:left])
 
     refute_includes still.lines.map(&:name), :only_while_held
