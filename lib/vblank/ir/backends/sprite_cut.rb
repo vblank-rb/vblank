@@ -16,15 +16,9 @@ module VBlank
         # An object is built from tiles this many pixels each way.
         TILE = 8
 
-        # The picture sizes sprite hardware can draw, each mapped to the two shape/size
-        # numbers that describe it. (The sizes fall out of how the hardware groups an
-        # object's 8x8 tiles into a rectangle.) A picture that is NOT one of these is
+        # The picture sizes sprite hardware can draw. A picture that is NOT one of these is
         # drawn as several objects at once — see SpriteCut#pieces_of.
-        OBJ_SIZES = Ractor.make_shareable({
-          [8, 8] => [0, 0],  [16, 16] => [0, 1], [32, 32] => [0, 2], [64, 64] => [0, 3],
-          [16, 8] => [1, 0], [32, 8] => [1, 1],  [32, 16] => [1, 2], [64, 32] => [1, 3],
-          [8, 16] => [2, 0], [8, 32] => [2, 1],  [16, 32] => [2, 2], [32, 64] => [2, 3],
-        })
+        OBJ_SIZES = Console::Hardware::OBJ_SIZES
 
         # The largest object the console has: not one of the twelve draws more than this
         # many pixels a side.

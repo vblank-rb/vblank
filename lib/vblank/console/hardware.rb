@@ -14,6 +14,14 @@ module VBlank
     # the sound is handed over — is Console::ADVANCE's to say, so it reads the same numbers for
     # whichever console a game is played as.
     module Hardware
+      # The sizes a sprite is drawn at, in pixels across and down, each mapped to the two shape and
+      # size numbers that describe it. (The sizes fall out of how the hardware groups an object's
+      # 8x8 tiles into a rectangle.)
+      OBJ_SIZES = Ractor.make_shareable({
+        [8, 8] => [0, 0],  [16, 16] => [0, 1], [32, 32] => [0, 2], [64, 64] => [0, 3],
+        [16, 8] => [1, 0], [32, 8] => [1, 1],  [32, 16] => [1, 2], [64, 32] => [1, 3],
+        [8, 16] => [2, 0], [8, 32] => [2, 1],  [16, 32] => [2, 2], [32, 64] => [2, 3],
+      })
 
       # ========================================================================
       # Memory Map

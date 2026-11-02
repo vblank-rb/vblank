@@ -95,27 +95,24 @@ module VBlank
         DSL::TileRun.new(self, name)
       end
 
-      # THE SIZES THE CONSOLE DRAWS A SPRITE AT, in pixels across and down. A picture painted
-      # from a list is one of these whole, rather than cut into pieces the way a bigger drawn
-      # picture is, because the game writes its bytes in the order one sprite keeps its tiles.
-      PICTURE_SIZES = Ractor.make_shareable([[8, 8], [16, 16], [32, 32], [64, 64], [16, 8], [32, 8], [32, 16],
-                                             [64, 32], [8, 16], [8, 32], [16, 32], [32, 64]])
-
-      # A painted picture's size: one a sprite of the console is drawn at — or, on a console whose
-      # build cuts every sprite's picture into 8×8 pieces (Console::Description#cuts_sprites), any
+      # A painted picture's size. On a console that draws a sprite whole, at one of a few sizes
+      # (Console::Description#sprite_sizes), it is one of those rather than cut into pieces the way
+      # a bigger drawn picture is, because the game writes its bytes in the order one sprite keeps
+      # its tiles. On a console whose build cuts every sprite's picture into 8×8 pieces, it is any
       # size in whole pieces.
       def refuse_picture_run_size!(name, width, height)
-        if console.cuts_sprites
+        sizes = console.sprite_sizes
+        unless sizes
           return if [width, height].all? { |side| side.is_a?(Integer) && side.positive? && (side % 8).zero? }
 
           raise ArgumentError, "image :#{name} gets its pixels from a list, so it is drawn in whole 8x8 pieces. " \
                                "It is #{width.inspect}x#{height.inspect}. To fix this, make each side a multiple of 8."
         end
-        return if PICTURE_SIZES.include?([width, height])
+        return if sizes.include?([width, height])
 
         raise ArgumentError, "image :#{name} gets its pixels from a list, so it must be a size the console " \
                              "draws a sprite at. It is #{width.inspect}x#{height.inspect}. The sizes are " \
-                             "#{PICTURE_SIZES.map { |w, h| "#{w}x#{h}" }.join(', ')}."
+                             "#{sizes.map { |w, h| "#{w}x#{h}" }.join(', ')}."
       end
 
       # `image` given a list rather than art: a picture a sprite shows, painted by the game. Its
