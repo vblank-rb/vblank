@@ -460,10 +460,14 @@ module VBlank
               asm.sta(place.call(PHASE))
               # The first free place.
               asm.label("rt_recordings_note_elsewhere")
-              each_place(asm, "rt_recordings_note_free") do |next_place|
-                asm.lda(place.call(HELD))
-                asm.branch_long(:beq, "rt_recordings_note_found")
-                asm.bra(next_place)
+              if memory.reserved?(Sound::AHEAD)
+                emit_quick_free_place(asm, memory)
+              else
+                each_place(asm, "rt_recordings_note_free") do |next_place|
+                  asm.lda(place.call(HELD))
+                  asm.branch_long(:beq, "rt_recordings_note_found")
+                  asm.bra(next_place)
+                end
               end
               # The quietest note falling away.
               asm.jsr(asm.abs("rt_recordings_quietest"))
@@ -655,17 +659,21 @@ module VBlank
               # rt_recordings_sounding: Y = the place NOTE_OWNER's part sounds a note in now — held, its
               # own, and not falling away — with carry clear; carry set when it has none.
               asm.label("rt_recordings_sounding")
-              each_place(asm, "rt_recordings_sounding") do |next_place|
-                asm.lda(place.call(HELD))
-                asm.beq(next_place)
-                asm.lda(place.call(OWNER))
-                asm.cmp(at.call(NOTE_OWNER))
-                asm.bne(next_place)
-                asm.lda(place.call(PHASE))
-                asm.cmp(FALLING)
-                asm.bcs(next_place)
-                asm.clc
-                asm.rts
+              if memory.reserved?(Sound::AHEAD)
+                emit_quick_sounding_place(asm, at, memory)
+              else
+                each_place(asm, "rt_recordings_sounding") do |next_place|
+                  asm.lda(place.call(HELD))
+                  asm.beq(next_place)
+                  asm.lda(place.call(OWNER))
+                  asm.cmp(at.call(NOTE_OWNER))
+                  asm.bne(next_place)
+                  asm.lda(place.call(PHASE))
+                  asm.cmp(FALLING)
+                  asm.bcs(next_place)
+                  asm.clc
+                  asm.rts
+                end
               end
               asm.sec
               asm.rts
@@ -675,25 +683,34 @@ module VBlank
               # (Reference::Mixer#quietest_releasing_slot).
               asm.label("rt_recordings_quietest")
               asm.stz(at.call(BEST))
-              each_place(asm, "rt_recordings_quietest") do |next_place|
+              quietest = lambda do |next_place, best|
+                asm.lda(place.call(PHASE))
+                asm.cmp(FALLING)
+                asm.bcc(next_place)
                 asm.lda(place.call(HELD))
                 asm.beq(next_place)
                 asm.lda(place.call(OWNER))
                 asm.beq(next_place)
-                asm.lda(place.call(PHASE))
-                asm.cmp(FALLING)
-                asm.bcc(next_place)
                 asm.lda(at.call(BEST))
-                asm.beq("rt_recordings_quietest_best")
+                asm.beq(best)
                 asm.lda(place.call(LEVEL))
                 asm.cmp(at.call(BEST_RANK))
                 asm.bcs(next_place)
-                asm.label("rt_recordings_quietest_best")
+                asm.label(best)
                 asm.lda(place.call(LEVEL))
                 asm.sta(at.call(BEST_RANK))
                 asm.tya
                 asm.inc
                 asm.sta(at.call(BEST))
+              end
+              if memory.reserved?(Sound::AHEAD)
+                PLACES.times do |number|
+                  asm.ldy(number * PLACE_BYTES)
+                  quietest.call("rt_recordings_quietest_past_#{number}", "rt_recordings_quietest_best_#{number}")
+                  asm.label("rt_recordings_quietest_past_#{number}")
+                end
+              else
+                each_place(asm, "rt_recordings_quietest") { |next_place| quietest.call(next_place, "rt_recordings_quietest_best") }
               end
               asm.lda(at.call(BEST))
               asm.bne("rt_recordings_quietest_found")
@@ -869,6 +886,43 @@ module VBlank
               asm.lda(1)
               asm.sta(place.call(VOLUME_WAITING))
               emit_queued_entry(asm, at, Sound::NOTE_VOLUME)
+            end
+
+            # THE TWO WALKS A CHORD MAKES MOST, written out a place at a time. Every note of a chord asks
+            # after its part's place and then for a free one, and moving a counter on from place to
+            # place takes longer than the look itself, so a chord of seven spends lines of the picture
+            # on it. Read at each place's own address there is no counter to move. A game with sound
+            # effects, which has to leave room for them beside a chord, is the one that pays the bytes.
+            def emit_quick_free_place(asm, memory)
+              PLACES.times do |number|
+                past = "rt_recordings_note_free_past_#{number}"
+                asm.lda(asm.abs(memory[PLACES_STATE], (number * PLACE_BYTES) + HELD))
+                asm.bne(past)
+                asm.ldy(number * PLACE_BYTES)
+                asm.brl("rt_recordings_note_found")
+                asm.label(past)
+              end
+            end
+
+            # The place NOTE_OWNER's part sounds in, as #emit_note_release's walk finds it, asking first
+            # what most places answer no to.
+            def emit_quick_sounding_place(asm, at, memory)
+              place = place_field(asm, memory)
+              PLACES.times do |number|
+                past = "rt_recordings_sounding_past_#{number}"
+                asm.lda(asm.abs(memory[PLACES_STATE], (number * PLACE_BYTES) + OWNER))
+                asm.cmp(at.call(NOTE_OWNER))
+                asm.bne(past)
+                asm.ldy(number * PLACE_BYTES)
+                asm.lda(place.call(HELD))
+                asm.beq(past)
+                asm.lda(place.call(PHASE))
+                asm.cmp(FALLING)
+                asm.bcs(past)
+                asm.clc
+                asm.rts
+                asm.label(past)
+              end
             end
 
             # A walk over every place, Y each one's offset: the block's code for each, given the label

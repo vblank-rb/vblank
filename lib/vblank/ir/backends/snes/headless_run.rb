@@ -109,6 +109,11 @@ module VBlank
           # The registers as the run ended.
           def dsp_registers = @dsp_reads.last&.last
 
+          # The registers this moment, for a test watching from #each_vblank. #dsp_registers keeps only
+          # what it read with the sound queue empty, and a tune striking chords can keep the queue full
+          # for many frames while the chip goes on changing.
+          def live_dsp_registers = @core.dsp_registers
+
           # The recordings sounding as the run ended, in the order of their places, as the
           # interpreter says them (Reference#active_samples): the cartridge's own count
           # (Runtime::Recordings), heard or not.

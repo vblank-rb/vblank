@@ -50,9 +50,7 @@ class TestSNESEffectsBesideChords < Minitest::Test
     asked = nil
     run.each_vblank do |frame|
       asked ||= frame if run[:passes] >= ASKED_ON_PASS
-      dsp = run.dsp_registers
-      next unless dsp
-
+      dsp = run.live_dsp_registers
       heard ||= frame if (0...VOICES).any? { |voice| dsp.getbyte((voice << 4) + 2) | (dsp.getbyte((voice << 4) + 3) << 8) == EFFECT_PITCH }
     end
     run.run(chords_game(work: work), frames: (ASKED_ON_PASS * 2) + 30)
@@ -67,8 +65,7 @@ class TestSNESEffectsBesideChords < Minitest::Test
   end
 
   # The voice holding the effect's pitch, as [its left volume, how loud its envelope is], or nil.
-  private def effect_voice(run)
-    dsp = run.dsp_registers
+  private def effect_voice(dsp)
     voice = (0...VOICES).find { |v| dsp.getbyte((v << 4) + 2) | (dsp.getbyte((v << 4) + 3) << 8) == EFFECT_PITCH }
     voice && [dsp.getbyte(voice << 4), dsp.getbyte((voice << 4) + ENVX)]
   end
@@ -78,7 +75,7 @@ class TestSNESEffectsBesideChords < Minitest::Test
     run = SNES::HeadlessRun.new
     loudness = []
     run.each_vblank do |_frame|
-      voice = effect_voice(run)
+      voice = effect_voice(run.live_dsp_registers)
       loudness << voice.first if voice
     end
     run.run(chords_game(work: 300, effect_envelope: { decay: 0.5, sustain: 0.1 }), frames: ASKED_ON_PASS + 40)
@@ -92,6 +89,6 @@ class TestSNESEffectsBesideChords < Minitest::Test
     run = SNES::HeadlessRun.new.tap { |player| player.run(chords_game(work: 300, stops_tune: true), frames: ASKED_ON_PASS + 12) }
 
     assert_equal [:tone], run.active_samples.uniq
-    assert_operator effect_voice(run).last, :>, 0, "the voice sounding the effect"
+    assert_operator effect_voice(run.dsp_registers).last, :>, 0, "the voice sounding the effect"
   end
 end
