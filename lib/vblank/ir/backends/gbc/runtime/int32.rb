@@ -40,12 +40,12 @@ module VBlank
             def emit_sums(asm)
               { "rt_add32" => %i[add_a adc_a], "rt_sub32" => %i[sub_a sbc_a] }.each do |name, (first, rest)|
                 asm.label(name)
-                byte_by_byte(asm, first, rest)
+                emit_sum_bytes(asm, first, rest)
                 asm.ret
               end
               { "rt_and32" => :and_a, "rt_or32" => :or_a, "rt_xor32" => :xor_a }.each do |name, op|
                 asm.label(name)
-                byte_by_byte(asm, op, op)
+                emit_sum_bytes(asm, op, op)
                 asm.ret
               end
 
@@ -91,7 +91,7 @@ module VBlank
 
             # One byte of BCDE at a time against (HL), lowest first: the first with +first+, the rest
             # with +rest+ (the carrying form of the same sum).
-            def byte_by_byte(asm, first, rest)
+            def emit_sum_bytes(asm, first, rest)
               %i[e d c b].each_with_index do |reg, i|
                 asm.load(:a, reg)
                 asm.public_send(i.zero? ? first : rest, [:hl])
@@ -728,7 +728,7 @@ module VBlank
                 asm.rr([:hl])
               end
               asm.jump_relative(:nc, "rt_mul_fix_shift")
-              add_quick64(asm, s.wide, s.wide_by)
+              emit_add_quick64(asm, s.wide, s.wide_by)
               asm.label("rt_mul_fix_shift")
               asm.load(:hl, s.wide_by)
               asm.sla([:hl])
@@ -933,7 +933,7 @@ module VBlank
             end
 
             # s.a += s.b, both 64 bits in quick memory.
-            def add_quick64(asm, sum, addend)
+            def emit_add_quick64(asm, sum, addend)
               8.times do |i|
                 asm.load_high(:a, addend + i)
                 asm.load(:l, :a)

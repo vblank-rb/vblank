@@ -245,7 +245,7 @@ module VBlank
               end
             end
 
-            def take_args(asm, count)
+            def emit_args_read(asm, count)
               asm.load_hl_sp(2)
               asm.load(:b, 4 * count)
               asm.call("rt_take_args")
@@ -254,7 +254,7 @@ module VBlank
             def emit_routines(asm, memory, q, byte_fills)
               # rt_list_empty(list)
               asm.label("rt_list_empty")
-              take_args(asm, 1)
+              emit_args_read(asm, 1)
               asm.load(:a, arg_at(memory, 0, 1))
               asm.call("rt_list_open")
               asm.xor_a(:a)
@@ -264,7 +264,7 @@ module VBlank
               # rt_list_at_capacity(list): the list holds its capacity, from its first slot. What the
               # slots hold is what they held; a list declared full is filled next (rt_list_fill).
               asm.label("rt_list_at_capacity")
-              take_args(asm, 1)
+              emit_args_read(asm, 1)
               asm.load(:a, arg_at(memory, 0, 1))
               asm.call("rt_list_open")
               asm.xor_a(:a)
@@ -277,7 +277,7 @@ module VBlank
 
               # rt_list_length(list)
               asm.label("rt_list_length")
-              take_args(asm, 1)
+              emit_args_read(asm, 1)
               asm.load(:a, arg_at(memory, 0, 1))
               asm.call("rt_list_open")
               asm.load_high(:a, q.length)
@@ -289,7 +289,7 @@ module VBlank
 
               # rt_list_get(list, index); rt_list_get_taken with the two already where it takes them.
               asm.label("rt_list_get")
-              take_args(asm, 2)
+              emit_args_read(asm, 2)
               asm.label("rt_list_get_taken")
               asm.load(:a, get_places(memory).first & 0xFF)
               asm.call("rt_list_open")
@@ -300,7 +300,7 @@ module VBlank
 
               # rt_list_set(list, index, value)
               asm.label("rt_list_set")
-              take_args(asm, 3)
+              emit_args_read(asm, 3)
               asm.label("rt_list_set_taken") # the list and the index already where it takes them
               asm.load(:a, set_places(memory).first & 0xFF)
               asm.call("rt_list_open")
@@ -312,7 +312,7 @@ module VBlank
 
               # rt_list_push(list, value)
               asm.label("rt_list_push")
-              take_args(asm, 2)
+              emit_args_read(asm, 2)
               asm.label("rt_list_push_taken") # the list and the value already where it takes them
               asm.load(:a, arg_at(memory, 0, 2))
               asm.call("rt_list_open")
@@ -348,7 +348,7 @@ module VBlank
 
               # rt_list_drop(list, from_the_front)
               asm.label("rt_list_drop")
-              take_args(asm, 2)
+              emit_args_read(asm, 2)
               asm.label("rt_list_drop_taken") # the list and which end already where it takes them
               asm.load(:a, arg_at(memory, 0, 2))
               asm.call("rt_list_open")
@@ -582,7 +582,7 @@ module VBlank
             # value. Nothing for a count of nought or less; the first and the last index checked.
             def emit_fill(asm, memory, q, byte_fills)
               asm.label("rt_list_fill")
-              take_args(asm, 4)
+              emit_args_read(asm, 4)
               count = arg(memory, 2, 4)
               asm.load_high(:a, count + 3)
               asm.bit(7, :a)
@@ -677,7 +677,7 @@ module VBlank
             # +count+ entries of the table from +at+ (held inside the table), oldest first.
             def emit_copy(asm, memory, q)
               asm.label("rt_list_copy")
-              take_args(asm, 6)
+              emit_args_read(asm, 6)
               asm.load(:a, arg_at(memory, 0, 6))
               asm.call("rt_list_open")
               count = arg(memory, 5, 6)

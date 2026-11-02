@@ -109,7 +109,7 @@ module VBlank
                 asm.load(:bc, h::VRAM_SIZE)
                 asm.call("rt_clear")
               end
-              copy_oam_dma(asm)
+              emit_oam_dma_copy(asm)
               # Every colour of every list black, which is the interpreter's empty screen — but the
               # backdrop, where one was put first (#emit_backdrop), which is left as it is.
               [h::BCPS, h::OCPS].each do |select|
@@ -199,7 +199,7 @@ module VBlank
                                0x20, 0xFD, # jr nz, -3
                                0xC9].freeze # ret
 
-            def copy_oam_dma(asm)
+            def emit_oam_dma_copy(asm)
               asm.load(:hl, Memory::OAM_DMA)
               OAM_DMA_ROUTINE.each do |byte|
                 asm.load(:a, byte)

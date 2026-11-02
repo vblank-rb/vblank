@@ -8,9 +8,8 @@ module VBlank
     # A node is plain Ruby data: no machine code, no output buffer, no interpreter. That is
     # the whole point. The tree is built, walked, and checked (for footguns) entirely in
     # memory, and only afterwards does a lowering pass turn it into code for a concrete
-    # target. The tree itself assumes nothing about that target — ARM/GBA is today's backend,
-    # but the same tree could equally be lowered to, say, JavaScript. Keep target-specific
-    # detail in the lowering pass, never in this model.
+    # target. The tree itself assumes nothing about that target, so each console and language
+    # lowers the same tree. Keep target-specific detail in the lowering pass, never in this model.
     #
     # Two shapes of node share this behaviour:
     #

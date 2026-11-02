@@ -1645,7 +1645,7 @@ module VBlank
               asm.call("rt_paint_send_own")
               asm.call("rt_paint_shown_at")
               asm.load([:hl], OWN)
-              push_keeping(asm) do
+              emit_with_bc_de_kept(asm) do
                 asm.load(:d, :c)
                 asm.load(:hl, memory[OWN_LIST])
                 asm.call("rt_paint_list_add")
@@ -1754,7 +1754,7 @@ module VBlank
               last = memory[RUNS]
               before_last = last + RUN_BYTES
               asm.label("rt_paint_send")
-              push_keeping(asm) do
+              emit_with_bc_de_kept(asm) do
                 asm.load(:b, :a)
                 asm.and_a(3)
                 asm.load(:d, :a) # the bank
@@ -1906,7 +1906,7 @@ module VBlank
               asm.load([last + RUN_ENTRY + 1], :a)
               asm.pop(:de)
               asm.pop(:hl) # the cell's number again; the entry's place is in the run
-              push_keeping(asm) do
+              emit_with_bc_de_kept(asm) do
                 asm.load(:a, [last + RUN_ENTRY])
                 asm.load(:e, :a)
                 asm.load(:a, [last + RUN_ENTRY + 1])
@@ -1972,7 +1972,7 @@ module VBlank
             end
 
             # The block's work with BC and DE kept round it (the flags are the block's).
-            def push_keeping(asm)
+            def emit_with_bc_de_kept(asm)
               asm.push(:bc)
               asm.push(:de)
               yield

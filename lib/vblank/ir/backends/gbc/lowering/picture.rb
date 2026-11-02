@@ -791,7 +791,7 @@ module VBlank
 
             # --- painting ---
 
-            def emit_clear_screen(node) = runtime_call("rt_paint_clear", [ink(node.color)])
+            def emit_clear_screen(node) = runtime_call("rt_paint_clear", [paint_place_of(node.color)])
 
             # Reference#exec_inside: what the block paints is held to the edges, which are numbers
             # written in the program, and the area held to before is put back after it — a routine
@@ -813,10 +813,10 @@ module VBlank
             # Framebuffer#fill_rect: from the corner up to the corner past the far edge.
             def emit_fill_rect(node)
               runtime_call("rt_paint_rect", [node.x, node.y, Build.binop(:+, node.x, node.w),
-                                                 Build.binop(:+, node.y, node.h), ink(node.color)])
+                                                 Build.binop(:+, node.y, node.h), paint_place_of(node.color)])
             end
 
-            def emit_pixel(node) = paint_bits(node.x, node.y, ink(node.color), [[0, 0]])
+            def emit_pixel(node) = paint_bits(node.x, node.y, paint_place_of(node.color), [[0, 0]])
 
             # The pixels of a line of text are known when the game is built, so they are handed over
             # as a picture rather than worked out from the font as it runs (Reference#exec_draw_text).
@@ -824,7 +824,7 @@ module VBlank
               points = node.fonts.get(node.font).enum_for(:each_pixel, node.text).to_a
               return if points.empty?
 
-              color = node.picked ? picked_ink(node.showing, node.color, node.picked) : ink(node.color)
+              color = node.picked ? picked_ink(node.showing, node.color, node.picked) : paint_place_of(node.color)
               paint_bits(node.x, node.y, color, points)
             end
 
@@ -841,7 +841,7 @@ module VBlank
 
                 other = fresh("not_digit")
                 jump_unless(Build.binop(:==, Build.var_ref(digit), Build.int(d)), other)
-                paint_bits(node.x, node.y, ink(node.color), points)
+                paint_bits(node.x, node.y, paint_place_of(node.color), points)
                 @asm.label(other)
               end
             end
@@ -867,12 +867,12 @@ module VBlank
                 col = dx - left + lined_up
                 bytes[((dy - top) * stride) + 1 + (col / 8)] |= 0x80 >> (col % 8)
               end
-              runtime_call("rt_paint_bits", [moved(x, left - lined_up), moved(y, top), color,
+              runtime_call("rt_paint_bits", [place_plus(x, left - lined_up), place_plus(y, top), color,
                                                  BankedAddress.new(drawing_table("bits", 1, bytes, banked: true)), Build.int(stride),
                                                  Build.int(height)])
             end
 
-            def moved(place, by) = by.zero? ? place : Build.binop(:+, place, Build.int(by))
+            def place_plus(place, by) = by.zero? ? place : Build.binop(:+, place, Build.int(by))
 
             # Reference#blit_image: a picture with its top left at (x, y), its see-through pixels
             # leaving the screen as it was. A pixel of a painted screen is one of four colours, so
@@ -999,7 +999,7 @@ module VBlank
             end
 
             # The place a painted colour is kept at (GBC::Art#paint_place).
-            def ink(name) = Build.int(@art.paint_place(Graphics::Color.resolve(name)))
+            def paint_place_of(name) = Build.int(@art.paint_place(Graphics::Color.resolve(name)))
 
             # +picked+ while +showing+ is not nought, +color+ otherwise.
             def picked_ink(showing, color, picked)
@@ -2194,7 +2194,7 @@ module VBlank
               return false unless pose && x && y && Array(obj.recolors).empty? && pose.between?(0, obj.poses.length - 1)
 
               name = obj.poses.fetch(pose)
-              attributes = said_attributes(obj, name, palette_of(name, nil), level)
+              attributes = sprite_attributes_word(obj, name, palette_of(name, nil), level)
               record = [picture_number(name), x, y, attributes & 0xFFFF, attributes >> 16]
               runtime_call("rt_sprite_fixed", [Address.new(drawing_table("fixed_sprite", 2, record))])
               true
@@ -2250,7 +2250,7 @@ module VBlank
                 obj.poses.map do |name|
                   palette = palette_of(name, colors, scene: scene)
                   PoseRow.new(picture: picture_number(name), palette: palette,
-                              attributes: said_attributes(obj, name, @art.lends? ? 0 : palette, level))
+                              attributes: sprite_attributes_word(obj, name, @art.lends? ? 0 : palette, level))
                 end
               end
               @art.note_lists_worn(obj.name, rows.map(&:palette).uniq, scene: scene) if @art.lends?
@@ -2323,7 +2323,7 @@ module VBlank
             # whether it is behind the background, as the sprite table keeps them; above that, the
             # numbers a run says it by — whose it is, one up so nought is nobody's, and which picture
             # it is showing.
-            def said_attributes(obj, picture, palette, level)
+            def sprite_attributes_word(obj, picture, palette, level)
               behind = behind_scenery?(level) ? Console::GBCHardware::OBJ_BEHIND : 0
               whose = @drawn_sprites.name_number(obj.declared) + 1
               palette | behind | (whose << 8) | (@drawn_sprites.picture_number(picture) << 16)

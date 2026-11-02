@@ -168,8 +168,8 @@ module VBlank
 
               xs = points.map(&:first)
               ys = points.map(&:last)
-              left, right = reach_span(moved(x, xs.min), xs.max - xs.min + 1, Console::GBCHardware::SCREEN_WIDTH)
-              top, bottom = reach_span(moved(y, ys.min), ys.max - ys.min + 1, Console::GBCHardware::SCREEN_HEIGHT)
+              left, right = reach_span(place_plus(x, xs.min), xs.max - xs.min + 1, Console::GBCHardware::SCREEN_WIDTH)
+              top, bottom = reach_span(place_plus(y, ys.min), ys.max - ys.min + 1, Console::GBCHardware::SCREEN_HEIGHT)
               [[colors, SquareColors::Box.new(left: left, top: top, right: right, bottom: bottom)]]
             end
 

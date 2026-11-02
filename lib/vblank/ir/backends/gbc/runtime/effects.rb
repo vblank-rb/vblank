@@ -35,14 +35,14 @@ module VBlank
 
             module_function
 
-            def state(effect) = "rt sfx #{effect.number}"
+            def effect_state_place(effect) = "rt sfx #{effect.number}"
 
             def reserve(memory, effects)
               return if effects.empty?
 
               memory.reserve(HOLDERS, 4)
               memory.reserve(TUNE_RANK, 1)
-              effects.each { |effect| memory.reserve(state(effect), STATE_BYTES + (2 * effect.parts.length)) }
+              effects.each { |effect| memory.reserve(effect_state_place(effect), STATE_BYTES + (2 * effect.parts.length)) }
             end
 
             # +effects+ are the game's (GBC::Music#effects), +by_rank+ the same highest rank first.
@@ -164,7 +164,7 @@ module VBlank
             # rank lets it take.
             def emit_frame(asm, memory, effect, bytes)
               n = effect.number
-              at = memory[state(effect)]
+              at = memory[effect_state_place(effect)]
               frame = at + FRAME
               asm.label("rt_sfx_frame_#{n}")
               asm.load(:a, [at + STOPPING])
@@ -211,7 +211,7 @@ module VBlank
             # Part +p+ of an effect: its next note, if this is its frame — the part moved on past it,
             # and the note played if the voice is the effect's to take.
             def emit_effect_part(asm, memory, effect, part, p, bytes)
-              at = memory[state(effect)]
+              at = memory[effect_state_place(effect)]
               cursor = at + CURSORS + (2 * p)
               frame = at + FRAME
               past = "rt_sfx_#{effect.number}_part_#{p}_past"
@@ -295,7 +295,7 @@ module VBlank
               n = effect.number
               asm.label("rt_sfx_finish_#{n}")
               asm.xor_a(:a)
-              asm.load([memory[state(effect)] + RUNNING], :a)
+              asm.load([memory[effect_state_place(effect)] + RUNNING], :a)
               effect.parts.map(&:voice).uniq.each do |voice|
                 holder = memory[HOLDERS] + voice - 1
                 asm.load(:a, [holder])
@@ -326,7 +326,7 @@ module VBlank
               if effect.group
                 group = effects.select { |other| other.group == effect.group }
                 group.each do |other|
-                  at = memory[state(other)]
+                  at = memory[effect_state_place(other)]
                   asm.load(:a, [at + ASKED])
                   asm.and_a(:a)
                   asm.jump(:nz, "#{name}_current_#{other.number}")
@@ -346,7 +346,7 @@ module VBlank
                     next
                   end
 
-                  at = memory[state(other)]
+                  at = memory[effect_state_place(other)]
                   asm.xor_a(:a)
                   asm.load([at + ASKED], :a)
                   asm.load(:a, 1)
@@ -355,7 +355,7 @@ module VBlank
                 end
               end
               asm.label(asked)
-              at = memory[state(effect)]
+              at = memory[effect_state_place(effect)]
               asm.load(:a, 1)
               asm.load([at + ASKED], :a)
               Clips.emit_timer_let_in_around(asm, memory) { emit_start_here(asm, memory, effect, by_rank) } if now
@@ -371,7 +371,7 @@ module VBlank
                   next
                 end
 
-                at = memory[state(other)]
+                at = memory[effect_state_place(other)]
                 past = "rt_sfx_now_#{effect.number}_past_#{other.number}"
                 asm.load(:a, [at + STOPPING])
                 asm.and_a(:a)
