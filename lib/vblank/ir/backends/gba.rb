@@ -476,6 +476,7 @@ module VBlank
                                                            scene_entry: @drawing.scene_entry)
           @sprite_drawing.picture_group_copying = @picture_group_copying
           @sprite_drawing.scene_entry = @drawing.scene_entry
+          @statements.scene_entry = @drawing.scene_entry
           @drawing.picture_group_copying = @picture_group_copying
           # Every value kind's handler, registered once in one place — see {Lowering}.
           @lowering.values(

@@ -72,6 +72,48 @@ class TestSceneLoadsFirst < Minitest::Test
     assert_operator first_row, :>=, took_over + 2, "it waited out the copying pass: #{frames_shown}"
   end
 
+  # ...and what that sprite work rests on waits with it: a draw_in_order's sort, and a pool put in
+  # order for drawing, each of which grows with the things a game orders.
+  def test_a_draw_orders_sort_waits_for_the_pass_after_the_copy
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:dot, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      state = 0
+      step = 0
+      hero = sprite :dot, at: [8, 8]
+      guard = sprite :dot, at: [24, 8]
+      draw_in_order hero, guard
+      scene(:title) do
+        if step == 4
+          state = 1
+          hero.y = 50
+        end
+      end
+      scene(:play, loads_first: true) { nil }
+      game_loop do
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :play
+        end
+        step += 1
+      end
+    end
+    builder.finalize_program
+    rom = assemble_rom(builder.program, name: "LOADSORT")
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 1, vars: rom.var_addresses)
+    keys = VBlank::Messages::MadeNames.make(:draw_order, number: 1, part: :keys)
+    frames_seen = (1..14).map do |frame|
+      reader.step
+      [frame, reader.var(:state), reader.list(keys).first]
+    end
+    took_over = frames_seen.find { |_, state, _| state == 1 }.first
+    first_sorted = frames_seen.find { |_, _, key| key > 40 }&.first
+
+    assert first_sorted, "the sort sees the move in the end: #{frames_seen}"
+    assert_operator first_sorted, :>=, took_over + 2, "it waited out the copying pass: #{frames_seen}"
+  end
+
   def test_a_hand_over_costs_a_frame_more_for_more_art
     light = passes_finished(pictures: LIGHT, loads_first: false)
 

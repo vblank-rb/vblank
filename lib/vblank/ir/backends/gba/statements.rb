@@ -47,7 +47,7 @@ module VBlank
           # The loops whose index nothing reads, which count down (see LoopForm.unread_indexes).
           # Worked out from the whole program before anything is emitted; until then every loop
           # counts up, which is right for any of them.
-          attr_writer :unread_indexes
+          attr_writer :unread_indexes, :scene_entry
 
           def emit_set(node)
             @lowering.value(node.value)
@@ -386,7 +386,17 @@ module VBlank
           alias emit_every emit_beat
           alias emit_after emit_beat
 
-          def emit_call(node) = @placement.emit_call_func(node.target)
+          # A routine the frame's sprite work rests on has nothing to do on a scene's copying pass,
+          # which draws no sprites (see SceneEntry#emit_unless_scene_is_loading).
+          def emit_call(node)
+            return @placement.emit_call_func(node.target) unless SPRITE_WORK_ROUTINE.match?(node.target)
+
+            @scene_entry.emit_unless_scene_is_loading { @placement.emit_call_func(node.target) }
+          end
+
+          # A draw_in_order's sort, and a pool's copy of its things into the order it draws them in.
+          SPRITE_WORK_ROUTINE = /\A__(draw_order_\d+__sort|stacking_pool_)/
+
           def emit_raw(node) = @emitter.emit(node.bytes) # escape hatch: pre-assembled bytes, verbatim
           def emit_halt(_node) = @emitter.emit(ASM.loop_forever)
         end
