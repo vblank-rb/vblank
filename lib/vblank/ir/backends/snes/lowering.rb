@@ -122,10 +122,12 @@ module VBlank
           # +sprite_squares+ draws sprites' squares of 16×16 as one row of the table each (Art).
           # +screen_colors+ has each scene bring its own background colours in, and +sprite_colors+ its
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own
-          # background tiles (Art).
+          # background tiles (Art). +worn_pictures_shared+ makes one set of a sprite's pictures for
+          # all the lists of colours it wears (Picture#place_palette).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [])
+                         background_tiles: false, small_sprite_scenes: [], worn_pictures_shared: false)
             @program = program
+            @worn_pictures_shared = worn_pictures_shared
             @small_sprite_scenes = small_sprite_scenes
             @memory = memory
             @sprite_squares = sprite_squares

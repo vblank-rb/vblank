@@ -185,6 +185,7 @@ module VBlank
                   make_run_art(run) unless @run_places[run]
                 else
                   @art.sprite_picture(name, Assets::Image.of(picture_named(name)), mixed: mixed.include?(name), number: number,
+                                                                                  held: own_place_palette(name, mixed.include?(name)),
                                                                                   scene: colors_scene_of_picture(name),
                                                                                   tile_scene: tiles_scene_of_picture(name))
                 end
@@ -214,7 +215,8 @@ module VBlank
               @sprite_pictures.each do |name|
                 next if painted.include?(name) || scene_of_picture(name)
 
-                @art.reserve_shared_sprite_picture(Assets::Image.of(picture_named(name)), mixed: mixed.include?(name))
+                @art.reserve_shared_sprite_picture(Assets::Image.of(picture_named(name)), mixed: mixed.include?(name),
+                                                                                         held: own_place_palette(name, mixed.include?(name)))
               end
             end
 
@@ -290,13 +292,37 @@ module VBlank
             # The palette of +list+, for a list of sprite colours the game changes (`recolor`), and
             # nil for any other. A sprite drawn with it is one picture whatever the list holds.
             def held_sprite_palette(list, mixed)
-              return nil unless list.is_a?(Symbol) && !color_list_named(list).recolors.empty?
+              unless list.is_a?(Symbol) && !color_list_named(list).recolors.empty?
+                return (place_palette(list.is_a?(Symbol) ? color_list_named(list).colors : list, mixed, colors_scene_of_list(list)) if @worn_pictures_shared)
+              end
 
               colors = color_list_named(list).colors.drop(1).map { |color| color & 0x7FFF }
               held_palette_or_refuse do
                 @art.held_sprite_palette([:sprites, list], colors, mixed: mixed, scene: colors_scene_of_list(list))
               end
             end
+
+            # ONE SET OF PICTURES, WORN IN EVERY LIST (+worn_pictures_shared+, which SNES#build turns
+            # on when the copies do not fit). Each sprite row says which set of colours it is drawn
+            # from, so a tile that holds PLACES rather than colours can be worn in any list: the
+            # picture and every list it wears each take a set whose colours stay in their own places,
+            # and every copy comes to the same tiles. A set is then a whole list, and shared only
+            # with a list of the same colours, which is why it is not how every game is built.
+            def place_palette(list, mixed, scene)
+              colors = list.drop(1).map { |color| color & 0x7FFF }
+              @art.held_sprite_palette([:places, colors, mixed, scene], colors, mixed: mixed, scene: scene)
+            end
+
+            # The palette the picture +name+ takes in such a game, or nil for a picture nothing wears
+            # another list over, which is made as ever.
+            def own_place_palette(name, mixed)
+              return nil unless @worn_pictures_shared && @objects.each_value.any? { |obj| !obj.recolors.empty? && obj.poses.include?(name) }
+
+              place_palette(Assets::Image.of(picture_named(name)).colors, mixed, colors_scene_of_picture(name))
+            end
+
+            # Whether a sprite wears another list, so that its pictures can share tiles (SNES#build).
+            public def sprites_wear_lists? = @objects.each_value.any? { |obj| !obj.recolors.empty? }
 
             # Reference#exec_color_list_holds: the sets the list can hold, written over its palette. A
             # list nothing is drawn with has no palette, and nothing to show.

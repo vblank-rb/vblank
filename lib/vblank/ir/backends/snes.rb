@@ -110,9 +110,13 @@ module VBlank
         # need of and is not built with: it stays the bytes it was. A game whose sprites do not fit
         # the console's 512 tiles has each scene's in video memory while it is up (+sprite_tiles+),
         # before it gives up squares, and the same for 1024 background tiles (+background_tiles+).
-        # A screen that still does not fit is cut small alone (+small_sprite_scenes+).
+        # A screen that still does not fit is cut small alone (+small_sprite_scenes+). Before any of
+        # those, a game of sprites in several lists of colours is built with one set of their
+        # pictures, worn in every list (+worn_pictures_shared+): what it costs is a whole set of
+        # colours for each list, so it is tried only where the sprites do not fit otherwise, and
+        # given up if the lists do not fit that way.
         def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                  background_tiles: false, small_sprite_scenes: [])
+                  background_tiles: false, small_sprite_scenes: [], worn_pictures_shared: false)
           board = board_for(program)
           memory = Memory.new
           refuse_save_on_chip_board!(board) if SaveLayout.named_by?(program)
@@ -121,19 +125,26 @@ module VBlank
           Runtime.reserve(memory, carries)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
-                                                background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes)
+                                                background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
+                                                worn_pictures_shared: worn_pictures_shared)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
-                      small_sprite_scenes: small_sprite_scenes }
+                      small_sprite_scenes: small_sprite_scenes, worn_pictures_shared: worn_pictures_shared }
           begin
             game = lowering.sections + lowering.art_sections
           rescue Art::ScreenSpritesFull => e
+            built = build_with_worn_pictures_shared(program, title, choices, lowering)
+            return built if built
+
             return build(program, title: title, **choices, small_sprite_scenes: [*small_sprite_scenes, e.scene])
           rescue Art::TooManyBackgroundColors
             return build(program, title: title, **choices, screen_colors: true)
           rescue Art::TooManySpriteColors
             return build(program, title: title, **choices, sprite_colors: true)
           rescue Art::TooMuch => e
+            built = build_with_worn_pictures_shared(program, title, choices, lowering) if e.is_a?(Art::TooManySpriteTiles)
+            return built if built
+
             return build(program, title: title, **choices, sprite_tiles: true) if e.is_a?(Art::TooManySpriteTiles) && lowering.sprites_of_one_scene?
             return build(program, title: title, **choices, background_tiles: true) if e.is_a?(Art::TooManyBackgroundTiles) && lowering.backgrounds_of_one_scene?
             raise unless sprite_squares
@@ -164,6 +175,22 @@ module VBlank
         end
 
         private
+
+        # The game built with one set of its sprites' pictures (#build), or nil where that does not
+        # apply or does not fit, which leaves the other ways of fitting it to be tried, once, and with
+        # nothing the attempt found to say.
+        def build_with_worn_pictures_shared(program, title, choices, lowering)
+          return nil if choices[:worn_pictures_shared] || @worn_pictures_do_not_fit || !lowering.sprites_wear_lists?
+
+          said = findings.length
+          begin
+            build(program, title: title, **choices, worn_pictures_shared: true)
+          rescue Art::TooMuch
+            @worn_pictures_do_not_fit = true
+            findings.slice!(said..)
+            nil
+          end
+        end
 
         # A board with a chip on it (a Super FX) has RAM that is the chip's: bsnes keeps all of it as
         # the save, and the painted screen takes most of it. The build does not keep a save there yet.
