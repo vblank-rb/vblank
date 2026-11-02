@@ -91,8 +91,7 @@ module VBlank
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at],
                                                     "save memory" => %i[save_init save_store save_write save_erase
-                                                                        save_read save_sum],
-                                                    "recordings" => %i[play_sample stop_sample]
+                                                                        save_read save_sum]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by

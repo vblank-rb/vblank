@@ -203,7 +203,8 @@ module VBlank
         songs: works("see `song`."),
         sound_effects: works("see `song`."),
         sample: works("a recording is played on the FM chip's sixth voice, which can play a recording of eight " \
-                      "bits. Only one recording plays at a time."),
+                      "bits. The sound processor reads it 13000 samples a second. Only one recording plays at a " \
+                      "time, at one loudness, and a recording cannot have a shape (`envelope:`)."),
         instrument: works("see `sample`.")
       })
 

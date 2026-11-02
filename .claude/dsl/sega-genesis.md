@@ -153,7 +153,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `fade_music_out` — works: the same as on the Advance.
 - `songs` — works: see `song`.
 - `sound_effects` — works: see `song`.
-- `sample` — works: a recording is played on the FM chip's sixth voice, which can play a recording of eight bits. Only one recording plays at a time.
+- `sample` — works: a recording is played on the FM chip's sixth voice, which can play a recording of eight bits. The sound processor reads it 13000 samples a second. Only one recording plays at a time, at one loudness, and a recording cannot have a shape (`envelope:`).
 - `instrument` — works: see `sample`.
 
 ## Not made yet
@@ -167,7 +167,6 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - layers see-through: `see_through`
 - the picture: `draw_column_at`
 - save memory: `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`
-- recordings: `play_sample`, `stop_sample`
 
 Parts of the picture are refused the same way, naming the part:
 

@@ -89,7 +89,7 @@ module VBlank
             # that plays recordings (Recordings), whose count moves on there and whose Z80 shares the FM chip.
             def emit(asm, memory, songs: false, samples: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_log(asm, at)
+              emit_log(asm, at, samples)
               emit_chip_writes(asm, at, samples)
               emit_loudness(asm, at)
               emit_fades(asm, at)
@@ -98,9 +98,10 @@ module VBlank
 
             # rt_sound_on: `enable_sound`.
             # rt_sound_log(entry): the entry's number into the ring, and one more counted.
-            def emit_log(asm, at)
+            def emit_log(asm, at, samples)
               asm.label("rt_sound_on")
               asm.move(:w, asm.imm(1), at.call(ON))
+              asm.jsr(asm.abs_l("rt_recordings_on")) if samples
               asm.rts
 
               asm.label("rt_sound_log")

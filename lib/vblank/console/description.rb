@@ -290,11 +290,12 @@ module VBlank
                               # 262 lines of 3420 cycles of the console's master clock: sixty frames a
                               # second and a little under.
                               cycles_a_second: 53_693_175, cycles_a_frame: 896_040,
-                              # No timer hands the sound chip samples: a recording is written to its
-                              # digital voice by the processor itself, and none is made yet.
+                              # No timer hands the sound chip samples: the sound processor writes a
+                              # recording to the FM chip's sixth voice, a byte at a time, and its program
+                              # (IR::Backends::Genesis::Runtime::Recordings) takes this many a second.
                               samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,
                               recordings_at_once: 1, mixes_recordings: false,
-                              recording_voice_hz: nil, lowest_square_hz: 109, voice_output_hz: 223_722,
+                              recording_voice_hz: 13_000, lowest_square_hz: 109, voice_output_hz: 223_722,
                               # Lists and pools go in the work RAM past the runtime's own places.
                               largest_memory_bytes: 64 * 1024,
                               # All 64K of work RAM is in view from the cartridge's code, so every

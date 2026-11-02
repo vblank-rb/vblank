@@ -94,7 +94,42 @@ class TestGenesisSound < Minitest::Test
     assert_operator run.audio.count { |entry| entry.first == :note }, :>=, 2
   end
 
+  # Thirty samples of a square wave, up then down.
+  CLIP = (([100] * 15) + ([-100] * 15)).pack("c*")
+
+  def test_a_recording_sounds_and_ends_with_the_interpreter
+    run = recording_run(frames: 40, loop: false)
+
+    assert_empty run.active_samples, "thirty samples are gone in a frame"
+    assert_includes run.audio, [:sample, :clip]
+  end
+
+  def test_a_looping_recording_is_heard_through_the_sound_processor
+    run = recording_run(frames: 20, loop: true)
+
+    assert_equal [:clip], run.active_samples
+    assert_operator run.loudest_each_frame.last, :>, 1000, "the sound processor is writing the recording to the FM chip"
+  end
+
+  def test_a_recording_is_heard_at_the_rate_it_was_recorded
+    run = Genesis::HeadlessRun.new(keep_sound: true)
+    run.run(recording_program(loop: true), frames: 20)
+
+    # Fifteen samples up and fifteen down at 13000 a second is 433 waves a second.
+    assert_in_delta 433, pitch_of(run), 25
+  end
+
   private
+
+  def recording_program(loop:)
+    build = VBlank::IR::Build
+    program = build.program(build.enable_sound, build.sample(:clip, CLIP, 13_000), build.play_sample(:clip, loop: loop),
+                            build.loop_(build.wait_vblank))
+    program.console = :genesis
+    program
+  end
+
+  def recording_run(frames:, loop:) = Genesis::CheckedRun.new.run(recording_program(loop: loop), frames: frames)
 
   def program_of(&game)
     builder = VBlank::Builder.new
@@ -117,6 +152,10 @@ class TestGenesisSound < Minitest::Test
       instance_eval(&sounds)
       game_loop { nil }
     end, frames: 20)
+    pitch_of(run)
+  end
+
+  def pitch_of(run)
     left = run.sound_made.each_slice(2).map(&:first).last(SAMPLE_RATE / 6)
     middle = left.sum.fdiv(left.size)
     rises = left.each_cons(2).count { |before, after| before < middle && after >= middle }

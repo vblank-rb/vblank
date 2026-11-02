@@ -49,11 +49,12 @@ module VBlank
         # each sprite picture's number as SpriteNames numbers the picture it shows, each entry of the
         # interpreter's sound log by the number the cartridge's own log keeps it as (empty for a game that
         # makes no sound), and what the chip writes for those entries are worked out with
-        # (ChipWrites::Voicing).
+        # (ChipWrites::Voicing), and the game's recordings by the number the place playing one keeps
+        # (Runtime::Recordings).
         # +bytes+ says what the cartridge's sections come to, as :code (what the processor runs) and :data
         # (what it only reads), for the cost recorded in tools/emitted_baseline.json.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
-                             :sound_entries, :sound_voicing) do
+                             :sound_entries, :sound_voicing, :recording_names) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
         end
@@ -70,11 +71,12 @@ module VBlank
           songs = Lowering::Sound.songs?(program)
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
+          samples = Lowering::Sound.samples?(program)
           Runtime.reserve(memory, picture: picture, colors: colors, sound: sound, songs: songs, music_follows_level: follows_level,
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
-                                  sides: Music.sides_under_level?(program))
+                                  sides: Music.sides_under_level?(program), samples: samples)
           lowering = Lowering.new(program, memory: memory)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
@@ -83,13 +85,15 @@ module VBlank
                                              camera: lowering.camera?, colors: colors, sound: sound,
                                              music: (lowering.music_section if songs),
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level),
-                                             effects: effects)
+                                             effects: effects,
+                                             plays: (lowering.recordings_sections if samples),
+                                             recorded_parts: lowering.recorded_parts?)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, sprite_picture_names: picture == :tiled ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
-                             sound_voicing: lowering.sound_voicing)
+                             sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
         end
 

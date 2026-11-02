@@ -14,7 +14,8 @@ module VBlank
                                                  wave: :emit_wave, stop_wave: :emit_stop_wave, play_song: :emit_play_song,
                                                  stop_music: :emit_stop_music, hold_music: :emit_hold_music,
                                                  play_from_list: :emit_play_from_list,
-                                                 play_sound_effect: :emit_play_sound_effect })
+                                                 play_sound_effect: :emit_play_sound_effect, play_sample: :emit_play_sample,
+                                                 stop_sample: :emit_stop_sample })
 
             # Whether +program+ makes any sound.
             def self.sounds?(program) = program.walk.any? { |node| STATEMENTS.key?(node.kind) }
@@ -27,6 +28,61 @@ module VBlank
             # Whether +program+ holds its music, so its player looks (Runtime::Music::TUNE_HELD).
             def self.holds_music?(program) = program.walk.any? { |node| node.kind == :hold_music }
 
+            # What the plays and the recordings are to the author, for a cartridge too full for them.
+            PLAYS = M68000::Holding.new(what: "the game's recordings", fix: "play fewer different recordings, or shorter ones")
+            
+            # Whether +program+ plays recordings, of its own or as a song's part, and so carries their count and
+            # the sound processor's program (Runtime::Recordings).
+            def self.samples?(program)
+              program.walk.any? { |node| node.kind == :play_sample } ||
+                program.walk.any? { |node| node.kind == :song && node.voices.any? { |part| IR::Tunes.part_kind(part) == :recorded } }
+            end
+            
+            # The table of the game's plays, one row each (Runtime::Recordings), labelled "recording_plays", and
+            # each recording it plays, as the bytes the DAC takes: from nought to 255, the middle quiet.
+            def recordings_sections
+              table = M68000.new("recording plays", holds: PLAYS)
+              table.label("recording_plays")
+              @plays.each do |name, length, back, advance, logged, step|
+                Runtime::Recordings.emit_row(table, start: recording_label(name), length: length, back: back, advance: advance, logged: logged,
+                                                    name: @samples.keys.index(name), step: step)
+              end
+              table.data_words(0) if @plays.empty? # a label has to be somewhere
+              [table.section, *@plays.map(&:first).uniq.map { |name| recording_section(name) }]
+            end
+            
+            def recording_label(name) = "recording #{name}"
+            
+            def recording_section(name)
+              asm = M68000.new(recording_label(name), holds: PLAYS)
+              asm.label(recording_label(name))
+              asm.data_bytes(@samples.fetch(name).bytes.unpack("c*").map { |sample| sample + 128 })
+              asm.section
+            end
+            
+            # The recordings' names, by the number a place playing one keeps (Runtime::Recordings).
+            def recording_names = @samples.keys
+            
+            # Whether a song has a part that plays a recording.
+            def recorded_parts? = @music.recorded_parts?
+            
+            # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note): recording +name+ read at
+            # +frequency+, from its start, back to where it holds from at its end. Nothing is logged as it comes
+            # round. A Genesis plays a recording all or nothing, so a loudness is the log's alone, and a shape
+            # is one thing it does not do yet. Its number in "recording_plays".
+            def recorded_note_row(name, frequency, _volume, envelope = nil)
+              info = Assets::Sample.of(declared_sample(name))
+              shape = envelope || info.envelope
+              if shape && !shape.plain?
+                raise NotMadeYet.new("The song part that plays #{name.inspect} has a shape (`envelope:`). The Genesis build does not make " \
+                                     "that yet.", part: "recordings with a shape")
+              end
+            
+              play_row(name, frequency, info.loop_length, Runtime::Recordings::NOT_LOGGED)
+            end
+            
+            def declared_sample(name) = @samples.fetch(name) { raise LoweringError, "the instrument #{name.inspect} is not declared" }
+            
             # Every entry of the sound log the cartridge can write, by the number it writes.
             def sound_entries = @sound_entries.dup
 
@@ -40,12 +96,6 @@ module VBlank
               @music.section(words)
             end
 
-            # A note of a part that plays a recording, which this build does not make yet.
-            def recorded_note_row(name, *)
-              raise NotMadeYet.new("The song part that plays #{name.inspect} is not made yet. The Genesis build does not " \
-                                   "make recordings yet.", part: "recordings")
-            end
-
             private
 
             def prepare_sound
@@ -53,6 +103,36 @@ module VBlank
               @sound_entry_numbers = {}
               @defined_sounds = @program.walk.select { |node| node.kind == :define_sound }.to_h { |node| [node.name, node.effect] }
               @music = Genesis::Music.new(@program)
+              @samples = @program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
+              @plays = [] # each play's row of "recording_plays"
+            end
+            
+            # The row of a play of +name+ at +frequency+, going +back+ at its end and logging +logged+ as it comes
+            # round: how fast it is read as the interpreter works it out (IR::Mixing.step), and how far that goes
+            # in a frame. Its number.
+            def play_row(name, frequency, back, logged)
+              declared = declared_sample(name)
+              info = Assets::Sample.of(declared)
+              clock = Console::GENESIS.sample_clock(declared.rate)
+              step = IR::Mixing.step(info, frequency, clock.rate)
+              row = [name, info.length, back, step * clock.samples_a_frame, logged, [step >> 8, 0xFFFF].min]
+              @plays << row unless @plays.include?(row)
+              @plays.index(row)
+            end
+            
+            # Reference#exec_play_sample (Reference::Mixer#start).
+            def emit_play_sample(node)
+              info = Assets::Sample.of(declared_sample(node.name))
+              frequency = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(node.pitch || info.note || :C4)
+              back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
+              row = play_row(node.name, frequency, back, sound_entry_number([:sample, node.name]))
+              runtime_call("rt_recordings_play", [Build.int(row)])
+            end
+            
+            # Reference#exec_stop_sample (Reference::Mixer#stop): the recording's place freed, or the place.
+            def emit_stop_sample(node)
+              name = node.name ? @samples.keys.index(node.name) : Runtime::Recordings::ALL
+              runtime_call("rt_recordings_stop", [Build.int(name), Build.int(sound_entry_number([:stop_sample]))])
             end
 
             # Reference#exec_play_song: the tune named, from the next frame or from here.

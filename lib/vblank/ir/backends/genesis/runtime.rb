@@ -12,6 +12,7 @@ require_relative "runtime/collide"
 require_relative "runtime/sound"
 require_relative "runtime/music"
 require_relative "runtime/effects"
+require_relative "runtime/recordings"
 
 module VBlank
   module IR
@@ -33,10 +34,11 @@ module VBlank
           # places, as much of them as what its songs do asks for (Music), and those of its +effects+ sound
           # effects (Effects).
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
-                      holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false)
+                      holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false)
             Frame.reserve(memory)
             Picture.reserve(memory, picture: picture, colors: colors)
             Sound.reserve(memory) if sound
+            Recordings.reserve(memory) if samples
             return unless songs
           
             Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
@@ -56,9 +58,12 @@ module VBlank
           # ("rt_vdp_registers", which the lowering makes).
           # +sound+ for a game that makes sound; +music+ the section of its songs (Genesis::Music#section),
           # for a game with songs, whose player it then carries, with +music_level_at+ where it keeps its
-          # music volume if it sets one, and +effects+ how many sound effects it has.
+          # music volume if it sets one, and +effects+ how many sound effects it has; +plays+ the sections of
+          # its plays of recordings and the recordings themselves (Lowering::Sound#recordings_sections), for a
+          # game that plays them, which then carries their count and the sound processor's program
+          # (Recordings), and +recorded_parts+ when a song or effect has a part that plays one.
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
-                         colors: false, sound: false, music: nil, music_level_at: nil, effects: 0)
+                         colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -68,18 +73,19 @@ module VBlank
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors)
             Collide.emit(asm, memory) if collision
-            Sound.emit(asm, memory, songs: !music.nil?) if sound
-            Music.emit(asm, memory, level_at: music_level_at, effects: effects) if music
-            emit_start(asm)
+            Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
+            Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
+            Recordings.emit(asm, memory) if plays
+            emit_start(asm, samples: !plays.nil?)
             emit_frame_begins(asm, frame_begins)
-            [entry.section, asm.section, music].compact
+            [entry.section, asm.section, music, *plays].compact
           end
 
           # What a game needs before its first line: its variables that do not start at nought (the
           # table "game_starts": each place as a long, then its number as a long, and a place of
           # nought after the last), its lists' headers, the picture's start, the screen's interrupt
           # switched on.
-          def emit_start(asm)
+          def emit_start(asm, samples: false)
             asm.label("rt_start")
             asm.lea(asm.abs_l("game_starts"), asm.a(0))
             asm.label("rt_start_next")
@@ -91,6 +97,7 @@ module VBlank
             asm.label("rt_start_lists")
             asm.jsr(asm.abs_l("rt_lists_start"))
             asm.jsr(asm.abs_l("rt_picture_start"))
+            asm.jsr(asm.abs_l("rt_recordings_start")) if samples
             emit_interrupt_on(asm)
             asm.rts
           end

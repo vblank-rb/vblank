@@ -50,8 +50,32 @@ module VBlank
           # Every sample the console made in a run that asked for them (+keep_sound+), left and right in turn.
           attr_reader :sound_made
           
-          # Nothing sounds as a recording on a Genesis build yet.
-          def active_samples = []
+          # The recording sounding as the run ended (Reference#active_samples): the cartridge's own count
+          # (Runtime::Recordings), at most the one a Genesis plays.
+          def active_samples = @sounding || []
+          
+          # A Genesis plays a recording all or nothing, so one sounding is at full (Reference#level_of).
+          def level_of(name) = active_samples.include?(name) ? Audio::Envelope::FULL : nil
+          
+          # Whose the recording sounding was as the run ended (Reference#sound_owners): :game for the game's own,
+          # [:song, part] for a song's recorded part, [effect, part] for a sound effect's.
+          def sound_owners
+            return [] unless playing_recordings? && !half(place_of_recording + Runtime::Recordings::HELD).zero?
+          
+            owner = half(place_of_recording + Runtime::Recordings::OWNER)
+            if owner.zero? then [:game]
+            elsif owner < Runtime::Recordings::EFFECT_OWNER then [[:song, owner - 1]]
+            else [[@places.sound_voicing.effects.fetch((owner >> 8) - 1), (owner & 0xFF) - 1]]
+            end
+          end
+          
+          # The plays and notes that found the place busy, and whether a song's held it at one of those moments
+          # (Reference#sound_drops), as the cartridge counted them.
+          def sound_drops
+            return Diagnostics::SoundDrops::Reading.new(dropped: 0, music_held: 0, voices: 1) unless @drops
+          
+            Diagnostics::SoundDrops::Reading.new(dropped: @drops.first, music_held: @drops.last, voices: 1)
+          end
           
           # +keep_sound+ keeps every sample the console makes, for a test of what they are: a run plays a good
           # deal of them, so only a test that asks for them pays for it.
@@ -132,6 +156,24 @@ module VBlank
           
           def in_interpreter_words(entries) = entries.map { |entry| Music.interpreter_entry(entry) }
           
+          def playing_recordings? = @places.runtime.key?(Runtime::Recordings::PLACE)
+          
+          def place_of_recording = runtime_place(Runtime::Recordings::PLACE)
+          
+          # The recording the place held at the moment of +frame+, as a list: as the pass's wait ended
+          # (Runtime::Recordings::KEPT_BY_PASS), the interpreter's mix at that frame boundary, or as it is now
+          # for the moment the run ended. None for a game that plays none.
+          def recordings_at(frame)
+            return [] unless playing_recordings?
+          
+            number = if frame == :end
+                       half(place_of_recording + Runtime::Recordings::HELD)
+                     else
+                       half(runtime_place(Runtime::Recordings::KEPT_BY_PASS) + ((frame % Runtime::Frame::STEPS_KEPT) * 2))
+                     end
+            number.zero? ? [] : [@places.recording_names.fetch(number - 1)]
+          end
+          
           # THE BUTTONS ARE THE ONES HELD FROM POWER-ON for the first emulated frame, which is where the
           # cartridge reads them (Runtime::Boot), and from the second on each frame's own, decided before
           # the frame is played. The frames the runtime counts (Frame::FRAMES) start as the screen comes
@@ -163,8 +205,10 @@ module VBlank
             @screen = picture
             @sounds = frame == :end || !sound? ? sounds : logged_by_pass(frame)
             read_sound_entries(@sounds) if sound?
+            @sounding = recordings_at(frame)
+            @drops = [half(runtime_place(Runtime::Recordings::DROPS)), half(runtime_place(Runtime::Recordings::DROPS_MUSIC))] if playing_recordings?
             @moments << Moment.new(frame: frame, variables: variables, picture: picture_check_of(picture.shown),
-                                   sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars), sounding: [])
+                                   sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars), sounding: active_samples)
             @on_vblank&.call(frame) unless frame == :end
           end
 

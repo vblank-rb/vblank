@@ -38,6 +38,9 @@ module VBlank
             difference || (self.class.save_difference(before, @save) if SaveLayout.named_by?(program))
           end
           
+          # The recording sounding, as the cartridge's moments keep it.
+          def sounding_levels(run) = run.active_samples
+
           def chip_difference
             voicing = @cartridge.rom.built.sound_voicing
             # Only as far as the interpreter's log goes: past it, nothing held the cartridge's entries.
