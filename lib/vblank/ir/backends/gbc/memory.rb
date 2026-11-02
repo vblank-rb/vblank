@@ -95,6 +95,9 @@ module VBlank
 
           def reserved?(name) = @places.key?(name)
 
+          # Whether anything was given a place in the banked half.
+          def banked_half_used? = @next >= HIGH_START
+
           # Every name and where it went, for reading a running game back.
           def places = @places.dup
 

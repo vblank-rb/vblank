@@ -292,6 +292,37 @@ class TestDrawInOrder < Minitest::Test
     assert_order_holds_in_each_layer(layer_changing_game(pool: true))
   end
 
+  # The pool told, all of it at once, with a thing of it ordered against the sprite that stays.
+  def test_a_pool_in_an_order_can_change_layer
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:field, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      image(:red, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:green, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :field
+      layers :behind, :ground, :front
+      layer(:ground) { background :world, tiles: :set, map: "###\n###\n###" }
+      hero = layer(:front) { sprite :red, at: [4, 4] }
+      guards = layer(:front) { self.pool(:guards, x: 4, y: 8, capacity: 2, image: :green) }
+      guards.spawn
+      draw_in_order hero, guards
+      step = 0
+      behind = var :behind, 0
+      game_loop do
+        step += 1
+        behind = 1 if step == 10
+        guards.put_in_layer %i[front behind], showing: behind
+      end
+    end
+    b.finalize_program
+
+    assert_equal 0x03E0, game_player.run(b.program, frames: 6).screen.pixel(6, 13), "in front of the background"
+    later = game_player.run(b.program, frames: 16).screen
+    assert_equal 0x7C00, later.pixel(6, 13), "gone behind it"
+    assert_equal 0x001F, later.pixel(6, 6), "and the sprite that stayed is where it was"
+  end
+
   def test_an_unknown_front_is_refused
     block = BLOCK
     message = refusal do

@@ -85,15 +85,17 @@ module VBlank
               asm.load_high(h::SVBK, :a)
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
-              # Work memory: the always-there half and bank 1, whole. The stack is in it, so this
-              # one is cleared here and not by a call, whose return address it would clear.
+              # Work memory: the always-there half, and bank 1 for a game that keeps anything there.
+              # That takes a frame longer to start, so a game that does not stays as it was. The stack
+              # is in the first half, so this is done here and not by a call, whose return address it
+              # would clear.
               asm.load(:hl, h::WRAM0)
               asm.xor_a(:a)
               asm.label("rt_boot_clear_work")
               asm.load([:hli], :a)
               asm.load(:b, :a)
               asm.load(:a, :h)
-              asm.cp_a((h::WRAMX >> 8) + 0x10) # 0xE0: past bank 1
+              asm.cp_a((memory.banked_half_used? ? Memory::HIGH_END : Memory::HIGH_START) >> 8)
               asm.load(:a, :b)
               asm.jump_relative(:nz, "rt_boot_clear_work")
               asm.load(:hl, Memory::QUICK_FIRST)

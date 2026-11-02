@@ -79,19 +79,4 @@ class TestPoolLayerChoice < Minitest::Test
 
     assert_match(/draw nothing/, error.message)
   end
-
-  def test_a_pool_in_a_draw_in_order_cannot_change_layer
-    error = assert_raises(ArgumentError) do
-      program do
-        screen :tiled
-        image(:guy, "#" => :red) { (["#" * 8] * 8).join("\n") }
-        layers :ground, :upper
-        guards = layer(:upper) { pool :guards, x: 0, y: 0, capacity: 4, image: :guy }
-        draw_in_order guards
-        game_loop { guards.put_in_layer :ground }
-      end
-    end
-
-    assert_match(/cannot change layer/, error.message)
-  end
 end

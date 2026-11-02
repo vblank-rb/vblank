@@ -15,13 +15,14 @@ class TestGBCWorkMemory < Minitest::Test
         image(:dot, "#" => :white) { (["#" * 8] * 8).join("\n") }
         sprite :dot, at: [8, 8]
       end
-      game_loop { wait_vblank }
+      big = list :big, capacity: 1000
+      game_loop { wait_vblank if big.length == 0 }
     end
   end
 
   private def bytes_left_over(built)
     reader = VBlank::Diagnostics::Verifier.new(built, frames: 4, vars: built.var_addresses)
-    (0xDE00...0xE000).reject { |address| reader.mem8(address).zero? }
+    (0xD800...0xE000).reject { |address| reader.mem8(address).zero? }
   end
 
   def test_the_banked_half_starts_at_nought_on_a_tiled_screen
