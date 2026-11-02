@@ -257,6 +257,10 @@ module VBlank
 
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
+          # Does the game show tile pictures held in the Color's own form, whose bytes go from a table
+          # to a list many at a time (Runtime::Lists#emit_byte_copy)?
+          def copies_held_tiles? = @program.walk.any? { |node| node.kind == :tile_run && node.console_format && node.held_in }
+
           def fills_byte_lists?
             lists = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }
             names = lists.map(&:name)

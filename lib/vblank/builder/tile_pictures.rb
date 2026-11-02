@@ -24,13 +24,15 @@ module VBlank
         count = tiles.length
         side = tile_picture_side(name, tiles)
         pictures = tiles.each_value.first.length
-        bytes_shown = count * TILE_BYTES * ((side / 8)**2)
+        planes = tile_pictures_planes
+        bytes_shown = count * (planes ? planes * 8 : TILE_BYTES) * ((side / 8)**2)
         list_name = Messages::MadeNames.make(:tile_pictures_part, group: name, part: :shown)
         at_boot(Build.list_new(list_name, bytes_shown, width: :byte, fast: fast, full_of: 0))
         list = DSL::List.new(self, list_name)
-        bytes = (0...pictures).flat_map { |picture| tiles.values.flat_map { |row| tile_picture_bytes(name, row[picture], colors, side) } }
+        bytes = (0...pictures).flat_map { |picture| tiles.values.flat_map { |row| tile_picture_bytes(name, row[picture], colors, side, planes) } }
         held = table(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :pictures), bytes, width: :byte, signed: false)
-        run = self.tiles(name, { from: list, count: count, colors: colors, held_in: held.name, tile_side: side })
+        run = self.tiles(name, { from: list, count: count, colors: colors, held_in: held.name, tile_side: side,
+                                 console_format: !planes.nil? })
         # At power-on, not here: this line can be inside a scene, whose body runs every pass, and
         # the first picture would be put back every time. A scene's screen copies a run in as it
         # comes up, so only a group declared outside any scene has its first copy to ask for.
@@ -48,6 +50,18 @@ module VBlank
       def set_shown_tile_picture(shown, wanted) = record(Build.set(shown.name, wanted))
 
       private
+
+      # THE PLANES A GROUP'S PICTURES ARE HELD IN, on a game built for a console whose tiles a show
+      # would otherwise turn from one form to the other as it plays. The pictures are all known when
+      # the cartridge is built, so they can be held in the console's own form, and a show is then a
+      # copy: on the Color a frame turns about 30 tiles, and copies many times that. Nil holds them as
+      # painted tiles are, which is every other console, and a program that names no console.
+      def tile_pictures_planes
+        return unless @program.console
+
+        planes = Console.described(@program.console).tile_planes
+        planes if planes == 2
+      end
 
       # The side of the tiles in a group: 8, or 16 where the console draws tiles that big. Every
       # picture in a group is one size, since a group's tiles stand in one tileset.
@@ -72,8 +86,9 @@ module VBlank
       end
 
       # A tile's picture as painted tiles keep it: 32 bytes for each 8×8 square of it, left to right
-      # and then down, two places a byte, the left one in the low four bits.
-      def tile_picture_bytes(name, image, colors, side)
+      # and then down, two places a byte, the left one in the low four bits. With +planes+, each row
+      # of a square is a byte of each plane instead, the leftmost place in the top bit.
+      def tile_picture_bytes(name, image, colors, side, planes = nil)
         picture = IR::Assets::Image.of(tile_picture_node(name, image))
         unless picture.colors_name == colors
           raise ArgumentError, "tile_pictures :#{name} is drawn from colors :#{colors}, and the picture :#{image} is not. " \
@@ -83,7 +98,10 @@ module VBlank
         places = picture.places.bytes
         (0...side).step(8).to_a.product((0...side).step(8).to_a).flat_map do |top, left|
           (0...8).flat_map do |row|
-            places[((top + row) * side) + left, 8].each_slice(2).map { |near, far| near | (far << 4) }
+            across = places[((top + row) * side) + left, 8]
+            next across.each_slice(2).map { |near, far| near | (far << 4) } unless planes
+
+            (0...planes).map { |plane| across.reduce(0) { |byte, place| (byte << 1) | place[plane] } }
           end
         end
       end

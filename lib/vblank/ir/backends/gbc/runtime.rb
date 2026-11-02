@@ -85,7 +85,7 @@ module VBlank
           # from a list's front (Lists#emit_queue_routines).
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
-                       count_at: nil, banked_colors: false, byte_fills: false, queues: false)
+                       count_at: nil, banked_colors: false, byte_fills: false, queues: false, byte_copies: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
             # recording writes down every bank put in view, for the timer to put back (Runtime::Clips).
@@ -98,7 +98,7 @@ module VBlank
             Int32.emit(asm, memory)
             Calls.emit(asm, memory)
             Frame.emit(asm, memory, together: together, count_at: count_at, songs: songs)
-            Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues)
+            Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues, byte_copies: byte_copies)
             Picture.emit(asm, memory, sprite_tiles: art.sprite_tiles.length, background_tiles: art.background_tiles.length,
                                       runs: runs, drawn_palettes: drawn_palettes, lends: art.lending,
                                       palettes_in_use: art.palettes_in_use, groups: art.groups?, bar_rows: bar_rows,
