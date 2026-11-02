@@ -69,8 +69,11 @@ module VBlank
 
         require "vblank/live"
         console = Console.described(cartridge.console)
-        window = Live::SDL.new(title: Tape.title_and_checksum_of(cartridge).first, width: console.screen_width,
-                               height: console.screen_height, menu: false)
+        title = Tape.title_and_checksum_of(cartridge).first
+        window = Live::SDL.new(title: title, caption: "#{title} (automated playthrough)", width: console.screen_width,
+                               height: console.screen_height, settings_file: :usual)
+        say window.settings_problems_message if window.settings_problems_message
+        say "Press F1 or ` for the menu. Press P to pause. Hold Tab to play fast. Press Escape to stop."
         yield window
       rescue WatchedGame::WindowClosed
         say "The window was closed, so the playing stopped."

@@ -526,9 +526,12 @@ module VBlank
         --on WAY                 #{VBlank::Playthroughs::LoweredGame.ways.join(', ')}: how
                                  to run the game. With no window it goes as fast
                                  as this computer can.
-        --window                 Show the game in a window, at the console's
-                                 frame rate. Close the window to stop. Needs
-                                 SDL3. Only the emulator plays the sound there.
+        --window                 Show the game in the window of vblank run, at the
+                                 console's frame rate. The menu, pause and fast
+                                 forward work. The script holds the buttons, so
+                                 the keyboard and gamepads do not reach the game.
+                                 Close the window to stop. Needs SDL3. Only the
+                                 emulator plays sound there. The others are silent.
         --save PATH              Start from this save file.
         --pictures-in DIR        Write the screen at each moment to DIR, as a PNG
                                  named for the moment.

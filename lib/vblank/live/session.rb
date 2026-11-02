@@ -68,6 +68,18 @@ module VBlank
       # went (Rate). A game that does something its rules refuse (a push onto a full list) stops
       # the play with IR::ProgramError, in the words the interpreter would use.
       def play(device)
+        begin_play(device)
+        stopped_on = @game.play(self)
+        rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
+                        stopped_itself: !stopped_on.nil?)
+        keep_showing(stopped_on) if stopped_on
+        rate
+      end
+
+      # Ready to play on +device+. #play does this itself; a game that is stepped from outside, as a
+      # watched playthrough is (Playthroughs::WatchedGame), calls this and then #buttons_after for
+      # each frame.
+      def begin_play(device)
         @device = device
         @passes = @frames = 0
         @paced_by_speaker = false
@@ -76,11 +88,6 @@ module VBlank
         @fast_forward_passes = 0 # passes played in it
         @started = @frame_began = @device.now
         @device.wait_until(@frame_began)
-        stopped_on = @game.play(self)
-        rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
-                        stopped_itself: !stopped_on.nil?)
-        keep_showing(stopped_on) if stopped_on
-        rate
       end
 
       # Asked by the game as each of its frames ends, with the picture as the screen shows it and

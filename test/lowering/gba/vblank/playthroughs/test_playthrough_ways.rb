@@ -53,8 +53,11 @@ class TestPlaythroughWays < Minitest::Test
   class Screen
     attr_reader :shown, :waits
 
-    def initialize(stop_after: nil)
+    def initialize(stop_after: nil, held: [], speed: 1, paused_on: nil)
       @stop_after = stop_after
+      @held = held
+      @speed = speed
+      @paused_on = paused_on
       @shown = []
       @waits = []
       @clock = 0.0
@@ -62,8 +65,19 @@ class TestPlaythroughWays < Minitest::Test
 
     def show(pixels, width, height) = @shown << [pixels.length, width, height]
     def play_sound(_left, _rate, _right) = nil
-    def held_buttons(_frame) = []
-    def hold_while_paused = false
+    def sound_waiting = nil
+    def held_buttons(_frame) = @held
+    def fast_forward_speed(_pass) = @speed
+
+    # Paused once, for a long while by the clock, at the frame it was told.
+    def hold_while_paused
+      return false unless @shown.length == @paused_on
+
+      @paused_on = nil
+      @clock += 5.0
+      true
+    end
+
     def stop? = @stop_after && @shown.length >= @stop_after
     def now = @clock
 
@@ -86,6 +100,41 @@ class TestPlaythroughWays < Minitest::Test
     assert_raises(VBlank::Playthroughs::WatchedGame::WindowClosed) do
       steered.play(cartridge, on: "interpreter", window: Screen.new(stop_after: 3))
     end
+  end
+
+  # The same run with nobody watching, for the watched ones to match.
+  private def untouched = steered.play(cartridge, on: "interpreter")
+
+  def test_buttons_held_in_the_window_do_not_reach_the_game
+    watched = steered.play(cartridge, on: "interpreter", window: Screen.new(held: %i[left right a]))
+
+    assert_equal untouched.moments, watched.moments
+    assert_equal untouched.frames, watched.frames
+  end
+
+  def test_fast_forward_shows_fewer_frames_and_plays_the_same_run
+    window = Screen.new(speed: 4)
+    watched = steered.play(cartridge, on: "interpreter", window: window)
+
+    assert_equal untouched.moments, watched.moments
+    assert_operator window.shown.length, :<, watched.frames
+  end
+
+  def test_pausing_plays_the_same_run
+    watched = steered.play(cartridge, on: "interpreter", window: Screen.new(paused_on: 4))
+
+    assert_equal untouched.moments, watched.moments
+  end
+
+  def test_a_watched_game_sends_the_speaker_a_frame_of_silence_where_it_has_no_sound
+    sound = []
+    window = Screen.new
+    window.define_singleton_method(:play_sound) { |left, rate, right| sound << [left.length, rate, right.length] }
+    steered.play(cartridge, on: "interpreter", window: window)
+
+    rate = VBlank::Diagnostics::SoundRecording::CARTRIDGE_RATES.fetch(:gba)
+    frame = (rate * VBlank::Console::ADVANCE.frame_seconds).round
+    assert_equal [frame, rate, frame], sound.first
   end
 
   def test_a_way_there_is_not_is_refused_naming_them

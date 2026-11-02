@@ -176,7 +176,11 @@ module VBlank
       # What a file says that cannot be used is in #settings_problems.
       #
       # A window that cannot be opened all the way is closed again before the error comes out.
-      def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil, config_dir: nil)
+      #
+      # +caption+ is what the title bar says, where that differs from the game's +title+, which the
+      # settings are kept under: a watched playthrough says it is one, and keeps the game's settings.
+      def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil, config_dir: nil,
+                     caption: nil)
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
@@ -197,7 +201,7 @@ module VBlank
         @second_began = now
         @frame_rate = 0 # pictures shown in the last whole second
         begin
-          open_window(title, scale)
+          open_window(caption || title, scale)
         rescue Failed
           close
           raise
