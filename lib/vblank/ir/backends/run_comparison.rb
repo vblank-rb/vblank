@@ -54,7 +54,11 @@ module VBlank
         # the cartridge's picture. A screen that size hands the whole picture over; walking it a
         # pixel at a time in Ruby is most of what a short checked run would otherwise spend.
         def self.pixels_over(screen, width, height)
-          return screen.shown.map { |color| color || 0 } if screen.width == width && screen.height == height
+          if screen.width == width && screen.height == height
+            shown = screen.shown
+            # Asking whether a nil is there by #include? calls == on every pixel; #compact does not.
+            return shown.compact.length == shown.length ? shown : shown.map { |color| color || 0 }
+          end
 
           (0...height).flat_map { |y| (0...width).map { |x| screen.pixel(x, y) || 0 } }
         end

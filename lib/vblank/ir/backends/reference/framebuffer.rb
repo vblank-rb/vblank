@@ -426,9 +426,16 @@ module VBlank
           # anything comparing this screen with a real display has to read this one — the
           # stored cells are a picture nobody is looking at.
           def shown
-            return to_a.map { |color| displayed(color) } if plain?
+            return Array.new(@width * @height) { |i| pixel(i % @width, i / @width) } unless plain?
+            return to_a if @color_bits == CHANNEL_BITS
 
-            Array.new(@width * @height) { |i| pixel(i % @width, i / @width) }
+            # Most frames show what the last one did, and comparing the stored picture is far quicker
+            # than walking it, so the colors are rounded once for a picture that has not changed.
+            unless @shown_pixels == @pixels_rounded
+              @pixels_rounded = to_a
+              @rounded = @pixels_rounded.map { |color| displayed(color) }
+            end
+            @rounded.dup
           end
 
           # Nothing between what is stored and what is shown: the window at the origin and
@@ -723,11 +730,12 @@ module VBlank
           # (the Genesis keeps three) shows the top bits it keeps, each channel widened back to five
           # by repeating those bits, which is how its picture is read back. A color is rounded here, as the
           # picture is read, and not where it is painted, so a fade or a mix still works on the
-          # color the game named.
+          # color the game named. Each color's answer is kept: a picture holds few colors and is read
+          # a pixel at a time every frame, so working one out each time is most of a checked run.
           def displayed(color)
             return color if @color_bits == CHANNEL_BITS || color.nil?
 
-            Graphics::Color.kept(color, bits: @color_bits)
+            (@kept_colors ||= {})[color] ||= Graphics::Color.kept(color, bits: @color_bits)
           end
         end
       end

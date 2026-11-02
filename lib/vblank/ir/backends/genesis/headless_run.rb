@@ -71,7 +71,7 @@ module VBlank
             @vars = variables
             @lists = lists
             @screen = picture
-            @moments << Moment.new(frame: frame, variables: variables, picture: RunComparison.picture_check(picture.shown),
+            @moments << Moment.new(frame: frame, variables: variables, picture: picture_check_of(picture.shown),
                                    sounds: sounds, sprites: @sprites, collections: game_state.except(:vars), sounding: [])
             @on_vblank&.call(frame) unless frame == :end
           end
@@ -99,10 +99,23 @@ module VBlank
 
           # The emulator's picture, each pixel the 15-bit colour the console holds (the three bits of
           # each channel it keeps, widened), and where the camera put the view, [x, y], as the pass
-          # left it.
+          # left it. Most frames show the picture the last one did, and the core hands the same list
+          # back for those, so its colours are widened once.
           def picture_now(camera)
-            shown = @core.colors.map { |color| COLORS.fetch(color) }
-            Picture.new(shown: shown, width: @core.width, height: @core.height, camera_x: camera[0], camera_y: camera[1])
+            colors = @core.colors
+            unless colors.equal?(@colors_widened)
+              @colors_widened = colors
+              @shown_widened = colors.map { |color| COLORS.fetch(color) }
+            end
+            Picture.new(shown: @shown_widened, width: @core.width, height: @core.height, camera_x: camera[0], camera_y: camera[1])
+          end
+
+          # The picture's check, worked out once for a picture shown frame after frame.
+          def picture_check_of(shown)
+            return @check_of_shown if shown.equal?(@shown_checked)
+
+            @shown_checked = shown
+            @check_of_shown = RunComparison.picture_check(shown)
           end
 
           # The emulator's 9-bit colours (red in the low three bits, then green, then blue) as the

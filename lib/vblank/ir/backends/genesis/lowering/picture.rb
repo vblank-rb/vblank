@@ -41,6 +41,7 @@ module VBlank
               @backgrounds = @program.walk.select { |node| node.kind == :background }
               @sprite_names = SpriteNames.new(@program)
               @grids = {}
+              @cells_made = {}
               @pose_tables = {}
               @layers = {}.compare_by_identity
             end
@@ -347,12 +348,15 @@ module VBlank
               end
             end
 
-            # A cell showing tile +tile+ of +bg+'s, as [tile number, palette], or nil for none.
+            # A cell showing tile +tile+ of +bg+'s, as [tile number, palette], or nil for none. Made once
+            # for a tile: a map says the same few tiles hundreds of times, and making one reads its 64 pixels.
             def cell_of(bg, tile)
               return nil if tile.nil? || tile.negative?
 
-              image = Assets::Image.of(picture_named(bg.tiles.fetch(tile)))
-              bg.recolors.empty? ? @art.background_cell(image) : @art.background_cell(image, palette: recolored_palette(bg, image))
+              @cells_made[[bg.object_id, tile]] ||= begin
+                image = Assets::Image.of(picture_named(bg.tiles.fetch(tile)))
+                bg.recolors.empty? ? @art.background_cell(image) : @art.background_cell(image, palette: recolored_palette(bg, image))
+              end
             end
 
             # THE PALETTE A TILE OF A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS IS DRAWN FROM: one for each list
