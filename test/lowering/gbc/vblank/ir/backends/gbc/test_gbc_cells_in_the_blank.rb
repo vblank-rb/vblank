@@ -16,6 +16,45 @@ class TestGBCCellsInTheBlank < Minitest::Test
     pass
   end
 
+  # A cell the pass changes, then more cells than a pass keeps, then that cell again: the last
+  # change stands, and the first never comes back in the blank.
+  def test_a_cell_changed_again_past_the_kept_cells_shows_the_last_change
+    GBC::CheckedRun.new.run(cell_changed_twice_game(GBC::Runtime::Picture::CELLS_KEPT), frames: 12)
+    pass
+  end
+
+  def test_a_cell_shown_now_past_the_kept_cells_shows_the_last_change
+    GBC::CheckedRun.new.run(cell_changed_twice_game(GBC::Runtime::Picture::CELLS_KEPT, now: true), frames: 12)
+    pass
+  end
+
+  def test_a_cell_changed_again_past_twice_the_kept_cells_shows_the_last_change
+    GBC::CheckedRun.new.run(cell_changed_twice_game(GBC::Runtime::Picture::CELLS_KEPT * 2), frames: 12)
+    pass
+  end
+
+  private def cell_changed_twice_game(others, now: false)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      image(:red_art, "#" => :red) { "########\n" * 8 }
+      image(:blue_art, "#" => :blue) { "########\n" * 8 }
+      tiles :set, "#" => :red_art, "." => :blue_art
+      field = background :field, tiles: :set, map: Array.new(32) { "#" * 32 }
+      passes = var :passes, 0
+      game_loop do
+        passes += 1
+        if passes == 3
+          field.set_tile 0, 0, "."
+          others.times { |i| field.set_tile (i + 1) % 20, 1 + (i / 20), "." }
+          field.set_tile 0, 0, "#", now: now
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   private def cells_game(cells)
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do

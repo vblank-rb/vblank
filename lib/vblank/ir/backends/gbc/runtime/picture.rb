@@ -37,8 +37,8 @@ module VBlank
             GRID_UP = "rt picture grid up" # the number of the grid up, or being put up
             # The cells of the background changed during the pass, written in the blank after it:
             # how many, then for each where it is in the console's grid (16 bits), its tile and its
-            # colours. A pass that changes more than CELLS_KEPT has the rest written where it asks,
-            # each waiting for the display. Kept to what the blank has time for beside the sprites
+            # colours. A pass that fills it has the list written where it asks, each cell waiting
+            # for the display, and goes on keeping. Kept to what the blank has time for beside the sprites
             # and the rest of the pass's picture: a cell is 28 of the blank's 2280 instruction
             # cycles, and one it does not reach is lost.
             CELLS = "rt picture cells"
@@ -1337,10 +1337,9 @@ module VBlank
             #
             # IN THE BLANK AFTER THE PASS, with the rest of the pass's picture: the cell waits in
             # CELLS, so the frame being drawn still shows the pass before, as the interpreter shows
-            # it. A pass that changes more cells than CELLS keeps has the rest written where it asks:
-            # video memory can be written between the lines the display reads but not while it reads
-            # one (STAT's low two bits, 3 while it reads video memory), so each write waits for a
-            # moment it is not reading, with the interrupt held off between the wait and the write.
+            # it. A pass that fills CELLS has all of it written where it asks and starts it empty
+            # (rt_cells_write_now), so the cells stay in the order the game changed them and the
+            # last change of a cell is the one that stands, with nothing to search.
             #
             # ON THE FRAME BEING DRAWN, for a cell the game asks to see there (CELL_SHOWN_NOW): it is
             # written where the game asks, so the rows the display has not reached show it, and it
@@ -1394,10 +1393,10 @@ module VBlank
                 asm.dec(:a)
                 asm.call(:z, "#{label}_shown")
               end
-              # Into the cells for the blank, while there is room: HL where it goes, then the cell.
+              # Into the cells for the blank, once there is room: HL where it goes, then the cell.
               asm.load(:a, [memory[CELLS]])
               asm.cp_a(CELLS_KEPT)
-              asm.jump_relative(:nc, "#{label}_now")
+              asm.call(:nc, "rt_cells_write_now")
               asm.inc(:a)
               asm.load([memory[CELLS]], :a)
               asm.dec(:a)
@@ -1418,23 +1417,24 @@ module VBlank
               asm.load_high(:a, arg.call(3) + 1)
               asm.load([:hl], :a)
               asm.ret
-              asm.label("#{label}_now")
-              asm.label("#{label}_shown") if memory.reserved?(CELL_SHOWN_NOW)
-              asm.di
-              [0, 1].each do |bank|
-                asm.load(:a, bank)
+              if memory.reserved?(CELL_SHOWN_NOW)
+                asm.label("#{label}_shown")
+                asm.di
+                [0, 1].each do |bank|
+                  asm.load(:a, bank)
+                  asm.load_high(h::VBK, :a)
+                  asm.label("#{label}_wait_#{bank}")
+                  asm.load_high(:a, h::STAT)
+                  asm.and_a(0x02)
+                  asm.jump_relative(:nz, "#{label}_wait_#{bank}")
+                  asm.load_high(:a, arg.call(3) + bank)
+                  asm.load([:hl], :a)
+                end
+                asm.xor_a(:a)
                 asm.load_high(h::VBK, :a)
-                asm.label("#{label}_wait_#{bank}")
-                asm.load_high(:a, h::STAT)
-                asm.and_a(0x02)
-                asm.jump_relative(:nz, "#{label}_wait_#{bank}")
-                asm.load_high(:a, arg.call(3) + bank)
-                asm.load([:hl], :a)
+                asm.ei
+                asm.ret
               end
-              asm.xor_a(:a)
-              asm.load_high(h::VBK, :a)
-              asm.ei
-              asm.ret
               # Where the game comes in having worked the cell's place out itself, for a row and a
               # cell written in the program and a column known to be on the map
               # (Lowering::Picture#emit_cell_at_known_row, #emit_cell_at_known_place): HL the place,
@@ -1445,6 +1445,47 @@ module VBlank
               asm.load(:a, :b)
               asm.load_high(arg.call(3) + 1, :a)
               asm.jump_relative("#{label}_place_found")
+            end
+
+            # CELLS WRITTEN WHILE THE DISPLAY IS DRAWING, to make room in a full CELLS. Video memory
+            # can be written between the lines the display reads but not while it reads one (STAT's
+            # low two bits, 3 while it reads video memory), so each write waits for a moment it is
+            # not reading, with the interrupt held off from the wait to the write and open between
+            # cells. The blank can come while this runs, write the list itself and empty it: writing
+            # what is left of the list again changes nothing, since nothing is added to it meanwhile.
+            # Keeps HL, and comes back with A nought, the list's new length.
+            def emit_cells_write_now(asm, memory)
+              h = Console::GBCHardware
+              asm.label("rt_cells_write_now")
+              asm.push(:hl)
+              asm.load(:b, :a)
+              asm.load(:hl, memory[CELLS] + 1)
+              asm.label("rt_cells_write_now_next")
+              asm.load(:a, [:hli])
+              asm.load(:e, :a)
+              asm.load(:a, [:hli])
+              asm.load(:d, :a)
+              asm.di
+              [0, 1].each do |bank|
+                asm.load(:a, bank)
+                asm.load_high(h::VBK, :a)
+                asm.load(:a, [:hli])
+                asm.load(:c, :a)
+                asm.label("rt_cells_write_now_wait_#{bank}")
+                asm.load_high(:a, h::STAT)
+                asm.and_a(0x02)
+                asm.jump_relative(:nz, "rt_cells_write_now_wait_#{bank}")
+                asm.load(:a, :c)
+                asm.load([:de], :a)
+              end
+              asm.xor_a(:a)
+              asm.load_high(h::VBK, :a)
+              asm.ei
+              asm.dec(:b)
+              asm.jump_relative(:nz, "rt_cells_write_now_next")
+              asm.load([memory[CELLS]], :a)
+              asm.pop(:hl)
+              asm.ret
             end
 
             # THE BACKGROUND. rt_background_put_up(grid) starts putting a grid up — its tiles
@@ -1462,6 +1503,7 @@ module VBlank
             def emit_background(asm, memory, bar: false, paced: nil)
               h = Console::GBCHardware
               emit_background_cell(asm, memory)
+              emit_cells_write_now(asm, memory)
               # ...and one of a status bar's, in the window's grid (#emit_bar).
               if bar
                 emit_background_cell(asm, memory, label: "rt_bar_cell", grid: h::TILE_MAP1, up: memory[BAR] + BAR_UP)
