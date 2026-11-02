@@ -13,6 +13,15 @@ module VBlank
     #
     # The sound is the emulator's alone. The other ways of running a game keep theirs to the end of
     # the run, or write it to a file, so they hand the speaker silence, which paces them the same.
+    #
+    # THE FRAME RATE SAYS HOW OFTEN THE GAME MAKES A NEW PICTURE. The emulator is stepped a screen
+    # refresh at a time, sixty a second whatever the game does, and a game whose pass takes two
+    # frames shows the same picture for two of them. So each refresh that finished no pass of the
+    # game is told to the device as a repeat (+repeating_picture=+, the one thing asked of a device
+    # here that a Session does not ask), and a window leaves it out of its count. The other ways
+    # play a pass a step and never repeat, and a cartridge that cannot say its passes (one built
+    # elsewhere, or one that waits for the screen in places of its own on a console that counts the
+    # waits) reads as the refresh rate.
     class WatchedGame
       # The window was closed, which is how a person stops a playing they were watching.
       class WindowClosed < StandardError; end
@@ -30,6 +39,8 @@ module VBlank
         @frame_seconds = frame_seconds
         @sound_rate = sound_rate
         @silence = Array.new((sound_rate * frame_seconds).round, 0)
+        @device = device
+        @passes_seen = 0
         @session = Live::Session.new(game: self)
         @session.begin_play(device)
       end
@@ -37,6 +48,7 @@ module VBlank
       def step(count = 1, keys: nil)
         count.times do
           @game.step(1, keys: keys)
+          @device.repeating_picture = no_pass_finished?
           left, right = sound_of_frame
           raise WindowClosed unless @session.buttons_after(@game.frame_gba, left, right)
         end
@@ -53,6 +65,22 @@ module VBlank
       end
 
       private
+
+      # Did the step just played finish no pass of the game loop? Always false for a game that plays
+      # a pass a step, or cannot say.
+      def no_pass_finished?
+        return false unless @game.respond_to?(:passes)
+
+        passes = passes_so_far or return false
+        (passes == @passes_seen).tap { @passes_seen = passes }
+      end
+
+      # How many passes the game has finished, or nil where it cannot say.
+      def passes_so_far
+        @game.passes
+      rescue ArgumentError
+        nil
+      end
 
       # The two speakers' sound of the frame just played: the emulator's, or silence.
       def sound_of_frame

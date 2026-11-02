@@ -51,9 +51,10 @@ class TestPlaythroughWays < Minitest::Test
 
   # What a window is asked, standing in for one.
   class Screen
-    attr_reader :shown, :waits
+    attr_reader :shown, :waits, :repeats
 
     def initialize(stop_after: nil, held: [], speed: 1, paused_on: nil)
+      @repeats = []
       @stop_after = stop_after
       @held = held
       @speed = speed
@@ -66,6 +67,10 @@ class TestPlaythroughWays < Minitest::Test
     def show(pixels, width, height) = @shown << [pixels.length, width, height]
     def play_sound(_left, _rate, _right) = nil
     def sound_waiting = nil
+    def repeating_picture=(said)
+      @repeats << said
+    end
+
     def held_buttons(_frame) = @held
     def fast_forward_speed(_pass) = @speed
 
@@ -135,6 +140,39 @@ class TestPlaythroughWays < Minitest::Test
     rate = VBlank::Diagnostics::SoundRecording::CARTRIDGE_RATES.fetch(:gba)
     frame = (rate * VBlank::Console::ADVANCE.frame_seconds).round
     assert_equal [frame, rate, frame], sound.first
+  end
+
+  # A game whose every pass takes the console several frames.
+  private def slow_cartridge
+    VBlank.build("SLOW", console: :gba, validate: false, out: StringIO.new, err: StringIO.new) do
+      screen :bitmap
+      game_loop do
+        repeat(20) { clear_screen :blue }
+      end
+    end
+  end
+
+  def test_a_frame_with_no_new_pass_is_told_to_the_window_as_a_repeat
+    frames = 0
+    wait = VBlank::Playthroughs::Playthrough.new("wait") do
+      steer "a while", within: 200 do
+        frames += 1
+        frames > 120 ? :done : []
+      end
+    end
+    window = Screen.new
+    wait.play(slow_cartridge, on: "emulator", window: window)
+
+    repeated = window.repeats.count(true)
+    assert_operator repeated, :>, window.repeats.length / 3, "a game of two frames a pass repeats about every other one"
+    assert_operator repeated, :<, window.repeats.length, "and some frames are new"
+  end
+
+  def test_a_way_that_plays_a_pass_a_frame_never_repeats_a_picture
+    window = Screen.new
+    steered.play(cartridge, on: "interpreter", window: window)
+
+    refute_includes window.repeats, true
   end
 
   def test_a_way_there_is_not_is_refused_naming_them

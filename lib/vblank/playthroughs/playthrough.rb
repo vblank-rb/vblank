@@ -124,9 +124,13 @@ module VBlank
       # one running cartridge that everything here plays on and asks. +save+ is what the
       # cartridge's save memory holds. It is a copy that goes into the console, so the one
       # handed over is as it was afterwards and can start another.
-      def self.power_on(cartridge, save: nil)
+      #
+      # +count_passes+ keeps count of the game's passes (Verifier#passes) where the cartridge can say
+      # them, which one built elsewhere cannot.
+      def self.power_on(cartridge, save: nil, count_passes: false)
         cartridge = cartridge_from(cartridge)
-        Diagnostics::Verifier.new(cartridge, frames: 0, vars: cartridge.var_addresses, save: save&.dup)
+        Diagnostics::Verifier.new(cartridge, frames: 0, vars: cartridge.var_addresses, save: save&.dup,
+                                             count_passes: count_passes && !cartridge.built.nil?)
       end
 
       # A CONSOLE SWITCHED ON AND BROUGHT TO WHERE PLAYING SHOULD BEGIN: holding +save+, and
@@ -142,7 +146,11 @@ module VBlank
       #
       # +on+ and +window+ are as for #play.
       def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil)
-        game = on && on != LoweredGame::EMULATOR ? lowered_game(cartridge, on, save) : power_on(cartridge, save: save)
+        game = if on && on != LoweredGame::EMULATOR
+                 lowered_game(cartridge, on, save)
+               else
+                 power_on(cartridge, save: save, count_passes: !window.nil?)
+               end
         if window
           console = cartridge_from(cartridge).console
           game = WatchedGame.new(game, window, frame_seconds: Console.described(console).frame_seconds,

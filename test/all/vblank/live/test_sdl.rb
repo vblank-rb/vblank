@@ -39,6 +39,24 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A picture said to repeat the one before is no new picture, so a game of two refreshes a pass
+  # reads half the rate.
+  def test_the_frame_rate_leaves_out_a_repeated_picture
+    window = open_window
+    clock = window.now
+    window.define_singleton_method(:now) { clock }
+    pixels = Array.new(240 * 160, 0)
+    61.times do |refresh|
+      clock += 1.0 / 60
+      window.repeating_picture = refresh.odd?
+      window.show(pixels, 240, 160)
+    end
+
+    assert_includes 29..31, window.frame_rate
+  ensure
+    window&.close
+  end
+
   # Before any sound there is no speaker, so the session plays the window on the clock until the
   # first frame's sound opens one.
   def test_a_window_has_no_speaker_until_it_is_handed_sound

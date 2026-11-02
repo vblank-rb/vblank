@@ -245,6 +245,13 @@ module VBlank
         redraw_window
       end
 
+      # True while what is shown is the picture before, so the frame rate leaves it out, where something
+      # shows a window every screen refresh of a game slower than that (Playthroughs::WatchedGame).
+      attr_writer :repeating_picture
+
+      # How many new pictures went up in the last whole second, the number the menu can put up.
+      attr_reader :frame_rate
+
       # The console's buttons whose keys are down now, as SDL last heard them (#show reads what
       # SDL has heard). The keyboard is read when it is asked, whichever pass it is asked for. A
       # key pressed for the menu is not the game's until it comes up: Enter on Resume is not Start.
@@ -652,9 +659,9 @@ module VBlank
         end
       end
 
-      # Pictures shown in the last whole second, for the frame rate the menu can put up.
+      # New pictures shown in the last whole second, for the frame rate the menu can put up.
       def count_frame_rate
-        @shown_this_second += 1
+        @shown_this_second += 1 unless @repeating_picture
         return if now - @second_began < 1
 
         @frame_rate = @shown_this_second
