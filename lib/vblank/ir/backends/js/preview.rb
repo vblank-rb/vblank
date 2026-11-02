@@ -42,6 +42,10 @@ module VBlank
           def url = "http://#{@server.addr[3]}:#{@server.addr[1]}/"
 
           # Answers one browser after another until stopped (Ctrl-C, or #stop from another thread).
+          # CTRL-C IS LEFT TO ARRIVE AS RUBY RAISES IT, wherever the program is, and is caught here:
+          # a signal handler runs on the thread sitting in `accept`, and closing the server from
+          # there takes the lock that `accept` holds. What was going cleans up on the way out
+          # (see #run_build), and a second Ctrl-C during that lands here too.
           def serve
             tell "Playing #{File.basename(@game_file)} at #{url} — reload the page to play it as the file is now. Ctrl-C stops."
             loop do
@@ -50,6 +54,8 @@ module VBlank
             rescue IOError, Errno::EBADF
               break # the server was stopped
             end
+          rescue Interrupt
+            stop
           end
 
           def stop = @server.close
@@ -103,6 +109,11 @@ module VBlank
               input.close
               said = output.each_line.map { |line| line.tap { tell(line) unless line.include?(path) } }.join
               [said, ended.value]
+            rescue Interrupt
+              # A terminal's Ctrl-C reaches the build as well, but `kill -INT` does not, and leaving
+              # here waits for the build to end.
+              Process.kill("TERM", ended.pid)
+              raise
             end
           end
 

@@ -942,7 +942,6 @@ module VBlank
       port = options[:port] || 8000
       server = VBlank::IR::Backends::JS::Preview.new(game_file, settings: options[:set], template: options[:template],
                                                                  console: options[:console], port: port)
-      trap("INT") { server.stop }
       server.serve
     rescue Errno::EADDRINUSE
       raise Thor::Error, "Port #{port} is in use already. Give another with --port."

@@ -3,6 +3,7 @@
 require "test_helper"
 require "net/http"
 require "stringio"
+require "timeout"
 require "tmpdir"
 
 # `vblank preview`: the game as a page served on this computer, built again from its file each
@@ -57,6 +58,8 @@ class TestJSPreview < Minitest::Test
 
     Process.kill("KILL", -pid)
     Process.wait(pid)
+  rescue Errno::ESRCH, Errno::ECHILD
+    nil # gone already
   end
 
   def test_a_reload_plays_the_game_as_its_file_says_now
@@ -159,6 +162,75 @@ class TestJSPreview < Minitest::Test
       assert_match(/Building game\.rb\n.*the guardrails.*\nBuilt game\.rb\n/m, said.string, "the build's progress comes between the two")
       refute_includes said.string, "vblank-preview", "the folder a page is built in is nobody's business"
     end
+  end
+
+  # Ctrl-C at a preview waiting for a browser: it goes, saying nothing, and the terminal never sees
+  # Ruby's own words for it.
+  def test_ctrl_c_stops_a_preview_waiting_for_a_browser
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "game.rb"), game_source("WAITING", :blue))
+      reader, waiting = spawn_preview(dir, 8766)
+      reader.gets
+      Process.kill("INT", -waiting) # as a terminal sends it, to everything the command started
+
+      assert_ends_quietly(waiting, reader)
+      waiting = nil
+    ensure
+      stop_process(waiting)
+    end
+  end
+
+  # ...and part-way through a build, the hard case: only the preview is told, as `kill -INT` tells it,
+  # so the build it started is its own to stop. This game never finishes building.
+  def test_ctrl_c_during_a_build_told_to_the_preview_alone_stops_the_build_as_well
+    assert_stops_during_a_build(8767) { |preview| preview }
+  end
+
+  # ...and as a terminal sends it, when the build is told at the same moment.
+  def test_ctrl_c_during_a_build_told_to_both_stops_quietly
+    assert_stops_during_a_build(8768) { |preview| -preview }
+  end
+
+  private def assert_stops_during_a_build(port)
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "game.rb"), "sleep 0.01 until false\n")
+      reader, waiting = spawn_preview(dir, port, env: { "TMPDIR" => dir })
+      reader.gets
+      asking = Thread.new { Net::HTTP.get(URI("http://127.0.0.1:#{port}/")) rescue nil } # rubocop:disable Style/RescueModifier
+      assert_match(/Building game\.rb/, Timeout.timeout(20) { reader.gets })
+      sleep 0.3 # long enough for the build to have started, so it is there to be stopped
+      Process.kill("INT", yield(waiting))
+
+      assert_ends_quietly(waiting, reader)
+      wait_until { !process_group_alive?(waiting) }
+      assert_empty Dir.glob(File.join(dir, "vblank-preview*")), "the folder of the build is cleared away"
+      waiting = nil
+      asking.join(5)
+    ensure
+      stop_process(waiting)
+    end
+  end
+
+  private def spawn_preview(dir, port, env: {})
+    reader, writer = IO.pipe
+    pid = spawn(env, RbConfig.ruby, VBlank.root.join("bin", "vblank").to_s, "preview", "game.rb", "--port", port.to_s,
+                chdir: dir, out: writer, err: writer, pgroup: true)
+    writer.close
+    [reader, pid]
+  end
+
+  private def assert_ends_quietly(pid, reader)
+    _, status = Timeout.timeout(20) { Process.wait2(pid) }
+    assert_predicate status, :success?, "a preview stopped by hand is not a failure"
+    said = Timeout.timeout(20) { reader.read }
+    refute_match(/ThreadError|Interrupt|\.rb:\d+/, said)
+  end
+
+  private def process_group_alive?(group)
+    Process.kill(0, -group)
+    true
+  rescue Errno::ESRCH
+    false
   end
 
   private def wait_until
