@@ -168,7 +168,8 @@ class TestSetTile < Minitest::Test
       image(:wall, "#" => :red) { SOLID_TILE }
       image(:floor, "#" => :blue) { SOLID_TILE }
       tiles :dungeon, "#" => :wall, "." => :floor
-      room = background :room, tiles: :dungeon, map: Array.new(32) { "#" * 64 }
+      # Only its width matters, and few rows keep it inside what a Color keeps of a map it changes.
+      room = background :room, tiles: :dungeon, map: Array.new(8) { "#" * 64 }
       opened = var :opened, 0
       game_loop do
         wait_vblank
