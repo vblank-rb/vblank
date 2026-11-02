@@ -177,9 +177,9 @@ module VBlank
           @save = save
           @vars = Hash.new(0)      # variable store; an unwritten variable reads as 0
           @funcs = {}              # name -> :func node
-          @console = Nodes::Program.unbound_console # until a program says which (see #size_screen_for)
-          # the fake screen the draw ops write into
-          @screen = Framebuffer.new(width: @console.screen_width, height: @console.screen_height)
+          @console = nil # until a program says which (see #size_screen_for)
+          # the fake screen the draw ops write into, sized by that program
+          @screen = Framebuffer.new(width: 0, height: 0)
           @held = Set.new          # buttons down right now
           @seen = Set.new          # buttons down at the last frame the screen showed
           @pressed = Set.new       # buttons that went down since the last pass took its presses
@@ -344,11 +344,9 @@ module VBlank
 
         # The screen is the one the program was built for (Program#described_console): a game laid
         # out on a smaller console's screen is drawn on that screen here too. A tree made by hand
-        # with no program at its root is played the way an unbound program is.
+        # with no program at its root is played the way a program naming no console is.
         def size_screen_for(node)
-          return unless node.kind == :program
-
-          @console = node.described_console
+          @console = (node.kind == :program ? node : Build.program).described_console
           width, height = @console.screen_size
           @screen = Framebuffer.new(width: width, height: height) unless [@screen.width, @screen.height] == [width, height]
           @screen.dims = @console.fades_by_brightness

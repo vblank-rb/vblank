@@ -53,7 +53,7 @@ class TestDifferential < Minitest::Test
       image(:strip, "#" => :white, "." => :transparent) { "#.#.#.#.\n.#.#.#.#\n########" }
       blit :strip, 100, 70
       draw_text "DIFF", 60, 100, Color.resolve(:yellow)
-      pixel 239, 159, Color.resolve(:magenta)
+      pixel screen_width - 1, screen_height - 1, Color.resolve(:magenta)
       halt
     end)
   end

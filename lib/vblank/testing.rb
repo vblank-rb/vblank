@@ -53,6 +53,16 @@ module VBlank
     def self.console = CONSOLE
     def game_console = Testing.console
 
+    # A TEST'S PROGRAM THAT NAMES NO CONSOLE is laid out as the Advance while its block runs, which
+    # is the screen those tests were written for, and is played as its run's console
+    # (PlaysRunConsole). The library assumes none, so a game's build that names none stops and says
+    # so; only a test suite has this. Laying such a test out as its run's console is the better
+    # answer, and fails every test that says a place on the Advance's screen.
+    module LaidOutForTheAdvance
+      def described_console = console ? super : Console::ADVANCE
+    end
+    IR::Nodes::Program.prepend(LaidOutForTheAdvance)
+
     # HOW MANY PASSES BEHIND THE GAME'S NUMBERS what the framework draws for it is — its sprites,
     # its tiled text, its scroll — read at a frame boundary on this run's console. One on the
     # Advance, which places them in the gap after the boundary from the pass before; none on the

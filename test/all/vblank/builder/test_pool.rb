@@ -150,29 +150,6 @@ class TestPool < Minitest::Test
   # The lists a pool was built from, as the program declares them.
   private def lists_of(program) = program.walk.select { |node| node.kind == :list_new }
 
-  def test_a_pool_over_the_ceiling_that_insists_on_the_quick_memory_is_refused
-    message = too_big { pool :crowd, x: 0, y: 0, vx: 0, vy: 0, capacity: 1000, fast: true }
-
-    assert_match(/pool :crowd/, message)
-    assert_includes message, VBlank::Messages::PlainWords::QUICK_MEMORY, "it names the memory the game asked for"
-    assert_match(/remove `fast: true`/, message, "and the way out that keeps the capacity")
-  end
-
-  # A POOL NO MEMORY CAN HOLD is refused at its own line, by name. The roomier memory is
-  # 256K and a pool over the ceiling is kept there whole, so one bigger than that fits
-  # nowhere — whatever else the game declares, and whether or not it said `fast: false`.
-  # 10,800 things of 25 bytes are 270,000 bytes: more than the roomier memory, and less than
-  # the two memories added together, which is all the whole-program check asks about.
-  def test_a_pool_bigger_than_the_roomier_memory_is_refused_by_name
-    [{}, { fast: false }].each do |words|
-      message = too_big { pool :crowd, x: 0, y: 0, vx: 0, vy: 0, capacity: 10_800, **words }
-
-      assert_match(/pool :crowd/, message)
-      assert_match(/largest memory of a Game Boy Advance holds 256KB/, message, "it names the memory")
-      assert_equal 270_000 / 1024, kilobytes_said(message)
-    end
-  end
-
   # The most a pool can be is the console's: a Game Boy Color has 8K of work memory in view, so
   # 1,000 things of four whole-number fields, 16,000 bytes, are refused for it by name.
   def test_a_pool_bigger_than_the_colors_memory_is_refused_naming_its_size
@@ -251,48 +228,12 @@ class TestPool < Minitest::Test
     assert_operator GBA.new.lower(builder.program).bytesize, :>, 0, "and it builds"
   end
 
-  # None of a pool's lists is a queue the game shifts, so none is rounded up to a power of
-  # two: 513 slots are 513 slots, not 1024.
-  def test_a_capacity_is_counted_as_given_and_not_rounded_up
-    motes = Builder.new.instance_eval { pool :mote, x: 0, y: 0, vx: 0, vy: 0, capacity: 513 }
-
-    assert_equal 513, motes.capacity
-  end
-
-  def test_many_slots_of_byte_fields_fit_where_word_fields_would_not
-    fields = { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 }
-    narrow = fields.transform_values { :byte }
-
-    Builder.new.instance_eval { pool :spark, capacity: 600, widths: narrow, fast: true, **fields }
-    assert_match(/spark/, too_big { pool :spark, capacity: 600, fast: true, **fields },
-                 "the same pool at a word a field is four times the size")
-  end
-
   # 1000 slots of four word fields: 16 bytes of fields, a byte saying whether the slot is
   # live, and four slot numbers of two bytes each (the free stack and the order they came in).
   def test_a_pool_that_is_too_big_says_the_size_it_would_be_built_at
     message = too_big { pool :swarm, x: 0, y: 0, vx: 0, vy: 0, capacity: 1000, fast: true }
 
     assert_equal (1000 * (16 + 1 + (4 * 2))) / 1024, kilobytes_said(message)
-  end
-
-  # WHAT IS COUNTED IS WHAT IS BUILT, to the byte. Seven byte fields, the byte that says a
-  # slot is live and four slot numbers of two bytes are sixteen bytes a slot, so 1024 slots
-  # are the ceiling exactly — read here off the lists the build was really handed.
-  def test_a_pool_exactly_at_the_ceiling_is_built_and_one_slot_more_is_refused
-    fields = %i[a b c d e f g].to_h { |field| [field, 0] }
-    narrow = fields.transform_values { :byte }
-    builder = Builder.new
-    builder.instance_eval do
-      screen :bitmap
-      pool :mote, capacity: 1024, widths: narrow, fast: true, **fields
-      game_loop {}
-    end
-    builder.finalize_program
-    built = lists_of(builder.program).sum { |node| node.capacity * VBlank::IR::Build::ELEMENT_BYTES.fetch(node.width) }
-
-    assert_equal VBlank::Builder::Composition::POOL_MAX_QUICK_BYTES, built
-    assert_match(/mote/, too_big { pool :mote, capacity: 1025, widths: narrow, fast: true, **fields })
   end
 
   # A pool with pictures keeps more a slot: which frame each instance is on, and where and

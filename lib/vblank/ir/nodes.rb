@@ -998,13 +998,18 @@ module VBlank
         def kept_width_of(name) = (kept_widths || []).to_h[name]
 
         # What the console this program was built for can do: its screen, buttons, sprites.
-        def described_console = console ? Console.described(console, variant: variant) : Program.unbound_console
+        # A program that names none cannot be laid out, and no console is assumed for it. A game
+        # names its consoles and a build its console; a test's program plays as its run's, and
+        # the test kit says how it is laid out (Testing::LaidOutForTheAdvance).
+        def described_console
+          return Console.described(console, variant: variant) if console
+
+          raise VBlank::BuildError, "This program names no console, so it cannot be laid out. To fix this, name " \
+                                    "one: `VBlank.game \"NAME\", consoles: %i[gba]`, or `console: :gba` on the build."
+        end
 
         # The size of piece the game named for +console+'s sprites, or nil where it named none.
         def sprite_piece_size_on(console) = (sprite_piece_sizes || []).to_h[console]
-
-        # What an unbound program is laid out and checked on.
-        def self.unbound_console = Console::ADVANCE
       end
 
       # A FONT THE PROGRAM DECLARED, the same way a declared picture is a node: it draws

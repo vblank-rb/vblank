@@ -12,6 +12,19 @@ class TestTileRunsOnTheAdvance < Minitest::Test
   RED = VBlank::Graphics::Color.resolve(:red)
   WHITE = VBlank::Graphics::Color.resolve(:white)
 
+  # The Advance draws a sprite whole at one of twelve sizes, so a painted picture is one of them.
+  def test_a_painted_picture_of_a_size_no_sprite_is_drawn_at_is_refused_listing_them
+    error = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        screen :tiled
+        colors :ink, [:transparent, :white]
+        image :tag, from: list(:c, capacity: 96, width: :byte), width: 24, height: 8, colors: :ink
+      end
+    end
+
+    assert_match(/sizes are 8x8/, error.message)
+  end
+
   # A red backdrop behind a two-tile run, side by side at the top left. +body+ runs every
   # pass with the list, the run's handle and a frame counter.
   private def game(&body)

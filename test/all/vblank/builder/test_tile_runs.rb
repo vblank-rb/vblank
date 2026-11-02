@@ -557,7 +557,6 @@ class TestTileRuns < Minitest::Test
     assert_match(/It has 40/, message)
     assert_match(/no list has that name/, refusal { tiles :box, from: list(:c, capacity: 64, width: :byte), count: 2, colors: :nope })
     assert_match(/2 to 16 colors/, refusal { tiles :box, from: list(:c, capacity: 64, width: :byte), count: 2 })
-    assert_match(/sizes are 8x8/, refusal { image :tag, from: list(:c, capacity: 64, width: :byte), width: 24, height: 8, colors: :ink })
     assert_match(/use `pixel` or `blit`/,
                  refusal(screen_kind: :bitmap) { image :tag, from: list(:c, capacity: 64, width: :byte), width: 16, height: 8, colors: :ink })
     assert_match(/keys 1 to 2/, refusal do

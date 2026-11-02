@@ -86,6 +86,8 @@ a console of its own needs beyond a lowering:
   and a Rakefile (`t.consoles`) name theirs, and a name is held as its Symbol however it was
   written (`Console.named`). Only an unbound program, a tree built for a test (a Builder told
   none, a hand-built `program(...)`), names none, and each run plays it as that run's console.
+  Outside a test such a program stops with plain words when something lays it out; inside one the
+  test kit lays it out for the Advance's screen (`Testing::LaidOutForTheAdvance`).
 
 `GBC::Lowering` is a peer of the GBA lowering, not of the native one: it walks the IR and emits
 SM83 machine code itself (its picture and sound in `GBC::Lowering::Picture` and
