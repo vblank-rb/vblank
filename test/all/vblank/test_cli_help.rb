@@ -17,7 +17,7 @@ class TestCLIHelp < Minitest::Test
   RUBY = RbConfig.ruby.freeze
   BIN = VBlank.root.join("bin/vblank").to_s
 
-  COMMANDS = %w[build profile play compare preview inspect new].freeze
+  COMMANDS = %w[build profile run compare preview inspect new].freeze
   HELP_FLAGS = %w[--help -h].freeze
   WIDTH = 80
 

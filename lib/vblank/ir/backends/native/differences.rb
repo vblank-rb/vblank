@@ -69,6 +69,9 @@ module VBlank
             sounds = []
             moments = []
             text.each_line(chomp: true) do |line|
+              # The Ruby runtime says once, before any frame, which compiler runs it ("jit yjit").
+              next if line.start_with?("jit ")
+
               if line.start_with?("sound ")
                 sounds << sound_log.entry_from(line)
               elsif line.start_with?("frame ") || line == "end"
