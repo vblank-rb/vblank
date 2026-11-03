@@ -199,6 +199,7 @@ module VBlank
                                              count_at: (lowering.variables[Frames::COUNT] if lowering.counts_dark_frames?),
                                              banked_colors: bank_background_colors && !lowering.drawn_palettes.nil?,
                                              byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?,
+                                             half_queues: lowering.keeps_half_queues?,
                                              sprites_over_picture: IR::SpritesOverPicture.any?(program))
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           begin

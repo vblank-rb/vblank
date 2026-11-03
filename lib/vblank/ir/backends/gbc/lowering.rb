@@ -94,6 +94,11 @@ module VBlank
                                                [2, true] => [2, "rt_read_int16"], [2, false] => [3, "rt_read_uint16"],
                                                [4, true] => [4, "rt_read_int32"] })
 
+          # The runtime's quick push and read for a list whose slots are this many bytes
+          # (Runtime::Lists#emit_queue_routines); a list of whole numbers goes the long way.
+          NARROW_LIST_ROUTINES = Ractor.make_shareable({ 1 => %w[rt_byte_list_push rt_byte_list_item],
+                                                         2 => %w[rt_half_list_push rt_half_list_item] })
+
           # The registers a number in BCDE is held in, its lowest byte first, as memory keeps it.
           BCDE_LOW_FIRST = %i[e d c b].freeze
 
@@ -271,6 +276,15 @@ module VBlank
             bytes = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }.map(&:name)
             @program.walk.any? do |node|
               (node.kind == :list_push && bytes.include?(node.name)) || (node.kind == :list_drop && node.from == :front)
+            end
+          end
+
+          # Whether the game pushes onto a list of halves or takes from one's front, so wants the
+          # routines that push and read such a list quickly (Runtime::Lists#emit_half_queue_routines).
+          def keeps_half_queues?
+            halves = @program.walk.select { |node| node.kind == :list_new && node.width == :half }.map(&:name)
+            @program.walk.any? do |node|
+              (node.kind == :list_push || (node.kind == :list_drop && node.from == :front)) && halves.include?(node.name)
             end
           end
 
@@ -860,14 +874,16 @@ module VBlank
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
           end
 
-          # A push onto a list of bytes, with its value already in registers (Runtime::Lists says why).
+          # A push onto a list of bytes or halves, with its value already in registers (Runtime::Lists
+          # says why).
           def emit_list_push(node)
             place, _capacity, width = list_placed(node)
-            return list_call("rt_list_push", node, node.value) unless width == 1
+            push, = NARROW_LIST_ROUTINES[width]
+            return list_call("rt_list_push", node, node.value) unless push
 
             value(node.value)
             @asm.load(:hl, place)
-            @asm.call("rt_byte_list_push")
+            @asm.call(push)
           end
 
           def emit_list_drop(node)
@@ -905,10 +921,11 @@ module VBlank
             place, capacity, width = list_placed(node)
             if front_dropped_lists.include?(node.name)
               value(node.index)
-              return list_get_through_routine(place) unless width == 1
+              _push, item = NARROW_LIST_ROUTINES[width]
+              return list_get_through_routine(place) unless item
 
               @asm.load(:hl, place + Runtime::Lists::LENGTH)
-              return @asm.call("rt_byte_list_item")
+              return @asm.call(item)
             end
 
             out_of_range = fresh("list_index_out_of_range")

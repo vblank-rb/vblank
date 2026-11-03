@@ -82,11 +82,14 @@ module VBlank
           # IR::Frames::COUNT (Frame#emit_add_dark_frames). +banked_colors+ says its backgrounds' colour
           # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +byte_fills+ says
           # it fills a list of bytes (Lists#emit_byte_fill), and +queues+ that it pushes bytes or takes
-          # from a list's front (Lists#emit_queue_routines). +sprites_over_picture+ says its sprites are
-          # shown over a painted screen (`sprite ..., over_picture: true`), so the sprite layer is on there.
+          # from a list's front (Lists#emit_queue_routines), and +half_queues+ that it pushes onto a list
+          # of halves or takes one from the front (Lists#emit_half_queue_routines). +sprites_over_picture+
+          # says its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
+          # sprite layer is on there.
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
-                       count_at: nil, banked_colors: false, byte_fills: false, queues: false, sprites_over_picture: false)
+                       count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,
+                       sprites_over_picture: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
             # recording writes down every bank put in view, for the timer to put back (Runtime::Clips).
@@ -99,7 +102,7 @@ module VBlank
             Int32.emit(asm, memory)
             Calls.emit(asm, memory)
             Frame.emit(asm, memory, together: together, count_at: count_at, songs: songs)
-            Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues)
+            Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues, half_queues: half_queues)
             Picture.emit(asm, memory, sprite_tiles: art.sprite_tiles.length, background_tiles: art.background_tiles.length,
                                       runs: runs, drawn_palettes: drawn_palettes, lends: art.lending,
                                       palettes_in_use: art.palettes_in_use, groups: art.groups?, bar_rows: bar_rows,

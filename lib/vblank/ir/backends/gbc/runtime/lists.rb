@@ -27,15 +27,22 @@ module VBlank
             FRONT = 4
             LENGTH = 6
 
+            # The word in the names of the quick routines for a list whose slots are this many bytes
+            # (#emit_queue_routines, #emit_half_queue_routines).
+            NARROW_WIDTHS = { 1 => "byte", 2 => "half" }.freeze
+
             module_function
 
-            # +byte_fills+ says the game fills a list of bytes (Lowering#fills_byte_lists?), and
-            # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?).
-            def emit(asm, memory, byte_fills: false, queues: false)
+            # +byte_fills+ says the game fills a list of bytes (Lowering#fills_byte_lists?),
+            # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?), and
+            # +half_queues+ that it pushes onto a list of halves or takes from one's front
+            # (Lowering#keeps_half_queues?).
+            def emit(asm, memory, byte_fills: false, queues: false, half_queues: false)
               q = Quick.for(memory)
               emit_helpers(asm, memory, q)
               emit_routines(asm, memory, q, byte_fills)
               emit_queue_routines(asm, memory, q) if queues
+              emit_half_queue_routines(asm, memory, q) if half_queues
               emit_start(asm)
             end
 
@@ -392,16 +399,30 @@ module VBlank
             # of range puts its numbers where the routines above take them and goes there, so the
             # game stops in the same words with the same numbers.
             def emit_queue_routines(asm, memory, q)
-              emit_byte_push(asm, memory, q)
+              emit_narrow_push(asm, memory, q, 1)
               emit_shift(asm, memory)
-              emit_byte_item(asm, memory)
+              emit_narrow_item(asm, memory, 1)
             end
 
-            # rt_byte_list_push: E, the low byte of the value, into the list at HL.
-            def emit_byte_push(asm, memory, q)
-              asm.label("rt_byte_list_push")
+            # A QUEUE OF HALVES — two-byte numbers, a sprite's place or a tile's number — is pushed
+            # and read the same way, the slot found as for a byte and then doubled, since each is two
+            # bytes along. Taking from the front never looks at a slot, so rt_list_shift serves both.
+            def emit_half_queue_routines(asm, memory, q)
+              emit_narrow_push(asm, memory, q, 2)
+              emit_narrow_item(asm, memory, 2)
+            end
+
+            # rt_byte_list_push: E, the low byte of the value, into the list at HL. rt_half_list_push:
+            # DE, the low half of the value, the same way.
+            def emit_narrow_push(asm, memory, q, width)
+              name = "rt_#{NARROW_WIDTHS.fetch(width)}_list_push"
+              asm.label(name)
               asm.load(:a, :e)
               asm.load_high(q.entry, :a)
+              if width == 2
+                asm.load(:a, :d)
+                asm.load_high(q.entry + 1, :a)
+              end
               asm.push(:hl)
               read_number(asm, :c, :b) # BC = the capacity
               2.times { asm.inc(:hl) }
@@ -410,7 +431,7 @@ module VBlank
               asm.sub_a(:c)
               asm.load(:a, [:hld])
               asm.sbc_a(:b)
-              asm.jump_relative(:nc, "rt_byte_list_push_full")
+              asm.jump_relative(:nc, "#{name}_full")
               asm.load(:a, [:hli]) # DE = the front + the length, the slot past the last item
               asm.add_a(:e)
               asm.load(:e, :a)
@@ -418,28 +439,33 @@ module VBlank
               asm.adc_a(:d)
               asm.load(:d, :a)
               asm.inc([:hl]) # one more item
-              asm.jump_relative(:nz, "rt_byte_list_push_counted")
+              asm.jump_relative(:nz, "#{name}_counted")
               asm.inc(:hl)
               asm.inc([:hl])
-              asm.label("rt_byte_list_push_counted")
+              asm.label("#{name}_counted")
               asm.load(:a, :e) # HL = that slot, come round past the capacity
               asm.sub_a(:c)
               asm.load(:l, :a)
               asm.load(:a, :d)
               asm.sbc_a(:b)
               asm.load(:h, :a)
-              asm.jump_relative(:nc, "rt_byte_list_push_slot")
+              asm.jump_relative(:nc, "#{name}_slot")
               asm.load(:h, :d)
               asm.load(:l, :e)
-              asm.label("rt_byte_list_push_slot")
+              asm.label("#{name}_slot")
+              asm.add_hl(:hl) if width == 2 # two bytes a slot
               asm.pop(:bc)
               asm.add_hl(:bc)
               asm.load(:bc, HEADER)
               asm.add_hl(:bc)
               asm.load_high(:a, q.entry)
+              if width == 2
+                asm.load([:hli], :a)
+                asm.load_high(:a, q.entry + 1)
+              end
               asm.load([:hl], :a)
               asm.ret
-              asm.label("rt_byte_list_push_full") # stops the game, which never reads the value
+              asm.label("#{name}_full") # stops the game, which never reads the value
               asm.pop(:hl)
               store_list_place(asm, push_places(memory).first, 0)
               asm.jump("rt_list_push_taken")
@@ -491,18 +517,20 @@ module VBlank
               asm.jump("rt_list_drop_taken")
             end
 
-            # rt_byte_list_item: BCDE = the item BCDE places along the list whose length is at HL.
-            def emit_byte_item(asm, memory)
-              asm.label("rt_byte_list_item")
+            # rt_byte_list_item: BCDE = the item BCDE places along the list of bytes whose length is
+            # at HL. rt_half_list_item: the same along a list of halves.
+            def emit_narrow_item(asm, memory, width)
+              name = "rt_#{NARROW_WIDTHS.fetch(width)}_list_item"
+              asm.label(name)
               asm.load(:a, :b)
               asm.or_a(:c)
-              asm.jump_relative(:nz, "rt_byte_list_item_past_16_bits")
+              asm.jump_relative(:nz, "#{name}_past_16_bits")
               asm.load(:a, :e)
               asm.sub_a([:hl])
               asm.inc(:hl)
               asm.load(:a, :d)
               asm.sbc_a([:hl])
-              asm.jump_relative(:nc, "rt_byte_list_item_missing")
+              asm.jump_relative(:nc, "#{name}_missing")
               2.times { asm.dec(:hl) }
               asm.load(:a, [:hld]) # DE = the front + the index
               asm.load(:b, :a)
@@ -521,17 +549,18 @@ module VBlank
               asm.load(:c, :a)
               asm.load(:a, :d)
               asm.sbc_a(:b)
-              asm.jump_relative(:c, "rt_byte_list_item_slot")
+              asm.jump_relative(:c, "#{name}_slot")
               asm.load(:d, :a)
               asm.load(:e, :c)
-              asm.label("rt_byte_list_item_slot")
-              asm.add_hl(:de)
+              asm.label("#{name}_slot")
+              width.times { asm.add_hl(:de) } # the slot's bytes along, from the list
               asm.load(:de, HEADER)
               asm.add_hl(:de)
-              asm.jump("rt_read_int8") # a slot reads back with its top bit as the sign
-              asm.label("rt_byte_list_item_past_16_bits")
+              # a slot reads back with its top bit as the sign
+              asm.jump(width == 1 ? "rt_read_int8" : "rt_read_int16")
+              asm.label("#{name}_past_16_bits")
               asm.inc(:hl)
-              asm.label("rt_byte_list_item_missing")
+              asm.label("#{name}_missing")
               list_at, index_at = get_places(memory)
               store_list_place(asm, list_at, LENGTH + 1)
               %i[e d c b].each_with_index do |reg, i|
