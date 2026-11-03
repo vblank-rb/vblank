@@ -305,7 +305,7 @@ while there is no cartridge yet — so a file that names the emulator can never 
 kind of line. `diagnostics/` READS one back: the reader over a running cartridge, the sound it
 recorded, a cartridge that is only its file. `playthroughs/` DRIVES one, through that reader:
 what to press, on which frames, and what two cartridges made of the same presses. What
-`vblank play` and `vblank compare` do with their options is there too (`CommandLine`), so
+`vblank run --tape`/`--script` and `vblank compare` do with their options is there too (`CommandLine`), so
 their tests sit with the rest of the module's and `rake test:playthroughs` is one folder.
 
 The directory and the module always match: a file in `audio/` defines its classes inside

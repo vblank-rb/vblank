@@ -93,7 +93,7 @@ A test belongs to the file a person opens first when it fails:
 - One guardrail's friendly error → `test/all/vblank/ir/guardrails/`.
 - A number about the build or the run (bytes, frames, dropped sounds) → the file that makes the
   number, usually a backend or `test/lowering/gba/vblank/diagnostics/`.
-- A command → the file that does its work. `vblank play` and `compare` are done by
+- A command → the file that does its work. `vblank run` with a tape or script, and `compare`, are done by
   `lib/vblank/playthroughs/command_line.rb`, so their tests are in `test/lowering/gba/vblank/playthroughs/`.
 
 The folder is chosen by which runs a test is about (above); inside it, the file by what it tests.
