@@ -52,6 +52,7 @@ module VBlank
             @bytes = (+"").b << ("\x00" * BIG_TILE_BYTES).b
             @vram.take_tile(BIG_TILE_BYTES)
             @stored = {} # the same picture, stored once — every place each one was put
+            @gaps = []   # stretches of the run no layer's map can name (see #stretches)
             @shared = 0
             @mirrored = 0
             @skipped = 0
@@ -67,6 +68,7 @@ module VBlank
             @bytes = from.bytes.dup
             @stored = from.stored.transform_values(&:dup)
             @painted_at = from.painted_at.dup
+            @gaps = from.gaps.dup
           end
 
           # The whole run, as it is uploaded; how many tiles turned out to be repeats; how many
@@ -77,9 +79,35 @@ module VBlank
           # The room this run is laid out in, which the maps are handed out of as well.
           attr_reader :vram
 
+          # THE PARTS OF THE RUN FROM +from+ ON THAT HOLD SOMETHING, as [offset, bytes] pairs, for
+          # a copy that sends only those.
+          #
+          # Two kinds of stretch in the run hold nothing any map can name, and are zeroes only
+          # because the run is one string of bytes: the gap left behind a layer that counts its
+          # tiles from the next 16K mark up (see #choose_base), and the room a background walking
+          # between areas keeps past the end of its first area's tiles for a bigger area (see
+          # #add_sets), which is the only area in place when the run goes up. Nothing reads what
+          # video memory holds there, so whatever the last scene left in it can stay.
+          #
+          # The console's copying engine moves one unbroken run per start, so each pair here is a
+          # copy of its own: a few instructions to set up, against the copying time of every byte
+          # left out. A run with no gap after +from+ is one pair, the same bytes it always was.
+          def stretches(from)
+            cuts = @gaps.map { |gap| [[gap.begin, from].max, [gap.end, @bytes.bytesize].min] }
+                        .select { |first, last| last > first }.sort
+            parts = []
+            at = from
+            cuts.each do |first, last|
+              parts << [at, @bytes.byteslice(at...first)] if first > at
+              at = [at, last].max
+            end
+            parts << [at, @bytes.byteslice(at..)] if @bytes.bytesize > at
+            parts
+          end
+
           protected
 
-          attr_reader :stored
+          attr_reader :stored, :gaps
 
           public
 
@@ -143,6 +171,10 @@ module VBlank
               [copy.add(name, drawn, unit: unit, most: most, mirrors: true, painted: painted[set]), copy]
             end
             room = laid.map { |_, copy| copy.vram.tile_bytes }.max
+            first = laid.first.last
+            # The first set is what goes up, so its gaps are this run's, and so is the room past
+            # its own tiles that a bigger set needs (see #stretches).
+            @gaps = first.gaps + [first.vram.tile_bytes...room]
             bytes = laid.map { |_, copy| copy.pad_to(room).bytes.byteslice(start..) }
             @vram.skip_to(room)
             @bytes << bytes.first
@@ -231,6 +263,7 @@ module VBlank
             return floor if ceiling > TileVram::TOTAL_BYTES - CHAR_BLOCK_BYTES
 
             @skipped += ceiling - @vram.tile_bytes
+            @gaps << (@vram.tile_bytes...ceiling)
             @vram.skip_to(ceiling)
             ceiling
           end

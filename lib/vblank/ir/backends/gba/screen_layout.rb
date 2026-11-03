@@ -143,8 +143,8 @@ module VBlank
           BAR_PRIORITY = 3
 
           # WHAT ONE SCENE SENDS AS IT TAKES OVER, in one place: its own tile pictures (a
-          # SceneTiles, or nil), the screen it has on (a SceneScreen, for a tiled scene), its
-          # own sprite pictures (blob, at, units for each), and the blobs of its sprite colour
+          # SceneTiles for each stretch, or nil), the screen it has on (a SceneScreen, for a
+          # tiled scene), its own sprite pictures (blob, at, units for each), and the blobs of its sprite colour
           # table and its background colour table (or nil). Each pass that decides one of these
           # fills in its part.
           #
@@ -663,8 +663,10 @@ module VBlank
           def record_scene_send(scene, **part) = @scene_sends[scene] = scene_send(scene).with(**part)
 
           # WHERE A SCENE'S OWN TILE PICTURES ARE SENT AS IT TAKES OVER: the blob holding them,
-          # how far into video memory they go, and how many halfwords that is. Only scenes
-          # with pictures of their own are here.
+          # how far into video memory they go, and how many halfwords that is. A scene sends a
+          # list of these, one for each stretch of its room that holds something, so the copy
+          # skips the gaps no map names (see BackgroundTiles#stretches). Only scenes with
+          # pictures of their own are here.
           SceneTiles = Data.define(:blob, :offset, :units)
 
           # WHERE A RUN OF PAINTED TILES SITS: how far into video memory it starts, how many
@@ -737,13 +739,13 @@ module VBlank
             @picture.scenery.filter_map(&:scene).uniq.each_with_index do |scene, index|
               store = everywhere.dup
               place_scenery(store, @picture.scenery.select { |node| node.scene == scene }, slots, banks, big, scene: scene)
-              own = store.bytes.byteslice(shared..)
-              unless own.empty?
-                blob = :"__bg_scene_tiles_#{index}"
+              sends = store.stretches(shared).each_with_index.map do |(offset, own), part|
+                blob = part.zero? ? :"__bg_scene_tiles_#{index}" : :"__bg_scene_tiles_#{index}_#{part}"
                 @blobs[blob] = own
                 keep_unpacked!(blob)
-                record_scene_send(scene, tiles: SceneTiles.new(blob: blob, offset: shared, units: own.bytesize / 2))
+                SceneTiles.new(blob: blob, offset: offset, units: own.bytesize / 2)
               end
+              record_scene_send(scene, tiles: sends) unless sends.empty?
               fullest = store if store.vram.free_bytes < fullest.vram.free_bytes
             end
             fullest

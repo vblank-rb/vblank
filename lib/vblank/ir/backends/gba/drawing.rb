@@ -599,8 +599,9 @@ module VBlank
                 # ScreenLayout#assign_tile_banks).
                 colors = @layout.screen.scene_send(name).bg_palette
                 @palette_tint.emit_send_scene_bg_colors(colors, @layout.screen.bg_shared.palette_units, name) if colors
-                tiles = @layout.screen.scene_send(name).tiles
-                @uploads.emit_dma_blob(tiles.blob, VRAM_START + tiles.offset, tiles.units) if tiles
+                (@layout.screen.scene_send(name).tiles || []).each do |stretch|
+                  @uploads.emit_dma_blob(stretch.blob, VRAM_START + stretch.offset, stretch.units)
+                end
                 arrival.scenery.each { |node| @background_drawing.emit_background_hardware(node) }
                 @background_drawing.emit_box_set_aside
                 arrival.painted_tiles.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
