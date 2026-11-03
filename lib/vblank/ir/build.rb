@@ -447,8 +447,9 @@ module VBlank
       # +on_chip+ is a hint of the +fast+ kind: on a target with a second, quicker processor in
       # the cartridge, this routine runs there while the first one waits. Everywhere else it means
       # nothing, and what the routine does is the same either way.
-      def func(name, *body, fast: nil, loads_first: nil, on_chip: nil)
-        Nodes.build(:func, children: body, name: name, fast: fast, loads_first: loads_first, on_chip: on_chip)
+      def func(name, *body, fast: nil, loads_first: nil, on_chip: nil, measure_holding: nil)
+        Nodes.build(:func, children: body, name: name, fast: fast, loads_first: loads_first, on_chip: on_chip,
+                           measure_holding: measure_holding)
       end
 
       # --- hardware timers ---

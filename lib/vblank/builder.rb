@@ -140,6 +140,7 @@ module VBlank
       @func_fast = {}          # name → where the author insisted the routine live (func fast:)
       @func_on_chip = {}       # name → true for a routine to run on a cartridge's chip (func on_chip:)
       @scene_loads_first = {}  # scene routine → true where its work waits a pass (scene loads_first:)
+      @scene_measure_holding = {} # scene routine → the frames of buttons it is measured holding (scene measure_holding:)
       @dump_requests = []      # function names to disassemble from the lowered ROM
       @songs = {}              # name → Music::SongContext or Score (for build-time validation)
       @song_lists = {}         # name → the songs a `songs` list holds, in order
@@ -658,7 +659,8 @@ module VBlank
           @screen_mode = default_screen_mode
           @building_routine = name
           push_container(Build.func(name, fast: @func_fast[name], loads_first: @scene_loads_first[name],
-                                          on_chip: @func_on_chip[name])) do
+                                          on_chip: @func_on_chip[name],
+                                          measure_holding: @scene_measure_holding[name])) do
             with_part_owners_of_routine(name) { run_block(&block) }
           end
           @scene_screens[name] = @screen_mode if @building_scene

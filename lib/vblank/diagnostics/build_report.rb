@@ -364,6 +364,7 @@ module VBlank
         end
         scene_set_lines(placement, printer)
         printer.puts("    #{chosen_from_line(placement)}")
+        measured_presses_lines(placement, program, printer)
         passed_over_lines(placement, program, printer, emitted)
       end
 
@@ -505,6 +506,17 @@ module VBlank
 
         "chosen from the shape of the program — nothing was measured. To choose from what this " \
           "game really spends its frames on, build it with `VBlank.game`, which measures."
+      end
+
+      # WHAT EACH SCENE WAS MEASURED DOING, for a scene that said (`measure_holding:`). The same
+      # cartridge measured standing still and measured in a fight are measurements of different
+      # code, so a reader is told which one chose the list, as `rom.profile` says what it held.
+      def measured_presses_lines(placement, program, printer)
+        return unless placement.chosen_from == :measurement && program
+
+        Profiler.scene_presses(program).each do |scene, presses|
+          printer.puts("    the #{scene.inspect} scene was measured #{presses.description}")
+        end
       end
 
       def routine_size(placement, name)

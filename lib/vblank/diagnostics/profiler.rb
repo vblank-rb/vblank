@@ -181,8 +181,12 @@ module VBlank
       #
       # +press+ are buttons that go down as the measured frames begin, where +keys+ are down from
       # power-on: a button a game reads on its edge, a trigger, never fires when held from the start.
+      #
+      # +presses+ is a {ScenePresses}, what a scene's `measure_holding:` presses: played round
+      # from the frame the game is put in its scene, on top of +keys+. Only a run held in a scene
+      # (+holding+ or +scene:+) plays it.
       def self.run(rom, frames: FRAMES, settle: SETTLE, keys: [], scene: nil, from: nil,
-                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true, press: [])
+                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true, press: [], presses: nil)
         routines = rom.built.routines
         loaded_sets = 0 # which scenes' own routines were in the quick memory; read as the run ends
         held = Array(keys)
@@ -202,7 +206,7 @@ module VBlank
               if from
                 profile_from_saved_state(probe, from, path, frames, pressed, losses)
               elsif holding
-                profile_holding_words(probe, holding, frames, settle, held, losses, starting, pressed)
+                profile_holding_words(probe, holding, frames, settle, held, losses, starting, pressed, presses)
               else
                 profile_from_boot(probe, frames, settle, held, losses, pressed)
               end
@@ -531,17 +535,55 @@ module VBlank
       # back at its capacity on the next frame. +starting+ are words written once, as the
       # measured frames begin, rather than held: a save set running (see SaveStarts), which goes
       # on by itself from there. +settle+ is how long the scene runs before those frames.
-      def self.profile_holding_words(probe, writes, frames, settle, held, losses = nil, starting = [], pressed = held)
+      #
+      # +presses+ (a {ScenePresses}, or nil) are pressed from the frame the scene is put up, a
+      # frame of them at a time and round again after the last. A tape longer than the settling
+      # and the measured frames together settles for longer, so the frames measured are always
+      # its last: a tape that walks into a fight and then fights is measured fighting.
+      def self.profile_holding_words(probe, writes, frames, settle, held, losses = nil, starting = [], pressed = held,
+                                     presses = nil)
         step_past_power_on(probe, held, at_least: BOOT_FRAMES)
         writes.each { |address, value| probe.write32(address, value) }
-        probe.step(settle, keys: held) if settle.positive?
+        if presses
+          settle = [settle, presses.length - frames].max
+          settle.times { |frame| probe.step(1, keys: held | presses.buttons_on(frame)) }
+        elsif settle.positive?
+          probe.step(settle, keys: held)
+        end
         clear_losses(probe, losses) # the scene starts here; what it lost before it does not count
         starting.each { |address, value| probe.write32(address, value) }
 
-        frames.times.map do
+        frames.times.map do |frame|
           writes.each { |address, value| probe.write32(address, value) }
-          probe.profile(frames: 1, keys: pressed)
+          probe.profile(frames: 1, keys: presses ? pressed | presses.buttons_on(settle + frame) : pressed)
         end.reduce { |a, b| add_profiles(a, b) }
+      end
+
+      # WHAT A SCENE IS PRESSED WHILE THE BUILD MEASURES IT, from the scene's `measure_holding:`.
+      # +frames+ is a list of the buttons down on each frame, played round: one frame for buttons
+      # held the whole time, a tape's frames for a tape.
+      ScenePresses = Data.define(:frames) do
+        def length = frames.size
+
+        # The buttons down on +frame+, counted from nought at the frame the scene is put up.
+        def buttons_on(frame) = frames[frame % frames.size]
+
+        # What a report says the scene was measured doing, as `profile` says what it held.
+        def description
+          return "holding #{frames.first.map(&:to_s).join(' + ').upcase}" if frames.uniq.one?
+
+          "playing a tape of #{frames.size} frames"
+        end
+      end
+
+      # Each scene's {ScenePresses}, by the scene's name, for the scenes of +program+ that say
+      # `measure_holding:`. A scene that says nothing is not in it, and is measured standing still.
+      def self.scene_presses(program)
+        program.walk.each_with_object({}) do |node, by_scene|
+          next unless node.kind == :func && node.measure_holding && node.name.to_s.start_with?("_scene_")
+
+          by_scene[node.name.to_s.delete_prefix("_scene_").to_sym] = ScenePresses.new(frames: node.measure_holding)
+        end
       end
 
       # Two runs' counts as one. Straight sums, since each is a count of the same things.
@@ -607,6 +649,9 @@ module VBlank
         dispatch = Analyzer.scenes(rom.built.source_program)
         address = dispatch && rom.built.var_addresses[dispatch[:selector]]
         scenes = address ? dispatch[:scenes].to_h { |name, value| [name, [[address, value]]] } : { nil => [] }
+        # What a scene says to press while it is measured (`measure_holding:`); one held in
+        # nobody's hands otherwise stands still, and what only a press runs measures at nothing.
+        presses = address ? scene_presses(rom.built.source_program) : {}
         saving = {}
         measured = scenes.each_with_index.to_h do |(name, writes), at|
           progress.report_count(at + 1, scenes.size, name ? "scene #{name.inspect}" : "the game")
@@ -614,13 +659,15 @@ module VBlank
           # ...and once more with a save running, for a scene that saves (see SaveStarts).
           starting = name ? SaveStarts.words(rom.built, name) : []
           unless starting.empty?
-            saving[name] = run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: holding, starting: starting)
+            saving[name] = run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: holding,
+                                    starting: starting, presses: presses[name])
           end
-          [name, run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: holding)]
+          [name, run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: holding,
+                          presses: presses[name])]
         end
         collections = FullCollections.of(rom.built)
         growths = scenes.filter_map do |name, writes|
-          growth_in(rom, name, writes, measured[name], collections, frames: frames, keys: keys)
+          growth_in(rom, name, writes, measured[name], collections, frames: frames, keys: keys, presses: presses[name])
         end
         Survey.new(work: sum_work_across_scenes(measured.merge(saving).values), scenes: measured, saving: saving,
                    growths: growths, late_hand_overs: HandOvers.late(rom, keys: keys))
@@ -676,10 +723,11 @@ module VBlank
       # WHAT THAT NAMES IS WHAT WAS USED MOST, NOT WHAT COST MOST. A long walk of cheap items
       # counts more than a short walk of dear ones, so the warning says "uses most" and leaves
       # `rom.profile` to say where the time went.
-      def self.growth_in(rom, scene, writes, now, collections, frames:, keys:)
+      def self.growth_in(rom, scene, writes, now, collections, frames:, keys:, presses: nil)
         return nil if collections.empty? || now.frames.zero? || now.dropping_frames?
 
-        full = run(rom, frames: frames, keys: keys, picture: false, split_hints: false, holding: writes + collections.flat_map(&:writes))
+        full = run(rom, frames: frames, keys: keys, picture: false, split_hints: false,
+                        holding: writes + collections.flat_map(&:writes), presses: presses)
         return nil unless full.dropping_frames?
 
         Growth.new(scene: scene, reading: full,

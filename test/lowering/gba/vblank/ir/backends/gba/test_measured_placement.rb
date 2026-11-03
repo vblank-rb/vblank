@@ -214,6 +214,86 @@ class TestMeasuredPlacement < Minitest::Test
     assert_includes placement.funcs, step, "the save's writing is kept, measured, with nothing insisted on"
   end
 
+  # --- what a scene is measured doing ---
+
+  # A ROUTINE THAT RUNS ONLY WHILE A BUTTON IS DOWN. The build measures each scene with nobody
+  # at the controls, so without a word from the game it measures :fighting at nothing.
+  private def game_that_fights_while_b_is_held(measuring)
+    VBlank.game("MHLD", consoles: %i[gba], maker: "01") do
+      screen :bitmap
+      clear_screen :black
+      var :state, 0
+      x = 0
+      scene(:title) { x += 1 }
+      scene(:playing, **measuring) { call :fighting if held(:b) }
+      func(:fighting) { repeat(3000) { x += 1 } }
+      game_loop do
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :playing
+        end
+      end
+    end
+  end
+
+  def test_a_routine_run_only_while_a_button_is_held_is_measured_at_nothing_without_measure_holding
+    placement = game_that_fights_while_b_is_held({}).build_rom(out: StringIO.new, err: StringIO.new).built.placement
+
+    assert_equal :measurement, placement.chosen_from
+    refute_includes placement.funcs, :fighting, "nobody holds B while the scene is measured"
+  end
+
+  def test_measure_holding_puts_the_routine_the_held_button_runs_in_quick_memory
+    placement = game_that_fights_while_b_is_held({ measure_holding: %i[b] })
+                .build_rom(out: StringIO.new, err: StringIO.new).built.placement
+
+    assert_includes placement.funcs, :fighting, "the scene was measured holding B"
+  end
+
+  def test_the_report_says_what_a_scene_was_measured_holding
+    rom = game_that_fights_while_b_is_held({ measure_holding: %i[b up] }).build_rom(out: StringIO.new, err: StringIO.new)
+    out = StringIO.new
+    VBlank::Diagnostics::BuildReport.render(rom, out: out)
+
+    assert_match(/:playing.*measured holding B \+ UP/, out.string)
+    refute_match(/:title.*measured holding/, out.string, "a scene that says nothing is measured standing still")
+  end
+
+  # A BUTTON READ AS IT GOES DOWN fires once however long it is held, so a scene where a
+  # pistol fires on each press is measured with a tape: here B down for a frame and up for one,
+  # over and over.
+  def test_a_tape_given_to_measure_holding_is_played_round_while_the_scene_is_measured
+    tape = VBlank::Playthroughs::Tape.parse(<<~TAPE)
+      vblank tape 1
+      recorded on: MTAP 0x00000000
+      starts from: power-on
+
+      1 b
+      1 -
+    TAPE
+    game = VBlank.game("MTAP", consoles: %i[gba], maker: "01") do
+      screen :bitmap
+      clear_screen :black
+      var :state, 0
+      x = 0
+      scene(:title) { x += 1 }
+      scene(:playing, measure_holding: tape) { call :fighting if pressed(:b) }
+      func(:fighting) { repeat(3000) { x += 1 } }
+      game_loop do
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :playing
+        end
+      end
+    end
+    rom = game.build_rom(out: StringIO.new, err: StringIO.new)
+    out = StringIO.new
+    VBlank::Diagnostics::BuildReport.render(rom, out: out)
+
+    assert_includes rom.built.placement.funcs, :fighting, "B went down thirty times in the measured frames"
+    assert_match(/:playing.*measured playing a tape of 2 frames/, out.string)
+  end
+
   # A routine measured at almost nothing is not worth the room: moving it costs a longer call
   # at every site, every frame, and gives back only a share of what little it runs.
   def test_a_routine_that_hardly_runs_is_not_worth_the_room

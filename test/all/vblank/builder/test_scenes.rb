@@ -134,6 +134,48 @@ class TestScenes < Minitest::Test
   end
 
   # ========================================================================
+  # scene measure_holding: what the build holds while it measures the scene
+  # ========================================================================
+
+  def test_measure_holding_a_button_the_advance_does_not_have_is_a_friendly_error
+    error = assert_raises(ArgumentError) { Builder.new.instance_eval { scene(:play, measure_holding: %i[b x]) {} } }
+
+    assert_match(/:x/, error.message)
+    assert_match(/buttons/, error.message)
+  end
+
+  def test_measure_holding_something_that_is_not_buttons_or_a_tape_is_a_friendly_error
+    error = assert_raises(ArgumentError) { Builder.new.instance_eval { scene(:play, measure_holding: 3) {} } }
+
+    assert_match(/tape/, error.message)
+  end
+
+  def test_measure_holding_a_tape_that_counts_passes_is_a_friendly_error
+    tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: PASS 0x00000000\nstarts from: power-on\n" \
+                                             "counts: passes\n\n2 b\n")
+    error = assert_raises(ArgumentError) { Builder.new.instance_eval { scene(:play, measure_holding: tape) {} } }
+
+    assert_match(/passes/, error.message)
+  end
+
+  # Nothing the game does changes: the word is about how the build measures it.
+  def test_a_scene_measured_holding_a_button_plays_as_it_did
+    builder = Builder.new
+    builder.instance_eval do
+      screen :bitmap
+      var :state, 0
+      n = 0
+      scene(:play, measure_holding: %i[b]) { n += 1 }
+      game_loop do
+        case_var(:state) { when_val 0, :play }
+      end
+    end
+    builder.finalize_program
+
+    assert_equal 3, game_player.run(builder.program, frames: 3)[:n]
+  end
+
+  # ========================================================================
   # func declared from inside another func's body
   # ========================================================================
 

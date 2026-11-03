@@ -108,8 +108,15 @@ module VBlank
       # same pass as its first pass of game, and the two can run past the end of the frame.
       # It is always exactly one pass, so a game counting passes from a hand-over can count it.
       #
+      # +measure_holding:+ says what a build that measures the game presses while it measures
+      # this scene, to choose what goes in the console's quick memory: buttons held down the whole
+      # time (`%i[up b]`), or a tape (`Playthroughs::Tape.read("fight.tape")`) whose presses are
+      # played round and round. Measured with nothing pressed, a scene stands still, and a
+      # routine only a press runs — a fight, a shot — measures at nothing and is left in the
+      # cartridge however much a real game runs it. Nothing the scene does changes.
+      #
       # @param name [Symbol] scene name
-      def scene(name, fast: nil, loads_first: false, &block)
+      def scene(name, fast: nil, loads_first: false, measure_holding: nil, &block)
         refuse_scene_in_layer!
         unless [true, false].include?(loads_first)
           raise ArgumentError, "`scene :#{name}` was given `loads_first: #{loads_first.inspect}`. " \
@@ -117,7 +124,42 @@ module VBlank
                                "`loads_first: true`, or remove it."
         end
         @scene_loads_first[:"_scene_#{name}"] = true if loads_first
+        @scene_measure_holding[:"_scene_#{name}"] = measured_frames(name, measure_holding) unless measure_holding.nil?
         declare_func(:"_scene_#{name}", fast: fast, &block)
+      end
+
+      # What +given+ to `measure_holding:` presses, as a list of frames, each the buttons down on
+      # it: buttons held are one frame that goes round, and a tape is its frames. A build only
+      # measures a game on the Game Boy Advance, so the buttons are the Advance's.
+      private def measured_frames(name, given)
+        return frames_of_tape(name, given) if given.is_a?(Playthroughs::Tape)
+
+        buttons = Array(given)
+        unless !buttons.empty? && buttons.all?(Symbol)
+          raise ArgumentError, "`scene :#{name}` was given `measure_holding: #{given.inspect}`. " \
+                               "`measure_holding:` must be a list of buttons, such as `%i[up b]`, or a tape. " \
+                               "To fix this, write the buttons to hold, or a tape from " \
+                               "`VBlank::Playthroughs::Tape.read`."
+        end
+        unknown = buttons - Console::ADVANCE.buttons
+        unless unknown.empty?
+          raise ArgumentError, "`scene :#{name}` was given `measure_holding:` with #{unknown.first.inspect}. " \
+                               "A build measures the game on the Game Boy Advance, and its buttons are " \
+                               "#{Console::ADVANCE.buttons.map(&:inspect).join(', ')}. To fix this, use those buttons."
+        end
+        [buttons.uniq]
+      end
+
+      private def frames_of_tape(name, tape)
+        if tape.in_passes
+          raise ArgumentError, "`scene :#{name}` was given `measure_holding:` with a tape that counts passes. " \
+                               "The build measures a scene frame by frame. To fix this, give a tape that counts frames."
+        end
+        if tape.frames.zero?
+          raise ArgumentError, "`scene :#{name}` was given `measure_holding:` with a tape of no frames. " \
+                               "To fix this, give a tape that presses something."
+        end
+        tape.presses_within(1..tape.frames).flat_map { |stretch| Array.new(stretch.frames.size, stretch.buttons) }
       end
 
       # Dispatch to a scene based on a variable's value.

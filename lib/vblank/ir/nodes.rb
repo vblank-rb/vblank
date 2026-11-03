@@ -753,12 +753,16 @@ module VBlank
         operands x: :int, y: :int, w: :int, h: :int, color: :color
       end
 
+      # A routine. +measure_holding+ is how a build that measures the game plays this routine's
+      # scene while it measures it: a list of frames, each the buttons down on it, played round
+      # and round. nil for a scene measured with nothing pressed, and for every routine that is
+      # not a scene. Nothing the routine does depends on it, so no lowering reads it.
       class Func
         include Node
         kind :func
         declaration!
         category :control
-        operands name: :name, fast: :flag, loads_first: :flag, on_chip: :flag
+        operands name: :name, fast: :flag, loads_first: :flag, on_chip: :flag, measure_holding: :list
       end
 
       # A part of the picture that everything inside this stays within. Whatever the children
