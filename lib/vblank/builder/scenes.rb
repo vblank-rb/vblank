@@ -25,8 +25,9 @@ module VBlank
       #
       # `on_chip: true` is for a Super Nintendo cartridge with a Super FX (`variants: { snes:
       # :superfx }`): the routine runs on that chip, several times quicker, while the console
-      # waits for it. It can do sums, `if`, loops and calls of other `on_chip` routines. Anything
-      # else in it, a list or a drawing for example, stops the build and says so. On every other
+      # waits for it. It can do sums, fractions, `if`, loops, tables, a list's items by index and
+      # calls of other `on_chip` routines. Anything else in it, a drawing or a scene change for
+      # example, stops the build and says so. On every other
       # cartridge, and on every other console, the word changes nothing.
       #
       # @param name [Symbol] function name

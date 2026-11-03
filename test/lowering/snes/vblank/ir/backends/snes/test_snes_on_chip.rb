@@ -149,17 +149,189 @@ class TestSNESOnChip < Minitest::Test
     assert_raises(LoweringError) { game.build_rom(console: :snes, variant: :superfx, profile: false, out: nil, err: nil) }
   end
 
-  def test_a_list_in_a_chip_routine_is_refused_by_name
+  MAP_W = 8
+  MAP = [
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 1, 1, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 1, 0, 1,
+    1, 0, 0, 1, 0, 1, 0, 1,
+    1, 0, 0, 1, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1, 1
+  ].freeze
+  TURN = 256
+  QUARTER = TURN / 4
+  SIN = (0...TURN).map { |a| Math.sin(a * 2 * Math::PI / TURN) }.freeze
+  COLUMNS = 24
+  STEPS = 16
+  STEP = 0.25
+
+  # A first-person view's work, as a ray cast does it: a ray for each column of the screen walks a
+  # map read from a table, a quarter of a cell at a time, with fractions; its distance is brought
+  # back from the fan by a cosine, turned into a wall's height by the perspective divide, held on
+  # the screen and written into a list. Ordinary code then reads the list, and draws the walls when
+  # +draw+ says so.
+  private def ray_cast(on_chip:, draw: false)
+    superfx_game("CHIP RAYS") do
+      screen :bitmap
+      sin = table :sin, SIN
+      world = table :world, MAP, width: :byte
+      heights = list :heights, capacity: COLUMNS, full_of: 0
+      view = var :view, 0
+      px = var :px, 3.5
+      py = var :py, 3.4
+      ang = var :_ang, 0
+      dx = var :_dx, 0.0
+      dy = var :_dy, 0.0
+      rx = var :_rx, 0.0
+      ry = var :_ry, 0.0
+      hit = var :_hit, 0
+      dist = var :_dist, 0.0
+      seen = var :_seen, 0.0
+      tall = var :_tall, 0
+      drawn = var :_drawn, 0
+
+      func :cast, on_chip: on_chip do
+        repeat(COLUMNS) do |col|
+          ang = view + (col * 2) - (COLUMNS - 1)
+          dx = sin[ang + QUARTER] * STEP
+          dy = sin[ang] * STEP
+          dx = -dx if ang > 300
+          rx = px
+          ry = py
+          hit = 0
+          dist = STEPS * STEP
+          repeat(STEPS, stop_when: hit == 1) do |step|
+            rx += dx
+            ry += dy
+            if world[(ry.to_i * MAP_W) + rx.to_i] == 1
+              hit = 1
+              dist = step * STEP
+            end
+          end
+          seen = dist * sin[(col * 2) + (QUARTER - (COLUMNS - 1))]
+          tall = (96 / (seen + 0.5)).to_i
+          heights[col] = tall.clamp(4, 120) - (tall.abs % 3)
+        end
+      end
+
+      game_loop do
+        view = (view + 5) % TURN
+        call :cast
+        drawn = 0
+        repeat(heights.length) do |col|
+          drawn += heights[col]
+          draw_rect_at col * 8, 0, 8, heights[col], :white if draw
+        end
+      end
+    end
+  end
+
+  def test_a_ray_cast_on_the_chip_plays_as_on_the_interpreter
+    run = game_player.run(superfx_program(ray_cast(on_chip: true)), frames: 60)
+
+    assert_operator run[:view], :>=, 25, "five passes or more were checked"
+    assert_operator run[:_drawn], :>, 0, "the list the chip wrote was read"
+  end
+
+  def test_walls_drawn_from_the_chip_s_list_look_as_on_the_interpreter
+    run = game_player.run(superfx_program(ray_cast(on_chip: true, draw: true)), frames: 30)
+
+    assert_operator run[:_drawn], :>, 0, "the walls were drawn from the list the chip wrote"
+  end
+
+  # Frames a pass of the ray cast takes, on the 65816 and on the chip, from the console's count.
+  private def frames_of_ray_cast(on_chip:)
+    run = SNES::HeadlessRun.new.run(superfx_program(ray_cast(on_chip: on_chip)), frames: 40)
+    (10...30).map { |pass| run.frames_took(pass) }.max
+  end
+
+  def test_a_ray_cast_takes_fewer_frames_on_the_chip
+    on_console = frames_of_ray_cast(on_chip: false)
+    on_the_chip = frames_of_ray_cast(on_chip: true)
+    warn "frames a pass of the ray cast: #{on_console} on the 65816, #{on_the_chip} on the chip" if ENV["VBLANK_CHIP_FRAMES"]
+
+    assert_operator on_the_chip, :<, on_console, "the chip took fewer frames"
+  end
+
+  # A list read on the chip at an index outside it stops the game, in the interpreter's words.
+  def test_a_list_read_out_of_range_on_the_chip_stops_the_game
+    game = superfx_game("CHIP FAULT") do
+      cells = list :cells, capacity: 4
+      cells.push 10
+      at = var :at, 0
+      got = var :got, 0
+      func(:look, on_chip: true) { got = cells[at] }
+      game_loop do
+        call :look
+        at += 1
+      end
+    end
+    error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 6) }
+
+    assert_match(/index 1 is out of range for list :cells/, error.message)
+  end
+
+  # Written on the chip at an index outside it, the same; and a list's length read there.
+  def test_a_list_written_out_of_range_on_the_chip_stops_the_game
+    game = superfx_game("CHIP FAULT") do
+      cells = list :cells, capacity: 4
+      cells.push 1
+      cells.push 2
+      at = var :at, -1
+      size = var :size, 0
+      func(:put, on_chip: true) do
+        cells[at + 1] = at * 3
+        size = cells.length
+      end
+      game_loop do
+        call :put
+        at += 1
+      end
+    end
+    error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 6) }
+
+    assert_match(/index 2 is out of range for list :cells/, error.message)
+  end
+
+  def test_a_list_taken_from_on_the_chip_is_refused_by_name
     error = refusal_of do
       cells = list :cells, capacity: 4
-      seen = var :seen, 0
-      func(:spin, on_chip: true) { seen = cells[0] }
+      func(:spin, on_chip: true) { cells.push 1 }
       game_loop { call :spin }
     end
 
     assert_match(/spin/, error.message)
     assert_match(/list/, error.message)
     assert_match(/move/i, error.message)
+  end
+
+  def test_a_list_too_big_for_the_chip_is_refused_in_plain_words
+    error = refusal_of do
+      cells = list :cells, capacity: 4000
+      seen = var :seen, 0
+      func(:spin, on_chip: true) { seen = cells[0] }
+      game_loop { call :spin }
+    end
+
+    assert_match(/cells/, error.message)
+    assert_match(/Super FX/, error.message)
+  end
+
+  # A `case_var` changes scene, and a scene sets up the screen as it starts, which only the
+  # console can do.
+  def test_a_change_of_scene_on_the_chip_is_refused_by_name
+    error = refusal_of do
+      mode = var :mode, 0
+      scene(:one) { mode = 1 }
+      func(:pick, on_chip: true) { case_var(:mode) { when_val 0, :one } }
+      game_loop { call :pick }
+    end
+
+    assert_match(/pick/, error.message)
+    assert_match(/case_var/, error.message)
+    assert_match(/scene/, error.message)
   end
 
   def test_a_drawing_in_a_chip_routine_is_refused_by_name
@@ -171,17 +343,6 @@ class TestSNESOnChip < Minitest::Test
 
     assert_match(/spin/, error.message)
     assert_match(/fill_rect|draw/, error.message)
-  end
-
-  def test_a_fraction_in_a_chip_routine_is_refused_by_name
-    error = refusal_of do
-      speed = var :speed, 1.5
-      other = var :other, 2.5
-      func(:spin, on_chip: true) { other = other * speed }
-      game_loop { call :spin }
-    end
-
-    assert_match(/fraction/, error.message)
   end
 
   def test_a_wait_in_a_chip_routine_is_refused_by_name

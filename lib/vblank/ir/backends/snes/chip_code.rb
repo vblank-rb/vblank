@@ -43,13 +43,30 @@ module VBlank
           RIGHT_HIGH = Sums::RIGHT_HIGH
 
           STATEMENTS = Ractor.make_shareable({ set: :emit_set, add: :emit_add, sub: :emit_sub, copy: :emit_copy, if: :emit_if,
-                                               repeat: :emit_repeat, call: :emit_call })
-          VALUES = Ractor.make_shareable({ int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop })
+                                               repeat: :emit_repeat, call: :emit_call, negate: :emit_negate,
+                                               abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
+                                               list_set: :emit_list_set })
+          VALUES = Ractor.make_shareable({ int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
+                                           neg: :value_of_neg, absolute: :value_of_absolute, clamped: :value_of_clamped,
+                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
+                                           shift_right: :value_of_shift_right, table_get: :value_of_table_get,
+                                           list_get: :value_of_list_get, list_len: :value_of_list_len })
 
           # The sums called rather than written in place. A routine that makes any of them, and so
           # uses LINK, keeps its own return address safe first.
           CALLED_SUMS = Ractor.make_shareable({ :* => Sums::MULTIPLY, :/ => Sums::DIVIDE, :% => Sums::REMAINDER,
                                                 :<< => Sums::SHIFT_LEFT, :>> => Sums::SHIFT_RIGHT })
+          # The kinds that call a routine, or can: a call, a sum with fractions, and a shift a step at
+          # a time past what is written in place.
+          CALLING_KINDS = %i[call mul_fix div_fix shift_right].freeze
+
+          # A table the chip reads: the label of its entries, how many it has, and how each is kept
+          # (bytes, and whether it has a sign).
+          TableRead = Data.define(:label, :count, :bytes, :signed)
+          # A list the chip reads and writes: its 16-bit place in the chip's RAM (its header, then its
+          # slots, as Runtime::Lists lays them out), and how many bytes a slot takes.
+          ListPlace = Data.define(:at, :width)
+          Lists = Runtime::Lists
           IN_PLACE_SUMS = Ractor.make_shareable({ :+ => %i[add adc], :- => %i[sub sbc], :& => %i[and_ and_], :| => %i[or_ or_],
                                                   :^ => %i[xor xor] })
           COMPARISONS = %i[< <= > >= == !=].freeze
@@ -57,7 +74,7 @@ module VBlank
           FAILS = Ractor.make_shareable({ :== => :bne, :!= => :beq, :< => :bge, :> => :bge, :>= => :blt, :<= => :blt })
           OPPOSITE = Ractor.make_shareable({ bne: :beq, beq: :bne, bge: :blt, blt: :bge, bpl: :bmi, bmi: :bpl, bcc: :bcs,
                                              bcs: :bcc })
-          WRITTEN_AS_STATEMENTS = %i[set add sub].freeze
+          WRITTEN_AS_STATEMENTS = %i[set add sub negate abs negate_abs clamp].freeze
 
           # The 16-bit addresses the chip uses for the block of numbers in its RAM.
           FIRST_NUMBER = Runtime::ChipPaint::NUMBERS - Runtime::ChipPaint::COPY
@@ -71,17 +88,34 @@ module VBlank
 
           # +routines+ is the names of every routine to make, and +funcs+ the IR of each. +plan+
           # folds what is written in the program (LoweringPlan), and +holds+ says what the section
-          # is to the author, for a cartridge too full for it.
-          def initialize(routines:, funcs:, plan:, holds:)
+          # is to the author, for a cartridge too full for it. +tables+ is a TableRead for each table
+          # by name, +lists+ a ListPlace for each list the chip reaches, and +numbers_end+ where the
+          # block of numbers stops, the lists being past it.
+          def initialize(routines:, funcs:, plan:, holds:, tables: {}, lists: {}, numbers_end: NUMBERS_END)
             @routines = routines
             @funcs = funcs
             @plan = plan
             @holds = holds
+            @tables = tables
+            @lists = lists
+            @numbers_end = numbers_end
             @places = {} # a name, or [what, a statement's identity], -> its word in the chip's RAM
             @next_place = FIRST_NUMBER
             @far_branches = {} # a branch's number, for each that a short branch cannot reach
             @routines.each { |name| named_in(routines_from(name)).each { |variable| place_of(variable) } }
+            return unless @routines.any? { |name| faults?(name) }
+
+            place_of(:fault_list, bytes: 2)
+            place_of(:fault_index)
           end
+
+          # Whether a run of +name+ can stop the game: a list read or written at an index outside it.
+          def faults?(name) = statements_of(routines_from(name)).any? { |node| %i[list_get list_set].include?(node.kind) }
+
+          # Where the chip leaves, on such a fault, the list's place (nought when there was none) and
+          # the index, for the console to stop the game with (Lowering::Chip#emit_chip_run).
+          def fault_list_place = place_of(:fault_list)
+          def fault_index_place = place_of(:fault_index)
 
           # Where a run of +name+ starts.
           def self.entry_label(name) = "chip start #{name}"
@@ -142,7 +176,7 @@ module VBlank
 
           def uses_link?(name)
             Reach.statements_under(@funcs.fetch(name)).any? do |node|
-              node.kind == :call || (node.kind == :binop && CALLED_SUMS.key?(node.op))
+              CALLING_KINDS.include?(node.kind) || (node.kind == :binop && CALLED_SUMS.key?(node.op))
             end
           end
 
@@ -151,10 +185,11 @@ module VBlank
           # The word of the chip's RAM for +key+, 4 bytes unless it says.
           def place_of(key, bytes: 4)
             @places.fetch(key) do
-              if @next_place + bytes > NUMBERS_END
+              if @next_place + bytes > @numbers_end
                 raise LoweringError, "The routines marked on_chip: true use more numbers than the Super FX chip can " \
-                                     "hold. The chip holds #{(NUMBERS_END - FIRST_NUMBER) / 4} numbers. To fix this, " \
-                                     "use fewer variables in those routines, or fewer sums inside sums."
+                                     "hold beside their lists. The chip holds #{(@numbers_end - FIRST_NUMBER) / 4} " \
+                                     "numbers. To fix this, use fewer variables in those routines, fewer sums inside " \
+                                     "sums, or smaller lists."
               end
               @places[key] = @next_place
               @next_place += bytes
@@ -178,7 +213,7 @@ module VBlank
             @depth = 0
             @routines.each { |name| emit_entry(name) }
             @routines.each { |name| emit_routine(name) }
-            Sums.emit(@gsu, @sums_called, back: place_of(:sum_back, bytes: 2))
+            Sums.emit(@gsu, @sums_called, back: place_of(:sum_back, bytes: 2), kept: place_of(:sum_kept, bytes: 2))
             @gsu.section
           end
 
@@ -194,10 +229,24 @@ module VBlank
             back = place_of([:back, name], bytes: 2)
             @gsu.label(self.class.routine_label(name))
             @gsu.sm(back, 11) if keeps_link
+            @outside_lists = []
             @funcs.fetch(name).children.each { |child| statement(child) }
             @gsu.lm(11, back) if keeps_link
             @gsu.jmp(11)
             @gsu.nop
+            @outside_lists.each { |label, list, low, high| emit_list_fault(label, list, low, high) }
+          end
+
+          # AN INDEX OUTSIDE A LIST STOPS THE GAME, and the chip cannot stop it: the console does,
+          # in Runtime::Lists's words. So the chip leaves the list's place and the index where the
+          # console looks after every run, and stops where it stands, however deep in its calls.
+          def emit_list_fault(label, list, low, high)
+            @gsu.label(label)
+            @gsu.sm(fault_index_place, low)
+            @gsu.sm(fault_index_place + 2, high)
+            @gsu.iwt(0, list.at)
+            @gsu.sm(fault_list_place, 0)
+            @gsu.stop
           end
 
           def fresh(what)
@@ -329,6 +378,254 @@ module VBlank
           end
 
           def emit_call(node) = emit_call_of(self.class.routine_label(node.target))
+
+          # A variable changed in place: turned round, made its size, made its size below nought
+          # (Reference#exec_negate_abs: turned only when it is above nought), or held between two.
+          def emit_negate(node) = value(Build.neg(Build.var_ref(node.var))).then { store(node.var) }
+          def emit_abs(node) = value(Build.absolute(Build.var_ref(node.var))).then { store(node.var) }
+
+          def emit_negate_abs(node)
+            below = fresh("below_nought")
+            load_variable(node.var, LOW, HIGH)
+            @gsu.moves(0, HIGH)
+            emit_branch(:bmi, below)
+            Sums.emit_negate(@gsu, LOW, HIGH)
+            @gsu.label(below)
+            store(node.var)
+          end
+
+          def emit_clamp(node)
+            value(Build.clamped(Build.var_ref(node.var), node.min, node.max))
+            store(node.var)
+          end
+
+          # --- lists ---
+          #
+          # A list the chip reaches lives in the chip's own RAM for good (Lowering::Chip), so the
+          # console's code reads and writes it there too, by its long address, and nothing is copied
+          # for a run. The chip reads it the way Runtime::Lists lays it out: the header's length,
+          # then the slot an index names. Nothing on the chip takes from the front of such a list
+          # (that is refused), so an item's slot is its index.
+
+          # Reference#exec_list_set: the index worked out, then the value, then the test.
+          def emit_list_set(node)
+            list = @lists.fetch(node.name)
+            if plain?(node.index)
+              value(node.value)
+              load_plain(node.index, RIGHT_LOW, RIGHT_HIGH)
+            else
+              value(node.index)
+              kept = kept_place(@depth)
+              @gsu.sm(kept, LOW)
+              @gsu.sm(kept + 2, HIGH)
+              @depth += 1
+              value(node.value)
+              @depth -= 1
+              load_place(kept, RIGHT_LOW, RIGHT_HIGH)
+            end
+            emit_slot_place(node.name, list, RIGHT_LOW, RIGHT_HIGH)
+            @gsu.from(LOW)
+            return @gsu.stb(SLOT) if list.width == 1
+
+            @gsu.stw(SLOT)
+            return unless list.width == 4
+
+            @gsu.inc(SLOT)
+            @gsu.inc(SLOT)
+            @gsu.from(HIGH)
+            @gsu.stw(SLOT)
+          end
+
+          # The register a slot's place in the chip's RAM is worked out in.
+          SLOT = 4
+
+          def value_of_list_get(node)
+            list = @lists.fetch(node.name)
+            value(node.index)
+            emit_slot_place(node.name, list, LOW, HIGH)
+            @gsu.to(LOW)
+            return @gsu.ldb(SLOT).then { emit_widened(1) } if list.width == 1
+            return @gsu.ldw(SLOT).then { emit_widened(2) } if list.width == 2
+
+            @gsu.ldw(SLOT)
+            @gsu.inc(SLOT)
+            @gsu.inc(SLOT)
+            @gsu.to(HIGH)
+            @gsu.ldw(SLOT)
+          end
+
+          def value_of_list_len(node)
+            @gsu.lm(LOW, @lists.fetch(node.name).at + Lists::LENGTH)
+            @gsu.ibt(HIGH, 0)
+          end
+
+          # SLOT at the slot of +list+ the index in +low+ and +high+ names. An index below nought or
+          # not below the list's length goes to the fault, which never comes back.
+          def emit_slot_place(name, list, low, high)
+            outside = fresh("outside #{name}")
+            @outside_lists << [outside, list, low, high]
+            @gsu.moves(0, high)
+            emit_branch(:bne, outside)
+            @gsu.lm(SLOT, list.at + Lists::LENGTH)
+            @gsu.from(low)
+            @gsu.cmp(SLOT)
+            emit_branch(:bcs, outside)
+            @gsu.move(SLOT, low)
+            (list.width.bit_length - 1).times do
+              @gsu.with(SLOT)
+              @gsu.add(SLOT)
+            end
+            @gsu.iwt(0, list.at + Lists::HEADER)
+            @gsu.with(SLOT)
+            @gsu.add(0)
+          end
+
+          # LOW holding a slot or an entry of +bytes+ bytes, which reads back with its top bit as the
+          # sign (Reference::ListValue#wrap_to_width), made a whole number in LOW and HIGH.
+          def emit_widened(bytes)
+            if bytes == 1
+              @gsu.with(LOW)
+              @gsu.sex
+            else
+              @gsu.moves(LOW, LOW)
+            end
+            emit_high_of_sign
+          end
+
+          # HIGH nought, or every bit set when the flags say LOW is below nought. IBT sets no flags.
+          def emit_high_of_sign
+            above = fresh("sign_above")
+            @gsu.ibt(HIGH, 0)
+            emit_branch(:bpl, above)
+            @gsu.dec(HIGH)
+            @gsu.label(above)
+          end
+
+          # --- tables ---
+
+          # Reference#value_of_table_get: an index out of range made safe — a power-of-two length
+          # wraps it, any other holds it to the ends — and the entry read from the cartridge.
+          #
+          # THE CHIP READS THE CARTRIDGE ITSELF, through a buffer: ROMB says the bank, and writing
+          # R14 starts the read of the byte at that address, which GETB then takes (waiting for it if
+          # it has not come yet). Each GETB gets one byte, and an INC of R14 starts the next. A
+          # table is in one bank, as every section is, so its bank is a number the linker knows.
+          def value_of_table_get(node)
+            table = @tables.fetch(node.name)
+            safe = if table.count.positive? && table.count.nobits?(table.count - 1)
+                     Build.binop(:&, node.index, Build.int(table.count - 1))
+                   else
+                     Build.clamped(node.index, Build.int(0), Build.int(table.count - 1))
+                   end
+            value(safe)
+            (table.bytes.bit_length - 1).times do
+              @gsu.with(LOW)
+              @gsu.add(LOW)
+            end
+            @gsu.ibt_bank_of(0, table.label)
+            @gsu.romb
+            @gsu.iwt(0, table.label)
+            @gsu.from(0)
+            @gsu.to(14)
+            @gsu.add(LOW)
+            emit_entry_read(table)
+          end
+
+          def emit_entry_read(table)
+            if table.bytes == 1
+              @gsu.to(LOW)
+              return table.signed ? @gsu.getbs.then { emit_widened(2) } : @gsu.getb.then { @gsu.ibt(HIGH, 0) }
+            end
+
+            emit_word_read(LOW)
+            return (table.signed ? emit_widened(2) : @gsu.ibt(HIGH, 0)) if table.bytes == 2
+
+            @gsu.inc(14)
+            emit_word_read(HIGH)
+          end
+
+          # Two bytes from where R14 is, into +register+, R14 left at the second.
+          def emit_word_read(register)
+            @gsu.to(register)
+            @gsu.getb
+            @gsu.inc(14)
+            @gsu.with(register)
+            @gsu.getbh
+          end
+
+          # --- one-sided sums ---
+
+          def value_of_neg(node)
+            value(node.operand)
+            Sums.emit_negate(@gsu, LOW, HIGH)
+          end
+
+          def value_of_absolute(node)
+            value(node.operand)
+            Sums.emit_size_of(@gsu, LOW, HIGH, fresh("size"))
+          end
+
+          # Reference#clamp_value: held at the floor first and the ceiling second, so a floor above
+          # the ceiling gives the ceiling. Bounds that need nothing worked out are read straight
+          # into the right-hand registers; others are worked out with the number kept aside.
+          def value_of_clamped(node)
+            value(node.operand)
+            return emit_held_by_plain(node.min, node.max) if plain?(node.min) && plain?(node.max)
+
+            kept = kept_place(@depth)
+            @depth += 1
+            [[node.min, :raise], [node.max, :lower]].each do |bound, way|
+              @gsu.sm(kept, LOW)
+              @gsu.sm(kept + 2, HIGH)
+              value(bound)
+              @gsu.move(RIGHT_LOW, LOW)
+              @gsu.move(RIGHT_HIGH, HIGH)
+              load_place(kept, LOW, HIGH)
+              emit_held_at_right(way)
+            end
+            @depth -= 1
+          end
+
+          def emit_held_by_plain(min, max)
+            load_plain(min, RIGHT_LOW, RIGHT_HIGH)
+            emit_held_at_right(:raise)
+            load_plain(max, RIGHT_LOW, RIGHT_HIGH)
+            emit_held_at_right(:lower)
+          end
+
+          # LOW and HIGH made the right-hand number when they are below it (:raise) or above it
+          # (:lower).
+          def emit_held_at_right(way)
+            keep = fresh("held")
+            way == :raise ? emit_flags_of_less(LOW, HIGH, RIGHT_LOW, RIGHT_HIGH) : emit_flags_of_less(RIGHT_LOW, RIGHT_HIGH, LOW, HIGH)
+            emit_branch(:bge, keep)
+            @gsu.move(LOW, RIGHT_LOW)
+            @gsu.move(HIGH, RIGHT_HIGH)
+            @gsu.label(keep)
+          end
+
+          # --- fractions ---
+          #
+          # A number with a fraction is a whole number to the chip, multiplied up; what is its own is
+          # the product and the quotient of two of them, which are worked out wider than 32 bits
+          # (Runtime::ChipSums), and bringing one down, which is a shift.
+
+          def value_of_mul_fix(node)
+            with_both_sides(node.lhs, node.rhs)
+            @gsu.ibt(12, node.fraction_bits)
+            emit_called_sum(Sums::MULTIPLY_FRACTIONS)
+          end
+
+          def value_of_div_fix(node)
+            with_both_sides(node.lhs, node.rhs)
+            @gsu.ibt(12, Sums::NUMBER_BITS + node.fraction_bits)
+            emit_called_sum(Sums::DIVIDE_FRACTIONS)
+          end
+
+          def value_of_shift_right(node)
+            value(node.operand)
+            emit_shift_by(:>>, node.bits)
+          end
 
           # --- tests ---
 

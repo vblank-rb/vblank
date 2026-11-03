@@ -121,7 +121,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `if_le` — works: the same as on the Advance.
 - `if_gte` — works: the same as on the Advance.
 - `if_lte` — works: the same as on the Advance.
-- `func` — works: `fast:` means nothing on a Super Nintendo, which runs all of its code alike. `on_chip: true` runs the routine on a Super FX cartridge's chip (sums, `if`, loops and calls of other `on_chip` routines; any other step is refused).
+- `func` — works: `fast:` means nothing on a Super Nintendo, which runs all of its code alike. `on_chip: true` runs the routine on a Super FX cartridge's chip (sums, fractions, `if`, loops, tables, a list's items by index and calls of other `on_chip` routines; any other step is refused).
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
 - `case_var` — works: the same as on the Advance.
@@ -163,4 +163,4 @@ and a test fails when the two differ. The Advance's answers are in
 An answer above is what the Super Nintendo does with a verb. The build for it is still growing,
 and a game that reaches one of these steps is refused, naming the step, until it is made:
 
-- the picture: `draw_column_at`, `show_picture_group`, `data_byte`
+- the picture: `show_picture_group`, `data_byte`

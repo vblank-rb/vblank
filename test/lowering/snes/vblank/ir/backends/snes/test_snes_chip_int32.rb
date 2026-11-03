@@ -136,6 +136,67 @@ class TestSNESChipInt32 < Minitest::Test
     assert_sums_agree(routines, pairs.map { |a, b| ["deep", a, b, deep.call(a, b)] })
   end
 
+  # A product and a quotient of numbers with a fraction, for every fraction an IR program can
+  # carry: the product is 64 bits before it is brought down, and the quotient's numerator is, so
+  # these are where the chip's 16-bit registers have the most to carry.
+  def test_a_fraction_sum_matches_int32
+    routines = {}
+    cases = %w[mul_fix div_fix].product(Int32Cases::FRACTION_BITS).flat_map do |name, bits|
+      routine = "#{name} #{bits}"
+      routines[routine] = ->(i) { Build.set(:"answer#{i}", Build.public_send(name, left(i), right(i), bits)) }
+      pairs.map { |a, b| [routine, a, b, Int32Cases.expected(name, a, b, bits)] }
+    end
+    assert_sums_agree(routines, cases)
+  end
+
+  def test_a_fraction_brought_down_matches_int32
+    counts = [0, 1, 8, 15, 16, 17, 31]
+    routines = counts.to_h { |bits| ["shift_right #{bits}", ->(i) { Build.set(:"answer#{i}", Build.shift_right(left(i), bits)) }] }
+    cases = counts.flat_map do |bits|
+      Int32Cases::VALUES.map { |a| ["shift_right #{bits}", a, 0, Int32.shift_right(a, bits)] }
+    end
+    assert_sums_agree(routines, cases)
+  end
+
+  # A number turned round, its size, and the three statements that change a variable in place.
+  ONE_SIDED = {
+    "neg" => [->(i) { Build.set(:"answer#{i}", Build.neg(Build.var_ref(:"left#{i}"))) }, ->(a) { Int32.neg(a) }],
+    "absolute" => [->(i) { Build.set(:"answer#{i}", Build.absolute(Build.var_ref(:"left#{i}"))) },
+                   ->(a) { a.negative? ? Int32.neg(a) : a }],
+    "negate" => [->(i) { [Build.set(:"answer#{i}", Build.var_ref(:"left#{i}")), Build.negate(:"answer#{i}")] },
+                 ->(a) { Int32.neg(a) }],
+    "abs" => [->(i) { [Build.set(:"answer#{i}", Build.var_ref(:"left#{i}")), Build.abs(:"answer#{i}")] },
+              ->(a) { a.negative? ? Int32.neg(a) : a }],
+    "negate_abs" => [->(i) { [Build.set(:"answer#{i}", Build.var_ref(:"left#{i}")), Build.negate_abs(:"answer#{i}")] },
+                     ->(a) { a.positive? ? Int32.neg(a) : a }]
+  }.freeze
+
+  def test_a_number_turned_round_matches_int32
+    routines = ONE_SIDED.transform_values(&:first)
+    cases = ONE_SIDED.flat_map { |name, (_, answer)| Int32Cases::VALUES.map { |a| [name, a, 0, answer.call(a)] } }
+    assert_sums_agree(routines, cases)
+  end
+
+  # A number held between a floor worked out as the game runs and a ceiling: written, or worked
+  # out too. A floor above the ceiling gives the ceiling, as the interpreter has it.
+  def test_a_number_held_between_two_matches_int32
+    ceilings = [-1, 0, 7, Int32::MAX]
+    routines = {}
+    cases = ceilings.flat_map do |ceiling|
+      routines["clamped #{ceiling}"] = ->(i) { Build.set(:"answer#{i}", Build.clamped(left(i), right(i), Build.int(ceiling))) }
+      routines["clamp #{ceiling}"] = lambda do |i|
+        [Build.set(:"answer#{i}", left(i)), Build.clamp(:"answer#{i}", right(i), Build.int(ceiling))]
+      end
+      floors = Int32Cases::VALUES.product(Int32Cases::EDGES.first(8))
+      %w[clamped clamp].flat_map { |form| floors.map { |a, b| ["#{form} #{ceiling}", a, b, [[a, b].max, ceiling].min] } }
+    end
+    routines["clamped worked out"] = lambda do |i|
+      Build.set(:"answer#{i}", Build.clamped(left(i), right(i), Build.binop(:+, right(i), Build.int(5))))
+    end
+    cases += pairs.map { |a, b| ["clamped worked out", a, b, [[a, b].max, Int32.add(b, 5)].min] }
+    assert_sums_agree(routines, cases)
+  end
+
   # +sums+ ([a, b]) worked out by the routine numbered +number+.
   private def answers(core, places, number, sums)
     sums.each_with_index do |(a, b), i|
@@ -171,7 +232,7 @@ class TestSNESChipInt32 < Minitest::Test
   # A game that does nothing until the test says which routine to run.
   private def program_of(routines)
     funcs = routines.map do |name, step|
-      Build.func(name.to_sym, *Array.new(BATCH) { |i| step.call(i) }, on_chip: true)
+      Build.func(name.to_sym, *Array.new(BATCH) { |i| step.call(i) }.flatten, on_chip: true)
     end
     run = Build.if_(Build.var_ref(:go),
                     Build.call_one_of(routines.keys.map(&:to_sym), which: Build.binop(:-, Build.var_ref(:go), Build.int(1))),

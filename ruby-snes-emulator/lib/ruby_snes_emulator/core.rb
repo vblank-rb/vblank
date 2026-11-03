@@ -182,6 +182,10 @@ module RubySNESEmulator
     def wram_write8(address, value) = (live(SYSTEM_RAM, 0x20000)[address & 0x1FFFF, 1] = [value & 0xFF].pack("C"))
     def wram_write32(address, value) = (live(SYSTEM_RAM, 0x20000)[address & 0x1FFFF, 4] = [value & 0xFFFFFFFF].pack("V"))
 
+    # +count+ bytes of the cartridge's RAM from +address+, read in place. On a board with a chip
+    # (a Super FX) that RAM is the chip's.
+    def save_ram_bytes(address, count) = live(SAVE_RAM, @call[:retro_get_memory_size].call(SAVE_RAM))[address, count]
+
     # The cartridge's battery-backed RAM, written over (for a save that starts with something in it).
     def save_ram=(bytes)
       size = @call[:retro_get_memory_size].call(SAVE_RAM)

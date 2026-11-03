@@ -158,6 +158,14 @@ module VBlank
             emit(0xA0 | checked_register(register), value & 0xFF)
           end
 
+          # +register+ = the bank a label is placed in, as the console sees it ($80 and up). The
+          # chip's ROMB takes only its low seven bits, which are the bank as the chip sees it.
+          def ibt_bank_of(register, label)
+            emit(0xA0 | checked_register(register))
+            fixup(:bank, label)
+            emit(0)
+          end
+
           # +register+ = 16 bits: a number, or the low 16 bits of a label's address.
           def iwt(register, value)
             emit(0xF0 | checked_register(register))

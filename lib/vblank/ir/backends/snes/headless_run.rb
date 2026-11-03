@@ -444,10 +444,14 @@ module VBlank
           # banks $7E and $7F is counted from $7E:0000.
           def wram_offset(address) = address >= 0x7E0000 ? address - 0x7E0000 : address
 
-          # The Super Nintendo's work RAM, read and written by offset.
-          def byte(address) = @core.wram_read8(wram_offset(address))
-          def half(address) = @core.wram_read16(wram_offset(address))
-          def read32(address) = @core.wram_read32(wram_offset(address))
+          # The Super Nintendo's work RAM, read and written by offset. A list the Super FX reaches
+          # lives in the chip's own RAM, bank $70 (Lowering::Chip), and is read from there.
+          def byte(address) = chip_ram?(address) ? chip_ram(address, 1).getbyte(0) : @core.wram_read8(wram_offset(address))
+          def half(address) = chip_ram?(address) ? chip_ram(address, 2).unpack1("v") : @core.wram_read16(wram_offset(address))
+          def read32(address) = chip_ram?(address) ? chip_ram(address, 4).unpack1("V") : @core.wram_read32(wram_offset(address))
+
+          def chip_ram?(address) = (address >> 16) == Console::SNESHardware::GSU_RAM_BANK
+          def chip_ram(address, count) = @core.save_ram_bytes(address & 0xFFFF, count)
           def write32(address, value) = @core.wram_write32(wram_offset(address), value)
 
           def state = half(runtime_place(Runtime::Frame::STATE))

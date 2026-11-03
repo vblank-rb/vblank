@@ -180,9 +180,11 @@ module VBlank
             # ...and the ones a game loop keeps of its own in the console's order (IR::Frames::ConsoleLoop).
             loops = @plan.game_loops.flat_map { |node| console_loop(node).variables }
             place_variables(Reach.variables(@program) | loops)
+            place_chip_lists
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
-              place = @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
+              place = chip_list_place(node.name) ||
+                      @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
             end
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?

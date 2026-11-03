@@ -11,6 +11,12 @@ module VBlank
           # variables the chip needs into the chip's RAM, runs the chip until it stops, and copies
           # back the ones it can have changed. The console waits in between (Runtime::Chip).
           #
+          # A LIST THE CHIP REACHES LIVES IN THE CHIP'S RAM, at the top of the block of numbers, for
+          # the whole game. The chip cannot see the console's work RAM, and the console can see the
+          # chip's RAM whenever the chip is stopped, by a long address like any other list's. So the
+          # console's own code and Runtime::Lists reach such a list unchanged, and a run copies
+          # nothing of it either way. The chip reaches a table where it is, in the cartridge.
+          #
           # On any other cartridge there is no chip, the word means nothing, and the routine is made
           # as usual. A step the chip cannot do is refused here, in plain words, rather than run on the
           # console instead: the author asked for this routine to be quick, and would find it slow
@@ -19,7 +25,7 @@ module VBlank
             # The kinds of IR a routine on the chip can hold besides what ChipCode makes, which say
             # nothing while the game runs.
             MADE = Ractor.make_shareable((ChipCode::STATEMENTS.keys + ChipCode::VALUES.keys + [:else]).to_h { |kind| [kind, true] })
-            FRACTION_STEPS = %i[mul_fix div_fix shift_right].freeze
+            LIST_STEPS = %i[list_get list_set list_len].freeze
             # Where each 16-bit half of a variable is, for copying.
             HALVES = [0, 2].freeze
 
@@ -37,11 +43,12 @@ module VBlank
             def refuse_what_chip_cannot_run!
               @chip_routines.each do |name|
                 Reach.statements_under(@funcs.fetch(name)).each do |node|
-                  next if MADE[node.kind] && node.kind != :call
                   next if Nodes.of_role(:declaration).include?(node.kind)
 
                   refuse_chip_call!(name, node.target) if node.kind == :call && !on_chip?(node.target)
-                  refuse_chip_step!(name, node) unless node.kind == :call
+                  refuse_chip_step!(name, node) unless MADE[node.kind]
+                  refuse_list_taken_from_front!(name, node) if LIST_STEPS.include?(node.kind)
+                  refuse_table_in_parts!(name, node) if node.kind == :table_get
                 end
               end
             end
@@ -59,17 +66,74 @@ module VBlank
                                    "#{name.inspect}. Do the step before or after the call."
             end
 
+            # The chip finds an item's slot by its index alone, which is right only while nothing
+            # moves where the list's first item is.
+            def refuse_list_taken_from_front!(name, node)
+              return unless front_dropped_lists.include?(node.name)
+
+              raise LoweringError, "The routine #{name.inspect} runs on the Super FX chip, and it uses the list " \
+                                   "#{node.name.inspect}. The game takes items from the front of that list, and the " \
+                                   "chip cannot use a list that changes that way. To fix this, take items from the " \
+                                   "back of #{node.name.inspect}, or move its use out of #{name.inspect}."
+            end
+
+            def refuse_table_in_parts!(name, node)
+              table = @tables.fetch(node.name) { return }
+              return unless split?(table)
+
+              raise LoweringError, "The routine #{name.inspect} runs on the Super FX chip, and it reads the table " \
+                                   "#{node.name.inspect}. That table is bigger than a bank of the cartridge, and the " \
+                                   "chip reads a table from one bank only. To fix this, cut the table into tables " \
+                                   "of 32K or less, or move the read out of #{name.inspect}."
+            end
+
             def chip_step_words(node)
               kind = node.kind
-              return "a sum with fractions" if FRACTION_STEPS.include?(kind)
               return "a wait for the next frame" if kind == :wait_vblank
-              return "a use of a list (#{kind})" if kind.start_with?("list_")
-              return "a read of a table (#{kind})" if kind.start_with?("table_")
+              return "a change of scene (case_var), and a scene sets up the screen, which only the console can do" if kind == :case
+              return "a change to a list's items other than by index (#{kind})" if kind.start_with?("list_")
               return "a drawing step (#{kind})" if node.category == :draw
               return "a sound step (#{kind})" if node.category == :sound
 
               "the step #{kind}"
             end
+
+            # The lists a run of a chip routine reads or writes, by name.
+            def chip_list_names
+              @chip_routines.flat_map do |name|
+                Reach.statements_under(@funcs.fetch(name)).filter_map { |node| node.name if LIST_STEPS.include?(node.kind) }
+              end.uniq
+            end
+
+            # The 16-bit place in the chip's RAM of each list the chip reaches, from the top of the
+            # block of numbers down, each at a multiple of four so its words are whole words to the
+            # chip. Refused when they leave no room.
+            def place_chip_lists
+              @chip_lists = {}
+              @chip_numbers_end = ChipCode::NUMBERS_END
+              chip_list_names.each do |name|
+                node = @declared_lists.fetch(name) { next }
+                width = LoweringPlan::SLOT_BYTES.fetch(node.width)
+                at = (@chip_numbers_end - Runtime::Lists::HEADER - (node.capacity * width)) & ~3
+                refuse_chip_lists_too_big!(name) if at < ChipCode::FIRST_NUMBER + CHIP_NUMBERS_KEPT
+                @chip_numbers_end = at
+                @chip_lists[name] = ChipCode::ListPlace.new(at: at, width: width)
+              end
+            end
+
+            # Room the lists leave for the numbers a run copies in and keeps for itself.
+            CHIP_NUMBERS_KEPT = 0x400
+
+            def refuse_chip_lists_too_big!(name)
+              room = ChipCode::NUMBERS_END - ChipCode::FIRST_NUMBER - CHIP_NUMBERS_KEPT
+              raise LoweringError, "The list #{name.inspect} is used on the Super FX chip, and the lists the chip " \
+                                   "uses do not fit in its RAM. Those lists and the chip's numbers share 8K, and " \
+                                   "the lists can take #{room} bytes of it. To fix this, give those lists smaller " \
+                                   "capacities, or use #{name.inspect} only outside the routines marked on_chip: true."
+            end
+
+            # Where a list the chip reaches lives: its long address in the chip's RAM.
+            def chip_list_place(name) = @chip_lists && @chip_lists[name] && chip_ram_address(@chip_lists[name].at)
 
             # The chip's code, as sections for the Linker: none for a game with nothing to run there.
             def chip_sections
@@ -81,7 +145,13 @@ module VBlank
             def make_chip_code
               return if @chip_routines.empty?
 
-              @chip_code = ChipCode.new(routines: @chip_routines, funcs: @funcs, plan: @plan, holds: ROUTINES)
+              tables = @tables.values.to_h do |table|
+                bytes, signed = table_keeping(table)
+                [table.name, ChipCode::TableRead.new(label: table_label(table.name), count: table.values.length,
+                                                     bytes: bytes, signed: signed)]
+              end
+              @chip_code = ChipCode.new(routines: @chip_routines, funcs: @funcs, plan: @plan, holds: ROUTINES,
+                                        tables: tables, lists: @chip_lists, numbers_end: @chip_numbers_end)
             end
 
             # The 65816 routine that stands for +name+.
@@ -90,6 +160,11 @@ module VBlank
             end
 
             def emit_chip_run(name)
+              faults = @chip_code.faults?(name)
+              if faults
+                @asm.lda(0)
+                @asm.sta(@asm.long(chip_ram_address(@chip_code.fault_list_place)))
+              end
               @chip_code.variables_sent(name).product(HALVES).each do |(variable, at), half|
                 @asm.lda(at_place(place_of(variable) + half))
                 @asm.sta(@asm.long(chip_ram_address(at) + half))
@@ -100,6 +175,24 @@ module VBlank
                 @asm.lda(@asm.long(chip_ram_address(at) + half))
                 @asm.sta(at_place(place_of(variable) + half))
               end
+              emit_chip_fault_check if faults
+            end
+
+            # A list the chip found an index outside of stops the game here, in Runtime::Lists's
+            # words: the list's place in X and Y and the index in R1, as that routine takes them.
+            def emit_chip_fault_check
+              fine = fresh("chip_fine")
+              @asm.lda(@asm.long(chip_ram_address(@chip_code.fault_list_place)))
+              @asm.beq(fine)
+              @asm.tax
+              index = chip_ram_address(@chip_code.fault_index_place)
+              HALVES.each do |half|
+                @asm.lda(@asm.long(index + half))
+                @asm.sta(@asm.direct(Memory.register(1) + half))
+              end
+              @asm.ldy(Console::SNESHardware::GSU_RAM_BANK)
+              call_routine("rt_list_outside")
+              @asm.label(fine)
             end
 
             def chip_ram_address(at) = Runtime::ChipPaint::COPY | at
