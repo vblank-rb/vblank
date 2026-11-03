@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "all/vblank/builder/test_recolor"
 
 # A sprite drawn in the colours of a list the game changes (`recolor`) on a Genesis: the list keeps a
 # palette of its own, which the cartridge writes the new colours over in the blank, on the frame the
 # sprite's place and picture are written. Each test plays the game on the cartridge and the interpreter
 # together (Genesis::CheckedRun), so a colour that is wrong on the console, or a frame late, fails it.
 class TestGenesisRecolor < Minitest::Test
+  include RecolorGames
+
   Genesis = VBlank::IR::Backends::Genesis
 
   OWN = [:transparent, :red, :green].freeze
@@ -149,6 +152,32 @@ class TestGenesisRecolor < Minitest::Test
     end
   end
 
+  # FOUR LISTS IN FOUR: :machine_colors is drawn by a background told `draw_with` it and by a sprite,
+  # and since the list never changes, the two are drawn from one palette. :screen_colors, which the
+  # backdrop follows, is drawn by the sky background and the moon sprite and recoloured, and two more
+  # lists are beside: the game needs every one of the four. The checked run holds every frame to the
+  # interpreter's, so the sky, the moon and the backdrop change on the frame the interpreter's do.
+  def test_a_background_and_a_sprite_drawn_with_one_list_beside_three_more_play_as_the_interpreter
+    run = Genesis::CheckedRun.new.run(genesis_program(four_lists_game(sky: true)),
+                                      frames: RecolorGames::FOUR_LISTS_RECOLOR_PASS + 4)
+
+    assert_equal [shown(RecolorGames::DUSK[1]), shown(RecolorGames::DUSK[1]), shown(RecolorGames::DUSK[0])],
+                 [run.screen.pixel(1, 1), run.screen.pixel(61, 41), run.screen.pixel(100, 100)], "the sky, the moon, the backdrop"
+  end
+
+  # THE COLOUR MEMORY HOLDS EACH LIST ONCE, read in the emulator: before the recolour and after it.
+  # Colour 0 is the backdrop, the place 0 of what :screen_colors holds.
+  def test_the_colour_memory_holds_each_of_four_lists_once
+    early, late = colour_memory_first_and_after(genesis_program(four_lists_game(sky: true)), later: 30)
+
+    assert_lists_once(early, screen: RecolorGames::SCREEN, machine: RecolorGames::MACHINE, light: RecolorGames::LIGHT,
+                             spark: RecolorGames::SPARK)
+    assert_equal word(:black), early.first, "the backdrop"
+    assert_lists_once(late, dusk: RecolorGames::DUSK, machine: RecolorGames::MACHINE, glow: RecolorGames::GLOW,
+                            spark: RecolorGames::SPARK)
+    assert_equal word(RecolorGames::DUSK.first), late.first, "the backdrop"
+  end
+
   def test_more_lists_than_a_genesis_has_palettes_for_are_refused_in_words
     error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
       Genesis.new.build(program_of do
@@ -176,4 +205,41 @@ class TestGenesisRecolor < Minitest::Test
   end
 
   def checked(frames:, &game) = Genesis::CheckedRun.new.run(program_of(&game), frames: frames)
+
+  def genesis_program(program) = program.copy.tap { |copy| copy.console = :genesis }
+
+  # +color+ as a word of the console's colour memory.
+  def word(color) = VBlank::Console::GenesisHardware.color_word(VBlank::Graphics::Color.resolve(color))
+
+  # The 64 words of the colour memory on the first frame the cartridge has written any of it, which is
+  # before the game's first pass is shown, and again +later+ frames on.
+  def colour_memory_first_and_after(program, later:)
+    rom = Genesis.new.build(program)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "lists.gen")
+      rom.write(path)
+      core = VBlank::Diagnostics::Emulator.open_genesis(path)
+      first = nil
+      120.times do
+        core.run_frame
+        first = core.cram.unpack("v*")
+        break unless first.all?(&:zero?)
+      end
+      later.times { core.run_frame }
+      [first, core.cram.unpack("v*")]
+    ensure
+      core&.destroy
+    end
+  end
+
+  # Each of +lists+ (a name, for the message, and its colours, place 0 first) is in exactly one of the
+  # four palettes of +memory+, at the palette's places 1 onward.
+  def assert_lists_once(memory, lists)
+    found = lists.transform_values do |colors|
+      words = colors.drop(1).map { |color| word(color) }
+      (0...4).count { |line| memory[(line * 16) + 1, words.length] == words }
+    end
+
+    assert_equal(lists.transform_values { 1 }, found, "how many palettes hold each list")
+  end
 end

@@ -445,12 +445,27 @@ module VBlank
             # one its sprites are drawn from. A Genesis keeps one table of colours for its backgrounds and its
             # sprites together, four palettes of sixteen, so a title whose picture and sprites step through any
             # number of sets of colours costs one palette, written over in the blank, and leaves three for the rest.
+            #
+            # A LIST THAT HOLDS THE SAME COLOURS WHATEVER THE GAME SAYS needs no writing over: a background told
+            # `draw_with :machine` and drawn in :machine's own colours shows those colours at every step. So its
+            # palette is the list's in the list's order (Art#ordered_palette), which a sprite drawn with the
+            # same list shares, rather than one kept to itself. Only place 0 may differ between the sets, since
+            # it is see-through and no palette keeps it.
             def recolored_palette(bg, image)
               list = bg.recolored_list_of(image.list_drawn_from) or
                 raise LoweringError, "a tile of the background #{bg.name.inspect} is drawn from a list of colours it was not given"
               index = bg.drawn_lists.index(list)
+              colors = bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF }
+              return @art.ordered_palette(colors) if !bg.follows && unchanging_colors?(bg, index, colors)
+
               key = bg.follows ? [:sprites, bg.follows] : [:background, bg.object_id, index]
-              @art.reserve_held_palette(key, bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF })
+              @art.reserve_held_palette(key, colors)
+            end
+
+            # Whether every set +bg+'s list number +index+ can be drawn with holds +colors+ (its own, place 0
+            # left out) at the same places.
+            def unchanging_colors?(bg, index, colors)
+              bg.recolors.all? { |step| step.fetch(index).drop(1).map { |color| color & 0x7FFF } == colors }
             end
 
             # --- the screen and the backgrounds ---

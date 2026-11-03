@@ -42,6 +42,70 @@ module RecolorGames
       game_loop { instance_exec(ship, &game) }
     end
   end
+
+  # FOUR LISTS, EACH DRAWN BY SEVERAL THINGS. Colours whose channels are multiples of four, so a
+  # console that keeps three bits of each still tells them apart.
+  def self.rgb4(red, green, blue) = VBlank::Graphics::Color.rgb(red * 4, green * 4, blue * 4)
+
+  SCREEN = [:black, rgb4(0, 0, 3), rgb4(0, 0, 5)].freeze
+  DUSK = [rgb4(2, 0, 2), rgb4(3, 0, 3), rgb4(5, 0, 5)].freeze
+  MACHINE = [:black, rgb4(7, 0, 0), rgb4(0, 7, 0), rgb4(7, 7, 0)].freeze
+  LIGHT = [:transparent, rgb4(7, 7, 7), rgb4(4, 4, 4)].freeze
+  GLOW = [:transparent, rgb4(7, 4, 0), rgb4(4, 2, 0)].freeze
+  SPARK = [:transparent, rgb4(0, 7, 7), rgb4(0, 4, 4)].freeze
+
+  # Where each thing of #four_lists_game stands: a pixel of its left half, then its right.
+  FOUR_LISTS_PIXELS = Ractor.make_shareable({ sky: [[1, 1], [5, 1]], machine: [[9, 1], [13, 1]], bean: [[41, 41], [45, 41]],
+                                              moon: [[61, 41], [65, 41]], lamp: [[81, 41], [85, 41]],
+                                              spark: [[101, 41], [105, 41]], backdrop: [[100, 100]] })
+
+  # The pass that first tells :screen_colors and :light_colors to hold other colours.
+  FOUR_LISTS_RECOLOR_PASS = 3
+
+  # A game with four lists of colours:
+  # - :screen_colors, which the backdrop follows, drawn by the moon sprite (and with +sky+ by the sky
+  #   background too), and told to hold :dusk from pass FOUR_LISTS_RECOLOR_PASS;
+  # - :machine_colors, drawn by the machine background (told `draw_with` it) and the bean sprite;
+  # - :light_colors, drawn by the lamp sprite, and told to hold :glow from the same pass;
+  # - :spark_colors, drawn by the spark sprite.
+  # Each picture is 8x8, its left half the list's first colour after place 0 and its right half
+  # the next (FOUR_LISTS_PIXELS). The sky makes two backgrounds at once, which the Color does not show.
+  private def four_lists_game(sky: false)
+    builder = Builder.new
+    builder.instance_eval do
+      colors :screen_colors, SCREEN
+      colors :dusk, DUSK
+      colors :machine_colors, MACHINE
+      colors :light_colors, LIGHT
+      colors :glow, GLOW
+      colors :spark_colors, SPARK
+      screen :tiled, backdrop: :screen_colors
+      halves = ->(left, right) { Array.new(64) { |i| (i % 8) < 4 ? left : right } }
+      if sky
+        image :sky_tile, width: 8, height: 8, data: halves.(SCREEN[1], SCREEN[2]), colors: :screen_colors
+        tiles :sky_set, "#" => :sky_tile
+        background(:sky, tiles: :sky_set, map: ["# "]).draw_with :screen_colors
+      end
+      image :plate, width: 8, height: 8, data: halves.(MACHINE[1], MACHINE[2]), colors: :machine_colors
+      tiles :machine_set, "#" => :plate
+      machine = background :machine, tiles: :machine_set, map: [" #"]
+      machine.draw_with :machine_colors
+      { bean: [:machine_colors, MACHINE[2], MACHINE[3], 40], moon: [:screen_colors, SCREEN[1], SCREEN[2], 60],
+        lamp: [:light_colors, LIGHT[1], LIGHT[2], 80], spark: [:spark_colors, SPARK[1], SPARK[2], 100] }
+        .each do |name, (list, left, right, x)|
+          image name, width: 8, height: 8, data: halves.(left, right), colors: list
+          sprite(name, at: [x, 40]).draw_with list
+        end
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        recolor :screen_colors, :dusk if pass >= FOUR_LISTS_RECOLOR_PASS
+        recolor :light_colors, :glow if pass >= FOUR_LISTS_RECOLOR_PASS
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
 end
 
 # A LIST OF SPRITE COLOURS THAT HOLDS OTHER COLOURS while the game runs. A sprite told to
@@ -466,5 +530,33 @@ class TestRecolor < Minitest::Test
       assert_equal plates, ship
       assert_equal shown(:red), bystander
     end
+  end
+
+  # What each thing of #four_lists_game shows once pass +pass+ is drawn (Testing#framework_drawing_lag).
+  private def four_lists_shown(pass)
+    screen = game_player.run(four_lists_game, frames: pass + framework_drawing_lag).screen
+    FOUR_LISTS_PIXELS.except(:sky).transform_values { |spots| spots.map { |x, y| screen.pixel(x, y) } }
+  end
+
+  private def shown_all(*colors) = colors.map { |color| shown(color) }
+
+  # FOUR LISTS, ONE OF THEM DRAWN BY A BACKGROUND AND A SPRITE TOGETHER, and the backdrop following
+  # another: each thing shows its own list's colours. On a console whose backgrounds and sprites read
+  # one table of four lists (the Genesis), the background and the sprite drawn with one list take one
+  # of the four between them, or the game does not fit.
+  def test_a_background_and_a_sprite_drawn_with_one_list_beside_three_more_show_their_colors
+    assert_equal({ machine: shown_all(MACHINE[1], MACHINE[2]),
+                   bean: shown_all(MACHINE[2], MACHINE[3]), moon: shown_all(SCREEN[1], SCREEN[2]),
+                   lamp: shown_all(LIGHT[1], LIGHT[2]), spark: shown_all(SPARK[1], SPARK[2]),
+                   backdrop: shown_all(:black) }, four_lists_shown(FOUR_LISTS_RECOLOR_PASS - 1))
+  end
+
+  # The pass that recolours :screen_colors changes the moon and the backdrop together, and
+  # :light_colors' lamp with them; the lists nothing recolours stay as they were.
+  def test_recoloring_one_of_four_lists_changes_its_sprites_and_backdrop_on_one_frame
+    assert_equal({ machine: shown_all(MACHINE[1], MACHINE[2]),
+                   bean: shown_all(MACHINE[2], MACHINE[3]), moon: shown_all(DUSK[1], DUSK[2]),
+                   lamp: shown_all(GLOW[1], GLOW[2]), spark: shown_all(SPARK[1], SPARK[2]),
+                   backdrop: shown_all(DUSK[0]) }, four_lists_shown(FOUR_LISTS_RECOLOR_PASS))
   end
 end
