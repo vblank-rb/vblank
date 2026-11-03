@@ -142,7 +142,9 @@ module VBlank
         canvas: works,
         tile_pictures: works("pictures of 8×8 or 16×16, each change one copy from the cartridge, however many cells show " \
                              "the tile. A group must fit one bank of the cartridge."),
-        sprite_tiles: works,
+        sprite_tiles: works("a Super Nintendo can draw poses from tiles the game loads, but this build does not " \
+                            "make it yet. A game with a pose drawn from sprite tiles is refused, and the build says " \
+                            "so (see Not made yet)."),
         layers: works("a layer holds a background or sprites. A layer of backgrounds can be half " \
                       "see-through, over a background that covers the whole screen: `transparency:` " \
                       "from 50 to 56, or `shows: 50, shows_behind: 50`. It can also be added to what is " \

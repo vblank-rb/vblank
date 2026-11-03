@@ -22,8 +22,8 @@ module VBlank
           module SpriteTileLoads
             QUEUE = "rt sprite tile loads"
 
-            # Loads one pass can note.
-            MOST_LOADS = 8
+            # Loads one pass can note: what every build allows (Nodes::LoadSpriteTiles::MOST_IN_A_PASS).
+            MOST_LOADS = Nodes::LoadSpriteTiles::MOST_IN_A_PASS
 
             # A noted load: the cartridge's bank, the side of picture memory, where the tiles are (two
             # bytes), where they go (two bytes), and how many blocks of 16 bytes less one.

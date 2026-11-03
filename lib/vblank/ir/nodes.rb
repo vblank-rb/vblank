@@ -296,6 +296,14 @@ module VBlank
         kind :load_sprite_tiles
         category :draw
         operands name: :name, table: :name, at: :value, to: :value, count: :int
+
+        # Bytes a tile of the table takes.
+        TILE_BYTES = 32
+
+        # THE MOST LOADS ONE PASS CAN MAKE, on every build. A console whose picture memory cannot be
+        # written while it draws copies a pass's loads in the short gap after it, which holds this
+        # many; a pass that loads more stops the game, saying so (IR::Faults.too_many_sprite_tile_loads).
+        MOST_IN_A_PASS = 8
       end
 
       # The per-frame write that turns and resizes an affine background as a whole (see

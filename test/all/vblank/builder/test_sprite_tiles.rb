@@ -144,6 +144,49 @@ class TestSpriteTiles < Minitest::Test
                  [shown.pixel(40, 20), shown.pixel(40, 28), shown.pixel(41, 28), shown.pixel(48, 20), shown.pixel(48, 28)]
   end
 
+  # A table of bytes the set loads from is still the game's table: read by index it holds the
+  # numbers the game wrote, whatever form a console keeps the loaded tiles in.
+  def test_a_table_loaded_from_still_reads_as_written
+    kinds = KINDS
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      colors :ball, %i[transparent red green white]
+      bytes = table :ball_bytes, kinds.each_slice(2).map { |near, far| near | (far << 4) }, width: :byte
+      set = sprite_tiles :ball_tiles, count: 4, colors: :ball
+      image :a, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1]]
+      sprite :a, at: [40, 20]
+      read = var :read, 0
+      game_loop do
+        set.copy_from bytes, at: 2, count: 2, to: 0
+        # The index is worked out as the game runs, so the read is the console's, not the build's.
+        at = 5 + (read & 0)
+        read = bytes[at] + bytes[at + 35]
+      end
+    end
+    b.finalize_program
+    run = game_player.run(b.program, frames: 3)
+
+    assert_equal 0x11 + 0x22, run[:read], "byte 5 is in the first tile and byte 40 in the second"
+    assert_equal WHITE, run.screen.pixel(40, 20), "and the load took the white tile"
+  end
+
+  # A pass can load at most Nodes::LoadSpriteTiles::MOST_IN_A_PASS times, on every build: a console
+  # copies the loads in the short gap after the pass. One more stops the game, saying so.
+  def test_more_loads_in_a_pass_than_a_gap_holds_stop_the_game
+    most = VBlank::IR::Nodes::LoadSpriteTiles::MOST_IN_A_PASS
+    program = ball_game do |set, _ball, _frame|
+      (most + 1).times { |k| set.copy_from :kinds, at: k % 4, count: 1, to: 0 }
+    end
+    error = assert_raises(VBlank::IR::ProgramError) { game_player.run(program, frames: 3) }
+
+    assert_includes error.message, "more than #{most} times in one pass"
+    within = ball_game do |set, _ball, _frame|
+      most.times { |k| set.copy_from :kinds, at: k % 4, count: 1, to: 0 }
+    end
+    game_player.run(within, frames: 3)
+  end
+
   def test_mistakes_are_friendly_errors
     build = lambda do |&body|
       b = Builder.new

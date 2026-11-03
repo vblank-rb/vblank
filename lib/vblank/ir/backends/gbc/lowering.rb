@@ -392,7 +392,7 @@ module VBlank
             @banked_tables ||= begin
               copied = @reachable.filter_map { |node| node.table if node.kind == :list_copy }
               tables_read.filter_map do |table|
-                next if copied.include?(table.name) || held_picture_table?(table)
+                next if copied.include?(table.name)
 
                 bytes, = table_keeping(table)
                 table.name if bytes * table.values.length >= @banked_table_bytes
@@ -403,6 +403,7 @@ module VBlank
           # A section for each part of each table kept in banks.
           def banked_table_sections
             held = tables_read.select { |table| held_picture_table?(table) }.map { |table| held_pictures_section(table) }
+            held += sprite_tiles_sources.map { |table| sprite_tiles_source_section(table) }
             tables = tables_read.select { |table| banked_tables.include?(table.name) }.flat_map do |table|
               table_parts(table).each_with_index.map do |bytes, part|
                 asm = SM83.new(table_part_label(table.name, part), home: :banked, holds: DATA)

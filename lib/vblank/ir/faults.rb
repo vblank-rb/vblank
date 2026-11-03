@@ -34,6 +34,12 @@ module VBlank
         "a copy of #{count} entries is longer than its table (#{table_length} entries)"
       end
 
+      # A pass that loaded sprite tiles more times than the gap after it holds (Nodes::LoadSpriteTiles).
+      def too_many_sprite_tile_loads(most)
+        "the game loaded sprite tiles more than #{most} times in one pass, and the gap after a pass copies " \
+          "at most #{most} loads. To fix this, load more tiles at a time, or spread the loads over more passes."
+      end
+
       def picture_missing(pose, count)
         "a sprite is showing picture #{pose} of its #{count}"
       end

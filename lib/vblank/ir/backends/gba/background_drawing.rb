@@ -648,20 +648,22 @@ module VBlank
             room, count = @layout&.screen&.sprite_tiles_vram&.[](node.name)
             return if room.nil? # no sprite shows the set, so nothing in sprite memory is its
 
-            tiles = (table.count * table.elem_bytes) / 32
-            return if tiles < node.count || count < node.count
+            bounds = LoweringPlan.sprite_tile_load_bounds(node, table_bytes: table.count * table.elem_bytes, set_count: count)
+            return unless bounds
 
             done = gensym
+            # The first number waits on the stack while the second is worked out, since working out
+            # a value may use any register.
             @lowering.value(node.at)
-            emit(ASM.mov_reg(LOAD_FROM, ACC))
+            emit(ASM.push(ACC))
             @lowering.value(node.to)
             emit(ASM.mov_reg(LOAD_TO, ACC))
-            emit_number(TMP, tiles - node.count + 1)
-            emit(ASM.cmp_reg(LOAD_FROM, TMP))
-            emit_branch(:bcond, done, cond: :hs)
-            emit_number(TMP, count - node.count + 1)
-            emit(ASM.cmp_reg(LOAD_TO, TMP))
-            emit_branch(:bcond, done, cond: :hs)
+            emit(ASM.pop(LOAD_FROM))
+            [LOAD_FROM, LOAD_TO].zip(bounds) do |register, (_, most)|
+              emit_number(TMP, most + 1)
+              emit(ASM.cmp_reg(register, TMP))
+              emit_branch(:bcond, done, cond: :hs)
+            end
             emit(ASM.lsl_imm(LOAD_FROM, LOAD_FROM, 5)) # 32 bytes a tile
             emit_load_data_address(TMP, node.table)
             emit(ASM.add_reg(LOAD_FROM, TMP, LOAD_FROM))

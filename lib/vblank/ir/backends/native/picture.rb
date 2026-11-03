@@ -251,24 +251,27 @@ module VBlank
                         colors_name: set.colors_name)
           end
 
-          # Reference#exec_load_sprite_tiles: checked once, then each pose drawn from the set takes
-          # the tiles of the load it draws, and the picture is built again.
+          # Reference#exec_load_sprite_tiles: each number worked out once, the load checked against
+          # the ends of the table and the set (LoweringPlan.sprite_tile_load_bounds), then each pose
+          # drawn from the set takes the tiles of the load it draws, and the picture is built again.
           def lower_load_sprite_tiles(node)
             set = @sprite_tile_sets.fetch(node.name)
             table = @tables.fetch(node.table)
-            tiles = table.values.length / (RUN_TILE_PIXELS / 2)
-            fits = Build.binop(:and,
-                               Build.binop(:and, Build.binop(:>=, node.at, Build.int(0)),
-                                           Build.binop(:<=, node.at, Build.int(tiles - node.count))),
-                               Build.binop(:and, Build.binop(:>=, node.to, Build.int(0)),
-                                           Build.binop(:<=, node.to, Build.int(set.count - node.count))))
+            bounds = LoweringPlan.sprite_tile_load_bounds(node, table_bytes: table.values.length, set_count: set.count)
+            return [] unless bounds
+
+            from, to = %w[load_from load_to].map { |what| local_name(what) }
+            fits = [from, to].zip(bounds).map do |name, (_, most)|
+              call("rg_both", call("rg_ge", name, C::Int.new(0)), call("rg_le", name, C::Int.new(most)))
+            end.reduce { |both, each| call("rg_both", both, each) }
             kept = Lowering::TABLE_KEPT_AS.fetch(table_type(table))
             loads = @tile_poses.each_value.select { |pose| pose.tiles == node.name }.map do |pose|
               pieces = drawing_array("pose_pieces", "int32_t", pose.pieces.flatten)
               eval_call("rg_tile_pose_load", C::Int.new(@run_numbers.fetch(pose.name)), pieces, C::Int.new(pose.pieces.length),
-                        @names.of(:table, node.table), C::Int.new(kept), value(node.at), value(node.to), C::Int.new(node.count))
+                        @names.of(:table, node.table), C::Int.new(kept), from, to, C::Int.new(node.count))
             end
-            [C::If.new(condition: value(fits), body: [*loads, eval_call("rg_screen_request_rebuild")], otherwise: [])]
+            [C::Block.new([C::Local.new(name: from, value: value(node.at)), C::Local.new(name: to, value: value(node.to)),
+                           C::If.new(condition: fits, body: [*loads, eval_call("rg_screen_request_rebuild")], otherwise: [])])]
           end
 
           # A sprite picture's pixels as the interpreter draws them (Reference#blit_image): the

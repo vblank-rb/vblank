@@ -81,7 +81,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `status_bar` — works: the bar is the window, a layer the console keeps beside its two backgrounds. `set_tile` with `now: true` is refused: a Genesis writes its video memory only between frames, so a change shows on the frame after the pass.
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: the same as on the Advance.
-- `sprite_tiles` — works: the same as on the Advance.
+- `sprite_tiles` — works: a Genesis can draw poses from tiles the game loads, but this build does not make it yet. A game with a pose drawn from sprite tiles is refused, and the build says so (see Not made yet).
 - `layers` — works: a layer holds a background or sprites. A layer cannot be see-through: a Genesis cannot mix one layer into another, so `transparency:`, `shows:` and `shows_behind:` are refused.
 - `layer` — works: see `layers`.
 - `draw_text` — works: painted on a painted screen; on a tiled one each letter is a sprite, so they count towards the 80, 20 pieces to a row.

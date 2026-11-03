@@ -202,6 +202,7 @@ module VBlank
           @tile_runs = {}          # name -> the TileRun whose tiles are painted from a list
           @sprite_tile_sets = {}   # name -> [the SpriteTiles, each tile's 64 places] (see #exec_load_sprite_tiles)
           @tile_poses = {}         # picture name -> the TilePose drawn from a set's tiles
+          @sprite_tile_loads = 0   # loads of sprite tiles this pass has made
           @tile_colors = {}        # name -> its pixels as colors, decoded once (nil = see-through)
           @backing = {}            # name -> { width:, height:, pixels: } (saved patch under a moving object)
           @objects = {}            # name -> :object node (a composited moving picture)
@@ -956,6 +957,7 @@ module VBlank
 
         def exec_wait_vblank(node)
           advance_frame
+          @sprite_tile_loads = 0 # the gap copied this pass's loads (see #exec_load_sprite_tiles)
         end
 
         # +backdrop+ is the colour the screen shows wherever nothing is drawn: a scene's arrival
@@ -1781,12 +1783,21 @@ module VBlank
           return if at.negative? || to.negative? || to + node.count > set.count
           return if (at + node.count) * RUN_TILE_BYTES > values.length
 
+          refuse_too_many_sprite_tile_loads!
           node.count.times do |k|
             bytes = values[(at + k) * RUN_TILE_BYTES, RUN_TILE_BYTES]
             tiles[to + k] = bytes.flat_map { |byte| [byte & 0x0F, (byte >> 4) & 0x0F] }
           end
           @tile_poses.each_value { |pose| store_tile_pose_picture(pose) if pose.tiles == node.name }
           request_repaint
+        end
+
+        # A pass makes at most Nodes::LoadSpriteTiles::MOST_IN_A_PASS loads, since a console copies
+        # them in the gap after it; one more stops the game, on every build.
+        def refuse_too_many_sprite_tile_loads!
+          most = Nodes::LoadSpriteTiles::MOST_IN_A_PASS
+          @sprite_tile_loads += 1
+          raise ProgramError, Faults.too_many_sprite_tile_loads(most) if @sprite_tile_loads > most
         end
 
         # A pose drawn from a set as everything that draws a picture reads it: each piece's tile

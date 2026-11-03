@@ -236,10 +236,7 @@ module VBlank
             case code
             when CartridgeFaults::PICTURE_NOT_UP then picture_not_up_message(@places.picture_checks.fetch(first), second)
             when CartridgeFaults::GROUPS_NOT_TOGETHER then groups_not_together_message(@places.together_checks.fetch(first))
-            when CartridgeFaults::TILE_LOADS_FULL
-              "the game loaded sprite tiles more than #{Runtime::SpriteTileLoads::MOST_LOADS} times in one pass, and a " \
-                "Game Boy Color copies at most #{Runtime::SpriteTileLoads::MOST_LOADS} loads in the blank after a pass. " \
-                "To fix this, load more tiles at a time, or spread the loads over more passes."
+            when CartridgeFaults::TILE_LOADS_FULL then Faults.too_many_sprite_tile_loads(Nodes::LoadSpriteTiles::MOST_IN_A_PASS)
             else super
             end
           end

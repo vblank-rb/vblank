@@ -71,11 +71,7 @@ module VBlank
               bg && recolor_steps_of(name, bg)
             end
 
-            # A table of tiles the console's copy reads straight from the cartridge: a group's
-            # pictures, or the tiles a set of sprite tiles loads (Lowering::SpriteTiles).
-            def held_picture_table?(table)
-              tile_runs.each_value.any? { |run| run.held_in == table.name } || sprite_tiles_table?(table)
-            end
+            def held_picture_table?(table) = tile_runs.each_value.any? { |run| run.held_in == table.name }
 
             # A group's pictures in a bank, all of them in one piece, since one show copies across it,
             # and starting on a multiple of 16, which is the only place the console's copy reads
@@ -83,32 +79,50 @@ module VBlank
             def held_pictures_section(table)
               bytes = held_pictures_as_tiles(table)
               if bytes.length > BANK_BYTES
-                if sprite_tiles_table?(table)
-                  raise LoweringError, "A picture that sprite tiles are loaded from holds #{bytes.length} bytes of " \
-                                       "tiles, and one bank of a Game Boy Color cartridge holds #{BANK_BYTES}. To fix " \
-                                       "this, load from smaller pictures."
-                end
                 raise LoweringError, "A group of `tile_pictures` holds #{bytes.length} bytes of pictures, and one bank of " \
                                      "a Game Boy Color cartridge holds #{BANK_BYTES}. To fix this, use fewer pictures, or " \
                                      "put the tiles in two groups."
               end
 
-              asm = SM83.new(table_label(table.name), home: :aligned16, holds: DATA)
-              asm.label(table_label(table.name))
+              tiles_section(table_label(table.name), bytes)
+            end
+
+            # The tiles a set of sprite tiles loads from +table+, in the Color's own form, in a section
+            # of their own (Lowering::SpriteTiles#sprite_tiles_label). The table itself is kept as it
+            # is wherever the game reads it by index.
+            def sprite_tiles_source_section(table)
+              bytes = tiles_in_color_form(table.values)
+              if bytes.length > BANK_BYTES
+                raise LoweringError, "A picture that sprite tiles are loaded from holds #{bytes.length} bytes of " \
+                                     "tiles, and one bank of a Game Boy Color cartridge holds #{BANK_BYTES}. To fix " \
+                                     "this, load from smaller pictures."
+              end
+
+              tiles_section(sprite_tiles_label(table.name), bytes)
+            end
+
+            def tiles_section(label, bytes)
+              asm = SM83.new(label, home: :aligned16, holds: DATA)
+              asm.label(label)
               asm.data_bytes(bytes)
               asm.section
             end
 
-            # +table+'s bytes in the Color's own form, if it holds a group's pictures, or nil. The
-            # table is written as painted tiles are: 4 bytes a row, two places a byte, the left one in
-            # the low four bits. The Color's row is two bytes: the low bit of each place, then the
-            # high bit, the leftmost place in the top bit.
+            # +table+'s bytes in the Color's own form, if it holds a group's pictures, or nil.
             def held_pictures_as_tiles(table)
               run = tile_runs.each_value.find { |each| each.held_in == table.name }
-              return unless run || sprite_tiles_table?(table)
+              return unless run
 
-              table.values.each_slice(4).flat_map do |row|
-                places = row.flat_map { |byte| [byte & 0xF, (byte >> 4) & 0xF] }.map { |place| run ? color_place(place, run) : place }
+              tiles_in_color_form(table.values) { |place| color_place(place, run) }
+            end
+
+            # Tiles written as painted tiles are — 4 bytes a row, two places a byte, the left one in
+            # the low four bits — in the Color's form: a row is two bytes, the low bit of each place,
+            # then the high bit, the leftmost place in the top bit. A block turns each place first.
+            def tiles_in_color_form(values)
+              values.each_slice(4).flat_map do |row|
+                places = row.flat_map { |byte| [byte & 0xF, (byte >> 4) & 0xF] }
+                places = places.map { |place| yield place } if block_given?
                 (0...2).map { |plane| places.reduce(0) { |byte, place| (byte << 1) | place[plane] } }
               end
             end

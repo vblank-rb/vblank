@@ -68,6 +68,18 @@ module VBlank
           Build.clamped(index, Build.int(0), Build.int(count - 1))
         end
 
+        # Reference#exec_load_sprite_tiles: a load (Nodes::LoadSpriteTiles) is made only where each of
+        # its two numbers is from 0 to the most it can be, so the run stays inside the table and the
+        # set. Each pair is [the number, the most], for a lowering that has worked each out once; and
+        # none at all for a load that can never fit (more tiles than the table or the set holds).
+        # +table_bytes+ is how many bytes the table holds, +set_count+ how many tiles the set holds.
+        def self.sprite_tile_load_bounds(node, table_bytes:, set_count:)
+          tiles = table_bytes / Nodes::LoadSpriteTiles::TILE_BYTES
+          return nil if tiles < node.count || set_count < node.count
+
+          [[node.at, tiles - node.count], [node.to, set_count - node.count]]
+        end
+
         # The console the cartridge is for (a Console::Description), whose answers and frame order
         # the plan follows.
         attr_reader :console
@@ -124,7 +136,7 @@ module VBlank
             read = @reachable.filter_map do |node|
               case node.kind
               when :table_get then node.name
-              when :list_copy, :load_sprite_tiles then node.table
+              when :list_copy then node.table
               end
             end
             @tables.values.select { |table| read.include?(table.name) }
