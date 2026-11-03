@@ -223,7 +223,7 @@ module VBlank
             end
 
             # +chip+ for a cartridge with a Super FX: see ChipPaint, which says what changes there.
-            def emit(asm, memory, s, chip: false)
+            def emit(asm, memory, s, chip: false, columns: false)
               bank = chip ? ChipPaint::COPY >> 16 : COPY >> 16
               emit_start(asm, memory)
               emit_area(asm, memory, s)
@@ -231,6 +231,7 @@ module VBlank
               emit_helpers(asm, memory, s, bank)
               emit_clear(asm, memory, s)
               emit_fill(asm, memory, s, bank)
+              emit_column(asm, memory) if columns
               emit_blit(asm, memory, s, bank)
               emit_patches(asm, memory, s, bank)
               emit_prepare(asm, memory, s)
@@ -745,6 +746,87 @@ module VBlank
               asm.inx
               asm.cpx(ROWS * 4)
               asm.bne("rt_paint_clear_rows")
+              asm.rtl
+            end
+
+            # --- a picture's column, stretched ---
+
+            # rt_paint_column(pointer, step, start, rows, x, y, width): a column of a picture walked
+            # down the screen. +pointer+ is where the column's places are, a byte each. +step+ is how
+            # far down the picture a row of the screen goes, in 65536ths, and +start+ where the first
+            # row stands. Rows that land on one colour are one rectangle, so a wall stretched
+            # up close, which holds each colour for many rows, costs a few rectangles and not a
+            # rectangle for every row. A place of 0xFF is see-through.
+            def emit_column(asm, memory)
+              # A painted screen's scratch fills the direct page, so all but the pointer are in work RAM.
+              pointer = R.call(7)
+              kept = %i[step at x y width].to_h { |what| [what, memory.reserve("rt paint column #{what}", 4)] }
+              rows = memory.reserve("rt paint column rows", 2)
+              shown = memory.reserve("rt paint column shown", 2)
+              run = memory.reserve("rt paint column run", 2)
+              asm.label("rt_paint_column")
+              2.times do |half|
+                asm.lda(asm.direct(R.call(0) + (half * 2)))
+                asm.sta(asm.direct(pointer + (half * 2)))
+              end
+              { step: 1, at: 2, x: 4, y: 5, width: 6 }.each do |what, register|
+                2.times do |half|
+                  asm.lda(asm.direct(R.call(register) + (half * 2)))
+                  asm.sta(asm.abs(kept.fetch(what) + (half * 2)))
+                end
+              end
+              asm.lda(asm.direct(R.call(3)))
+              asm.sta(asm.abs(rows))
+              asm.ldy(asm.abs(kept.fetch(:at) + 2))
+              asm.lda(asm.ind_long_y(pointer))
+              asm.and_a(0x00FF)
+              asm.sta(asm.abs(shown))
+              asm.label("rt_paint_column_run")
+              asm.lda(1)
+              asm.sta(asm.abs(run))
+              asm.label("rt_paint_column_same")
+              asm.dec(asm.abs(rows))
+              asm.beq("rt_paint_column_paint")
+              asm.clc
+              asm.lda(asm.abs(kept.fetch(:at)))
+              asm.adc(asm.abs(kept.fetch(:step)))
+              asm.sta(asm.abs(kept.fetch(:at)))
+              asm.lda(asm.abs(kept.fetch(:at) + 2))
+              asm.adc(asm.abs(kept.fetch(:step) + 2))
+              asm.sta(asm.abs(kept.fetch(:at) + 2))
+              asm.tay
+              asm.lda(asm.ind_long_y(pointer))
+              asm.and_a(0x00FF)
+              asm.cmp(asm.abs(shown))
+              asm.bne("rt_paint_column_paint")
+              asm.inc(asm.abs(run))
+              asm.bra("rt_paint_column_same")
+              asm.label("rt_paint_column_paint")
+              asm.pha # the place the next run is in
+              asm.lda(asm.abs(shown))
+              asm.cmp(0x00FF)
+              asm.beq("rt_paint_column_left_alone")
+              asm.sta(asm.direct(R.call(4)))
+              asm.stz(asm.direct(R.call(4) + 2))
+              { x: 0, y: 1, width: 2 }.each do |what, register|
+                2.times do |half|
+                  asm.lda(asm.abs(kept.fetch(what) + (half * 2)))
+                  asm.sta(asm.direct(R.call(register) + (half * 2)))
+                end
+              end
+              asm.lda(asm.abs(run))
+              asm.sta(asm.direct(R.call(3)))
+              asm.stz(asm.direct(R.call(3) + 2))
+              asm.jsl(asm.long("rt_paint_fill"))
+              asm.label("rt_paint_column_left_alone")
+              asm.clc
+              asm.lda(asm.abs(kept.fetch(:y)))
+              asm.adc(asm.abs(run))
+              asm.sta(asm.abs(kept.fetch(:y)))
+              asm.pla
+              asm.sta(asm.abs(shown))
+              asm.lda(asm.abs(rows))
+              asm.bne("rt_paint_column_run")
               asm.rtl
             end
 

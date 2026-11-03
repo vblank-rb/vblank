@@ -20,8 +20,15 @@ module VBlank
                                                  pixel: :emit_pixel, inside: :emit_inside, blit: :emit_blit,
                                                  blit_pose: :emit_blit_pose, draw_text: :emit_draw_text,
                                                  draw_digit: :emit_draw_digit, save_region: :emit_save_region,
-                                                 restore_region: :emit_restore_region, camera: :emit_camera
+                                                 restore_region: :emit_restore_region, camera: :emit_camera,
+                                                 draw_column_at: :emit_draw_column_at
                                                })
+
+            # What a column of a picture is handed over in (#emit_draw_column_at), the height first.
+            COLUMN = %i[height slice x top width].freeze
+
+            # What a picture's column holds for a pixel that is see-through (Runtime::Paint).
+            SEE_THROUGH = 0xFF
 
             # The kinds that paint, which make a screen painted when the game names none. The camera
             # only moves the view over what was painted.
@@ -44,9 +51,31 @@ module VBlank
               @painted_art = PaintedArt.new
               @picture_lists = [] # each a list of SNES::PaintedArt pictures' numbers
               @patches = {} # a backing buffer's name -> [its place, its width, its height]
+              @column_routines = {} # a picture's name -> the routine that draws a column of it
+              @column_tables = {} # a picture's name -> its columns' places
             end
 
             def painted? = @painted
+
+            # Does the game draw columns of pictures (Runtime::Paint's rt_paint_column)?
+            def paints_columns? = @painted && @reachable.any? { |node| node.kind == :draw_column_at }
+
+            # The numbers a column is handed over in, kept before any routine is made, since a routine
+            # can be lowered more than once.
+            def keep_column_numbers
+              return unless paints_columns?
+
+              @column_numbers = COLUMN.to_h { |what| [what, keep_local(:"column_#{what}")] }
+            end
+
+            # The routine that draws a column of each picture drawn so.
+            def column_sections
+              @column_routines.map do |name, label|
+                image = Assets::Image.of(picture_named(name))
+                @column_tables[name] = Array.new(image.width) { |slice| column_places(image, slice) }
+                routine_section(label, [], routine: "#{name.inspect} drawn a column at a time") { emit_column_walk(name, image) }
+              end
+            end
 
             # Every backing buffer — the patch of the screen under a sprite on a painted screen — given
             # its room in work RAM.
@@ -86,13 +115,96 @@ module VBlank
                   tables.data_bytes(0)
                 end
               end
-              [tables.section, *picture_row_sections]
+              [tables.section, *picture_row_sections, *column_table_sections]
             end
 
             # The most bytes of pictures' rows in one section: well inside a bank of the cartridge.
             ROWS_A_SECTION = 0x6000
 
             private
+
+            # Each picture's columns, top to bottom, a place to a byte, as many to a section as fit, so
+            # a wall of many pictures side by side can be bigger than a bank. Where each column
+            # starts is a table of its own, in the part that does not move.
+            def column_table_sections
+              @column_tables.flat_map do |name, columns|
+                starts = W65816.new("column starts of #{name}", holds: Picture::ART)
+                starts.label("column starts of #{name}")
+                columns.each_index do |slice|
+                  starts.data_longs("column #{name}.#{slice}")
+                  starts.data_bytes(0)
+                end
+                [starts.section, *columns.each_slice(ROWS_A_SECTION / columns.first.length).with_index.map do |part, number|
+                  column_bytes_section(name, part, number * (ROWS_A_SECTION / columns.first.length))
+                end]
+              end
+            end
+
+            def column_bytes_section(name, columns, first)
+              asm = W65816.new("column bytes of #{name}, from #{first}", holds: Picture::ART)
+              columns.each_with_index do |places, number|
+                asm.label("column #{name}.#{first + number}")
+                asm.data_bytes(places)
+              end
+              asm.section
+            end
+
+            def column_places(image, slice)
+              Array.new(image.height) do |row|
+                at = (row * image.width) + slice
+                image.drawn_at?(at) ? @painted_art.place_of(image.color_at(at)) : SEE_THROUGH
+              end
+            end
+
+            # Reference#exec_draw_column_at: one column of a picture stretched to a height worked out
+            # as the game runs. A height of nought or less draws nothing, and the others are not
+            # worked out. The picture's own routine works out where the walk starts, once a
+            # column (#emit_column_walk), and the runtime walks it.
+            def emit_draw_column_at(node)
+              label = @column_routines[node.name] ||= "column of #{node.name}"
+              value(node.height)
+              store(@column_numbers.fetch(:height))
+              done = fresh("no_height")
+              jump_unless(Build.binop(:>, Build.var_ref(@column_numbers.fetch(:height)), Build.int(0)), done)
+              %i[slice x top].each do |what|
+                value(value_node(node.public_send(what)))
+                store(@column_numbers.fetch(what))
+              end
+              load_constant(node.width || 1)
+              store(@column_numbers.fetch(:width))
+              call_routine(label)
+              @asm.label(done)
+            end
+
+            # Only the rows on the screen are walked, so a wall nose-to-nose costs what any wall of the
+            # screen's height costs. The step down the picture in 65536ths is worked out here, and
+            # where it stands at the first row shown.
+            def emit_column_walk(name, image)
+              height, x, top, width = %i[height x top width].map { |what| Build.var_ref(@column_numbers.fetch(what)) }
+              step, first, last, start = %i[step first last start].map { |what| keep_local(what) }
+              value(Build.binop(:/, Build.int(image.height << Reference::FIXED), height))
+              store(step)
+              pointer = keep_local(:pointer)
+              value(Build.clamped(Build.var_ref(@column_numbers.fetch(:slice)), Build.int(0), Build.int(image.width - 1)))
+              2.times { @asm.asl(@asm.direct(R0)) } # four bytes to a column's start
+              @asm.ldx(@asm.direct(R0))
+              2.times do |half|
+                @asm.lda(@asm.long_x("column starts of #{name}", half * 2))
+                @asm.sta(@asm.abs(place_of(pointer), half * 2))
+              end
+              value(Build.clamped(Build.neg(top), Build.int(0), Build.int(Int32::MAX)))
+              store(first)
+              value(Build.clamped(height, Build.int(Int32::MIN), Build.binop(:-, Build.int(Runtime::Picture::SCREEN_HEIGHT), top)))
+              store(last)
+              done = fresh("no_rows")
+              jump_unless(Build.binop(:<, Build.var_ref(first), Build.var_ref(last)), done)
+              value(Build.binop(:*, Build.var_ref(first), Build.var_ref(step)))
+              store(start)
+              runtime_call("rt_paint_column", [Build.var_ref(pointer), Build.var_ref(step), Build.var_ref(start),
+                                               Build.binop(:-, Build.var_ref(last), Build.var_ref(first)),
+                                               x, Build.binop(:+, top, Build.var_ref(first)), width])
+              @asm.label(done)
+            end
 
             # Each picture's rows, as many to a section as fit.
             def picture_row_sections

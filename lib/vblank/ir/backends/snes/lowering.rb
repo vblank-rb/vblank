@@ -81,7 +81,7 @@ module VBlank
           # day the Super Nintendo does it; test_snes_kind_coverage.rb holds the list and the tables
           # above to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
-                                                    "the picture" => %i[draw_column_at show_picture_group data_byte]
+                                                    "the picture" => %i[show_picture_group data_byte]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by
@@ -188,6 +188,7 @@ module VBlank
             keep_sprite_color_choices
             keep_scene_tiles_up
             keep_loop_running
+            keep_column_numbers
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
               routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
@@ -196,7 +197,8 @@ module VBlank
             @lowering_scene = nil
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             placings = sprite_placing_sections
-            [data_section, *table_sections, *routines, *timers, *main, *placings]
+            columns = column_sections
+            [data_section, *table_sections, *routines, *timers, *main, *placings, *columns]
           end
 
           # Whether the game has a division only a runtime routine can do (Runtime::Int32), once
