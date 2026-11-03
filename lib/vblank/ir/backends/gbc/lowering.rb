@@ -280,7 +280,7 @@ module VBlank
           end
 
           # Whether the game pushes onto a list of halves or takes from one's front, so wants the
-          # routines that push and read such a list quickly (Runtime::Lists#emit_half_queue_routines).
+          # routines that push and read such a list quickly (Runtime::Lists#emit_queue_routines).
           def keeps_half_queues?
             halves = @program.walk.select { |node| node.kind == :list_new && node.width == :half }.map(&:name)
             @program.walk.any? do |node|

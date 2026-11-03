@@ -28,7 +28,7 @@ module VBlank
             LENGTH = 6
 
             # The word in the names of the quick routines for a list whose slots are this many bytes
-            # (#emit_queue_routines, #emit_half_queue_routines).
+            # (#emit_narrow_push, #emit_narrow_item).
             NARROW_WIDTHS = { 1 => "byte", 2 => "half" }.freeze
 
             module_function
@@ -41,8 +41,9 @@ module VBlank
               q = Quick.for(memory)
               emit_helpers(asm, memory, q)
               emit_routines(asm, memory, q, byte_fills)
-              emit_queue_routines(asm, memory, q) if queues
-              emit_half_queue_routines(asm, memory, q) if half_queues
+              widths = NARROW_WIDTHS.keys.select { |width| width == 1 ? queues : half_queues }
+              emit_queue_routines(asm, memory, q, widths) if widths.any?
+              emit_shift(asm, memory) if queues
               emit_start(asm)
             end
 
@@ -398,34 +399,53 @@ module VBlank
             # They only know the way when nothing is wrong. A full list, an empty one or an index out
             # of range puts its numbers where the routines above take them and goes there, so the
             # game stops in the same words with the same numbers.
-            def emit_queue_routines(asm, memory, q)
-              emit_narrow_push(asm, memory, q, 1)
-              emit_shift(asm, memory)
-              emit_narrow_item(asm, memory, 1)
-            end
-
+            #
             # A QUEUE OF HALVES — two-byte numbers, a sprite's place or a tile's number — is pushed
             # and read the same way, the slot found as for a byte and then doubled, since each is two
             # bytes along. Taking from the front never looks at a slot, so rt_list_shift serves both.
-            def emit_half_queue_routines(asm, memory, q)
-              emit_narrow_push(asm, memory, q, 2)
-              emit_narrow_item(asm, memory, 2)
+            #
+            # +widths+ are the slot widths the game keeps queues of, [1], [2] or [1, 2]. A game with
+            # queues of both has ONE push and ONE item routine, answering to both names, which read
+            # the width from the list's header: the two copies were nearly the same instructions, and
+            # this code sits in the part of the cartridge that is always in view, where every byte is
+            # taken from what the game's own tables and songs can have. A game with one width keeps
+            # the routine that knows its width and never looks.
+            def emit_queue_routines(asm, memory, q, widths)
+              emit_narrow_push(asm, memory, q, widths)
+              emit_narrow_item(asm, memory, q, widths)
+            end
+
+            # The labels of the routine +verb+ ("push" or "item") for lists of +widths+, and the
+            # name its own inner labels start with.
+            def narrow_names(widths, verb)
+              names = widths.map { |width| "rt_#{NARROW_WIDTHS.fetch(width)}_list_#{verb}" }
+              [names, widths.length > 1 ? "rt_narrow_list_#{verb}" : names.first]
             end
 
             # rt_byte_list_push: E, the low byte of the value, into the list at HL. rt_half_list_push:
-            # DE, the low half of the value, the same way.
-            def emit_narrow_push(asm, memory, q, width)
-              name = "rt_#{NARROW_WIDTHS.fetch(width)}_list_push"
-              asm.label(name)
+            # DE, the low half of the value, the same way. Where both are one routine, the list's
+            # width is kept in quick memory, and the Z flag says "a byte" from where the slot is
+            # doubled to where the value is written: nothing between them changes it.
+            def emit_narrow_push(asm, memory, q, widths)
+              labels, name = narrow_names(widths, "push")
+              either = widths.length > 1
+              wide = widths.include?(2)
+              labels.each { |label| asm.label(label) }
               asm.load(:a, :e)
               asm.load_high(q.entry, :a)
-              if width == 2
+              if wide
                 asm.load(:a, :d)
                 asm.load_high(q.entry + 1, :a)
               end
               asm.push(:hl)
               read_number(asm, :c, :b) # BC = the capacity
-              2.times { asm.inc(:hl) }
+              if either
+                asm.load(:a, [:hli]) # the slot width, kept
+                asm.load_high(q.width, :a)
+                asm.inc(:hl)
+              else
+                2.times { asm.inc(:hl) }
+              end
               read_number(asm, :e, :d) # DE = the front, and HL at the length
               asm.load(:a, [:hli])
               asm.sub_a(:c)
@@ -453,14 +473,21 @@ module VBlank
               asm.load(:h, :d)
               asm.load(:l, :e)
               asm.label("#{name}_slot")
-              asm.add_hl(:hl) if width == 2 # two bytes a slot
+              if either
+                asm.load_high(:a, q.width)
+                asm.dec(:a) # Z: a list of bytes
+                asm.jump_relative(:z, "#{name}_one_byte")
+              end
+              asm.add_hl(:hl) if wide # two bytes a slot
+              asm.label("#{name}_one_byte") if either
               asm.pop(:bc)
               asm.add_hl(:bc)
               asm.load(:bc, HEADER)
               asm.add_hl(:bc)
               asm.load_high(:a, q.entry)
-              if width == 2
+              if wide
                 asm.load([:hli], :a)
+                asm.ret(:z) if either # a byte's slot holds its one byte
                 asm.load_high(:a, q.entry + 1)
               end
               asm.load([:hl], :a)
@@ -518,10 +545,12 @@ module VBlank
             end
 
             # rt_byte_list_item: BCDE = the item BCDE places along the list of bytes whose length is
-            # at HL. rt_half_list_item: the same along a list of halves.
-            def emit_narrow_item(asm, memory, width)
-              name = "rt_#{NARROW_WIDTHS.fetch(width)}_list_item"
-              asm.label(name)
+            # at HL. rt_half_list_item: the same along a list of halves. Where both are one routine,
+            # the Z flag says "a byte" from where the slot is found to the read.
+            def emit_narrow_item(asm, memory, q, widths)
+              labels, name = narrow_names(widths, "item")
+              either = widths.length > 1
+              labels.each { |label| asm.label(label) }
               asm.load(:a, :b)
               asm.or_a(:c)
               asm.jump_relative(:nz, "#{name}_past_16_bits")
@@ -540,7 +569,13 @@ module VBlank
               asm.load(:a, :b)
               asm.adc_a(:d)
               asm.load(:d, :a)
-              2.times { asm.dec(:hl) }
+              if either
+                asm.dec(:hl)
+                asm.load(:a, [:hld]) # the slot width, kept
+                asm.load_high(q.width, :a)
+              else
+                2.times { asm.dec(:hl) }
+              end
               asm.load(:a, [:hld]) # BC = the capacity, and HL at the list
               asm.load(:b, :a)
               asm.load(:c, [:hl])
@@ -553,11 +588,25 @@ module VBlank
               asm.load(:d, :a)
               asm.load(:e, :c)
               asm.label("#{name}_slot")
-              width.times { asm.add_hl(:de) } # the slot's bytes along, from the list
+              if either
+                asm.load_high(:a, q.width)
+                asm.dec(:a) # Z: a list of bytes
+                asm.jump_relative(:z, "#{name}_one_byte")
+                asm.add_hl(:de)
+                asm.label("#{name}_one_byte")
+                asm.add_hl(:de)
+              else
+                widths.first.times { asm.add_hl(:de) } # the slot's bytes along, from the list
+              end
               asm.load(:de, HEADER)
               asm.add_hl(:de)
               # a slot reads back with its top bit as the sign
-              asm.jump(width == 1 ? "rt_read_int8" : "rt_read_int16")
+              if either
+                asm.jump(:z, "rt_read_int8")
+                asm.jump("rt_read_int16")
+              else
+                asm.jump(widths.first == 1 ? "rt_read_int8" : "rt_read_int16")
+              end
               asm.label("#{name}_past_16_bits")
               asm.inc(:hl)
               asm.label("#{name}_missing")

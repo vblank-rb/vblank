@@ -83,7 +83,7 @@ module VBlank
           # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +byte_fills+ says
           # it fills a list of bytes (Lists#emit_byte_fill), and +queues+ that it pushes bytes or takes
           # from a list's front (Lists#emit_queue_routines), and +half_queues+ that it pushes onto a list
-          # of halves or takes one from the front (Lists#emit_half_queue_routines). +sprites_over_picture+
+          # of halves or takes one from the front (Lists#emit_queue_routines). +sprites_over_picture+
           # says its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
           # sprite layer is on there.
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],

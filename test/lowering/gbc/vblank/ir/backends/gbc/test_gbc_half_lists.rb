@@ -21,6 +21,45 @@ class TestGBCHalfLists < Minitest::Test
     pass
   end
 
+  # A game with queues of bytes and of halves has one push and one item routine answering to both
+  # names, since those routines sit in the part of the cartridge always in view.
+  def test_queues_of_bytes_and_halves_share_one_push_and_one_item_routine
+    code = GBC.new.build(mixed_game).built.code
+
+    assert_equal code.fetch("rt_byte_list_push"), code.fetch("rt_half_list_push")
+    assert_equal code.fetch("rt_byte_list_item"), code.fetch("rt_half_list_item")
+  end
+
+  # A game that keeps no list of halves carries none of their routines.
+  def test_a_game_with_queues_of_bytes_alone_carries_no_routine_for_halves
+    code = GBC.new.build(byte_queue_game).built.code
+
+    assert code.key?("rt_byte_list_push")
+    assert_empty code.keys.grep(/\Art_(half|narrow)_list/)
+  end
+
+  # Through the shared routines each list keeps its own width: a byte keeps its low 8 bits, a
+  # half its low 16, each read back with its top bit as its sign, round both rings.
+  def test_queues_of_bytes_and_halves_side_by_side_agree_with_the_interpreter
+    GBC::CheckedRun.new.run(mixed_game, frames: 40)
+    pass
+  end
+
+  def test_a_push_onto_a_full_list_of_halves_beside_a_queue_of_bytes_stops_the_game_in_the_interpreters_words
+    error = assert_raises(VBlank::IR::ProgramError) do
+      played(frames: 5) do
+        bytes = list :bytes, capacity: 4, width: :byte
+        bytes.push 1
+        bytes.shift
+        xs = list :xs, capacity: 2, width: :half
+        game_loop { xs.push 900 }
+      end
+    end
+
+    assert_match(/:xs/, error.message)
+    assert_match(/full/, error.message)
+  end
+
   def test_a_push_onto_a_full_list_of_halves_stops_the_game_in_the_interpreters_words
     error = assert_raises(VBlank::IR::ProgramError) do
       played(frames: 5) do
@@ -93,6 +132,37 @@ class TestGBCHalfLists < Minitest::Test
           xs.shift
         end
         shown = frames_since_power_on
+      end
+    end
+  end
+
+  private def byte_queue_game
+    game_of do
+      xs = list :xs, capacity: 4, width: :byte
+      total = var :total, 0
+      game_loop do
+        xs.push 7
+        total += xs[0]
+        xs.shift
+      end
+    end
+  end
+
+  private def mixed_game
+    game_of do
+      bytes = list :bytes, capacity: 3, width: :byte
+      halves = list :halves, capacity: 5, width: :half
+      n = var :n, 0
+      total = var :total, 0
+      game_loop do
+        n += 1
+        bytes.push (n * 37) - 100
+        halves.push (n * 9001) - 100_000
+        halves.push n * 300
+        total = (total * 3) + bytes[0] + (halves[halves.length - 1] * 2) + halves[0] + bytes.length
+        bytes.shift if bytes.length > 1
+        halves.shift
+        halves.shift if halves.length > 2
       end
     end
   end
