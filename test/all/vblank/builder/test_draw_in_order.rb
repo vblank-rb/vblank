@@ -59,6 +59,28 @@ module DrawInOrderGames
       game_loop { hero.y += 0 }
     end
   end
+
+  # TAKING TURNS. Three blocks in a row on one line, each four pixels right of the one before,
+  # so neighbours overlap and all three overlap in the middle: red, then green, then blue,
+  # named in that order. +turns+ is what `take_turns:` is given; with +count+ 2 only the first
+  # two are made.
+  TURNS_AT = [60, 60].freeze
+  TURN_COLORS = %i[red green blue].freeze
+
+  private def turns_program(turns, count: 3)
+    block = BLOCK
+    at = TURNS_AT
+    colors = TURN_COLORS
+    program do
+      screen :tiled
+      blocks = colors.first(count).each_with_index.map do |color, i|
+        image(:"block_#{color}", "#" => color) { block }
+        sprite :"block_#{color}", at: [at[0] + (i * 4), at[1]]
+      end
+      draw_in_order(*blocks, take_turns: turns)
+      game_loop {}
+    end
+  end
 end
 
 class TestDrawInOrder < Minitest::Test
@@ -180,6 +202,116 @@ class TestDrawInOrder < Minitest::Test
     assert_equal RED, shown(puffs_program(ordered: false), frames: 3), "the older thing of a pool is in front"
     assert_equal GREEN, shown(puffs_program(ordered: true), frames: 3), "the higher thing is in front"
     assert_backends_agree(puffs_program(ordered: true), frames: 3)
+  end
+
+  # --- taking turns in front, a frame each ---
+
+  # Where red and green overlap, where all three do, and where green and blue do.
+  RED_GREEN = [65, 66].freeze
+  ALL_THREE = [70, 66].freeze
+  GREEN_BLUE = [77, 66].freeze
+
+  private def colors_at(prog, frames)
+    screen = game_player.run(prog, frames: frames).screen
+    [RED_GREEN, ALL_THREE, GREEN_BLUE].map { |at| screen.pixel(*at) }
+  end
+
+  # The first one named in front of the rest, and the run turned round: what each of the three
+  # places shows.
+  FIRST_IN_FRONT = [RED, RED, GREEN].freeze
+  LAST_IN_FRONT = [GREEN, BLUE, BLUE].freeze
+
+  # Two blocks overlapping, level with each other: the one in front changes every frame, so
+  # each shows half the time where they overlap, and neither hides the other for good. The
+  # first frame the game shows has the first one named in front.
+  def test_two_overlapping_sprites_take_turns_in_front
+    prog = turns_program(true, count: 2)
+    seen = (1..4).map { |frames| game_player.run(prog, frames: frames).screen.pixel(*RED_GREEN) }
+
+    assert_equal [RED, GREEN, RED, GREEN], seen
+    (1..2).each { |frames| assert_backends_agree(prog, frames: frames) }
+  end
+
+  # The whole run turns round, not just a pair of it: the first named is in front of all of
+  # them one frame and the last named the next, and the middle one goes from in front of the
+  # last to behind it.
+  def test_the_whole_run_turns_round_every_frame
+    prog = turns_program(true)
+
+    assert_equal FIRST_IN_FRONT, colors_at(prog, 1), "red in front, then green, then blue"
+    assert_equal LAST_IN_FRONT, colors_at(prog, 2), "blue in front, then green, then red"
+    assert_equal FIRST_IN_FRONT, colors_at(prog, 3)
+    (1..2).each { |frames| assert_backends_agree(prog, frames: frames) }
+  end
+
+  # The game says which way round the first frame shows: the first one named in front, or the
+  # last.
+  def test_the_game_chooses_which_one_starts_in_front
+    assert_equal FIRST_IN_FRONT, colors_at(turns_program(:first), 1)
+    assert_equal LAST_IN_FRONT, colors_at(turns_program(:last), 1)
+    assert_equal FIRST_IN_FRONT, colors_at(turns_program(:last), 2)
+    assert_backends_agree(turns_program(:last), frames: 1)
+  end
+
+  # A pool's things take turns one by one, beside a sprite: a red thing of the pool and the blue
+  # hero overlap, and which shows changes every frame.
+  def test_a_pools_things_take_turns_with_a_sprite
+    block = BLOCK
+    prog = program do
+      screen :tiled
+      image(:walker, "#" => :red) { block }
+      image(:hero, "#" => :blue) { block }
+      walkers = pool :walker, x: 0, y: 0, capacity: 2, image: :walker
+      hero = sprite :hero, at: [64, 60]
+      draw_in_order walkers, hero, take_turns: true
+      walkers.spawn(x: 60, y: 60)
+      game_loop {}
+    end
+    seen = (1..4).map { |frames| game_player.run(prog, frames: frames).screen.pixel(*RED_GREEN) }
+
+    assert_equal 2, seen.uniq.length, "each shows on alternate frames"
+    assert_equal [BLUE, RED].sort, seen.uniq.sort
+    assert_equal seen.first(2), seen.last(2)
+    (1..2).each { |frames| assert_backends_agree(prog, frames: frames) }
+  end
+
+  def test_taking_turns_with_a_number_of_its_own_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:a, "#" => :red) { block }
+      one = sprite :a, at: [0, 0]
+      two = sprite :b, at: [4, 4], facing: { down: :a }
+      draw_in_order(one, two, take_turns: true) { |thing| thing.y }
+    end
+
+    assert_match(/take_turns/, message)
+  end
+
+  def test_taking_turns_with_a_front_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:a, "#" => :red) { block }
+      one = sprite :a, at: [0, 0]
+      two = sprite :b, at: [4, 4], facing: { down: :a }
+      draw_in_order one, two, take_turns: true, front: :lowest
+    end
+
+    assert_match(/front:/, message)
+  end
+
+  def test_an_unknown_take_turns_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:a, "#" => :red) { block }
+      one = sprite :a, at: [0, 0]
+      two = sprite :b, at: [4, 4], facing: { down: :a }
+      draw_in_order one, two, take_turns: :middle
+    end
+
+    assert_match(/:first/, message)
   end
 
   # --- what the build refuses ---

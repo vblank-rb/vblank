@@ -19,4 +19,16 @@ class TestDrawInOrderCartridge < Minitest::Test
     assert_equal [ENEMY_AT], v.sprites(:enemy).map { |row| [row.x, row.y] }
     assert_operator v.sprites(:hero).first.slot, :<, v.sprites(:enemy).first.slot, "the hero is in front"
   end
+
+  # TAKING TURNS: the console draws the sprite earlier in its table in front, so the two swap
+  # rows in the table from one frame to the next.
+  def test_sprites_taking_turns_swap_rows_every_frame
+    rom = assemble_rom(turns_program(true, count: 2), name: "TURNS")
+    red_in_front = [4, 5].map do |frames|
+      v = assert_emulator_loads_rom(rom, frames: frames)
+      v.sprites(:block_red).first.slot < v.sprites(:block_green).first.slot
+    end
+
+    assert_equal [true, false], red_in_front
+  end
 end

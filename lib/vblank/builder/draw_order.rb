@@ -27,16 +27,34 @@ module VBlank
     # thing. The frame's objects are then drawn with that run in the list's order. Things
     # whose numbers are equal keep the order they were already in, so two characters
     # standing level do not flicker in front of each other.
+    #
+    # TAKING TURNS IN FRONT. Many console games draw their sprites in one order on one frame
+    # and the other way round on the next, so where two overlap each shows half the time and
+    # neither hides the other for good — a falling piece over the pile, two characters
+    # standing on one spot. The console keeps one picture per pixel, and the sprite earlier in
+    # its table wins; turning the table round every frame is how those games share the pixel.
+    #
+    #   draw_in_order a, b, c, take_turns: true     # a in front on the first frame, c on the next
+    #   draw_in_order a, b, c, take_turns: :last    # c in front on the first frame, a on the next
+    #
+    # It is the same sort, handed a number of its own: each thing's place in the list the game
+    # wrote, times a sign the routine turns over after every sort. Every number differs, so
+    # the whole run turns round each frame, and nothing on any backend is new.
     module DrawOrder
       FRONTS = %i[highest lowest].freeze
 
+      # What `take_turns:` takes, and which one named is in front on the first frame shown.
+      TURN_STARTS = { true => :first, first: :first, last: :last }.freeze
+
       # One order the game declared: its number, counting from 1; the sprites and pools in
-      # it; which end of the number is in front; and how a thing's number is worked out.
-      Order = Data.define(:number, :things, :front, :key) do
+      # it; which end of the number is in front; how a thing's number is worked out; and,
+      # for an order that takes turns, which one named starts in front (:first or :last).
+      Order = Data.define(:number, :things, :front, :key, :turns) do
         def part(name) = Messages::MadeNames.make(:draw_order, number: number, part: name)
         def routine = part(:sort)
         def keys_list = part(:keys)
         def order_list = part(:order)
+        def turn_var = part(:turn)
       end
 
       # Draw +things+ — sprites, and the things of a pool — in an order worked out every
@@ -50,11 +68,19 @@ module VBlank
       # things of one order are declared in one layer, and a sprite is in one order at most.
       # One told `put_in_layer` is drawn in the layer it is in now: the order holds inside each.
       #
+      # With +take_turns+ there is no number to work out: the things take turns in front, the
+      # list as named on one frame and turned round on the next, a pool's things one by one.
+      # +true+ or :first puts the first one named in front on the first frame shown, :last the
+      # last one named.
+      #
       # @param things [Array<HardwareSprite, Pool>] what is put in order
       # @param front [Symbol] :highest (the default) or :lowest — which number is in front
+      # @param take_turns [Boolean, Symbol] false, or true, :first or :last
       # @return [nil]
-      def draw_in_order(*things, front: :highest, &key)
+      def draw_in_order(*things, front: nil, take_turns: false, &key)
         things = things.flatten
+        turns = turn_start!(take_turns, front, key)
+        front ||= :highest
         refuse_unknown_front!(front)
         things.each { |thing| refuse_unorderable_thing!(thing) }
         refuse_order_of_one!(things)
@@ -63,8 +89,8 @@ module VBlank
         refuse_order_split_by!(things, :scene, "scene")
 
         key ||= ->(thing) { thing.bottom }
-        order = Order.new(number: draw_orders.length + 1, things: things, front: front, key: key)
-        things.each { |thing| order_pool_things(thing, key) if thing.is_a?(DSL::Pool) }
+        order = Order.new(number: draw_orders.length + 1, things: things, front: front, key: key, turns: turns)
+        things.each { |thing| order_pool_things(thing, key) if thing.is_a?(DSL::Pool) } unless turns
         draw_orders << order
         nil
       end
@@ -91,6 +117,8 @@ module VBlank
       # worked out from its handle, a pool object's read from what the pool copied for its
       # place.
       def order_keys(order)
+        return turn_keys(order) if order.turns
+
         order.things.flat_map do |thing|
           if thing.is_a?(DSL::Pool)
             thing.stacked_objects.each_with_index.map do |node, place|
@@ -100,6 +128,15 @@ module VBlank
             [[thing.object_name, DSL::Value.node_for(order.key.call(thing))]]
           end
         end.to_h
+      end
+
+      # An order that takes turns numbers each object by its place in the list the game named,
+      # times a sign: -1 makes place 0 the highest number, so in front, and +1 makes the last
+      # place the highest. The sort turns the sign over every time it runs.
+      def turn_keys(order)
+        object_names_in(order).each_with_index.to_h do |name, place|
+          [name, Build.binop(:*, Build.int(place), Build.var_ref(order.turn_var))]
+        end
       end
 
       # The objects of +order+ in the order the draw list holds them, which is what the order
@@ -166,6 +203,10 @@ module VBlank
         at_boot(Build.list_new(order.order_list, count, width: count > 128 ? :half : :byte))
         at_boot(Build.repeat(Build.int(count), index, Build.list_push(order.order_list, Build.var_ref(index))))
         at_boot(Build.list_new(order.keys_list, count, full_of: 0))
+        return unless order.turns
+
+        ensure_var(order.turn_var)
+        at_boot(Build.set(order.turn_var, Build.int(order.turns == :first ? -1 : 1)))
       end
 
       # WORK OUT EVERY NUMBER, THEN SORT. The list holds the objects back to front, so the
@@ -201,7 +242,35 @@ module VBlank
                                          Build.sub(at, Build.int(1)),
                                          stop_when: leave),
                             Build.list_set(list, ref.(at), ref.(item)))
-        numbers + [sort]
+        return numbers + [sort] unless order.turns
+
+        turn = order.turn_var
+        numbers + [sort, Build.set(turn, Build.binop(:-, Build.int(0), ref.(turn)))]
+      end
+
+      # Which one named starts in front for +take_turns+ (nil when the order does not take
+      # turns), refusing a front or a number of the game's own beside it: the order is the
+      # list as named, so there is no number for either to decide.
+      def turn_start!(take_turns, front, key)
+        return nil if take_turns == false || take_turns.nil?
+
+        turns = TURN_STARTS.fetch(take_turns) do
+          raise ArgumentError,
+                "draw_in_order was given take_turns: #{take_turns.inspect}. It must be true, :first or :last. " \
+                "It says which thing is in front on the first frame: :first is the first thing you named."
+        end
+        if key
+          raise ArgumentError,
+                "draw_in_order was given take_turns: and a block. With take_turns, the order is the list " \
+                "you named, so a block has no number to decide. Remove the block or take_turns:."
+        end
+        if front
+          raise ArgumentError,
+                "draw_in_order was given take_turns: and front:. With take_turns, the things are in front " \
+                "one frame each, so front: has nothing to decide. To choose which thing starts in front, " \
+                "use take_turns: :first or take_turns: :last."
+        end
+        turns
       end
 
       def refuse_unknown_front!(front)
