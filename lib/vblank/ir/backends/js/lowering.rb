@@ -36,42 +36,6 @@ module VBlank
           private
 
           def build_name = "the browser build"
-
-          # HOW MANY PLAYERS THE BROWSER'S RUNTIME READS. runtime/rg_runtime.js keeps every
-          # player's buttons in one 32-bit number, the second player's 16 bits above the first's
-          # (IR::Buttons::PLAYER_SHIFT), so it reads two. The C and Ruby runtimes keep a list, one
-          # number per connected player, and read as many as any build does.
-          MOST_PLAYERS_READ = 2
-
-          # Everything the native lowering refuses, and a game that reads more players than the
-          # browser's runtime does.
-          def refuse_unlowered_kinds!
-            refuse_players_past_runtime!
-            super
-          end
-
-          # A line that reads a player the runtime does not, or a game that says it takes more, is
-          # refused before anything is written.
-          def refuse_players_past_runtime!
-            most = MOST_PLAYERS_READ
-            declared = @program.most_players
-            if declared && declared > most
-              raise LoweringError, "this game takes up to #{declared} players (`players:`), and #{build_name} reads " \
-                                   "#{most} players at most for now. To fix this, set the most players in " \
-                                   "`players:` to #{most} for this build. #{other_builds_read_more}"
-            end
-            player = @reachable.select { |node| %i[held pressed].include?(node.kind) }
-                               .map(&:player).select { |each| each.is_a?(Integer) }.max
-            return if player.nil? || player <= most
-
-            raise LoweringError, "this game reads player #{player}, and #{build_name} reads #{most} players at most " \
-                                 "for now. To fix this, read players 1 to #{most} only. #{other_builds_read_more}"
-          end
-
-          def other_builds_read_more
-            "You can also build the game for this computer with `vblank build --format=native`, or play it as " \
-              "Ruby with `vblank run`. These builds read up to #{Buttons::MOST_PLAYERS} players."
-          end
         end
       end
     end

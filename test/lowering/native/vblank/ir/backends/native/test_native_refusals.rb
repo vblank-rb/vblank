@@ -20,7 +20,7 @@ class TestNativeRefusals < Minitest::Test
   end
 
   # The desktop build reads every player a game can name, so a game that says it takes the most
-  # is written, where the browser build refuses it (test_js_lowering.rb).
+  # is written, as the browser build's is (test_js_lowering.rb).
   def test_a_game_for_sixteen_players_is_written
     builder = Builder.new(options: VBlank::Cartridge::Options.new(players: VBlank::IR::Buttons::MOST_PLAYERS))
     builder.instance_eval { game_loop { halt if pressed(:a, player: 16) } }

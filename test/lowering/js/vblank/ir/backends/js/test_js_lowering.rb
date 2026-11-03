@@ -154,34 +154,17 @@ class TestJSLowering < Minitest::Test
     assert_includes error.message, "browser"
   end
 
-  # The browser build keeps two players' buttons, so a game that reads a third is refused before
-  # anything is written.
-  def test_a_third_player_is_refused_by_name
-    program = program_of do
-      third = 0
-      game_loop { third += 1 if pressed(:a, player: 3) }
-    end
-
-    error = assert_raises(JS::LoweringError) { JS.new.lower(program) }
-    assert_match(/player 3/, error.message)
-    assert_match(/2 players/, error.message)
-    assert_includes error.message, "browser"
-    assert_includes error.message, "--format=native", "names a build that reads more"
-  end
-
-  # ...and a game that says it takes more than two is refused the same way, naming `players:`, even
-  # where no line reads the third player yet.
-  def test_a_game_for_three_players_is_refused_naming_players
-    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: 3))
-    builder.instance_eval { game_loop { halt if pressed(:a, player: :any) } }
+  # The browser build reads every player a game can name, so a game that says it takes the most
+  # is written, as the desktop build's is.
+  def test_a_game_for_sixteen_players_is_written
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: VBlank::IR::Buttons::MOST_PLAYERS))
+    builder.instance_eval { game_loop { halt if pressed(:a, player: 16) } }
     builder.finalize_program
 
-    error = assert_raises(JS::LoweringError) { JS.new.lower(builder.program) }
-    assert_match(/`players:`/, error.message)
-    assert_match(/up to 3 players/, error.message)
+    assert_includes JS.new.lower(builder.program), "rg_pressed_by"
   end
 
-  # ...and in a routine nothing calls they never run, so there is nothing to refuse, as the
+  # Raw machine code in a routine nothing calls never runs, so there is nothing to refuse, as the
   # interpreter refuses them only when it reaches them.
   def test_raw_machine_code_nothing_reaches_is_left_out
     program = program_of do
