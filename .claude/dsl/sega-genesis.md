@@ -64,7 +64,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds sixteen places on a Genesis, the first see-through. The console holds four lists, for the sprites and the backgrounds together.
-- `recolor` — works: a list told to hold other colours keeps one of the four lists to itself for the whole game, written over in the blank. A sprite or a background can be drawn with any list of colours (`draw_with`), and each list takes one of the four.
+- `recolor` — works: a list told to hold other colours keeps one of the four lists to itself for the whole game, written over in the blank. The sprites and the backgrounds drawn with it are drawn from that one list, however many sets it holds in turn. A sprite drawn with several lists (`draw_with [...], showing:`) takes one of the four for each list.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.

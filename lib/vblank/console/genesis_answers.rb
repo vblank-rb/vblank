@@ -104,8 +104,9 @@ module VBlank
         colors: works("a list of colours holds sixteen places on a Genesis, the first see-through. The console " \
                       "holds four lists, for the sprites and the backgrounds together."),
         recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
-                       "game, written over in the blank. A sprite or a background can be drawn with any list of " \
-                       "colours (`draw_with`), and each list takes one of the four."),
+                       "game, written over in the blank. The sprites and the backgrounds drawn with it are drawn " \
+                       "from that one list, however many sets it holds in turn. A sprite drawn with several lists " \
+                       "(`draw_with [...], showing:`) takes one of the four for each list."),
         color_walk: works,
         colors_in_use: works,
         mirror: works,

@@ -84,10 +84,16 @@ module VBlank
         # +boxed+, on a background the game holds to a box (BoxBackground), names the variable that
         # says whether it is held to one now. It goes back to 0, shown everywhere, as the scene the
         # background belongs to takes over, as +choice+ does. Absent on every other background.
+        #
+        # +follows+, on a background drawn with a list of colours the game changes (ColorList),
+        # names that list. Its +recolors+ are then the sets the list can hold, counted as the list
+        # counts them, and its colours are what the list holds: a target whose backgrounds and
+        # sprites read one table of colours can draw it from the list's own place in that table.
+        # Absent on every other background.
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, boxed: :name
+                 above_row: :int, boxed: :name, follows: :name
 
         # Each of +palettes+ as a tile drawn from it says which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.

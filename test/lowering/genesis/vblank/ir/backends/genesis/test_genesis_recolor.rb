@@ -93,6 +93,33 @@ class TestGenesisRecolor < Minitest::Test
     end
   end
 
+  # A background and a sprite drawn with one list the game changes share that list's palette, so
+  # fifteen sets through it cost one of the four. Two pictures of fifteen colours each take two
+  # more, and the ship's own colours the last: the game fits only if the background and the
+  # sprite are drawn from the one palette.
+  def test_a_background_and_a_sprite_drawn_with_one_changing_list_share_its_palette
+    checked(frames: 20) do
+      colors :slot, OWN
+      sets = (0...15).map { |n| colors :"set#{n}", [:transparent, rgb(n, 31 - n, 4), rgb(31 - n, n, 8)] }
+      image :plate, width: 8, height: 8, data: SHIP, colors: :slot
+      tiles :hull, "#" => :plate
+      plates = background :plates, tiles: :hull, map: ["#####"]
+      plates.draw_with :slot
+      ship = sprite :ship, at: [40, 40]
+      ship.draw_with :slot
+      [[:busy_a, 0], [:busy_b, 16]].each_with_index do |(name, base), row|
+        busy = Array.new(64) { |i| rgb(base + (i % 15), 31 - (i % 15), row * 20) }
+        image name, width: 8, height: 8, data: busy
+        sprite name, at: [80 + (row * 16), 40]
+      end
+      step = 0
+      game_loop do
+        step += 1
+        recolor :slot, sets, showing: step % 17
+      end
+    end
+  end
+
   def test_more_lists_than_a_genesis_has_palettes_for_are_refused_in_words
     error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
       Genesis.new.build(program_of do

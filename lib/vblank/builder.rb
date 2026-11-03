@@ -166,7 +166,7 @@ module VBlank
       @picture_groups = {}     # `picture_groups` name → its declaration (see PictureGroups)
       @sprite_recolors = []    # every sprite's and pool's other colours, to find who draws with a changing list
       @lists_in_use = []       # each set of lists `colors_in_use` named, in the order the game counts them
-      @lists_backgrounds_draw_with = {} # `colors` name → the background drawn with it, which a changing list cannot reach
+      @lists_backgrounds_draw_with = {} # `colors` name → the backgrounds drawn with it, which follow it if it changes
       @tilesets = {}           # tileset name → { by_key:, by_number:, tile_w:, tile_h:, solid_images: } — a tile-image map addressable by the tileset's own keys or by number (a sheet cell)
       @screen_mode = nil       # the current display mode (set by `screen`), so `sprite` picks its backend
       @sprites = []            # live software sprites, repainted after every wait_vblank
@@ -596,6 +596,7 @@ module VBlank
       refuse_shifted_tile_run_lists!
       refuse_filled_shifted_lists!
       finalize_tile_copies
+      link_backgrounds_to_changing_lists # before the colours: it says what those backgrounds are drawn with
       finalize_background_colors
       finalize_changing_color_lists
       finalize_picture_groups
@@ -746,7 +747,7 @@ module VBlank
     def defer_recolor_write(name, shown_var, live_var, node)
       declared_background(name).shown_colors = shown_var
       declared_background(name).live_colors = live_var
-      @inline_color_nodes << node
+      @inline_color_nodes << node if node
     end
 
     # The affine counterpart to {#defer_scroll_write}: remember that +name+ turns or

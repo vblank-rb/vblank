@@ -189,8 +189,10 @@ module VBlank
             rescue Art::TooManyLists
               raise NotMadeYet.new("The lists of colours this game draws with need more than the four a Genesis holds at " \
                                    "once. The Genesis build keeps each list for the whole game. It does not swap lists " \
-                                   "as the game runs yet. To fix this, draw with fewer lists of colours, or build the " \
-                                   "game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
+                                   "as the game runs yet. To fix this, draw with fewer lists of colours. To step through " \
+                                   "many sets of colours, draw the sprites and the background with one list, and change " \
+                                   "what it holds with `recolor`: that list keeps one of the four, whatever the sets. Or " \
+                                   "build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
             end
 
             # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
@@ -245,7 +247,11 @@ module VBlank
             # is drawn from has no palette, and nothing to show.
             def emit_background_colors(node) = for_background(node) { |bg| emit_background_colors_of(bg, node) }
 
+            # A background that follows a list the game changes draws from the list's own palette, which the
+            # list's write fills (#emit_color_list_holds), so it has nothing of its own to write.
             def emit_background_colors_of(bg, node)
+              return if bg.follows
+
               bg.drawn_lists.each_index do |index|
                 palette = @art.held_palette_of([:background, bg.object_id, index]) or next
 
@@ -363,11 +369,17 @@ module VBlank
             # THE PALETTE A TILE OF A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS IS DRAWN FROM: one for each list
             # its tiles were drawn from, written over with the colours of the list the game's number names for it
             # (Reference#background_swap). The tile is made of the places of its own list.
+            #
+            # A BACKGROUND THAT FOLLOWS A LIST THE GAME CHANGES (`recolor`) is drawn from that list's palette, the
+            # one its sprites are drawn from. A Genesis keeps one table of colours for its backgrounds and its
+            # sprites together, four palettes of sixteen, so a title whose picture and sprites step through any
+            # number of sets of colours costs one palette, written over in the blank, and leaves three for the rest.
             def recolored_palette(bg, image)
               list = bg.recolored_list_of(image.list_drawn_from) or
                 raise LoweringError, "a tile of the background #{bg.name.inspect} is drawn from a list of colours it was not given"
               index = bg.drawn_lists.index(list)
-              @art.reserve_held_palette([:background, bg.object_id, index], bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF })
+              key = bg.follows ? [:sprites, bg.follows] : [:background, bg.object_id, index]
+              @art.reserve_held_palette(key, bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF })
             end
 
             # --- the screen and the backgrounds ---

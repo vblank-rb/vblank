@@ -109,6 +109,10 @@ module VBlank
       # Every list named here so far, each once.
       def names = @names.uniq
 
+      # Every list named here, in the order the objects count them from 0: a list named in two
+      # sets is there twice, as it is counted.
+      def names_by_number = @names.dup
+
       # The scenes the objects drawn with these lists belong to, nil standing for none.
       def scenes = @objects.map(&:scene).uniq
 

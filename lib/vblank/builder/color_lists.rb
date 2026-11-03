@@ -142,13 +142,39 @@ module VBlank
         @sprite_recolors << recolors
       end
 
-      # Keep track of a list a background is drawn with, by what an error calls the
-      # background. Called by {DSL::Background} as it takes the list's colours.
-      def remember_background_draws_with(name, subject)
-        @lists_backgrounds_draw_with[name] ||= subject
+      # Keep track of a list a background is drawn with, so a background drawn with a list
+      # that changes can be told to follow it. Called by {DSL::Background} as it takes the
+      # list's colours.
+      def remember_background_draws_with(name, background)
+        (@lists_backgrounds_draw_with[name] ||= []) << background unless @lists_backgrounds_draw_with[name]&.include?(background)
       end
 
       private
+
+      # A BACKGROUND DRAWN WITH A LIST THE GAME CHANGES SHOWS WHAT THE LIST HOLDS, as a sprite
+      # drawn with it does. The background is told the sets the list can hold, counted as the
+      # list counts them, and reads the list's own number for which one it shows (see
+      # DSL::Background#follow_changing_list!). So the console writes the background's colours
+      # on the same frame as the list's, from the same number, and a console whose sprites and
+      # backgrounds read one table of colours can keep the two in one place of it.
+      #
+      # It runs before the backgrounds' colour writes are moved to the gap between frames, which
+      # is where the background's is made. A program with no gap writes the background's colours
+      # where the list was told what to hold, as it writes the list's.
+      def link_backgrounds_to_changing_lists
+        @changing_color_lists.each do |name, list|
+          @lists_backgrounds_draw_with.fetch(name, []).each do |background|
+            background.follow_changing_list!(name, list.recolors.names_by_number, list.shown)
+            next unless @frame_boundaries.empty?
+
+            list.writes.each do |write|
+              beside = Build.background_colors(background.name, which: Build.var_ref(list.shown))
+              write.parent.children.insert(write.parent.children.index(write) + 1, beside)
+              beside.parent = write.parent
+            end
+          end
+        end
+      end
 
       # How many steps a channel of a colour has from one end to the other.
       CHANNEL_STEPS = 31
@@ -282,7 +308,6 @@ module VBlank
         return if @changing_color_lists.empty? && shared.empty?
 
         @changing_color_lists.each do |name, list|
-          refuse_background_drawn_with_changing_list!(name)
           users = @sprite_recolors.select { |recolors| recolors.draws_with?(name) }
           refuse_changing_list_without_sprites!(name) if users.empty?
           users.each { |user| refuse_sets_ambiguous_for!(user, name, list.recolors.names) }
@@ -443,20 +468,6 @@ module VBlank
           refuse_ambiguous_color_places!(own: own, swapped: @color_lists.fetch(set), name: set,
                                          poses: user.poses, subject: user.subject, through: name)
         end
-      end
-
-      # A BACKGROUND TAKES A LIST'S COLOURS AS IT WAS DECLARED, into colours of its own: its
-      # tiles are drawn from groups nothing else reads, which `recolor` never writes. So a
-      # background drawn with a list that changes would go on showing the declared colours,
-      # with nothing to say why. It has a word of its own for this, and the error names it.
-      def refuse_background_drawn_with_changing_list!(name)
-        background = @lists_backgrounds_draw_with[name]
-        return unless background
-
-        raise ArgumentError,
-              "#{background} draws with :#{name}, and :#{name} was told to hold other colors. `recolor` " \
-              "changes the colors of sprites only. To change the colors of a background, give it the " \
-              "lists to step through: `draw_with [:#{name}, ...], showing: step`."
       end
 
       # COPY A LIST'S COLOURS IN THE GAP BETWEEN FRAMES, and only on a frame where the answer

@@ -67,6 +67,9 @@ module VBlank
         @map_names = map_names || [name]
       end
 
+      # The name the background was declared with.
+      attr_reader :name
+
       # PUT A DIFFERENT TILE IN ONE CELL, while the game runs.
       #
       #   room.set_tile 4, 7, "."    # the door is open now
@@ -255,7 +258,28 @@ module VBlank
         # game loop has no gap between frames to hold the write for, and then it simply
         # happens where it was asked for.
         node = record(Build.background_colors(@name, which: Build.var_ref(colors_var)))
+        (@colors_writes ||= []) << node
         @builder.defer_recolor_write(@name, colors_var, live_colors_var, node)
+        self
+      end
+
+      # DRAWN WITH A LIST OF COLOURS THE GAME CHANGES (`recolor`), FOR GOOD. The layer's other
+      # colours become the sets the list can hold, +sets+ in the order the list counts them, so
+      # the number that says what the list holds (+shown+, the list's own variable) says what
+      # this layer is drawn with too, and the two can never disagree. A number naming none of
+      # them is the layer's own colours, which are the list's as it was declared: the colours
+      # it holds at power-on, and the ones `recolor :list, :own` puts back.
+      #
+      # Called once the whole program is declared (Builder::ColorLists), when it is known which
+      # lists change, and only for a layer that was told `draw_with` the list.
+      def follow_changing_list!(list, sets, shown)
+        refuse_following_beside_other_colors!(list)
+        @colors_node.recolors = sets.map { |name| [list_colors_for(name, 0)] }
+        @colors_node.follows = list
+        # Where a program has no gap between frames, the writes stay where draw_with was said,
+        # and say what the list holds there.
+        @colors_writes.each { |node| node.which = Build.var_ref(shown) }
+        @builder.defer_recolor_write(@name, shown, live_colors_var, nil)
         self
       end
 
@@ -614,7 +638,7 @@ module VBlank
       # drawn. A layer drawn from one list has steps of one, which is today's swap exactly.
       def recolors
         @recolors ||= begin
-          node = @builder.make_background_recolorable(@name)
+          node = @colors_node = @builder.make_background_recolorable(@name)
           node.palettes = drawn_lists.map(&:last)
           node.palette_names = drawn_lists.map(&:first)
           Recolors.new(@builder, subject: error_subject, poses: @tile_pictures,
@@ -624,6 +648,25 @@ module VBlank
 
       def error_subject = "The background :#{@name}"
 
+      # A layer drawn with a list that changes shows what the list holds, so its tiles must be
+      # drawn in the list's own colours, it must have no other list to take turns with, and no
+      # colours of its own to go back to.
+      def refuse_following_beside_other_colors!(list)
+        unless drawn_lists.length == 1 && drawn_lists.first.last == @builder.declared_colors(list)
+          raise ArgumentError,
+                "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
+                "So the background shows the colors :#{list} holds, from power-on. Its tiles must be drawn in " \
+                "the colors of :#{list}, and they are not. To fix this, give its tiles `image ..., colors: :#{list}`."
+        end
+        return if !@told_own && recolors.names == [[list]]
+
+        raise ArgumentError,
+              "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
+              "So the background is drawn with :#{list} for good. It cannot also draw with other lists or " \
+              "with :own. To fix this, tell it only `draw_with :#{list}`, and say what :#{list} holds with " \
+              "`recolor :#{list}, ...`."
+      end
+
       # The lists this layer's tiles were drawn from, each once, in the order first met: the
       # name each was declared under and its colours (Builder#lists_drawn_from).
       def drawn_lists = @drawn_lists ||= @builder.lists_drawn_from(@tile_pictures, subject: error_subject)
@@ -631,17 +674,23 @@ module VBlank
       # One step's colours, a list per palette, each checked against the tiles drawn from it.
       def colors_of_step(step)
         step.each_with_index.map do |name, at|
-          own = drawn_lists[at]
-          next own.last if name.nil?
+          next drawn_lists[at].last if name.nil?
 
-          # Its tiles, and any given its colours themselves (Builder#lists_drawn_from).
-          drawn_from_it = @tile_pictures.select do |pose|
-            tile_list, tile_colors = @builder.list_drawn_from(pose)
-            tile_colors == own.last && (tile_list == own.first || tile_list.nil?)
-          end
-          @builder.remember_background_draws_with(name, error_subject)
-          @builder.colors_to_draw_with([name], poses: drawn_from_it, subject: error_subject).first
+          @builder.remember_background_draws_with(name, self)
+          list_colors_for(name, at)
         end
+      end
+
+      # The colours of the list +name+, for the tiles drawn from the layer's list number +at+,
+      # checked against them.
+      def list_colors_for(name, at)
+        own = drawn_lists[at]
+        # Its tiles, and any given its colours themselves (Builder#lists_drawn_from).
+        drawn_from_it = @tile_pictures.select do |pose|
+          tile_list, tile_colors = @builder.list_drawn_from(pose)
+          tile_colors == own.last && (tile_list == own.first || tile_list.nil?)
+        end
+        @builder.colors_to_draw_with([name], poses: drawn_from_it, subject: error_subject).first
       end
 
       # What a call to draw_with named, as steps (see #recolors), or nil for the own colours.
@@ -649,6 +698,7 @@ module VBlank
         return recolor_steps_from_hash(which, showing) if which.is_a?(Hash)
 
         names = recolors.requested_lists!(which, showing)
+        @told_own = true if names.nil?
         return nil if names.nil?
 
         unless drawn_lists.length == 1

@@ -319,9 +319,9 @@ class TestRecolor < Minitest::Test
     assert_match(/place 1 and place 2/, message)
   end
 
-  # A background takes a list's colors as declared, into a group of its own that `recolor`
-  # never writes, so it would go on showing the declared ones with nothing to say why.
-  def test_a_background_drawn_with_a_list_that_changes_says_so
+  # A background drawn with a list that changes is drawn in what the list holds, so its tiles
+  # are drawn in the colors the list was declared with: the colors it holds at power-on.
+  def test_a_background_whose_tiles_are_not_drawn_from_the_list_says_so
     message = refused do
       tiles :hull, "#" => :ship
       ship = sprite :ship, at: [40, 40]
@@ -332,6 +332,121 @@ class TestRecolor < Minitest::Test
     end
 
     assert_match(/background :plates draws with :slot/, message)
-    assert_match(/sprites only/, message)
+    assert_match(/colors: :slot/, message)
+  end
+
+  # Drawn with a list that changes, a background is drawn with it for good: it has no other
+  # lists to take turns with, and no colors of its own to go back to.
+  def test_a_background_drawn_with_the_list_and_other_lists_says_so
+    message = assert_raises(ArgumentError) do
+      background_and_ship_drawn_with_the_list do |plates|
+        plates.draw_with %i[slot warm], showing: 1
+        game_loop { recolor :slot, :cold }
+      end
+    end.message
+
+    assert_match(/background :plates draws with :slot/, message)
+    assert_match(/for good/, message)
+  end
+
+  # --- backgrounds ---
+
+  # Tiles drawn from :slot, the left half its first color and the right half its second.
+  PLATE = Array.new(64) { |i| (i % 8) < 4 ? :blue : :white }.freeze
+
+  # A row of plates and the ship, both drawn with :slot, a bystander in its own colors, and
+  # whatever the block says.
+  private def background_and_ship_drawn_with_the_list(&rest)
+    built do
+      image :plate, width: 8, height: 8, data: PLATE, colors: :slot
+      tiles :hull, "#" => :plate
+      plates = background :plates, tiles: :hull, map: ["#####"]
+      ship = sprite :ship, at: [40, 40]
+      ship.draw_with :slot
+      image :bystander, width: 8, height: 8, data: SHIP, colors: OWN
+      sprite :bystander, at: [60, 40]
+      instance_exec(plates, ship, &rest)
+    end
+  end
+
+  # The plates' two halves, the ship's two halves and the bystander's first half.
+  private def background_and_ship_halves(program, frames:)
+    i = game_player.run(program, frames: frames)
+    [[i.screen.pixel(1, 1), i.screen.pixel(5, 1)], [i.screen.pixel(41, 41), i.screen.pixel(45, 41)], i.screen.pixel(61, 41)]
+  end
+
+  # `recolor` reaches a background drawn with the list as it reaches a sprite: both show what
+  # the list holds now, and a picture drawn in other colors keeps them.
+  def test_a_background_drawn_with_the_list_shows_the_colors_the_list_holds_now
+    recolored = background_and_ship_drawn_with_the_list do |plates|
+      plates.draw_with :slot
+      game_loop { recolor :slot, :warm }
+    end
+    warm = colors_of(:yellow, :orange)
+
+    assert_equal [warm, warm, shown(:red)], background_and_ship_halves(recolored, frames: 3)
+  end
+
+  # A program with no game loop has no gap between frames to move the writes to, so the
+  # background's colors are written where the list is told what to hold.
+  def test_a_background_drawn_with_the_list_follows_it_without_a_game_loop
+    unpaced = background_and_ship_drawn_with_the_list do |plates|
+      plates.draw_with :slot
+      recolor :slot, :warm
+      halt
+    end
+    i = game_player.run(unpaced, frames: 3)
+
+    assert_equal colors_of(:yellow, :orange), [i.screen.pixel(1, 1), i.screen.pixel(5, 1)]
+  end
+
+  # Before anything recolors it, the list holds the colors it was declared with.
+  def test_a_background_drawn_with_the_list_shows_its_declared_colors_until_it_is_recolored
+    waiting = background_and_ship_drawn_with_the_list do |plates|
+      plates.draw_with :slot
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        recolor :slot, :warm if pass > 5
+      end
+    end
+    declared = colors_of(:blue, :white)
+
+    assert_equal [declared, declared, shown(:red)], background_and_ship_halves(waiting, frames: 3)
+  end
+
+  # Five sets, then fifteen, a new one every pass, through one list the background and the
+  # ship are both drawn with: on a console whose sprites and backgrounds share their lists
+  # of colors, that is one list for both, whatever the sets. A number past the sets is the
+  # list's own colors.
+  private def stepping_through(count)
+    klass = self.class
+    background_and_ship_drawn_with_the_list do |plates|
+      names = (0...count).map { |n| colors :"set#{n}", klass.set(n) }
+      plates.draw_with :slot
+      step = var :step, 0
+      game_loop do
+        step += 1
+        recolor :slot, names, showing: step % (count + 2)
+      end
+    end
+  end
+
+  def test_a_background_and_a_sprite_step_through_five_sets_together
+    [2, 4, 7, 9].each do |frames|
+      plates, ship, bystander = background_and_ship_halves(stepping_through(5), frames: frames)
+
+      assert_equal plates, ship
+      assert_equal shown(:red), bystander
+    end
+  end
+
+  def test_a_background_and_a_sprite_step_through_fifteen_sets_together
+    [3, 10, 17, 19].each do |frames|
+      plates, ship, bystander = background_and_ship_halves(stepping_through(15), frames: frames)
+
+      assert_equal plates, ship
+      assert_equal shown(:red), bystander
+    end
   end
 end
