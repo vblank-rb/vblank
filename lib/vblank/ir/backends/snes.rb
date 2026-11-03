@@ -155,6 +155,7 @@ module VBlank
             return build(program, title: title, **choices, sprite_squares: false)
           end
           findings.concat(lowering.sprite_table_findings)
+          findings.concat(routines_without_their_chip(program)) unless carries.chip?
           runtime = Runtime.sections(memory, carries, lowering)
           linked =Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
@@ -202,6 +203,19 @@ module VBlank
           raise LoweringError, "This game saves, and it is for a #{Console::SUPER_NINTENDO.title} with a chip on its " \
                                "cartridge. The build cannot keep a save on that cartridge yet. To fix this, remove the " \
                                "chip from variants: or from --variant, or build the game without saves for that console."
+        end
+
+        # A word that asks for a chip this cartridge does not have changes nothing, and a game much
+        # too slow gives no other sign of why, so it is said once for each routine.
+        def routines_without_their_chip(program)
+          program.walk.select { |node| node.kind == :func && node.on_chip }.map do |routine|
+            Guardrails::Finding.new(
+              check: :snes_on_chip_without_chip, severity: :warning, node: routine,
+              message: "The routine :#{routine.name} says `on_chip: true`, and this #{Console::SUPER_NINTENDO.title} " \
+                       "cartridge has no chip. The routine runs on the console's own processor. To run it on the " \
+                       "chip, add `variants: { snes: :superfx }` to the game, or build with `--variant superfx`."
+            )
+          end
         end
 
         # The board +program+'s cartridge is laid out for (Cartridge::SNESROM::BOARDS): the one its

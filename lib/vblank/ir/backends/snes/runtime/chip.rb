@@ -36,14 +36,14 @@ module VBlank
             WAIT = "rt chip wait"
             SEEN = "rt chip seen"
             MISSED = "rt chip missed"
-            WAIT_BYTES = 48
+            WAIT_BYTES = 56
 
             module_function
 
             def reserve(memory)
               memory.reserve(WAIT, WAIT_BYTES)
               memory.reserve(SEEN, 1)
-              memory.reserve(MISSED, 1)
+              memory.reserve(MISSED, 2)
             end
 
             # rt_chip_start: the chip set up and the waiting loop copied into work RAM, once, at
@@ -91,6 +91,7 @@ module VBlank
               asm.and_a(0x80)
               asm.sta(at.call(SEEN))
               asm.stz(at.call(MISSED))
+              asm.stz(at.call(MISSED, 1))
               # The chip sees the cartridge's ROM in banks $00-$3F, where the console sees it in
               # banks $80-$BF as well.
               asm.lda(asm.direct(2))
@@ -103,19 +104,21 @@ module VBlank
               asm.tax # what SCMR will say, handed to the waiting loop
               asm.lda(asm.direct(0)) # where the program starts, the same
               asm.jsl(asm.long(memory[WAIT]))
-              asm.sep(0x20)
-              asm.lda(asm.abs(h::RDNMI))
-              asm.lda(h::NMI_ON)
-              asm.sta(asm.abs(h::NMITIMEN))
+              # The frames gone by are added before the interrupt comes back, since it adds to the
+              # same count and one taken part way through this would be lost.
               asm.rep(0x20)
               asm.lda(at.call(MISSED))
-              asm.and_a(0x00FF)
               asm.clc
               asm.adc(at.call(Frame::FRAMES))
               asm.sta(at.call(Frame::FRAMES))
               asm.bcc("rt_chip_ran")
               asm.inc(at.call(Frame::FRAMES, 2))
               asm.label("rt_chip_ran")
+              asm.sep(0x20)
+              asm.lda(asm.abs(h::RDNMI))
+              asm.lda(h::NMI_ON)
+              asm.sta(asm.abs(h::NMITIMEN))
+              asm.rep(0x20)
               asm.rtl
             end
 
@@ -150,7 +153,9 @@ module VBlank
               asm.sta(asm.abs(memory[SEEN]))
               asm.and_a(0x80) # a store leaves the flags as the comparison set them; this sets them anew
               asm.beq("wait") # the blank ended
+              asm.rep(0x20) # a count that a run of many frames can take past a byte
               asm.inc(asm.abs(memory[MISSED])) # a blank began
+              asm.sep(0x20)
               asm.bra("wait")
               asm.label("stopped")
               asm.stz(asm.abs(h::GSU_SCMR)) # the ROM and the RAM are the console's again

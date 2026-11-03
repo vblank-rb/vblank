@@ -229,6 +229,26 @@ class TestSNESOnChip < Minitest::Test
     Digest::SHA256.hexdigest(game.build_rom(console: :snes, profile: false, out: nil, err: nil).bytes)
   end
 
+  private def warnings_of_build(variant: nil)
+    game = VBlank.game("NO CHIP", consoles: %i[snes]) do
+      total = var :total, 0
+      func(:work, on_chip: true) { total += 1 }
+      game_loop { call :work }
+    end
+    err = StringIO.new
+    game.build_rom(console: :snes, variant: variant, profile: false, out: StringIO.new, err: err)
+    err.string
+  end
+
+  def test_the_word_on_a_cartridge_with_no_chip_says_so
+    assert_match(/:work says `on_chip: true`/, warnings_of_build)
+    assert_match(/superfx/, warnings_of_build)
+  end
+
+  def test_the_word_on_a_cartridge_with_the_chip_says_nothing
+    refute_match(/on_chip/, warnings_of_build(variant: :superfx))
+  end
+
   def test_the_word_changes_no_byte_of_a_plain_cartridge
     assert_equal plain_digest(on_chip: nil), plain_digest(on_chip: true)
   end

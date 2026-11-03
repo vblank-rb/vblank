@@ -336,7 +336,6 @@ module VBlank
               asm.sec
               asm.sbc(at.call(FRAMES_MARK))
               asm.sty(at.call(FRAMES_MARK))
-              asm.and_a(0x00FF)
               asm.bne("rt_read_buttons_some")
               asm.lda(1) # a pass is worth at least the frame it ran in
               asm.label("rt_read_buttons_some")
