@@ -1,44 +1,20 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "many_players_games"
 
 # FOUR PEOPLE AT ONE GAME, played on the interpreter, which plays a program past every console's
 # controllers: each moves a marker of their own, `:any` is every connected player, and the game
 # can ask how many are connected. A test holds the third player's buttons as :p3_left. Which
-# console seats how many is test/all/vblank/builder/test_player_option.rb's.
+# console seats how many is test/all/vblank/builder/test_player_option.rb's. The browser build
+# reads two players, so this is not in test/all/; the game as C and as Ruby play the same games
+# (test/many_players_games.rb).
 class TestManyPlayersInterpreter < Minitest::Test
-  ROWS = { 1 => 10, 2 => 30, 3 => 50, 4 => 70 }.freeze
-
-  private def four_markers
-    b = Builder.new
-    b.instance_eval do
-      x1 = 10
-      x2 = 10
-      x3 = 10
-      x4 = 10
-      anyone_left = 0
-      connected = 0
-      game_loop do
-        x1 += 1 if held(:right, player: 1)
-        x2 += 1 if held(:right, player: 2)
-        x3 += 1 if held(:right, player: 3)
-        x4 += 1 if held(:right, player: 4)
-        anyone_left += 1 if held(:left, player: :any)
-        connected = players_connected
-        clear_screen :black
-        draw_rect_at x1, 10, 2, 2, :red
-        draw_rect_at x2, 30, 2, 2, :red
-        draw_rect_at x3, 50, 2, 2, :red
-        draw_rect_at x4, 70, 2, 2, :red
-      end
-    end
-    b.finalize_program
-    b.program
-  end
+  include ManyPlayersGames
 
   private def played(*buttons) = VBlank::IR::Backends::Reference.new.hold(*buttons).run(four_markers, frames: 5)
 
-  private def marker_at(run, player) = (0...240).find { |x| run.screen.pixel(x, ROWS.fetch(player)) == Color.resolve(:red) }
+  private def marker_at(run, player) = (0...240).find { |x| run.screen.pixel(x, MARKER_ROWS.fetch(player)) == Color.resolve(:red) }
 
   def test_each_of_four_players_moves_their_own_marker_on_the_same_pass
     run = played(:p2_right, :p4_right)

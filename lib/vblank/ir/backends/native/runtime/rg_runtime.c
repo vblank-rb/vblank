@@ -14,40 +14,37 @@
 const rg_driver *rg_active_driver;
 
 #define ONE_PLAYERS_BUTTONS 0xFFFu
-#define PLAYER_SHIFT 16 /* IR::Buttons::PLAYER_SHIFT */
-#define ALL_BUTTONS (ONE_PLAYERS_BUTTONS | (ONE_PLAYERS_BUTTONS << PLAYER_SHIFT))
 
-static uint32_t held;    /* buttons down now, a bit each, the second player's PLAYER_SHIFT up */
-static uint32_t seen;    /* ...and at the last frame boundary, to tell a press from a hold */
-static uint32_t pressed; /* buttons that went down at the last frame boundary */
-static int32_t connected = 1; /* players connected: never fewer than the driver last said */
+/* EACH PLAYER'S BUTTONS, a number each, the first player's first (IR::Buttons.masks), a bit a
+ * button. The lists are as long as the most players any build reads; only the first +connected+
+ * can hold anything, and a player past them holds nothing. */
+static uint32_t held[RG_MOST_PLAYERS];    /* buttons down now */
+static uint32_t seen[RG_MOST_PLAYERS];    /* ...and at the last frame boundary, to tell a press from a hold */
+static uint32_t pressed[RG_MOST_PLAYERS]; /* buttons that went down at the last frame boundary */
+static int32_t connected = 1; /* players connected: never fewer than the driver has said */
+
+/* +count+ players' buttons as held now. A player stays connected once a driver has said so, and
+ * one it leaves out holds nothing, as the Ruby runtime's rg_players_buttons does. */
+static void hold_players(int32_t count, const uint32_t *masks) {
+  if (count > RG_MOST_PLAYERS) count = RG_MOST_PLAYERS;
+  if (count > connected) connected = count;
+  for (int32_t player = 0; player < RG_MOST_PLAYERS; player++)
+    held[player] = player < count ? masks[player] & ONE_PLAYERS_BUTTONS : 0;
+}
 
 /* A button counts as pressed on the one frame it goes down, however long it is then held — the
  * edge the interpreter's read_buttons finds. */
-void rg_buttons_read(uint32_t now) {
-  held = now & ALL_BUTTONS;
-  pressed = held & ~seen;
-  seen = held;
+void rg_players_read(int32_t count, const uint32_t *masks) {
+  hold_players(count, masks);
+  for (int32_t player = 0; player < RG_MOST_PLAYERS; player++) {
+    pressed[player] = held[player] & ~seen[player];
+    seen[player] = held[player];
+  }
 }
 
 /* Down before the first frame boundary and not yet seen there, so the first boundary still finds
  * them going down — the interpreter's hold, and the console's keys from power-on. */
-void rg_buttons_held_from_power_on(uint32_t now) { held = now & ALL_BUTTONS; }
-
-/* +count+ connected players' buttons, one number each, the first player's first
- * (IR::Buttons.masks). This runtime keeps two players' in one number; the lowering refuses a game
- * that reads more, so a third cannot matter here, and only counts as connected. */
-static uint32_t two_players(int32_t count, const uint32_t *masks) {
-  if (count > connected) connected = count;
-  uint32_t now = count > 0 ? masks[0] & ONE_PLAYERS_BUTTONS : 0;
-  if (count > 1) now |= (masks[1] & ONE_PLAYERS_BUTTONS) << PLAYER_SHIFT;
-  return now;
-}
-
-void rg_players_read(int32_t count, const uint32_t *masks) { rg_buttons_read(two_players(count, masks)); }
-void rg_players_held_from_power_on(int32_t count, const uint32_t *masks) {
-  rg_buttons_held_from_power_on(two_players(count, masks));
-}
+void rg_players_held_from_power_on(int32_t count, const uint32_t *masks) { hold_players(count, masks); }
 
 /* The frame the game drew has ended, whoever is driving and whether or not the run stops here. */
 void rg_wait_vblank(void) {
@@ -319,16 +316,19 @@ static int32_t button_down(uint32_t buttons, int32_t button) {
   return (int32_t)((buttons >> button) & 1u);
 }
 
-int32_t rg_held(int32_t button) { return button_down(held, button); }
-int32_t rg_pressed(int32_t button) { return button_down(pressed, button); }
+int32_t rg_held(int32_t button) { return button_down(held[0], button); }
+int32_t rg_pressed(int32_t button) { return button_down(pressed[0], button); }
 
-/* Whether any of the buttons in +mask+ (one player's bits) is down for +player+ (1 or 2), or for
- * any connected player for 0, for a test that names a player. */
-static int32_t down_by(uint32_t buttons, int32_t player, int32_t mask) {
-  uint32_t asked = (uint32_t)mask;
-  if (player == 0) asked |= asked << PLAYER_SHIFT;
-  else asked <<= PLAYER_SHIFT * (player - 1);
-  return (buttons & asked) != 0;
+/* Whether any of the buttons in +mask+ is down for +player+ (1 and up), or for any connected
+ * player for 0, for a test that names a player. */
+static int32_t down_by(const uint32_t *buttons, int32_t player, int32_t mask) {
+  if (player == 0) {
+    for (int32_t each = 0; each < connected; each++)
+      if (buttons[each] & (uint32_t)mask) return 1;
+    return 0;
+  }
+  if (player < 1 || player > RG_MOST_PLAYERS) return 0;
+  return (buttons[player - 1] & (uint32_t)mask) != 0;
 }
 
 int32_t rg_held_by(int32_t player, int32_t mask) { return down_by(held, player, mask); }

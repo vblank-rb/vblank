@@ -32,19 +32,20 @@ typedef struct {
 /* The driver in use; set by whichever main() started the program. */
 extern const rg_driver *rg_active_driver;
 
-/* A driver says which buttons are down, a bit each in the order rg_runtime.h lists them, at
- * every frame boundary; a button down now and not at the last boundary is pressed for the
- * frame that is starting (rg_runtime.c works that out, the same for every driver). */
-void rg_buttons_read(uint32_t held);
+/* The most players the runtime reads (IR::Buttons::MOST_PLAYERS). */
+#define RG_MOST_PLAYERS 16
 
-/* Buttons down from power-on, before the game's first statement: a driver says so before it starts
- * the game. None of them counts as pressed until the first frame boundary reads it down. */
-void rg_buttons_held_from_power_on(uint32_t held);
-
-/* The same two, said as one number for each of +count+ connected players, the first player's
- * first (IR::Buttons.masks): how a driver that knows who is connected says it. A player stays
- * connected once a driver has said so. */
+/* A driver says which buttons are down at every frame boundary: one number for each of +count+
+ * connected players, the first player's first (IR::Buttons.masks), a bit a button in the order
+ * rg_runtime.h lists them. A button down now and not at the last boundary is pressed for the
+ * frame that is starting (rg_runtime.c works that out, the same for every driver). A player stays
+ * connected once a driver has said so, and holds nothing on a boundary that leaves them out;
+ * players past RG_MOST_PLAYERS are not read. */
 void rg_players_read(int32_t count, const uint32_t *masks);
+
+/* Buttons down from power-on, before the game's first statement, said the same way: a driver says
+ * so before it starts the game. None of them counts as pressed until the first frame boundary
+ * reads it down. */
 void rg_players_held_from_power_on(int32_t count, const uint32_t *masks);
 
 /* WHERE THE CARTRIDGE'S CLOCK GETS ITS TIME, said by the driver before it starts the game, or not

@@ -236,16 +236,13 @@ static _Noreturn void finish(void) {
   exit(0);
 }
 
-/* The most players a line of buttons names (IR::Buttons::MOST_PLAYERS). */
-#define MOST_PLAYERS 16
-
 /* A line of buttons, one number for each connected player, the first player's first
  * (IR::Buttons.masks), handed to +read+. */
 static void read_players(const char *line, void (*read)(int32_t, const uint32_t *)) {
-  uint32_t masks[MOST_PLAYERS];
+  uint32_t masks[RG_MOST_PLAYERS];
   int32_t count = 0;
   char *end;
-  for (const char *at = line; count < MOST_PLAYERS; at = end) {
+  for (const char *at = line; count < RG_MOST_PLAYERS; at = end) {
     unsigned long mask = strtoul(at, &end, 10);
     if (end == at) break;
     masks[count++] = (uint32_t)mask;

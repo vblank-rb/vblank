@@ -19,29 +19,14 @@ class TestNativeRefusals < Minitest::Test
     assert_includes error.message, ":raw"
   end
 
-  # The desktop build keeps two players' buttons, so a game that reads a third is refused before
-  # anything is written, naming the build that reads more.
-  def test_a_third_player_is_refused_by_name
-    program = program_of do
-      third = 0
-      game_loop { third += 1 if held(:left, player: 3) }
-    end
-
-    error = assert_raises(LoweringError) { Native.new.lower(program) }
-    assert_match(/player 3/, error.message)
-    assert_match(/2 players/, error.message)
-  end
-
-  # ...and a game that says it takes more than two is refused the same way, naming `players:`, even
-  # where no line reads the third player yet.
-  def test_a_game_for_three_players_is_refused_naming_players
-    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: 3))
-    builder.instance_eval { game_loop { halt if pressed(:a, player: :any) } }
+  # The desktop build reads every player a game can name, so a game that says it takes the most
+  # is written, where the browser build refuses it (test_js_lowering.rb).
+  def test_a_game_for_sixteen_players_is_written
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: VBlank::IR::Buttons::MOST_PLAYERS))
+    builder.instance_eval { game_loop { halt if pressed(:a, player: 16) } }
     builder.finalize_program
 
-    error = assert_raises(LoweringError) { Native.new.lower(builder.program) }
-    assert_match(/`players:`/, error.message)
-    assert_match(/up to 3 players/, error.message)
+    assert_includes Native.new.lower(builder.program), "rg_pressed_by"
   end
 
   def test_two_players_play_as_on_the_interpreter

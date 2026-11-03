@@ -1233,7 +1233,13 @@ static void trace_frame(uint32_t held) {
 /* The keyboard presses its gamepad's buttons, and then every gamepad is read: a button down on
  * any of them is down. A key that went down and came up again between two frames still counts
  * for the frame that follows, so a quick tap is never lost. A real gamepad is read by the buttons
- * a player has chosen for it; the keyboard's has the console's layout, whatever was chosen. */
+ * a player has chosen for it; the keyboard's has the console's layout, whatever was chosen.
+ *
+ * Every one of them is the FIRST player's: the window seats one player, however many gamepads are
+ * plugged in, so a game for more plays here with the others never connected. Giving each gamepad a
+ * player of its own is more than a number per pad (which pad is whose when one is pulled out and
+ * plugged in again, the keyboard's own pad among them, and a menu that says so), and is not done
+ * yet; the runtime reads up to RG_MOST_PLAYERS, so it is only this function that changes. */
 static void read_buttons(void) {
   uint32_t keyboard = keys_down | keys_tapped;
   keys_tapped = 0;
@@ -1250,7 +1256,7 @@ static void read_buttons(void) {
       if (SDL_GetGamepadButton(pads[pad], button)) held |= 1u << i;
     }
   }
-  rg_buttons_read(held);
+  rg_players_read(1, &held);
   if (tracing) trace_frame(held);
 }
 

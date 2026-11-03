@@ -293,40 +293,10 @@ module VBlank
           # refusal is otherwise the same for both.
           def build_name = "the desktop build"
 
-          # HOW MANY PLAYERS THE RUNTIME READS. The C and JavaScript runtimes keep every player's
-          # buttons in one 32-bit number, the second player's 16 bits above the first's
-          # (IR::Buttons::PLAYER_SHIFT), so they read two; Ruby::Lowering's runtime keeps a list
-          # and reads as many as any build does.
-          def most_players_read = 2
-
-          # A line that reads a player the runtime does not, or a game that says it takes more, is
-          # refused before anything is written.
-          def refuse_players_past_runtime!
-            most = most_players_read
-            declared = @program.most_players
-            if declared && declared > most
-              raise LoweringError, "this game takes up to #{declared} players (`players:`), and #{build_name} reads " \
-                                   "#{most} players at most for now. To fix this, set the most players in " \
-                                   "`players:` to #{most} for this build. #{ruby_build_reads_more}"
-            end
-            player = @reachable.select { |node| %i[held pressed].include?(node.kind) }
-                               .map(&:player).select { |each| each.is_a?(Integer) }.max
-            return if player.nil? || player <= most
-
-            raise LoweringError, "this game reads player #{player}, and #{build_name} reads #{most} players at most " \
-                                 "for now. To fix this, read players 1 to #{most} only. #{ruby_build_reads_more}"
-          end
-
-          def ruby_build_reads_more
-            "You can also play the game as Ruby with `vblank run`: the Ruby build reads up to " \
-              "#{Buttons::MOST_PLAYERS} players."
-          end
-
           # What is refused is only what the program can reach: a console-only step in a routine
           # nothing calls never runs, so the game as C plays the same without it, as the
           # interpreter does, which complains of one only when it is reached.
           def refuse_unlowered_kinds!
-            refuse_players_past_runtime!
             hardware = @reachable.map(&:kind).uniq.select { |kind| Portability.hardware_only?(kind) }
             unless hardware.empty?
               raise LoweringError,

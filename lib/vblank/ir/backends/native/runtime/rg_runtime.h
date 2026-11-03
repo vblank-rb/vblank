@@ -60,7 +60,7 @@ _Noreturn void rg_fault(const char *format, ...) __attribute__((format(printf, 1
  * start, right, left, up, down, r, l — and -1 means any of them. */
 int32_t rg_held(int32_t button);
 int32_t rg_pressed(int32_t button);
-/* The same for another player (1 and up, or 0 for any connected player), asking about +mask+, a
+/* The same for another player (1 to 16, or 0 for any connected player), asking about +mask+, a
  * bit for each button in that numbering. */
 int32_t rg_held_by(int32_t player, int32_t mask);
 int32_t rg_pressed_by(int32_t player, int32_t mask);
