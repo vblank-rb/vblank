@@ -350,7 +350,7 @@ module VBlank
       record(Build.list_new(name, capacity, width: width, fast: fast,
                                             full_of: list_starting_item(name, full_of, bits)))
       @fraction_lists[name] = bits if bits
-      note_part_member(:list, name)
+      add_part_member(:list, name)
       DSL::List.new(self, name, fraction_bits: bits)
     end
 
@@ -583,6 +583,7 @@ module VBlank
 
       emitted = {}
       emit_bodies(emitted, default_screen_mode, holding_back: true)
+      refuse_parts_named_like_scenes! # every scene is declared by now
       # Every routine the game wrote is built, so nothing more can be kept in a save_data
       # record: the records are laid out now, and the routines that read them built after —
       # with the ones held back until every line of the game was read (#build_last).
@@ -658,7 +659,7 @@ module VBlank
           @building_routine = name
           push_container(Build.func(name, fast: @func_fast[name], loads_first: @scene_loads_first[name],
                                           on_chip: @func_on_chip[name])) do
-            with_part_of_routine(name) { run_block(&block) }
+            with_part_owners_of_routine(name) { run_block(&block) }
           end
           @scene_screens[name] = @screen_mode if @building_scene
         ensure

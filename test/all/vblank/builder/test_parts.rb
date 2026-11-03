@@ -175,6 +175,130 @@ class TestParts < Minitest::Test
     assert_equal 4, run[:steps]
   end
 
+  # A routine written while a part is in force is in the part, though its body is built later.
+  def test_a_func_and_a_scene_written_after_part_are_in_it
+    run = played(built do
+      screen :tiled
+      mode = var :mode, :level
+      part :play
+      func(:tally) do
+        coins = var :coins, 0
+        coins += 1
+      end
+      scene :level do
+        steps = var :steps, 4
+        if pressed(:a)
+          steps += 1
+          call :tally
+        end
+        start_over :play if pressed(:b)
+      end
+      game_loop { call mode }
+    end, :a, :a, :b)
+
+    assert_equal [4, 0], [run[:steps], run[:coins]]
+  end
+
+  # A routine written inside a scene is the scene's, as its body's own lines are.
+  def test_a_func_written_inside_a_scene_is_in_the_scene
+    run = played(built do
+      screen :tiled
+      mode = var :mode, :level
+      scene :level do
+        func(:tally) do
+          coins = var :coins, 0
+          coins += 1
+        end
+        call :tally if pressed(:a)
+        start_over :level if pressed(:b)
+      end
+      game_loop { call mode }
+    end, :a, :a, :b)
+
+    assert_equal 0, run[:coins]
+  end
+
+  # `after` counts again from the new game, so it fires in the second game too.
+  def test_after_fires_again_in_the_next_game
+    run = played(built do
+      screen :tiled
+      fired = var :fired, 0
+      part :play
+      game_loop do
+        after(2) { fired += 1 }
+        start_over :play if pressed(:b)
+      end
+    end, :a, :a, :b)
+
+    assert_equal 2, run[:fired]
+  end
+
+  # A job of `each_pass` that the last game started is stopped in the new one.
+  def test_a_running_each_pass_job_stops_in_the_next_game
+    run = played(built do
+      screen :tiled
+      ticks = var :ticks, 0
+      part :play
+      each_pass(:count) { |_job| ticks += 1 }
+      game_loop do
+        each_pass(:count).start if pressed(:a)
+        start_over :play if pressed(:b)
+      end
+    end, :a, :b)
+    stopped = run[:ticks]
+    longer = played(built do
+      screen :tiled
+      ticks = var :ticks, 0
+      part :play
+      each_pass(:count) { |_job| ticks += 1 }
+      game_loop do
+        each_pass(:count).start if pressed(:a)
+        start_over :play if pressed(:b)
+      end
+    end, :a, :b, :up)
+
+    assert_equal stopped, longer[:ticks], "no tick after the new game"
+  end
+
+  # A sprite goes back to its `at:` and shows as declared. On a tiled screen the console draws it.
+  def test_a_sprite_goes_back_to_where_it_was_declared
+    run = played(built do
+      screen :tiled
+      image(:ball, "#" => :white) { "########\n" * 8 }
+      at_x = var :at_x, 0
+      at_y = var :at_y, 0
+      part :play
+      ball = sprite :ball, at: [10, 20]
+      game_loop do
+        ball.move_to(50, 60) if pressed(:a)
+        start_over :play if pressed(:b)
+        at_x = ball.x
+        at_y = ball.y
+      end
+    end, :a, :b)
+
+    assert_equal [10, 20], [run[:at_x], run[:at_y]]
+  end
+
+  # On a bitmap screen the game paints the sprite: it is painted at its `at:` again, and
+  # what it covered where it stood is put back.
+  def test_a_painted_sprite_goes_back_and_its_last_place_is_cleaned
+    run = played(built do
+      screen :bitmap
+      clear_screen :blue
+      image(:ball, "#" => :red) { "####\n" * 4 }
+      part :play
+      ball = sprite :ball, at: [10, 20]
+      game_loop do
+        ball.move_to(50, 60) if pressed(:a)
+        start_over :play if pressed(:b)
+      end
+    end, :a, :b)
+
+    assert_equal Color.resolve(:red), run.screen.pixel(11, 21)
+    assert_equal Color.resolve(:blue), run.screen.pixel(51, 61)
+  end
+
   private def refused(&block)
     assert_raises(ArgumentError) { built { screen :tiled; instance_eval(&block) } }.message
   end
@@ -187,6 +311,20 @@ class TestParts < Minitest::Test
     end
     assert_match(/no part or scene :ply/, message)
     assert_match(/:play/, message)
+  end
+
+  def test_a_part_named_like_a_scene_is_a_friendly_error
+    message = refused do
+      part :level
+      var :score, 0
+      scene(:level) { var :steps, 0 }
+    end
+    assert_match(/part :level and scene :level/, message)
+  end
+
+  def test_a_name_that_cannot_name_a_part_is_a_friendly_error
+    message = refused { part :"two words" }
+    assert_match(/cannot name a part/, message)
   end
 
   def test_naming_a_save_var_is_a_friendly_error

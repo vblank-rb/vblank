@@ -246,7 +246,7 @@ module VBlank
         @func_fast[name] = fast unless fast.nil?
         @func_on_chip[name] = true if on_chip
         @routine_layer[name] = [@current_layer, wrote] if @current_layer && wrote
-        remember_part_of_routine(name)
+        remember_part_owners_of_routine(name)
       end
 
       # Every routine a call can reach must be a defined function. Check that here, so

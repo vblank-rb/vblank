@@ -58,7 +58,7 @@ module VBlank
         keep_narrow(name, width, value)
         @name_vars[name] ||= DSL::NameSet.new("the variable :#{name}") if value.is_a?(Symbol)
         at_boot(Build.set(name, stored_node(name, value)))
-        note_part_member(:var, name)
+        add_part_member(:var, name)
         value_handle_for(name)
       end
 

@@ -107,7 +107,7 @@ module VBlank
         setup_pool_storage(handle, capacity, fields, widths, fast)
         setup_pool_art(handle, capacity, art, widths, fast) if art
         declared_pools << handle
-        note_part_member(:pool, handle)
+        add_part_member(:pool, handle)
         handle
       end
 

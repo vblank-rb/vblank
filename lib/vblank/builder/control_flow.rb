@@ -335,6 +335,8 @@ module VBlank
         routine = name ? :"__each_pass_#{name}" : :"__each_pass_#{number}"
         running = var(:"#{routine}_running", 0)
         stepping = var(:"#{routine}_stepping", 0)
+        # A new game stops a job the last game left running.
+        [running, stepping].each { |flag| add_part_member(:var, flag.name, framework: true) }
         job = DSL::PassJob.new(self, routine: routine, running: running, stepping: stepping)
         declare_func(routine, wrote: name ? "each_pass :#{name}" : "each_pass") do
           stepping = 1
@@ -494,6 +496,7 @@ module VBlank
         counter = :"__timer_#{@timer_seq}"
         ensure_var(counter)
         at_boot(Build.set(counter, Build.int(0)))
+        add_part_member(:var, counter, framework: true) # a new game counts from nought again
         counter
       end
 

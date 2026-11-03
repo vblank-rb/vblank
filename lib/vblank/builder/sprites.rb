@@ -179,6 +179,8 @@ module VBlank
                                   frame_var: frame_var, frames_per_dir: frames_per_dir,
                                   layer: current_layer, source: caller_source_location,
                                   **sprite_painting_state(id))
+        # A new game moves it back the way move_to does, and shows or hides it with its own verbs.
+        add_sprite_to_part([pos_x, pos_y, pose_var, frame_var], painted: Parts::SpriteShown.new(sprite: handle, shown: shown))
         declare_software_sprite(handle, shown)
       end
 
@@ -501,6 +503,7 @@ module VBlank
           at_boot(Build.set(var_name, DSL::Value.node_for(value)))
           ensure_var(var_name)
         end
+        add_sprite_to_part(boot.keys) # the console draws it from these alone
         # A directional animation cycles the FRAME (its direction is chosen by `face`);
         # a plain frames: animation cycles the single pose selector.
         if animated_facing
@@ -719,6 +722,7 @@ module VBlank
           at_boot(Build.set(var, Build.int(value)))
           ensure_var(var)
         end
+        add_sprite_to_part([off, len, frame, tick]) # a new game plays the first clip from its start
         at_boot(Build.list_new(holds, durations.length))
         durations.each { |hold| at_boot(Build.list_push(holds, hold)) }
         # The rate is the current pose's own hold: the pose (offset + frame) looked up in the
@@ -757,6 +761,7 @@ module VBlank
                                   clips: clips, clip_off_var: off, clip_len_var: len, frame_var: frame,
                                   layer: current_layer, source: caller_source_location,
                                   **sprite_painting_state(id))
+        add_sprite_to_part([pos_x, pos_y], painted: Parts::SpriteShown.new(sprite: handle, shown: shown))
         declare_software_sprite(handle, shown)
       end
 
@@ -973,9 +978,10 @@ module VBlank
           at_boot(Build.set(var, DSL::Value.node_for(value)))
           ensure_var(var)
         end
+        add_sprite_to_part([pos_x, pos_y, active]) # the console draws it from these alone
         off, len, frame = setup_clip_animation(id, clips, durations)
 
-        pose = Build.binop(:+, Build.var_ref(off), Build.var_ref(frame)) # clip start + frame within it
+        pose =Build.binop(:+, Build.var_ref(off), Build.var_ref(frame)) # clip start + frame within it
         object_node = Build.object(object_name, poses: poses, pose: pose,
                                                 x: Build.var_ref(pos_x), y: Build.var_ref(pos_y),
                                                 active: gated_by_scene(Build.var_ref(active)),
@@ -997,6 +1003,7 @@ module VBlank
         tick = :"#{pose_var}_tick"
         at_boot(Build.set(tick, Build.int(0)))
         ensure_var(tick)
+        add_sprite_to_part([tick])
         @animations << { pose: pose_var, tick: tick, rate: rate, frames: frame_count }
       end
     end
