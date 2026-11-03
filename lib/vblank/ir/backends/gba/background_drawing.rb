@@ -544,6 +544,14 @@ module VBlank
               # GBA#lowered_routine_addresses).
               place_label(:"#{label}_end")
             end
+            (@pending_walking_colors || {}).each do |label, bg|
+              emit(ASM.loop_forever)
+              place_label(label)
+              emit(ASM.push(14))
+              emit_walking_colors_send(bg)
+              emit(ASM.pop(15))
+              place_label(:"#{label}_end")
+            end
           end
 
           # The body of that routine. The map's number arrives in the first register and the
@@ -577,7 +585,7 @@ module VBlank
             emit_map_copy(Build.show_map(name, which: Build.var_ref(SET_SWAP_MAP)), bg, layers_back_on)
             emit_stream_fill(bg) if bg.stream # ...the view of it, while the layers are still off
             emit_point_colors_at_area(name, bg)
-            emit_area_colors(swap, from_var: true)
+            emit_area_colors_unless_up(name, bg)
             place_label(layers_back_on)
             load_var(ACC, SET_SWAP_DISPLAY)
             emit_number(TMP, REG_DISPCNT)
@@ -595,7 +603,39 @@ module VBlank
               bg = @layout.screen.declared_background(node)
               emit_point_colors_at_area(node.name, bg, first: true) if bg&.sets
             end
+            emit_number(ACC, walking.sets.areas.first)
+            store_var(ACC, ScreenLayout::AREA_COLORS_UP)
             emit_area_colors(walking.sets, up: up)
+          end
+
+          # THE COLOURS OF THE AREA A SET WAS JUST BROUGHT IN FROM, unless they are up already.
+          # Backgrounds that walk change area together and read one table, so the first of them
+          # into an area sends its colours, and the next finds them up (see
+          # ScreenLayout::AREA_COLORS_UP). Sent again, the whole table went through the tint
+          # once more, and every borrowed group after it: as long again as bringing the set's
+          # tiles in. All the next one sends is its own groups of a list it was told to draw
+          # with, which the first left alone.
+          def emit_area_colors_unless_up(name, bg)
+            swap = bg.sets
+            walk = gensym
+            sent = gensym
+            load_var(TMP, swap.var)
+            emit_load_data_address(ACC, swap.area_numbers)
+            emit(ASM.ldrb_reg(ACC, ACC, TMP)) # the area that set is of
+            load_var(TMP, ScreenLayout::AREA_COLORS_UP)
+            emit(ASM.cmp_reg(ACC, TMP))
+            emit_branch(:bcond, walk, cond: :ne)
+            if bg.colors&.area_bytes
+              load_var(ACC, bg.colors.at)
+              emit(ASM.cmp_imm(ACC, 0)) # told nothing: the area's own colours are right
+              emit_branch(:bcond, sent, cond: :eq)
+              emit_call_cold_routine(walking_colors_routine_label(name, bg))
+            end
+            emit_branch(:b, sent)
+            place_label(walk)
+            store_var(ACC, ScreenLayout::AREA_COLORS_UP)
+            emit_area_colors(swap, from_var: true)
+            place_label(sent)
           end
 
           # A WALKING LAYER TOLD `draw_with` keeps a version of its lists for each area (see
@@ -963,21 +1003,42 @@ module VBlank
             # these groups. See PaletteTint#emit_recolored_banks, which reads this.
             store_var(ACC, lists.at)
             if lists.area_bytes
-              # A walking layer's groups are the area's that is up: each area hands its groups
-              # out again, and another walking layer can be drawing from one of this area's.
-              lists.banks.each_with_index do |groups, set|
-                other_area = gensym
-                load_var(TMP, bg.sets.var)
-                emit(ASM.cmp_imm(TMP, set))
-                emit_branch(:bcond, other_area, cond: :ne)
-                load_var(ACC, lists.at)
-                emit_groups_send(lists, groups)
-                place_label(other_area)
-              end
+              emit_call_cold_routine(walking_colors_routine_label(node.name, bg))
             else
               emit_groups_send(lists, lists.banks)
             end
             emit_forget_own_version(node, lists)
+          end
+
+          # THE ROUTINE THAT SENDS A WALKING LAYER'S VERSION INTO THE GROUPS OF THE AREA UP, one a
+          # layer, reserved the first time a line sends it and emitted once, later, beside the
+          # set swaps (#emit_set_swap_routines). A walking layer's groups are the area's that is
+          # up: each area hands its groups out again, and another walking layer can be drawing
+          # from one of this area's. So the send is a test of the area and a walk of each group
+          # it has, for every area that borrows — written out in the gap between frames, which
+          # is the first thing kept in the console's quick memory, a house of many borrowed
+          # lists took that room from routines every frame of play runs. The send happens on the
+          # frame a list changes, and from the cartridge it costs the same copies.
+          def walking_colors_routine_label(name, bg)
+            label = :"#{bg.sets.routine}_colors"
+            (@pending_walking_colors ||= {})[label] ||= bg
+            label
+          end
+
+          # The body of that routine: the version's start is in the layer's variable already.
+          def emit_walking_colors_send(bg)
+            lists = bg.colors
+            lists.banks.each_with_index do |groups, set|
+              next if groups.empty?
+
+              other_area = gensym
+              load_var(TMP, bg.sets.var)
+              emit(ASM.cmp_imm(TMP, set))
+              emit_branch(:bcond, other_area, cond: :ne)
+              load_var(ACC, lists.at)
+              emit_groups_send(lists, groups)
+              place_label(other_area)
+            end
           end
 
           # A LAYER GIVEN ITS OWN COLOURS BACK is as it was before it was told anything: the

@@ -46,13 +46,29 @@ module VBlank
           # Run the block's code only while +scene+'s +marker+ things are the ones up — for work
           # done outside the scene that touches what it put up, like a tint rewriting the colours
           # of a layer the scene owns.
-          def emit_if_scene_up(marker, scene)
-            @primitives.load_var(ACC, MARKERS.fetch(marker))
+          def emit_if_scene_up(marker, scene, &) = emit_if_var_names_scene(MARKERS.fetch(marker), scene, &)
+
+          # The same, reading the scene from +var+, a copy of a note or a scene named outright
+          # (#emit_marker_copy_into, #emit_scene_number_into): for a routine called both where
+          # the note says whose things are up and where a scene is taking over before it does.
+          def emit_if_var_names_scene(var, scene)
+            @primitives.load_var(ACC, var)
             @emitter.emit(ASM.cmp_imm(ACC, scene_number(scene)))
             skip = @emitter.gensym
             @emitter.emit_branch(:bcond, skip, cond: :ne)
             yield
             @emitter.place_label(skip)
+          end
+
+          # Copy the +marker+ note into +var+.
+          def emit_marker_copy_into(var, marker)
+            @primitives.load_var(ACC, MARKERS.fetch(marker))
+            @primitives.store_var(ACC, var)
+          end
+
+          # Write +scene+'s number into +var+.
+          def emit_scene_number_into(var, scene)
+            @primitives.store_word_immediate(scene_number(scene), @primitives.var_addr(var))
           end
 
           # Say nobody's +marker+ things are up — for a scene with none of its own, which still

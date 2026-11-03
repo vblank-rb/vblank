@@ -64,6 +64,54 @@ class TestWalkingBackgroundsDrawWithOnTheAdvance < Minitest::Test
     assert_backends_agree(two_layers_walking, frames: [4, 7, 11], name: "AREADW2")
   end
 
+  # BOTH LAYERS BORROWED IN BOTH AREAS, WALKING THERE AND BACK UNDER A TINT. The ground goes into
+  # an area first and sends its colours; the scenery follows in the same pass and finds them up,
+  # so it sends only its own borrowed group. In between, the scenery is still in the area being
+  # left, and its borrowed group there must not go over the colours of the area arriving.
+  private def two_layers_walking_there_and_back
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      { x_shrine_a: %i[red green], x_shrine_b: %i[blue white], x_clearing: %i[red blue],
+        y_shrine: %i[green white], y_clearing: %i[yellow cyan], y_dark: %i[magenta orange],
+        x_dark: %i[white green] }.each { |name, two| colors name, [:transparent, *two] }
+      %i[x_shrine_a x_shrine_b x_clearing y_shrine y_clearing].each do |list|
+        image list, width: 8, height: 8, colors: list, places: STRIPE
+      end
+      tiles :ground_shrine, "a" => :x_shrine_a, "b" => :x_shrine_b
+      tiles :ground_clearing, "a" => :x_clearing
+      tiles :scenery_shrine, "#" => :y_shrine
+      tiles :scenery_clearing, "#" => :y_clearing
+      left = Array.new(20) { ("a" * 14) + "b" + (" " * 15) }
+      left_clearing = Array.new(20) { ("a" * 15) + (" " * 15) }
+      right = Array.new(20) { (" " * 15) + ("#" * 15) }
+      ground = background :ground, tiles: { shrine: :ground_shrine, clearing: :ground_clearing },
+                                   map: { shrine: { hall: left }, clearing: { glade: left_clearing } }
+      scenery = background :scenery, tiles: { shrine: :scenery_shrine, clearing: :scenery_clearing },
+                                     map: { shrine: { arch: right }, clearing: { trees: right } }
+      tint :blue, 40
+      tick = var :tick, 0
+      room = var :room, 0
+      game_loop do
+        tick += 1
+        if tick == 2
+          ground.draw_with({ x_shrine_a: :x_dark, x_clearing: :x_dark })
+          scenery.draw_with({ y_shrine: :y_dark, y_clearing: :y_dark })
+        end
+        room = 1 if tick == 4
+        room = 0 if tick == 7
+        ground.show_map room
+        scenery.show_map room
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_the_console_walks_two_borrowed_layers_there_and_back_the_same_way
+    assert_backends_agree(two_layers_walking_there_and_back, frames: [3, 5, 6, 8, 9], name: "AREADW3")
+  end
+
   # A FIELD OF MANY SMALL LISTS AND A HOUSE THAT BORROWS ONE. The field's sixteen lists of two
   # colours each share groups of sixteen between them, and only fit the console that way: a group
   # each would be more groups than there are. Only the house's list is ever drawn with another, so

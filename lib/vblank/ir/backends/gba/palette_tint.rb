@@ -161,11 +161,31 @@ module VBlank
 
             @emitter.emit_load_data_address(ACC, BG_SHARED_PAL)
             @primitives.store_var(ACC, BG_TABLE_AT)
+            emit_boot_area_colors_up
+          end
+
+          # Say which area's colours the table at power-on holds: the first area of the walking
+          # backgrounds every scene shows, or none (see ScreenLayout::AREA_COLORS_UP).
+          def emit_boot_area_colors_up
+            return unless @layout.screen.walks_areas?
+
+            walking = @layout.screen.walking_placements(@layout.screen.handover.always_up.scenery).first
+            @emitter.emit_number(ACC, walking ? walking.sets.areas.first : ScreenLayout::NO_AREA)
+            @primitives.store_var(ACC, ScreenLayout::AREA_COLORS_UP)
+          end
+
+          # A scene's own table is no area's.
+          def emit_no_area_colors_up
+            return unless @layout.screen.walks_areas?
+
+            @emitter.emit_number(ACC, ScreenLayout::NO_AREA)
+            @primitives.store_var(ACC, ScreenLayout::AREA_COLORS_UP)
           end
 
           # SEND A SCENE'S BACKGROUND COLOURS AS IT TAKES OVER (see
           # ScreenLayout#assign_tile_banks), the same way an area's go in.
           def emit_send_scene_bg_colors(blob, units, scene)
+            emit_no_area_colors_up
             @emitter.emit_load_data_address(ACC, blob)
             emit_send_bg_colors(units, up: scene)
           end
@@ -238,6 +258,7 @@ module VBlank
           # The same goes for the background groups a layer or the backdrop is drawing from a list
           # (#emit_changed_bg_lists_again): the boot copy of the background colours reads them too.
           def emit_changed_lists_at_power_on
+            emit_no_area_colors_up # ...until the screen is set up, which says which
             lists = @layout.screen.color_lists
             bg_lists = @layout.bg_recolor_restore_banks.map { |_dest, source_var, *| source_var }.uniq
             return if lists.empty? && @layout.screen.lending.nil? && bg_lists.empty?
@@ -719,22 +740,43 @@ module VBlank
           # sends its colours, puts these groups back, and each group is a check and a walk of its
           # own: written out at each of them, a layer of six borrowed lists was most of the code of
           # a game that tints in a few places, and enough to push the routine that runs every
-          # frame out of the console's quick memory. So with +up+ unknown, which is where all of
-          # them but a scene's own arrival are, it is a routine (RECOLORED_BANKS_ROUTINE) and this
-          # is the call. The tint's shares are in their registers already, and the routine reads
-          # them as the walk written out here did.
+          # frame out of the console's quick memory. So it is a routine (RECOLORED_BANKS_ROUTINE)
+          # and this is the call. The tint's shares are in their registers already, and the
+          # routine reads them as the walk written out here did.
+          #
+          # A scene's arrival calls it too. It knows the scene taking over before the note of
+          # whose scenery is up says so, so the routine is told whose layers to write in a
+          # variable of its own (RECOLORED_SCENE_UP): the note's copy, or the scene arriving.
+          # Written out there instead, a scene of many borrowed lists put them all in the gap
+          # between frames, where the routine that walks into an area runs.
           def emit_recolored_banks(up: :unknown)
-            return @lowering.statement(Build.call(RECOLORED_BANKS_ROUTINE)) if up == :unknown && recolored_banks_routine?
+            return emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, up) unless recolored_banks_routine?
 
-            emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, up)
+            emit_recolored_scene_up(up) if recolored_banks_by_scene?
+            @lowering.statement(Build.call(RECOLORED_BANKS_ROUTINE))
+          end
+
+          # Tell that routine whose layers to write: the scene +up+, or with it unknown the one the
+          # note says.
+          def emit_recolored_scene_up(up)
+            entry = @drawing.scene_entry
+            return entry.emit_marker_copy_into(RECOLORED_SCENE_UP, :scenery) if up == :unknown
+
+            entry.emit_scene_number_into(RECOLORED_SCENE_UP, up)
           end
 
           # The routine's name and whether this build has it: only one with a group to put back.
           RECOLORED_BANKS_ROUTINE = :__recolored_banks
           def recolored_banks_routine? = @layout.bg_recolor_restore_banks.any?
 
+          # The scene whose layers' groups that routine writes, when some layer is a scene's own.
+          RECOLORED_SCENE_UP = :_recolored_scene_up
+          def recolored_banks_by_scene? = @layout.bg_recolor_restore_banks.any? { |entry| entry[3] }
+
           # The body of that routine.
-          def emit_recolored_banks_routine = emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, :unknown)
+          def emit_recolored_banks_routine
+            emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, :unknown, scene_up_in: RECOLORED_SCENE_UP)
+          end
 
           # THE SAME AGREEMENT FOR SPRITES: a list of sprite colours that changes has a group of
           # its own, and whatever has just rewritten the sprite colours — a tint's walk, a scene
@@ -750,12 +792,15 @@ module VBlank
           # A group is sixteen colours unless it says how many (the backdrop is one).
           # A group of a layer that walks between areas says which area it is the layer's in (see
           # ScreenLayout#walking_restore_banks), and is written only while that area is up.
-          def emit_recolored_banks_of(banks, marker, up)
+          # +scene_up_in+ is a variable naming the scene up in place of the note.
+          def emit_recolored_banks_of(banks, marker, up, scene_up_in: SceneEntry::MARKERS.fetch(marker))
             banks.each do |dest, source_var, along, scene, units = COLORS_IN_A_BANK, area = nil|
               next if scene && up != :unknown && scene != up
 
               if scene && up == :unknown
-                @drawing.scene_entry.emit_if_scene_up(marker, scene) { emit_recolored_bank(dest, source_var, along, units, area) }
+                @drawing.scene_entry.emit_if_var_names_scene(scene_up_in, scene) do
+                  emit_recolored_bank(dest, source_var, along, units, area)
+                end
               else
                 emit_recolored_bank(dest, source_var, along, units, area)
               end
@@ -766,9 +811,11 @@ module VBlank
           def emit_recolored_bank(dest, source_var, along, units = COLORS_IN_A_BANK, area = nil)
             past = @emitter.gensym
             if area
-              area_var, number = area
-              @primitives.load_var(TINT_SRC, area_var)
-              @emitter.emit(ASM.cmp_imm(TINT_SRC, number))
+              @primitives.load_var(TINT_SRC, area.set_var)
+              @emitter.emit(ASM.cmp_imm(TINT_SRC, area.set))
+              @emitter.emit_branch(:bcond, past, cond: :ne)
+              @primitives.load_var(TINT_SRC, ScreenLayout::AREA_COLORS_UP)
+              @emitter.emit(ASM.cmp_imm(TINT_SRC, area.area_number))
               @emitter.emit_branch(:bcond, past, cond: :ne)
             end
             @primitives.load_var(TINT_SRC, source_var)

@@ -75,8 +75,31 @@ module VBlank
           # start at one); +var+ says which set is in place now. +colors+ is the whole background
           # colour table of each set's area, +color_units+ entries each, which goes in with it.
           # +routine+ is the one that brings a set in (see BackgroundDrawing#emit_set_swap_routines).
+          # +areas+ is each set's area by its number (see #area_number), and +area_numbers+ the
+          # same as a byte a set in the cartridge, for the set the game walked into.
           TileSetSwap = Data.define(:tiles, :at, :stride, :sets_of_maps, :char_base_table, :var,
-                                    :colors, :color_units, :routine)
+                                    :colors, :color_units, :routine, :areas, :area_numbers)
+
+          # THE AREA WHOSE COLOURS THE CONSOLE'S BACKGROUND TABLE HOLDS, by its number (see
+          # #area_number), or NO_AREA while it holds a scene's own table. Two backgrounds that walk
+          # together read one table, so the second to bring an area in finds the area's colours
+          # already up and sends none (BackgroundDrawing#emit_bring_set_in). And a group a walking
+          # layer borrows in one area is written back only while that area's colours are up (see
+          # #walking_restore_banks): the first of two layers into an area must not write the
+          # second's groups of the area it is leaving over the new one's.
+          AREA_COLORS_UP = :_area_colors_up
+          NO_AREA = 255
+
+          # A number for each area of a scene's walking backgrounds, the same for every layer
+          # that walks into it.
+          def area_number(scene, area)
+            numbers = (@area_numbers ||= {})
+            numbers.fetch([scene, area]) do
+              raise LoweringError, "this game walks between more areas than a byte can number" if numbers.size >= NO_AREA
+
+              numbers[[scene, area]] = numbers.size
+            end
+          end
 
           # Does any background walk between areas, so that the background colour table in
           # place is one area's of several (see #assign_area_banks)?
@@ -412,16 +435,21 @@ module VBlank
           end
 
           # ...and for a layer that walks between areas, the groups of each area, each with a sixth
-          # part: the variable that says which area is up and the number of this one, since the
-          # group is the layer's only while its area is up.
+          # part (a WalkingArea), since the group is the layer's only while the layer is in that
+          # area and the area's colours are the ones up.
           def walking_restore_banks(node, place)
             place.colors.banks.each_with_index.flat_map do |groups, set|
               groups.each_with_index.map do |bank, at|
                 [BG_PALETTE + (bank * PaletteBanks::BANK_SIZE * 2), place.colors.at,
-                 at * BackgroundDrawing::COLOR_LIST_BYTES, node.scene, PaletteBanks::BANK_SIZE, [place.sets.var, set]]
+                 at * BackgroundDrawing::COLOR_LIST_BYTES, node.scene, PaletteBanks::BANK_SIZE,
+                 WalkingArea.new(set_var: place.sets.var, set: set, area_number: place.sets.areas[set])]
               end
             end
           end
+
+          # Which area a walking layer's group of colours belongs to: the variable that says which
+          # set the layer is in, the number of that set, and its area's number (see AREA_COLORS_UP).
+          WalkingArea = Data.define(:set_var, :set, :area_number)
 
           # THE SAME FOR SPRITES: each group of sixteen that a list of colours which changes is
           # written into, in the same four parts, so whatever rewrites the sprite colours — a
@@ -1553,11 +1581,16 @@ module VBlank
             tables = node.sets.map { |area| with_backdrop(banks.area_entries(area, node.scene), backdrop) }
             @blobs[colors] = tables.flatten.pack("v*")
             keep_unpacked!(colors)
+            areas = node.sets.map { |area| area_number(node.scene, area) }
+            area_numbers = :"__bg_set_areas_#{tag}"
+            @blobs[area_numbers] = areas.pack("C*")
+            keep_unpacked!(area_numbers)
             TileSetSwap.new(tiles: tiles, at: laid.start, stride: laid.bytes.first.bytesize,
                             sets_of_maps: sets_of_maps, char_base_table: base_table,
                             var: IR::Nodes::Background.set_var(node.name),
                             colors: colors, color_units: tables.first.size,
-                            routine: BackgroundDrawing.set_swap_routine(node.name, scene: own_scene(node)))
+                            routine: BackgroundDrawing.set_swap_routine(node.name, scene: own_scene(node)),
+                            areas: areas, area_numbers: area_numbers)
           end
 
           # Lay out the other lists of colours a background can be drawn from (see
