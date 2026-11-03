@@ -333,6 +333,19 @@ class TestDrawInOrder < Minitest::Test
     assert_match(/screen :tiled/, message)
   end
 
+  def test_a_thing_named_twice_in_one_order_is_refused
+    block = BLOCK
+    message = refusal do
+      screen :tiled
+      image(:a, "#" => :red) { block }
+      one = sprite :a, at: [0, 0]
+      two = sprite :b, at: [4, 4], facing: { down: :a }
+      draw_in_order one, one, two, take_turns: true
+    end
+
+    assert_match(/named twice/, message)
+  end
+
   def test_one_sprite_alone_is_refused
     block = BLOCK
     message = refusal do

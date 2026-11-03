@@ -86,6 +86,7 @@ module VBlank
         refuse_unknown_front!(front)
         things.each { |thing| refuse_unorderable_thing!(thing) }
         refuse_order_of_one!(things)
+        refuse_thing_named_twice!(things)
         things.each { |thing| refuse_thing_in_two_orders!(thing) }
         refuse_order_split_by!(things, :layer, "layer")
         refuse_order_split_by!(things, :scene, "scene")
@@ -339,6 +340,18 @@ module VBlank
         raise ArgumentError,
               "#{order_thing_name(thing)} is in two draw_in_order calls. A thing can be in one order only, " \
               "because one number decides where it is drawn. Put everything that passes it in one draw_in_order."
+      end
+
+      # A thing named twice in one call would have two places in the order, and the console's
+      # sprite table has one place for each sprite: the order's numbers would then point past the
+      # end of the run.
+      def refuse_thing_named_twice!(things)
+        twice = things.find { |thing| things.count { |other| other.equal?(thing) } > 1 }
+        return unless twice
+
+        raise ArgumentError,
+              "#{order_thing_name(twice)} is named twice in one draw_in_order. Each thing has one place " \
+              "in the order. Name it once."
       end
 
       # Things in one order must agree about +field+ — the layer, or the scene — since the
