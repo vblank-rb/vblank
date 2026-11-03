@@ -20,4 +20,5 @@ require_relative "live/window_menu" # the window's menu written down once: its l
 require_relative "live/menu" # ...how it behaves and where it draws each part, with no window of its own
 require_relative "live/settings" # what the window keeps for a player, in the desktop build's settings file's rules
 require_relative "live/settings_file" # ...and where it is kept, the same file as the desktop build's
+require_relative "live/console_bios" # the player's Game Boy Advance BIOS, for the console's start-up, found as the desktop build finds it
 require_relative "live/sdl" # ...and a window, for a person: SDL3 through Fiddle, loaded when a window is asked for

@@ -19,6 +19,10 @@ there instead, which keeps a test (or a person trying something) out of real sav
 window writes the file is plain counting in `runtime/rg_save.c`, tested with no window
 (`test_native_save_file.rb`). Small made-up programs that save go in `test_native_saves.rb`.
 
+**The player's BIOS** (for the console's start-up, never in the repository) is found by
+`runtime/rg_console_bios.h` and `Live::ConsoleBIOS`, both held to `test/console_bios_cases.rb`
+with made-up files and a made-up accepted checksum (`known_sha1:`), so no test needs a BIOS.
+
 **How evenly it shows its pictures** cannot be seen by a test, and a stutter is exactly that. A
 build started with `--frame-times` says at its end, on the error stream, what paced its frames
 (the monitor or the console's clock), how far apart pictures were handed to the display, which
