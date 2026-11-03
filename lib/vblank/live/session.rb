@@ -62,6 +62,7 @@ module VBlank
         @uncapped = uncapped
         @stop_after_passes = stop_after_passes
         @frame_seconds = @game.frame_seconds
+        @pass_buttons = IR::Buttons::PassButtons.new # each connected player's buttons, a pass at a time
       end
 
       # Plays once, on +device+, until it says stop or the game ends, and gives back how fast it
@@ -92,7 +93,8 @@ module VBlank
 
       # Asked by the game as each of its frames ends, with the picture as the screen shows it and
       # the frame's sound: shows the device the picture, hands it the sound, and gives back the
-      # buttons held for the pass that starts, a bit each — or nil when the device says stop. The
+      # buttons held for the pass that starts, one number a bit each for each connected player
+      # (IR::Buttons.masks) — or nil when the device says stop. The
       # pass waits once: on the speaker, after its sound, where the device has one; on the clock,
       # for its frame to end, before its picture, where it has none.
       #
@@ -113,7 +115,7 @@ module VBlank
         leave_pause_out_of_pacing
         return nil if @device.stop? || @passes == @stop_after_passes
 
-        IR::Buttons.mask(@device.held_buttons(@passes))
+        @pass_buttons.masks(@device.held_buttons(@passes))
       end
 
       private

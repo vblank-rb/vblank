@@ -129,10 +129,11 @@ and a test fails when the two differ. The Advance's answers are in
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Super Nintendo has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Super Nintendo does not have.
-- `held` — works: the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has twelve. `player: 2` reads the second controller, and `player: :any` reads either.
+- `held` — works: the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has twelve. `player: 2` reads the second controller, and `player: :any` reads either. `player: 3` or more is refused, and `players:` more than 2 is refused too: this build reads two controllers, and does not read a Multitap yet.
 - `pressed` — works: see `held`.
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.
+- `players_connected` — **refused**: this build cannot yet tell if the second controller is connected. A controller that is not connected holds no buttons, so wait for a button on it instead, like `pressed(:start, player: 2)`.
 - `rumble` — works: nothing is felt. A Super Nintendo cartridge has no rumble motor, so the game plays the same without it.
 - `seed` — works: the same as on the Advance.
 - `randomize` — works: the same as on the Advance.

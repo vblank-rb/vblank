@@ -489,7 +489,7 @@ module VBlank
           unknown = (names - Playthrough.pressable_buttons).first or return names
 
           raise_unreadable_line!(number, "#{unknown.to_s.inspect} names a button the console does not have. " \
-                                         "The buttons are #{Playthrough.pressable_buttons.join(', ')}.")
+                                         "The buttons are #{Playthrough.pressable_button_words(as_symbols: false)}.")
         end
 
         # The rules are Moment's own, shared with a script; the words are a tape's.

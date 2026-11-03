@@ -20,8 +20,9 @@ module VBlank
           # the game's first statement, and +buttons+ say what is held on each frame from the
           # first on.
           def lowered_snapshots(program, frames:, buttons:, mode:, held: [])
-            input = (1..frames).map { |frame| "#{HeadlessRun.button_mask(buttons.fetch(frame, []))}\n" }.join
-            from_power_on = held.empty? ? [] : ["--held-from-power-on", HeadlessRun.button_mask(held)]
+            pass_buttons = IR::Buttons::PassButtons.new
+            from_power_on = held.empty? ? [] : ["--held-from-power-on", pass_buttons.line(held)]
+            input = (1..frames).map { |frame| "#{pass_buttons.line(buttons.fetch(frame, []))}\n" }.join
             parse_snapshots(run_headless_program(program, mode, args: [frames, "--every-picture", *from_power_on],
                                                                 input: input), program)
           end

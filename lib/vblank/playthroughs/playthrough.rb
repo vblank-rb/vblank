@@ -424,8 +424,7 @@ module VBlank
 
           raise ArgumentError,
                 "The block of `steer #{words.inspect}`, in playthrough #{@title.inspect}, answered #{unknown.inspect}, " \
-                "a button the console does not have. The buttons are " \
-                "#{Playthrough.pressable_buttons.map(&:inspect).join(', ')}."
+                "a button the console does not have. The buttons are #{Playthrough.pressable_button_words}."
         end
 
         # The screen as it is now, written where a person can open it.
@@ -487,9 +486,21 @@ module VBlank
 
       # The buttons a script can press: the Advance's, since those are the bits key_mask knows.
       # IR::Buttons is every console's, and a script pressing one of the rest would get past
-      # the checks and stop with a Ruby error once it played. The second controller's are the
-      # same buttons, written :p2_start, for a console that has one.
-      def self.pressable_buttons = Console::ADVANCE.buttons + IR::Buttons::SECOND_PLAYER.values_at(*Console::ADVANCE.buttons)
+      # the checks and stop with a Ruby error once it played. Every other player's are the
+      # same buttons, written :p2_start, :p3_start and on, for a game that reads that player.
+      PRESSABLE = (1..IR::Buttons::MOST_PLAYERS).flat_map do |player|
+        Console::ADVANCE.buttons.map { |button| IR::Buttons.name_for(button, player) }
+      end.freeze
+
+      def self.pressable_buttons = PRESSABLE
+
+      # The buttons a script can press, in words: the first player's by name, and how another
+      # player's are written. A script names them as Symbols (`:a`), a tape as plain words (`a`).
+      def self.pressable_button_words(as_symbols: true)
+        written = ->(name) { as_symbols ? name.inspect : name.to_s }
+        "#{Console::ADVANCE.buttons.map(&written).join(', ')}. Another player's buttons have the player's number " \
+          "in front, like #{written.call(:p2_a)} or #{written.call(:"p#{IR::Buttons::MOST_PLAYERS}_start")}"
+      end
 
       # The buttons as the console reads them: one bit apiece, each named for its button.
       def self.key_mask(buttons) = IR::Buttons.mask(buttons)
@@ -697,7 +708,7 @@ module VBlank
                 "the console does not have. The buttons are #{button_list}."
         end
 
-        def button_list = Playthrough.pressable_buttons.map(&:inspect).join(", ")
+        def button_list = Playthrough.pressable_button_words
 
         def refuse_invalid_frame_count!(step_name, frames, keyword: "frames:")
           return if frames.is_a?(Integer) && frames >= 1

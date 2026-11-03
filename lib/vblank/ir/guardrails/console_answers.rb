@@ -24,7 +24,9 @@ module VBlank
           def detect(program)
             return [] unless program.kind == :program
 
-            console = program.described_console
+            # A build for a computer reads as many players as any build reads, not the console's
+            # controllers (Nodes::Program#described_build).
+            console = program.described_build
             nodes = program.walk.to_a
             refused = Console.for(console.name).answers.refusals(nodes, console).map do |refusal|
               Finding.new(check: NAME, severity: :error, node: refusal.node, message: refusal.words)

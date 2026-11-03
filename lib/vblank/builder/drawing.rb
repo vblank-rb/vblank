@@ -750,7 +750,7 @@ module VBlank
 
       # What the commonest things a shape cannot do are, said as the game says them.
       LIGHT_SHAPE_CANNOT = { list_get: "read a list", list_len: "read a list", held: "read the buttons",
-                             pressed: "read the buttons", chance: "pick a number at random",
+                             pressed: "read the buttons", players_connected: "read the buttons", chance: "pick a number at random",
                              call: "call a routine", call_one_of: "call a routine" }.freeze
 
       # Refused where the shape is written, so the error points at it: anything off the list above,

@@ -236,11 +236,27 @@ static _Noreturn void finish(void) {
   exit(0);
 }
 
+/* The most players a line of buttons names (IR::Buttons::MOST_PLAYERS). */
+#define MOST_PLAYERS 16
+
+/* A line of buttons, one number for each connected player, the first player's first
+ * (IR::Buttons.masks), handed to +read+. */
+static void read_players(const char *line, void (*read)(int32_t, const uint32_t *)) {
+  uint32_t masks[MOST_PLAYERS];
+  int32_t count = 0;
+  char *end;
+  for (const char *at = line; count < MOST_PLAYERS; at = end) {
+    unsigned long mask = strtoul(at, &end, 10);
+    if (end == at) break;
+    masks[count++] = (uint32_t)mask;
+  }
+  read(count, masks);
+}
+
 /* The buttons for the frame that is starting: the next line of standard input. */
 static void read_buttons(void) {
-  unsigned long mask = 0;
-  if (scanf("%lu", &mask) != 1) mask = 0;
-  rg_buttons_read((uint32_t)mask);
+  char line[1024];
+  read_players(fgets(line, sizeof line, stdin) ? line : "", rg_players_read);
 }
 
 /* ASKED: the game prints nothing of itself between frames, and says what it holds when asked. Printing
@@ -254,7 +270,7 @@ static void answer_until_buttons(void) {
   fflush(stdout);
   while (fgets(line, sizeof line, stdin)) {
     if (line[0] != '?' && line[0] != '*') {
-      rg_buttons_read((uint32_t)strtoul(line, NULL, 10));
+      read_players(line, rg_players_read);
       return;
     }
     line[strcspn(line, "\n")] = '\0';
@@ -357,7 +373,7 @@ int rg_headless_main(int argc, char **argv) {
     } else if (strcmp(argv[i], "--save-cut-after") == 0 && i + 1 < argc) {
       rg_save_cut_power_after(strtol(argv[++i], NULL, 10));
     } else if (strcmp(argv[i], "--held-from-power-on") == 0 && i + 1 < argc) {
-      rg_buttons_held_from_power_on((uint32_t)strtoul(argv[++i], NULL, 10));
+      read_players(argv[++i], rg_players_held_from_power_on);
     } else if (strcmp(argv[i], "--clock-at") == 0 && i + 3 < argc) {
       int64_t seconds = strtoll(argv[++i], NULL, 10);
       int64_t ticks = strtoll(argv[++i], NULL, 10);

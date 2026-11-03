@@ -24,7 +24,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Build / screen — `.claude/dsl/screen.md`
 
-- `VBlank.game "NAME", consoles: %i[gba]` — the game and the consoles it is for (`%i[gba gbc]` for the Color too); `vblank build` makes a cartridge for each. Its code is worked out from the name. `stack_room:`; `sprite_piece_size: { gbc: [8, 16] }` (taller sprite pieces); `menu: false` (no menu in a computer's window).
+- `VBlank.game "NAME", consoles: %i[gba]` — the game and the consoles it is for (`%i[gba gbc]` for the Color too); `vblank build` makes a cartridge for each. Its code is worked out from the name. `stack_room:`; `sprite_piece_size: { gbc: [8, 16] }` (taller sprite pieces); `menu: false` (no menu in a computer's window); `players: 4` (input).
 - `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default.
 - `screen_width` / `screen_height` — the screen the game is being built for, to lay it out from.
 - `setting :floors, 60` — a value handed to one build (`settings:`, `--set`).
@@ -108,6 +108,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Input — `.claude/dsl/input.md`
 
 - `held(:left)`, `pressed(:start)` (`:any`); low-level `if_held`, `if_pressed`. Buttons `a b select start right left up down r l`, and `x y` on the Super Nintendo.
+- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `players_connected` → how many are connected now.
 - `rumble frames: 12, pattern: "##..##.."` — shake the player's hands, on a cartridge with a motor (the Color's).
 
 ## Menus — `.claude/dsl/menus.md`

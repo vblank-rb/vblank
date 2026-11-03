@@ -154,6 +154,19 @@ class TestJSLowering < Minitest::Test
     assert_includes error.message, "browser"
   end
 
+  # The browser build keeps two players' buttons, so a game that reads a third is refused before
+  # anything is written.
+  def test_a_third_player_is_refused_by_name
+    program = program_of do
+      third = 0
+      game_loop { third += 1 if pressed(:a, player: 3) }
+    end
+
+    error = assert_raises(JS::LoweringError) { JS.new.lower(program) }
+    assert_match(/player 3/, error.message)
+    assert_includes error.message, "browser"
+  end
+
   # ...and in a routine nothing calls they never run, so there is nothing to refuse, as the
   # interpreter refuses them only when it reaches them.
   def test_raw_machine_code_nothing_reaches_is_left_out

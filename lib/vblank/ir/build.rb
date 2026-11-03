@@ -43,10 +43,13 @@ module VBlank
       # +console+ is the console the program is built for; a tree made by hand for no console in
       # particular leaves it out (see Nodes::Program). +variant+ is the console's variant, or nil.
       # +sprite_piece_sizes+ is the size of sprite piece by console, as [console, [width, height]]
-      # pairs.
-      def program(*statements, console: nil, variant: nil, sprite_piece_sizes: [])
+      # pairs. +players+ is [fewest, most] players the game said it takes on this build, or nil
+      # where it said nothing; +for_computer+ is true for a build that plays on a computer. Each is
+      # left off the node unless it is said, so a program that says neither is the tree it was.
+      def program(*statements, console: nil, variant: nil, sprite_piece_sizes: [], players: nil, for_computer: false)
+        said = { players: players, for_computer: (true if for_computer) }.compact
         Nodes.build(:program, children: statements, console: console, variant: variant,
-                              sprite_piece_sizes: sprite_piece_sizes, kept_widths: [])
+                              sprite_piece_sizes: sprite_piece_sizes, kept_widths: [], **said)
       end
 
       # A font the program declares for itself. Draws nothing; it is there to be named by
@@ -1179,9 +1182,15 @@ module VBlank
 
       # --- input reads (value operands, e.g. inside an `if_` condition) ---
 
-      # 1 while +button+ is down on +player+'s controller (1, 2, or Buttons::ANY), else 0.
+      # 1 while +button+ is down on +player+'s controller (1 to Buttons::MOST_PLAYERS, or
+      # Buttons::ANY), else 0.
       def held(button, player: 1)
         Nodes.build(:held, button: button, player: player)
+      end
+
+      # How many players are connected now, at least 1.
+      def players_connected
+        Nodes.build(:players_connected)
       end
 
       # 1 only on the frame +button+ first goes down (a fresh press) on +player+'s controller,

@@ -774,6 +774,14 @@ module VBlank
         category :control
       end
 
+      # HOW MANY PLAYERS ARE CONNECTED NOW, at least 1: a player counts from the first time one of
+      # their buttons is down (IR::Buttons.masks). A console that reads one controller answers 1.
+      class PlayersConnected
+        include Node
+        kind :players_connected
+        category :value
+      end
+
       class Held
         include Node
         kind :held
@@ -1091,11 +1099,27 @@ module VBlank
       # +kept_widths+ is each variable the game said is narrow, as [name, :byte or :half] pairs. Every
       # write to one is followed by the wrap to that width (IR::KeptWidths), so what it holds
       # needs nothing more from any backend; a console may keep it in fewer bytes.
+      #
+      # +players+ is [fewest, most]: how many players the game said it takes on this build
+      # (Cartridge::Players), or nil where it said nothing. +for_computer+ is true for a build that
+      # plays on a computer, whose controllers are not the console's (#described_build).
       class Program
         include Node
         kind :program
         category :root
-        operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list
+        operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list, players: :list,
+                 for_computer: :flag
+
+        # The most players the game said it takes on this build, or nil where it said nothing.
+        def most_players = players&.last
+
+        # What the console this program was built for can do, as the build reads it: on a computer
+        # its controllers are as many players as any build reads (IR::Buttons::MOST_PLAYERS), since
+        # a computer has no ports to count; everything else is the console's.
+        def described_build
+          console = described_console
+          for_computer ? console.with(controllers: IR::Buttons::MOST_PLAYERS) : console
+        end
 
         # The width variable +name+ is kept at, or nil for the whole number.
         def kept_width_of(name) = (kept_widths || []).to_h[name]

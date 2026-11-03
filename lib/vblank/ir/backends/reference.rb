@@ -183,7 +183,8 @@ module VBlank
           @held = Set.new          # buttons down right now
           @seen = Set.new          # buttons down at the last frame the screen showed
           @pressed = Set.new       # buttons that went down since the last pass took its presses
-          @screen_frame = 0        # frames the screen has shown, which a pass may span several of
+          @connected = 1           # players connected: the highest who has held a button (IR::Buttons.masks)
+          @screen_frame = 0       # frames the screen has shown, which a pass may span several of
           @input_script = nil      # optional ->(frame) { buttons } to drive input over time
           @frames_script = nil     # optional ->(pass) { frames } to say a pass ran late
           @frames_setting_up = 0   # frames the screen was off for before the first (see #frames_setting_up)
@@ -391,6 +392,7 @@ module VBlank
         # then run. Returns self so it can be chained before #run.
         def hold(*buttons)
           @held = to_button_set(buttons)
+          count_connected_players
           self
         end
 
@@ -1300,6 +1302,7 @@ module VBlank
           took.times do
             @screen_frame += 1
             @held = to_button_set(Array(@input_script.call(@screen_frame))) if @input_script
+            count_connected_players
             @pressed |= @held - @seen
             @seen = @held
           end
@@ -3525,6 +3528,7 @@ module VBlank
           shift_right: :value_of_shift_right,
           held: :value_of_held,
           pressed: :value_of_pressed,
+          players_connected: :value_of_players_connected,
           chance: :value_of_chance,
           pixels_overlap: :value_of_pixels_overlap,
           data_byte: :value_of_data_byte,
@@ -3611,6 +3615,14 @@ module VBlank
 
         def value_of_pressed(node)
           flag_int(button_down_among?(@pressed, node.button, node.player))
+        end
+
+        def value_of_players_connected(_node) = @connected
+
+        # A player is connected from the first time one of their buttons is down, and stays so:
+        # the length of the list IR::Buttons.masks hands a computer's runtime each pass.
+        def count_connected_players
+          @connected = IR::Buttons.masks(@held, @connected).length
         end
 
         # A chance holds when the random draw lands below the threshold.

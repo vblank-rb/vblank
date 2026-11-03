@@ -3,12 +3,11 @@
 # whether there is a window: the driver is the methods named rg_driver_*, which the driver's own
 # file gives the game's class (rg_headless.rb, the one with no window).
 
-# Every button a program can name (IR::Buttons), a bit each. That is the same ten on every
+# Every button a program can name (IR::Buttons), a bit each. That is the same buttons on every
 # console: a console with fewer has a build that refuses the ones it lacks before there is a game
-# to play, so nothing here needs to know which console it is. The second player's are the same
-# bits 16 higher (IR::Buttons::SECOND_PLAYER_SHIFT).
+# to play, so nothing here needs to know which console it is. Each connected player's buttons are
+# a number of their own, in a list, the first player's first (IR::Buttons.masks).
 RG_ONE_PLAYERS_BUTTONS = 0xFFF
-RG_ALL_BUTTONS = RG_ONE_PLAYERS_BUTTONS | (RG_ONE_PLAYERS_BUTTONS << 16)
 RG_MAX_TIMERS = 32
 RG_SECONDS_A_DAY = 86400
 RG_UNDATED_FIRST_DAY = 10957 # 1 January 2000, in days from the start of 1970
@@ -35,9 +34,9 @@ def initialize
 end
 
 def rg_runtime_setup
-  @rg_held = 0    # buttons down now, a bit each
-  @rg_seen = 0    # ...and at the last frame boundary, to tell a press from a hold
-  @rg_pressed = 0 # buttons that went down at the last frame boundary
+  @rg_held = [0]    # each connected player's buttons down now, a bit each
+  @rg_seen = [0]    # ...and at the last frame boundary, to tell a press from a hold
+  @rg_pressed = [0] # buttons that went down at the last frame boundary
   # One timer each (RgTimer), and the timers in the order each was first started, which is the
   # order the interpreter walks them in.
   @rg_timers = Array.new(RG_MAX_TIMERS) { RgTimer.new }
@@ -55,17 +54,25 @@ end
 # --- the buttons ---
 
 # A button counts as pressed on the one frame it goes down, however long it is then held — the
-# edge the interpreter's read_buttons finds. A driver says which are down at every frame boundary.
+# edge the interpreter's read_buttons finds. A driver says which are down at every frame boundary,
+# as a list of one number per connected player (IR::Buttons.masks). The list never shortens: a
+# player who is connected stays so, and one the driver leaves out holds nothing.
 def rg_buttons_read(now)
-  @rg_held = now & RG_ALL_BUTTONS
-  @rg_pressed = @rg_held & ~@rg_seen
+  @rg_held = rg_players_buttons(now)
+  @rg_pressed = @rg_held.each_with_index.map { |held, player| held & ~(@rg_seen[player] || 0) }
   @rg_seen = @rg_held
 end
 
 # Down before the first frame boundary and not yet seen there, so the first boundary still finds
 # them going down — the interpreter's hold, and the console's keys from power-on.
 def rg_buttons_held_from_power_on(now)
-  @rg_held = now & RG_ALL_BUTTONS
+  @rg_held = rg_players_buttons(now)
+end
+
+# +now+ as each player's buttons, at least as many as are connected already.
+def rg_players_buttons(now)
+  held = now.map { |buttons| buttons & RG_ONE_PLAYERS_BUTTONS }
+  held + ([0] * [@rg_held.length - held.length, 0].max)
 end
 
 # A button's bit in +buttons+, or any of the first player's for -1. The buttons are numbered in the
@@ -76,12 +83,22 @@ def rg_button_down(buttons, button)
   (buttons >> button) & 1
 end
 
-def rg_held(button) = rg_button_down(@rg_held, button)
-def rg_pressed(button) = rg_button_down(@rg_pressed, button)
+def rg_held(button) = rg_button_down(@rg_held[0], button)
+def rg_pressed(button) = rg_button_down(@rg_pressed[0], button)
 
-# Whether any of the buttons in +mask+ is down, for a test that names a player.
-def rg_held_among(mask) = (@rg_held & mask) != 0 ? 1 : 0
-def rg_pressed_among(mask) = (@rg_pressed & mask) != 0 ? 1 : 0
+# Whether any of the buttons in +mask+ is down for +player+ (1 and up), or for any connected player
+# for 0, for a test that names a player.
+def rg_held_by(player, mask) = rg_any_down_by(@rg_held, player, mask)
+def rg_pressed_by(player, mask) = rg_any_down_by(@rg_pressed, player, mask)
+
+def rg_any_down_by(buttons, player, mask)
+  return buttons.any? { |held| (held & mask) != 0 } ? 1 : 0 if player.zero?
+
+  ((buttons[player - 1] || 0) & mask) != 0 ? 1 : 0
+end
+
+# How many players are connected now: one for each number in the driver's list.
+def rg_players_connected = @rg_held.length
 
 # --- frames ---
 

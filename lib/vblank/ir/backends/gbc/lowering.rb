@@ -68,7 +68,7 @@ module VBlank
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
                                            save_read: :value_of_save_read, save_sum: :value_of_save_sum,
                                            timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
-                                           data_byte: :value_of_data_byte
+                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected
                                          }.merge(Picture::VALUES).merge(Clock::VALUES))
 
           include Picture
@@ -1552,6 +1552,9 @@ module VBlank
           end
 
           def value_of_int(node) = load_constant(node.value)
+
+          # The Color has one controller, so one player is connected, always.
+          def value_of_players_connected(_node) = load_constant(1)
           def value_of_var_ref(node) = load_variable(node.name)
 
           def value_of_binop(node)

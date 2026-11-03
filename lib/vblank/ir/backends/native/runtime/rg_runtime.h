@@ -60,8 +60,12 @@ _Noreturn void rg_fault(const char *format, ...) __attribute__((format(printf, 1
  * start, right, left, up, down, r, l — and -1 means any of them. */
 int32_t rg_held(int32_t button);
 int32_t rg_pressed(int32_t button);
-int32_t rg_held_among(int32_t mask);
-int32_t rg_pressed_among(int32_t mask);
+/* The same for another player (1 and up, or 0 for any connected player), asking about +mask+, a
+ * bit for each button in that numbering. */
+int32_t rg_held_by(int32_t player, int32_t mask);
+int32_t rg_pressed_by(int32_t player, int32_t mask);
+/* How many players are connected now: at least 1. */
+int32_t rg_players_connected(void);
 
 /* A GAME'S TIMERS (`timer :beat, per_second: 60`): counters that tick so many times a second,
  * whatever the game is doing. Each has a number of its own. There is no clock here: a frame is

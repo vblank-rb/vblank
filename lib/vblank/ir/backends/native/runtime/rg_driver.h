@@ -41,6 +41,12 @@ void rg_buttons_read(uint32_t held);
  * the game. None of them counts as pressed until the first frame boundary reads it down. */
 void rg_buttons_held_from_power_on(uint32_t held);
 
+/* The same two, said as one number for each of +count+ connected players, the first player's
+ * first (IR::Buttons.masks): how a driver that knows who is connected says it. A player stays
+ * connected once a driver has said so. */
+void rg_players_read(int32_t count, const uint32_t *masks);
+void rg_players_held_from_power_on(int32_t count, const uint32_t *masks);
+
 /* WHERE THE CARTRIDGE'S CLOCK GETS ITS TIME, said by the driver before it starts the game, or not
  * at all for a cartridge with no clock. Either way the time is the date and the hour a clock
  * SAYS, with no time zone, as IR::Clock reads it.

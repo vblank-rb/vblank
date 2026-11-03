@@ -51,6 +51,13 @@ module VBlank
                          console.changes_cells_while_drawing)
           end
         when :held, :pressed then button_question(node, console)
+        when :players_connected
+          Question.new(:players_connected, "This line asks how many players are connected (`players_connected`)", nil)
+        when :program
+          most = node.most_players
+          if most && most > 1
+            Question.new(:held, "This game takes up to #{most} players (`players:`)", most <= console.controllers)
+          end
         when :fade
           Question.new(:fade, "This line fades part of the screen", console.blends) if node.under || node.reaches
         when :background
@@ -91,11 +98,13 @@ module VBlank
       end
 
       # The button a line reads, and then the controller. `player: :any` asks nothing of a console
-      # with one controller: that one is every controller it has.
+      # with one controller: that one is every controller it has, and every one connected.
       def button_question(node, console)
         has_button = button?(node.button, console)
-        if has_button && node.player == 2
-          return Question.new(:held, "This line reads the second controller (`player: 2`)", console.controllers > 1)
+        player = node.player
+        if has_button && player.is_a?(Integer) && player > 1
+          controller = player == 2 ? "the second controller" : "controller #{player}"
+          return Question.new(:held, "This line reads #{controller} (`player: #{player}`)", player <= console.controllers)
         end
 
         Question.new(:held, "This line reads the #{node.button.inspect} button", has_button)

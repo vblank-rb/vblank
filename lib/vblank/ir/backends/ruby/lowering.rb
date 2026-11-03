@@ -37,6 +37,10 @@ module VBlank
 
           def build_name = "the Ruby build"
 
+          # The Ruby runtime keeps a list of buttons, one entry per connected player, so it reads as
+          # many players as any build does (IR::Buttons::MOST_PLAYERS).
+          def most_players_read = Buttons::MOST_PLAYERS
+
           # WHAT THE RUNTIME CANNOT DO YET, found before the game is played rather than part way
           # through it: every function the printed game calls that is neither the runtime's nor
           # one of the game's own routines (Ruby::HEADLESS_FUNCTIONS and LIVE_FUNCTIONS say what

@@ -40,12 +40,16 @@ module VBlank
     # +for_computer+ says the game is being built to play on a computer (as C, for a web page, or as
     # Ruby) rather than as a cartridge. It changes nothing by itself: the game asks with
     # `built_for_computer?` and picks its own default.
+    #
+    # +players+ is how many players the game takes, by console (Cartridge::Players), held as
+    # { key => Range }; empty where the game said nothing.
     Options = Data.define(:frame_sync, :fast_cartridge, :fast_code, :save_memory, :stack_room, :console,
-                          :variant, :sprite_piece_size, :for_computer) do
+                          :variant, :sprite_piece_size, :for_computer, :players) do
       def initialize(frame_sync: :auto, fast_cartridge: nil, fast_code: nil, save_memory: nil, stack_room: nil,
-                     console: nil, variant: nil, sprite_piece_size: {}, for_computer: false)
+                     console: nil, variant: nil, sprite_piece_size: {}, for_computer: false, players: nil)
         console = Console.named(console) unless console.nil?
         sprite_piece_size = Console.refuse_unusable_sprite_piece_sizes!(sprite_piece_size).freeze
+        players = Players.refuse_unusable!(players).freeze
         unless variant.nil?
           raise ArgumentError, "A variant needs a console. To fix this, name the console too." if console.nil?
 

@@ -70,7 +70,7 @@ module VBlank
             @on_vblank&.call(frame)
             sent = true
             @asking = false
-            stdin.puts(self.class.button_mask(buttons))
+            stdin.puts(@pass_buttons.line(buttons))
             stdin.flush
             expect_next_frame
           ensure

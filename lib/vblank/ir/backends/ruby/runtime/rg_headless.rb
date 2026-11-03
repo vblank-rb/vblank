@@ -71,7 +71,7 @@ def rg_headless_main(argv)
       @rg_picture_out = File.open(argv[i], "wb")
     when "--held-from-power-on"
       i += 1
-      rg_buttons_held_from_power_on(argv[i].to_i)
+      rg_buttons_held_from_power_on(argv[i].split.map(&:to_i))
     when "--clock-at"
       rg_clock_starts_at(argv[i + 1].to_i, argv[i + 2].to_i, argv[i + 3].to_i)
       i += 3
@@ -109,8 +109,9 @@ def rg_driver_wait_vblank
   rg_headless_print_moment("frame #{@rg_frame}", @rg_every_picture)
   $stdout.write("buttons?\n")
   $stdout.flush
+  # One number for each connected player's buttons, the first player's first (IR::Buttons.masks).
   line = $stdin.gets
-  rg_buttons_read(line ? line.to_i : 0)
+  rg_buttons_read(line ? line.split.map(&:to_i) : [])
 end
 
 def rg_driver_halt = rg_headless_finish

@@ -10,7 +10,8 @@ module VBlank
       # Run the block only while a button is held down.
       #
       # @param button [Symbol] :up, :down, :left, :right, :a, :b, :start, :select, :l, :r
-      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
+      # @param player [Integer, Symbol] whose controller: 1 to IR::Buttons::MOST_PLAYERS, or :any for
+      #   every connected player
       def if_held(button, player: 1, &block)
         check_button!(button)
         check_player!(player)
@@ -53,6 +54,17 @@ module VBlank
         check_button!(button)
         check_player!(player)
         DSL::Condition.new(self, Build.pressed(button, player: player))
+      end
+
+      # HOW MANY PLAYERS ARE CONNECTED NOW, as a {DSL::Value}: at least 1. A player counts from
+      # the first time one of their buttons is down, and stays counted. Ask it before reading a
+      # player's buttons, so a game never waits on a player who is not there:
+      #
+      #   draw_text "PLAYER 3 PRESS START", 40, 80, :white if players_connected >= 3
+      #
+      # A console that reads one controller answers 1.
+      def players_connected
+        DSL::Value.new(self, Build.players_connected)
       end
 
       # SHAKE THE PLAYER'S HANDS for +frames+ frames, as a ball hitting a bumper does. +pattern+
@@ -114,10 +126,16 @@ module VBlank
       end
 
       def check_player!(player)
-        return if IR::Buttons.player?(player)
+        unless IR::Buttons.player?(player)
+          raise ArgumentError, "`player: #{player.inspect}` is not a player. Use a number from 1 to " \
+                               "#{IR::Buttons::MOST_PLAYERS}, or :any for every player."
+        end
+        most = @program.most_players
+        return if most.nil? || player == IR::Buttons::ANY || player <= most
 
-        raise ArgumentError, "`player: #{player.inspect}` is not a player. Use 1 for the first controller, " \
-                             "2 for the second, or :any for either."
+        raise ArgumentError, "This line reads player #{player}, and the game takes at most #{most} " \
+                             "#{most == 1 ? 'player' : 'players'} on this build (`players:`). To fix this, read a " \
+                             "player from 1 to #{most}, or set the most players in `players:` to #{player} or more."
       end
 
       # held/pressed hand back a Condition and take no block. A block here means a

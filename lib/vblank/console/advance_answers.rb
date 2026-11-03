@@ -75,8 +75,10 @@ module VBlank
         # --- input ---
         held: works("the ten buttons a Game Boy Advance has, the shoulder buttons `:l` and `:r` among them. " \
                     "`:x` and `:y` are refused: it has no X or Y button. " \
-                    "`player: 2` is refused: it has one controller."),
+                    "`player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. " \
+                    "`player: :any` reads that one controller."),
         pressed: works("see `held`."), if_held: works("see `held`."), if_pressed: works("see `held`."),
+        players_connected: works("always 1: a Game Boy Advance has one controller."),
         rumble: works("nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, " \
                       "so the game plays the same without it."),
 

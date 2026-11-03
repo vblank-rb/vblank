@@ -97,6 +97,7 @@ module VBlank
                                            clamped: :value_of_clamped, mul_fix: :value_of_mul_fix,
                                            div_fix: :value_of_div_fix, shift_right: :value_of_shift_right,
                                            held: :value_of_held, pressed: :value_of_pressed,
+                                           players_connected: :value_of_players_connected,
                                            chance: :value_of_chance, table_get: :value_of_table_get,
                                            data_byte: :value_of_data_byte, list_get: :value_of_list_get,
                                            list_len: :value_of_list_len, timer_ticks: :value_of_timer_ticks,
@@ -292,10 +293,31 @@ module VBlank
           # refusal is otherwise the same for both.
           def build_name = "the desktop build"
 
+          # HOW MANY PLAYERS THE RUNTIME READS. The C and JavaScript runtimes keep every player's
+          # buttons in one 32-bit number, the second player's 16 bits above the first's
+          # (IR::Buttons::PLAYER_SHIFT), so they read two; Ruby::Lowering's runtime keeps a list
+          # and reads as many as any build does.
+          def most_players_read = 2
+
+          # A line that reads a player the runtime does not, or a game that says it takes more, is
+          # refused before anything is written.
+          def refuse_players_past_runtime!
+            most = most_players_read
+            player = @reachable.select { |node| %i[held pressed].include?(node.kind) }
+                               .map(&:player).select { |each| each.is_a?(Integer) }.max
+            asked = [player, @program.most_players].compact.max
+            return if asked.nil? || asked <= most
+
+            raise LoweringError,
+                  "this game reads player #{asked}, and #{build_name} reads #{most} players at most for now. To " \
+                  "fix this, read players 1 to #{most} only. Or play the game as Ruby (`vblank run`)."
+          end
+
           # What is refused is only what the program can reach: a console-only step in a routine
           # nothing calls never runs, so the game as C plays the same without it, as the
           # interpreter does, which complains of one only when it is reached.
           def refuse_unlowered_kinds!
+            refuse_players_past_runtime!
             hardware = @reachable.map(&:kind).uniq.select { |kind| Portability.hardware_only?(kind) }
             unless hardware.empty?
               raise LoweringError,
@@ -652,13 +674,20 @@ module VBlank
           def value_of_held(node) = button_call("rg_held", node)
           def value_of_pressed(node) = button_call("rg_pressed", node)
 
-          # The first player's button is a bit to look at; anything that names another player is
-          # a mask of the buttons it asks about (IR::Buttons.names_asked).
+          # The first player's button is a bit to look at. Anything that names another player asks
+          # the runtime about that player's buttons, by number (0 for any connected player), and a
+          # mask of the buttons it asks about in one player's bits (IR::Buttons.player_mask).
           def button_call(reader, node)
             return call(reader, C::Int.new(button_number(node.button))) if node.player == 1
 
-            call("#{reader}_among", C::Int.new(Buttons.mask(Buttons.names_asked(node.button, node.player))))
+            player = node.player == Buttons::ANY ? 0 : node.player
+            mask = Buttons.player_mask(Buttons.names_asked(node.button, 1), 1)
+            call("#{reader}_by", C::Int.new(player), C::Int.new(mask))
           end
+
+          # How many players are connected now (IR::Buttons.masks): the length of the list of
+          # buttons the driver hands the runtime each pass.
+          def value_of_players_connected(_node) = call("rg_players_connected")
 
           # A chance holds when the random draw lands below the threshold.
           def value_of_chance(node) = call("rg_lt", value(node.draw), C::Int.new(node.percent))

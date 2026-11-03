@@ -89,9 +89,6 @@ module VBlank
           # (RunComparison.picture_check).
           def self.picture_check(shown) = RunComparison.picture_check(shown)
 
-          # +held+ buttons as the program reads them (IR::Buttons.mask).
-          def self.button_mask(held) = IR::Buttons.mask(held)
-
           # How many numbers a second the sound the program makes comes as (RG_SOUND_RATE).
           SOUND_RATE = 48_000
 
@@ -374,6 +371,7 @@ module VBlank
                 @pictures = pictures
                 @sound_file = File.join(dir, "sound") if @sounds_as_played
                 @sound_read = 0
+                @pass_buttons = IR::Buttons::PassButtons.new
                 play_frames(exe, frames, [*frame_options(pictures.path), *sound_options(dir), *save_options(dir),
                                           *held_options, *clock_options])
               end
@@ -409,9 +407,10 @@ module VBlank
 
           # Buttons held for the whole run are down from power-on, before the game's first
           # statement, as the interpreter's are — and an input script decides only from the first
-          # frame on, as the interpreter's does.
+          # frame on, as the interpreter's does. Each is one line of each connected player's
+          # buttons (IR::Buttons::PassButtons), which is what the program reads.
           def held_options
-            @held.empty? ? [] : ["--held-from-power-on", self.class.button_mask(@held).to_s]
+            @held.empty? ? [] : ["--held-from-power-on", @pass_buttons.line(@held)]
           end
 
           # The clock's moment as the program takes it: the date and the hour the Time says, as
@@ -491,7 +490,7 @@ module VBlank
             end
             buttons =@input_script ? @input_script.call(frame) : @held
             @on_vblank&.call(frame)
-            stdin.puts(self.class.button_mask(buttons))
+            stdin.puts(@pass_buttons.line(buttons))
             stdin.flush
             expect_next_frame
           end

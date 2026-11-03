@@ -14,7 +14,8 @@ class TestExamplesUseEveryVerb < Minitest::Test
   # of its own, so an example naming it would give the golden path nothing more to build.
   NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func
                           if_eq if_ne if_gt if_lt if_ge if_gte if_le if_lte if_held if_pressed
-                          add_var sub sub_var negate built_for_computer?].freeze
+                          add_var sub sub_var negate built_for_computer?
+                          players_connected].freeze # one on every example's console; the conformance fixture builds it
 
   def test_every_verb_appears_in_an_example
     written = Dir[VBlank.root.join("examples/**/*.rb").to_s].map { |path| File.read(path) }.join("\n")

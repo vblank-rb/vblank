@@ -35,6 +35,7 @@ module VBlank
         @consoles = Console.refuse_unknown_consoles!(consoles, setting: "consoles:")
         @variants = refuse_unusable_variants!(variants)
         refuse_piece_size_not_for_consoles!
+        refuse_players_not_for_consoles!
         Console.refuse_unusable_console_settings!(console_settings_said, consoles: @consoles, title: title,
                                                                          named_in: "consoles:")
         @block = shareable_if_possible(block)
@@ -245,6 +246,14 @@ module VBlank
                              "sprite_piece_size:."
       end
 
+      # A number of players named for a console the game is not for is refused the same way.
+      def refuse_players_not_for_consoles!
+        key = @options.players.each_key.find { |name| !Players::KEYS.include?(name) && !@consoles.include?(name) } or return
+
+        raise ArgumentError, "#{@title} names players: for the #{Console.described(key).title}, and the game is not " \
+                             "for it. To fix this, add :#{key} to consoles:, or remove it from players:."
+      end
+
       # +console+, when the game is for it; a plain refusal when it is not.
       def refuse_console_not_for!(console)
         console = console.to_sym
@@ -318,11 +327,14 @@ module VBlank
     # +sprite_piece_size+ is the size each of its consoles draws a sprite's pieces at, by console:
     # `sprite_piece_size: { gbc: [8, 16] }` for the Color's tall pieces (see Cartridge::Options).
     #
+    # +players+ is how many players the game takes: `players: 4`, `players: 2..4`, or by console,
+    # `players: { snes: 1..2, computer: 1..8, else: 1 }` (see Cartridge::Players).
+    #
     # The block is written in normal Ruby (see DSL::PlainRuby). +allow+ names libraries it may use,
     # on the author's word that they are safe here.
     def game(title, code: nil, maker: nil, frame_sync: :auto, fast_cartridge: nil, fast_code: nil,
              save_memory: nil, stack_room: nil, consoles: nil, menu: true, variants: {}, sprite_piece_size: {},
-             allow: [], &block)
+             players: nil, allow: [], &block)
       unless block
         raise ArgumentError, %(VBlank.game needs a block: VBlank.game("NAME", consoles: %i[gba]) { ... })
       end
@@ -334,7 +346,7 @@ module VBlank
 
       options = Cartridge::Options.new(frame_sync: frame_sync, fast_cartridge: fast_cartridge,
                                        fast_code: fast_code, save_memory: save_memory, stack_room: stack_room,
-                                       sprite_piece_size: sprite_piece_size)
+                                       sprite_piece_size: sprite_piece_size, players: players)
       handle = Cartridge::Game.new(title, code: code, maker: maker, block: DSL::PlainRuby.game_block(block, allow: allow),
                                           options: options, consoles: consoles, menu: menu, variants: variants)
       Ractor.current[:vblank_registered_games] = registered_games + [handle]

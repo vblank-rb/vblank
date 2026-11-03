@@ -130,10 +130,11 @@ and a test fails when the two differ. The Advance's answers are in
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `dump_func` — works: it lists the SM83 code a routine was made into, with the game's variables and the runtime's routines by name.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Game Boy Color does not have.
-- `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button. `player: 2` is refused: it has one controller.
+- `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.
 - `pressed` — works: see `held`.
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.
+- `players_connected` — works: always 1: a Game Boy Color has one controller.
 - `rumble` — works: the cartridge carries a rumble motor, and the motor runs on the frames the pattern says. A cartridge with a `clock` has no motor, so a game that uses both is refused.
 - `seed` — works: the same as on the Advance.
 - `randomize` — works: the same as on the Advance.

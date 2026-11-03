@@ -14,7 +14,8 @@ module VBlank
         #                          a pixel, a row at a time, drawn over next frame, and the sound of
         #                          the frame just played, the left speaker's 16-bit samples and the
         #                          right's at #sound_rate; gives back the buttons held for the pass
-        #                          that starts (IR::Buttons.mask), or nil to stop the play
+        #                          that starts, a number for each connected player
+        #                          (IR::Buttons.masks), or nil to stop the play
         class LiveGame
           def initialize(source)
             @game = Class.new { class_eval(source, "(the game, as Ruby)") }.new

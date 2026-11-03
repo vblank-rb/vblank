@@ -19,6 +19,36 @@ class TestNativeRefusals < Minitest::Test
     assert_includes error.message, ":raw"
   end
 
+  # The desktop build keeps two players' buttons, so a game that reads a third is refused before
+  # anything is written, naming the build that reads more.
+  def test_a_third_player_is_refused_by_name
+    program = program_of do
+      third = 0
+      game_loop { third += 1 if held(:left, player: 3) }
+    end
+
+    error = assert_raises(LoweringError) { Native.new.lower(program) }
+    assert_match(/player 3/, error.message)
+    assert_match(/2 players/, error.message)
+  end
+
+  def test_two_players_play_as_on_the_interpreter
+    program = program_of do
+      second = 0
+      either = 0
+      connected = 0
+      game_loop do
+        second += 1 if held(:left, player: 2)
+        either += 1 if pressed(:a, player: :any)
+        connected = players_connected
+      end
+    end
+
+    buttons = { 2 => %i[a], 3 => %i[p2_left], 4 => %i[p2_left p2_a], 5 => [] }
+    finished = assert_native_matches_reference(program, frames: 6, buttons: buttons)
+    assert_equal 2, finished.variables[:connected]
+  end
+
   # A song with more parts on the square wave than the console has such voices stops the program
   # that plays it, saying so. Only a song built by hand can be one: a game's own is refused before
   # this, by the checks a cartridge build makes.
