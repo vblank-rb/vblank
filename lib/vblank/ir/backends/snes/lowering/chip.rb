@@ -25,7 +25,7 @@ module VBlank
             # The kinds of IR a routine on the chip can hold besides what ChipCode makes, which say
             # nothing while the game runs.
             MADE = Ractor.make_shareable((ChipCode::STATEMENTS.keys + ChipCode::VALUES.keys + [:else]).to_h { |kind| [kind, true] })
-            LIST_STEPS = %i[list_get list_set list_len].freeze
+            LIST_STEPS = %i[list_get list_set list_len list_push list_drop list_fill].freeze
             # Where each 16-bit half of a variable is, for copying.
             HALVES = [0, 2].freeze
 
@@ -47,7 +47,6 @@ module VBlank
 
                   refuse_chip_call!(name, node.target) if node.kind == :call && !on_chip?(node.target)
                   refuse_chip_step!(name, node) unless MADE[node.kind]
-                  refuse_list_taken_from_front!(name, node) if LIST_STEPS.include?(node.kind)
                   refuse_table_in_parts!(name, node) if node.kind == :table_get
                 end
               end
@@ -66,17 +65,6 @@ module VBlank
                                    "#{name.inspect}. Do the step before or after the call."
             end
 
-            # The chip finds an item's slot by its index alone, which is right only while nothing
-            # moves where the list's first item is.
-            def refuse_list_taken_from_front!(name, node)
-              return unless front_dropped_lists.include?(node.name)
-
-              raise LoweringError, "The routine #{name.inspect} runs on the Super FX chip, and it uses the list " \
-                                   "#{node.name.inspect}. The game takes items from the front of that list, and the " \
-                                   "chip cannot use a list that changes that way. To fix this, take items from the " \
-                                   "back of #{node.name.inspect}, or move its use out of #{name.inspect}."
-            end
-
             def refuse_table_in_parts!(name, node)
               table = @tables.fetch(node.name) { return }
               return unless split?(table)
@@ -91,7 +79,7 @@ module VBlank
               kind = node.kind
               return "a wait for the next frame" if kind == :wait_vblank
               return "a change of scene (case_var), and a scene sets up the screen, which only the console can do" if kind == :case
-              return "a change to a list's items other than by index (#{kind})" if kind.start_with?("list_")
+              return "a copy of a table into a list (#{kind})" if kind == :list_copy
               return "a drawing step (#{kind})" if node.category == :draw
               return "a sound step (#{kind})" if node.category == :sound
 
@@ -117,7 +105,7 @@ module VBlank
                 at = (@chip_numbers_end - Runtime::Lists::HEADER - (node.capacity * width)) & ~3
                 refuse_chip_lists_too_big!(name) if at < ChipCode::FIRST_NUMBER + CHIP_NUMBERS_KEPT
                 @chip_numbers_end = at
-                @chip_lists[name] = ChipCode::ListPlace.new(at: at, width: width)
+                @chip_lists[name] = ChipCode::ListPlace.new(at: at, width: width, ring: front_dropped_lists.include?(name))
               end
             end
 
@@ -175,12 +163,15 @@ module VBlank
                 @asm.lda(@asm.long(chip_ram_address(at) + half))
                 @asm.sta(at_place(place_of(variable) + half))
               end
-              emit_chip_fault_check if faults
+              emit_chip_fault_check(name) if faults
             end
 
-            # A list the chip found an index outside of stops the game here, in Runtime::Lists's
-            # words: the list's place in X and Y and the index in R1, as that routine takes them.
-            def emit_chip_fault_check
+            # A list the chip found at fault stops the game here, in Runtime::Lists's words. An index
+            # outside it: the list's place in X and Y and the index in R1, as rt_list_outside takes
+            # them. An item added to it full, or taken from it empty: the chip left the list as it
+            # was, so the runtime's own push, or its drop from the same end (R1), finds the same fault
+            # and stops the game as it does for the console's own code.
+            def emit_chip_fault_check(name)
               fine = fresh("chip_fine")
               @asm.lda(@asm.long(chip_ram_address(@chip_code.fault_list_place)))
               @asm.beq(fine)
@@ -190,9 +181,28 @@ module VBlank
                 @asm.lda(@asm.long(index + half))
                 @asm.sta(@asm.direct(Memory.register(1) + half))
               end
+              emit_chip_end_fault_check if @chip_code.faults_at_ends?(name)
               @asm.ldy(Console::SNESHardware::GSU_RAM_BANK)
               call_routine("rt_list_outside")
               @asm.label(fine)
+            end
+
+            # With the list's place in X: on to the index fault below unless the chip said the list was
+            # full or empty, and otherwise the runtime's push or drop on that list, which never return.
+            def emit_chip_end_fault_check
+              at_index = fresh("chip_index_fault")
+              empty = fresh("chip_empty_fault")
+              @asm.stx(@asm.direct(R0))
+              @asm.ldy(Console::SNESHardware::GSU_RAM_BANK)
+              @asm.sty(@asm.direct(R0 + 2))
+              @asm.lda(@asm.long(chip_ram_address(@chip_code.fault_kind_place)))
+              @asm.beq(at_index)
+              @asm.cmp(ChipCode::FAULT_KINDS.fetch(:full))
+              @asm.bne(empty)
+              call_routine("rt_list_push")
+              @asm.label(empty)
+              call_routine("rt_list_drop")
+              @asm.label(at_index)
             end
 
             def chip_ram_address(at) = Runtime::ChipPaint::COPY | at

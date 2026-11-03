@@ -341,10 +341,148 @@ class TestSNESOnChip < Minitest::Test
     assert_match(/index 2 is out of range for list :cells/, error.message)
   end
 
-  def test_a_list_taken_from_on_the_chip_is_refused_by_name
-    error = refusal_of do
+  # Items added at the back on the chip until each list is full, then taken from the back until it
+  # is empty, over and over: narrow slots keep their low bits and read back with their sign, and
+  # the 65816 reads what the chip left.
+  def test_pushes_and_pops_on_the_chip_play_as_on_the_interpreter
+    game = superfx_game("CHIP PUSH") do
+      bytes = list :bytes, capacity: 4, width: :byte
+      halves = list :halves, capacity: 4, width: :half
+      words = list :words, capacity: 4
+      step = var :step, 0
+      seen = var :_seen, 0
+      top = var :_top, 0
+      func :grow, on_chip: true do
+        if step % 8 < 4
+          bytes.push step * 70
+          halves.push (step * 30_000) - 50_000
+          words.push step - 100_000
+        else
+          bytes.pop
+          halves.pop
+          words.pop
+        end
+        seen = 0
+        seen = bytes[bytes.length - 1] + halves[0] if bytes.length > 0
+      end
+      game_loop do
+        call :grow
+        top = 0
+        top = words[words.length - 1] if words.length > 0
+        step += 1
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 20)
+
+    assert_operator run[:step], :>=, 16, "two rounds of filling and emptying were checked"
+  end
+
+  def test_a_push_onto_a_full_list_on_the_chip_stops_the_game
+    game = superfx_game("CHIP FULL") do
+      cells = list :cells, capacity: 3
+      func(:grow, on_chip: true) { cells.push 7 }
+      game_loop { call :grow }
+    end
+    error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 8) }
+
+    assert_match(/list :cells is full/, error.message)
+  end
+
+  def test_a_pop_from_an_empty_list_on_the_chip_stops_the_game
+    game = superfx_game("CHIP EMPTY") do
       cells = list :cells, capacity: 4
-      func(:spin, on_chip: true) { cells.push 1 }
+      cells.push 1
+      cells.push 2
+      func(:shrink, on_chip: true) { cells.pop }
+      game_loop { call :shrink }
+    end
+    error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 8) }
+
+    assert_match(/list :cells is empty: there is nothing to pop/, error.message)
+  end
+
+  # A whole list, and a run of one from an index worked out as the game runs, with a count of
+  # nought or below setting nothing.
+  def test_fills_on_the_chip_play_as_on_the_interpreter
+    game = superfx_game("CHIP FILL") do
+      bytes = list :bytes, capacity: 6, width: :byte, full_of: 0
+      words = list :words, capacity: 5, full_of: 1
+      step = var :step, 0
+      from = var :_from, 0
+      count = var :_count, 0
+      func :paint, on_chip: true do
+        from = step % 3
+        count = (step % 4) - 1
+        bytes.fill step * 50
+        words.fill step - 70_000, from: from, count: count
+        bytes.fill step * -3, from: from + 1, count: count + 1
+      end
+      game_loop do
+        call :paint
+        step += 1
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 14)
+
+    assert_operator run[:step], :>=, 12, "every from and count was checked"
+  end
+
+  def test_a_fill_past_the_end_of_a_list_on_the_chip_stops_the_game
+    game = superfx_game("CHIP FILL FAULT") do
+      cells = list :cells, capacity: 4, full_of: 0
+      at = var :at, 0
+      func(:paint, on_chip: true) { cells.fill 9, from: at, count: 2 }
+      game_loop do
+        call :paint
+        at += 1
+      end
+    end
+    error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 8) }
+
+    assert_match(/index 4 is out of range for list :cells/, error.message)
+  end
+
+  # A list taken from the front goes round its slots like a ring. Shifted on the chip and on the
+  # 65816 both, it is read and written by index on the chip as on the interpreter.
+  def test_a_list_shifted_on_either_processor_plays_on_the_chip_as_on_the_interpreter
+    game = superfx_game("CHIP RING") do
+      queue = list :queue, capacity: 4
+      step = var :step, 0
+      last = var :_last, 0
+      func :turn, on_chip: true do
+        queue.push step * 3
+        queue[0] = queue[0] + 1
+        last = queue[queue.length - 1]
+        queue.shift if step % 3 == 0
+      end
+      game_loop do
+        call :turn
+        queue.shift if queue.length > 2
+        step += 1
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 30)
+
+    assert_operator run[:step], :>=, 20, "the ring went round several times"
+  end
+
+  def test_a_shift_of_an_empty_list_on_the_chip_stops_the_game
+    game = superfx_game("CHIP EMPTY FRONT") do
+      cells = list :cells, capacity: 4
+      cells.push 1
+      func(:shrink, on_chip: true) { cells.shift }
+      game_loop { call :shrink }
+    end
+    error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 8) }
+
+    assert_match(/list :cells is empty: there is nothing to shift/, error.message)
+  end
+
+  def test_a_list_copied_from_a_table_on_the_chip_is_refused_by_name
+    error = refusal_of do
+      rows = table :rows, [1, 2, 3, 4]
+      cells = list :cells, capacity: 4, width: :half
+      func(:spin, on_chip: true) { cells.copy_from rows, at: 0, count: 2 }
       game_loop { call :spin }
     end
 

@@ -45,7 +45,8 @@ module VBlank
           STATEMENTS = Ractor.make_shareable({ set: :emit_set, add: :emit_add, sub: :emit_sub, copy: :emit_copy, if: :emit_if,
                                                repeat: :emit_repeat, call: :emit_call, negate: :emit_negate,
                                                abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
-                                               list_set: :emit_list_set })
+                                               list_set: :emit_list_set, list_push: :emit_list_push,
+                                               list_drop: :emit_list_drop, list_fill: :emit_list_fill })
           VALUES = Ractor.make_shareable({ int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
                                            neg: :value_of_neg, absolute: :value_of_absolute, clamped: :value_of_clamped,
                                            mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
@@ -64,8 +65,18 @@ module VBlank
           # (bytes, and whether it has a sign).
           TableRead = Data.define(:label, :count, :bytes, :signed)
           # A list the chip reads and writes: its 16-bit place in the chip's RAM (its header, then its
-          # slots, as Runtime::Lists lays them out), and how many bytes a slot takes.
-          ListPlace = Data.define(:at, :width)
+          # slots, as Runtime::Lists lays them out), how many bytes a slot takes, and whether the
+          # game takes items from its front anywhere, which makes its slots a ring.
+          ListPlace = Data.define(:at, :width, :ring)
+          # A way a run can stop the game on a list, at +label+: an index outside it (the index in
+          # the registers +low+ and +high+), an item added to it when full, or one taken from it when
+          # empty (+from_front+ saying which end).
+          ListFault = Data.define(:label, :list, :kind, :low, :high, :from_front)
+          # The number the chip leaves for each kind of fault, for Lowering::Chip#emit_chip_fault_check.
+          FAULT_KINDS = Ractor.make_shareable({ index: 0, full: 1, empty: 2 })
+          # The list steps that can stop the game, and of those the ones that are not an index.
+          FAULTING_LIST_KINDS = %i[list_get list_set list_push list_drop list_fill].freeze
+          ENDS_LIST_KINDS = %i[list_push list_drop].freeze
           Lists = Runtime::Lists
           IN_PLACE_SUMS = Ractor.make_shareable({ :+ => %i[add adc], :- => %i[sub sbc], :& => %i[and_ and_], :| => %i[or_ or_],
                                                   :^ => %i[xor xor] })
@@ -107,10 +118,18 @@ module VBlank
 
             place_of(:fault_list, bytes: 2)
             place_of(:fault_index)
+            place_of(:fault_kind, bytes: 2) if @routines.any? { |name| faults_at_ends?(name) }
           end
 
-          # Whether a run of +name+ can stop the game: a list read or written at an index outside it.
-          def faults?(name) = statements_of(routines_from(name)).any? { |node| %i[list_get list_set].include?(node.kind) }
+          # Whether a run of +name+ can stop the game: a list read or written at an index outside it,
+          # an item added to a full one or taken from an empty one.
+          def faults?(name) = statements_of(routines_from(name)).any? { |node| FAULTING_LIST_KINDS.include?(node.kind) }
+
+          # Whether it can stop the game the second way or the third, so the console has to ask which.
+          def faults_at_ends?(name) = statements_of(routines_from(name)).any? { |node| ENDS_LIST_KINDS.include?(node.kind) }
+
+          # Where the chip leaves which kind of fault it was (FAULT_KINDS).
+          def fault_kind_place = place_of(:fault_kind, bytes: 2)
 
           # Where the chip leaves, on such a fault, the list's place (nought when there was none) and
           # the index, for the console to stop the game with (Lowering::Chip#emit_chip_run).
@@ -234,17 +253,30 @@ module VBlank
             @gsu.lm(11, back) if keeps_link
             @gsu.jmp(11)
             @gsu.nop
-            @outside_lists.each { |label, list, low, high| emit_list_fault(label, list, low, high) }
+            @outside_lists.each { |fault| emit_list_fault(fault) }
           end
 
-          # AN INDEX OUTSIDE A LIST STOPS THE GAME, and the chip cannot stop it: the console does,
-          # in Runtime::Lists's words. So the chip leaves the list's place and the index where the
-          # console looks after every run, and stops where it stands, however deep in its calls.
-          def emit_list_fault(label, list, low, high)
-            @gsu.label(label)
-            @gsu.sm(fault_index_place, low)
-            @gsu.sm(fault_index_place + 2, high)
-            @gsu.iwt(0, list.at)
+          # A LIST THAT STOPS THE GAME — an index outside it, an item added when it is full or taken
+          # when it is empty — and the chip cannot stop it: the console does, in Runtime::Lists's
+          # words. So the chip leaves the list's place, the index (or which end an item was taken
+          # from), and which kind of fault it was where the console looks after every run, and stops
+          # where it stands, however deep in its calls.
+          def emit_list_fault(fault)
+            @gsu.label(fault.label)
+            if fault.kind == :index
+              @gsu.sm(fault_index_place, fault.low)
+              @gsu.sm(fault_index_place + 2, fault.high)
+            elsif fault.kind == :empty
+              @gsu.ibt(0, fault.from_front ? 1 : 0)
+              @gsu.sm(fault_index_place, 0)
+              @gsu.ibt(0, 0)
+              @gsu.sm(fault_index_place + 2, 0)
+            end
+            if @places.key?(:fault_kind)
+              @gsu.ibt(0, FAULT_KINDS.fetch(fault.kind))
+              @gsu.sm(fault_kind_place, 0)
+            end
+            @gsu.iwt(0, fault.list.at)
             @gsu.sm(fault_list_place, 0)
             @gsu.stop
           end
@@ -403,9 +435,14 @@ module VBlank
           #
           # A list the chip reaches lives in the chip's own RAM for good (Lowering::Chip), so the
           # console's code reads and writes it there too, by its long address, and nothing is copied
-          # for a run. The chip reads it the way Runtime::Lists lays it out: the header's length,
-          # then the slot an index names. Nothing on the chip takes from the front of such a list
-          # (that is refused), so an item's slot is its index.
+          # for a run. The chip keeps it the way Runtime::Lists lays it out, so either processor can
+          # change it and the other sees the same bytes: the header's capacity, where the first item
+          # is and the length, then the slots.
+          #
+          # A list nothing takes from the front keeps its first item in its first slot for good, so
+          # an item's slot is its index. One the game shifts anywhere, on either processor, goes round
+          # its slots like a ring: an item's slot is its index counted on from the first item's, once
+          # round to the start when that runs past the last slot. Only such a list pays for the sum.
 
           # Reference#exec_list_set: the index worked out, then the value, then the test.
           def emit_list_set(node)
@@ -424,6 +461,18 @@ module VBlank
               load_place(kept, RIGHT_LOW, RIGHT_HIGH)
             end
             emit_slot_place(node.name, list, RIGHT_LOW, RIGHT_HIGH)
+            emit_write_slot(list)
+          end
+
+          # The register a slot's place in the chip's RAM is worked out in.
+          SLOT = 4
+          # The register the fill counts its items down in.
+          ITEMS_LEFT = 6
+
+          # The number in LOW and HIGH into the slot at SLOT, as many bytes as the slot takes: a
+          # narrow slot keeps the low bits (Reference::ListValue#wrap_to_width). SLOT is left two
+          # bytes on for a whole word.
+          def emit_write_slot(list)
             @gsu.from(LOW)
             return @gsu.stb(SLOT) if list.width == 1
 
@@ -436,8 +485,107 @@ module VBlank
             @gsu.stw(SLOT)
           end
 
-          # The register a slot's place in the chip's RAM is worked out in.
-          SLOT = 4
+          # Reference#exec_list_push: a full list stops the game before the value is worked out.
+          # The value goes in the slot after the last item, and the length is one more.
+          def emit_list_push(node)
+            list = @lists.fetch(node.name)
+            full = fresh("full #{node.name}")
+            @outside_lists << ListFault.new(label: full, list: list, kind: :full, low: nil, high: nil, from_front: nil)
+            @gsu.lm(SLOT, list.at + Lists::LENGTH)
+            @gsu.lm(0, list.at + Lists::CAPACITY)
+            @gsu.from(SLOT)
+            @gsu.cmp(0)
+            emit_branch(:bcs, full)
+            value(node.value)
+            @gsu.lm(SLOT, list.at + Lists::LENGTH)
+            emit_slot_of_position(list)
+            emit_write_slot(list)
+            @gsu.lm(0, list.at + Lists::LENGTH)
+            @gsu.inc(0)
+            @gsu.sm(list.at + Lists::LENGTH, 0)
+          end
+
+          # Reference#exec_list_drop: an empty list stops the game. Taken from the back, the length is
+          # one less. Taken from the front, the first item is the next slot round as well, back to the
+          # first slot past the last, as Runtime::Lists's rt_list_drop has it.
+          def emit_list_drop(node)
+            list = @lists.fetch(node.name)
+            front = node.from == :front
+            empty = fresh("empty #{node.name}")
+            @outside_lists << ListFault.new(label: empty, list: list, kind: :empty, low: nil, high: nil, from_front: front)
+            @gsu.lm(SLOT, list.at + Lists::LENGTH)
+            @gsu.moves(SLOT, SLOT)
+            emit_branch(:beq, empty)
+            @gsu.dec(SLOT)
+            @gsu.sm(list.at + Lists::LENGTH, SLOT)
+            return unless front
+
+            kept = fresh("front_kept")
+            @gsu.lm(SLOT, list.at + Lists::FRONT)
+            @gsu.inc(SLOT)
+            @gsu.lm(0, list.at + Lists::CAPACITY)
+            @gsu.from(SLOT)
+            @gsu.cmp(0)
+            emit_branch(:bcc, kept)
+            @gsu.ibt(SLOT, 0)
+            @gsu.label(kept)
+            @gsu.sm(list.at + Lists::FRONT, SLOT)
+          end
+
+          # Reference#exec_list_fill: the count worked out first, and nothing more done when it is
+          # nought or below; then the first index, the first and the last item checked, as list_set
+          # checks an index, and only then the value. A list the game shifts is never filled
+          # (Builder#refuse_filled_shifted_lists!), so its run of items is a run of slots, written one
+          # after another from the first.
+          def emit_list_fill(node)
+            list = @lists.fetch(node.name)
+            done = fresh("filled")
+            count = local_place(node, :count)
+            from = local_place(node, :from)
+            value(node.count)
+            store_place(count)
+            @gsu.moves(0, HIGH)
+            emit_branch(:bmi, done)
+            emit_nought_flag(LOW, HIGH)
+            emit_branch(:beq, done)
+            value(node.from)
+            store_place(from)
+            emit_slot_place(node.name, list, LOW, HIGH)
+            emit_last_of_run(from, count)
+            emit_slot_place(node.name, list, LOW, HIGH)
+            value(node.value)
+            @gsu.lm(SLOT, from)
+            emit_slot_of_position(list)
+            @gsu.lm(ITEMS_LEFT, count)
+            item = fresh("fill_item")
+            @gsu.label(item)
+            emit_write_slot(list)
+            (list.width == 1 ? 1 : 2).times { @gsu.inc(SLOT) }
+            @gsu.dec(ITEMS_LEFT)
+            emit_branch(:bne, item)
+            @gsu.label(done)
+          end
+
+          # LOW and HIGH at the run's last index, from + count - 1. Adding a word of every bit set is
+          # taking one away.
+          def emit_last_of_run(from, count)
+            load_place(from, LOW, HIGH)
+            load_place(count, RIGHT_LOW, RIGHT_HIGH)
+            @gsu.with(LOW)
+            @gsu.add(RIGHT_LOW)
+            @gsu.with(HIGH)
+            @gsu.adc(RIGHT_HIGH)
+            @gsu.ibt(0, -1)
+            @gsu.with(LOW)
+            @gsu.add(0)
+            @gsu.with(HIGH)
+            @gsu.adc(0)
+          end
+
+          def store_place(at, low: LOW, high: HIGH)
+            @gsu.sm(at, low)
+            @gsu.sm(at + 2, high)
+          end
 
           def value_of_list_get(node)
             list = @lists.fetch(node.name)
@@ -463,7 +611,7 @@ module VBlank
           # not below the list's length goes to the fault, which never comes back.
           def emit_slot_place(name, list, low, high)
             outside = fresh("outside #{name}")
-            @outside_lists << [outside, list, low, high]
+            @outside_lists << ListFault.new(label: outside, list: list, kind: :index, low: low, high: high, from_front: nil)
             @gsu.moves(0, high)
             emit_branch(:bne, outside)
             @gsu.lm(SLOT, list.at + Lists::LENGTH)
@@ -471,6 +619,12 @@ module VBlank
             @gsu.cmp(SLOT)
             emit_branch(:bcs, outside)
             @gsu.move(SLOT, low)
+            emit_slot_of_position(list)
+          end
+
+          # SLOT, holding how many items past the first an item is, made the place of its slot.
+          def emit_slot_of_position(list)
+            emit_ring_wrap(list) if list.ring
             (list.width.bit_length - 1).times do
               @gsu.with(SLOT)
               @gsu.add(SLOT)
@@ -478,6 +632,22 @@ module VBlank
             @gsu.iwt(0, list.at + Lists::HEADER)
             @gsu.with(SLOT)
             @gsu.add(0)
+          end
+
+          # SLOT counted on from the slot of the first item, and once round to the start when that
+          # passes the last slot, as Runtime::Lists's rt_list_slot_of_a does it.
+          def emit_ring_wrap(list)
+            inside = fresh("in_ring")
+            @gsu.lm(0, list.at + Lists::FRONT)
+            @gsu.with(SLOT)
+            @gsu.add(0)
+            @gsu.lm(0, list.at + Lists::CAPACITY)
+            @gsu.from(SLOT)
+            @gsu.cmp(0)
+            emit_branch(:bcc, inside)
+            @gsu.with(SLOT)
+            @gsu.sub(0)
+            @gsu.label(inside)
           end
 
           # LOW holding a slot or an entry of +bytes+ bytes, which reads back with its top bit as the
