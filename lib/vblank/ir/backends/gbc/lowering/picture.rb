@@ -130,8 +130,22 @@ module VBlank
               end
             end
 
+            # A BACKDROP THAT FOLLOWS A LIST OF COLOURS (IR::SceneHandover#backdrop_follows_list?). The Color
+            # could show one: it is the first colour of each of the eight background palettes, written in
+            # the blank. This build keeps that colour in every palette it makes and in every table that
+            # changes a palette as the game runs, and does not write it on its own yet.
+            def refuse_backdrop_following_list!
+              return unless IR::SceneHandover.of(@program).backdrop_follows_list?
+
+              raise NotMadeYet.new("The backdrop of this game takes its color from a list (`screen ... backdrop:` names " \
+                                   "a list). The Game Boy Color build does not make this yet. To fix this, give backdrop: " \
+                                   "a color, or build the game for the Game Boy Advance only (`consoles: %i[gba]`).",
+                                   part: "the picture")
+            end
+
             def prepare_picture
               refuse_backdrops_of_its_own!
+              refuse_backdrop_following_list!
               @stacking = Stacking.picture(@program)
               @objects = by_name(@program.walk, :object)
               @color_lists = by_name(@program.walk, :color_list)

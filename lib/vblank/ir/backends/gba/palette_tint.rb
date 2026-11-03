@@ -236,11 +236,13 @@ module VBlank
           # Nothing for a build with no list that changes and no group lent to a list.
           def emit_changed_lists_at_power_on
             lists = @layout.screen.color_lists
-            return if lists.empty? && @layout.screen.lending.nil?
+            backdrop = @layout.screen.backdrop_colors
+            return if lists.empty? && @layout.screen.lending.nil? && backdrop.nil?
 
             emit_tint_state_init
             @emitter.emit_number(ACC, 0)
             lists.each_value { |list| @primitives.store_var(ACC, list.source_var) }
+            @primitives.store_var(ACC, ScreenLayout::BACKDROP_AT) if backdrop # the backdrop, as the screen says it
           end
 
           # PUT THE SET A CHANGING LIST NOW HOLDS INTO THE GROUP ITS SPRITES READ, through
@@ -710,27 +712,52 @@ module VBlank
 
           # +marker+ is the note that says whose groups are up (see SceneEntry): the scenery's
           # for a layer, the sprite pictures' for a list of sprite colours.
+          # A group is sixteen colours unless it says how many (the backdrop is one).
           def emit_recolored_banks_of(banks, marker, up)
-            banks.each do |dest, source_var, along, scene|
+            banks.each do |dest, source_var, along, scene, units = COLORS_IN_A_BANK|
               next if scene && up != :unknown && scene != up
 
               if scene && up == :unknown
-                @drawing.scene_entry.emit_if_scene_up(marker, scene) { emit_recolored_bank(dest, source_var, along) }
+                @drawing.scene_entry.emit_if_scene_up(marker, scene) { emit_recolored_bank(dest, source_var, along, units) }
               else
-                emit_recolored_bank(dest, source_var, along)
+                emit_recolored_bank(dest, source_var, along, units)
               end
             end
           end
 
           # Write one recoloured layer's group again from the list it is showing.
-          def emit_recolored_bank(dest, source_var, along)
+          def emit_recolored_bank(dest, source_var, along, units = COLORS_IN_A_BANK)
             @primitives.load_var(TINT_SRC, source_var)
             @emitter.emit(ASM.cmp_imm(TINT_SRC, 0))
             past = @emitter.gensym
             @emitter.emit_branch(:bcond, past, cond: :eq)
             @emitter.emit(ASM.add_imm(TINT_SRC, TINT_SRC, along)) unless along.zero?
-            emit_blend_run(dest, COLORS_IN_A_BANK)
+            emit_blend_run(dest, units)
             @emitter.place_label(past)
+          end
+
+          # THE BACKDROP FOLLOWS THE LIST +node+ IS TELLING TO HOLD ANOTHER SET (see
+          # ScreenLayout::BackdropColors): the colour the backdrop is in that set goes into the first
+          # place of the background colours, through whatever tint is in force, as the list's own
+          # colours go into their group. Where it was read from is kept, so whatever writes the
+          # background colours again (a tint's walk, a scene sending its own) puts it back after
+          # (#emit_recolored_banks). Nothing for any other list.
+          #
+          # A number naming none of the sets is the colour the list was declared with, last in the
+          # blob, as SpriteDrawing#emit_color_list_holds picks a set.
+          def emit_backdrop_held(node)
+            backdrop = @layout.screen&.backdrop_colors
+            return unless backdrop&.name == node.name
+
+            @lowering.value(node.which)
+            @emitter.emit_number(TMP, backdrop.count)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit(ASM.mov_reg_cond(:hs, ACC, TMP))
+            @emitter.emit(ASM.lsl_imm(TMP, ACC, 1)) # a colour is two bytes
+            @emitter.emit_load_data_address(ACC, backdrop.blob)
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
+            @primitives.store_var(ACC, ScreenLayout::BACKDROP_AT)
+            emit_colors_into_bank(BG_PALETTE, 1)
           end
 
           # A group of colours a layer's tiles draw from holds sixteen of them.

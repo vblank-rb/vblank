@@ -247,11 +247,57 @@ module VBlank
             # Reference#exec_color_list_holds: the list holds the set the game says, written over its palette in
             # the blank. A list nothing is drawn with has no palette, and nothing to show.
             def emit_color_list_holds(node)
+              if backdrop_copied? && backdrop_list.name == node.name
+                runtime_call("rt_backdrop_hold", [LabelAddress.new(BACKDROP_COLORS), node.which])
+              end
               palette = @art.held_palette_of([:sprites, node.name]) or return
 
               list = color_list_named(node.name)
               label = held_colors_label([:list, node.name], list.colors, list.recolors)
               runtime_call("rt_colors_hold", [LabelAddress.new(label), node.which, Build.int(palette)])
+            end
+
+            # A BACKDROP THAT FOLLOWS A LIST (IR::Nodes::ColorList#backdrop_place). The video chip's register 7
+            # says which colour of its memory shows wherever nothing is drawn, any of the sixty-four, so where
+            # the list keeps a palette of its own and the backdrop is one of the colours in that palette's
+            # places, the register points at it there: the list's write changes the backdrop with everything
+            # else drawn from the palette, and nothing is copied (#backdrop_register). A list's first place is
+            # its see-through one, which a palette does not keep, and a list nothing is drawn with has no
+            # palette at all; there the backdrop stays colour 0 and its colour in the set the list holds is
+            # copied in, on the same pass (Runtime::Tint's rt_backdrop_hold).
+            BACKDROP_COLORS = "art backdrop colors"
+
+            # The list the backdrop follows, or nil.
+            def backdrop_list
+              return @backdrop_list if defined?(@backdrop_list)
+
+              @backdrop_list = @program.walk.find { |node| node.kind == :color_list && node.backdrop_place }
+            end
+
+            # Where in the colour memory the backdrop is pointed: a place of the list's own palette, or nil.
+            def backdrop_pointed_at
+              list = backdrop_list
+              return nil unless tiled? && list && list.backdrop_place.positive?
+
+              palette = @art.held_palette_of([:sprites, list.name]) or return nil
+              (palette * Art::PLACES) + list.backdrop_place
+            end
+
+            # Whether the backdrop's colour is copied into colour 0 as the list changes.
+            public def backdrop_copied? = tiled? && !backdrop_list.nil? && backdrop_pointed_at.nil?
+
+            # Register 7's value: colour 0 unless the backdrop points into the list's palette.
+            def backdrop_register = backdrop_pointed_at || 0
+
+            # The table rt_backdrop_hold reads: how many sets besides the declared colours, then the backdrop's
+            # colour in those and in each other set, the game's 15-bit colours.
+            def write_backdrop_colors(data)
+              return unless backdrop_copied?
+
+              list = backdrop_list
+              data.label(BACKDROP_COLORS)
+              data.data_words(list.recolors.length)
+              data.data_words([list.colors, *list.recolors].map { |set| set.fetch(list.backdrop_place) & 0x7FFF })
             end
 
             # Reference#exec_background_colors: each list the background's tiles are drawn from holds the list the
@@ -313,6 +359,7 @@ module VBlank
                 end
               end
               write_held_colors(data)
+              write_backdrop_colors(data)
               write_colors15(data) if self.class.changing_colors?(@program)
               data.label("art grids")
               @art.grids.each do |grid|

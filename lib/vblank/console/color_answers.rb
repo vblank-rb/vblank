@@ -40,7 +40,8 @@ module VBlank
                       "a painted picture whole. " \
                       "`backdrop:` works for the whole game. The Color keeps the backdrop as the " \
                       "first colour of each of its colour lists, so a scene that says a different " \
-                      "backdrop is refused. " \
+                      "backdrop is refused. A backdrop that follows a list of colours (`backdrop:` " \
+                      "names a list) is not made yet: the build refuses it and says so. " \
                       "`screen :rotozoom` is refused: " \
                       "a Game Boy Color cannot turn or resize a background."),
         setting: works,

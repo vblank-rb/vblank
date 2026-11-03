@@ -21,7 +21,8 @@ module VBlank
             # The routines every cartridge carries, whatever the game draws: what the wait calls
             # before it shows a pass, which for a game that draws nothing is nothing, the copy of a
             # pass's changes, the whole copy and the screen switched on.
-            def emit(asm, memory, picture: :none, columns: 32, camera: false, colors: false)
+            # +backdrop+ for a game whose backdrop is copied from a list it recolours (Tint#emit).
+            def emit(asm, memory, picture: :none, columns: 32, camera: false, colors: false, backdrop: false)
               case picture
               when :painted then Paint.emit(asm, memory, camera: camera, colors: colors)
               when :tiled then Tiles.emit(asm, memory, columns: columns, colors: colors)
@@ -36,7 +37,7 @@ module VBlank
                 asm.label("rt_upload_whole")
                 asm.rts
               end
-              Tint.emit(asm, memory) if colors && %i[painted tiled].include?(picture)
+              Tint.emit(asm, memory, backdrop: backdrop) if colors && %i[painted tiled].include?(picture)
               emit_screen_on(asm, memory)
             end
 

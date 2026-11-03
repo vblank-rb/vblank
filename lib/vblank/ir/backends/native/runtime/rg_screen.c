@@ -2103,9 +2103,10 @@ void rg_screen_frame_ended(void) {
 }
 
 /* Reference#show_backdrop: the colour wherever nothing is drawn becomes +color+, the picture painted
- * again over it where anything is up. */
+ * again over it where anything is up. A colour below nought leaves it as it is: the backdrop follows
+ * a list of colours, and only the list changes it (IR::SceneHandover#backdrop_follows_list?). */
 static void show_backdrop(int32_t color) {
-  if (color == backdrop) return;
+  if (color < 0 || color == backdrop) return;
   backdrop = color;
   scenery_kept = 0;
   if (shown_count == 0) clear_to(backdrop);
@@ -2120,7 +2121,7 @@ static void show_backdrop(int32_t color) {
 int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop) {
   int32_t crossing = kind >= 0 && kind != new_kind;
   if (crossing) {
-    backdrop = new_backdrop;
+    if (new_backdrop >= 0) backdrop = new_backdrop;
     clear_to(backdrop);
     shown_count = 0;
     scenery_kept = 0;
@@ -2149,6 +2150,10 @@ int32_t rg_screen_cross_to(int32_t new_kind, int32_t two_pages, int32_t new_back
   show_backdrop(new_backdrop);
   return 0;
 }
+
+/* Reference#exec_color_list_holds, for a backdrop that follows the list: its colour in the set the
+ * list holds now. */
+void rg_screen_show_backdrop(int32_t color) { show_backdrop(color); }
 
 void rg_scene_enter(int32_t scene) { current_scene = scene; }
 

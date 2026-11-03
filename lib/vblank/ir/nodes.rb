@@ -510,12 +510,19 @@ module VBlank
       # +recolors+ is every other set of colours it can be told to hold, in the order
       # ColorListHolds counts them. A list of colours nothing ever changes has no node at
       # all: an Object carries its colours outright.
+      #
+      # +backdrop_place+ says the colour shown wherever nothing is drawn follows this list: it is
+      # the colour at that place of whatever set the list holds, changing as the list does
+      # (ColorListHolds). Nil for a list the backdrop does not follow. The game's `screen` says
+      # the colour at that place of the declared set, which is what the backdrop is until the list
+      # is told anything, and a scene arriving leaves the backdrop as the list has it
+      # (SceneHandover#backdrop_follows_list?).
       class ColorList
         include Node
         kind :color_list
         declaration!
         category :data
-        operands name: :name, colors: :list, recolors: :list
+        operands name: :name, colors: :list, recolors: :list, backdrop_place: :int
 
         # A variable for a target that keeps the colours somewhere of its own and has to
         # put them back there — after it has rewritten that place for some other reason —

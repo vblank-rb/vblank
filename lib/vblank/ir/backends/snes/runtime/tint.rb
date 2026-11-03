@@ -106,25 +106,54 @@ module VBlank
             # (Lowering::Picture#colors_shown): the colours the fade moves.
             # +changing_colors+ for a game that changes colours as it runs, which then fades from
             # COLORS_NOW and carries rt_colors_start and rt_colors_hold.
-            def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false, dims: false, scene_backdrops: false)
+            # +scene_backdrops+ and +backdrop_follows+ carry rt_backdrop_hold, the second rt_backdrop_from too.
+            def emit(asm, memory, s, colors_shown: [[0, 256]], changing_colors: false, dims: false, scene_backdrops: false,
+                     backdrop_follows: false)
               emit_tint(asm, memory, s, dims)
               emit_table(asm, memory, s)
               emit_apply(asm, memory, colors_shown, changing_colors ? memory[COLORS_NOW] : "art colors")
               emit_upload(asm, memory)
               emit_colors_held(asm, memory) if changing_colors
-              emit_backdrop_held(asm, memory) if scene_backdrops
+              emit_backdrop_held(asm, memory, follows: backdrop_follows) if scene_backdrops || backdrop_follows
             end
 
-            # rt_backdrop_hold(color), for a game whose scenes differ in their backdrop: colour 0 is
-            # +color+ in the place colours change in and in the copy the blank sends, and the rest is
-            # rt_colors_hold's end, so a fade in force moves it on the same pass.
-            def emit_backdrop_held(asm, memory)
+            # rt_backdrop_hold(color), for a game whose scenes differ in their backdrop or whose backdrop
+            # follows a list of colours: colour 0 is +color+ in the place colours change in and in the
+            # copy the blank sends, and the rest is rt_colors_hold's end, so a fade in force moves it on
+            # the same pass.
+            #
+            # rt_backdrop_from(table, which), for the second: the backdrop's colour in the set +which+ of
+            # the list, from a table of a count of the sets, the declared one among them, then the
+            # backdrop's colour in each, the declared one first. A number naming none is the declared
+            # set, as rt_colors_hold counts them.
+            def emit_backdrop_held(asm, memory, follows: false)
+              emit_backdrop_from(asm) if follows
               asm.label("rt_backdrop_hold")
               asm.lda(asm.direct(R.call(0)))
               asm.ldx(0)
               asm.sta(asm.long_x(memory[COLORS_NOW]))
               asm.sta(asm.long_x(memory[SHADOW]))
               asm.jmp(asm.abs("rt_colors_hold_noted"))
+            end
+
+            # Falls through into rt_backdrop_hold, which #emit_backdrop_held writes next.
+            def emit_backdrop_from(asm)
+              asm.label("rt_backdrop_from")
+              asm.lda(asm.direct(R.call(1) + 2))
+              asm.bne("rt_backdrop_from_own")
+              asm.lda(asm.direct(R.call(1)))
+              asm.inc
+              asm.cmp(asm.ind_long(R.call(0)))
+              asm.bcc("rt_backdrop_from_set")
+              asm.label("rt_backdrop_from_own")
+              asm.lda(0)
+              asm.label("rt_backdrop_from_set")
+              asm.asl # a colour is two bytes
+              asm.inc
+              asm.inc # past the count
+              asm.tay
+              asm.lda(asm.ind_long_y(R.call(0)))
+              asm.sta(asm.direct(R.call(0)))
             end
 
             # rt_colors_start (JSL, at power-on): the game's colours, into the place they change in and

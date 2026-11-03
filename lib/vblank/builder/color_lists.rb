@@ -135,6 +135,52 @@ module VBlank
         end
       end
 
+      # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
+      # colour at that place as declared (what the backdrop is at power-on), and the `screen`
+      # that said so.
+      BackdropList = Data.define(:name, :place, :color, :screen)
+
+      # A BACKDROP THAT FADES WITH THE PICTURE. `screen :tiled, backdrop: :screen_colors` names a
+      # `colors` list where a colour would go, the way `image ..., colors: :sea` and `draw_with :hurt`
+      # name one, and the backdrop is then the list's colour at one place, whatever the list holds:
+      # `recolor` it and the backdrop changes on the same frame as every sprite and background
+      # drawn with it, through the same tint.
+      #
+      # WHY THE FIRST PLACE BY DEFAULT. A list's first place is the one a picture drawn from it does
+      # not draw — its see-through place — and what shows through a see-through pixel is the
+      # backdrop. So a list made for a screen's colours already has a natural home for the colour
+      # behind them, and the console games that fade their backdrop keep it just there (a Genesis
+      # points its backdrop at the first colour of a list). `backdrop_place:` picks any other.
+      #
+      # Nil when +backdrop+ is a colour rather than a list's name. A name is a list's only when
+      # `colors` declared it before this line, as `colors:` asks; a list named like a colour would
+      # leave the line meaning two things, and is refused.
+      private def followed_backdrop_list(backdrop, place, mode)
+        unless backdrop.is_a?(Symbol) && @color_lists.key?(backdrop)
+          return nil if place.nil?
+
+          raise ArgumentError, "`screen ... backdrop_place:` picks a color from a list of colors. backdrop: names " \
+                               "no list, so there is no color to pick. To fix this, give backdrop: the name of a " \
+                               "list from `colors`, or remove backdrop_place:."
+        end
+
+        refuse_backdrop_on_painted_screen!(mode)
+        if Graphics::Color::PRESETS.key?(backdrop)
+          raise ArgumentError, "`screen ... backdrop: :#{backdrop}` names a color and also a list of colors. " \
+                               "To fix this, give the list a different name."
+        end
+
+        colors = @color_lists.fetch(backdrop)
+        place = 0 if place.nil?
+        unless place.is_a?(Integer) && place.between?(0, colors.length - 1)
+          raise ArgumentError, "`screen ... backdrop: :#{backdrop}, backdrop_place: #{place.inspect}` asks for a place " \
+                               "that :#{backdrop} does not have. :#{backdrop} has #{colors.length} colors, at places " \
+                               "0 to #{colors.length - 1}. To fix this, use a place in that range."
+        end
+
+        BackdropList.new(name: backdrop, place: place, color: colors.fetch(place) & 0x7FFF, screen: nil)
+      end
+
       # Keep track of a sprite's or a pool's other colours, so the lists that change can
       # find who is drawn with them once the whole program is declared. Called by
       # {DSL::Recolors} as one is made.
@@ -174,6 +220,57 @@ module VBlank
             end
           end
         end
+      end
+
+      # ONCE THE WHOLE PROGRAM IS DECLARED: tell the list the backdrop follows that it does, so each
+      # backend shows its colour at that place wherever the list is told to hold another set. That
+      # write is the list's own, in the gap between frames on the frame the answer changed, so the
+      # backdrop changes with the sprites and backgrounds drawn with the list and never apart from
+      # them. A list the game never recolours holds its declared colours for good, and the backdrop
+      # is that one colour, which the `screen` already says.
+      #
+      # It is the game's backdrop from power-on to the end, so it is said on the game's own `screen`
+      # and is the backdrop of every screen. A painted screen draws every pixel and has none, so a
+      # game with one is refused rather than given a backdrop that comes and goes.
+      def finalize_backdrop_list
+        return unless @backdrop_list
+
+        refuse_backdrop_list_off_game_screen!
+        @program.walk.each do |node|
+          next unless node.kind == :screen && !node.equal?(@backdrop_list.screen)
+
+          refuse_painted_screen_beside_backdrop_list!(node)
+          refuse_scene_backdrop_beside_backdrop_list!(node)
+        end
+        followed = @changing_color_lists[@backdrop_list.name]
+        followed.node.backdrop_place = @backdrop_list.place if followed
+      end
+
+      # The game's own `screen` is the first one outside every routine (IR::SceneHandover#game_backdrop).
+      def refuse_backdrop_list_off_game_screen!
+        game_screen = @program.children.find { |node| node.kind == :screen }
+        return if game_screen.equal?(@backdrop_list.screen)
+
+        raise ArgumentError, "`screen ... backdrop: :#{@backdrop_list.name}` at #{@backdrop_list.screen.source} is not " \
+                             "on the first `screen` line of the game. A backdrop that takes its color from a list is " \
+                             "the backdrop of the whole game. To fix this, write it on the first `screen` line, " \
+                             "outside all scenes and routines."
+      end
+
+      def refuse_painted_screen_beside_backdrop_list!(node)
+        return if %i[tiled rotozoom].include?(node.mode)
+
+        raise ArgumentError, "The backdrop takes its color from the list :#{@backdrop_list.name}. The `screen` at " \
+                             "#{node.source} is not a tiled screen, and a bitmap screen has no backdrop. To fix this, " \
+                             "use `screen :tiled` there, or give backdrop: a color."
+      end
+
+      def refuse_scene_backdrop_beside_backdrop_list!(node)
+        return if node.backdrop.nil?
+
+        raise ArgumentError, "The backdrop takes its color from the list :#{@backdrop_list.name} for the whole game. " \
+                             "The `screen` at #{node.source} gives a backdrop of its own. To fix this, remove backdrop: " \
+                             "from that `screen` line."
       end
 
       # How many steps a channel of a colour has from one end to the other.
@@ -309,7 +406,7 @@ module VBlank
 
         @changing_color_lists.each do |name, list|
           users = @sprite_recolors.select { |recolors| recolors.draws_with?(name) }
-          refuse_changing_list_without_sprites!(name) if users.empty?
+          refuse_changing_list_without_sprites!(name) if users.empty? && @backdrop_list&.name != name
           users.each { |user| refuse_sets_ambiguous_for!(user, name, list.recolors.names) }
           drawn_in_list = ->(pose) { list_drawn_from(pose).last == declared_colors(name) }
           users.each { |user| (boot = user.follow_changing_list_for_good(name, drawn_in_list)) && at_boot(boot) }

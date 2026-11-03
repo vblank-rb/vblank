@@ -88,7 +88,18 @@ module VBlank
       #   screen :bitmap, tear_free: true, late: 40
       # @example A game at thirty that does not drop to twenty on a heavy frame
       #   screen :bitmap, tear_free: true, late: :show_now, pace: 30
-      def screen(mode, tear_free: false, colors: nil, late: :wait, pace: 60, backdrop: nil)
+      #
+      # +backdrop:+ is the colour shown wherever nothing is drawn. It is a colour, or the name of
+      # a `colors` list, which the backdrop then follows: whatever the game tells the list to hold
+      # with `recolor`, the backdrop shows its first colour (+backdrop_place:+ picks another),
+      # on the same frame as everything else drawn with the list. That is how a console game's
+      # own fade takes the backdrop with the picture (see ColorLists#followed_backdrop_list).
+      #
+      # @example A backdrop that fades with the picture
+      #   colors :screen_colors, [:navy, :white, :gray]
+      #   screen :tiled, backdrop: :screen_colors
+      #   recolor :screen_colors, color_walk(:screen_colors, from: :black), showing: step
+      def screen(mode, tear_free: false, colors: nil, late: :wait, pace: 60, backdrop: nil, backdrop_place: nil)
         case mode
         when Symbol
           unless SCREEN_NAMES.include?(mode)
@@ -115,9 +126,12 @@ module VBlank
         @screen_mode = mode if mode.is_a?(Symbol)
         @tear_free = tear_free
         late_rows = resolve_late_pages(late, tear_free)
-        record(Build.screen(mode, buffered: tear_free, colors: resolve_screen_colors(colors, tear_free),
-                                  late: late_rows, late_pace: resolve_late_pace(pace, late_rows),
-                                  backdrop: resolve_backdrop(backdrop, mode)))
+        followed = followed_backdrop_list(backdrop, backdrop_place, mode)
+        node = record(Build.screen(mode, buffered: tear_free, colors: resolve_screen_colors(colors, tear_free),
+                                         late: late_rows, late_pace: resolve_late_pace(pace, late_rows),
+                                         backdrop: followed ? followed.color : resolve_backdrop(backdrop, mode)))
+        @backdrop_list = followed.with(screen: node) if followed
+        node
       end
 
       # THE COLOUR A SCREEN SHOWS WHEREVER NOTHING IS DRAWN, as the IR keeps it: nil for a screen
@@ -126,12 +140,22 @@ module VBlank
       # it has nowhere to show one.
       private def resolve_backdrop(backdrop, mode)
         return nil if backdrop.nil?
-        if mode == :bitmap
-          raise ArgumentError, "`screen :bitmap` says backdrop:. A bitmap screen draws every pixel, so no backdrop " \
-                               "shows. To fill the screen with a colour, use clear_screen."
+
+        refuse_backdrop_on_painted_screen!(mode)
+        if backdrop.is_a?(Symbol) && !Graphics::Color::PRESETS.key?(backdrop)
+          raise ArgumentError, "`screen ... backdrop: :#{backdrop}` names no color and no list of colors. " \
+                               "To fix this, give a color name such as :navy, or declare the list first with " \
+                               "`colors :#{backdrop}, [...]`."
         end
 
         Graphics::Color.resolve(backdrop) & 0x7FFF
+      end
+
+      private def refuse_backdrop_on_painted_screen!(mode)
+        return unless mode == :bitmap
+
+        raise ArgumentError, "`screen :bitmap` says backdrop:. A bitmap screen draws every pixel, so no backdrop " \
+                             "shows. To fill the screen with a colour, use clear_screen."
       end
 
       # The breaks a pass may take and be on time, as the IR keeps them: nil for one.

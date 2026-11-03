@@ -34,6 +34,9 @@ module VBlank
                       "painted (bitmap) screen is made of tiles internally, which holds fifteen colours " \
                       "and black: a game that paints more is refused. `tear_free: true` keeps one " \
                       "picture, because the picture is copied to the console whole before it shows. " \
+                      "A backdrop that follows a list of colours (`backdrop:` names a list) works: where " \
+                      "the backdrop is a colour the list keeps in its own list of sixteen, the console " \
+                      "shows it from there, and otherwise its colour is copied in with the list's. " \
                       "`screen :rotozoom` is refused: a Genesis cannot turn a background."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),

@@ -979,7 +979,7 @@ module VBlank
           # surface, so it wipes nothing.
           crossing = IR::SceneHandover.crossing?(@screen_mode, node.mode)
           if crossing
-            @backdrop = backdrop
+            @backdrop = backdrop unless backdrop.nil? # nil: the backdrop follows a list, and stays as it has it
             @screen.clear(@backdrop)
             @screen.over_picture = nil
             reset_scenery_state
@@ -998,9 +998,10 @@ module VBlank
 
         # THE COLOUR WHEREVER NOTHING IS DRAWN BECOMES +color+: the picture is painted again over it
         # where anything is up, so every empty place shows it at once, as the console shows its
-        # backdrop colour the moment it is given another.
+        # backdrop colour the moment it is given another. Nil leaves it as it is
+        # (IR::SceneHandover#backdrop_follows_list?).
         def show_backdrop(color)
-          return if color == @backdrop
+          return if color.nil? || color == @backdrop
 
           @backdrop = color
           @scene_fb = nil
@@ -2946,9 +2947,13 @@ module VBlank
         end
 
         # A list of colours holds the set numbered +which+ from now on. Nothing is painted
-        # here: everything drawn with the list reads it as it is next drawn.
+        # here: everything drawn with the list reads it as it is next drawn. The backdrop is the
+        # exception, being no drawing: one that follows the list (ColorList#backdrop_place) is
+        # given the colour at its place now.
         def exec_color_list_holds(node)
           @held_colors[node.name] = eval_value(node.which)
+          place = @color_lists.fetch(node.name).backdrop_place
+          show_backdrop(colors_held_by(node.name).fetch(place) & 0x7FFF) if place
         end
 
         # One slot of a set of picture groups holds the group numbered +which+ from now on.

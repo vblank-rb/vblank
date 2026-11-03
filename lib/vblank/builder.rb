@@ -163,6 +163,7 @@ module VBlank
       @solid_black_images = {} # image name → its copy for a tileset that says `black: :solid`
       @color_lists = {}        # `colors` name → its colours, see-through first, for a sprite told to draw with it
       @changing_color_lists = {} # `colors` name → what the build keeps about a list told to hold other colours (see ColorLists)
+      @backdrop_list = nil     # the list the game's backdrop follows, or nil (see ColorLists#followed_backdrop_list)
       @picture_groups = {}     # `picture_groups` name → its declaration (see PictureGroups)
       @sprite_recolors = []    # every sprite's and pool's other colours, to find who draws with a changing list
       @lists_in_use = []       # each set of lists `colors_in_use` named, in the order the game counts them
@@ -602,6 +603,7 @@ module VBlank
       finalize_tile_copies
       link_backgrounds_to_changing_lists # before the colours: it says what those backgrounds are drawn with
       finalize_background_colors
+      finalize_backdrop_list # before the lists: a list only the backdrop shows is not one nobody draws with
       finalize_changing_color_lists
       finalize_picture_groups
       finalize_background_affine

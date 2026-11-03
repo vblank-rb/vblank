@@ -87,7 +87,8 @@ module VBlank
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level),
                                              effects: effects,
                                              plays: (lowering.recordings_sections if samples),
-                                             recorded_parts: lowering.recorded_parts?)
+                                             recorded_parts: lowering.recorded_parts?,
+                                             backdrop: lowering.backdrop_copied?)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

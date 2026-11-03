@@ -188,6 +188,7 @@ module VBlank
           # group, and each then reads this to put the set in force back (see
           # PaletteTint#emit_recolored_obj_banks).
           def emit_color_list_holds(node)
+            @palette_tint.emit_backdrop_held(node) # the backdrop, where it follows this list
             list = @layout.screen.color_lists[node.name]
             return if list.nil? # no sprite on a tiled screen draws with it
 

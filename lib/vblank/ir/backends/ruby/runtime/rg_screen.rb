@@ -2238,7 +2238,7 @@ end
 def rg_screen_set(new_kind, two_pages, new_backdrop)
   crossing = @rg_kind >= 0 && @rg_kind != new_kind
   if crossing
-    @rg_backdrop = new_backdrop
+    @rg_backdrop = new_backdrop unless new_backdrop.negative?
     rg_clear_to(@rg_backdrop)
     @rg_shown_backgrounds = []
     @rg_scenery_kept = false
@@ -2270,9 +2270,12 @@ def rg_screen_cross_to(new_kind, two_pages, new_backdrop)
   0
 end
 
+# rg_screen.c's rg_screen_show_backdrop
+def rg_screen_show_backdrop(color) = rg_show_backdrop(color)
+
 # rg_screen.c's show_backdrop
 def rg_show_backdrop(color)
-  return if color == @rg_backdrop
+  return if color.negative? || color == @rg_backdrop
 
   @rg_backdrop = color
   @rg_scenery_kept = false

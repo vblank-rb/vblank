@@ -286,6 +286,7 @@ module VBlank
             asm.label("rt_vdp_registers")
             words = VIDEO_REGISTERS.map do |register, value|
               value = plane_size_register if register == Console::GenesisHardware::REG_PLANE_SIZE
+              value = backdrop_register if register == Console::GenesisHardware::REG_BACKDROP
               Console::GenesisHardware::VDP_REGISTER | (register << 8) | value
             end
             asm.data_words(words)

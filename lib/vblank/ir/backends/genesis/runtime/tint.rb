@@ -34,6 +34,7 @@ module VBlank
           #
           #   rt_tint_to(mode, steps, color)         D0 = 1 black, 2 white, 3 the colour in D2; D1 the 256ths
           #   rt_colors_hold(table, which, palette)  a list's other colours, see Runtime::Tiles's tables
+          #   rt_backdrop_hold(table, which)         a backdrop that follows a list, its colour in that set
           #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to say it
           #   rt_colors_written                      the blank's work: the copy written to the colour memory
           module Tint
@@ -66,14 +67,47 @@ module VBlank
               memory.reserve(SETS, Art::PALETTES * 4)
             end
 
-            def emit(asm, memory)
+            # +backdrop+ for a game whose backdrop is copied from a list it recolours, which then carries
+            # rt_backdrop_hold.
+            def emit(asm, memory, backdrop: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, memory)
               emit_tint_to(asm, at)
               emit_tinted(asm, at)
               emit_hold(asm, memory, at)
+              emit_backdrop_hold(asm, at) if backdrop
               emit_prepared(asm, memory, at)
               emit_written(asm, memory, at)
+            end
+
+            # rt_backdrop_hold(table, which): the backdrop follows a list of colours, and is the colour the
+            # table gives for set +which+. The table is a word, how many sets there are besides the colours
+            # the list was declared with, then the backdrop's colour in that set and in each of the others, a
+            # word each: so a number naming none is the declared one, as rt_colors_hold counts them. The colour
+            # goes into colour 0, the backdrop, in the game's colours, and the colour memory is owed. A colour
+            # the backdrop holds already costs nothing, which keeps a list told the same set every pass from
+            # working all sixty colours out again.
+            def emit_backdrop_hold(asm, at)
+              asm.label("rt_backdrop_hold")
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.moveq(0, asm.d(3))
+              asm.move(:w, asm.post(0), asm.d(3))
+              asm.cmp(:l, asm.d(3), asm.d(1))
+              asm.branch(:cc, "rt_backdrop_hold_own")
+              asm.addq(:l, 1, asm.d(1))
+              asm.bra("rt_backdrop_hold_set")
+              asm.label("rt_backdrop_hold_own")
+              asm.moveq(0, asm.d(1))
+              asm.label("rt_backdrop_hold_set")
+              asm.add(:l, asm.d(1), asm.d(1)) # a colour is a word
+              asm.add(:l, asm.d(1), asm.a(0))
+              asm.move(:w, asm.ind(0), asm.d(0))
+              asm.cmp(:w, at.call(COLORS), asm.d(0))
+              asm.branch(:eq, "rt_backdrop_hold_done")
+              asm.move(:w, asm.d(0), at.call(COLORS))
+              asm.move(:w, asm.imm(1), at.call(DIRTY))
+              asm.label("rt_backdrop_hold_done")
+              asm.rts
             end
 
             # rt_colors_start: the game's colours (the table "colors15": the 64 places' colours, then how many

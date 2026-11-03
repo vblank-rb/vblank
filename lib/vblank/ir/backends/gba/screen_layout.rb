@@ -214,6 +214,21 @@ module VBlank
           # when it is in the one every scene shows.
           ChangingColors = Data.define(:blob, :count, :group_at, :source_var, :scene)
 
+          # THE BACKDROP, WHERE IT FOLLOWS A LIST (IR::Nodes::ColorList#backdrop_place): +name+ is the
+          # list's, and +blob+ the one colour the backdrop is in each set the list can hold, laid end
+          # to end a halfword each, the colour it was declared with last, as a ChangingColors blob
+          # lays its sets out; +count+ is how many come before that one.
+          #
+          # The console has no say in where its backdrop is: it is the first colour of the
+          # background colours, always. A list's colours land in a group of sixteen of their own,
+          # so the backdrop cannot read them where they are, and its colour is copied there
+          # instead — one colour, from this blob, on the frame the list's own are.
+          BackdropColors = Data.define(:name, :blob, :count)
+
+          # The variable holding where in its blob the backdrop's colour in force is: nought until
+          # the list is told anything, while the colour table already holds the declared one.
+          BACKDROP_AT = :__backdrop_at
+
           # Where a sprite's depths are kept, and which entry is the layer it was declared in.
           # +scene_var+, where the depths differ from screen to screen, is the variable that picks
           # the screen, and the table holds +scene_count+ rows for its values and one for any other.
@@ -350,6 +365,20 @@ module VBlank
             end
             @sprites_over_picture = IR::SpritesOverPicture.any?(program)
             prepare_objects(program) if program.walk.any? { |node| node.kind == :object }
+            @backdrop_colors = place_backdrop_colors
+          end
+
+          # Where the backdrop's colours are, in a game whose backdrop follows a list; nil otherwise.
+          attr_reader :backdrop_colors
+
+          private def place_backdrop_colors
+            node = @color_list_nodes.each_value.find(&:backdrop_place) or return nil
+
+            place = node.backdrop_place
+            blob = :"__backdrop_colors_#{node.name}"
+            @blobs[blob] = [*node.recolors, node.colors].map { |set| set.fetch(place) & 0x7FFF }.pack("v*")
+            keep_unpacked!(blob) # picked out of by a number the game works out
+            BackdropColors.new(name: node.name, blob: blob, count: node.recolors.length)
           end
 
           # WHICH GROUPS OF SIXTEEN A LAYER IS DRAWING FROM A LIST OF ITS OWN, so a tint that
@@ -358,8 +387,11 @@ module VBlank
           # far along that version this group's list is, and the scene the layer belongs to (nil
           # for one every scene shows) — since another scene's colours sit in that group while
           # that scene is up.
+          #
+          # A backdrop that follows a list is one more, last since it is the first colour of the
+          # first group and a layer's group may be that one: one colour, read from its own blob.
           def bg_recolor_restore_banks
-            @picture.scenery.flat_map do |node|
+            layers = @picture.scenery.flat_map do |node|
               place = declared_background(node)
               next [] unless place&.colors
 
@@ -368,6 +400,7 @@ module VBlank
                  at * BackgroundDrawing::COLOR_LIST_BYTES, node.scene]
               end
             end
+            @backdrop_colors ? layers + [[BG_PALETTE, BACKDROP_AT, 0, nil, 1]] : layers
           end
 
           # THE SAME FOR SPRITES: each group of sixteen that a list of colours which changes is
@@ -640,8 +673,10 @@ module VBlank
           end
 
           # A table of background colours with +backdrop+ in its first place, where the console keeps
-          # the colour it shows wherever nothing is drawn.
-          def with_backdrop(table, backdrop) = [backdrop, *table.drop(1)]
+          # the colour it shows wherever nothing is drawn. A backdrop that follows a list (nil here)
+          # is put there as the table goes in (PaletteTint#emit_recolored_banks), and the table
+          # holds the game's meanwhile.
+          def with_backdrop(table, backdrop) = [backdrop || backdrops.game_backdrop, *table.drop(1)]
 
           # Which backdrop each scene shows (IR::SceneHandover#arrival, #game_backdrop).
           def backdrops = @backdrops ||= IR::SceneHandover.of(@program)

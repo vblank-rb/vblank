@@ -24,7 +24,8 @@ module VBlank
           # bytes of each run of tiles painted from lists, staged for the blank, +straight_tile_runs+ that
           # one of them keeps the console's own form, and +held_runs+ those with pictures held in the
           # cartridge. +changing_colors+ changes colours as it runs (Tint's rt_colors_hold), each scene's
-          # backdrop with +scene_backdrops+, and +dims+ fades to black. +math_turns+ turns a see-through
+          # backdrop with +scene_backdrops+, a backdrop that follows a list with +backdrop_follows+
+          # (Tint's rt_backdrop_from), and +dims+ fades to black. +math_turns+ turns a see-through
           # layer solid. +bar_covers+ tells a bar to cover sprites. +tile_sizes+ has layers of two tile
           # sizes. +scene_tiles+ and +scene_background_tiles+ bring a scene's tiles in as it arrives.
           # +extra_buttons+ can ask about X and Y, and +second_controller+ reads it. +glides+ has a
@@ -32,7 +33,7 @@ module VBlank
           Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
-                                :scene_backdrops, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
+                                :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :second_controller, :glides) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
@@ -51,7 +52,8 @@ module VBlank
                   scene_bends: picture.scene_bends?(program), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
                   changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program),
-                  scene_backdrops: backdrops, dims: picture.fades_to_black?(program),
+                  scene_backdrops: backdrops, backdrop_follows: picture.backdrop_follows_list?(program),
+                  dims: picture.fades_to_black?(program),
                   math_turns: picture.see_through_turns_solid?(program), bar_covers: picture.bar_covers_sprites?(program),
                   tile_sizes: picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
                   scene_background_tiles: background_tiles, extra_buttons: Frame.reads_extra_buttons?(program),

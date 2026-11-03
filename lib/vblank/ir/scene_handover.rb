@@ -106,6 +106,7 @@ module VBlank
         @cases = program.walk.select { |node| node.kind == :case }
         @game_screen = program.children.find { |node| node.kind == :screen }
         @backdrops = program.walk.any? { |node| node.kind == :screen && node.backdrop }
+        @backdrop_follows_list = program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
         @modes = Modes.resolve(program)
         @paced = program.walk.any? { |node| node.kind == :wait_vblank }
         @arrivals = {}
@@ -118,7 +119,7 @@ module VBlank
           pictures = painted_pictures_of(@objects.select { |obj| obj.scene && obj.scene == scene })
           screen = @funcs[scene]&.children&.find { |node| node.kind == :screen }
           tiled = self.class.tiles?(Modes::SCREEN_OF_MODE.fetch(@modes.mode_of(scene)))
-          Arrival.new(scene: scene, screen: screen, backdrop: tiled ? screen&.backdrop || game_backdrop : 0,
+          Arrival.new(scene: scene, screen: screen, backdrop: arrival_backdrop(screen, tiled),
                       mode: @modes.mode_of(scene), scenery: scenery, map_choices: choices_put_back(scenery),
                       painted_tiles: painted_tiles_of(scenery), painted_pictures: pictures,
                       takes_down_scenery: scenery.empty? && @scenery.any? { |node| on_arrival?(node) },
@@ -135,6 +136,13 @@ module VBlank
       # drawn, as every game did before a screen could say one, and a backend emits nothing for it.
       def backdrops? = @backdrops
 
+      # DOES THE BACKDROP FOLLOW A LIST OF COLOURS the game recolours (Nodes::ColorList#backdrop_place)?
+      # Then only the list's writes change it: the game's own `screen` puts up the colour the list
+      # starts with, and every other `screen`, and every scene arriving, leaves the backdrop as the
+      # list has it. A scene that took the backdrop back to the declared colour on a screen the
+      # game had faded to black would flash it for a frame.
+      def backdrop_follows_list? = @backdrop_follows_list
+
       # Is +node+ a `screen` naming a kind of screen that a scene says, at the top of its own routine
       # (rather than the game's)? A raw display setting is the author's own register write.
       def scene_screen?(node) = DISPLAYS.key?(node.mode) && !scene_of_screen(node).nil?
@@ -142,13 +150,24 @@ module VBlank
       # THE BACKDROP A `screen` STATEMENT MEANS where it is written: at the top of a scene, the
       # scene's (Arrival#backdrop, its own or the game's); anywhere else its own, or the game's
       # where it says none. Black on a painted screen, and on a raw display setting, which names
-      # no kind of screen.
+      # no kind of screen. Nil, the backdrop left as it is, for every `screen` but the game's own
+      # in a game whose backdrop follows a list (#backdrop_follows_list?).
       def backdrop_of(node)
         scene = scene_of_screen(node)
         return arrival(scene).backdrop if scene
         return 0 unless DISPLAYS.key?(node.mode) && self.class.tiles?(node.mode)
+        return nil if @backdrop_follows_list && !node.equal?(@game_screen)
 
         node.backdrop || game_backdrop
+      end
+
+      # A scene's backdrop as it arrives (Arrival#backdrop): nil, as it is, where the backdrop
+      # follows a list.
+      private def arrival_backdrop(screen, tiled)
+        return 0 unless tiled
+        return nil if @backdrop_follows_list
+
+        screen&.backdrop || game_backdrop
       end
 
       # The scene whose routine says +node+ at its top, or nil — a scene, and not any other routine.

@@ -587,7 +587,9 @@ module VBlank
           # the one, as the interpreter has it.
           def screen_change(function, screen, two_pages, backdrop)
             two_pages &&= @program.described_console.painted_pages == 2
-            change = call(function, C::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), C::Int.new(backdrop))
+            # A backdrop that follows a list (nil) is left as the list has it, which rg_screen.c reads
+            # as a colour below nought.
+            change = call(function, C::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), C::Int.new(backdrop || -1))
             always = @handover.always_up
             put_back = [*always.map_choices.map { |var| assign(var, C::Int.new(0)) },
                         *(always.painted_tiles + always.painted_pictures).map { |run| tile_copy(run) }]
@@ -907,8 +909,19 @@ module VBlank
           end
 
           # Reference#exec_color_list_holds. Nothing is painted here: everything drawn with the
-          # list reads what it holds as it is next drawn.
-          def lower_color_list_holds(node) = [C::Assign.new(held_colors(node.name), value(node.which))]
+          # list reads what it holds as it is next drawn. A backdrop that follows the list
+          # (ColorList#backdrop_place) is given its colour in the set held now, from a table of the
+          # one colour in each set, the declared set first as rg_place_of_choice counts them.
+          def lower_color_list_holds(node)
+            held = C::Assign.new(held_colors(node.name), value(node.which))
+            place = @color_lists.fetch(node.name).backdrop_place
+            return [held] unless place
+
+            sets = sets_held_by(node.name)
+            colors = drawing_array("backdrop_colors", "int32_t", sets.map { |set| set.fetch(place) & 0x7FFF })
+            choice = call("rg_place_of_choice", held_colors(node.name), C::Int.new(sets.length - 1))
+            [held, eval_call("rg_screen_show_backdrop", C::Index.new(colors, choice))]
+          end
 
           # Reference#pixels_overlap?: each side's picture now, and where it is.
           def value_of_pixels_overlap(node)

@@ -340,6 +340,7 @@ module VBlank
             # scene's colours in it otherwise: the number is kept, and said again as the scene arrives
             # (#emit_scene_colors), so it writes only with its scene up.
             def emit_color_list_holds(node)
+              emit_backdrop_follows(node)
               return unless @art.held_palette_of([:sprites, node.name])
 
               choice = @sprite_color_choices[node.name]
@@ -625,9 +626,37 @@ module VBlank
             # to its own, or the game's where it says none. It goes out with the scene's colours and
             # maps (Runtime::Picture's "Together"), through whatever fade is in force.
             def emit_scene_backdrop(arrival)
-              return unless Picture.scene_backdrops?(@program)
+              return unless Picture.scene_backdrops?(@program) && arrival.backdrop
 
               runtime_call("rt_backdrop_hold", [Build.int(arrival.backdrop & 0x7FFF)])
+            end
+
+            # Whether the backdrop follows a list of colours the game recolours (IR::Nodes::ColorList#backdrop_place).
+            def self.backdrop_follows_list?(program) = !followed_list(program).nil?
+
+            def self.followed_list(program) = program.walk.find { |node| node.kind == :color_list && node.backdrop_place }
+
+            # A BACKDROP THAT FOLLOWS THE LIST +node+ IS TELLING TO HOLD ANOTHER SET: colour 0 of the colour
+            # memory, which is the backdrop and no list's place, is given the backdrop's colour in that set
+            # (Runtime::Tint's rt_backdrop_from), on the same pass as the list's own colours and through the
+            # same fade. Nothing for any other list.
+            def emit_backdrop_follows(node)
+              list = Picture.followed_list(@program)
+              return unless list&.name == node.name
+
+              runtime_call("rt_backdrop_from", [LongAddress.new(BACKDROP_COLORS), node.which])
+            end
+
+            BACKDROP_COLORS = "art backdrop colors"
+
+            # The table rt_backdrop_from reads: how many sets, the declared one among them, then the backdrop's
+            # colour in each, the declared one first.
+            def write_backdrop_colors(data)
+              list = Picture.followed_list(@program) or return
+
+              sets = [list.colors, *list.recolors]
+              data.label(BACKDROP_COLORS)
+              data.data_words(sets.length, *sets.map { |set| set.fetch(list.backdrop_place) & 0x7FFF })
             end
 
             def refuse_unmade!(what)
@@ -680,6 +709,7 @@ module VBlank
                 write_sprite_pieces(holder, picture)
               end
               write_held_colors(data)
+              write_backdrop_colors(data)
               data.label("art grids")
               @art.grids.each do |grid|
                 data.data_longs(grid_label(grid.number))

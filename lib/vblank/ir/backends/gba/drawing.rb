@@ -134,7 +134,8 @@ module VBlank
             emit_late_pages_setting(IR::LatePages.setting_of(node))
             return if @layout.modes.switched_per_scene? || scene_handover.scene_screen?(node)
 
-            emit_backdrop_color(scene_handover.backdrop_of(node)) if scene_handover.backdrops? && node.mode != :bitmap
+            backdrop = scene_handover.backdrop_of(node) # nil: it follows a list, and stays as the list has it
+            emit_backdrop_color(backdrop) if scene_handover.backdrops? && node.mode != :bitmap && backdrop
 
             mode = node.mode
             value = if mode == :tiled
@@ -507,10 +508,12 @@ module VBlank
           # background colours, which every tile's see-through pixels and every empty cell show;
           # it is written as the scene takes over, after the scene's own colours, whose table
           # carries it too (ScreenLayout#with_backdrop). A painted screen draws every pixel, and
-          # keeps a tint's colour in that place, so it is left alone there.
+          # keeps a tint's colour in that place, so it is left alone there. A backdrop that follows
+          # a list is the list's, which the scene's colours going in put back
+          # (PaletteTint#emit_recolored_banks), so the scene writes none of its own.
           def emit_scene_backdrop(name)
             arrival = scene_handover.arrival(name)
-            return unless IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(arrival.mode))
+            return unless IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(arrival.mode)) && arrival.backdrop
 
             @scene_entry.emit_once_on_arrival(:backdrop, name) { emit_backdrop_color(arrival.backdrop) }
           end
