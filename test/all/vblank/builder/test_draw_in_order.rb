@@ -41,6 +41,24 @@ module DrawInOrderGames
       game_loop { hero.y += step unless step.zero? }
     end
   end
+
+  # The same two, in one order with a crowd of +crowd+ things that never come out, so the enemy
+  # and the hero are past the 128th thing the order holds.
+  private def crowded_program(hero_y, crowd: 130)
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      image(:speck, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      crowd = pool :crowd, x: 0, y: 0, capacity: crowd, image: :speck
+      enemy = sprite :enemy, at: enemy_at
+      hero = sprite :hero, at: [enemy_at[0] + 8, hero_y]
+      draw_in_order(crowd, enemy, hero)
+      game_loop { hero.y += 0 }
+    end
+  end
 end
 
 class TestDrawInOrder < Minitest::Test

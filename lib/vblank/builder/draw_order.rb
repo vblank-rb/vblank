@@ -156,11 +156,14 @@ module VBlank
 
       # The order starts as declared — each object's place pushed in turn, a different number
       # each — and every number at nought.
+      #
+      # A place is kept in a byte while there are 128 or fewer, and in a half past that: a byte
+      # reads back with its sign, so the 129th place, 128, would read as -128.
       def declare_order_lists(order)
         count = object_names_in(order).length
         index = order.part(:fill)
         ensure_var(index)
-        at_boot(Build.list_new(order.order_list, count, width: :byte))
+        at_boot(Build.list_new(order.order_list, count, width: count > 128 ? :half : :byte))
         at_boot(Build.repeat(Build.int(count), index, Build.list_push(order.order_list, Build.var_ref(index))))
         at_boot(Build.list_new(order.keys_list, count, full_of: 0))
       end

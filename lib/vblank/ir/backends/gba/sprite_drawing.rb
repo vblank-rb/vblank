@@ -370,7 +370,9 @@ module VBlank
           # A run's rows are its own, never taken in turns with another scene's sprites (see
           # IR::SpriteRows): a sprite of another scene in one of them would be written into the
           # copy, and the copy is the run's.
-          DrawRun = Data.define(:first_slot, :slots, :staging, :order, :members, :table) do
+          # +entry_bytes+ is how wide one entry of that list is: a byte, or a half for a run of more
+          # than 128 sprites (Builder::DrawOrder#declare_order_lists).
+          DrawRun = Data.define(:first_slot, :slots, :staging, :order, :entry_bytes, :members, :table) do
             def holds?(slot) = slot >= first_slot && slot < first_slot + slots
             def staged(slot) = staging + ((slot - first_slot) * 8)
           end
@@ -389,8 +391,9 @@ module VBlank
 
               table = :"__draw_run_#{k}"
               blobs[table] = sprites.flat_map { |sprite| [sprite.slot - first, sprite.pieces] }.pack("C*")
+              order = lists.list_info(run.order)
               DrawRun.new(first_slot: first, slots: slots, staging: memory.alloc(slots * 8),
-                          order: lists.list_info(run.order)[:base], members: sprites.length, table: table)
+                          order: order[:base], entry_bytes: order[:bytes], members: sprites.length, table: table)
             end
           end
 
@@ -415,12 +418,17 @@ module VBlank
             list = run.order
             next_sprite = gensym
             next_row = gensym
-            emit_number(TMP, list + run.members - 1)
-            emit_number(ADDR, list - 1)
+            entry = run.entry_bytes
+            emit_number(TMP, list + ((run.members - 1) * entry))
+            emit_number(ADDR, list - entry)
             emit_number(SPARE, oam_slot(run.first_slot, 0))
             place_label(next_sprite)
-            emit(ASM.ldrb_offset(ACC, TMP, 0))            # which sprite goes next
-            emit(ASM.sub_imm(TMP, TMP, 1))
+            if entry == 2                                 # which sprite goes next
+              emit(ASM.load_halfword(ACC, TMP))
+            else
+              emit(ASM.ldrb_offset(ACC, TMP, 0))
+            end
+            emit(ASM.sub_imm(TMP, TMP, entry))
             emit_load_data_address(POSE_WORD, run.table)
             emit(ASM.add_reg(POSE_WORD, POSE_WORD, ACC))
             emit(ASM.add_reg(POSE_WORD, POSE_WORD, ACC))  # ...its two bytes in the table
