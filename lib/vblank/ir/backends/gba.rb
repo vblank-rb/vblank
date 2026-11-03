@@ -296,10 +296,14 @@ module VBlank
                                 .merge(scene_loop_routines)
         end
 
-        # The routines that bring a big map's view along (see #prepare_map_view_routines), by
-        # name. Read by the placement, which keeps them beside the frame's own routine; its
-        # copy, read off the measuring pass, is Placement#routines_placed_with_frame.
-        def map_view_routines = @map_view_routines || []
+        # The routines that are the frame's own work, written once and called, by name: the ones
+        # that bring a big map's view along (see #prepare_map_view_routines), and the light's rows
+        # (Raster::LIGHT_ROWS_ROUTINE). Read by the placement, which keeps them beside the frame's
+        # own routine; its copy, read off the measuring pass, is Placement#routines_placed_with_frame.
+        def map_view_routines
+          own = @map_view_routines || []
+          @raster.light_rows_routine? ? own + [Raster::LIGHT_ROWS_ROUTINE] : own
+        end
 
         # Where every background and sprite went, once #lower has planned it. The measuring pass
         # hands its plan back to the build it measured for (see Placement#measure_routines).
@@ -933,6 +937,9 @@ module VBlank
             @functions.define_generated_func(name) { @layer_blend.emit_amounts_routine(name) }
           end
           prepare_map_view_routines(program)
+          if @raster.light_rows_routine?
+            @functions.define_generated_func(Raster::LIGHT_ROWS_ROUTINE) { @raster.emit_light_rows_routine }
+          end
           prepare_scene_loop_work(program, outline: @scene_blocks) # the loop's work for one scene, as that scene's routine
           @scene_blend = @tiled ? @layer_blend.blend_control_by_scene(@modes) : {}
           # ...which is what decides whether a fade may use the display's blend at all, or

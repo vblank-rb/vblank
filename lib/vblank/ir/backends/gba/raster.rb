@@ -461,8 +461,25 @@ module VBlank
             emit_light_this_frame if @light
             feed_keys.each { |key| key == LIGHT ? emit_light_first_row : emit_bend_first_row(key) }
             emit_flat_scroll_of_backgrounds_up
-            feed_keys.each { |key| key == LIGHT ? emit_if_light_rows { emit_fill_row_table(key) } : emit_fill_row_table(key) }
+            feed_keys.each { |key| key == LIGHT ? emit_if_light_rows { emit_call_light_rows } : emit_fill_row_table(key) }
           end
+
+          # THE LIGHT'S ROWS ARE ONE ROUTINE, called from the gap and from Spotlight#show_now. A
+          # light whose shape is worked out row by row costs a few dozen instructions a row, and
+          # written out at each place that asks, the one inside a pass ran wherever that pass's
+          # routine was kept: from the cartridge, at well under half the speed, on the one frame
+          # that does it, which no measuring of whole frames would find. As one routine it goes
+          # where the frame's own work goes (Placement#routines_placed_with_frame), so both
+          # places run it at the speed the gap does.
+          LIGHT_ROWS_ROUTINE = :__light_rows
+
+          # Whether the program has that routine: a light, worked out into a table of rows.
+          def light_rows_routine? = feeds_light? && row_bend_tables?
+
+          def emit_call_light_rows = @lowering.statement(Build.call(LIGHT_ROWS_ROUTINE))
+
+          # The body of that routine.
+          def emit_light_rows_routine = emit_fill_row_table(LIGHT)
 
           # A bend's row 0: always into its table, since every bend is worked out at every gap
           # whether its background is up or not, as the interpreter works them out; into the
@@ -627,7 +644,7 @@ module VBlank
               @emitter.emit_branch(:bcond, drawing, cond: :lt)
               @primitives.store_halfword_acc(register_fed(LIGHT))
               @emitter.place_label(drawing)
-              emit_fill_row_table(LIGHT)
+              emit_call_light_rows
             end
           end
 

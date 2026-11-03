@@ -75,6 +75,29 @@ class TestLightCost < Minitest::Test
     assert_operator light_cost(light: shown), :<, CHEAP
   end
 
+  # A LIGHT SHOWN NOW FROM A ROUTINE KEPT IN THE CARTRIDGE costs the frame what the gap's working
+  # out does: the rows are one routine, kept where the frame's own work is, so the one frame a game
+  # shows a light at once is not the frame that runs late. Measured as time and not instructions,
+  # since the cartridge runs the same instructions slower.
+  def test_a_light_shown_now_from_the_cartridge_takes_the_time_the_gap_takes
+    moving = lambda do |shown_now|
+      lambda {
+        light = spotlight at: [120, 80], radius: 60, dark: 75
+        light.shape { |row| light.circle(row) }
+        step = var :step, 0
+        func(:shown_at_once, fast: false) { light.show_now }
+        once_a_frame do
+          step += 1
+          light.move_to 90 + (step & 63), 80
+          call :shown_at_once if shown_now
+        end
+      }
+    end
+    busy = ->(shown_now) { 1 - VBlank::Diagnostics::Profiler.run(room(light: moving.call(shown_now)), frames: 20, picture: false).idle_share }
+
+    assert_operator busy.call(true), :<, busy.call(false) * 1.25
+  end
+
   # In a scene that sees through a layer the light is switched off, and costs nothing there.
   def test_a_light_switched_off_in_a_scene_costs_next_to_nothing
     with_title = lambda do |iris|
