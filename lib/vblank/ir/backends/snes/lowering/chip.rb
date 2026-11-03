@@ -25,7 +25,7 @@ module VBlank
             # The kinds of IR a routine on the chip can hold besides what ChipCode makes, which say
             # nothing while the game runs.
             MADE = Ractor.make_shareable((ChipCode::STATEMENTS.keys + ChipCode::VALUES.keys + [:else]).to_h { |kind| [kind, true] })
-            LIST_STEPS = %i[list_get list_set list_len list_push list_drop list_fill].freeze
+            LIST_STEPS = %i[list_get list_set list_len list_push list_drop list_fill list_copy].freeze
             # Where each 16-bit half of a variable is, for copying.
             HALVES = [0, 2].freeze
 
@@ -47,7 +47,8 @@ module VBlank
 
                   refuse_chip_call!(name, node.target) if node.kind == :call && !on_chip?(node.target)
                   refuse_chip_step!(name, node) unless MADE[node.kind]
-                  refuse_table_in_parts!(name, node) if node.kind == :table_get
+                  refuse_table_in_parts!(name, node, node.name) if node.kind == :table_get
+                  refuse_table_in_parts!(name, node, node.table) if node.kind == :list_copy
                 end
               end
             end
@@ -65,21 +66,22 @@ module VBlank
                                    "#{name.inspect}. Do the step before or after the call."
             end
 
-            def refuse_table_in_parts!(name, node)
-              table = @tables.fetch(node.name) { return }
+            # A read by index, or a run copied into a list, of the table +table_name+.
+            def refuse_table_in_parts!(name, node, table_name)
+              table = @tables.fetch(table_name) { return }
               return unless split?(table)
 
+              what = node.kind == :list_copy ? "copy" : "read"
               raise LoweringError, "The routine #{name.inspect} runs on the Super FX chip, and it reads the table " \
-                                   "#{node.name.inspect}. That table is bigger than a bank of the cartridge, and the " \
+                                   "#{table_name.inspect}. That table is bigger than a bank of the cartridge, and the " \
                                    "chip reads a table from one bank only. To fix this, cut the table into tables " \
-                                   "of 32K or less, or move the read out of #{name.inspect}."
+                                   "of 32K or less, or move the #{what} out of #{name.inspect}."
             end
 
             def chip_step_words(node)
               kind = node.kind
               return "a wait for the next frame" if kind == :wait_vblank
               return "a change of scene (case_var), and a scene sets up the screen, which only the console can do" if kind == :case
-              return "a copy of a table into a list (#{kind})" if kind == :list_copy
               return "a drawing step (#{kind})" if node.category == :draw
               return "a sound step (#{kind})" if node.category == :sound
 

@@ -46,7 +46,8 @@ module VBlank
                                                repeat: :emit_repeat, call: :emit_call, negate: :emit_negate,
                                                abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
                                                list_set: :emit_list_set, list_push: :emit_list_push,
-                                               list_drop: :emit_list_drop, list_fill: :emit_list_fill })
+                                               list_drop: :emit_list_drop, list_fill: :emit_list_fill,
+                                               list_copy: :emit_list_copy })
           VALUES = Ractor.make_shareable({ int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
                                            neg: :value_of_neg, absolute: :value_of_absolute, clamped: :value_of_clamped,
                                            mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
@@ -564,6 +565,47 @@ module VBlank
             @gsu.dec(ITEMS_LEFT)
             emit_branch(:bne, item)
             @gsu.label(done)
+          end
+
+          # Reference#exec_list_copy: the start held so the whole run is inside the table, then the
+          # list made to hold exactly the run, from its first slot. The table and the list keep an
+          # entry the same way (Builder#refuse_mismatched_table_copy!), so the run's bytes go across
+          # as they are, a byte at a time from the cartridge, and a narrow slot reads back with its
+          # sign as any other does (#value_of_list_get). Nothing here can stop the game: the build
+          # already held the count to the list's capacity and the table's length.
+          #
+          # The cartridge is read as #value_of_table_get reads it: writing R14 starts the read of
+          # the byte there, GETB takes it, and an INC of R14 starts the next one.
+          def emit_list_copy(node)
+            list = @lists.fetch(node.name)
+            table = @tables.fetch(node.table)
+            value(Build.clamped(node.at, Build.int(0), Build.int(table.count - node.count)))
+            (table.bytes.bit_length - 1).times do
+              @gsu.with(LOW)
+              @gsu.add(LOW)
+            end
+            @gsu.ibt_bank_of(0, table.label)
+            @gsu.romb
+            @gsu.iwt(0, table.label)
+            @gsu.from(0)
+            @gsu.to(14)
+            @gsu.add(LOW)
+            @gsu.iwt(SLOT, list.at + Lists::HEADER)
+            @gsu.iwt(ITEMS_LEFT, node.count * table.bytes)
+            byte = fresh("copy_byte")
+            @gsu.label(byte)
+            @gsu.to(0)
+            @gsu.getb
+            @gsu.inc(14)
+            @gsu.from(0)
+            @gsu.stb(SLOT)
+            @gsu.inc(SLOT)
+            @gsu.dec(ITEMS_LEFT)
+            emit_branch(:bne, byte)
+            @gsu.ibt(0, 0)
+            @gsu.sm(list.at + Lists::FRONT, 0)
+            @gsu.iwt(0, node.count)
+            @gsu.sm(list.at + Lists::LENGTH, 0)
           end
 
           # LOW and HIGH at the run's last index, from + count - 1. Adding a word of every bit set is

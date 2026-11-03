@@ -537,17 +537,57 @@ class TestSNESOnChip < Minitest::Test
     assert_match(/list :cells is empty: there is nothing to shift/, error.message)
   end
 
-  def test_a_list_copied_from_a_table_on_the_chip_is_refused_by_name
+  # A run of a table copied into a list, from each way a table keeps its entries: a byte with a sign
+  # and one without (200 reading back as -56 from the list), a half with a sign, a whole word. The
+  # start is worked out as the game runs and goes below nought and past the end, where it is held
+  # so the run stays inside the table; a list the game shifts starts again from its first slot.
+  def test_runs_copied_from_tables_on_the_chip_play_as_on_the_interpreter
+    game = superfx_game("CHIP COPY") do
+      signed_bytes = table :signed_bytes, [-3, 5, -128, 127, 9, -1], width: :byte
+      bytes = table :bytes, [200, 1, 255, 128, 7], width: :byte
+      halves = table :halves, [-30_000, 4, 32_767, -2, 600, -7, 11], width: :half
+      words = table :words, [-100_000, 70_000, 3, -1, 2_000_000_000], width: :word
+      small = list :small, capacity: 4, width: :byte, full_of: 0
+      plain = list :plain, capacity: 3, width: :byte, full_of: 0
+      mid = list :mid, capacity: 5, width: :half, full_of: 0
+      wide = list :wide, capacity: 4, full_of: 0
+      queue = list :queue, capacity: 4, width: :half
+      step = var :step, 0
+      at = var :_at, 0
+      seen = var :_seen, 0
+      func :load, on_chip: true do
+        at = step - 3
+        small.copy_from signed_bytes, at: at, count: 4
+        plain.copy_from bytes, at: at + 1, count: 3
+        mid.copy_from halves, at: step * 2 - 5, count: 5
+        wide.copy_from words, at: at, count: 2
+        queue.copy_from halves, at: step, count: 3
+        seen = small[0] + plain[0] + mid[4] + wide[1] + queue[queue.length - 1]
+      end
+      game_loop do
+        queue.push step
+        queue.shift if queue.length > 1
+        call :load
+        step += 1
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 14)
+
+    assert_operator run[:step], :>=, 10, "starts below nought and past every table's end were checked"
+  end
+
+  # The chip reads a table from one bank of the cartridge, as for a read by index.
+  def test_a_run_copied_from_a_table_bigger_than_a_bank_on_the_chip_is_refused_by_name
     error = refusal_of do
-      rows = table :rows, [1, 2, 3, 4]
-      cells = list :cells, capacity: 4, width: :half
-      func(:spin, on_chip: true) { cells.copy_from rows, at: 0, count: 2 }
+      huge = table :huge, Array.new(40_000) { |i| i % 100 }, width: :byte
+      cells = list :cells, capacity: 4, width: :byte
+      func(:spin, on_chip: true) { cells.copy_from huge, at: 0, count: 4 }
       game_loop { call :spin }
     end
 
     assert_match(/spin/, error.message)
-    assert_match(/list/, error.message)
-    assert_match(/move/i, error.message)
+    assert_match(/huge/, error.message)
+    assert_match(/bank/, error.message)
   end
 
   def test_a_list_too_big_for_the_chip_is_refused_in_plain_words

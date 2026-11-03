@@ -122,7 +122,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `if_le` — works: the same as on the Advance.
 - `if_gte` — works: the same as on the Advance.
 - `if_lte` — works: the same as on the Advance.
-- `func` — works: `fast:` means nothing on a Super Nintendo, which runs all of its code alike. `on_chip: true` runs the routine on a Super FX cartridge's chip (sums, fractions, `if`, loops, tables, lists but a copy from a table, and calls of other `on_chip` routines; any other step is refused).
+- `func` — works: `fast:` means nothing on a Super Nintendo, which runs all of its code alike. `on_chip: true` runs the routine on a Super FX cartridge's chip (sums, fractions, `if`, loops, tables, lists and a copy from a table into one, and calls of other `on_chip` routines; any other step is refused).
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
 - `case_var` — works: the same as on the Advance.
