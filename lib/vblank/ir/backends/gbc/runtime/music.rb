@@ -953,12 +953,12 @@ module VBlank
             # which one is a number written to the cartridge's memory bank controller (an MBC5, or an
             # MBC3 on a cartridge with a clock): a write to 0x2000 says the bank. Nothing can read that
             # number back, which is why the runtime notes it as it writes it. The table of songs is in
-            # one of the banks, so it is
-            # put in view for the copy. This runs in the frame's interrupt, between two instructions of
-            # the game's — possibly the game's own code in a bank, or the runtime reading a table in
-            # another — so the bank put in view is not noted (SM83#select_rom_bank_unnoted), and the
-            # bank the game noted last is put back after it. Without that, the game would carry on
-            # reading the songs' bank where its own code or table was.
+            # one of the banks, so it is put in view for the copy. A game with songs runs the player
+            # from its wait for the frame, with the frame's interrupt held off (Frame counts music as
+            # owed), so the game is stopped at a known place. The bank put in view is still not noted
+            # (SM83#select_rom_bank_unnoted), and the bank the game noted last is put back after it,
+            # so the copy leaves the game reading its own code or table wherever the player is run
+            # from.
             def emit_entry_copy(asm, memory)
               asm.load_bank_of(:a, "music_songs")
               asm.select_rom_bank_unnoted
