@@ -52,6 +52,32 @@ class TestCommandLinePlay < Minitest::Test
     end
   end
 
+  # A TAPE COUNTED IN PASSES can be made on the rules alone, and played on the cartridge. It says
+  # what it counts, so playing it asks nothing more.
+  def test_a_tape_of_passes_made_on_the_rules_plays_on_the_cartridge
+    with_game_and_scripts do |dir|
+      out, status = cli("play", "walker.rb", "--script", "walk.rb", "--on", "logic", "--in-passes", "passes",
+                        "--write-tape", "walk.tape", dir: dir)
+
+      assert status.success?, out
+      assert_includes File.read(File.join(dir, "walk.tape")), "counts: passes\n"
+
+      out, status = cli("play", "walker.rb", "--tape", "walk.tape", dir: dir)
+
+      assert status.success?, out
+      assert_match(/walked +frame 30$/, out)
+    end
+  end
+
+  def test_a_tape_says_what_it_counts_so_in_passes_beside_one_is_refused
+    with_game_and_scripts do |dir|
+      out, status = cli("play", "walker.rb", "--tape", "walk.tape", "--in-passes", "passes", dir: dir)
+
+      refute status.success?, out
+      assert_match(/--in-passes cannot go with --tape/, out)
+    end
+  end
+
   # A GAME BOY COLOR CARTRIDGE FILE plays the same way: the script's frames and moments, said
   # under the title the Color's own header holds.
   COLOR_WALKER = <<~RUBY

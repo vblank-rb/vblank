@@ -18,10 +18,9 @@ module VBlank
         refuse_missing_build_record!("where it counts its passes")
         ensure_rendered!
         program = @rom.source_program
-        loop_node = program.walk.find { |node| node.kind == :loop } # what `game_loop` makes
-        return nil unless loop_node
+        return nil if program.walk.none? { |node| node.kind == :loop } # what `game_loop` makes
 
-        refuse_waits_not_passes! unless waits_only_at_loop_top?(program, loop_node)
+        refuse_waits_not_passes! unless IR::Frames.waits_only_at_loop_top?(program)
         [var_at(@rom.built.waits_counted_at) - 1, 0].max
       end
 
@@ -29,12 +28,6 @@ module VBlank
 
       # The runtime counts its own passes (see #passes), so there is nothing to watch.
       def watch_passes! = nil
-
-      # Is the one wait for the screen the game makes the one at the top of its game loop?
-      def waits_only_at_loop_top?(program, loop_node)
-        waits = program.walk.select { |node| node.kind == :wait_vblank }
-        waits.size == 1 && loop_node.children.first.equal?(waits.first)
-      end
 
       def refuse_waits_not_passes!
         raise ArgumentError, "This game waits for the screen in places of its own (`wait_vblank`, or " \

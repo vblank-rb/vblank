@@ -46,7 +46,13 @@ module VBlank
     #
     # +steps+ are the lines in order — each a Hold or a Moment, the same steps a script is
     # made of, so a tape is played by the same playing a script is.
-    Tape = Data.define(:title, :checksum, :starts_from, :steps)
+    #
+    # A TAPE CAN COUNT PASSES OF THE GAME LOOP IN PLACE OF FRAMES (+in_passes+, and see
+    # PassSteppedGame), and then a line's count is passes and a moment names a pass. One extra
+    # line of heading says so, `counts: passes`, or `counts: variable steps` for a variable of the
+    # game. Such a tape plays the same game at any speed on any way of running it, where a tape of
+    # frames holds its presses to one cartridge's timing. A tape of frames does not have the line.
+    Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes)
 
     class Tape
       # What a tape's file opens with: what it is, and which way of writing one this is.
@@ -54,6 +60,11 @@ module VBlank
 
       # How a stretch of frames with no button down is written.
       NOTHING_DOWN = "-"
+
+      # The line of heading a tape of passes has, and what it can say.
+      COUNTS = "counts: "
+      COUNTS_PASSES = "passes"
+      COUNTS_VARIABLE = "variable "
 
       # Where a playthrough starts, as the tape says it: the console switched on with a
       # cartridge nobody has played, or with one holding a save. A save is said with a
@@ -72,10 +83,11 @@ module VBlank
       # The tape of +steps+ played on +cartridge+. What it says it was recorded on is the
       # title in the cartridge's own header and a checksum of every byte of it. +save+ is
       # the save memory the cartridge held when the console was switched on, or nil, and
-      # +led_in+ whether a lead-in was played before the first of the steps.
-      def self.recorded_on(cartridge, steps, save:, led_in: false)
+      # +led_in+ whether a lead-in was played before the first of the steps. +in_passes+ is
+      # what the tape counts, nil for frames.
+      def self.recorded_on(cartridge, steps, save:, led_in: false, in_passes: nil)
         title, checksum = title_and_checksum_of(cartridge)
-        new(title: title, checksum: checksum, starts_from: start_said(save: save, led_in: led_in), steps: steps)
+        new(title: title, checksum: checksum, starts_from: start_said(save: save, led_in: led_in), steps: steps, in_passes: in_passes)
       end
 
       # Where a playing started, as a tape says it. +save+ is the save memory the
@@ -129,8 +141,9 @@ module VBlank
 
       # A tape holds nothing but names and numbers, and is made so that every core can read
       # it: it can be kept in a constant, and handed from one Ractor to another.
-      def initialize(title:, checksum:, starts_from:, steps:)
-        super(**Ractor.make_shareable({ title: title.dup, checksum: checksum, starts_from: starts_from.dup, steps: steps.dup }))
+      def initialize(title:, checksum:, starts_from:, steps:, in_passes: nil)
+        super(**Ractor.make_shareable({ title: title.dup, checksum: checksum, starts_from: starts_from.dup, steps: steps.dup,
+                                        in_passes: in_passes }))
       end
 
       # Play the tape on +cartridge+, exactly as a playthrough plays its script: the block is
@@ -143,7 +156,7 @@ module VBlank
         refuse_missing_save!(save)
         refuse_missing_lead_in!(lead_in)
         Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on,
-                                                           window: window, &at_each_moment)
+                                                           window: window, in_passes: in_passes, &at_each_moment)
       end
 
       # Play the tape on +first+ and on +second+ together, comparing the two pictures after
@@ -153,6 +166,7 @@ module VBlank
       # A tape recorded from a save is compared from one (`save:`), and one recorded after
       # a lead-in with a lead-in for each cartridge (`lead_ins:`).
       def compare(first, second, **settings)
+        refuse_compare_of_passes!
         refuse_missing_save!(settings[:save], "tape.compare(first, second, save: ...)")
         refuse_missing_lead_in!(Array(settings[:lead_ins]).compact.first, "tape.compare(first, second, lead_ins: [..., ...])")
         refuse_settings_of_scripts!(settings)
@@ -169,11 +183,21 @@ module VBlank
       # A tape recorded from a save or after a lead-in is given them here, as it is for a
       # comparison.
       def write_side_by_side_picture(first, second, path, at: nil, difference: true, **settings)
+        refuse_compare_of_passes!
         refuse_missing_save!(settings[:save], "tape.write_side_by_side_picture(first, second, path, at: ..., save: ...)")
         refuse_missing_lead_in!(Array(settings[:lead_ins]).compact.first,
                                 "tape.write_side_by_side_picture(first, second, path, at: ..., lead_ins: [..., ...])")
         request = Comparison::PictureRequest.new(path, at: at, difference: difference)
         Comparison.for_picture(first, second, moments.keys, **settings).write_picture_of_tape(self, request)
+      end
+
+      # A comparison looks at two cartridges frame by frame, and two cartridges take different
+      # frames over the same passes.
+      private def refuse_compare_of_passes!
+        return unless in_passes
+
+        raise ArgumentError, "This tape counts passes, and a comparison plays two cartridges frame by frame. To compare " \
+                             "two cartridges, use a tape of frames, or `same: :script` on the playthrough."
       end
 
       # The settings that only mean something of a script played on each cartridge by
@@ -279,8 +303,15 @@ module VBlank
 
       # The tape as the text of a file.
       def to_s
-        heading = [FIRST_LINE, "recorded on: #{recorded_on_label}", "starts from: #{starts_from}", ""]
+        heading = [FIRST_LINE, "recorded on: #{recorded_on_label}", "starts from: #{starts_from}", *counts_line, ""]
         (heading + steps.map(&:tape_line)).join("\n") << "\n"
+      end
+
+      # What a tape of passes says it counts, and nothing for a tape of frames.
+      private def counts_line
+        return [] unless in_passes
+
+        ["#{COUNTS}#{in_passes == true ? COUNTS_PASSES : "#{COUNTS_VARIABLE}#{in_passes}"}"]
       end
 
       # Write the tape to +path+, which is handed back.
@@ -329,8 +360,9 @@ module VBlank
           refuse_unknown_first_line!
           title, checksum = read_recorded_on
           starts_from = read_starts_from
-          @lines.each_with_index.drop(HEADING_LINES).each { |line, at| read_step(line, at + 1) }
-          Tape.new(title: title, checksum: checksum, starts_from: starts_from, steps: @taping.steps)
+          in_passes = read_counts
+          @lines.each_with_index.drop(in_passes ? HEADING_LINES + 1 : HEADING_LINES).each { |line, at| read_step(line, at + 1) }
+          Tape.new(title: title, checksum: checksum, starts_from: starts_from, steps: @taping.steps, in_passes: in_passes)
         end
 
         private
@@ -358,6 +390,21 @@ module VBlank
           raise_unreadable_line!(3, "Line 3 must say where the playthrough starts: `starts from: #{POWER_ON}`, " \
                                     "or `starts from: a save 0x5C0FFEE5` with the checksum of the save. " \
                                     "Either can end with `#{AFTER_A_LEAD_IN.strip}`.")
+        end
+
+        # What the optional fourth line says the tape counts, or nil for frames.
+        def read_counts
+          line = @lines[HEADING_LINES].to_s
+          return unless line.start_with?(COUNTS)
+
+          said = line.delete_prefix(COUNTS)
+          return true if said == COUNTS_PASSES
+
+          name = said.delete_prefix(COUNTS_VARIABLE)
+          return name.to_sym if said != name && !name.empty?
+
+          raise_unreadable_line!(HEADING_LINES + 1, "Line 4 must say what the tape counts: `#{COUNTS}#{COUNTS_PASSES}`, " \
+                                                    "or `#{COUNTS}#{COUNTS_VARIABLE}steps` with the name of a variable.")
         end
 
         def read_step(line, number)

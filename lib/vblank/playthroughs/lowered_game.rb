@@ -41,6 +41,7 @@ module VBlank
         @speaker = speaker && @run.respond_to?(:sounding_as_played)
         @run.sounding_as_played if @speaker
         @held = []
+        @frames = 0
         @run.input_each_frame do
           Fiber.yield
           @held
@@ -57,9 +58,18 @@ module VBlank
       # where it ended, as a console does.
       def step(count = 1, keys: nil)
         @held = pressed(keys) if keys
-        count.times { @fiber.resume if @fiber.alive? }
+        count.times do
+          next unless @fiber.alive?
+
+          @fiber.resume
+          @frames += 1 if @fiber.alive?
+        end
         self
       end
+
+      # How many passes of the game loop have finished: every way here plays a pass a frame, and a
+      # game that has ended finishes no more.
+      def passes = @frames
 
       def var(name) = @run[name]
       def list(name) = @run.list(name)

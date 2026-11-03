@@ -31,6 +31,20 @@ module VBlank
       # sixth of a second — long enough that no ordinary pass reaches it.
       MOST = 10
 
+      # Does +program+ read how many frames have gone by, so that the same buttons on the same pass
+      # can give another game on a machine that takes longer over a pass?
+      def self.reads_frame_clock?(program)
+        program.walk.any? { |node| node.kind == :var_ref && [COUNT, SEEN, STEP].include?(node.name) }
+      end
+
+      # Is the only wait for the screen in +program+ the one at the top of its game loop, so that a
+      # wait and a pass are the same thing?
+      def self.waits_only_at_loop_top?(program)
+        waits = program.walk.select { |node| node.kind == :wait_vblank }
+        loop_node = program.walk.find { |node| node.kind == :loop }
+        waits.one? && !loop_node.nil? && loop_node.children.first.equal?(waits.first)
+      end
+
       # WHAT A GAME LOOP PLACES AT THE FRAME BOUNDARY FOR THE DISPLAY, which the builder puts in the
       # gap after the loop's wait among the rest it does there: where each background it moves
       # sits, the top of each status bar, the map and the colours each background was handed, how

@@ -532,9 +532,13 @@ module VBlank
                                  to run the game. With no window it goes as fast
                                  as this computer can. logic plays the rules with
                                  no picture and no sound, for a bot: far faster,
-                                 and it makes no tape, since a cartridge's frames
-                                 fall differently. Needs zig.
-        --window                 Show the game in the window of vblank run, at the
+                                 and it makes a tape only with --in-passes, since
+                                 a cartridge's frames fall differently. Needs zig.
+        --in-passes COUNT        Count the script in passes of the game loop and not
+                                 frames, so its tape plays the same game at any
+                                 speed on every way. COUNT is passes, or the name
+                                 of a variable the game adds to.
+        --window               Show the game in the window of vblank run, at the
                                  console's frame rate. The menu, pause and fast
                                  forward work. The script holds the buttons, so
                                  the keyboard and gamepads do not reach the game.
@@ -549,6 +553,7 @@ module VBlank
     TEXT
     options_for_playing
     option :on, banner: "WAY", enum: VBlank::Playthroughs::LoweredGame.ways
+    option :in_passes, banner: "COUNT"
     option :window, type: :boolean, default: false
     option :save, banner: "PATH"
     option :lead_in, banner: "NAME"

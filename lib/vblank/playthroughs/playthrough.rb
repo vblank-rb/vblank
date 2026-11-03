@@ -76,9 +76,12 @@ module VBlank
       #
       # +on+ is the way to run the game (a word of LoweredGame.ways; the emulator unless said), and
       # +window+ a device to show it on at the console's frame rate (see WatchedGame).
-      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, &at_each_moment)
+      #
+      # +in_passes+ makes every count in the script a count of passes of the game loop, or of a
+      # variable of the game named here, in place of frames (see PassSteppedGame).
+      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil, &at_each_moment)
         Playing.play(@name, @steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
-                     &at_each_moment)
+                                               in_passes: in_passes, &at_each_moment)
       end
 
       # Play this script on +game+, a console that is already running, as the lead-in to
@@ -144,12 +147,12 @@ module VBlank
       # frames are not counted and its presses are on no tape: frame 1 is the first frame
       # after it.
       #
-      # +on+ and +window+ are as for #play.
-      def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil)
+      # +on+ and +window+ are as for #play, and +count_passes+ says the playing will ask for them.
+      def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false)
         game = if on && on != LoweredGame::EMULATOR
                  lowered_game(cartridge, on, save, speaker: !window.nil?)
                else
-                 power_on(cartridge, save: save, count_passes: !window.nil?)
+                 power_on(cartridge, save: save, count_passes: count_passes || !window.nil?)
                end
         if window
           console = cartridge_from(cartridge).console
@@ -174,6 +177,45 @@ module VBlank
 
         LoweredGame.new(program, on, speaker: speaker)
       end
+
+      # WHAT A PLAYING CAN COUNT IN PASSES. The same buttons on the same pass give the same game only
+      # for a game that moves by its passes. A game cannot be seen to, but one that reads the frame
+      # clock moves by frames, and one that waits for the screen in places of its own has more waits
+      # than passes. For both, a variable the game counts is the way to say what counts, and that
+      # is the game's to answer for. A cartridge file has no passes it can say, and no names.
+      def self.refuse_unusable_pass_count!(cartridge, in_passes)
+        return if in_passes.nil?
+
+        unless in_passes == true || in_passes.is_a?(Symbol)
+          raise ArgumentError, "`in_passes:` was #{in_passes.inspect}. It must be true, to count the passes of the game " \
+                               "loop, or the name of a variable that the game adds to."
+        end
+        program = cartridge.source_program or
+          raise ArgumentError, "A playing counted in passes takes a cartridge built here. A cartridge file cannot say its " \
+                               "passes. To fix this, give the game file, or leave out `in_passes:`."
+        return refuse_unknown_pass_variable!(program, in_passes) unless in_passes == true
+
+        problem = pass_count_problem(program) or return
+        raise ArgumentError, "This game #{problem}, so the same buttons on the same pass can play another game. To fix " \
+                             "this, keep a count in a variable of the game, and give its name: `in_passes: :steps`."
+      end
+
+      def self.pass_count_problem(program)
+        return "counts frames (`frames_since_power_on`, `once_a_frame` or a timer)" if IR::Frames.reads_frame_clock?(program)
+        return "waits for the screen in places of its own" unless IR::Frames.waits_only_at_loop_top?(program)
+
+        nil
+      end
+      private_class_method :pass_count_problem
+
+      # A variable that counts is one the game changes, so its name is written somewhere in the game.
+      def self.refuse_unknown_pass_variable!(program, name)
+        return if program.walk.any? { |node| %i[set add].include?(node.kind) && node.var == name }
+
+        raise ArgumentError, "`in_passes: #{name.inspect}` names a variable, and this game does not add to a variable " \
+                             "#{name}. To fix this, give the name of a variable that the game adds to, or give `in_passes: true`."
+      end
+      private_class_method :refuse_unknown_pass_variable!
 
       def self.refuse_lead_in_not_playthrough!(lead_in)
         return if lead_in.nil? || lead_in.is_a?(Playthrough)
@@ -276,14 +318,18 @@ module VBlank
         #
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
-        def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, &at_each_moment)
+        def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
+                      &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
           save = Playthrough.save_from(save)
           save = Playthrough.save_fitted_to(cartridge = Playthrough.cartridge_from(cartridge), save) if save
           folder = PictureFolder.at(pictures_in, steps.flat_map(&:names))
           cartridge = Playthrough.cartridge_from(cartridge)
-          game = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window)
-          playing = new(title, cartridge, game, at_each_moment, save: save, folder: folder, led_in: !lead_in.nil?)
+          Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
+          game = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
+                                                             count_passes: in_passes == true)
+          playing = new(title, cartridge, in_passes ? PassSteppedGame.new(game, in_passes) : game, at_each_moment,
+                        save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes)
           steps.each { |step| step.play(playing) }
           playing.played
         ensure
@@ -295,12 +341,14 @@ module VBlank
         # cartridge nobody has played, and +led_in+ whether a lead-in was played first:
         # both are what the tape says of where it started. +folder+ is where the picture
         # at each moment is written (see PictureFolder), or nil for none to be written.
-        def initialize(title, cartridge, game, at_each_moment, save:, folder:, led_in: false)
+        # +in_passes+ says what the counts are counted in, for the tape to say (see Tape).
+        def initialize(title, cartridge, game, at_each_moment, save:, folder:, led_in: false, in_passes: nil)
           @title = title
           @cartridge = cartridge
           @game = game
           @save = save
           @led_in = led_in
+          @in_passes = in_passes
           @at_each_moment = at_each_moment
           @folder = folder
           @taping = Tape::Taping.new
@@ -402,7 +450,7 @@ module VBlank
         # What this playing came to. The frames and the moments are the tape's own, so the
         # two can never disagree.
         def played
-          tape = Tape.recorded_on(@cartridge, @taping.steps, save: @save, led_in: @led_in)
+          tape = Tape.recorded_on(@cartridge, @taping.steps, save: @save, led_in: @led_in, in_passes: @in_passes)
           Played.new(frames: tape.frames, moments: tape.moments, game: @game, tape: tape,
                      pictures: @pictures, picture_files: @picture_files, save: save_left)
         end

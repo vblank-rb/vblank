@@ -31,13 +31,14 @@ module VBlank
         saying_errors_plainly do
           refuse_missing_cartridges!(cartridge_file)
           refuse_flags_beside_logic!
+          refuse_in_passes_beside_tape!
           playing = tape_or_playthrough(lead_in_flag: :lead_in)
           lead_in = lead_in_named(options[:lead_in])
           %i[write_tape write_save].each { |flag| refuse_unwritable_file!(flag) }
           cartridge = cartridge_at(cartridge_file)
           in_window_if_asked(cartridge) do |window|
             settings = { save: options[:save], lead_in: lead_in, pictures_in: options[:pictures_in], on: options[:on],
-                         window: window }.compact
+                         window: window, in_passes: in_passes_asked }.compact
             playing.play(cartridge, **settings).tap do |played|
               say_frames_and_moments(played, playing, cartridge)
               write_tape_and_save(played)
@@ -115,12 +116,27 @@ module VBlank
 
       def flag_of(setting) = "--#{setting.to_s.tr('_', '-')}"
 
+      # `--in-passes passes` counts the game loop's passes, and any other word is a variable's name.
+      def in_passes_asked
+        said = options[:in_passes] or return nil
+        said == Tape::COUNTS_PASSES ? true : said.to_sym
+      end
+
+      # A tape says for itself what it counts.
+      def refuse_in_passes_beside_tape!
+        return unless options[:in_passes] && options[:tape]
+
+        raise Refused, "--in-passes cannot go with --tape. A tape says what it counts. To fix this, remove --in-passes."
+      end
+
       # `--on logic` has no picture and no sound, and its frames are not the console's, so a tape
-      # made there does not play on a cartridge. It finds tactics and seeds.
+      # of frames made there does not play on a cartridge, and a tape counted in passes does.
       def refuse_flags_beside_logic!
         return unless options[:on] == LoweredGame::LOGIC
 
-        said = %i[window pictures_in write_tape write_save].find { |flag| options[flag] }
+        refused = %i[window pictures_in write_save]
+        refused << :write_tape unless options[:in_passes]
+        said = refused.find { |flag| options[flag] }
         return unless said
 
         raise Refused, "#{flag_of(said)} cannot go with --on logic. That way plays a game's rules with no picture and no " \
