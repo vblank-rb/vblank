@@ -990,12 +990,16 @@ module VBlank
         # scenery drawn from tiles. It is drawn over the painted picture and never into it,
         # so painting the picture again does not touch it, and it is in front of everything
         # the program paints there.
+        #
+        # +follows+ names a ColorList it is drawn with for good, from power-on, its pictures drawn
+        # in that list's own colours: its own colours are then the list's, and a target whose sprites
+        # and backgrounds share one table of colours needs no place in it for them. Absent otherwise.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
-                 layers: :list, layer_pick: :name, over_picture: :flag
+                 layers: :list, layer_pick: :name, over_picture: :flag, follows: :name
       end
 
       class OnTimer

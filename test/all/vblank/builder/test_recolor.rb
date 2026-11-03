@@ -400,6 +400,24 @@ class TestRecolor < Minitest::Test
     assert_equal colors_of(:yellow, :orange), [i.screen.pixel(1, 1), i.screen.pixel(5, 1)]
   end
 
+  # A sprite whose pictures are drawn in the list's colors, told to draw with the list and
+  # nothing else, is drawn with it for good, from power-on: its own colors are the list's.
+  # So it shows what the list holds before the line that says draw_with is reached.
+  def test_a_sprite_drawn_in_the_list_and_with_it_alone_follows_it_from_power_on
+    early = built do
+      image :logo, width: 8, height: 8, data: PLATE, colors: :slot
+      logo = sprite :logo, at: [40, 40]
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        recolor :slot, :warm
+        logo.draw_with :slot if pass > 8
+      end
+    end
+
+    assert_equal colors_of(:yellow, :orange), halves(early, frames: 4)
+  end
+
   # Before anything recolors it, the list holds the colors it was declared with.
   def test_a_background_drawn_with_the_list_shows_its_declared_colors_until_it_is_recolored
     waiting = background_and_ship_drawn_with_the_list do |plates|

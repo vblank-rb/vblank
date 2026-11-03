@@ -311,6 +311,8 @@ module VBlank
           users = @sprite_recolors.select { |recolors| recolors.draws_with?(name) }
           refuse_changing_list_without_sprites!(name) if users.empty?
           users.each { |user| refuse_sets_ambiguous_for!(user, name, list.recolors.names) }
+          drawn_in_list = ->(pose) { list_drawn_from(pose).last == declared_colors(name) }
+          users.each { |user| (boot = user.follow_changing_list_for_good(name, drawn_in_list)) && at_boot(boot) }
           prepend_to_program(list.node)
         end
         shared.each_value { |list| prepend_to_program(list.node) }

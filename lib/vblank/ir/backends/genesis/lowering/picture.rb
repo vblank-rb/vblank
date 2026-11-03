@@ -178,7 +178,9 @@ module VBlank
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
               poses.each do |name|
                 image = Assets::Image.of(picture_named(name))
-                if recolored?(name)
+                if (list = followed_list_of(name))
+                  @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
+                elsif recolored?(name)
                   @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
                 else
                   @art.sprite_picture(name, image)
@@ -202,6 +204,16 @@ module VBlank
             # (`recolor`) keeps a palette that is written over, as the colours it holds change; one that is
             # never changed shares a palette with any other list of the same colours.
             def recolored?(name) = @objects.values.any? { |obj| obj.poses.include?(name) && !obj.recolors.empty? }
+
+            # THE CHANGING LIST A PICTURE IS ALWAYS DRAWN WITH, or nil. A picture every sprite showing it draws
+            # with one list the game changes, for good and from power-on (Object#follows), is drawn in that list
+            # whatever the list holds, and its own colours are the list's as declared. So it is cut against the
+            # list's palette, and keeps no palette for its own colours: a title's sprite and its picture, both
+            # drawn with the list, then take one of the four between them.
+            def followed_list_of(name)
+              lists = @objects.values.select { |obj| obj.poses.include?(name) }.map(&:follows).uniq
+              lists.first if lists.length == 1
+            end
 
             # The colours of the picture's own list, see-through left out.
             def own_colors(image) = image.colors.drop(1).map { |color| color & 0x7FFF }

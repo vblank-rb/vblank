@@ -120,6 +120,35 @@ class TestGenesisRecolor < Minitest::Test
     end
   end
 
+  # A title's picture and the sprite over it, both drawn in the colours of one changing list and
+  # with it alone: the sprite keeps no palette for its own colours, which are the list's, so the
+  # two take one palette. Three pictures of fifteen colours each take the other three: the game
+  # fits only if the background and the sprite are drawn from one.
+  def test_a_sprite_drawn_with_a_changing_list_alone_keeps_no_palette_of_its_own
+    checked(frames: 20) do
+      colors :slot, OWN
+      sets = (0...15).map { |n| colors :"set#{n}", [:transparent, rgb(n, 31 - n, 4), rgb(31 - n, n, 8)] }
+      image :plate, width: 8, height: 8, data: SHIP, colors: :slot
+      image :logo, width: 8, height: 8, data: SHIP, colors: :slot
+      tiles :hull, "#" => :plate
+      plates = background :plates, tiles: :hull, map: ["#####"]
+      plates.draw_with :slot
+      logo = sprite :logo, at: [40, 40]
+      logo.draw_with :slot
+      3.times do |row|
+        name = :"busy#{row}"
+        # Fifteen colours a Genesis tells apart: it keeps the top three bits of each channel.
+        image name, width: 8, height: 8, data: Array.new(64) { |i| rgb((i % 15 % 8) * 4, ((i % 15 / 8) + (row * 2)) * 4, 0) }
+        sprite name, at: [80 + (row * 16), 40]
+      end
+      step = 0
+      game_loop do
+        step += 1
+        recolor :slot, sets, showing: step % 17
+      end
+    end
+  end
+
   def test_more_lists_than_a_genesis_has_palettes_for_are_refused_in_words
     error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
       Genesis.new.build(program_of do

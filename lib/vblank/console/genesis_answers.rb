@@ -105,7 +105,9 @@ module VBlank
                       "holds four lists, for the sprites and the backgrounds together."),
         recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
                        "game, written over in the blank. The sprites and the backgrounds drawn with it are drawn " \
-                       "from that one list, however many sets it holds in turn. A sprite drawn with several lists " \
+                       "from that one list, however many sets it holds in turn. A sprite whose pictures are drawn " \
+                       "in the list's colours, and drawn with that list alone, keeps no list for its own colours. " \
+                       "A sprite drawn with several lists " \
                        "(`draw_with [...], showing:`) takes one of the four for each list."),
         color_walk: works,
         colors_in_use: works,

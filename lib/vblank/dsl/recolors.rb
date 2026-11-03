@@ -31,8 +31,13 @@ module VBlank
       # drawn. Left out it is a sprite's: each name one list, matched by place to the list its
       # pictures were drawn from. A background drawn from several lists hands in its own, where
       # a name is one version of every list at once (see Background#draw_with).
-      def initialize(builder, subject:, poses:, colors_for: nil, words: DRAW_WITH)
+      #
+      # +choice_var+ is the variable a single sprite keeps its choice in, nil for a pool, whose
+      # choice is a slot per instance.
+      def initialize(builder, subject:, poses:, colors_for: nil, words: DRAW_WITH, choice_var: nil)
         @builder = builder
+        @choice_var = choice_var
+        @told_own = false
         @subject = subject # what the sprite is called in an error
         @poses = poses
         # A sprite's lists are the ones a changing list can stand among, so the build keeps
@@ -64,6 +69,7 @@ module VBlank
       # +choice+ is the game's own variable.
       def write_choice(choice, names, showing)
         if names.nil?
+          @told_own = true
           choice.store! IR::Build::NO_RECOLOR
         else
           start = list_offset_for(names)
@@ -115,6 +121,22 @@ module VBlank
 
       # The scenes the objects drawn with these lists belong to, nil standing for none.
       def scenes = @objects.map(&:scene).uniq
+
+      # DRAWN WITH THE CHANGING LIST +name+ FOR GOOD, when that is what the game wrote: a single
+      # sprite only ever told `draw_with name`, never `:own` or another list, and its pictures
+      # drawn in +name+'s own colours (+drawn_in_list+ asks that of a picture). Its colours are
+      # then the list's whatever the game says when, so it is told so from power-on (its choice
+      # set at boot), and each object says which list it follows: a target whose sprites and
+      # backgrounds share one table of colours keeps no place in it for the sprite's own
+      # colours, which are the list's. Anything else drawn with the list is left as it was.
+      #
+      # Hands back the statement that sets the choice at boot, nil for a sprite left as it was.
+      def follow_changing_list_for_good(name, drawn_in_list)
+        return unless @choice_var && !@told_own && @names == [name] && @poses.all?(&drawn_in_list)
+
+        @objects.each { |node| node.follows = name }
+        IR::Build.set(@choice_var, IR::Build.int(0))
+      end
 
       # From now on the objects hold a NAME where they held the colours of a list in +held+,
       # which maps a list's name to the changing list it is drawn through: itself, for a list
