@@ -289,6 +289,24 @@ module VBlank
                          "Give the Verifier `frames:` of 1 or more, or call `step` first.")
       end
 
+      # THE PICTURE ON SCREEN WRITTEN AS A PNG at +path+, which is handed back: the frame the run
+      # stopped on, in the colours a console shows, for a person to look at. A Film is made of
+      # these, one for each frame it shows.
+      #
+      # @return [String]
+      def screenshot(path)
+        Graphics::PNG.write(path, width: screen_width, height: screen_height, pixels: frame_gba)
+      end
+
+      # Shut the emulator and remove the cartridge's file now, rather than whenever Ruby collects
+      # this reader. Something that opens one cartridge after another (Film plays each side in
+      # turn) calls this so only one emulator is running at a time. Nothing can be read after it.
+      def close
+        @probe.close if @probe.respond_to?(:close) && !@probe.closed?
+        @tempfile&.close!
+        nil
+      end
+
       # Check if the entire screen is black (nothing rendered).
       #
       # THIS ONE IS ASKED OF WHAT THE EMULATOR HOLDS, eight bits a channel, and so it is

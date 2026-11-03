@@ -142,6 +142,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Measuring a finished game — `.claude/dsl/measuring.md`
 
 - `rom.profile` / `vblank profile game.rb` — where the frames went; `rom.sprite_memory`.
+- `Diagnostics::Film.make "door.mp4", sides:, parts:, keys:` — an MP4 of one running cartridge, or two side by side.
 
 ## Playing a finished game with nobody at the controls — `.claude/dsl/playthroughs.md`
 

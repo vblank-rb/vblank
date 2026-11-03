@@ -13,6 +13,7 @@ require_relative "diagnostics/sm83_listing" # ...and a routine of a Game Boy Col
 require_relative "diagnostics/emulator" # the one seam to the emulator backend; swap emulators here
 require_relative "diagnostics/recorded_sound" # the sound of a run, the older part of it in a scratch file
 require_relative "diagnostics/verifier" # ...and reading real pixels and real sound back through it
+require_relative "diagnostics/film" # ...and a film of one running, or of two side by side, as an MP4
 require_relative "diagnostics/sound_recording" # what a game sounds like on the cartridge, the desktop build or as Ruby
 require_relative "diagnostics/counted_passes" # ...the passes of a console whose runtime counts them
 require_relative "diagnostics/snes_memory" # ...its memory, work RAM and the Super FX chip's, by address
