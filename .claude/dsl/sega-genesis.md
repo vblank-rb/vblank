@@ -93,6 +93,8 @@ and a test fails when the two differ. The Advance's answers are in
 - `var` — works: a variable is the same 32-bit whole number as on the Advance.
 - `save_var` — works: kept in battery-backed RAM on the cartridge.
 - `save_data` — works: kept in battery-backed RAM on the cartridge.
+- `part` — works: the same as on the Advance.
+- `start_over` — works: the same as on the Advance.
 - `clock` — **refused**: a Genesis cartridge has no clock chip. Ask the player for the time on a screen of the game's own, if the game needs it.
 - `saves_keep_everything` — works: the same as on the Advance.
 - `set` — works: the same as on the Advance.

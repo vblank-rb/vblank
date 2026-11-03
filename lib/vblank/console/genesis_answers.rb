@@ -167,6 +167,7 @@ module VBlank
         var: works("a variable is the same 32-bit whole number as on the Advance."),
         save_var: works("kept in battery-backed RAM on the cartridge."),
         save_data: works("kept in battery-backed RAM on the cartridge."),
+        part: works, start_over: works,
         clock: refused("a Genesis cartridge has no clock chip. Ask the player for the time on a screen of " \
                        "the game's own, if the game needs it."),
         saves_keep_everything: works,

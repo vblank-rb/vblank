@@ -170,6 +170,7 @@ module VBlank
                         "cannot keep a save yet."),
         save_data: works("kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip " \
                          "cannot keep a save yet."),
+        part: works, start_over: works,
         clock: refused("a Super Nintendo cartridge built here has no clock chip. Ask the player for the time " \
                        "on a screen of the game's own, if the game needs it."),
         saves_keep_everything: works,

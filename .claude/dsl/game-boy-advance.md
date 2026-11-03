@@ -39,10 +39,10 @@ These work as their group files say:
 `draw_in_order`, `hide_sprites`, `picture_groups`, `pool`, `box`, `tiles`, `canvas`,
 `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `draw_text`, `draw_number`, `font`,
 `text_width`, `text_height`, `menu`, `var`, `save_var`, `save_data`, `clock`,
-`saves_keep_everything`, `set`, `add`, `add_var`, `sub`, `sub_var`, `copy`, `negate`, `negate!`,
-`flip`, `flip!`, `abs`, `abs!`, `negate_abs`, `negate_abs!`, `clamp`, `clamp!`, `approach`,
-`approach!`, `list`, `if_eq`, `if_ne`, `if_gt`, `if_lt`, `if_ge`, `if_le`, `if_gte`, `if_lte`,
-`func`, `call`, `scene`, `case_var`, `seed`, `randomize`, `roll`, `rand`, `chance`,
-`random_numbers`, `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`,
-`play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`,
-`fade_music_out`, `sound_effects`, `sample`, `instrument`.
+`saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`, `sub`, `sub_var`,
+`copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`, `negate_abs!`,
+`clamp`, `clamp!`, `approach`, `approach!`, `list`, `if_eq`, `if_ne`, `if_gt`, `if_lt`, `if_ge`,
+`if_le`, `if_gte`, `if_lte`, `func`, `call`, `scene`, `case_var`, `seed`, `randomize`, `roll`,
+`rand`, `chance`, `random_numbers`, `enable_sound`, `define_sound`, `beep`, `noise`, `wave`,
+`stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`,
+`fade_music_in`, `fade_music_out`, `sound_effects`, `sample`, `instrument`.
