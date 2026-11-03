@@ -167,6 +167,78 @@ module BitOperationsCases
     [{ up: 0, down: -1, down_positive: 0 }, program]
   end
 
+  # Numbers either side of nought and of each half's edge, a byte's edge among them, since a
+  # console with 16-bit halves may move a whole byte or half at once and work out only the places
+  # left over.
+  EDGES = [0, 1, -1, 0x7F, 0x80, 0x7FFF, 0x8000, -0x8000, 0xFFFF, -0x10000, 0x12345678, -0x12345678,
+           0x7FFFFFFF, -0x80000000].freeze
+
+  # Every count from 0 to 31 written down, both ways, on each of EDGES: the count of numbers that
+  # come out other than Ruby's, which must be none.
+  private def every_written_count_case
+    wrong_left = 0
+    wrong_right = 0
+    game = proc do
+      screen :bitmap
+      left = var :wrong_left, 0
+      right = var :wrong_right, 0
+      EDGES.each_with_index do |written, i|
+        number = var :"edge#{i}", written
+        32.times do |count|
+          left += 1 if (number << count) != VBlank::IR::Int32.shift_left(written, count)
+          right += 1 if (number >> count) != VBlank::IR::Int32.shift_right(written, count)
+        end
+      end
+      halt
+    end
+    [{ wrong_left: wrong_left, wrong_right: wrong_right }, game]
+  end
+
+  # A written mask that keeps one half whole and decides the other whatever it held — `& 0xFFFF`
+  # empties the high half and keeps the low one — beside masks that do neither, on each side of
+  # the operator, against Ruby's answers.
+  private def masks_on_halves_case
+    masks = [0xFFFF, -0x10000, 0xFFFF00FF, 0x00FF0000, 0, -1]
+    expected = {}
+    EDGES.each_with_index do |written, i|
+      masks.each_with_index do |mask, m|
+        expected[:"and#{i}_#{m}"] = VBlank::IR::Int32.wrap(written & mask)
+        expected[:"or#{i}_#{m}"] = VBlank::IR::Int32.wrap(written | mask)
+        expected[:"xor#{i}_#{m}"] = VBlank::IR::Int32.wrap(mask ^ written)
+      end
+    end
+    game = proc do
+      screen :bitmap
+      EDGES.each_with_index do |written, i|
+        number = var :"edge#{i}", written
+        masks.each_with_index do |mask, m|
+          var(:"and#{i}_#{m}", 0).store!(number & mask)
+          var(:"or#{i}_#{m}", 0).store!(number | mask)
+          var(:"xor#{i}_#{m}", 0).store!(mask ^ number)
+        end
+      end
+      halt
+    end
+    [expected, game]
+  end
+
+  # Counts written down past either end, on a number the game holds, so the build cannot settle
+  # the shift itself and has to write it: an empty number, or only the sign.
+  private def written_count_past_the_end_on_a_variable_case
+    program = B.program(
+      B.screen(:bitmap),
+      B.set(:low, B.int(-256)),
+      B.set(:high, B.int(0x40000000)),
+      B.set(:up, B.binop(:<<, B.var_ref(:high), B.int(40))),
+      B.set(:up_back, B.binop(:<<, B.var_ref(:high), B.int(-1))),
+      B.set(:down, B.binop(:>>, B.var_ref(:low), B.int(40))),
+      B.set(:down_back, B.binop(:>>, B.var_ref(:high), B.int(-1))),
+      B.set(:down_whole, B.binop(:>>, B.var_ref(:low), B.int(31))),
+      B.halt,
+    )
+    [{ up: 0, up_back: 0, down: -1, down_back: 0, down_whole: -1 }, program]
+  end
+
   private def build_program(&block)
     builder = Builder.new
     builder.instance_eval(&block)
@@ -218,6 +290,60 @@ class TestBitOperations < Minitest::Test
 
   def test_a_written_down_count_past_the_end_is_settled_by_the_build
     expected, program = written_down_count_case
+
+    interpreter = game_player.run(program)
+    expected.each { |name, want| assert_equal want, interpreter[name], "the interpreter's #{name}" }
+  end
+
+  def test_every_written_down_count_shifts_as_ruby_does
+    expected, game = every_written_count_case
+    assert_computes(expected, &game)
+  end
+
+  def test_a_written_mask_on_either_side_matches_ruby
+    expected, game = masks_on_halves_case
+    assert_computes(expected, &game)
+  end
+
+  # A variable on the left and a sum worked out on the right: a console may read the variable
+  # where it is after working the right side out, and it must still take the left away from the
+  # right the right way round, and compare them the right way round.
+  def test_a_variable_beside_a_worked_out_right_side
+    a = -0x12345
+    b = 0x7654321
+    int = VBlank::IR::Int32
+    shifted = int.shift_right(b, 3)
+    expected = {
+      less: int.wrap(a - shifted), more: int.wrap(a + shifted), masked: int.wrap(a & (b << 4)),
+      above: a < shifted ? 1 : 0, below: shifted < a ? 1 : 0, same: a == (b & 0xFFFF) ? 1 : 0,
+      grown: int.wrap(a + (b & 0xFF0)), shrunk: int.wrap(a - (b >> 9))
+    }
+    assert_computes(expected) do
+      screen :bitmap
+      left = var :left, a
+      right = var :right, b
+      less = var :less, 0
+      more = var :more, 0
+      masked = var :masked, 0
+      above = var :above, 0
+      below = var :below, 0
+      same = var :same, 0
+      grown = var :grown, a
+      shrunk = var :shrunk, a
+      less = left - (right >> 3)
+      more = left + (right >> 3)
+      masked = left & (right << 4)
+      above = 1 if left < (right >> 3)
+      below = 1 if left > (right >> 3)
+      same = 1 if left == (right & 0xFFFF)
+      grown += right & 0xFF0
+      shrunk -= right >> 9
+      halt
+    end
+  end
+
+  def test_a_written_down_count_past_the_end_on_a_variable_empties_it
+    expected, program = written_count_past_the_end_on_a_variable_case
 
     interpreter = game_player.run(program)
     expected.each { |name, want| assert_equal want, interpreter[name], "the interpreter's #{name}" }

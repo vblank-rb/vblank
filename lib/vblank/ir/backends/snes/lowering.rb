@@ -102,6 +102,17 @@ module VBlank
           IN_PLACE_SUMS = Ractor.make_shareable({ :+ => %i[clc adc], :- => %i[sec sbc], :& => [nil, :and_a],
                                                   :| => [nil, :ora], :^ => [nil, :eor] })
           COMPARISONS = %i[< <= > >= == !=].freeze
+          BITWISE = %i[& | ^].freeze
+
+          # The shifts written in place when their count is a number written in the program
+          # (#emit_shift_by_written_count), by the method that writes each.
+          SHIFTS_IN_PLACE = Ractor.make_shareable({ :<< => :emit_shift_left_of_r0, :>> => :emit_shift_right_of_r0 })
+
+          # What a half of a bitwise sum comes to when the other side's half is a number written in
+          # the program: the other half as it was, or that number itself whatever the other half is.
+          # Any other number is worked out (#emit_bitwise_halves).
+          HALF_KEPT = Ractor.make_shareable({ :& => 0xFFFF, :| => 0, :^ => 0 })
+          HALF_WRITTEN = Ractor.make_shareable({ :& => 0, :| => 0xFFFF })
 
           # What the game's code is to the author, for a cartridge too full for it (Linker::TooBig).
           DATA = W65816::Holding.new(what: "the game's tables", fix: "make its tables shorter, or use fewer of them")
@@ -535,11 +546,14 @@ module VBlank
 
           # `x = x + n` and `x = x - n`, added where x is when n is a number written in the program or
           # a variable: six instructions and no call.
+          #
+          # When n has to be worked out it is worked out into R0 first and added from there: x is
+          # only read and written by the sum itself, so working n out first reads the same x.
           def emit_sum(name, op, operand)
             right = operand_halves(operand)
             unless right
-              value(Build.binop(op, Build.var_ref(name), operand))
-              return store(name)
+              value(operand)
+              right = [@asm.direct(R0), @asm.direct(R0 + 2)]
             end
 
             at = place_of(name)
@@ -807,28 +821,43 @@ module VBlank
             return list_call("rt_list_get", node, node.index) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
-            value(node.index)
-            emit_slot_into_x(place, width, R0, "rt_list_outside_from_r0")
+            emit_slot_into_x(place, width, index_halves(node.index))
             emit_read_slot_at_x(place + Runtime::Lists::HEADER, width)
           end
 
-          # Reference#exec_list_set: the index worked out, then the value, then the test.
+          # Reference#exec_list_set: the index worked out, then the value, then the test. An index
+          # that is a variable or a written number is read where it is, after the value: working a
+          # value out never changes a variable, so it reads the same.
           def emit_list_set(node)
             return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
             halves = operand_halves(node.value)
+            index = operand_halves(node.index)
             if halves
-              value(node.index)
-              emit_slot_into_x(place, width, R0, "rt_list_outside_from_r0")
+              emit_slot_into_x(place, width, index_halves(node.index))
+            elsif index
+              value(node.value)
+              emit_slot_into_x(place, width, index)
+              halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             else
               push_value(node.index)
               value(node.value)
               pull_into(R1)
-              emit_slot_into_x(place, width, R1, "rt_list_outside")
+              emit_slot_into_x(place, width, [@asm.direct(R1), @asm.direct(R1 + 2)])
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             end
             emit_write_slot_at_x(place + Runtime::Lists::HEADER, width, halves)
+          end
+
+          # Where the two halves of a list's index are: where a variable or a written number already
+          # is, or R0 once it is worked out.
+          def index_halves(index)
+            halves = operand_halves(index)
+            return halves if halves
+
+            value(index)
+            [@asm.direct(R0), @asm.direct(R0 + 2)]
           end
 
           def front_dropped_lists
@@ -839,17 +868,25 @@ module VBlank
             @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
           end
 
-          # X at how far into its slots the item the number at +index+ names is. An index outside the
-          # list goes to +outside+, which stops the game in the interpreter's words and never returns.
-          def emit_slot_into_x(place, width, index, outside)
+          # X at how far into its slots the item the number in +index+ (its two halves) names is. An
+          # index outside the list is handed to the runtime, in R0 or R1, which stops the game in the
+          # interpreter's words and never returns.
+          def emit_slot_into_x(place, width, index)
             inside = fresh("inside_the_list")
             out = fresh("outside_the_list")
-            @asm.lda(@asm.direct(index + 2))
+            @asm.lda(index[1])
             @asm.bne(out)
-            @asm.lda(@asm.direct(index))
+            @asm.lda(index[0])
             @asm.cmp(@asm.long(place, Runtime::Lists::LENGTH))
             @asm.bcc(inside)
             @asm.label(out)
+            outside = index.first == @asm.direct(R0) ? "rt_list_outside_from_r0" : "rt_list_outside"
+            unless [@asm.direct(R0), @asm.direct(R1)].include?(index.first)
+              2.times do |half|
+                @asm.lda(index[half])
+                @asm.sta(@asm.direct(R1 + (2 * half)))
+              end
+            end
             @asm.ldx(place & 0xFFFF)
             @asm.ldy(place >> 16)
             call_routine(outside)
@@ -1185,20 +1222,20 @@ module VBlank
           def compare(node)
             op = node.op
             left, right = %i[> <=].include?(op) ? [node.rhs, node.lhs] : [node.lhs, node.rhs]
-            with_right_halves(left, right) do |halves|
+            with_both_halves(left, right) do |lefts, halves|
               if %i[== !=].include?(op)
                 differ = fresh("differ")
-                @asm.lda(@asm.direct(R0))
+                @asm.lda(lefts[0])
                 @asm.cmp(halves[0])
                 @asm.bne(differ)
-                @asm.lda(@asm.direct(R0 + 2))
+                @asm.lda(lefts[1])
                 @asm.cmp(halves[1])
                 @asm.label(differ)
               else
                 signed = fresh("signed")
-                @asm.lda(@asm.direct(R0))
+                @asm.lda(lefts[0])
                 @asm.cmp(halves[0])
-                @asm.lda(@asm.direct(R0 + 2))
+                @asm.lda(lefts[1])
                 @asm.sbc(halves[1])
                 @asm.bvc(signed)
                 @asm.eor(0x8000)
@@ -1243,17 +1280,19 @@ module VBlank
             return if node.op == :* && emit_product_by_power_of_two(node)
             return if node.op == :% && emit_remainder_by_power_of_two(node)
             return if node.op == :/ && emit_quotient_by_power_of_two(node)
+            return if SHIFTS_IN_PLACE.key?(node.op) && emit_shift_by_written_count(node)
 
             if (routine = CALLED_SUMS[node.op])
               @divides ||= %i[/ %].include?(node.op)
               return runtime_call(routine, [node.lhs, node.rhs])
             end
+            return emit_bitwise_halves(node) if BITWISE.include?(node.op)
 
             carry, sum = IN_PLACE_SUMS.fetch(node.op)
-            with_right_halves(node.lhs, node.rhs) do |halves|
-              @asm.public_send(carry) if carry
+            with_both_halves(node.lhs, node.rhs) do |lefts, halves|
+              @asm.public_send(carry)
               2.times do |i|
-                @asm.lda(@asm.direct(R0 + (2 * i)))
+                @asm.lda(lefts[i])
                 @asm.public_send(sum, halves[i])
                 @asm.sta(@asm.direct(R0 + (2 * i)))
               end
@@ -1370,7 +1409,10 @@ module VBlank
 
           def value_of_mul_fix(node) = runtime_call("rt_mul_fix", [node.lhs, node.rhs, fraction_bits(node)])
           def value_of_div_fix(node) = runtime_call("rt_div_fix", [node.lhs, node.rhs, fraction_bits(node)])
-          def value_of_shift_right(node) = runtime_call("rt_shr32", [node.operand, Build.int(node.bits)])
+          def value_of_shift_right(node)
+            value(node.operand)
+            emit_shift_right_of_r0(node.bits)
+          end
 
           # A chance holds when the random draw lands below the threshold.
           def value_of_chance(node) = value(Build.binop(:<, node.draw, Build.int(node.percent)))
@@ -1479,6 +1521,25 @@ module VBlank
             yield [@asm.direct(R1), @asm.direct(R1 + 2)]
           end
 
+          # The block handed where the two halves of each side are. A side that needs nothing worked
+          # out is read where it is. When only the right side needs working out, it is worked out
+          # into R0 and the left read where it is, with nothing pushed: reading a variable or a
+          # written number gives the same before or after, so the order cannot show. Otherwise the
+          # left side is worked out into R0 as #with_right_halves has it.
+          def with_both_halves(left, right)
+            lefts = operand_halves(left)
+            rights = operand_halves(right)
+            return yield(lefts, rights) if lefts && rights
+
+            in_r0 = [@asm.direct(R0), @asm.direct(R0 + 2)]
+            if lefts
+              value(right)
+              return yield(lefts, in_r0)
+            end
+
+            with_right_halves(left, right) { |halves| yield(in_r0, halves) }
+          end
+
           # The number +node+ worked out into R0 and pushed, high half first, so the stack holds it
           # low half on top.
           def push_value(node)
@@ -1507,8 +1568,7 @@ module VBlank
 
           # A quotient by a positive power of two written in the program, as a shift. A shift right
           # rounds down and a quotient rounds towards nought, so a negative number has the divisor
-          # less one added first: -7 / 2 is (-7 + 1) >> 1, which is -3. Two places or fewer are written
-          # here, and rt_shr32 does more. True when it was done so.
+          # less one added first: -7 / 2 is (-7 + 1) >> 1, which is -3. True when it was done so.
           def emit_quotient_by_power_of_two(node)
             divisor = folded(node.rhs)
             return false unless divisor&.positive? && (divisor & (divisor - 1)).zero?
@@ -1531,20 +1591,95 @@ module VBlank
             true
           end
 
-          def emit_shift_right_of_r0(places)
-            if places <= 2
-              places.times do
-                @asm.lda(@asm.direct(R0 + 2))
-                @asm.cmp(0x8000) # the sign into the carry, to come in at the top
-                @asm.ror(@asm.direct(R0 + 2))
-                @asm.ror(@asm.direct(R0))
-              end
-            else
-              @asm.lda(places)
-              @asm.sta(@asm.direct(Memory.register(1)))
-              @asm.stz(@asm.direct(Memory.register(1) + 2))
-              @asm.jsl(@asm.long("rt_shr32"))
+          # A SHIFT BY A NUMBER WRITTEN IN THE PROGRAM is written in place, never as a call of
+          # rt_shl32 or rt_shr32, which move the number a bit at a time round a loop. The 65816 can
+          # read and write 16 bits at any byte, so a shift by a whole byte is a move: a load from
+          # one byte along and a store, two instructions a half. A shift by sixteen is a move of
+          # one half into the other. What is left after the bytes, seven places at most, is a turn
+          # of A and a turn of the other half in memory for each place, with no count to keep and
+          # no loop. `x >> 8` is then nine instructions, where the runtime took eight turns of a
+          # loop of six, and the call and the count before them.
+
+          # R0 shifted left +places+ (Int32.shift_left): emptied for a count of 32 or more, or below
+          # nought.
+          def emit_shift_left_of_r0(places)
+            unless places.between?(0, 31)
+              @asm.stz(@asm.direct(R0))
+              return @asm.stz(@asm.direct(R0 + 2))
             end
+
+            if places >= 16
+              @asm.lda(@asm.direct(R0))
+              @asm.sta(@asm.direct(R0 + 2))
+              @asm.stz(@asm.direct(R0))
+              places -= 16
+            end
+            if places >= 8
+              @asm.lda(@asm.direct(R0 + 1)) # bytes 1 and 2, to be bytes 2 and 3
+              @asm.sta(@asm.direct(R0 + 2))
+              @asm.lda(@asm.direct(R0))
+              @asm.xba # byte 0 up to be byte 1, and nought below it
+              @asm.and_a(0xFF00)
+              @asm.sta(@asm.direct(R0))
+              places -= 8
+            end
+            return if places.zero?
+
+            @asm.lda(@asm.direct(R0))
+            places.times do
+              @asm.asl # the low half's top bit into the carry...
+              @asm.rol(@asm.direct(R0 + 2)) # ...and in at the bottom of the high half
+            end
+            @asm.sta(@asm.direct(R0))
+          end
+
+          # R0 shifted right +places+, rounding down as the arithmetic shift does
+          # (Int32.shift_right): only its sign is left for a count of 31 or more, or below nought.
+          def emit_shift_right_of_r0(places)
+            return emit_sign_of_r0 unless places.between?(0, 30)
+
+            if places >= 16
+              emit_sign_of_r0(low: false)
+              places -= 16
+            end
+            if places >= 8
+              done = fresh("byte_signed")
+              @asm.lda(@asm.direct(R0 + 1)) # bytes 1 and 2, to be bytes 0 and 1
+              @asm.sta(@asm.direct(R0))
+              @asm.lda(@asm.direct(R0 + 2))
+              @asm.xba # byte 3 down to be byte 2...
+              @asm.and_a(0x00FF)
+              @asm.cmp(0x0080)
+              @asm.bcc(done)
+              @asm.ora(0xFF00) # ...and its sign above it
+              @asm.label(done)
+              @asm.sta(@asm.direct(R0 + 2))
+              places -= 8
+            end
+            return if places.zero?
+
+            @asm.lda(@asm.direct(R0 + 2))
+            places.times do
+              @asm.cmp(0x8000) # the sign into the carry, to come in at the top
+              @asm.ror # the high half's bottom bit into the carry...
+              @asm.ror(@asm.direct(R0)) # ...and in at the top of the low half
+            end
+            @asm.sta(@asm.direct(R0 + 2))
+          end
+
+          # R0's high half moved into its low half, and the high half made its sign: every bit one
+          # for a negative number and nought otherwise. With +low+, the low half is made the sign
+          # too, which is what a shift right too far for any bit to be left gives.
+          def emit_sign_of_r0(low: true)
+            positive = fresh("sign_positive")
+            @asm.ldx(0)
+            @asm.lda(@asm.direct(R0 + 2))
+            @asm.sta(@asm.direct(R0)) unless low
+            @asm.bpl(positive)
+            @asm.dex
+            @asm.label(positive)
+            @asm.stx(@asm.direct(R0)) if low
+            @asm.stx(@asm.direct(R0 + 2))
           end
 
           # A product by a power of two up to 16 written in the program, as shifts of the two halves —
@@ -1562,6 +1697,80 @@ module VBlank
               return true
             end
             false
+          end
+
+          # A shift whose count is a number written in the program, written in place
+          # (#emit_shift_left_of_r0). True when it was done so.
+          def emit_shift_by_written_count(node)
+            count = folded(node.rhs)
+            return false unless count
+
+            value(node.lhs)
+            send(SHIFTS_IN_PLACE.fetch(node.op), count)
+            true
+          end
+
+          # `&`, `|` and `^`, a half at a time, each half read from where it is: a variable's own
+          # place, or a number written in the program, without copying it into R0 first. A half
+          # that a written number leaves as it was is only moved, and one it decides whatever the
+          # other half is is stored as it is, so `item & 0xFFFF` keeps the low half and is one STZ
+          # for the high one, where every half worked out is a load, a sum and a store.
+          #
+          # The three are the same either way round, so the side that needs nothing worked out, and
+          # of two such the written number, is taken as the right.
+          def emit_bitwise_halves(node)
+            first = node.lhs
+            left = operand_halves(node.lhs)
+            right = operand_halves(node.rhs)
+            if left && (!right || (written_half(left.first) && !written_half(right.first)))
+              first = node.rhs
+              left, right = right, left
+            end
+            return emit_bitwise_worked_out(node) unless right
+
+            unless left
+              value(first)
+              left = [@asm.direct(R0), @asm.direct(R0 + 2)]
+            end
+            sum = IN_PLACE_SUMS.fetch(node.op).last
+            2.times do |i|
+              to = @asm.direct(R0 + (2 * i))
+              written = written_half(right[i])
+              if written && written == HALF_WRITTEN[node.op]
+                store_half(written, to)
+              elsif written && written == HALF_KEPT[node.op]
+                next if left[i] == to
+
+                @asm.lda(left[i])
+                @asm.sta(to)
+              else
+                @asm.lda(left[i])
+                @asm.public_send(sum, right[i])
+                @asm.sta(to)
+              end
+            end
+          end
+
+          # A bitwise sum whose two sides both have to be worked out (#with_both_halves).
+          def emit_bitwise_worked_out(node)
+            sum = IN_PLACE_SUMS.fetch(node.op).last
+            with_both_halves(node.lhs, node.rhs) do |lefts, halves|
+              2.times do |i|
+                @asm.lda(lefts[i])
+                @asm.public_send(sum, halves[i])
+                @asm.sta(@asm.direct(R0 + (2 * i)))
+              end
+            end
+          end
+
+          # The number an operand half is, when it is one written in the program; nil otherwise.
+          def written_half(half) = (half.value if half&.mode == :imm && half.value.is_a?(Integer))
+
+          def store_half(number, to)
+            return @asm.stz(to) if number.zero?
+
+            @asm.lda(number)
+            @asm.sta(to)
           end
 
           # A runtime routine taking +args+ in R0, R1, R2... Each that needs working out is worked out

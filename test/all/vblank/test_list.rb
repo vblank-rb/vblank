@@ -265,6 +265,39 @@ class TestList < Minitest::Test
     assert_match(/out of range/i, err.message)
   end
 
+  # The index a variable holds, read where the variable is rather than worked out first, and past
+  # the end in its high half too.
+  def test_indexing_out_of_range_by_a_variable_raises
+    [3, 70_000, -1].each do |far|
+      err = assert_raises(Reference::ProgramError) do
+        interpret do
+          body = list :body, capacity: 8, width: :half
+          body.push 10
+          at = var :at, far
+          oops = var :oops, 0
+          oops = body[at]
+          halt
+        end
+      end
+      assert_match(/out of range/i, err.message, "reading at #{far}")
+    end
+  end
+
+  def test_writing_out_of_range_by_a_variable_raises
+    [3, 70_000].each do |far|
+      err = assert_raises(Reference::ProgramError) do
+        interpret do
+          body = list :body, capacity: 8
+          body.push 10
+          at = var :at, far
+          body[at] = at + 1
+          halt
+        end
+      end
+      assert_match(/out of range/i, err.message, "writing at #{far}")
+    end
+  end
+
   def test_using_a_list_before_it_is_created_raises
     # Built straight from the IR: the DSL can't express this (a handle only comes
     # from `list`), but a stray push must still fail loudly rather than silently.
