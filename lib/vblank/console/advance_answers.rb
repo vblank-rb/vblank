@@ -44,7 +44,7 @@ module VBlank
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
 
         # --- backgrounds and layers ---
-        tiles: works, canvas: works, tile_pictures: works, layers: works, layer: works,
+        tiles: works, canvas: works, tile_pictures: works, sprite_tiles: works, layers: works, layer: works,
         background: works("`above_row:` is refused: this build does not make it yet. `show_only_inside` uses the " \
                           "display's second window. One background at a time can be held to a box. A game " \
                           "that holds one cannot also have a light, a status bar, a fade held to part of the " \

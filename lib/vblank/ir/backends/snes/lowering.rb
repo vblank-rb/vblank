@@ -82,7 +82,8 @@ module VBlank
           # day the Super Nintendo does it; test_snes_kind_coverage.rb holds the list and the tables
           # above to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
-                                                    "the picture" => %i[show_picture_group data_byte]
+                                                    "the picture" => %i[show_picture_group data_byte],
+                                                    "sprite tiles the game loads" => %i[load_sprite_tiles]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by

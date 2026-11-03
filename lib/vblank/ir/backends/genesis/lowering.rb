@@ -88,6 +88,7 @@ module VBlank
                                                     "the status bar" => %i[place_bar],
                                                     "backgrounds bent row by row" => %i[scroll_rows],
                                                     "tiles painted from a list" => %i[copy_tiles copy_owed_tiles],
+                                                    "sprite tiles the game loads" => %i[load_sprite_tiles],
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at],
                                                     "save memory" => %i[save_init save_store save_write save_erase

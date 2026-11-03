@@ -97,6 +97,8 @@ module VBlank
         # ...or a run of its tiles painted from a list, which changes pixels, not depth.
         copy_tiles: :free,
         copy_owed_tiles: :free,
+        # ...or sprite tiles loaded, which change pixels of every pose drawn from them.
+        load_sprite_tiles: :free,
         background_colors: :free,
         # ...or a list of colours holding other colours, which reaches every sprite drawn
         # with it, at whatever depth each one is.

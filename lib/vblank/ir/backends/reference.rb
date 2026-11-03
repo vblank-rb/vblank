@@ -200,6 +200,8 @@ module VBlank
           @data = {}               # name -> bytes (embedded data blobs)
           @bitmaps = {}            # name -> { width:, height: } (a blob that has a shape)
           @tile_runs = {}          # name -> the TileRun whose tiles are painted from a list
+          @sprite_tile_sets = {}   # name -> [the SpriteTiles, each tile's 64 places] (see #exec_load_sprite_tiles)
+          @tile_poses = {}         # picture name -> the TilePose drawn from a set's tiles
           @tile_colors = {}        # name -> its pixels as colors, decoded once (nil = see-through)
           @backing = {}            # name -> { width:, height:, pixels: } (saved patch under a moving object)
           @objects = {}            # name -> :object node (a composited moving picture)
@@ -582,6 +584,11 @@ module VBlank
               n.tiles.each { |tile| @bitmaps[tile] = blank_run_tile(n) }
               store_run_picture(n, Array.new(n.width * n.height, 0)) if n.picture
               @repaints = true
+            when :sprite_tiles
+              # Sprite tiles the game loads: see-through until the first load.
+              @sprite_tile_sets[n.name] = [n, Array.new(n.count) { Array.new(64, 0) }]
+            when :tile_pose
+              @tile_poses[n.name] = n
             when :backing_buffer
               # Reserve the patch. `pixels` stays nil until the first save_region
               # fills it — a restore before any save has nothing to put back.
@@ -641,6 +648,8 @@ module VBlank
               @repaints = true
             end
           end
+          # A pose drawn from a set shows its tiles as they are now: see-through, to begin with.
+          @tile_poses.each_value { |pose| store_tile_pose_picture(pose) }
         end
 
         def count_step!
@@ -751,6 +760,7 @@ module VBlank
           set_tile: :exec_set_tile,
           show_map: :exec_show_map,
           copy_tiles: :exec_copy_tiles, copy_owed_tiles: :exec_copy_owed_tiles,
+          load_sprite_tiles: :exec_load_sprite_tiles,
           enable_sound: :exec_enable_sound,
           beep: :exec_beep,
           noise: :exec_noise,
@@ -1758,6 +1768,46 @@ module VBlank
           forget_colors_worked_out_from([run.picture])
         end
 
+        # A LOAD OF SPRITE TILES (see Nodes::LoadSpriteTiles): tiles +to+ onwards of the set take
+        # tiles +at+ onwards of the table, unless either run reaches past its end; then every pose
+        # of the set is drawn again from its tiles. It is in the picture of the pass that said it,
+        # as a painted picture's `changed now: true` is, since a console that copies it between
+        # frames copies it before the frame after the pass is drawn.
+        def exec_load_sprite_tiles(node)
+          at = eval_value(node.at)
+          to = eval_value(node.to)
+          set, tiles = @sprite_tile_sets.fetch(node.name)
+          values = @tables.fetch(node.table).values
+          return if at.negative? || to.negative? || to + node.count > set.count
+          return if (at + node.count) * RUN_TILE_BYTES > values.length
+
+          node.count.times do |k|
+            bytes = values[(at + k) * RUN_TILE_BYTES, RUN_TILE_BYTES]
+            tiles[to + k] = bytes.flat_map { |byte| [byte & 0x0F, (byte >> 4) & 0x0F] }
+          end
+          @tile_poses.each_value { |pose| store_tile_pose_picture(pose) if pose.tiles == node.name }
+          request_repaint
+        end
+
+        # A pose drawn from a set as everything that draws a picture reads it: each piece's tile
+        # where the piece puts it, see-through where no piece is.
+        def store_tile_pose_picture(pose)
+          set, tiles = @sprite_tile_sets.fetch(pose.tiles)
+          places = Array.new(pose.width * pose.height, 0)
+          pose.pieces.each do |dx, dy, tile|
+            tiles.fetch(tile).each_with_index do |place, i|
+              places[((dy + (i / 8)) * pose.width) + dx + (i % 8)] = place
+            end
+          end
+          pixels = places.map { |place| place.zero? ? Graphics::Image::TRANSPARENT : set.colors.fetch(place, 0) }
+          picture = Assets::Image.new(width: pose.width, height: pose.height, transparent: Graphics::Image::TRANSPARENT,
+                                      pixels: pixels.pack("v*"), colors: set.colors, places: places.pack("C*"),
+                                      colors_name: set.colors_name)
+          @bitmaps[pose.name] = picture
+          @data[pose.name] = picture.pixels
+          forget_colors_worked_out_from([pose.name])
+        end
+
         RUN_TILE_BYTES = 32
 
         def blank_run_tile(run) = run_tile_from_places(run, Array.new(64, 0))
@@ -2717,7 +2767,7 @@ module VBlank
         end
 
         # Is this picture one the game paints from a list while it runs?
-        def painted_picture?(name) = @tile_runs.each_value.any? { |run| run.picture == name }
+        def painted_picture?(name) = @tile_poses.key?(name) || @tile_runs.each_value.any? { |run| run.picture == name }
 
         # The color of a background cell's pixel, or nil where the layer behind shows
         # through: an empty cell (a map hole, which the hardware shows as background-palette

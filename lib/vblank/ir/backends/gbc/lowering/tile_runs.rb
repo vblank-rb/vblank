@@ -71,7 +71,11 @@ module VBlank
               bg && recolor_steps_of(name, bg)
             end
 
-            def held_picture_table?(table) = tile_runs.each_value.any? { |run| run.held_in == table.name }
+            # A table of tiles the console's copy reads straight from the cartridge: a group's
+            # pictures, or the tiles a set of sprite tiles loads (Lowering::SpriteTiles).
+            def held_picture_table?(table)
+              tile_runs.each_value.any? { |run| run.held_in == table.name } || sprite_tiles_table?(table)
+            end
 
             # A group's pictures in a bank, all of them in one piece, since one show copies across it,
             # and starting on a multiple of 16, which is the only place the console's copy reads
@@ -79,6 +83,11 @@ module VBlank
             def held_pictures_section(table)
               bytes = held_pictures_as_tiles(table)
               if bytes.length > BANK_BYTES
+                if sprite_tiles_table?(table)
+                  raise LoweringError, "A picture that sprite tiles are loaded from holds #{bytes.length} bytes of " \
+                                       "tiles, and one bank of a Game Boy Color cartridge holds #{BANK_BYTES}. To fix " \
+                                       "this, load from smaller pictures."
+                end
                 raise LoweringError, "A group of `tile_pictures` holds #{bytes.length} bytes of pictures, and one bank of " \
                                      "a Game Boy Color cartridge holds #{BANK_BYTES}. To fix this, use fewer pictures, or " \
                                      "put the tiles in two groups."
@@ -96,10 +105,10 @@ module VBlank
             # high bit, the leftmost place in the top bit.
             def held_pictures_as_tiles(table)
               run = tile_runs.each_value.find { |each| each.held_in == table.name }
-              return unless run
+              return unless run || sprite_tiles_table?(table)
 
               table.values.each_slice(4).flat_map do |row|
-                places = row.flat_map { |byte| [byte & 0xF, byte >> 4] }.map { |place| color_place(place, run) }
+                places = row.flat_map { |byte| [byte & 0xF, (byte >> 4) & 0xF] }.map { |place| run ? color_place(place, run) : place }
                 (0...2).map { |plane| places.reduce(0) { |byte, place| (byte << 1) | place[plane] } }
               end
             end

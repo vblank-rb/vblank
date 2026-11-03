@@ -58,6 +58,7 @@ module VBlank
             # screen shows, and plain sprites in front of them, or a painted screen with nothing
             # drawn from tiles over it.
             def refuse_unmade_picture!
+              refuse_unmade!("a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)") if @program.walk.any? { |node| node.kind == :tile_pose }
               screens = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq
               others = screens - %i[tiled bitmap]
               refuse_unmade!("a `screen :#{others.first}`") unless others.empty?

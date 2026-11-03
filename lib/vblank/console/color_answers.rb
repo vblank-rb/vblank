@@ -175,6 +175,11 @@ module VBlank
         canvas: works("its colours are four, as a background's tiles' are."),
         tile_pictures: works("its colours are four, and each picture of 8×8 goes through a list, so a change costs what " \
                              "`changed` costs."),
+        sprite_tiles: works("a set holds at most 128 tiles, of four colours with see-through. A load is copied " \
+                            "from the cartridge in the blank after the pass. A pass can load 8 times. If it " \
+                            "loads more, " \
+                            "the game stops and says so. If the game draws sprites in pieces of 8×16, each piece " \
+                            "of a pose is an even tile of the set with the next tile under it."),
         layers: works("a layer holds a background or sprites; a background in front of a sprite " \
                       "works. `transparency:` is refused: a Game Boy Color cannot show one layer " \
                       "through another."),

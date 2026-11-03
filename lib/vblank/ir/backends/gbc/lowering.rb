@@ -55,7 +55,7 @@ module VBlank
                                                # without one works nothing out again
                                                show_light_now: :emit_nothing
                                              }.merge(Picture::STATEMENTS).merge(Sound::STATEMENTS).merge(Clock::STATEMENTS)
-                                              .merge(TileRuns::STATEMENTS)
+                                              .merge(TileRuns::STATEMENTS).merge(SpriteTiles::STATEMENTS)
                                               .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))
 
           VALUES = Ractor.make_shareable({
@@ -75,6 +75,7 @@ module VBlank
           include PaintReach
           include Sound
           include TileRuns
+          include SpriteTiles
           include Clock
           include WrittenNumbers
           include KeptVariables
@@ -391,7 +392,7 @@ module VBlank
             @banked_tables ||= begin
               copied = @reachable.filter_map { |node| node.table if node.kind == :list_copy }
               tables_read.filter_map do |table|
-                next if copied.include?(table.name)
+                next if copied.include?(table.name) || held_picture_table?(table)
 
                 bytes, = table_keeping(table)
                 table.name if bytes * table.values.length >= @banked_table_bytes

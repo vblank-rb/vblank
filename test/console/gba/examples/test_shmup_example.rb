@@ -90,7 +90,8 @@ class TestShmupExample < Minitest::Test
   end
 
   # The parts collaborate across files: an enemy that drifts into the ship calls the
-  # HUD's `hit`, so a life is lost. (Per-pixel collision, between two files' sprites.)
+  # HUD's `hit`, so a life is lost. (Collision between two files' sprites; the ship is drawn from
+  # tiles it loads, so it is tested by its box.)
   def test_parts_collaborate_across_files
     i = game_player.run(Shmup.program, frames: MOVE)
     assert_operator i[:lives], :<, 3, "an enemy reached the ship — enemies.rb called hud.hit"

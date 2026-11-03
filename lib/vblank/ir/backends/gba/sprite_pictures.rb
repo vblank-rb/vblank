@@ -21,12 +21,19 @@ module VBlank
         # GroupedPose): such a pose is not in +stored+, since it is copied into sprite memory as
         # one of its groups comes up rather than kept there for the whole scene, and its
         # +starts+ count from the start of its own pictures.
+        #
+        # +tile_set+ is, for a sprite whose poses are drawn from a set of sprite tiles the game
+        # loads (Nodes::TilePose), the set's name and how many pieces of each pose are its own;
+        # nil for any other sprite. Such a pose stores nothing: each of its own pieces' +starts+
+        # is the number of its tile in the set, and the set's room is where they are counted from
+        # (SpriteLayout#tile_set_placement).
         SpritePictures = Data.define(:node, :place, :boxes, :mirrors, :encoded, :stored, :starts,
-                                     :repeats, :width, :height, :animates, :grouped) do
+                                     :repeats, :width, :height, :animates, :grouped, :tile_set) do
           def name = node.name
           def scene = node.scene
           def animates? = animates
           def grouped? = grouped.any?
+          def tile_set? = !tile_set.nil?
           def pieces = boxes.first.size
           def stored_bytes = stored.bytesize
 

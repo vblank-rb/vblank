@@ -259,7 +259,15 @@ module VBlank
           def self.bitmaps_of(program)
             pictures = program.walk.select { |node| node.kind == :bitmap }.to_h { |node| [node.name, Assets::Image.of(node)] }
             program.walk.select { |node| node.kind == :tile_run }.each { |run| pictures.merge!(painted_tile_pictures(run)) }
+            program.walk.select { |node| node.kind == :tile_pose }.each { |pose| pictures[pose.name] = tile_pose_picture(program, pose) }
             pictures
+          end
+
+          # A pose drawn from a set of sprite tiles, as the picture everything that sizes a sprite
+          # or works out its colours reads: blank, in the set's colours. Its pixels are the set's.
+          def self.tile_pose_picture(program, pose)
+            set = program.walk.find { |node| node.kind == :sprite_tiles && node.name == pose.tiles }
+            blank_picture(pose.width, pose.height, set)
           end
 
           # A run's tiles, or the one picture a sprite shows, each blank until the first copy.
@@ -329,6 +337,11 @@ module VBlank
             # ...and each picture a sprite shows that is painted the same way, by its name.
             @painted_pictures = runs.select(&:picture).to_h { |run| [run.picture, run] }
             @painted_vram = {}
+            # The sets of sprite tiles the game loads, the poses drawn from them, and where each
+            # set's room landed in video memory (see SpriteLayout#tile_set_placement).
+            @sprite_tile_sets = program.walk.select { |node| node.kind == :sprite_tiles }.to_h { |node| [node.name, node] }
+            @tile_poses = program.walk.select { |node| node.kind == :tile_pose }.to_h { |node| [node.name, node] }
+            @sprite_tiles_vram = {}
             @handover = IR::SceneHandover.of(program) # what each scene puts up as it takes over
             @see_through = IR::SeeThrough.layers(program).map(&:name) # the layers a sprite blends in
             if Modes.draws_with_tiles?(program)
@@ -378,7 +391,8 @@ module VBlank
           attr_reader :backgrounds, :hardware_layers, :bg_shared, :vram,
                       :objects, :obj_pictures, :sprite_art, :placed_fade, :pixelation,
                       :obj_palette_blob, :obj_palette_units, :blobs, :codecs,
-                      :painted_vram # run of painted tiles -> where it sits in video memory (see #note_painted_runs)
+                      :painted_vram, # run of painted tiles -> where it sits in video memory (see #note_painted_runs)
+                      :sprite_tiles_vram # set of sprite tiles -> where its room sits in video memory
 
           # What +scene+ sends as it takes over (see SceneSend). A scene with nothing of its
           # own, or no scene at all, sends nothing.
@@ -1853,13 +1867,15 @@ module VBlank
             blobs = SpriteLayout::Blobs.new(data_blobs: @blobs, keep_plain: method(:keep_unpacked!))
             painted = nodes.select { |node| painted_sprite?(node) }.to_h { |node| [node.name, node.poses.first] }
             sets.reject! { |set| set.names.any? { |name| painted.key?(name) } } # nothing to give back
+            sets.reject! { |set| set.sprites.any?(&:tile_set?) } # ...and none for one drawn from a set's tiles
             # ...and a sprite whose poses are copied in by their groups keeps its places: its
             # pictures are already in sprite memory only while their groups are up.
             sets.reject! { |set| set.sprites.any?(&:grouped?) }
             loop do
               @sprite_art = SpriteLayout.new(nodes: nodes, pictures: @obj_pictures, painted: painted,
                                              one_frame: one_frame, blobs: blobs, first_tile: first_sprite_tile,
-                                             grouped: @grouped_pictures) do |pictures, placed|
+                                             grouped: @grouped_pictures,
+                                             tile_sets: @sprite_tile_sets.transform_values(&:count)) do |pictures, placed|
                 object_record(pictures, slot: slot_of.fetch(pictures.name),
                                         affine_slot: affine_of[pictures.name], **placed)
               end
@@ -1870,6 +1886,9 @@ module VBlank
               one_frame.merge(set.names)
             end
             @objects = @sprite_art.sprites
+            @sprite_art.tile_set_rooms.each do |set, unit|
+              @sprite_tiles_vram[set] = [obj_tile_vram_offset + (unit * 32), @sprite_tile_sets.fetch(set).count]
+            end
             @least_sprite_screens = least_sprite_screens(nodes, sets, painted)
             scene_of = nodes.to_h { |node| [node.name, node.scene] }
             painted.each do |name, picture|
@@ -1945,7 +1964,8 @@ module VBlank
             blobs = SpriteLayout::Blobs.new(data_blobs: {}, keep_plain: ->(_name) {})
             SpriteLayout.new(nodes: nodes, pictures: @obj_pictures, painted: painted, first_tile: first_sprite_tile,
                              one_frame: Set.new(smaller.flat_map(&:names)), blobs: blobs,
-                             grouped: @grouped_pictures) { |_pictures, placed| placed }
+                             grouped: @grouped_pictures,
+                             tile_sets: @sprite_tile_sets.transform_values(&:count)) { |_pictures, placed| placed }
                         .screens
           end
 
@@ -2606,6 +2626,8 @@ module VBlank
           # pixels and the size of the box together, so two pieces match only when they
           # would draw the same thing.
           def sprite_pictures(node, cutter)
+            return tile_set_pictures(node) if tile_pose_sprite?(node)
+
             # A painted picture is kept whole, never trimmed to what it draws: it draws nothing
             # until the game paints it, and then whatever the game paints.
             cut = cutter.cut(node, transformed: object_transformed?(node) || painted_sprite?(node))
@@ -2652,8 +2674,43 @@ module VBlank
             SpritePictures.new(node: node, place: place, boxes: boxes, mirrors: mirrors, encoded: encoded,
                                stored: stored, starts: starts, repeats: repeats,
                                width: cut[:width], height: cut[:height],
-                               animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: grouped)
+                               animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: grouped,
+                               tile_set: nil)
           end
+
+          # A SPRITE WHOSE POSES ARE DRAWN FROM A SET OF SPRITE TILES THE GAME LOADS (Nodes::TilePose):
+          # each of a pose's tiles is one object of 8×8, pointing at that tile in the set's room, so
+          # a pose keeps no tiles of its own and a load changes every pose drawing the tiles it
+          # writes. Nothing is stored but the blank tile a pose with fewer pieces than another is
+          # filled out with. Its poses are all the set's, and it neither turns nor resizes: the
+          # console turns an object about its own middle, so the pieces would pull apart.
+          def tile_set_pictures(node)
+            poses = node.poses.map { |name| @tile_poses[name] }
+            sets = poses.map { |pose| pose&.tiles }.uniq
+            if sets.include?(nil) || sets.length > 1
+              raise LoweringError, "the sprite #{(node.declared || node.name).inspect} shows pictures drawn from sprite " \
+                                   "tiles and other pictures. Each of its pictures must be drawn from the same set."
+            end
+            if object_transformed?(node)
+              raise LoweringError, "the sprite #{(node.declared || node.name).inspect} shows pictures drawn from sprite " \
+                                   "tiles, and it turns or resizes. Such a sprite cannot turn or resize."
+            end
+
+            place = obj_banks_for(node).placement(node.name)
+            boxes = poses.map { |pose| pose.pieces.map { |dx, dy, _| [dx, dy, TILE_PX, TILE_PX] } }
+            starts = poses.map { |pose| pose.pieces.map { |_, _, tile| tile } }
+            own = poses.map { |pose| pose.pieces.length }
+            stored = +"".b
+            pad_object_pieces(boxes, starts, stored, place, own.max)
+            SpritePictures.new(node: node, place: place, boxes: boxes, mirrors: Array.new(poses.length), encoded: [],
+                               stored: stored, starts: starts, repeats: 0,
+                               width: poses.map(&:width).max, height: poses.map(&:height).max,
+                               animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: {},
+                               tile_set: [sets.first, own])
+          end
+
+          # Does +node+ show a pose drawn from a set of sprite tiles?
+          def tile_pose_sprite?(node) = node.poses.any? { |pose| @tile_poses.key?(pose) }
 
           # THE SET OF PICTURE GROUPS EACH POSE OF A SPRITE IS COPIED IN BY, by the pose's number,
           # for the poses that are.

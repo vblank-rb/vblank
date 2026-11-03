@@ -264,6 +264,15 @@ module ConformanceFixture
       B.copy_tiles(:painted_run),
       # ...and the same copy asked for by its bit in a variable, the way a game's frame asks.
       B.copy_owed_tiles([:painted_run], [:x]),
+      # A set of sprite tiles the program loads, a pose drawn from two of them, and a load of
+      # one tile from a table. No sprite shows the pose on this bitmap screen, so what is covered
+      # is that every backend declares the set and the pose and makes the load; whether the
+      # pixels come out right is test_sprite_tiles', on every lowering.
+      B.sprite_tiles(:fixture_set, count: 2, colors: [0x0000, 0x7FFF]),
+      B.tile_pose(:fixture_pose, tiles: :fixture_set, pieces: [[0, 0, 0], [8, 0, 1]], width: 16, height: 8),
+      B.table(:fixture_tiles, [0x11] * 64, width: :byte, signed: false),
+      B.load_sprite_tiles(:fixture_set, table: :fixture_tiles, at: B.binop(:-, B.var_ref(:x), B.var_ref(:x)),
+                                        to: B.int(1), count: 1),
       # ...and bend it row by row: every row of the picture gets its own sideways offset,
       # worked out from the row number a backend puts in :bend_row. `% 2` keeps the offsets
       # small and makes alternate rows differ, so a backend that ignored the bend, or

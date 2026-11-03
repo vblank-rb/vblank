@@ -70,6 +70,7 @@ module VBlank
                                                show_picture_group: :lower_nothing,
                                                copy_tiles: :lower_copy_tiles,
                                                copy_owed_tiles: :lower_copy_owed_tiles,
+                                               load_sprite_tiles: :lower_load_sprite_tiles,
                                                present_objects: :lower_present_objects,
                                                hide_sprites: :lower_hide_sprites,
                                                rumble: :lower_rumble,
@@ -237,7 +238,7 @@ module VBlank
             read = @reachable.filter_map do |node|
               case node.kind
               when :table_get, :data_byte then node.name
-              when :list_copy then node.table
+              when :list_copy, :load_sprite_tiles then node.table
               end
             end.uniq
             @tables.values.select { |table| read.include?(table.name) }.map do |table|

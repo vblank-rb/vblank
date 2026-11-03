@@ -85,8 +85,15 @@ module VBlank
           #
           # +first_tile+ is the first tile of sprite memory the pictures may take (see
           # ScreenLayout#first_sprite_tile).
-          def initialize(nodes:, pictures:, one_frame:, blobs:, painted: {}, grouped: nil, first_tile: 0, &record)
+          #
+          # +tile_sets+ is how many tiles each set of sprite tiles the game loads holds, by its name.
+          # Each set's room is kept for the whole game, ahead of every sprite, since the game's loads
+          # are the only copy of what it holds: a scene that wrote over it could not put it back.
+          def initialize(nodes:, pictures:, one_frame:, blobs:, painted: {}, grouped: nil, first_tile: 0, tile_sets: {},
+                         &record)
             @art = ObjectArt.new(blobs.data_blobs, first_unit: first_tile)
+            @tile_sets = tile_sets
+            @tile_set_rooms = {} # a set of sprite tiles -> the unit its room starts at
             @pictures = pictures
             @grouped = grouped
             @group_bases = {} # a set of picture groups -> the unit its room starts at
@@ -106,7 +113,7 @@ module VBlank
             lay_out(nodes)
           end
 
-          attr_reader :sprites, :scene_art, :repeats, :shared_rooms, :group_bases
+          attr_reader :sprites, :scene_art, :repeats, :shared_rooms, :group_bases, :tile_set_rooms
 
           def fits?(capacity) = bytes <= capacity
           def bytes = @art.bytes
@@ -137,6 +144,8 @@ module VBlank
           # gets a room of its own (and the copy is told where, see ScreenLayout::PaintedRun).
           def lay_out(nodes)
             by_scene = nodes.group_by(&:scene)
+            shown = nodes.filter_map { |node| @pictures.fetch(node.name).tile_set&.first }.uniq
+            shown.each { |set| @tile_set_rooms[set] = @art.reserve(@tile_sets.fetch(set), narrow: true) }
             reserve_group_rooms(nil)
             place_screen(by_scene[nil] || [])
             @art.finish_resident_art
@@ -186,6 +195,8 @@ module VBlank
                 @record.call(pictures, painted_placement(pictures, picture))
               elsif pictures.grouped?
                 @record.call(pictures, grouped_placement(pictures))
+              elsif pictures.tile_set?
+                @record.call(pictures, tile_set_placement(pictures))
               else
                 @repeats += pictures.repeats
                 blob, unit = @art.place(node.name, pictures.stored, narrow: pictures.place.narrow?)
@@ -218,6 +229,21 @@ module VBlank
 
               along = @group_bases.fetch(pose.set) + @grouped.offset(pose.set, pose.bytes) - unit
               list.each_with_index.map { |at, piece| piece < pose.pieces ? at + along : at }
+            end
+            { starts: starts, alike: false, per_pose: 0, tiles: blob, tile_units: pictures.stored_bytes / 32,
+              tile_index: unit }
+          end
+
+          # A SPRITE DRAWN FROM A SET OF SPRITE TILES: every piece of its own points at its tile in
+          # the set's room, and the rest at the blank tile its poses are filled out with. Every
+          # number in the pose table counts from the sprite's own first tile, so a piece of the set
+          # is that far back from its place, as a grouped pose's is.
+          def tile_set_placement(pictures)
+            set, own = pictures.tile_set
+            first = @tile_set_rooms.fetch(set)
+            blob, unit = pictures.stored.empty? ? [nil, first] : @art.place(pictures.name, pictures.stored, narrow: true)
+            starts = pictures.starts.each_with_index.map do |list, k|
+              list.each_with_index.map { |at, piece| piece < own[k] ? first + at - unit : at }
             end
             { starts: starts, alike: false, per_pose: 0, tiles: blob, tile_units: pictures.stored_bytes / 32,
               tile_index: unit }

@@ -138,6 +138,7 @@ module VBlank
                           "between frames, so a change shows on the frame after the pass."),
         canvas: works,
         tile_pictures: works,
+        sprite_tiles: works,
         layers: works("a layer holds a background or sprites. A layer cannot be see-through: a Genesis " \
                       "cannot mix one layer into another, so `transparency:`, `shows:` and `shows_behind:` " \
                       "are refused."),
@@ -255,6 +256,7 @@ module VBlank
       # show it (Lowering::Picture#refuse_unmade_picture!). Those are checks over a whole game rather
       # than kinds of step, so the page cannot read them from the lowering's list.
       UNMADE_PICTURE = [
+        "a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)",
         "a camera on a tiled screen, which `camera_follows` is",
         "a game with both a painted (bitmap) screen and a tiled one",
         "a background or a hardware sprite on a painted (bitmap) screen",

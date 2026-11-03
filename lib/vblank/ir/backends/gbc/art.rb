@@ -546,6 +546,60 @@ module VBlank
             end
           end
 
+          # A SET OF SPRITE TILES THE GAME LOADS (Nodes::SpriteTiles): +count+ tiles of its own in
+          # sprite memory, side by side and empty until the game's first load, and the number of the
+          # first. They sit in one bank of 128, so a load's tiles are one stretch of one bank: a set
+          # that would cross into the next starts there instead.
+          def sprite_tile_set(name, count)
+            @sprite_tile_sets ||= {}
+            @sprite_tile_sets[name] ||= begin
+              @sprite_tiles << Array.new(16, 0) while (@sprite_tiles.length % 128) + count > 128
+              # A tall piece starts on an even tile, so a pose's pairs of tiles can be one piece.
+              @sprite_tiles << Array.new(16, 0) if tall_pieces? && @sprite_tiles.length.odd?
+              first = @sprite_tiles.length
+              count.times { @sprite_tiles << Array.new(16, 0) }
+              first
+            end
+          end
+
+          # A POSE DRAWN FROM A SET (Nodes::TilePose): a piece for each of its tiles, pointing at the
+          # set's tile in sprite memory, so it keeps no tiles of its own and shows what the set holds
+          # now. Where the console draws 8×16 pieces, a tile at an even place of the set and the one
+          # after it under it are one piece, and a pose made otherwise cannot be drawn: the build
+          # stops. Its outline is not known while the game is built, so it collides with nothing.
+          def tile_pose_picture(pose, first)
+            @sprite_pictures[pose.name] ||= begin
+              pieces = tile_pose_pieces(pose).map { |dx, dy, tile| Piece.new(dx: dx, dy: dy, tile: first + tile, flips: 0) }
+              area = pose.width * pose.height
+              SpritePicture.new(name: pose.name, number: @sprite_pictures.size, width: pose.width, height: pose.height,
+                                pieces: pieces, places: Array.new(area, 0), mask: Array.new(area, false))
+            end
+          end
+
+          # The pieces of +pose+ as the console draws them: as they are, or paired into tall pieces.
+          def tile_pose_pieces(pose)
+            return pose.pieces unless tall_pieces?
+
+            left = pose.pieces.dup
+            paired = []
+            until left.empty?
+              dx, dy, tile = left.shift
+              under = left.index { |x, y, t| x == dx && y == dy + 8 && t == tile + 1 }
+              over = left.index { |x, y, t| x == dx && y == dy - 8 && t == tile - 1 } unless under
+              top = under ? tile : tile - 1
+              unless (under || over) && top.even?
+                raise LoweringError, "image :#{pose.name} has the tile #{tile} at [#{dx}, #{dy}]. This Game Boy Color " \
+                                     "game draws sprites in pieces of 8×16, and each piece is two tiles of the set " \
+                                     "one under the other: an even tile, and the next tile under it. To fix this, " \
+                                     "give each tile of :#{pose.name} its partner, or draw sprites in pieces of 8×8."
+              end
+
+              paired << (under ? [dx, dy, tile] : [dx, dy - 8, tile - 1])
+              left.delete_at(under || over)
+            end
+            paired
+          end
+
           # The palette a painted picture is drawn in from +colors+, a list by place, see-through first,
           # worn by a sprite of +scene+ (nil for one in no scene).
           def painted_sprite_palette(name, colors, scene: nil)

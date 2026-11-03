@@ -74,6 +74,8 @@ module VBlank
       def image(name, opts = {}, &block)
         # A picture the game paints itself, kept in a list of its own (see TileRuns).
         return define_picture_run(name, opts) if opts[:from].is_a?(DSL::List)
+        # A pose drawn from tiles of a set the game loads (see SpriteTiles).
+        return define_tile_pose(name, opts) if opts.key?(:tiles_from)
 
         one_source_of_pixels!(name, opts, block)
         # A list given by name keeps its name with the picture (IR::Assets::Image#colors_name).

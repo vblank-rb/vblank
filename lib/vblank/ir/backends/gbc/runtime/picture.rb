@@ -1064,6 +1064,7 @@ module VBlank
               asm.load_high(h::LCDC, :a)
               asm.call("rt_bar_covers_first_row") if memory.reserved?(BAR_COVERS)
               asm.call("rt_tile_runs_upload")
+              asm.call("rt_sprite_tile_loads") if SpriteTileLoads.any?(memory)
               # The cells a big map's view brought in (Runtime::BigMaps).
               asm.call("rt_big_view")
               # A grid being put up, and a painted screen's tiles: as much of each as the blank holds.

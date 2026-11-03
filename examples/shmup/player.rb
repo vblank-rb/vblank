@@ -45,14 +45,27 @@ module Shmup
       ..####..
     ART
 
+    # The ship's two looks: level, and leaning into a turn, its wing tips drawn in.
+    BANKED = SHIP.lines.map { |row| row.sub(/\A#/, ".").sub(/#(\n?)\z/, '.\1') }.join.freeze
+
     def initialize(build)
       @build = build
       # The ship's own list of colours, in order. Other lists swap them by place, so the
       # warm pulse's second colour lands on the hull and its third on the cockpit.
-      build.image(:ship, "." => :transparent, "#" => :cyan, "=" => :white,
-                         colors: [:transparent, :cyan, :white]) { SHIP }
+      build.colors :hull, [:transparent, :cyan, :white]
+      build.image(:ship_art, "." => :transparent, "#" => :cyan, "=" => :white, colors: :hull) { SHIP + BANKED }
       build.image(:shot, "." => :transparent, "#" => :white) { SHOT }
+      # The ship is four tiles of sprite memory, which its one pose is drawn from, top left
+      # first. The game loads them from either look of its art, so turning is four tiles
+      # copied from the cartridge and nothing else: the pose, and the sprite showing it, are
+      # the same whichever look is in the tiles (see `sprite_tiles` in .claude/dsl/sprites.md).
+      @ship_tiles = build.sprite_tiles(:ship_tiles, count: 4, colors: :hull)
+      build.image(:ship, tiles_from: :ship_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 2], [8, 8, 3]])
+      # A pose drawn from tiles the game loads has no pixels until it runs, so the ship is
+      # tested for touching by its box.
       @ship = build.sprite(:ship, at: [112, 132])
+      @look = build.var(:ship_look, -1) # which look is in the tiles: 0 level, 1 banked
+      show_look 0
       @shot = build.sprite(:shot, at: [0, 0], shown: false)
       @shot_live = build.var(:shot_live, 0) # 1 while a shot is in flight
       @safe = build.var(:ship_safe, 0)      # frames left that the ship cannot be hit
@@ -74,6 +87,11 @@ module Shmup
       @ship.move :left,  by: SPEED if @build.held(:left)
       @ship.move :right, by: SPEED if @build.held(:right)
       @ship.clamp_to_screen # keep the ship on screen — it works out its own size
+      if @build.held(:left) || @build.held(:right)
+        show_look 1
+      else
+        show_look 0
+      end
 
       glow_while_safe
       fire_when_ready
@@ -94,6 +112,15 @@ module Shmup
     end
 
     private
+
+    # Load the look numbered +look+ into the ship's tiles, unless they hold it already: four
+    # tiles of the art, from that look's first tile on.
+    def show_look(look)
+      if @look != look
+        @look = look
+        @ship_tiles.copy_from :ship_art, at: look * 4, count: 4, to: 0
+      end
+    end
 
     # While the ship cannot be hit it pulses warm, and then it is its own colours again.
     # The pulse steps every four frames, so `(@safe >> 2) & 3` walks through the four

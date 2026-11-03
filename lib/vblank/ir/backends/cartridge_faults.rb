@@ -27,6 +27,7 @@ module VBlank
         CELLS_FULL = 11 # more cells of a background changed in one pass than the queue for the blank holds
         CPU_EXCEPTION = 12 # the processor stopped on something it cannot do: an odd address, a bad instruction
         CAMERA_TOO_FAR = 13 # a painted screen's camera past what the console's scrolling can show
+        TILE_LOADS_FULL = 14 # more loads of sprite tiles in one pass than the queue for the blank holds
       end
     end
   end

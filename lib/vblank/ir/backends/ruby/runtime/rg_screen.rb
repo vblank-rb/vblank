@@ -1666,12 +1666,43 @@ def rg_tiles_copy(run, list)
       places[first + ((top + (i / RG_RUN_TILE_SIDE)) * width) + left + (i % RG_RUN_TILE_SIDE)] = tile[i]
     end
   end
+  rg_paint_run_images(run)
+end
+
+# Every image that is a painted picture's run made again from its places, each in its own colors.
+def rg_paint_run_images(run)
+  places = rg_painted_places
+  first = rg_run_field(run, RG_RUN_PLACES)
+  area = rg_run_field(run, RG_RUN_WIDTH) * rg_run_field(run, RG_RUN_HEIGHT)
   @rg_painted_images ||= Array.new(@rg_game_picture_sizes[RG_SIZE_IMAGES] + 1)
   rg_run_field(run, RG_RUN_IMAGES).times do |i|
     shown_as = (rg_run_field(run, RG_RUN_FIRST_IMAGE) + i) * RG_RUN_IMAGE_FIELDS
     image = @rg_game_run_images[shown_as]
-    @rg_painted_images[image] = Array.new(width * height) { |at| rg_to_half(@rg_game_run_images[shown_as + 1 + places[first + at]]) }
+    @rg_painted_images[image] = Array.new(area) { |at| rg_to_half(@rg_game_run_images[shown_as + 1 + places[first + at]]) }
   end
+end
+
+# rg_screen.c's rg_tile_pose_load (Reference#exec_load_sprite_tiles, for one pose).
+def rg_tile_pose_load(run, pieces, piece_count, table, _kept, at, to, count)
+  places = rg_painted_places
+  first = rg_run_field(run, RG_RUN_PLACES)
+  width = rg_run_field(run, RG_RUN_WIDTH)
+  piece_count.times do |piece|
+    dx = pieces[3 * piece]
+    dy = pieces[(3 * piece) + 1]
+    tile = pieces[(3 * piece) + 2]
+    next if tile < to || tile >= to + count
+
+    from = (at + tile - to) * (RG_RUN_TILE_PIXELS / 2)
+    (RG_RUN_TILE_PIXELS / 2).times do |byte_at|
+      byte = table[from + byte_at] & 0xFF
+      row = byte_at / (RG_RUN_TILE_SIDE / 2)
+      col = (byte_at % (RG_RUN_TILE_SIDE / 2)) * 2
+      places[first + ((dy + row) * width) + dx + col] = byte & 0x0F
+      places[first + ((dy + row) * width) + dx + col + 1] = byte >> 4
+    end
+  end
+  rg_paint_run_images(run)
 end
 
 # Reference#blit_image: a see-through pixel is skipped, and each other one goes on as stored.

@@ -476,6 +476,9 @@ module VBlank
       def hardware_sprite(name, at:, facing:, frames:, rate:, shown:, hitbox:, over_picture: false)
         poses, facing_dirs, width, height, frames_per_dir = resolve_sprite_art(name, facing, frames)
         poses ||= [name] # a plain sprite is a single-pose object
+        # A pose drawn from sprite tiles the game loads has pixels nobody knows while the game is
+        # built, so such a sprite is tested for touching by its box (see SpriteTiles).
+        hitbox = :full if hitbox.nil? && poses.any? { |pose| @tile_pose_sets.key?(pose) }
         animated_facing = frames_per_dir > 1 # a facing: with a list of frames per direction
         box = collision_box(name: name, images: poses, width: width, height: height, hitbox: hitbox)
         posed = facing || frames # does it choose a pose at run time (a facing or a frame)?

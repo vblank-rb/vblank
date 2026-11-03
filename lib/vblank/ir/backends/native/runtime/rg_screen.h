@@ -209,6 +209,9 @@ static inline int32_t rg_place_of_choice(int32_t which, int32_t others) { return
  * slot the game never filled reads as 0. Until its first copy a run shows nothing at all.
  * Nothing is rebuilt here; the game asks for that itself where the interpreter does. */
 void rg_tiles_copy(int32_t run, const rg_list *list);
+/* A pose drawn from sprite tiles the game loads takes the loaded tiles it draws (Nodes::LoadSpriteTiles). */
+void rg_tile_pose_load(int32_t run, const int32_t *pieces, int32_t piece_count, const void *table, int32_t kept,
+                       int32_t at, int32_t to, int32_t count);
 
 /* A SEE-THROUGH LAYER is mixed with what is behind it as the picture is painted: so much of the
  * layer, so much of what is already there (IR::SeeThrough). How much is two amounts the game

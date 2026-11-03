@@ -112,6 +112,8 @@ module VBlank
         tile_run_tile: Kind.new(spelling: "__tile_run_%{run}__%{number}", parts: { run: ANY, number: "\\d+" },
                                 words: nil),
         tile_pictures_part: Kind.new(spelling: "__tile_pictures_%{group}__%{part}", parts: { group: ANY, part: PLAIN }, words: nil),
+        # A picture's tiles kept as a table, for `copy_from` on a set of sprite tiles to load from.
+        sprite_tiles_source: Kind.new(spelling: "__sprite_tiles_from_%{picture}", parts: { picture: ANY }, words: nil),
         pose_rows: Kind.new(spelling: "__pose_rows_%{number}", parts: { number: "\\d+" }, words: nil),
         tile_run_pending: Kind.new(spelling: "__tile_runs_pending_%{number}", parts: { number: "\\d+" }, words: nil),
         painted_copies: Kind.new(spelling: "__painted_copies", parts: {},

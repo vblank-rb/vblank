@@ -1525,6 +1525,18 @@ static void read_tile_places(const rg_list *list, int32_t which, int32_t planes,
   }
 }
 
+/* Every image that is a painted picture's run made again from its places, each in its own colors. */
+static void paint_run_images(int32_t run) {
+  const int32_t *fields = run_fields(run);
+  const uint8_t *places = places_of(run);
+  int32_t area = fields[RG_RUN_WIDTH] * fields[RG_RUN_HEIGHT];
+  for (int32_t i = 0; i < fields[RG_RUN_IMAGES]; i++) {
+    const int32_t *shown_as = rg_game_run_images + (fields[RG_RUN_FIRST_IMAGE] + i) * RG_RUN_IMAGE_FIELDS;
+    int16_t *pixels = painted_pixels_of(shown_as[0], area);
+    for (int32_t at = 0; at < area; at++) pixels[at] = (int16_t)shown_as[1 + places[at]];
+  }
+}
+
 /* Reference#copy_run_tiles. A run a background shows takes its tiles one after another. A run
  * that is a sprite's picture has its tiles in the order a sprite's are kept, left to right and
  * then top to bottom, and they are laid back out into the one picture (#copy_run_picture); then
@@ -1545,11 +1557,30 @@ void rg_tiles_copy(int32_t run, const rg_list *list) {
     for (int32_t i = 0; i < RUN_TILE_PIXELS; i++)
       places[(top + i / RUN_TILE_SIDE) * width + left + i % RUN_TILE_SIDE] = tile[i];
   }
-  for (int32_t i = 0; i < fields[RG_RUN_IMAGES]; i++) {
-    const int32_t *shown_as = rg_game_run_images + (fields[RG_RUN_FIRST_IMAGE] + i) * RG_RUN_IMAGE_FIELDS;
-    int16_t *pixels = painted_pixels_of(shown_as[0], width * height);
-    for (int32_t at = 0; at < width * height; at++) pixels[at] = (int16_t)shown_as[1 + places[at]];
+  paint_run_images(run);
+}
+
+/* Reference#exec_load_sprite_tiles, for one pose drawn from the set: each of its +piece_count+
+ * pieces (dx, dy, tile in +pieces+) whose tile is one of the +count+ from +to+ takes tile
+ * +at + (tile - to)+ of the table, 32 entries a tile, two places a byte with the left one in the
+ * low four bits. The build has checked that both runs are inside their ends. */
+void rg_tile_pose_load(int32_t run, const int32_t *pieces, int32_t piece_count, const void *table, int32_t kept,
+                       int32_t at, int32_t to, int32_t count) {
+  const int32_t *fields = run_fields(run);
+  uint8_t *places = places_of(run);
+  int32_t width = fields[RG_RUN_WIDTH];
+  for (int32_t piece = 0; piece < piece_count; piece++) {
+    int32_t dx = pieces[3 * piece], dy = pieces[3 * piece + 1], tile = pieces[3 * piece + 2];
+    if (tile < to || tile >= to + count) continue;
+    int32_t first = (at + tile - to) * (RUN_TILE_PIXELS / 2);
+    for (int32_t byte_at = 0; byte_at < RUN_TILE_PIXELS / 2; byte_at++) {
+      int32_t byte = rg_table_entry(table, kept, first + byte_at) & 0xFF;
+      int32_t row = byte_at / (RUN_TILE_SIDE / 2), col = (byte_at % (RUN_TILE_SIDE / 2)) * 2;
+      places[(dy + row) * width + dx + col] = (uint8_t)(byte & 0x0F);
+      places[(dy + row) * width + dx + col + 1] = (uint8_t)(byte >> 4);
+    }
   }
+  paint_run_images(run);
 }
 
 /* Reference#blit_image: a see-through pixel is skipped, and each other one goes on as stored. */

@@ -633,6 +633,47 @@ module VBlank
             emit_copy_painted_run(node.name, run)
           end
 
+          # LOAD TILES OF A SET OF SPRITE TILES FROM THE CARTRIDGE (Nodes::LoadSpriteTiles): one copy,
+          # from the table straight into the set's room in sprite memory, where every pose drawn
+          # from the set reads them. The table keeps a tile the way sprite memory does, so the copy
+          # is plain. It is made where the game says it, as `changed now: true` copies a painted
+          # picture, so the tiles are in the picture of this pass; the console may be drawing the
+          # screen as it copies, and for that one frame the top of a sprite can be old and the
+          # bottom new. A load that reaches past the end of the set or of the table is skipped, for
+          # one unsigned compare each: a negative number reads as a very large one.
+          LOAD_FROM = 4
+          LOAD_TO = 5
+
+          def emit_load_sprite_tiles(node, table)
+            room, count = @layout&.screen&.sprite_tiles_vram&.[](node.name)
+            return if room.nil? # no sprite shows the set, so nothing in sprite memory is its
+
+            tiles = (table.count * table.elem_bytes) / 32
+            return if tiles < node.count || count < node.count
+
+            done = gensym
+            @lowering.value(node.at)
+            emit(ASM.mov_reg(LOAD_FROM, ACC))
+            @lowering.value(node.to)
+            emit(ASM.mov_reg(LOAD_TO, ACC))
+            emit_number(TMP, tiles - node.count + 1)
+            emit(ASM.cmp_reg(LOAD_FROM, TMP))
+            emit_branch(:bcond, done, cond: :hs)
+            emit_number(TMP, count - node.count + 1)
+            emit(ASM.cmp_reg(LOAD_TO, TMP))
+            emit_branch(:bcond, done, cond: :hs)
+            emit(ASM.lsl_imm(LOAD_FROM, LOAD_FROM, 5)) # 32 bytes a tile
+            emit_load_data_address(TMP, node.table)
+            emit(ASM.add_reg(LOAD_FROM, TMP, LOAD_FROM))
+            emit(ASM.lsl_imm(LOAD_TO, LOAD_TO, 5))
+            emit_number(TMP, VRAM_START + room)
+            emit(ASM.add_reg(LOAD_TO, TMP, LOAD_TO))
+            @emitter.note_video_copy("loading sprite_tiles :#{node.name}", node.count * 32)
+            emit_start_copy_engine(from: in_register(LOAD_FROM), to: in_register(LOAD_TO),
+                                   control: (node.count * 8) | DMA_ENABLE | DMA_32BIT)
+            place_label(done)
+          end
+
           # The set just brought in holds its painted tiles blank, and the game's list holds what
           # they show, so each is copied over again, to where it sits in this set.
           def emit_walking_runs_again(swap)

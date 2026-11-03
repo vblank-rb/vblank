@@ -546,6 +546,7 @@ module VBlank
             set_tile: @background_drawing.method(:emit_set_tile), show_map: @background_drawing.method(:emit_show_map),
             copy_tiles: @background_drawing.method(:emit_copy_tiles),
             copy_owed_tiles: @background_drawing.method(:emit_copy_owed_tiles),
+            load_sprite_tiles: ->(node) { @background_drawing.emit_load_sprite_tiles(node, @tables.fetch(node.table)) },
             background_colors: @background_drawing.method(:emit_background_colors),
             color_list_holds: @sprite_drawing.method(:emit_color_list_holds),
             show_picture_group: @picture_group_copying.method(:emit_show_picture_group),
@@ -1521,6 +1522,8 @@ module VBlank
               @emit.data_blobs[node.name] = node.bytes
             when :tile_run
               @bitmaps.merge!(ScreenLayout.painted_tile_pictures(node))
+            when :tile_pose
+              @bitmaps[node.name] = ScreenLayout.tile_pose_picture(program, node)
             when :bitmap
               @bitmaps[node.name] = Assets::Image.of(node)
               # An opaque bitmap streams from ROM via DMA, so embed its pixels. A

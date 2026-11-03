@@ -254,6 +254,50 @@ module VBlank
         RUNS_PER_MASK = 30
       end
 
+      # A SET OF SPRITE TILES THE GAME REWRITES AS IT RUNS: +count+ tiles of 8×8, drawn from
+      # +colors+ by place (place 0 see-through), each see-through until the game first loads it.
+      # No sprite shows the set itself. Its poses (TilePose) each draw some of its tiles, so a
+      # tile loaded again changes every pose that draws it, and a pose costs no tiles of its own.
+      class SpriteTiles
+        include Node
+        kind :sprite_tiles
+        declaration!
+        category :data
+        operands name: :name, count: :int, colors: :list, colors_name: :name
+
+        # The list of colours its tiles are drawn from, as a sprite's recolouring keeps them
+        # apart (Assets::Image#list_drawn_from).
+        def list_drawn_from = [colors_name, colors]
+      end
+
+      # A PICTURE A SPRITE SHOWS, MADE OF TILES OF A SpriteTiles SET: +pieces+ are each
+      # [dx, dy, tile], the set's tile +tile+ with its top left at (dx, dy) in the picture, on
+      # the picture's 8-pixel grid. Places no piece covers are see-through. The picture is
+      # +width+ by +height+, as far as its pieces reach. It shows what the set's tiles hold
+      # now, so it has no pixels of its own.
+      class TilePose
+        include Node
+        kind :tile_pose
+        declaration!
+        category :data
+        operands name: :name, tiles: :name, pieces: :list, width: :int, height: :int
+      end
+
+      # Load +count+ tiles of a SpriteTiles set from the cartridge: tiles +to+ onwards of the set
+      # +name+ take the pixels of tiles +at+ onwards of the table +table+, whose bytes keep a
+      # tile as painted tiles do (32 bytes: eight rows of four, two places a byte, the left one in
+      # the low four bits). The tiles change where the load is written, so they are in the
+      # picture of the pass that wrote it, as a painted run's `changed now: true` is: a console
+      # whose picture memory cannot be written while it draws copies them in the gap after the
+      # pass, before that picture is shown. A load that reaches past the end of the set or of the
+      # table changes nothing.
+      class LoadSpriteTiles
+        include Node
+        kind :load_sprite_tiles
+        category :draw
+        operands name: :name, table: :name, at: :value, to: :value, count: :int
+      end
+
       # The per-frame write that turns and resizes an affine background as a whole (see
       # ScrollBackground, its sibling for plain panning). +angle+ is degrees clockwise,
       # +scale+ is in Build::SCALE_ONE-ths (1.0 = drawn size) — the same units a hardware

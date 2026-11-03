@@ -48,6 +48,7 @@ class TestMadeNames < Minitest::Test
     text_points_routine: {},
     buffered_text_points_routine: {},
     tile_pictures_part: { group: :water, part: :shown },
+    sprite_tiles_source: { picture: :great_ball },
     draw_order: { number: 1, part: :sort },
   }.freeze
 

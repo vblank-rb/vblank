@@ -75,6 +75,12 @@ module VBlank
             # The runs of tiles and the pictures the game paints from lists as it runs, and the
             # number rg_screen.c knows each by.
             @tile_runs = by_name(@program.walk, :tile_run)
+            # A pose drawn from sprite tiles the game loads is a painted picture here too: its
+            # pixels are kept as places, and a load writes the tiles it changes into each pose
+            # that draws them (rg_tile_pose_load).
+            @sprite_tile_sets = by_name(@program.walk, :sprite_tiles)
+            @tile_poses = by_name(@program.walk, :tile_pose)
+            @tile_poses.each_value { |pose| @tile_runs[pose.name] = pose_run(pose) }
             @run_numbers = @tile_runs.each_key.with_index.to_h
             # The lists of sprite colors that hold other colors as the game runs.
             @color_lists = by_name(@program.walk, :color_list)
@@ -230,7 +236,40 @@ module VBlank
           end
 
           # Reference#painted_picture?: is this picture one the game paints from a list as it runs?
-          def painted_picture?(name) = @program.walk.any? { |node| node.kind == :tile_run && node.picture == name }
+          def painted_picture?(name) = @tile_runs.each_value.any? { |run| run.picture == name }
+
+          # A pose drawn from a set of sprite tiles, as the fields of a painted picture's run.
+          PoseRun = Data.define(:name, :picture, :width, :height, :colors, :colors_name) do
+            def tiles = []
+            def console_format = false
+            def squares_per_tile = 1
+          end
+
+          def pose_run(pose)
+            set = @sprite_tile_sets.fetch(pose.tiles)
+            PoseRun.new(name: pose.name, picture: pose.name, width: pose.width, height: pose.height, colors: set.colors,
+                        colors_name: set.colors_name)
+          end
+
+          # Reference#exec_load_sprite_tiles: checked once, then each pose drawn from the set takes
+          # the tiles of the load it draws, and the picture is built again.
+          def lower_load_sprite_tiles(node)
+            set = @sprite_tile_sets.fetch(node.name)
+            table = @tables.fetch(node.table)
+            tiles = table.values.length / (RUN_TILE_PIXELS / 2)
+            fits = Build.binop(:and,
+                               Build.binop(:and, Build.binop(:>=, node.at, Build.int(0)),
+                                           Build.binop(:<=, node.at, Build.int(tiles - node.count))),
+                               Build.binop(:and, Build.binop(:>=, node.to, Build.int(0)),
+                                           Build.binop(:<=, node.to, Build.int(set.count - node.count))))
+            kept = Lowering::TABLE_KEPT_AS.fetch(table_type(table))
+            loads = @tile_poses.each_value.select { |pose| pose.tiles == node.name }.map do |pose|
+              pieces = drawing_array("pose_pieces", "int32_t", pose.pieces.flatten)
+              eval_call("rg_tile_pose_load", C::Int.new(@run_numbers.fetch(pose.name)), pieces, C::Int.new(pose.pieces.length),
+                        @names.of(:table, node.table), C::Int.new(kept), value(node.at), value(node.to), C::Int.new(node.count))
+            end
+            [C::If.new(condition: value(fits), body: [*loads, eval_call("rg_screen_request_rebuild")], otherwise: [])]
+          end
 
           # A sprite picture's pixels as the interpreter draws them (Reference#blit_image): the
           # number the picture stores, the color +colors+ puts in its place when the sprite is

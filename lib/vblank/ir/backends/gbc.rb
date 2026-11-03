@@ -26,6 +26,7 @@ require_relative "gbc/lowering/picture"
 require_relative "gbc/lowering/paint_reach"
 require_relative "gbc/lowering/sound"
 require_relative "gbc/lowering/tile_runs"
+require_relative "gbc/lowering/sprite_tiles"
 require_relative "gbc/lowering/clock"
 require_relative "gbc/lowering/written_numbers"
 require_relative "gbc/lowering/kept_variables"
@@ -187,7 +188,7 @@ module VBlank
                                   kept_sprites: lowering.keeps_unchanged_sprites?,
                                   holds_music: lowering.holds_music?, effect_table: lowering.music.effects_in_banks?,
                                   cells_shown_now: lowering.cells_shown_now?,
-                                  bar_covers: lowering.bar_covers_sprites?)
+                                  bar_covers: lowering.bar_covers_sprites?, tile_loads: lowering.loads_sprite_tiles?)
           game = lowering.sections
           runs = lowering.run_uploads
           clips = lowering.clips if lowering.clips.any?

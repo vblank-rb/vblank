@@ -81,6 +81,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `status_bar` — works: the bar is the window, a layer the console keeps beside its two backgrounds. `set_tile` with `now: true` is refused: a Genesis writes its video memory only between frames, so a change shows on the frame after the pass.
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: the same as on the Advance.
+- `sprite_tiles` — works: the same as on the Advance.
 - `layers` — works: a layer holds a background or sprites. A layer cannot be see-through: a Genesis cannot mix one layer into another, so `transparency:`, `shows:` and `shows_behind:` are refused.
 - `layer` — works: see `layers`.
 - `draw_text` — works: painted on a painted screen; on a tiled one each letter is a sprite, so they count towards the 80, 20 pieces to a row.
@@ -166,12 +167,14 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - the status bar: `place_bar`
 - backgrounds bent row by row: `scroll_rows`
 - tiles painted from a list: `copy_tiles`, `copy_owed_tiles`
+- sprite tiles the game loads: `load_sprite_tiles`
 - layers see-through: `see_through`
 - the picture: `draw_column_at`
 - save memory: `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`
 
 Parts of the picture are refused the same way, naming the part:
 
+- a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)
 - a camera on a tiled screen, which `camera_follows` is
 - a game with both a painted (bitmap) screen and a tiled one
 - a background or a hardware sprite on a painted (bitmap) screen

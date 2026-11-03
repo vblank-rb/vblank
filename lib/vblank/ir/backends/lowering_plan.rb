@@ -124,7 +124,7 @@ module VBlank
             read = @reachable.filter_map do |node|
               case node.kind
               when :table_get then node.name
-              when :list_copy then node.table
+              when :list_copy, :load_sprite_tiles then node.table
               end
             end
             @tables.values.select { |table| read.include?(table.name) }

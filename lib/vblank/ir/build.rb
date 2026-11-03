@@ -699,6 +699,22 @@ module VBlank
         Nodes.build(:copy_owed_tiles, runs: runs, masks: masks)
       end
 
+      # A set of +count+ sprite tiles the game loads as it runs (see Nodes::SpriteTiles).
+      def sprite_tiles(name, count:, colors:, colors_name: nil)
+        Nodes.build(:sprite_tiles, name: name, count: count, colors: colors, colors_name: colors_name)
+      end
+
+      # A picture made of tiles of the set +tiles+, each piece [dx, dy, tile] (see Nodes::TilePose).
+      def tile_pose(name, tiles:, pieces:, width:, height:)
+        Nodes.build(:tile_pose, name: name, tiles: tiles, pieces: pieces, width: width, height: height)
+      end
+
+      # Tiles +to+ onwards of the set +name+ take tiles +at+ onwards of +table+ (see
+      # Nodes::LoadSpriteTiles).
+      def load_sprite_tiles(name, table:, at:, to:, count:)
+        Nodes.build(:load_sprite_tiles, name: name, table: table, at: at, to: to, count: count)
+      end
+
       # The named background's tiles all draw from the list of colours numbered +which+ —
       # the whole layer at once, the way show_map hands over the whole grid. +which+ counts
       # from 0 through the lists the background was given and is a value operand, so a game

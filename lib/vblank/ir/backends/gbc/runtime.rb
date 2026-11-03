@@ -7,6 +7,7 @@ require_relative "runtime/frame"
 require_relative "runtime/lists"
 require_relative "runtime/picture"
 require_relative "runtime/picture_groups"
+require_relative "runtime/sprite_tile_loads"
 require_relative "runtime/paint"
 require_relative "runtime/sound"
 require_relative "runtime/music"
@@ -49,11 +50,13 @@ module VBlank
           # on the pass before is left as it is (Lowering::Picture#keeps_unchanged_sprites?), and
           # +cells_shown_now+ that it changes a cell on the frame being drawn
           # (Lowering::Picture#cells_shown_now?), and +bar_covers+ that it tells a status bar to
-          # cover sprites (Lowering::Picture#bar_covers_sprites?).
+          # cover sprites (Lowering::Picture#bar_covers_sprites?). +tile_loads+ says it loads sprite
+          # tiles from the cartridge (Lowering::SpriteTiles#loads_sprite_tiles?).
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
-                      bar_covers: false)
+                      bar_covers: false, tile_loads: false)
+            SpriteTileLoads.reserve(memory) if tile_loads
             Clips.reserve(memory, laps: clip_laps) if clips
             Rumble.reserve(memory) if rumble
             KeptSprites.reserve(memory) if kept_sprites
@@ -122,6 +125,7 @@ module VBlank
             Clips.emit(asm, memory, counts: clips.timer_counts, entry_bytes: clips.entry_bytes, lines: clips.rows_bent?) if shown
             Rumble.emit(asm, memory) if Rumble.any?(memory)
             KeptSprites.emit(asm, memory, lends: art.lends?, tall_pieces: art.tall_pieces?) if KeptSprites.any?(memory)
+            SpriteTileLoads.emit(asm, memory) if SpriteTileLoads.any?(memory)
             emit_start(asm)
             emit_main(asm, main)
             emit_frame_begins(asm, frame_begins)

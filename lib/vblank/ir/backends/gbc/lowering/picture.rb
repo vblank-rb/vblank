@@ -302,7 +302,7 @@ module VBlank
               scenes = Hash.new { |all, picture| all[picture] = [] }
               @objects.each_value { |obj| Array(obj.poses).each { |picture| scenes[picture] << obj.scene } }
               scenes.filter_map do |picture, shown_in|
-                next if grouped.key?(picture) || picture_painting(picture)
+                next if grouped.key?(picture) || picture_painting(picture) || tile_pose_named(picture)
 
                 only = shown_in.uniq
                 [picture, only.first] if only.length == 1 && only.first
@@ -453,7 +453,7 @@ module VBlank
               scenes = Hash.new { |all, picture| all[picture] = [] }
               @objects.each_value { |obj| Array(obj.poses).each { |picture| scenes[picture] << obj.scene } }
               scenes.filter_map do |picture, shown_in|
-                next if picture_painting(picture)
+                next if picture_painting(picture) || tile_pose_named(picture)
 
                 set = @picture_sets.each_value.find do |each|
                   each.groups_holding(picture).any? && shown_in.all? { |scene| each.scene.nil? || each.scene == scene }
@@ -2008,7 +2008,7 @@ module VBlank
             # The one piece each of a sprite's poses is drawn from, when every one is a single piece in
             # the same place (rt_sprite_reposed changes such a sprite where it is in the table), or nil.
             def single_pieces(obj)
-              return nil if obj.poses.any? { |name| picture_painting(name) }
+              return nil if obj.poses.any? { |name| picture_painting(name) || tile_pose_named(name) }
 
               pieces = obj.poses.map { |name| @art.sprite_picture(name, picture_named(name)).pieces }
               return nil unless pieces.all? { |each| each.length == 1 }
@@ -2318,6 +2318,9 @@ module VBlank
               run = picture_painting(name)
               return @art.painted_sprite_picture(name, run.width, run.height).number if run
 
+              pose = tile_pose_named(name)
+              return tile_pose_picture(pose).number if pose
+
               @art.sprite_picture(name, picture_named(name)).number
             end
 
@@ -2337,6 +2340,13 @@ module VBlank
             def palette_of(name, colors, scene: nil)
               run = picture_painting(name)
               return @art.painted_sprite_palette(name, painted_colors(run, colors), scene: scene) if run
+
+              pose = tile_pose_named(name)
+              if pose
+                own = tile_pose_colors(pose)
+                drawn = colors ? Array.new([[own.length, colors.length].max, Art::PLACES].min) { |place| colors[place] || own.fetch(place, 0) } : own
+                return @art.painted_sprite_palette(name, drawn, scene: scene)
+              end
 
               # The pixels read once a picture and list a build: every sprite showing it asks again.
               image = picture_named(name)
@@ -2379,6 +2389,12 @@ module VBlank
             # A picture made of pieces can be bigger than the mask a test of its pixels walks (Art::
             # LARGEST_SPRITE); a sprite showing one is refused that test, and told to test by a box.
             def refuse_too_big_to_collide!(name)
+              if tile_pose_named(name)
+                raise LoweringError, "a sprite showing the picture #{name.inspect} is tested pixel by pixel for touching " \
+                                     "another, and that picture is drawn from sprite tiles the game loads, so a Game " \
+                                     "Boy Color does not know its pixels. To fix this, give the sprite a hitbox:, " \
+                                     "which is tested as a box."
+              end
               image = picture_named(name)
               return if image.width <= Art::LARGEST_SPRITE && image.height <= Art::LARGEST_SPRITE
 

@@ -27,6 +27,7 @@ require_relative "builder/tiled"
 require_relative "builder/tile_runs"
 require_relative "builder/canvases"
 require_relative "builder/tile_pictures"
+require_relative "builder/sprite_tiles"
 require_relative "builder/composition"
 require_relative "builder/timers"
 require_relative "builder/clocks"
@@ -85,6 +86,7 @@ module VBlank
     include TileRuns   # tiles from: a list — tiles the game paints as it runs
     include Canvases   # canvas — the same, drawn into with words
     include TilePictures # tile_pictures — tiles taking turns through pictures in the cartridge
+    include SpriteTiles # sprite_tiles — sprite tiles the game loads, and poses drawn from them
     include Composition # pool (a component + a pool of instances, per-instance update)
     include Timers     # timer (a hardware counter running at a chosen rate)
     include Clocks     # clock (the date and time, from the clock a cartridge carries)
@@ -131,6 +133,8 @@ module VBlank
       @painted_colors = {}     # picture painted from a list → the colours its places pick (see TileRuns)
       @painted_colors_names = {} # ...and the name those colours were declared under, where they were
       @inline_tile_copies = [] # their copies where `changed` was said, moved to the frame gap at finalize
+      @sprite_tile_sets = {}   # sprite_tiles name → { count:, colors:, colors_name: } (see SpriteTiles)
+      @tile_pose_sets = {}     # a pose drawn from sprite tiles → the set's name
       @func_fast = {}          # name → where the author insisted the routine live (func fast:)
       @func_on_chip = {}       # name → true for a routine to run on a cartridge's chip (func on_chip:)
       @scene_loads_first = {}  # scene routine → true where its work waits a pass (scene loads_first:)

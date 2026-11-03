@@ -52,6 +52,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 - `colors :hurt, [...]` + `draw_with`; `recolor :slot, :goblin` at run time; `colors_in_use` (a hint).
 - `color_walk :city, from: :black` → the lists of a console game's fade, for `draw_with` or `recolor` with `showing:`.
 - `picture_groups :rooms, {…}` + `show` — sprite pictures by room, so only the rooms up take sprite memory.
+- `sprite_tiles :ball, count: 32, colors:` → `SpriteTileSet`; `image :spin0, tiles_from: :ball, pieces: [[dx, dy, tile], …]` — poses drawn from one set of tiles; `set.copy_from :pic, at:, count:, to:` loads tiles from the cartridge.
 - `hide_sprites` — no sprite (tiled text included) on the next frame drawn; all back the frame after. Tiled screens only.
 - `rgb r, g, b` (0–31), `rgb8` (0–255), `color value` — a 15-bit colour.
 
