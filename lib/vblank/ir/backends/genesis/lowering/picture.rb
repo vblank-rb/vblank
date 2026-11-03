@@ -36,7 +36,8 @@ module VBlank
             PLANES = 2
 
             def prepare_picture
-              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, exact: self.class.fading?(@program))
+              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, exact: self.class.fading?(@program),
+                             beside_painting: painted?)
               @objects = by_kind(:object)
               @backgrounds = @program.walk.select { |node| node.kind == :background }
               @sprite_names = SpriteNames.new(@program)
@@ -49,24 +50,34 @@ module VBlank
             # Whether the game draws from tiles: it has a background or a sprite.
             def tiled? = self.class.picture_of(@program) == :tiled
 
+            # Whether a painted screen shows sprites over its picture (`sprite ..., over_picture: true`):
+            # sprites of the tiled screen's kind, placed over the plane the picture is on
+            # (Runtime::Paint), from the tiles past the picture's and the three palettes it leaves.
+            # A sprite declared on a painted screen is one of these, or none at all.
+            public def sprites_over_picture? = painted? && !@objects.empty?
+
+            # Whether the game places sprites in the console's sprite table.
+            def places_sprites? = tiled? || sprites_over_picture?
+
+            # The tile in video RAM a sprite's piece names for tile 0 of the art: the first on a tiled
+            # screen, and the first past the picture's on a painted one.
+            def sprite_tiles_from = painted? ? Runtime::Paint::SPRITE_TILES_FROM : 0
+
             # How the picture is laid out for the runtime: the plane's columns and rows of cells, which
             # every background of the game shares.
             def plane_size = @plane_size || [32, 32]
 
             # Each piece of the picture this lowering does not make yet, refused by name: the build
             # makes a tiled screen of 8×8 tiles, at most two backgrounds of one size that every
-            # screen shows, and plain sprites in front of them, or a painted screen with nothing
-            # drawn from tiles over it.
+            # screen shows, and plain sprites in front of them, or a painted screen with no background
+            # over it and the sprites it shows over the picture.
             def refuse_unmade_picture!
               refuse_unmade!("a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)") if @program.walk.any? { |node| node.kind == :tile_pose }
               screens = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq
               others = screens - %i[tiled bitmap]
               refuse_unmade!("a `screen :#{others.first}`") unless others.empty?
               refuse_unmade!("both a painted (bitmap) screen and a tiled one") if screens.include?(:tiled) && painted?
-              if painted?
-                refuse_unmade!("a background on a painted (bitmap) screen") unless @backgrounds.empty?
-                refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.empty?
-              end
+              refuse_unmade!("a background on a painted (bitmap) screen") if painted? && !@backgrounds.empty?
               refuse_unmade!("a camera on a tiled screen") if !painted? && @program.walk.any? { |node| node.kind == :camera }
               refuse_backdrops_of_its_own!
               refuse_unmade_backgrounds!
@@ -173,7 +184,7 @@ module VBlank
             # them, so the number a picture is made with is the one a reader of the drawn sprites turns
             # back into its name.
             def make_sprite_art
-              return unless tiled?
+              return unless places_sprites?
 
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
               poses.each do |name|
@@ -342,7 +353,7 @@ module VBlank
 
             # The art, and each sprite's table of pictures, as sections for the Linker.
             def art_sections
-              return [] unless tiled?
+              return [] unless places_sprites?
 
               data = M68000.new("art", holds: ART)
               data.label("art colors")
@@ -355,12 +366,13 @@ module VBlank
                 data.label(pieces_label(picture.number))
                 data.data_words(picture.pieces.length)
                 picture.pieces.each do |piece|
-                  data.data_words(piece.dx, piece.dy, piece.tile | (piece.palette << Art::PALETTE_SHIFT), piece.size_bits)
+                  data.data_words(piece.dx, piece.dy, (piece.tile + sprite_tiles_from) | (piece.palette << Art::PALETTE_SHIFT),
+                                  piece.size_bits)
                 end
               end
               write_held_colors(data)
               write_backdrop_colors(data)
-              write_colors15(data) if self.class.changing_colors?(@program)
+              write_colors15(data) if self.class.changing_colors?(@program) && !painted? # a painted screen's is Paint#paint_sections'
               data.label("art grids")
               @art.grids.each do |grid|
                 data.data_longs(grid_label(grid.number))
@@ -609,7 +621,7 @@ module VBlank
             # `hide_sprites`. A game with no tiled screen has none to place, and the runtime that
             # places them is not in its cartridge.
             def emit_present_objects(node)
-              return unless tiled?
+              return unless places_sprites?
 
               hidden = sprites_hidden_flag
               placing = fresh("sprites_placed")

@@ -42,6 +42,21 @@ module VBlank
             # Where tile 1 is in video RAM: tile 0 is kept blank, so a map that names no tile shows nothing.
             FIRST_TILE_AT = TILE_BYTES
 
+            # SPRITES OVER THE PICTURE (`sprite ..., over_picture: true`). The video chip draws its sprites
+            # over both planes, so a sprite over a painted screen is a sprite of the tiled screen's kind
+            # (Tiles' sprite table and rt_sprite_place), placed over the plane that shows the picture. It
+            # is never painted into the copy, so painting the picture again does not touch it.
+            #
+            # Video RAM is the picture's first: its tiles from tile 1 to tile 1120. The sprites' tiles
+            # come after them, from SPRITE_TILES_FROM, which is kept blank as tile 0 is, up to the scroll
+            # table (Tiles::HSCROLL_AT). That is room for #most_sprite_tiles tiles, which Genesis::Art
+            # holds the sprites' pictures to. Their colours are the other three palettes: the first is
+            # the picture's.
+            SPRITE_TILES_FROM = TILES + 1
+
+            # How many tiles of the sprites' pictures fit between the picture's tiles and the scroll table.
+            def self.most_sprite_tiles = (Tiles::HSCROLL_AT / TILE_BYTES) - SPRITE_TILES_FROM - 1
+
             SCREEN = "rt paint screen"
             DIRTY = "rt paint dirty"
             # A byte a tile: its one colour plus one where the copy holds it all that colour, and nought
@@ -80,11 +95,19 @@ module VBlank
               memory.reserve(CAMERA, 4)
             end
 
-            # +patches+ is how many places the game keeps a patch of the screen in (SaveRegion).
-            def emit(asm, memory, camera: false, colors: false)
+            # The sprites' places, for a game that shows sprites over its picture.
+            def reserve_sprites(memory)
+              memory.reserve(Tiles::SPRITE_COUNT, 2)
+              memory.reserve(Tiles::SPRITES, Tiles::MOST_SPRITES * Tiles::SPRITE_BYTES)
+              memory.reserve(Tiles::DRAWN, 2 + (Tiles::MOST_SPRITES * Tiles::DRAWN_BYTES))
+            end
+
+            # +sprites+ for a game that shows sprites over its picture.
+            def emit(asm, memory, camera: false, colors: false, sprites: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_start(asm, memory, at, colors: colors)
-              emit_upload(asm, memory, at, camera: camera, colors: colors)
+              emit_start(asm, memory, at, colors: colors, sprites: sprites)
+              emit_sprites(asm, memory, at) if sprites
+              emit_upload(asm, memory, at, camera: camera, colors: colors, sprites: sprites)
               emit_camera(asm, at) if camera
               emit_clear(asm, memory, at)
               emit_area(asm, at)
@@ -98,7 +121,7 @@ module VBlank
             # colour memory; the map of the screen's plane, which names the tiles in the order they
             # come (tile 1 first) and is the same for ever; and every patch of the screen kept for
             # the game made empty. Done with the screen off, so none of it is seen.
-            def emit_start(asm, memory, at, colors: false)
+            def emit_start(asm, memory, at, colors: false, sprites: false)
               h = Console::GenesisHardware
               asm.label("rt_picture_start")
               asm.move(:w, asm.imm(0), at.call(AREA, AREA_LEFT))
@@ -111,6 +134,7 @@ module VBlank
               asm.label("rt_picture_start_color")
               asm.move(:w, asm.post(0), asm.abs_l(h::VDP_DATA))
               asm.dbra(asm.d(1), "rt_picture_start_color")
+              emit_sprite_art_start(asm) if sprites
               asm.jsr(asm.abs_l("rt_colors_start")) if colors
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, MAP_AT)), asm.abs_l(h::VDP_CONTROL))
               asm.moveq(0, asm.d(0))
@@ -136,6 +160,45 @@ module VBlank
               asm.label("rt_tint_prepare")
               asm.jmp(asm.abs_l("rt_colors_prepared")) if colors
               asm.rts unless colors
+            end
+
+            # The sprites' colours and tiles, for a game that shows sprites over its picture: the other
+            # three palettes of "art colors" into the colour memory after the picture's, then a blank
+            # tile at SPRITE_TILES_FROM and the tiles of "art tiles" after it, as Tiles' rt_picture_start
+            # puts them from tile 0 on a tiled screen.
+            def emit_sprite_art_start(asm)
+              h = Console::GenesisHardware
+              asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, Art::PLACES * 2)), asm.abs_l(h::VDP_CONTROL))
+              asm.lea(asm.abs_l("art colors", Art::PLACES * 2), asm.a(0))
+              asm.move(:w, asm.imm(((Art::PALETTES - 1) * Art::PLACES) - 1), asm.d(1))
+              asm.label("rt_picture_start_sprite_color")
+              asm.move(:w, asm.post(0), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(1), "rt_picture_start_sprite_color")
+              asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, SPRITE_TILES_FROM * TILE_BYTES)), asm.abs_l(h::VDP_CONTROL))
+              asm.moveq(0, asm.d(0))
+              asm.moveq((TILE_BYTES / 4) - 1, asm.d(1))
+              asm.label("rt_picture_start_sprite_blank")
+              asm.move(:l, asm.d(0), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(1), "rt_picture_start_sprite_blank")
+              asm.lea(asm.abs_l("art tile bytes"), asm.a(1))
+              asm.move(:l, asm.ind(1), asm.d(1))
+              asm.lsr(:l, 2, asm.d(1))
+              asm.branch(:eq, "rt_picture_start_sprite_tiles_done")
+              asm.subq(:l, 1, asm.d(1))
+              asm.lea(asm.abs_l("art tiles"), asm.a(0))
+              asm.label("rt_picture_start_sprite_tile")
+              asm.move(:l, asm.post(0), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(1), "rt_picture_start_sprite_tile")
+              asm.label("rt_picture_start_sprite_tiles_done")
+            end
+
+            # The sprites' routines (Tiles' rt_sprites_begin and rt_sprite_place), and
+            # rt_sprite_table_written, which the blank's copy calls.
+            def emit_sprites(asm, memory, at)
+              Tiles.emit_sprites(asm, memory, at)
+              asm.label("rt_sprite_table_written")
+              Tiles.emit_sprite_table_written(asm, memory, at)
+              asm.rts
             end
 
             # The copy starts all nought, as work RAM does and as video RAM does, so every tile is all
@@ -223,11 +286,16 @@ module VBlank
             # a run of neighbouring tiles at a time and TILES_A_BLANK in a blank. The marks are looked at
             # four at a time, so a pass that changed nothing near most of the screen skips most of it
             # in a few instructions. rt_upload_whole: the whole picture, while the screen is still off.
-            def emit_upload(asm, memory, at, camera: false, colors: false)
+            #
+            # A game with sprites over its picture (+sprites+) writes its sprite table first, before the
+            # tiles: a pass that changed many tiles takes several blanks, and the sprites then show on the
+            # first of them, as the interpreter shows them with the pass.
+            def emit_upload(asm, memory, at, camera: false, colors: false, sprites: false)
               h = Console::GenesisHardware
               asm.label("rt_upload")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
+              asm.jsr(asm.abs_l("rt_sprite_table_written")) if sprites
               asm.tst(:w, at.call(ANY_DIRTY))
               asm.branch(:eq, "rt_upload_done")
               asm.clr(:w, at.call(ANY_DIRTY))
@@ -281,6 +349,7 @@ module VBlank
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
+              asm.jsr(asm.abs_l("rt_sprite_table_written")) if sprites
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, FIRST_TILE_AT)), asm.abs_l(h::VDP_CONTROL))
               asm.lea(asm.abs_l(memory[SCREEN]), asm.a(0))
               asm.move(:w, asm.imm(SCREEN_BYTES / 4 - 1), asm.d(0))

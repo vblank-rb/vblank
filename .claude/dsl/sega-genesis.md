@@ -70,7 +70,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
-- `sprite` — works: a sprite is made of the console's pieces. A piece is up to 32×32 pixels, so a picture of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one row of the screen. Past 80 pieces, a sprite is not drawn and no error shows as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` on a painted screen is not made yet: the build refuses it and says so (see Not made yet).
+- `sprite` — works: a sprite is made of the console's pieces. A piece is up to 32×32 pixels, so a picture of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one row of the screen. Past 80 pieces, a sprite is not drawn and no error shows as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` shows over a painted screen, as on the Advance. The painted picture uses one of the four lists of colours and most of the video memory. So the sprites over it have three lists, and room for 350 different 8×8 squares of picture. If they need more, the build stops and says so.
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: on the next frame, no sprite shows. On the frame after, every sprite shows where it is.
 - `picture_groups` — works: the same as on the Advance.
@@ -180,7 +180,7 @@ Parts of the picture are refused the same way, naming the part:
 - a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)
 - a camera on a tiled screen, which `camera_follows` is
 - a game with both a painted (bitmap) screen and a tiled one
-- a background or a hardware sprite on a painted (bitmap) screen
+- a background on a painted (bitmap) screen
 - a sprite put in another layer, or behind a background
 - a scene's own background in a layer behind one every screen shows
 - a scene that says a backdrop of its own (`screen ... backdrop:`)

@@ -72,9 +72,12 @@ module VBlank
               tables.label("paint colors")
               tables.data_words(@painted_art.colors_as_words)
               if painted? && self.class.changing_colors?(@program)
+                # The picture's palette, then the sprites' three when it shows sprites over it.
+                sprites = sprites_over_picture?
                 tables.label("colors15")
-                tables.data_words(@painted_art.colors_as_15bit + Array.new(Art::PLACES * (Art::PALETTES - 1), 0))
-                tables.data_words([@painted_art.colors_painted - 1, 0, 0, 0])
+                tables.data_words(@painted_art.colors_as_15bit +
+                                  (sprites ? @art.colors15.drop(Art::PLACES) : Array.new(Art::PLACES * (Art::PALETTES - 1), 0)))
+                tables.data_words([@painted_art.colors_painted - 1, *(sprites ? @art.colors_used.drop(1) : [0, 0, 0])])
               end
               tables.label("paint pictures")
               @painted_art.pictures.each do |picture|

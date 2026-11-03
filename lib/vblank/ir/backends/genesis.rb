@@ -72,7 +72,9 @@ module VBlank
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           samples = Lowering::Sound.samples?(program)
-          Runtime.reserve(memory, picture: picture, colors: colors, sound: sound, songs: songs, music_follows_level: follows_level,
+          over = picture == :painted && IR::SpritesOverPicture.any?(program)
+          Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs,
+                                  music_follows_level: follows_level,
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
@@ -88,11 +90,11 @@ module VBlank
                                              effects: effects,
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
-                                             backdrop: lowering.backdrop_copied?)
+                                             backdrop: lowering.backdrop_copied?, sprites_over_picture: over)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
-                             source_program: program, code: linked.places, sprite_picture_names: picture == :tiled ? lowering.sprite_picture_names : {},
+                             source_program: program, code: linked.places, sprite_picture_names: picture == :tiled || over ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)

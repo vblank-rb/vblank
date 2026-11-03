@@ -11,9 +11,11 @@ module VBlank
           module Picture
             module_function
 
-            # +picture+ is how the game draws: :painted (Paint), :tiled (Tiles), or :none.
-            def reserve(memory, picture: :none, colors: false)
+            # +picture+ is how the game draws: :painted (Paint), :tiled (Tiles), or :none. +sprites+ says a
+            # painted screen shows sprites over its picture (`sprite ..., over_picture: true`).
+            def reserve(memory, picture: :none, colors: false, sprites: false)
               Paint.reserve(memory) if picture == :painted
+              Paint.reserve_sprites(memory) if picture == :painted && sprites
               Tiles.reserve(memory) if picture == :tiled
               Tint.reserve(memory) if colors && %i[painted tiled].include?(picture)
             end
@@ -22,9 +24,9 @@ module VBlank
             # before it shows a pass, which for a game that draws nothing is nothing, the copy of a
             # pass's changes, the whole copy and the screen switched on.
             # +backdrop+ for a game whose backdrop is copied from a list it recolours (Tint#emit).
-            def emit(asm, memory, picture: :none, columns: 32, camera: false, colors: false, backdrop: false)
+            def emit(asm, memory, picture: :none, columns: 32, camera: false, colors: false, backdrop: false, sprites: false)
               case picture
-              when :painted then Paint.emit(asm, memory, camera: camera, colors: colors)
+              when :painted then Paint.emit(asm, memory, camera: camera, colors: colors, sprites: sprites)
               when :tiled then Tiles.emit(asm, memory, columns: columns, colors: colors)
               else
                 asm.label("rt_picture_start")

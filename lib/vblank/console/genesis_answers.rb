@@ -122,8 +122,10 @@ module VBlank
                       "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
                       "row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
                       "as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot " \
-                      "turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` on a " \
-                      "painted screen is not made yet: the build refuses it and says so (see Not made yet)."),
+                      "turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` shows " \
+                      "over a painted screen, as on the Advance. The painted picture uses one of the four lists of " \
+                      "colours and most of the video memory. So the sprites over it have three lists, and room for " \
+                      "350 different 8×8 squares of picture. If they need more, the build stops and says so."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),
         picture_groups: works,
@@ -271,7 +273,7 @@ module VBlank
         "a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)",
         "a camera on a tiled screen, which `camera_follows` is",
         "a game with both a painted (bitmap) screen and a tiled one",
-        "a background or a hardware sprite on a painted (bitmap) screen",
+        "a background on a painted (bitmap) screen",
         "a sprite put in another layer, or behind a background",
         "a scene's own background in a layer behind one every screen shows",
         "a scene that says a backdrop of its own (`screen ... backdrop:`)",

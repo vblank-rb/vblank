@@ -33,10 +33,12 @@ module VBlank
           # (+sound+) keeps its log and its voices' loudness (Sound); one with songs (+songs+) their player's
           # places, as much of them as what its songs do asks for (Music), and those of its +effects+ sound
           # effects (Effects).
+          # +sprites_over_picture+ for a painted screen that shows sprites over its picture (Paint).
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
-                      holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false)
+                      holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
+                      sprites_over_picture: false)
             Frame.reserve(memory)
-            Picture.reserve(memory, picture: picture, colors: colors)
+            Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture)
             Sound.reserve(memory) if sound
             Recordings.reserve(memory) if samples
             return unless songs
@@ -52,7 +54,8 @@ module VBlank
           # draws with, and +columns+ how many cells across the planes of a tiled one are.
           # +colors+ for a game that fades, tints or recolours (Tint), and +backdrop+ for one whose backdrop is
           # copied from a list it recolours (Lowering::Picture#backdrop_copied?).
-          # +camera+ for a painted screen whose game moves the window over its picture (Paint).
+          # +camera+ for a painted screen whose game moves the window over its picture (Paint), and
+          # +sprites_over_picture+ for one that shows sprites over it.
           # +fractions+ for a game that holds numbers with a fraction (Int32).
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
           # +registers+ is how many words of the video chip's register table the game writes
@@ -65,7 +68,7 @@ module VBlank
           # (Recordings), and +recorded_parts+ when a song or effect has a part that plays one.
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
-                         backdrop: false)
+                         backdrop: false, sprites_over_picture: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -73,7 +76,8 @@ module VBlank
             Int32.emit(asm, fractions: fractions)
             Frame.emit(asm, memory, sound: sound)
             Lists.emit(asm, memory)
-            Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop)
+            Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
+                                      sprites: sprites_over_picture)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music

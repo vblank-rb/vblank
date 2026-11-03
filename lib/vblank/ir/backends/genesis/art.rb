@@ -68,13 +68,23 @@ module VBlank
           # The backdrop of a game that says none: black, as the interpreter's empty screen is.
           BACKDROP = 0
 
+          # The palette a painted screen's picture is drawn from (Runtime::Paint), kept from the sprites
+          # shown over it.
+          PAINTED_PALETTE = 0
+
           # +backdrop+ is the colour the game shows wherever nothing is drawn (`screen ... backdrop:`),
           # a 15-bit colour, or nil for black.
           # +exact+ keeps two colours of the game's that the console shows as one in two places, for a game that
           # fades or tints: a fade moves the colours the game named, and two that are one to the console can be
           # two, a step apart, when they have moved.
-          def initialize(backdrop: nil, exact: false)
+          #
+          # +beside_painting+ is for the sprites of a painted screen (`sprite ..., over_picture: true`). The
+          # painted picture keeps the first palette and most of video RAM to itself (Runtime::Paint), so the
+          # sprites have the other three palettes and the tiles between the picture's and the scroll table.
+          def initialize(backdrop: nil, exact: false, beside_painting: false)
             @exact = exact
+            @beside_painting = beside_painting
+            @most_tiles = beside_painting ? Runtime::Paint.most_sprite_tiles : MOST_TILES
             @backdrop_color = (backdrop || BACKDROP) & 0x7FFF
             @backdrop = Console::GenesisHardware.color_word(@backdrop_color)
             @tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
@@ -82,6 +92,10 @@ module VBlank
             @tile_runs = {} # the tiles of a sprite piece bigger than one, joined => the first's number (#tile_run_number)
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
             @held = {} # whose list => the palette it keeps to itself (#reserve_held_palette)
+            if beside_painting
+              @palettes[PAINTED_PALETTE] = []
+              @held[:painted_screen] = PAINTED_PALETTE
+            end
             @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
             @originals = {} # what a place holds (a colour word, or the colour itself when exact) => the 15-bit colour it was first made from
             @sprite_pictures = {}
@@ -167,8 +181,8 @@ module VBlank
               line = (0...PALETTES).find { |p| @palettes[p] && !@held.value?(p) && @palettes[p].first(words.length) == words } ||
                      (0...PALETTES).find { |p| @palettes[p].nil? } or
                 raise TooManyLists, "The lists of colours the sprites are drawn with, and the pictures, need more lists " \
-                                    "than a Genesis holds (#{PALETTES}, shared with every other picture). To fix this, " \
-                                    "draw the sprites with fewer lists of colours."
+                                    "than a Genesis holds (#{PALETTES}, shared with every other picture).#{painted_palette_words} " \
+                                    "To fix this, draw the sprites with fewer lists of colours."
 
               @palettes[line] ||= words
               @ordered[words] = line
@@ -289,10 +303,20 @@ module VBlank
           end
 
           def refuse_too_many_tiles!(number)
-            return if number <= MOST_TILES
+            return if number <= @most_tiles
 
+            if @beside_painting
+              raise TooMuch, "The sprites over the painted screen use more different 8×8 squares of picture than a " \
+                             "Genesis has room for (#{@most_tiles}). The painted screen uses most of the video memory. " \
+                             "To fix this, use fewer or smaller sprite pictures."
+            end
             raise TooMuch, "The pictures use more different 8×8 squares of picture than a Genesis has room for " \
                            "(#{MOST_TILES}). To fix this, use fewer different pictures."
+          end
+
+          # What a refusal says of the lists of colours the pictures have, beside a painted screen.
+          def painted_palette_words
+            @beside_painting ? " On a painted screen, the picture uses one of them, and the sprites have the other #{PALETTES - 1}." : ""
           end
 
           # The palette that holds every one of +colors+, adding them to one with room where none does,
@@ -316,8 +340,8 @@ module VBlank
             unused = (0...PALETTES).find { |p| @palettes[p].nil? }
             unless unused
               raise TooMuch, "The pictures use more colours than a Genesis can show. It holds #{PALETTES} sets of " \
-                             "#{OWN_COLORS} colours for the backgrounds and sprites together. To fix this, use fewer " \
-                             "colours in the pictures."
+                             "#{OWN_COLORS} colours for the backgrounds and sprites together.#{painted_palette_words} " \
+                             "To fix this, use fewer colours in the pictures."
             end
 
             @palettes[unused] = colors.dup
