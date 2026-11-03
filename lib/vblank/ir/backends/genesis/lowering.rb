@@ -144,6 +144,8 @@ module VBlank
             @handover = @plan.handover
             @scenes = @plan.scenes
             @lists = {}
+            @lists_dropped_from_front = lists_dropped_from_front(program)
+            @direct_slot_sizes = [] # the slot sizes the game reads or writes directly (#list_routine)
             @variables = {}
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
@@ -186,6 +188,10 @@ module VBlank
           # Whether the game holds numbers with a fraction, which is when the cartridge carries the
           # routines that work them out (Runtime::Int32.emit_fractions).
           def fractions? = @program.walk.any? { |node| %i[mul_fix div_fix].include?(node.kind) }
+
+          # The slot sizes, in bytes, whose direct routines the game calls, so the runtime carries
+          # only those (Runtime::Lists#emit_fixed_front_access). Known once #sections has run.
+          def direct_slot_sizes = @direct_slot_sizes.sort
 
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
@@ -752,9 +758,27 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
-          def emit_list_set(node) = list_call("rt_list_set", node, node.index, node.value)
-          def value_of_list_get(node) = list_call("rt_list_get", node, node.index)
+          def emit_list_set(node) = list_call(list_routine("rt_list_set", node), node, node.index, node.value)
+          def value_of_list_get(node) = list_call(list_routine("rt_list_get", node), node, node.index)
           def value_of_list_len(node) = list_call("rt_list_length", node)
+
+          # The routine that reads or writes an item of the list +node+ names: for a list whose first
+          # item is always in its first slot, the one for its slots' size, which goes straight to
+          # the slot (Runtime::Lists#emit_fixed_front_access); for any other, +routine+ itself.
+          def list_routine(routine, node)
+            return routine if @lists_dropped_from_front.include?(node.name)
+
+            bytes = @lists.fetch(node.name)[2]
+            @direct_slot_sizes |= [bytes]
+            "#{routine}_#{Runtime::Lists::SLOT_SUFFIXES.fetch(bytes)}"
+          end
+
+          # The lists the game ever takes an item from the front of, which are the only lists whose
+          # first item can be anywhere but their first slot: every other way a list changes leaves it
+          # there, or puts it back.
+          def lists_dropped_from_front(program)
+            program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }.uniq
+          end
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its
           # entries, so the runtime reads them as a run does.

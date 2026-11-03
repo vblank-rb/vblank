@@ -37,9 +37,11 @@ module VBlank
     #   draw_in_order a, b, c, take_turns: true     # a in front on the first frame, c on the next
     #   draw_in_order a, b, c, take_turns: :last    # c in front on the first frame, a on the next
     #
-    # It is the same sort, handed a number of its own: each thing's place in the list the game
-    # wrote, times a sign the routine turns over after every sort. Every number differs, so
-    # the whole run turns round each frame, and nothing on any backend is new.
+    # There is no sort for it. The run has two orders only, the list as named and the list
+    # turned round, so both are worked out when the cartridge is built and each frame copies
+    # one of them (#declare_turn_table). Sorting a run that turns round every frame would move
+    # every thing past every other each time, which for a few dozen things is more than a
+    # frame on some consoles; the copy is a step for each thing.
     module DrawOrder
       FRONTS = %i[highest lowest].freeze
 
@@ -117,8 +119,6 @@ module VBlank
       # worked out from its handle, a pool object's read from what the pool copied for its
       # place.
       def order_keys(order)
-        return turn_keys(order) if order.turns
-
         order.things.flat_map do |thing|
           if thing.is_a?(DSL::Pool)
             thing.stacked_objects.each_with_index.map do |node, place|
@@ -128,15 +128,6 @@ module VBlank
             [[thing.object_name, DSL::Value.node_for(order.key.call(thing))]]
           end
         end.to_h
-      end
-
-      # An order that takes turns numbers each object by its place in the list the game named,
-      # times a sign: -1 makes place 0 the highest number, so in front, and +1 makes the last
-      # place the highest. The sort turns the sign over every time it runs.
-      def turn_keys(order)
-        object_names_in(order).each_with_index.to_h do |name, place|
-          [name, Build.binop(:*, Build.int(place), Build.var_ref(order.turn_var))]
-        end
       end
 
       # The objects of +order+ in the order the draw list holds them, which is what the order
@@ -202,11 +193,30 @@ module VBlank
         ensure_var(index)
         at_boot(Build.list_new(order.order_list, count, width: count > 128 ? :half : :byte))
         at_boot(Build.repeat(Build.int(count), index, Build.list_push(order.order_list, Build.var_ref(index))))
-        at_boot(Build.list_new(order.keys_list, count, full_of: 0))
-        return unless order.turns
+        return declare_turn_table(order, count) if order.turns
 
+        at_boot(Build.list_new(order.keys_list, count, full_of: 0))
+      end
+
+      # AN ORDER THAT TAKES TURNS HAS ONLY TWO ORDERS, so both are written into the cartridge
+      # when it is built, one after the other in one table, and each frame copies one of them
+      # into the order list whole. The list holds the run back to front, each object by its
+      # place in the run (which is not, in general, the order the game named them in): the
+      # first half of the table ends with the first one named, so it is in front, and the
+      # second half is the first half turned round.
+      #
+      # The turn is where in the table this frame's copy starts: nought for the first half,
+      # +count+ for the second. A console's own games do the same thing without a table — they
+      # walk their sprites from one end of the list or the other, a step up or a step down —
+      # and the copy is that walk: a read and a write for each thing, with nothing compared.
+      # The table keeps its entries as wide as the list does, since a copy moves them as they are.
+      def declare_turn_table(order, count)
+        run = run_objects(order)
+        last_in_front = object_names_in(order).map { |name| run.index(name) }
+        at_boot(Build.table(order.part(:turns), last_in_front.reverse + last_in_front,
+                            width: count > 128 ? :half : :byte, signed: false))
         ensure_var(order.turn_var)
-        at_boot(Build.set(order.turn_var, Build.int(order.turns == :first ? -1 : 1)))
+        at_boot(Build.set(order.turn_var, Build.int(order.turns == :first ? 0 : count)))
       end
 
       # WORK OUT EVERY NUMBER, THEN SORT. The list holds the objects back to front, so the
@@ -215,6 +225,8 @@ module VBlank
       # passed anybody, and moves a thing only past the ones it passed. A thing moves back
       # only past a number strictly beyond its own, so two level things keep their order.
       def order_sort_nodes(order)
+        return order_turn_nodes(order) if order.turns
+
         keys = order.keys_list
         list = order.order_list
         pass = order.part(:pass)
@@ -242,10 +254,16 @@ module VBlank
                                          Build.sub(at, Build.int(1)),
                                          stop_when: leave),
                             Build.list_set(list, ref.(at), ref.(item)))
-        return numbers + [sort] unless order.turns
+        numbers + [sort]
+      end
 
+      # This frame's order copied from the table (#declare_turn_table), and the turn moved to the
+      # other half for the next frame.
+      def order_turn_nodes(order)
+        count = object_names_in(order).length
         turn = order.turn_var
-        numbers + [sort, Build.set(turn, Build.binop(:-, Build.int(0), ref.(turn)))]
+        [Build.list_copy(order.order_list, table: order.part(:turns), at: Build.var_ref(turn), count: count),
+         Build.set(turn, Build.binop(:-, Build.int(count), Build.var_ref(turn)))]
       end
 
       # Which one named starts in front for +take_turns+ (nil when the order does not take

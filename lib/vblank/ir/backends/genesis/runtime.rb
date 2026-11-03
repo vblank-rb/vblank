@@ -66,16 +66,18 @@ module VBlank
           # its plays of recordings and the recordings themselves (Lowering::Sound#recordings_sections), for a
           # game that plays them, which then carries their count and the sound processor's program
           # (Recordings), and +recorded_parts+ when a song or effect has a part that plays one.
+          # +direct_slot_sizes+ are the slot sizes, in bytes, whose lists the game reads and writes
+          # directly (Lists#emit_fixed_front_access).
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
-                         backdrop: false, sprites_over_picture: false)
+                         backdrop: false, sprites_over_picture: false, direct_slot_sizes: [])
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
             Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD))
             Int32.emit(asm, fractions: fractions)
             Frame.emit(asm, memory, sound: sound)
-            Lists.emit(asm, memory)
+            Lists.emit(asm, memory, direct_slot_sizes: direct_slot_sizes)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
                                       sprites: sprites_over_picture)
             Collide.emit(asm, memory) if collision

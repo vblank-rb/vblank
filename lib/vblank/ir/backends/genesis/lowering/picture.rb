@@ -688,19 +688,24 @@ module VBlank
             # run's sprites back to front, each by its place in the run, so each entry in turn places
             # the sprite it names. A sprite's placing is a routine of its own (#sprite_placing_sections),
             # so the entries share it.
+            #
+            # The entry picks its routine from a table of their addresses, a long each, kept beside
+            # the code: four instructions an entry, whatever the run's length. Asking each entry "is
+            # it the first? the second?..." in turn would cost every entry a test for each sprite
+            # before it, so the whole run a test for every pair of its sprites.
             def emit_ordered_run(run)
-              entry = keep_local(:ordered_entry)
+              table = fresh("ordered_placings")
+              past = fresh("past_ordered_placings")
+              @asm.bra(past)
+              @asm.label(table)
+              @asm.data_longs(run.objects.map { |name| sprite_placing_label(name) })
+              @asm.label(past)
               run.objects.each_index do |k|
-                statement(Build.set(entry, Build.list_get(run.order, Build.int(k))))
-                past = fresh("past_the_ordered")
-                run.objects.each_with_index do |name, at|
-                  other = fresh("not_sprite")
-                  jump_unless(Build.binop(:==, Build.var_ref(entry), Build.int(at)), other)
-                  call_routine(sprite_placing_label(name))
-                  @asm.bra(past)
-                  @asm.label(other)
-                end
-                @asm.label(past)
+                value(Build.list_get(run.order, Build.int(k)))
+                @asm.lsl(:l, 2, @asm.d(0))
+                @asm.lea(@asm.abs_l(table), @asm.a(0))
+                @asm.movea(:l, @asm.idx(0, 0, 0), @asm.a(0))
+                @asm.jsr(@asm.ind(0))
               end
             end
 
