@@ -98,7 +98,7 @@
       "data": 0
     },
     "level@genesis": {
-      "code": 4518,
+      "code": 4542,
       "data": 2370
     },
     "maze": {
@@ -106,8 +106,8 @@
       "data": 0
     },
     "maze@genesis": {
-      "code": 3984,
-      "data": 2096
+      "code": 4008,
+      "data": 2098
     },
     "meadow": {
       "code": 32908,
@@ -126,7 +126,7 @@
       "data": 0
     },
     "parallax@genesis": {
-      "code": 2832,
+      "code": 2856,
       "data": 4448
     },
     "piano": {
@@ -170,7 +170,7 @@
       "data": 0
     },
     "scroll@genesis": {
-      "code": 2818,
+      "code": 2842,
       "data": 8472
     },
     "sheet": {
@@ -206,7 +206,7 @@
       "data": 0
     },
     "tiles@genesis": {
-      "code": 3102,
+      "code": 3126,
       "data": 2776
     },
     "tower": {
@@ -218,8 +218,8 @@
       "data": 15840
     },
     "tower@genesis": {
-      "code": 7324,
-      "data": 3728
+      "code": 7348,
+      "data": 3730
     },
     "wanderers": {
       "code": 2320,

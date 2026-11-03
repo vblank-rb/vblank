@@ -3,7 +3,7 @@
 A game built for the Genesis too (`VBlank.game "NAME", consoles: %i[gba genesis]`, then
 `vblank build`, which makes a cartridge for each console, or `--console genesis` for the
 Genesis's alone) is the same game on another machine: a 320×224 screen (`screen_width`,
-`screen_height`), 80 sprites (20 pieces on a row of the screen), backgrounds of tiles, colours
+`screen_height`), 80 pieces of sprites up to 32×32 each (20 on a row of the screen), backgrounds of tiles, colours
 of nine bits and four lists of sixteen. Every verb has one of two answers there, decided once
 in `Console::GenesisAnswers`:
 
@@ -70,11 +70,11 @@ and a test fails when the two differ. The Advance's answers are in
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
-- `sprite` — works: a sprite is made of the console's pieces, 80 pieces at once and 20 pieces of 8×8 on any one row of the screen. Past 80 pieces, a sprite is not drawn and no error shows as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` on a painted screen is not made yet: the build refuses it and says so (see Not made yet).
+- `sprite` — works: a sprite is made of the console's pieces. A piece is up to 32×32 pixels, so a picture of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one row of the screen. Past 80 pieces, a sprite is not drawn and no error shows as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` on a painted screen is not made yet: the build refuses it and says so (see Not made yet).
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: on the next frame, no sprite shows. On the frame after, every sprite shows where it is.
 - `picture_groups` — works: the same as on the Advance.
-- `pool` — works: its sprites count towards the 80.
+- `pool` — works: its sprites' pieces count towards the 80.
 - `box` — works: the same as on the Advance.
 - `tiles` — works: tiles of fifteen colours each and see-through, from one of the four lists.
 - `background` — works: two backgrounds at a time, scrolled and changed as on the Advance. `above_row:` is refused: this build does not make it yet. `show_only_inside` is refused: a Genesis cannot hide a background outside a box. Its window plane takes the place of one background in whole cells from an edge of the screen, and does not hide an ordinary background. A background is at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for all 224 rows each pass. A game can change 64 tiles with `set_tile` in one pass. If it changes more, the game stops and says so.

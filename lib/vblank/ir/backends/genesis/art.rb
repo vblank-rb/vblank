@@ -38,9 +38,17 @@ module VBlank
           # A cell of a map: the tile in the low eleven bits, the palette in the two bits at 13.
           PALETTE_SHIFT = 13
 
-          # A sprite's picture, cut into pieces: each piece where it sits in the picture, its tile and its
-          # palette. +number+ is what the runtime knows it by.
-          Piece = Data.define(:dx, :dy, :tile, :palette)
+          # A sprite's picture, cut into pieces: each piece where it sits in the picture, its first tile, its
+          # palette, and how many tiles across (+columns+) and down (+rows+) it is, one to four each. +number+
+          # is what the runtime knows it by.
+          Piece = Data.define(:dx, :dy, :tile, :palette, :columns, :rows) do
+            # The piece's size as the sprite table holds it, in the high byte of an entry's second word: the
+            # columns less one in its bits 2 and 3, the rows less one in bits 0 and 1.
+            def size_bits = ((columns - 1) << 2) | (rows - 1)
+          end
+
+          # The most tiles a sprite entry draws across, and down.
+          PIECE_SQUARES = 4
           SpritePicture = Data.define(:name, :number, :width, :height, :pieces)
 
           # A grid of map cells, +columns+ by +rows+, as the console's video memory holds a cell: a word,
@@ -71,6 +79,7 @@ module VBlank
             @backdrop = Console::GenesisHardware.color_word(@backdrop_color)
             @tiles = [blank_tile] # tile 0: nothing drawn, for an empty cell
             @tile_numbers = { blank_tile => 0 }
+            @tile_runs = {} # the tiles of a sprite piece bigger than one, joined => the first's number (#tile_run_number)
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
             @held = {} # whose list => the palette it keeps to itself (#reserve_held_palette)
             @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
@@ -116,19 +125,25 @@ module VBlank
           # +palette+ is a palette whose places are the picture's own list's (#ordered_palette), which a
           # picture drawn in the colours of another list is drawn from place for place; without it the
           # picture is drawn from whatever palette holds its colours.
+          #
+          # A PIECE IS UP TO FOUR TILES ACROSS AND FOUR DOWN. One entry of the sprite table draws it from
+          # tiles that follow one another in video memory, down its first column and then down the next,
+          # so a big picture takes few of the table's 80 entries, and few of the 20 a row of the screen
+          # shows (SpritePieces.cover). A blank square inside a piece is a blank tile of its own.
           def sprite_picture(name, image, palette: nil)
             @sprite_pictures[name] ||= begin
               drawn = (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }
               line = palette || palette_for(drawn.map { |at| word_of(image.color_at(at)) }.uniq, "sprites")
-              cut = SpritePieces.cut(image.width, image.height) do |x, y|
+              cover = SpritePieces.cover(image.width, image.height, most: PIECE_SQUARES) do |x, y|
                 at = (y * image.width) + x
                 if !image.drawn_at?(at) then 0
                 elsif palette then image.place_at(at) || first_place(image, image.color_at(at))
                 else @palettes[line].index(word_of(image.color_at(at))) + 1
                 end
               end
-              pieces = cut.map do |across, down, places|
-                Piece.new(dx: across, dy: down, tile: tile_number(tile_bytes(places)), palette: line)
+              pieces = cover.map do |block|
+                Piece.new(dx: block.across, dy: block.down, tile: tile_run_number(block.squares.map { |places| tile_bytes(places) }),
+                          palette: line, columns: block.columns, rows: block.rows)
               end
               SpritePicture.new(name: name, number: @sprite_pictures.length, width: image.width, height: image.height,
                                 pieces: pieces)
@@ -250,15 +265,34 @@ module VBlank
 
           def tile_number(bytes)
             @tile_numbers[bytes] ||= begin
-              number = @tiles.length
-              if number > MOST_TILES
-                raise TooMuch, "The pictures use more different 8×8 squares of picture than a Genesis has room for " \
-                               "(#{MOST_TILES}). To fix this, use fewer different pictures."
-              end
-
+              refuse_too_many_tiles!(@tiles.length)
               @tiles << bytes
-              number
+              @tiles.length - 1
             end
+          end
+
+          # The first of the tiles +tiles+ (each one's bytes) in a row in video memory, for a sprite piece
+          # drawn from them in that order: one tile is any tile alike, and a run is stored whole, once for
+          # every piece of the same tiles. Each tile of a run serves a square of one tile alike after it.
+          def tile_run_number(tiles)
+            return tile_number(tiles.first) if tiles.length == 1
+
+            @tile_runs[tiles.join] ||= begin
+              first = @tiles.length
+              refuse_too_many_tiles!(first + tiles.length - 1)
+              tiles.each_with_index do |bytes, i|
+                @tiles << bytes
+                @tile_numbers[bytes] ||= first + i
+              end
+              first
+            end
+          end
+
+          def refuse_too_many_tiles!(number)
+            return if number <= MOST_TILES
+
+            raise TooMuch, "The pictures use more different 8×8 squares of picture than a Genesis has room for " \
+                           "(#{MOST_TILES}). To fix this, use fewer different pictures."
           end
 
           # The palette that holds every one of +colors+, adding them to one with room where none does,

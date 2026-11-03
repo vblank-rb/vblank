@@ -28,7 +28,9 @@ module VBlank
           # THE SPRITE TABLE is a list the chip walks from row 0, each row naming the next by its
           # link, and it draws a row in front of the rows after it. A game places its sprites back to
           # front, so they are noted in that order and written to the table the other way round, the
-          # last placed first, each linked to the one after, the last to nothing.
+          # last placed first, each linked to the one after, the last to nothing. A row draws a piece
+          # of one to four tiles across and one to four down, from tiles that follow one another in
+          # video memory down each column in turn; its size is in the byte above its link.
           #
           # A SCROLL REGISTER MOVES THE PLANE, not the view over it: a plane scrolled right by 5 shows
           # what was 5 pixels to the left. A game's view at x is the plane scrolled by -x. Vertically
@@ -44,9 +46,9 @@ module VBlank
             # The cells a game may change in one pass, each noted as its plane, its place in it and its tile.
             MOST_CELLS = 64
             CELL_BYTES = 6
-            # A sprite's note: where it is on the screen as the chip counts (128 past the screen's corner),
-            # and the tile and palette it is drawn with.
-            SPRITE_BYTES = 6
+            # A sprite piece's note: where it is on the screen as the chip counts (128 past the screen's
+            # corner), the tile and palette it is drawn with, and its size (Art::Piece#size_bits).
+            SPRITE_BYTES = 8
             # A sprite the reader of the running game is told of: whose, which picture, where.
             DRAWN = "rt drawn"
             DRAWN_BYTES = 8
@@ -256,6 +258,8 @@ module VBlank
               asm.and(:w, asm.imm(0x9FFF), asm.d(0))
               asm.or(:w, asm.d(6), asm.d(0))
               asm.label("rt_sprite_place_own_palette")
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.post(0), asm.d(6)) # its size
               emit_piece_written(asm, memory, at)
               asm.dbra(asm.d(5), "rt_sprite_place_piece")
               asm.label("rt_sprite_place_done")
@@ -298,15 +302,17 @@ module VBlank
               asm.label("rt_sprite_place_noted")
             end
 
-            # The piece at (D7, D1) with the tile and palette in D0 into the table, if it is on the screen
-            # and the table has a row for it.
+            # The piece at (D7, D1) with the tile and palette in D0 and the size in D6 into the table, if any
+            # of it is on the screen and the table has a row for it.
             def emit_piece_written(asm, memory, at)
-              asm.cmp(:l, asm.imm(1 - 8), asm.d(7))
-              asm.branch(:lt, "rt_sprite_place_skip")
+              emit_piece_side(asm, 2) # its width, in pixels
+              asm.add(:l, asm.d(7), asm.d(4))
+              asm.branch(:le, "rt_sprite_place_skip") # its right edge at or past the screen's left
               asm.cmp(:l, asm.imm(Paint::WIDTH), asm.d(7))
               asm.branch(:ge, "rt_sprite_place_skip")
-              asm.cmp(:l, asm.imm(1 - 8), asm.d(1))
-              asm.branch(:lt, "rt_sprite_place_skip")
+              emit_piece_side(asm, 0) # its height
+              asm.add(:l, asm.d(1), asm.d(4))
+              asm.branch(:le, "rt_sprite_place_skip")
               asm.cmp(:l, asm.imm(Paint::HEIGHT), asm.d(1))
               asm.branch(:ge, "rt_sprite_place_skip")
               asm.moveq(0, asm.d(4))
@@ -321,8 +327,23 @@ module VBlank
               asm.move(:w, asm.d(7), asm.post(1))
               asm.move(:w, asm.d(1), asm.post(1))
               asm.move(:w, asm.d(0), asm.post(1))
+              asm.move(:w, asm.d(6), asm.post(1))
               asm.addq(:w, 1, at.call(SPRITE_COUNT))
               asm.label("rt_sprite_place_skip")
+            end
+
+            # D4: one side of the piece whose size is in D6, in pixels — across from the two bits at
+            # +shift+ 2, down from the two at 0, each a count of tiles less one.
+            def emit_piece_side(asm, shift)
+              asm.moveq(3, asm.d(4))
+              if shift.zero?
+                asm.and(:l, asm.d(6), asm.d(4))
+              else
+                asm.move(:l, asm.d(6), asm.d(4))
+                asm.lsr(:l, shift, asm.d(4))
+              end
+              asm.addq(:l, 1, asm.d(4))
+              asm.lsl(:l, 3, asm.d(4))
             end
 
             # rt_upload (and rt_upload_whole, which is the same, the screen being off): the maps noted
@@ -423,7 +444,10 @@ module VBlank
               asm.branch(:ne, "rt_upload_sprite_linked")
               asm.moveq(0, asm.d(0))
               asm.label("rt_upload_sprite_linked")
-              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA)) # a sprite of one tile, and its link
+              asm.move(:w, asm.disp(1, 6), asm.d(1))
+              asm.lsl(:w, 8, asm.d(1))
+              asm.or(:w, asm.d(1), asm.d(0))
+              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA)) # its size, and its link
               asm.move(:w, asm.disp(1, 4), asm.abs_l(h::VDP_DATA)) # its tile and palette
               asm.move(:w, asm.ind(1), asm.abs_l(h::VDP_DATA)) # across
               asm.lea(asm.disp(1, -SPRITE_BYTES), asm.a(1))

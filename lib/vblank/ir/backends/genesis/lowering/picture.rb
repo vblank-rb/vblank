@@ -355,7 +355,7 @@ module VBlank
                 data.label(pieces_label(picture.number))
                 data.data_words(picture.pieces.length)
                 picture.pieces.each do |piece|
-                  data.data_words(piece.dx, piece.dy, piece.tile | (piece.palette << Art::PALETTE_SHIFT))
+                  data.data_words(piece.dx, piece.dy, piece.tile | (piece.palette << Art::PALETTE_SHIFT), piece.size_bits)
                 end
               end
               write_held_colors(data)

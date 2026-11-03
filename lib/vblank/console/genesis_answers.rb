@@ -7,7 +7,7 @@ module VBlank
     # The Genesis is a 16-bit console of 1988 with a 68000 at its heart. Next to the Super Nintendo it
     # has a wider screen (320×224), fewer colours (512 to choose from, 61 on the screen at once: four
     # lists of sixteen that sprites and backgrounds share, each with one place see-through, and the
-    # backdrop) and fewer sprites (80, 20 on a row).
+    # backdrop) and fewer sprites (80 pieces of up to 32×32, 20 on a row).
     # What it lacks is the Advance's painted screen (every picture is tiles), a sprite that turns or
     # resizes, any layer that turns, blending of one layer into another, and the Super Nintendo's
     # colour maths. It has two layers of tiles that scroll, a third (the window) that covers whole
@@ -117,15 +117,17 @@ module VBlank
         mirror: works,
         upside_down: works,
         blit: works,
-        sprite: works("a sprite is made of the console's pieces, 80 pieces at once and 20 pieces of 8×8 on " \
-                      "any one row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
+        sprite: works("a sprite is made of the console's pieces. A piece is up to 32×32 pixels, so a picture " \
+                      "of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. " \
+                      "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
+                      "row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
                       "as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot " \
                       "turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` on a " \
                       "painted screen is not made yet: the build refuses it and says so (see Not made yet)."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),
         picture_groups: works,
-        pool: works("its sprites count towards the 80."),
+        pool: works("its sprites' pieces count towards the 80."),
         box: works,
 
         # --- backgrounds and layers ---
@@ -236,7 +238,7 @@ module VBlank
           A game built for the Genesis too (`VBlank.game "NAME", consoles: %i[gba genesis]`, then
           `vblank build`, which makes a cartridge for each console, or `--console genesis` for the
           Genesis's alone) is the same game on another machine: a 320×224 screen (`screen_width`,
-          `screen_height`), 80 sprites (20 pieces on a row of the screen), backgrounds of tiles, colours
+          `screen_height`), 80 pieces of sprites up to 32×32 each (20 on a row of the screen), backgrounds of tiles, colours
           of nine bits and four lists of sixteen. Every verb has one of two answers there, decided once
           in `Console::GenesisAnswers`:
 

@@ -285,9 +285,10 @@ module VBlank
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
                               holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 80, sprite_places: 80,
                               # A row of the screen shows at most 20 sprites (16 on a screen of 256
-                              # across), and a sprite here is one 8-pixel piece of a picture.
+                              # across), and a sprite here is one piece of a picture, up to 32×32.
                               sprites_a_row: 20, turning_sprites: false,
-                              # Every sprite picture is cut into 8×8 pieces (Backends::Genesis::Art).
+                              # Every sprite picture is covered by pieces of whole 8×8 tiles, up to
+                              # four across and four down (Backends::SpritePieces.cover).
                               sprite_sizes: nil, tile_planes: nil,
                               # Two planes of tiles that scroll. The window plane is a third, but it
                               # only covers whole rows of tiles and the build does not use it.
