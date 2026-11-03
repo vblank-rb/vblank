@@ -273,6 +273,9 @@ module VBlank
             # ...and a word beside each bend's table for the scroll its rows were worked out on,
             # taken back out as its background goes up (#emit_bend_put_up).
             @row_bends.each_key { |name| @scroll_in_table[name] = @memory.alloc(4) }
+            # ...and a second table for the light, which its rows are worked out into at the end
+            # of a pass and copied from in the gap (see #emit_stage_light_rows).
+            @light_staging = @memory.alloc(TABLE_BYTES) if @light
           end
 
           # The table the copier walks: one 16-bit offset per row, and one spare (see
@@ -335,6 +338,10 @@ module VBlank
             @emitter.write_reg16(REG_BLDCNT, LIGHT_CONTROL)
             @emitter.write_reg16(REG_BLDY, 0)
             @primitives.store_word_immediate(0, @primitives.var_addr(LIGHT_ROWS_FILLED)) # no rows worked out yet
+            return unless @light_staging
+
+            @primitives.store_word_immediate(0, @primitives.var_addr(LIGHT_ROWS_STAGED)) # ...nor waiting
+            @primitives.store_word_immediate(0, @primitives.var_addr(LIGHT_PASSES_BEGUN)) # still setting up
           end
 
           # THE LIGHT AT THE GAP BETWEEN FRAMES, in a game where it takes turns: where the scene
@@ -367,7 +374,6 @@ module VBlank
             @emitter.emit(ASM.cmp_imm(ACC, BLD_MAX))
             @emitter.emit(ASM.mov_imm_cond(:gt, ACC, BLD_MAX))
             @primitives.store_halfword_acc(REG_BLDY)
-            @primitives.store_var(ACC, LIGHT_STEPS)
           end
 
           # Point the engine back at the top of the table, in the gap between frames. It
@@ -450,27 +456,37 @@ module VBlank
           # THE LIGHT'S DARKNESS GOES WITH ITS ROW 0, and before any table, for the same
           # reason: it is a register the whole picture reads.
           #
-          # THE LIGHT'S ROWS ARE WORKED OUT ONLY WHEN THEY CAN SHOW AND HAVE CHANGED. Every row is a
-          # few dozen instructions, and a light is often there doing nothing — switched off in a
-          # scene that sees through a layer, darkening nothing until an iris starts, or standing
-          # still — so its darkness is worked out first, and the rows only on a frame the light
-          # darkens something and has moved or changed size since they were last worked out. The
-          # table keeps the rows from then, and its first row is fed to the display again, since
-          # the engine has walked the register on through the table. The picture is the same.
+          # THE LIGHT'S ROWS ARE NOT WORKED OUT HERE, only its darkness and its row 0. The gap is
+          # also where the frame's sprites are written, and the display starts drawing the top
+          # of the next picture from them the moment the gap ends. A light that changes every
+          # frame and has a long shape could fill the whole gap by itself, and then the sprites
+          # were written while the top rows were already on their way to the screen, half old
+          # and half new. So the rows are worked out at the end of the pass, before the console
+          # sleeps (#emit_stage_light_rows), into a table of their own; here they are only
+          # copied into the table the display is fed from, which is a short loop.
+          #
+          # EXCEPT AT THE FIRST GAP, after the setting up. The setting up is not a pass: it ends
+          # wherever its work runs out, often right up against the gap, and working a light's rows
+          # out on the end of it would carry it past the gap, so the game's first pass would start
+          # a frame late. No picture has been shown yet and there are no sprites on screen to
+          # catch half written, so the first gap works them out itself, as it always did.
           def emit_fill_row_bend_tables
-            emit_light_this_frame if @light
+            if @light
+              emit_light_darkness
+              emit_stage_first_light_rows
+            end
             feed_keys.each { |key| key == LIGHT ? emit_light_first_row : emit_bend_first_row(key) }
             emit_flat_scroll_of_backgrounds_up
-            feed_keys.each { |key| key == LIGHT ? emit_if_light_rows { emit_call_light_rows } : emit_fill_row_table(key) }
+            @row_bends.each_key { |key| emit_fill_row_table(key) }
           end
 
-          # THE LIGHT'S ROWS ARE ONE ROUTINE, called from the gap and from Spotlight#show_now. A
-          # light whose shape is worked out row by row costs a few dozen instructions a row, and
-          # written out at each place that asks, the one inside a pass ran wherever that pass's
-          # routine was kept: from the cartridge, at well under half the speed, on the one frame
-          # that does it, which no measuring of whole frames would find. As one routine it goes
-          # where the frame's own work goes (Placement#routines_placed_with_frame), so both
-          # places run it at the speed the gap does.
+          # THE LIGHT'S ROWS ARE ONE ROUTINE, called at the end of every pass and from
+          # Spotlight#show_now. A light whose shape is worked out row by row costs a few dozen
+          # instructions a row, and written out at each place that asks, the one inside a pass ran
+          # wherever that pass's routine was kept: from the cartridge, at well under half the
+          # speed, on the one frame that does it, which no measuring of whole frames would find.
+          # As one routine it goes where the frame's own work goes
+          # (Placement#routines_placed_with_frame), so both places run it at the same speed.
           LIGHT_ROWS_ROUTINE = :__light_rows
 
           # Whether the program has that routine: a light, worked out into a table of rows.
@@ -478,8 +494,9 @@ module VBlank
 
           def emit_call_light_rows = @lowering.statement(Build.call(LIGHT_ROWS_ROUTINE))
 
-          # The body of that routine.
-          def emit_light_rows_routine = emit_fill_row_table(LIGHT)
+          # The body of that routine: every row of the light, row 0 too, into the light's second
+          # table, which the display never reads.
+          def emit_light_rows_routine = emit_fill_row_table(LIGHT, base: @light_staging, first: 0)
 
           # A bend's row 0: always into its table, since every bend is worked out at every gap
           # whether its background is up or not, as the interpreter works them out; into the
@@ -578,29 +595,58 @@ module VBlank
             @primitives.store_word_immediate(0, @scroll_in_table.fetch(name))
           end
 
-          # Whether this frame works the light's rows out, 1 or 0; whether the rows in the table were
-          # ever worked out, which they are not at power-on; and the darkness last worked out, in
-          # sixteenths, kept because the display's own register for it cannot be read back.
-          LIGHT_ROWS_THIS_FRAME = :_light_rows_this_frame
+          # Whether the rows in the table were ever worked out, which they are not at power-on; and
+          # whether rows worked out at the end of a pass are waiting in the second table for the
+          # gap to copy, 1 or 0.
           LIGHT_ROWS_FILLED = :_light_rows_filled
-          LIGHT_STEPS = :_light_steps
+          LIGHT_ROWS_STAGED = :_light_rows_staged
 
           # Where each number the light's rows are worked out from stood when they last were.
           def light_rows_from_var(name) = :"_light_rows_from_#{name}"
 
-          # The light's darkness for the frame to come, and whether its rows are worked out: only
-          # where it shows, darkens something, and has moved since they last were.
-          def emit_light_this_frame
+          # The light's darkness for the frame to come, into the display's register: in a game
+          # where it takes turns, only where the scene that ran has it on.
+          def emit_light_darkness
+            switches_light? ? emit_light_for_scene : emit_light_amount
+          end
+
+          # Whether the first gap has been reached, so that what comes before a wait is a pass's
+          # end and no longer the setting up (see #emit_fill_row_bend_tables), 1 or 0.
+          LIGHT_PASSES_BEGUN = :_light_passes_begun
+
+          # The light's rows at the end of a pass, where there has been one.
+          def emit_light_rows_at_pass_end
+            setting_up = @emitter.gensym
+            emit_branch_if_zero(LIGHT_PASSES_BEGUN, setting_up)
+            emit_stage_light_rows
+            @emitter.place_label(setting_up)
+          end
+
+          # ...and at the first gap, where the setting up left them.
+          def emit_stage_first_light_rows
+            begun = @emitter.gensym
+            @primitives.load_var(ACC, LIGHT_PASSES_BEGUN)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, begun, cond: :ne)
+            @primitives.store_word_immediate(1, @primitives.var_addr(LIGHT_PASSES_BEGUN))
+            emit_stage_light_rows
+            @emitter.place_label(begun)
+          end
+
+          # THE LIGHT'S ROWS AT THE END OF A PASS, before the console sleeps until the gap. The
+          # game's numbers stand as the gap will find them, so the rows are the ones the gap
+          # used to work out, only worked out sooner, into the second table: the display is
+          # still drawing this pass's picture from the first one. They are worked out only where
+          # the light can show — on in the scene that ran, darkening something — and has moved
+          # or changed size since they last were; then the gap is told there are rows to copy.
+          # The darkness asked here is asked again in the gap, for the display's register.
+          def emit_stage_light_rows
             done = @emitter.gensym
             changed = @emitter.gensym
-            @primitives.store_word_immediate(0, @primitives.var_addr(LIGHT_ROWS_THIS_FRAME))
-            if switches_light?
-              emit_light_for_scene
-              emit_branch_if_zero(LIGHT_SHOWN, done)
-            else
-              emit_light_amount
-            end
-            emit_branch_if_zero(LIGHT_STEPS, done)
+            emit_branch_if_zero(IR::LightScenes::ON, done) if switches_light?
+            @lowering.value(FadeSteps.steps_value(@light.amount, fraction_bits: nil, walked: false))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, done, cond: :le) # held to none: nothing darkened
             emit_branch_if_zero(LIGHT_ROWS_FILLED, changed)
             IR::LightScenes.span_vars(@light).each do |name|
               @primitives.load_var(ACC, name)
@@ -615,58 +661,74 @@ module VBlank
               @primitives.store_var(ACC, light_rows_from_var(name))
             end
             @primitives.store_word_immediate(1, @primitives.var_addr(LIGHT_ROWS_FILLED))
-            @primitives.store_word_immediate(1, @primitives.var_addr(LIGHT_ROWS_THIS_FRAME))
+            @primitives.store_word_immediate(1, @primitives.var_addr(LIGHT_ROWS_STAGED))
+            emit_call_light_rows
             @emitter.place_label(done)
           end
 
           # THE LIGHT WORKED OUT DURING A PASS (Spotlight#show_now), for the picture being drawn:
-          # what a game does that hands the display its rows while it draws. The same as the gap
-          # does — the darkness, and the rows only where they show and have changed — into the
-          # same table, which the display goes on reading a line at a time, so every line it has
-          # not reached yet shows the new rows. Row 0 goes straight into the register only while
-          # the display is still between pictures; once it is drawing, the register is fed a line
-          # at a time from the table, and a write would land on the line being drawn.
+          # what a game does that hands the display its rows while it draws. The darkness, and
+          # the rows only where they show and have changed, worked out as the end of a pass works
+          # them out and then copied at once into the table the display goes on reading a line at
+          # a time, so every line it has not reached yet shows the new rows. Row 0 goes straight
+          # into the register only while the display is still between pictures; once it is
+          # drawing, the register is fed a line at a time from the table, and a write would land
+          # on the line being drawn.
           #
           # This is the lead the gap's own comment warns of — the light a picture ahead of the
           # sprites — and that is the point: a game that asks for it is copying one that has it.
           def emit_light_now(_node = nil)
-            return unless feeds_light? && row_bend_tables?
+            return unless light_rows_routine?
 
             drawing = @emitter.gensym
-            emit_light_this_frame
-            emit_if_light_rows do
-              emit_first_row_into_table(LIGHT)
-              # Asked after row 0 is worked out, not before, so a long shape cannot carry the
-              # write past the gap.
+            emit_light_darkness
+            emit_stage_light_rows
+            emit_if_light_rows_staged do
+              @emitter.emit_number(ADDR, @row_bend_table.fetch(LIGHT))
+              @emitter.emit(ASM.load_halfword(ACC, ADDR))
               @emitter.emit_number(ADDR, REG_VCOUNT)
               @emitter.emit(ASM.load_halfword(TMP, ADDR))
               @emitter.emit(ASM.cmp_imm(TMP, VISIBLE_LINES))
               @emitter.emit_branch(:bcond, drawing, cond: :lt)
               @primitives.store_halfword_acc(register_fed(LIGHT))
               @emitter.place_label(drawing)
-              emit_call_light_rows
             end
           end
 
-          # The light's row 0: worked out, where the rows are; otherwise the one the table keeps.
+          # The light's row 0 into the display's register, from the table it is fed from, after
+          # copying in the rows the end of the pass worked out, if it did.
           def emit_light_first_row
-            kept = @emitter.gensym
-            done = @emitter.gensym
-            emit_branch_if_zero(LIGHT_ROWS_THIS_FRAME, kept)
-            emit_first_row(LIGHT)
-            @emitter.emit_branch(:b, done)
-            @emitter.place_label(kept)
+            emit_if_light_rows_staged {}
             @emitter.emit_number(ADDR, @row_bend_table.fetch(LIGHT))
             @emitter.emit(ASM.load_halfword(ACC, ADDR))
             @primitives.store_halfword_acc(register_fed(LIGHT))
-            @emitter.place_label(done)
           end
 
-          def emit_if_light_rows
+          # Where rows are waiting in the second table: copy them into the table the display is
+          # fed from, note that none are waiting now, and then +block+.
+          def emit_if_light_rows_staged
             skip = @emitter.gensym
-            emit_branch_if_zero(LIGHT_ROWS_THIS_FRAME, skip)
+            emit_branch_if_zero(LIGHT_ROWS_STAGED, skip)
+            emit_copy_staged_light_rows
+            @primitives.store_word_immediate(0, @primitives.var_addr(LIGHT_ROWS_STAGED))
             yield
             @emitter.place_label(skip)
+          end
+
+          # The whole second table into the first, a word (two rows) at a time: five
+          # instructions a word, a few hundred in all, where working the rows out is a few dozen
+          # a row.
+          def emit_copy_staged_light_rows
+            top = @emitter.gensym
+            @emitter.emit_number(ADDR, @light_staging)
+            @emitter.emit_number(SPARE, @row_bend_table.fetch(LIGHT))
+            @emitter.emit_number(TMP, TABLE_BYTES / 4)
+            @emitter.place_label(top)
+            @emitter.emit(ASM.ldr(ACC, ADDR))
+            @emitter.emit(ASM.add_imm(ADDR, ADDR, 4))
+            @emitter.emit(ASM.str_post(ACC, SPARE, 4))
+            @emitter.emit(ASM.subs_imm(TMP, TMP, 1))
+            @emitter.emit_branch(:bcond, top, cond: :ne)
           end
 
           # Go to +label+ when the variable +name+ holds nought.
@@ -694,15 +756,14 @@ module VBlank
             @emitter.emit(ASM.store_halfword(ACC, ADDR))
           end
 
-          # ...and the rest of its rows, 1 up. The loop keeps its count in the block's own
-          # row variable, which the block reads anyway: the block is free to reach a routine
-          # or the console's divide, and either would land in whatever register a count was
-          # being held in.
-          def emit_fill_row_table(key)
+          # ...and the rest of its rows, from +first+ (1, row 0 having gone first) into the table at
+          # +base+. The loop keeps its count in the block's own row variable, which the block
+          # reads anyway: the block is free to reach a routine or the console's divide, and either
+          # would land in whatever register a count was being held in.
+          def emit_fill_row_table(key, base: @row_bend_table.fetch(key), first: 1)
             row = row_var(key)
-            base = @row_bend_table.fetch(key)
             top = @emitter.gensym
-            @primitives.store_word_immediate(1, @primitives.var_addr(row))
+            @primitives.store_word_immediate(first, @primitives.var_addr(row))
             @emitter.place_label(top)
             emit_row_value(key)
             @primitives.load_var(TMP, row)

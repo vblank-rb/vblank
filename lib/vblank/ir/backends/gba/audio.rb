@@ -1497,6 +1497,9 @@ module VBlank
             # What the pass has left to finish goes first, in time the console would otherwise
             # spend asleep (see the end_of_pass the lowering hands over).
             @end_of_pass.call
+            # ...the light's rows among it, so the gap is left for what has to be written there
+            # (see Raster#emit_stage_light_rows).
+            @raster.emit_light_rows_at_pass_end if @raster.light_rows_routine?
             @bookkeeping&.emit_pass_ended
             # ...unless the pass ran late and its screen says to show its page at once.
             shown_late = @emitter.gensym
