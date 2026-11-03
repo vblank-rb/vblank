@@ -2,9 +2,9 @@
 
 module VBlank
   module Playthroughs
-    # WHAT `vblank play` AND `vblank compare` DO, once the command line has been taken
-    # apart into options: find the cartridges and what to press, read the settings a command
-    # line can only give as text, play or compare, and say what came of it.
+    # WHAT `vblank run` WITH A SCRIPT OR A TAPE, AND `vblank compare`, DO once the command line has
+    # been taken apart into options: find what to press, read the settings a command line can only
+    # give as text, play or compare, and say what came of it.
     #
     # It is here and not in the command-line program so that it sits with what it drives, and
     # so that nothing in it knows which library read the command line. +options+ answers
@@ -19,33 +19,48 @@ module VBlank
       # what happened and what to write.
       class Refused < StandardError; end
 
+      # THE WAYS `vblank run --on` RUNS A GAME, by the word the command line takes, and the way of
+      # LoweredGame each is. None is the emulator: the command runs the game, and a console is
+      # reached by writing a tape out for an emulator a person already has (--write-mgba-script,
+      # --write-bk2). Ruby is first, the default, and the one a person plays in a window.
+      WAYS = { "ruby" => "ruby", "js" => "web", "native" => "native", LoweredGame::LOGIC => LoweredGame::LOGIC,
+               "interpreter" => "interpreter" }.freeze
+
       def initialize(options, out:, build:)
         @options = options
         @out = out
         @build = build
       end
 
-      # Play the cartridge at +cartridge_file+, say the frames and the moments, and write
-      # what was asked for. Hands back what the playing came to.
-      def play(cartridge_file)
+      # Play the script or the tape on the game the block gives (an UnbuiltGame) the way +on+ says
+      # (a word of WAYS), in a window if +window+ says so, say the frames and the moments, and write
+      # what was asked for. The block is called once what was written has been found good, since
+      # it builds the game, and that takes a while. +export_cartridge+ makes the Advance's
+      # cartridge, which only a tape written out for another emulator needs. +progress+ is told
+      # how far the playing has got. Hands back what the playing came to.
+      def play(on:, window:, export_cartridge:, progress: Messages::Progress.silent)
         saying_errors_plainly do
-          refuse_missing_cartridges!(cartridge_file)
-          refuse_flags_beside_logic!
+          refuse_flags_beside_logic!(on)
           refuse_in_passes_beside_tape!
           playing = tape_or_playthrough(lead_in_flag: :lead_in)
           lead_in = lead_in_named(options[:lead_in])
-          %i[write_tape write_save].each { |flag| refuse_unwritable_file!(flag) }
-          cartridge = cartridge_at(cartridge_file)
-          in_window_if_asked(cartridge) do |window|
-            settings = { save: options[:save], lead_in: lead_in, pictures_in: options[:pictures_in], on: options[:on],
-                         window: window, in_passes: in_passes_asked }.compact
-            playing.play(cartridge, **settings).tap do |played|
-              say_frames_and_moments(played, playing, cartridge)
-              write_tape_and_save(played, cartridge)
+          refuse_unwritable_file!(:write_tape)
+          game = yield
+          in_window_if_asked(game, window) do |device|
+            settings = { lead_in: lead_in, pictures_in: options[:pictures_in], on: WAYS.fetch(on), window: device,
+                         progress: progress }
+            settings[:in_passes] = in_passes_asked if in_passes_asked
+            playing.play(game, **settings).tap do |played|
+              say_frames_and_moments(played, playing, game)
+              write_tapes(played, export_cartridge)
             end
           end
         end
       end
+
+      # Everything a playing with nobody at the controls is told on the command line, and so
+      # nothing a person playing needs: each is refused without --tape or --script.
+      PLAYING_FLAGS = %i[playthrough lead_in pictures_in write_tape write_mgba_script write_bk2 in_passes].freeze
 
       # Compare the cartridges at the two paths and say where they drift, or that they agree.
       # Hands back what the comparison found.
@@ -63,17 +78,19 @@ module VBlank
 
       attr_reader :options
 
-      # The block, handed a window on +cartridge+'s screen where --window asks for one, which is
-      # closed however the playing ends. A window takes SDL3, which only this needs, so it is
-      # loaded here. Closing it is how a person stops watching, so that ends the command quietly.
-      def in_window_if_asked(cartridge)
-        return yield(nil) unless options[:window]
+      # The block, handed a window on +game+'s screen where +wanted+ asks for one, which is closed
+      # however the playing ends. A window takes SDL3, which only this needs, so it is loaded here.
+      # Closing it is how a person stops watching, so that ends the command quietly. --scale,
+      # --settings-file and --config-dir mean what they mean in a person's window.
+      def in_window_if_asked(game, wanted)
+        return yield(nil) unless wanted
 
         require "vblank/live"
-        console = Console.described(cartridge.console)
-        title = Tape.title_and_checksum_of(cartridge).first
+        console = Console.described(game.console)
+        title = Tape.title_and_checksum_of(game).first
         window = Live::SDL.new(title: title, caption: "#{title} (automated playthrough)", width: console.screen_width,
-                               height: console.screen_height, settings_file: :usual)
+                               height: console.screen_height, scale: options[:scale],
+                               settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir])
         say window.settings_problems_message if window.settings_problems_message
         say "Press F1 or ` for the menu. Press P to pause. Hold Tab to play fast. Press Escape to stop."
         yield window
@@ -131,16 +148,16 @@ module VBlank
 
       # `--on logic` has no picture and no sound, and its frames are not the console's, so a tape
       # of frames made there does not play on a cartridge, and a tape counted in passes does.
-      def refuse_flags_beside_logic!
-        return unless options[:on] == LoweredGame::LOGIC
+      def refuse_flags_beside_logic!(on)
+        return unless on == LoweredGame::LOGIC
 
-        refused = %i[window pictures_in write_save]
+        refused = %i[window pictures_in write_mgba_script write_bk2]
         refused << :write_tape unless options[:in_passes]
         said = refused.find { |flag| options[flag] }
         return unless said
 
         raise Refused, "#{flag_of(said)} cannot go with --on logic. That way plays a game's rules with no picture and no " \
-                       "sound, and its frames are not the console's. To fix this, use --on emulator or remove #{flag_of(said)}."
+                       "sound, and its frames are not the console's. To fix this, use --on ruby or remove #{flag_of(said)}."
       end
 
       # Every file has to be there before anything is built: building the first game file
@@ -277,14 +294,15 @@ module VBlank
         moments.each { |name, reached| say "  #{name.to_s.ljust(width)}  #{yield reached}" }
       end
 
-      def write_tape_and_save(played, cartridge)
+      # The tape, and the tape written out for another emulator, which is the Advance's cartridge's
+      # list of frames: that cartridge is built for it, and only then.
+      def write_tapes(played, export_cartridge)
         say "Wrote the tape to #{played.tape.write(options[:write_tape])}." if options[:write_tape]
+        return unless options[:write_mgba_script] || options[:write_bk2]
+
+        cartridge = export_cartridge.call
         say "Wrote the mGBA script to #{played.tape.write_mgba_script(cartridge, options[:write_mgba_script])}." if options[:write_mgba_script]
         say "Wrote the BizHawk movie to #{played.tape.write_bizhawk_movie(cartridge, options[:write_bk2])}." if options[:write_bk2]
-        return unless options[:write_save]
-        return say("This cartridge has no save memory, so no save was written.") unless played.save
-
-        say "Wrote the save to #{played.save.write_sav(options[:write_save])}."
       end
 
       # Every setting that was said, as `compare` takes them from Ruby: each is the option of

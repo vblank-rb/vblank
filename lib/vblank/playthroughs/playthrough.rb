@@ -79,9 +79,13 @@ module VBlank
       #
       # +in_passes+ makes every count in the script a count of passes of the game loop, or of a
       # variable of the game named here, in place of frames (see PassSteppedGame).
-      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil, &at_each_moment)
+      #
+      # +progress+ (a Messages::Progress) is told how far the playing has got as it goes: a phase
+      # from the start and one on from each moment, and the frame each has reached.
+      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
+               progress: Messages::Progress.silent, &at_each_moment)
         Playing.play(@name, @steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
-                                               in_passes: in_passes, &at_each_moment)
+                                               in_passes: in_passes, progress: progress, &at_each_moment)
       end
 
       # Play this script on +game+, a console that is already running, as the lead-in to
@@ -149,6 +153,7 @@ module VBlank
       #
       # +on+ and +window+ are as for #play, and +count_passes+ says the playing will ask for them.
       def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false)
+        refuse_unbuilt_game_on_emulator!(cartridge, on)
         game = if on && on != LoweredGame::EMULATOR
                  lowered_game(cartridge, on, save, speaker: !window.nil?)
                else
@@ -161,6 +166,15 @@ module VBlank
         end
         lead_in&.play_as_lead_in(game)
         game
+      end
+
+      # The emulator plays a cartridge's bytes, and a game that was not built into one has none.
+      def self.refuse_unbuilt_game_on_emulator!(cartridge, on)
+        return unless cartridge.is_a?(UnbuiltGame) && (on.nil? || on == LoweredGame::EMULATOR)
+
+        raise ArgumentError, "This game was not built into a cartridge, so the emulator cannot play it. To fix this, " \
+                             "give a way that runs the game itself (`on: \"ruby\"`), or build the cartridge " \
+                             "(`game.build_rom`) and play that."
       end
 
       # The game inside +cartridge+ run the way +on+ says. That takes the game, so a cartridge
@@ -230,7 +244,7 @@ module VBlank
       # any other and has no names for anything in it. A cartridge passes straight through,
       # so asking twice reads a file once.
       def self.cartridge_from(given)
-        return given if given.respond_to?(:buffer) && given.respond_to?(:built)
+        return given if given.is_a?(UnbuiltGame) || (given.respond_to?(:buffer) && given.respond_to?(:built))
 
         unless path?(given)
           raise ArgumentError, "A playthrough was given #{described(given)} to play. It must be a cartridge the build " \
@@ -319,7 +333,7 @@ module VBlank
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
         def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-                      &at_each_moment)
+                      progress: Messages::Progress.silent, &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
           save = Playthrough.save_from(save)
           save = Playthrough.save_fitted_to(cartridge = Playthrough.cartridge_from(cartridge), save) if save
@@ -329,10 +343,12 @@ module VBlank
           game = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
                                                              count_passes: in_passes == true)
           playing = new(title, cartridge, in_passes ? PassSteppedGame.new(game, in_passes) : game, at_each_moment,
-                        save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes)
+                        save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, progress: progress)
+          progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
           steps.each { |step| step.play(playing) }
           playing.played
         ensure
+          progress.done
           game.finish if game.respond_to?(:finish)
         end
 
@@ -341,9 +357,12 @@ module VBlank
         # cartridge nobody has played, and +led_in+ whether a lead-in was played first:
         # both are what the tape says of where it started. +folder+ is where the picture
         # at each moment is written (see PictureFolder), or nil for none to be written.
-        # +in_passes+ says what the counts are counted in, for the tape to say (see Tape).
-        def initialize(title, cartridge, game, at_each_moment, save:, folder:, led_in: false, in_passes: nil)
+        # +in_passes+ says what the counts are counted in, for the tape to say (see Tape), and
+        # +progress+ is told the frame reached as each hold ends and a phase at each moment.
+        def initialize(title, cartridge, game, at_each_moment, save:, folder:, led_in: false, in_passes: nil,
+                       progress: Messages::Progress.silent)
           @title = title
+          @progress = progress
           @cartridge = cartridge
           @game = game
           @save = save
@@ -360,6 +379,7 @@ module VBlank
         def hold(buttons, frames)
           @game.step(frames, keys: Playthrough.key_mask(buttons))
           @taping.hold(buttons, frames)
+          @progress.show_detail("frame #{@taping.frames}")
         end
 
         # Play a frame at a time with +buttons+ down, until the block says yes of the game.
@@ -444,6 +464,7 @@ module VBlank
           @taping.moment(name)
           @pictures[name] = @game.frame_gba
           @picture_files[name] = write_screen(@folder, name, @pictures[name]) if @folder
+          @progress.step("playing on from the moment #{name}")
           @at_each_moment&.call(name, @game)
         end
 

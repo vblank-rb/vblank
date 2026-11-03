@@ -111,8 +111,10 @@ module VBlank
       # What a person tells one cartridge from another by: the title in its own heading,
       # and a checksum of every byte of it, which says which build of that game it is.
       # Each kind of cartridge keeps its title somewhere else in its header, so it is asked.
+      # A game that was not built into a cartridge has no bytes, and says a checksum of its own.
       def self.title_and_checksum_of(cartridge)
-        [printable(cartridge.header_title), Zlib.crc32(cartridge.buffer)]
+        checksum = cartridge.is_a?(UnbuiltGame) ? cartridge.checksum : Zlib.crc32(cartridge.buffer)
+        [printable(cartridge.header_title), checksum]
       end
 
       # Those two as they are written for a person, on a tape and in a report: `HERO 0x5C0FFEE5`.
@@ -152,11 +154,13 @@ module VBlank
       # A tape recorded from a save is played from one, and one recorded after a lead-in
       # is played after one: from anywhere else it would be the same presses on a
       # different game.
-      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, &at_each_moment)
+      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil,
+               progress: Messages::Progress.silent, &at_each_moment)
         refuse_missing_save!(save)
         refuse_missing_lead_in!(lead_in)
         Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on,
-                                                           window: window, in_passes: in_passes, &at_each_moment)
+                                                           window: window, in_passes: in_passes, progress: progress,
+                                                           &at_each_moment)
       end
 
       # Play the tape on +first+ and on +second+ together, comparing the two pictures after

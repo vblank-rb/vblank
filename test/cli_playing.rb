@@ -3,7 +3,7 @@
 require "open3"
 require "rbconfig"
 
-# WHAT THE TESTS OF `vblank play` AND `vblank compare` SHARE: the command run the way a
+# WHAT THE TESTS OF `vblank run` WITH A SCRIPT OR A TAPE, AND `vblank compare`, SHARE: the command run the way a
 # person runs it, in a process of its own, and the files it is pointed at — a game, and
 # scripts that play it.
 #
@@ -72,9 +72,17 @@ module CLIPlaying
     end
   RUBY
 
+  LIB = VBlank.root.join("lib").to_s.freeze
+
   # Run the command in +dir+, and hand back what it printed and how it ended.
   def cli(*args, dir:)
     Open3.capture2e(RUBY, BIN, *args, chdir: dir)
+  end
+
+  # Run the Ruby file +path+ in +dir+ with this checkout's library, for what the command line no
+  # longer makes (a save, a tape played on the cartridge), and hand back the same.
+  def ruby_file(path, dir:)
+    Open3.capture2e(RUBY, "-I", LIB, path, chdir: dir)
   end
 
   # A folder holding the game and the scripts, handed to the block.

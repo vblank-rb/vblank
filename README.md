@@ -58,10 +58,13 @@ vblank build walk.rb --console gbc         # the Color's cartridge alone
 vblank build walk.rb --format=native       # a program for this computer
 vblank build walk.rb --format=web          # walk.html
 vblank run walk.rb --browser               # play it in a browser; every reload rebuilds it
-vblank run walk.rb                         # play it in a window, in Ruby
+vblank run walk.rb                         # play it in a window, as Ruby with YJIT
+vblank run walk.rb --script steps.rb       # a script plays it: nobody at the controls
+vblank run walk.rb --tape steps.tape --write-mgba-script steps.lua
+                                           # the same presses, written for mGBA
 ```
 
-`vblank` also plays a game from a script with nobody at the controls (`play`), finds where two builds of a game start to differ (`compare`), and measures where a cartridge's frames go (`profile`). `vblank help` lists every command.
+`vblank run` is the one command that plays a game. Ruby runs the game, with YJIT, unless `--on js` or `--on native` says another way. With no `--tape` and no `--script`, you play it. With either, nobody is at the controls, and a window shows the play if the output is a terminal. It does not play a cartridge: to play a tape on a console, write it for mGBA or BizHawk. `vblank` also finds where two builds of a game start to differ (`compare`), and measures where a cartridge's frames go (`profile`). `vblank help` lists every command.
 
 ## How it works
 

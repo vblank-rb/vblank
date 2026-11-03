@@ -53,6 +53,7 @@ module VBlank
     def self.command_named(name) = all_commands.fetch(method_for(name))
 
     def self.start(given_args = ARGV, config = {})
+      refuse_play!(given_args)
       args = route_help_flags(given_args)
       args = checked_args(args) unless args.first == "help"
       super(args, config.merge(debug: true))
@@ -64,6 +65,44 @@ module VBlank
       warn(e.instance_of?(Thor::InvocationError) ? wrong_words_message(args) : e.message)
       exit(given_args.first == "compare" ? NOT_COMPARED : 1)
     end
+
+    # THERE IS NO `vblank play`. It played a script or a tape on the cartridge, in the emulator, while
+    # `vblank run` played the game as Ruby with a person at the controls. Nothing in the two names
+    # said which ran the game how, and a bot was run on the emulator by somebody sure it was Ruby.
+    # Now `vblank run` plays a game either way, so the old name is refused with the line to write
+    # instead, as is `vblank help play`.
+    def self.refuse_play!(args)
+      words = args.first == "help" ? args.drop(1) : args
+      return unless words.first == "play"
+
+      given = words.drop(1).reject { |word| HELP_FLAGS.include?(word) }
+      said = "There is no vblank play now. One command plays a game: vblank run. With --tape or --script, " \
+             "nobody is at the controls."
+      if given.any? { |word| cartridge_word?(word) }
+        raise Thor::Error, "#{said}\n\n#{NO_CARTRIDGE}"
+      end
+
+      raise Thor::Error, "#{said} Write:\n  #{['vblank', 'run', *given].join(' ')}" unless given.empty?
+
+      raise Thor::Error, "#{said} Run vblank run --help to see how."
+    end
+
+    # A word of a `vblank play` line that is about a cartridge: a cartridge file, a save, or the emulator.
+    def self.cartridge_word?(word)
+      return true if %w[--save --write-save emulator --on=emulator].include?(word) || word.start_with?("--save=", "--write-save=")
+
+      VBlank::Console.kits.any? { |kit| word.end_with?(kit.description.extension) }
+    end
+
+    # Why `vblank run` takes no cartridge, and how a console is reached instead.
+    NO_CARTRIDGE = <<~TEXT.chomp
+      vblank run runs the game file itself, as Ruby unless --on says another way.
+      It does not play a cartridge. So it takes no cartridge file, no save, and
+      no --on emulator. To play a tape on a console, write the tape for an
+      emulator, then open that file in the emulator:
+        vblank run game.rb --tape t.tape --write-mgba-script t.lua   for mGBA
+        vblank run game.rb --tape t.tape --write-bk2 t.bk2           for BizHawk
+    TEXT
 
     # `vblank`, `vblank --help` and `vblank build --help` become `vblank help` and
     # `vblank help build`. Thor would take the --help after a command for an argument, and
@@ -168,6 +207,7 @@ module VBlank
     def self.refuse_unknown_option!(args, word, switch, known)
       name = args.first
       said = "vblank #{name} has no option #{switch}."
+      raise Thor::Error, "#{said} #{switch} is for a cartridge.\n\n#{NO_CARTRIDGE}" if name == "run" && cartridge_word?(switch)
       if name == "build" && FORMAT_FLAGS.key?(switch)
         option, what = FORMAT_FLAGS.fetch(switch)
         line = ["vblank", *args].filter_map { |part| part == word ? option : part }.join(" ")
@@ -237,11 +277,12 @@ module VBlank
                                        program for this computer, or a web page.
         vblank preview GAME_FILE     Play the game in a browser. Reload the page
                                        to build it again.
-        vblank run GAME_FILE         Play the game in a window, in Ruby.
+        vblank run GAME_FILE         Play the game in a window, as Ruby with
+                                       YJIT. With --tape or --script, nobody is
+                                       at the controls.
 
       Check a game:
         vblank profile GAME_FILE     Run the game and report what it costs.
-        vblank play CARTRIDGE        Play a script of button presses on a game.
         vblank compare FIRST SECOND  Play two games on the same presses and say
                                        where their screens differ.
         vblank inspect ROM_FILE      Print a .gba's header and first instructions.
@@ -270,7 +311,7 @@ module VBlank
     # The words for the buttons --keys holds.
     BUTTONS = VBlank::IR::Buttons::NAMES.join(" ")
 
-    # The words for what to press, the same on `play` and `compare`.
+    # The words for what to press, the same on `run` and `compare`.
     PRESSES = <<~TEXT.chomp
       --script PATH            The script file.
       --playthrough NAME       Which playthrough, when the script has several.
@@ -469,7 +510,7 @@ module VBlank
       raise Thor::Error, e.message
     end
 
-    # The options `play` and `compare` both take: what says which buttons to press, and the
+    # The options `run` and `compare` both take: what says which buttons to press, and the
     # settings and the console a game file is built with.
     def self.options_for_playing
       option :console, banner: "NAME", enum: CONSOLES
@@ -477,98 +518,6 @@ module VBlank
       option :playthrough, banner: "NAME"
       option :tape, banner: "PATH"
       option :set, type: :array, banner: "NAME=VALUE", default: []
-    end
-
-    desc "play CARTRIDGE", "Play a script of button presses on a game"
-    help_page "play", <<~TEXT
-      Usage: vblank play CARTRIDGE [options]
-
-      Play CARTRIDGE with nobody at the controls, and print how many frames went
-      by and the frame each named moment fell on. CARTRIDGE is a game file (a
-      .rb, built first), a .gba, or a Game Boy Color .gbc. A game file for one
-      console is built for that console. A game file for both needs --console.
-
-      What to press comes from a script or a tape. A script is a Ruby file:
-
-        VBlank.playthrough "walk to the door" do
-          wait frames: 10
-          hold :right, frames: 40
-          moment :at_the_door
-        end
-
-      A tape is the presses of an earlier play, written by --write-tape. It
-      plays the same presses on the same frames on any cartridge.
-
-      Examples:
-        vblank play game.rb --script walk.rb
-        vblank play game.gba --tape walk.tape --pictures-in shots
-        vblank play game.rb --console gbc --script walk.rb
-        vblank play game.rb --script walk.rb --on native
-        vblank play game.rb --script walk.rb --window
-
-      Ways to run the game (--on):
-        emulator     The cartridge in the console's emulator. The default.
-        interpreter  The game in the interpreter.
-        native       The game built as C. Needs zig.
-        web          The game built as JavaScript, played by node, since the
-                     steps of a script are Ruby and a browser page cannot run
-                     them. A script does not play in a browser. Needs node.
-        ruby         The game built as Ruby.
-
-      Only the emulator can start from --save, or play a cartridge file. Two ways
-      are two runs: a game that takes longer than a frame over a pass reaches a
-      counted frame at a different moment on each, so a script that steers or
-      waits for the game is the one to use. Each way repeats its own run.
-
-      Options:
-        #{PRESSES.gsub("\n", "\n  ")}
-        --console NAME           #{CONSOLE_CHOICES}: which console's cartridge
-                                 to build a game file as. A game for several
-                                 consoles needs it.
-        --lead-in NAME           Play this playthrough first, and do not count it:
-                                 a way past logos and a title screen. Needs
-                                 --script, even with --tape.
-        --on WAY                 #{VBlank::Playthroughs::LoweredGame.ways.join(', ')}: how
-                                 to run the game. With no window it goes as fast
-                                 as this computer can. logic plays the rules with
-                                 no picture and no sound, for a bot: far faster,
-                                 and it makes a tape only with --in-passes, since
-                                 a cartridge's frames fall differently. Needs zig.
-        --in-passes COUNT        Count the script in passes of the game loop and not
-                                 frames, so its tape plays the same game at any
-                                 speed on every way. COUNT is passes, or the name
-                                 of a variable the game adds to.
-        --window               Show the game in the window of vblank run, at the
-                                 console's frame rate. The menu, pause and fast
-                                 forward work. The script holds the buttons, so
-                                 the keyboard and gamepads do not reach the game.
-                                 Close the window to stop. Needs SDL3. Every way
-                                 but the interpreter plays the game's sound there.
-        --save PATH              Start from this save file.
-        --pictures-in DIR        Write the screen at each moment to DIR, as a PNG
-                                 named for the moment.
-        --write-tape PATH        Write the presses that were made, as a tape.
-        --write-mgba-script PATH Write them as a script mGBA loads in
-                                 Tools > Scripting.
-        --write-bk2 PATH         Write them as a BizHawk movie. Both are for a
-                                 Game Boy Advance cartridge, from power-on with
-                                 no BIOS screen.
-        --write-save PATH        Write the save memory as the last frame left it.
-        #{SET}
-    TEXT
-    options_for_playing
-    option :on, banner: "WAY", enum: VBlank::Playthroughs::LoweredGame.ways
-    option :in_passes, banner: "COUNT"
-    option :window, type: :boolean, default: false
-    option :save, banner: "PATH"
-    option :lead_in, banner: "NAME"
-    option :pictures_in, banner: "DIR"
-    option :write_tape, banner: "PATH"
-    option :write_mgba_script, banner: "PATH"
-    option :write_bk2, banner: "PATH"
-    option :write_save, banner: "PATH"
-    def play(cartridge_file)
-      with_playthroughs_command_line("play") { |command| command.play(cartridge_file) }
     end
 
     desc "compare FIRST SECOND", "Play two games on the same presses and say where they differ"
@@ -588,7 +537,7 @@ module VBlank
         vblank compare game.rb theirs.gba --script walk.rb --carrying-on
         vblank compare a.gba b.gba --tape walk.tape --ignoring-frames 1..120
 
-      What to press, as for vblank play:
+      What to press, as for vblank run:
         #{PRESSES.gsub("\n", "\n  ")}
         --console NAME           #{COMPARED_NAMES.join(" or ")}: which console's cartridge to
                                  build a game file for several consoles as.
@@ -678,13 +627,27 @@ module VBlank
     option :set, type: :array, banner: "NAME=VALUE", default: []
     def preview(game_file) = serve_in_browser(game_file)
 
-    desc "run GAME_FILE", "Play the game on this computer, in a window or a browser"
+    desc "run GAME_FILE", "Play the game on this computer, with a person or a script at the controls"
     help_page "run", <<~TEXT
       Usage: vblank run GAME_FILE [options]
+             vblank run GAME_FILE --tape PATH | --script PATH [options]
 
-      Build the game in GAME_FILE as Ruby, and play it in a window on this
-      computer. The game runs in this Ruby, at the speed of the console. When the
-      play stops, the command prints how fast the game ran.
+      Build the game in GAME_FILE as Ruby, and play it on this computer. Ruby
+      runs the game, with YJIT, the part of Ruby that makes it run faster.
+
+      With no --tape and no --script, you play the game in a window, at the
+      speed of the console. When the play stops, the command prints how fast the
+      game ran.
+
+      With --tape or --script, nobody is at the controls: the tape or the script
+      holds the buttons. The command prints how many frames went by and the
+      frame of each moment. If the output is a terminal, a window shows the
+      play at the speed of the console. If not, or with --no-window, there is
+      no window and the game runs as fast as this computer can. The first line
+      then says so, and says what runs the game.
+
+      The command does not play a cartridge. To play a tape on a console, write
+      it for an emulator with --write-mgba-script or --write-bk2.
 
       With --browser, serve the game as a web page instead, and print its address.
       Open it in a browser to play. Change the game file and reload the page: the
@@ -740,6 +703,36 @@ module VBlank
         vblank run game.rb --uncapped --pictures 600
                                                  how fast this computer can play
                                                  600 pictures of the game
+        vblank run game.rb --script walk.rb      a script holds the buttons
+        vblank run game.rb --tape walk.tape --no-window --pictures-in shots
+                                                 a tape, as fast as it can go
+        vblank run game.rb --script walk.rb --on native
+                                                 the game built as C
+
+      A script is a Ruby file that says what to press:
+
+        VBlank.playthrough "walk to the door" do
+          wait frames: 10
+          hold :right, frames: 40
+          moment :at_the_door
+        end
+
+      A tape is the presses of an earlier play, written by --write-tape. It
+      plays the same presses on the same frames.
+
+      Ways to run the game (--on):
+        ruby         The game as Ruby, in this Ruby, with YJIT. The default.
+        js           The game as JavaScript, played by node. Needs node.
+        native       The game as C. Needs zig.
+        logic        The rules of the game as C, with no picture and no sound,
+                     for a bot: far faster. Needs zig. It writes a tape only
+                     with --in-passes, and it has no window.
+        interpreter  The interpreter that VBlank checks the other ways against.
+                     It is slow, and it makes no sound.
+      A person plays as Ruby only. Two ways are two runs: if the game takes
+      longer than a frame over a pass, a counted frame falls at a different
+      moment on each. A script that steers, or waits for the game, plays the
+      same on each way.
 
       The window shows a picture each time the game finishes a frame. The
       speaker sets the speed of the game: the game makes each frame's sound,
@@ -775,6 +768,35 @@ module VBlank
         --record-sound FILE      When the play stops, write the sound that the
                                  game gave the speaker to FILE, a .wav file.
                                  Use this to listen to a sound problem again.
+        --on WAY                 #{VBlank::Playthroughs::CommandLine::WAYS.keys.join(', ')}: how to
+                                 run the game. Default: ruby.
+        #{SET}
+
+      With nobody at the controls:
+        #{PRESSES.gsub("\n", "\n  ")}
+        --window, --no-window    Show the play in a window, or not. Default: a
+                                 window if the output is a terminal. In the
+                                 window, the menu, pause and fast forward work.
+                                 The keyboard and gamepads do not reach the
+                                 game. Close the window to stop.
+        --lead-in NAME           Play this playthrough first, and do not count
+                                 it: a way past logos and a title screen. Needs
+                                 --script, even with --tape.
+        --in-passes COUNT        Count the script in passes of the game loop,
+                                 not frames, so that its tape plays the same
+                                 game at any speed on every way. COUNT is
+                                 passes, or the name of a variable that the
+                                 game adds to.
+        --pictures-in DIR        Write the screen at each moment to DIR, as a
+                                 PNG named for the moment.
+        --write-tape PATH        Write the presses that were made, as a tape.
+        --write-mgba-script PATH Write them as a script that mGBA loads in
+                                 Tools > Scripting.
+        --write-bk2 PATH         Write them as a BizHawk movie. Both are for
+                                 the Game Boy Advance cartridge, which is built
+                                 for them, from power-on with no BIOS screen.
+
+      In a browser:
         --browser                Play in a browser, not in a window. Only
                                  --console, --port, --template and --set go with
                                  this.
@@ -782,7 +804,6 @@ module VBlank
                                  Default: 8000.
         --template FILE          With --browser, make the page from FILE, an
                                  .html.erb file with <%= game %> in it.
-        #{SET}
     TEXT
     option :browser, type: :boolean, default: false
     option :port, type: :numeric
@@ -795,19 +816,35 @@ module VBlank
     option :record_sound, banner: "FILE"
     option :settings_file, banner: "FILE"
     option :config_dir, banner: "DIR"
+    option :on, banner: "WAY"
+    option :window, type: :boolean
+    option :script, banner: "PATH"
+    option :playthrough, banner: "NAME"
+    option :tape, banner: "PATH"
+    option :lead_in, banner: "NAME"
+    option :in_passes, banner: "COUNT"
+    option :pictures_in, banner: "DIR"
+    option :write_tape, banner: "PATH"
+    option :write_mgba_script, banner: "PATH"
+    option :write_bk2, banner: "PATH"
     option :set, type: :array, banner: "NAME=VALUE", default: []
     def run_game(game_file)
       refuse_mismatched_play_options!
       return serve_in_browser(game_file) if options[:browser]
 
+      refuse_cartridge_file!(game_file)
       refuse_unless_whole_and_positive!("--scale", options[:scale]) if options[:scale]
       refuse_unless_whole_and_positive!("--pictures", options[:pictures]) if options[:pictures]
-      game = load_game(game_file)
-      program = program_to_run(game)
+      way = way_to_run
       # YJIT compiles the Ruby that runs most often to machine code as the game plays, which plays
       # a game several times faster. A Ruby built without it plays the game slower, and so does
-      # --no-yjit, for measuring both ways. A Ruby started with ZJIT keeps it.
+      # --no-yjit, for measuring both ways. A Ruby started with ZJIT keeps it. It is turned on
+      # here, before anything is built, so a script's own blocks have it too.
       RubyVM::YJIT.enable if options[:yjit] && defined?(RubyVM::YJIT) && !yjit_on? && !zjit_on?
+      return play_unattended(game_file, way) if unattended?
+
+      game = load_game(game_file)
+      program = program_to_run(game)
       require_relative "live"
       rate = play_in_window(game, program, live_session(game, program))
       # The game moves on one frame for each picture, so the pictures a second are its speed. A
@@ -875,14 +912,14 @@ module VBlank
 
     private
 
-    # --- play and compare ---
+    # --- compare ---
 
-    # `play` and `compare` are done by the library (see Playthroughs::CommandLine), which is
-    # handed the options, somewhere to print, and how a game file is built here. What it
-    # refuses, it refuses in a sentence, and that sentence is what the command ends with.
+    # `compare` is done by the library (see Playthroughs::CommandLine), which is handed the
+    # options, somewhere to print, and how a game file is built here. What it refuses, it refuses
+    # in a sentence, and that sentence is what the command ends with.
     #
-    # +doing+ is what the command does with a game file ("play", "compare"), for the question a
-    # game for two consoles is asked when --console does not say which.
+    # +doing+ is what the command does with a game file ("compare"), for the question a game for
+    # two consoles is asked when --console does not say which.
     def with_playthroughs_command_line(doing, offered: nil)
       build = lambda do |file|
         game = load_game(file)
@@ -900,7 +937,9 @@ module VBlank
     # the program is for. The game plays as Ruby, so no cartridge is made for it.
     def program_to_run(game)
       console = console_to_play(game)
-      # A big game takes a while to read and check, and somebody is waiting for the window.
+      # A big game takes a while to read and check, and somebody is waiting for the window. It
+      # says so before it starts, since the first phase can take most of a minute.
+      say "Building #{game.title}. A big game can take a minute."
       game.checked_program(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console)
     rescue ArgumentError, VBlank::BuildError => e
       raise Thor::Error, e.message
@@ -910,11 +949,9 @@ module VBlank
     # Advance. To play it as the Game Boy Color, add --console gbc." Said only for a game that
     # names more than one console, since a person who did not choose should know they can.
     #
-    # `play` and `compare` ask instead (#console_to_run), since they make a cartridge somebody
-    # will compare. A window is somebody wanting to see the game, so it plays the console the game
-    # names first, and says so.
-    # The console a game is played as in Ruby: the one --console names, or the first the game names,
-    # which is said when there were others to choose.
+    # `profile` and `compare` ask instead (#console_to_run), since they make a cartridge somebody
+    # will measure or compare. `run` is somebody wanting to see the game, or a script wanting to
+    # play it, so it plays the console the game names first, and says so.
     def console_to_play(game)
       console = options[:console]&.to_sym || game.consoles.first
       say_console_chosen(game, console) unless options[:console]
@@ -947,10 +984,117 @@ module VBlank
       if options[:browser]
         word = WINDOW_OPTIONS.find { |name, _word| options[name] }&.last
         raise Thor::Error, "#{word} is for the window, so it does nothing with --browser. Take one of them out." if word
+
+        word = %i[tape script on].find { |name| options[name] } || nobody_flags_given.first
+        raise Thor::Error, "--#{word.to_s.tr('_', '-')} does nothing with --browser. Take one of them out." if word
       else
         word = { port: "--port", template: "--template" }.find { |name, _word| options[name] }&.last
         raise Thor::Error, "#{word} is for a page in a browser. Add --browser, or take it out." if word
       end
+      unattended? ? refuse_person_options! : refuse_nobody_options!
+    end
+
+    # What only a person at the controls has: a count of pictures to stop at, a game not held to
+    # the console's speed, the sound written to a file.
+    PERSON_OPTIONS = { pictures: "--pictures", uncapped: "--uncapped", record_sound: "--record-sound" }.freeze
+
+    def refuse_person_options!
+      word = PERSON_OPTIONS.find { |name, _word| options[name] }&.last or return
+
+      raise Thor::Error, "#{word} is for a person at the controls. With --tape or --script, nobody is at the " \
+                         "controls. Remove #{word}, or remove --tape and --script."
+    end
+
+    # A person plays in a window, as Ruby: what a tape or a script is told means nothing then.
+    def refuse_nobody_options!
+      if nobody_flags_given.any?
+        word = "--#{nobody_flags_given.first.to_s.tr('_', '-')}"
+        raise Thor::Error, "#{word} goes with --tape or --script, which hold the buttons. With neither, a person " \
+                           "plays. Add --tape or --script, or remove #{word}."
+      end
+      if options[:window] == false
+        raise Thor::Error, "With no --tape and no --script, a person plays the game, and a person needs a window. " \
+                           "Remove --no-window, or give --tape or --script."
+      end
+      refuse_person_way!
+    end
+
+    def refuse_person_way!
+      case options[:on]
+      when nil, "ruby" then nil
+      when "js"
+        raise Thor::Error, "A person plays the game in a window as Ruby. To play the game as JavaScript, use " \
+                           "--browser in place of --on js."
+      when "native"
+        raise Thor::Error, "A person plays the game in a window as Ruby. To play the game as C, build it with " \
+                           "vblank build GAME_FILE --format=native, and run the program that it makes."
+      else
+        raise Thor::Error, "--on #{options[:on]} is for a play with nobody at the controls. Give --tape or --script, " \
+                           "or remove --on."
+      end
+    end
+
+    # Whether a tape or a script holds the buttons, so that nobody is at the controls.
+    def unattended? = !!(options[:tape] || options[:script])
+    def nobody_flags_given = VBlank::Playthroughs::CommandLine::PLAYING_FLAGS.select { |name| options[name] }
+
+    # The game file is run, so a cartridge given in its place is refused with how a console is reached.
+    def refuse_cartridge_file!(game_file)
+      return unless self.class.cartridge_word?(game_file)
+
+      raise Thor::Error, "#{game_file} is a cartridge.\n\n#{NO_CARTRIDGE}"
+    end
+
+    # The way --on names (a word of Playthroughs::CommandLine::WAYS), ruby unless it says.
+    def way_to_run
+      way = options[:on] || "ruby"
+      return way if VBlank::Playthroughs::CommandLine::WAYS.key?(way)
+      raise Thor::Error, "--on emulator is for a cartridge.\n\n#{NO_CARTRIDGE}" if way == "emulator"
+
+      ways = VBlank::Playthroughs::CommandLine::WAYS.keys
+      raise Thor::Error, "--on #{way} is not a way to run a game. The ways are #{ways[0...-1].join(', ')} and #{ways.last}."
+    end
+
+    # --- run, with nobody at the controls ---
+
+    # What runs the game each way, as the first line says it.
+    WAY_WORDS = { "js" => "JavaScript, played by node,", "native" => "C, built by zig,",
+                  "logic" => "C, with the rules of the game alone,", "interpreter" => "The interpreter" }.freeze
+
+    def runner_words(way)
+      WAY_WORDS.fetch(way) { "Ruby #{RUBY_VERSION}, with #{jit_in_use}," }
+    end
+
+    # Play the script or the tape on the game in +game_file+, the way +way+ says. Whether there is a
+    # window is said first, before the game is built, since a big build takes a minute.
+    def play_unattended(game_file, way)
+      window = options[:window].nil? ? way != VBlank::Playthroughs::LoweredGame::LOGIC && $stdout.tty? : options[:window]
+      say window ? "A window shows the play. #{runner_words(way).delete_suffix(',')} runs the game." : no_window_line(way)
+      command = VBlank::Playthroughs::CommandLine.new(options, out: $stdout, build: nil)
+      game = nil
+      export = -> { game.build_rom(settings: given_settings, console: :gba) }
+      command.play(on: way, window: window, export_cartridge: export, progress: VBlank::Messages::Progress.to($stderr)) do
+        game = load_game(game_file)
+        program = program_to_run(game)
+        VBlank::Playthroughs::UnbuiltGame.new(program, title: game.title,
+                                                       source: [File.binread(game_file), given_settings, program.console])
+      end
+    rescue VBlank::Playthroughs::CommandLine::Refused => e
+      raise Thor::Error, e.message
+    rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
+      raise Thor::Error, "VBlank cannot play #{game&.title || game_file} as Ruby yet. The game needs a part of VBlank " \
+                         "that does not work in Ruby yet: #{e.part}. Give another way with --on, such as --on native."
+    end
+
+    # "No window: the output is not a terminal. Ruby 3.4.1, with YJIT, runs the game as fast as this
+    # computer can. To show it in a window, add --window."
+    def no_window_line(way)
+      why = if way == VBlank::Playthroughs::LoweredGame::LOGIC then "--on logic has no picture"
+            elsif options[:window] == false then "--no-window asks for none"
+            else "the output is not a terminal"
+            end
+      how = way == VBlank::Playthroughs::LoweredGame::LOGIC ? "To watch it, use --on ruby and --window." : "To show it in a window, add --window."
+      "No window: #{why}. #{runner_words(way)} runs the game as fast as this computer can. #{how}"
     end
 
     # The game as a page on this computer, built again on every reload, until Ctrl-C.

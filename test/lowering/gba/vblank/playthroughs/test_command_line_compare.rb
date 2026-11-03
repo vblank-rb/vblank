@@ -177,15 +177,33 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
+  # A save the walk leaves, a tape recorded from it, and a tape recorded after a lead-in, all
+  # played on the cartridge: what `compare --save` and `--lead-ins` need. The command line plays
+  # no cartridge, so the library makes them.
+  SAVE_AND_TAPES = <<~RUBY
+    require "vblank"
+
+    def declared(file)
+      VBlank.forget_registered_playthroughs!
+      load File.expand_path(file)
+      VBlank.registered_playthroughs
+    end
+
+    walk = declared("walk.rb").first
+    stand, _, five = declared("several.rb")
+    walk.play("walker.gba").save.write_sav("walked.sav")
+    walk.play("walker.gba", save: "walked.sav").tape.write("from-a-save.tape")
+    stand.play("walker.gba", lead_in: five).tape.write("led-in.tape")
+  RUBY
+
   # --save starts both from one save, and --lead-ins plays a lead-in on each first. Each is
   # shown by a tape that needs it: one recorded from a save is refused without --save, and
   # one recorded after a lead-in without --lead-ins. Both refusals name the flag.
   def test_save_and_lead_ins
     with_cartridges do |dir|
-      cli("play", "walker.rb", "--script", "walk.rb", "--write-save", "walked.sav", dir: dir)
-      cli("play", "walker.rb", "--script", "walk.rb", "--save", "walked.sav", "--write-tape", "from-a-save.tape", dir: dir)
-      cli("play", "walker.rb", "--script", "several.rb", "--playthrough", "stand", "--lead-in", "five frames",
-          "--write-tape", "led-in.tape", dir: dir)
+      File.write(File.join(dir, "save_and_tapes.rb"), SAVE_AND_TAPES)
+      made, status = ruby_file("save_and_tapes.rb", dir: dir)
+      assert status.success?, made
       from_a_save = ["compare", "walker.rb", "walker.gba", "--tape", "from-a-save.tape"]
       led_in = ["compare", "walker.rb", "walker.gba", "--tape", "led-in.tape"]
 

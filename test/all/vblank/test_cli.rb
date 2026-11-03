@@ -142,7 +142,7 @@ class TestCLI < Minitest::Test
   # command that takes --console, and a flag named for it that says how to build for it.
   def test_every_console_is_named_where_a_command_takes_a_console
     Dir.mktmpdir do |dir|
-      %w[build profile play run].each do |command|
+      %w[build profile run].each do |command|
         out, = cli(command, "--help", dir: dir)
         line = out.lines.find { |said| said.include?("--console NAME") }
 
@@ -558,6 +558,41 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # WITH NO TAPE AND NO SCRIPT, A PERSON IS AT THE CONTROLS: the window takes the keys, and the game
+  # plays as Ruby with YJIT on, the same way a script plays it.
+  def test_run_with_no_tape_or_script_is_a_person_playing_as_ruby_with_yjit
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      out, status = run_in_dummy_window(dir, "demo.rb", "--pictures", "3", "--console", "gba")
+
+      assert status.success?, out
+      assert_match(/Building DEMO/, out)
+      assert_match(/in Ruby #{Regexp.escape(RUBY_VERSION)} with YJIT\./o, out)
+      assert_match(/Press P to pause/, out)
+      refute_match(/No window|Played \d+ frames/, out)
+    end
+  end
+
+  # A person plays in a window, as Ruby: no window, and another way of running, are for a tape or
+  # a script, and each is refused saying what to do instead.
+  def test_run_refuses_what_a_person_cannot_play
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "demo.rb"), "VBlank.game('DEMO', consoles: %i[gba]) { game_loop { clear_screen :blue } }\n")
+      {
+        ["--no-window"] => /window.*--tape or --script/,
+        ["--on", "js"] => /--browser/,
+        ["--on", "native"] => /--format=native/,
+        ["--on", "logic"] => /--tape or --script/,
+      }.each do |args, says|
+        out, status = cli("run", "demo.rb", *args, dir: dir)
+
+        refute_predicate status, :success?, args.inspect
+        assert_match(says, out, args.inspect)
+        refute_match(/\.rb:\d+:in/, out, "should not leak a backtrace")
+      end
+    end
+  end
+
   # A game that draws a picture and stops itself keeps it in the window, and the command says the
   # game stopped itself rather than how fast it went.
   def test_run_says_a_game_stopped_itself
@@ -674,6 +709,16 @@ class TestCLI < Minitest::Test
       assert_match(/--scale.*window/, window_only)
       refute_predicate in_window, :success?, page_only
       assert_match(/--port.*--browser/, page_only)
+    end
+  end
+
+  # Every help page fits a terminal of 80 columns.
+  def test_every_help_page_fits_in_80_columns
+    %w[help build profile run compare preview inspect new].each do |command|
+      out, status = cli("help", *([command] unless command == "help"), dir: Dir.pwd)
+
+      assert_predicate status, :success?, out
+      assert_empty out.lines.map(&:chomp).select { |line| line.length > 80 }, "vblank help #{command}"
     end
   end
 

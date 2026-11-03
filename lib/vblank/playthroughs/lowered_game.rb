@@ -19,7 +19,8 @@ module VBlank
       # The way with nothing to see or hear, for a bot playing one long run many times.
       LOGIC = "logic"
 
-      # The ways, by the word `vblank play --on` takes, and the run each is.
+      # The ways, by the word `on:` takes, and the run each is (`vblank run --on` says "js" for "web":
+      # see CommandLine::WAYS).
       RUNS = { "interpreter" => -> { IR::Backends::Reference }, "native" => -> { IR::Backends::Native::HeadlessRun },
                "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun },
                LOGIC => -> { IR::Backends::Native::RulesRun } }.freeze

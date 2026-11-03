@@ -144,7 +144,8 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Playing a finished game with nobody at the controls — `.claude/dsl/playthroughs.md`
 
-- `VBlank.playthrough "name" do … end` — scripted presses on a cartridge; `vblank play`, `vblank compare`.
+- `VBlank.playthrough "name" do … end` — scripted presses on a cartridge; `vblank compare`.
+- `vblank run game.rb --script s.rb` / `--tape t.tape` — the one command that plays a game: a person without either, nobody with one; as Ruby with YJIT unless `--on js|native|logic|interpreter`. No cartridge: `--write-mgba-script`, `--write-bk2` reach a console. `vblank play` is refused.
 
 ## The Game Boy Advance — `.claude/dsl/game-boy-advance.md`
 

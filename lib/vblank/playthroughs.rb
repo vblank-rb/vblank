@@ -9,6 +9,7 @@
 # what is here drives one.
 require_relative "playthroughs/playthrough" # a game driven from a script
 require_relative "playthroughs/lowered_game" # ...on a way of running a game other than the emulator
+require_relative "playthroughs/unbuilt_game" # ......which needs the game checked, and no cartridge
 require_relative "playthroughs/watched_game" # ...and shown in a window at the console's frame rate
 require_relative "playthroughs/pass_stepped_game" # ...and counted in passes of the game loop and not frames
 require_relative "playthroughs/tape" # ...and the presses it made, written down to play again
@@ -24,4 +25,4 @@ require_relative "playthroughs/comparison_picture_request" # ......one of which 
 require_relative "playthroughs/comparison_report" # ...and the folder it writes for a drift it finds
 require_relative "playthroughs/comparison_drift_report" # ......of a drift on a frame, on the same tape
 require_relative "playthroughs/comparison_moment_report" # ......and of a drift at a moment, on the same script
-require_relative "playthroughs/command_line" # what `vblank play` and `vblank compare` do with their options
+require_relative "playthroughs/command_line" # what `vblank run` with a script or tape, and `vblank compare`, do
