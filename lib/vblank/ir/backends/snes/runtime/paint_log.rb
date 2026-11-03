@@ -57,6 +57,10 @@ module VBlank
           module PaintLog
             KEYS_NOW = "rt paint keys now"
             KEYS_COPY = "rt paint keys copy"
+            # For each tile, the key of what its slot of video RAM holds, set as it is sent: a tile
+            # painted on the way through a pass (a flush with the log full) and ending as it was
+            # is not sent again (rt_paint_slot_behind).
+            KEYS_SHOWN = "rt paint keys shown"
             # For each tile, the generation the copy's tile was last painted in; the same as the
             # screen's means the copy holds this generation's paintings up to the last flush.
             PAINTED_IN = "rt paint painted in"
@@ -99,7 +103,6 @@ module VBlank
             # their own.
             OP_KIND = "rt paint op kind"
             OP_BYTES = "rt paint op bytes"
-            OP_STEP = "rt paint op step"
             OP_HASH = "rt paint op hash"
             SEED = "rt paint seed"
             REPLAYING = "rt paint replaying"
@@ -116,6 +119,10 @@ module VBlank
             KIND_FILL = 1
             KIND_BLIT = 2
             KIND_CLEAR = 3
+            # The ways a painting is known to rt_paint_hash, by the bytes of working numbers and the
+            # step between the words hashed: a rectangle's five numbers whole, a picture's three by
+            # their low words, and a clear's place.
+            HASHED_NUMBERS = Ractor.make_shareable([[20, 2], [12, 4], [4, 2]])
             # The high word of a put-back patch's hash.
             RESTORE_HASH = 0x5A3C
             # What a hash takes in for an area that is the whole screen: no area's left edge.
@@ -125,12 +132,12 @@ module VBlank
 
             def reserve(memory)
               tiles = Paint::TILES
-              { KEYS_NOW => tiles * 4, KEYS_COPY => tiles * 4, PAINTED_IN => tiles, REPAINT => tiles,
+              { KEYS_NOW => tiles * 4, KEYS_COPY => tiles * 4, KEYS_SHOWN => tiles * 4, PAINTED_IN => tiles, REPAINT => tiles,
                 UNSENT => tiles, READIED => Paint::ROWS * 4, MAP_DIRTY => Paint::ROWS * 4,
                 MAP_RUNS => Paint::ROWS * 4, LOG => LOG_ENTRIES * ENTRY_BYTES, KEPT_PAGE => 0x100 }.each do |name, bytes|
                 memory.reserve_far(name, bytes)
               end
-              [MAP_RUNS_END, MAP_RUN_BYTES, LOG_END, OP_KIND, OP_BYTES, OP_STEP, REPLAYING, LOGGING, SENDING, RESTORES, STAMP].each do |name|
+              [MAP_RUNS_END, MAP_RUN_BYTES, LOG_END, OP_KIND, OP_BYTES, REPLAYING, LOGGING, SENDING, RESTORES, STAMP].each do |name|
                 memory.reserve(name, 2)
               end
               memory.reserve(OP_HASH, 4)
@@ -166,6 +173,7 @@ module VBlank
               2.times do |half|
                 asm.lda(asm.abs(memory[SEED] + (half * 2)))
                 asm.sta(asm.long_x(memory[KEYS_COPY], half * 2))
+                asm.sta(asm.long_x(memory[KEYS_SHOWN], half * 2))
               end
               4.times { asm.inx }
               asm.cpx(Paint::TILES * 4)
@@ -270,11 +278,11 @@ module VBlank
               emit_blank_tile(asm, memory, s, bank)
               emit_replay(asm, memory, s)
               emit_map_runs(asm, memory, s)
+              emit_slot_behind(asm, memory)
             end
 
             # rt_paint_hash (JSR): OP_HASH from the painting's kind, the area and the words of its
-            # working numbers up to OP_BYTES, OP_STEP bytes apart: every word, or the low word of each
-            # number for a painting whose numbers are known to fit in one. Each word is added in,
+            # working numbers, the way OP_BYTES says (HASHED_NUMBERS). Each word is added in,
             # and then the two halves of the hash are turned and mixed into each other, so every bit
             # of a word reaches every bit of the hash within a few words; a word of nought ends it,
             # to carry the last word's bits through.
@@ -303,17 +311,19 @@ module VBlank
                 emit_hash_word(asm, hash)
               end
               asm.label("rt_paint_hash_area_done")
-              asm.ldy(0)
-              asm.label("rt_paint_hash_number")
-              asm.cpy(asm.abs(memory[OP_BYTES]))
-              asm.bcs("rt_paint_hash_numbers_done")
-              asm.lda(asm.abs_y(0)) # the direct page, the working numbers
-              emit_hash_word(asm, hash)
-              asm.tya
-              asm.clc
-              asm.adc(asm.abs(memory[OP_STEP]))
-              asm.tay
-              asm.bra("rt_paint_hash_number")
+              # The working numbers, written out for each way a painting is known, as a loop
+              # costs as much again as the hashing.
+              HASHED_NUMBERS.each_with_index do |(bytes, step), way|
+                asm.lda(asm.abs(memory[OP_BYTES]))
+                asm.cmp(bytes)
+                asm.branch_long(:bne, "rt_paint_hash_not_#{way}")
+                (0...bytes).step(step) do |at|
+                  asm.lda(asm.direct(at))
+                  emit_hash_word(asm, hash)
+                end
+                asm.brl("rt_paint_hash_numbers_done")
+                asm.label("rt_paint_hash_not_#{way}")
+              end
               asm.label("rt_paint_hash_numbers_done")
               asm.lda(0)
               emit_hash_word(asm, hash)
@@ -327,8 +337,6 @@ module VBlank
               asm.sta(asm.abs(memory[OP_KIND]))
               asm.lda(4)
               asm.sta(asm.abs(memory[OP_BYTES]))
-              asm.lda(2)
-              asm.sta(asm.abs(memory[OP_STEP]))
               asm.jsr(asm.abs("rt_paint_hash"))
               2.times do |half|
                 asm.lda(asm.abs(hash + (half * 2)))
@@ -355,14 +363,13 @@ module VBlank
               asm.sta(asm.abs(hash))
             end
 
-            # rt_paint_op_begin (JSR, A the kind, X the bytes of working numbers it is known by and Y
-            # the step between the words hashed, rt_paint_hash): while paintings are written down,
-            # the log painted first if it is full, then the painting's hash.
+            # rt_paint_op_begin (JSR, A the kind, X the bytes of working numbers it is known by,
+            # HASHED_NUMBERS): while paintings are written down, the log painted first if it is
+            # full, then the painting's hash.
             def emit_op_begin(asm, memory)
               asm.label("rt_paint_op_begin")
               asm.sta(asm.abs(memory[OP_KIND]))
               asm.stx(asm.abs(memory[OP_BYTES]))
-              asm.sty(asm.abs(memory[OP_STEP]))
               # Painted at once, it needs no hash, only one that is not nought (rt_paint_mark_now).
               asm.lda(asm.abs(memory[LOGGING]))
               asm.bne("rt_paint_op_begin_logged")
@@ -381,8 +388,8 @@ module VBlank
             # rt_paint_mark (JSR): rows of pixels +top+ up to +bottom+, tiles +chunk+ to +last+
             # across, covered: each row said changed (Paint::DIRTY), each tile of an older
             # generation put in this one with the clear colour's key, and OP_HASH taken into every
-            # key: the key turned left one bit and the hash mixed in, so the same paintings in
-            # another order make another key. An OP_HASH of nought is a routine that only reads the
+            # key (#emit_key_taking_in), so the same paintings in another order make another key.
+            # An OP_HASH of nought is a routine that only reads the
             # tiles (rt_paint_save), which leaves the keys. A row with a tile new to this generation
             # has its cells looked at again as the pass ends.
             # (Y counts the tiles and X their keys, four bytes each; +right_planes+ points at
@@ -407,16 +414,8 @@ module VBlank
               end
               asm.bra("rt_paint_mark_fresh_known")
               asm.label("rt_paint_mark_mixing")
-              asm.lda(asm.abs(memory[SEED] + 2))
-              asm.asl
-              asm.lda(asm.abs(memory[SEED]))
-              asm.rol
-              asm.eor(asm.abs(hash))
-              asm.sta(asm.direct(fresh))
-              asm.lda(asm.abs(memory[SEED] + 2))
-              asm.rol
-              asm.eor(asm.abs(hash + 2))
-              asm.sta(asm.direct(fresh + 2))
+              emit_key_taking_in(asm, hash, asm.abs(memory[SEED]), asm.abs(memory[SEED] + 2),
+                                 asm.direct(fresh), asm.direct(fresh + 2), s.left_planes + 4)
               asm.label("rt_paint_mark_fresh_known")
               asm.lda(asm.direct(s.bottom))
               asm.dec
@@ -467,18 +466,8 @@ module VBlank
               asm.label("rt_paint_mark_known")
               asm.lda(asm.direct(s.shift))
               asm.beq("rt_paint_mark_next")
-              # The key turned left one bit across its 32: the high half's top bit into the carry,
-              # the low half turned through it, then the high half through the low half's top bit.
-              asm.lda(asm.long_x(keys, 2))
-              asm.asl
-              asm.lda(asm.long_x(keys))
-              asm.rol
-              asm.eor(asm.abs(hash))
-              asm.sta(asm.long_x(keys))
-              asm.lda(asm.long_x(keys, 2))
-              asm.rol
-              asm.eor(asm.abs(hash + 2))
-              asm.sta(asm.long_x(keys, 2))
+              emit_key_taking_in(asm, hash, asm.long_x(keys), asm.long_x(keys, 2),
+                                 asm.long_x(keys), asm.long_x(keys, 2), s.left_planes + 4)
               asm.label("rt_paint_mark_next")
               4.times { asm.inx }
               asm.iny
@@ -636,6 +625,29 @@ module VBlank
               asm.brl("rt_paint_mark_now_row")
               asm.label("rt_paint_mark_now_done")
               asm.rts
+            end
+
+            # The key whose halves are +low+ and +high+, with the hash at +hash+ taken in, into
+            # +low_out+ and +high_out+ (+spare+ a word of the direct page): the hash's low half added
+            # to the key's; that sum's two bytes swapped (XBA), mixed with the key's high half and
+            # the hash's, and turned left one, as the new high half; that added to the sum, as the
+            # new low half. The additions carry from bit to bit, so no painting can cancel another
+            # or trade places with it unseen, however many lie between them: a key worked out by
+            # turning and mixing alone (XOR) would let two paintings 32 apart change places.
+            def emit_key_taking_in(asm, hash, low, high, low_out, high_out, spare)
+              asm.lda(low)
+              asm.clc
+              asm.adc(asm.abs(hash))
+              asm.sta(asm.direct(spare))
+              asm.xba
+              asm.eor(high)
+              asm.eor(asm.abs(hash + 2))
+              asm.asl
+              asm.adc(0)
+              asm.sta(high_out)
+              asm.clc
+              asm.adc(asm.direct(spare))
+              asm.sta(low_out)
             end
 
             # A row's leftmost and rightmost (+left+, +right+, at X) widened to take in +chunk+ to
@@ -893,6 +905,13 @@ module VBlank
               # rt_paint_flush_send_changed (JSR): the same for a tile the flush has just painted,
               # never marked unsent.
               asm.label("rt_paint_flush_send_changed")
+              asm.jsr(asm.abs("rt_paint_slot_behind")) # (X its key)
+              asm.bne("rt_paint_flush_send_tile_sent")
+              asm.lda(asm.direct(s.chunk)) # its slot holds it already: as a tile not sent
+              asm.bmi("rt_paint_flush_send_tile_done")
+              emit_run_end_keeping(asm, s)
+              asm.rts
+              asm.label("rt_paint_flush_send_tile_sent")
               asm.phx
               asm.tya
               asm.asl
@@ -917,6 +936,35 @@ module VBlank
               asm.sty(asm.direct(s.chunk))
               asm.lda(asm.direct(s.not_mask))
               asm.sta(asm.direct(s.mask))
+              asm.rts
+            end
+
+            # rt_paint_slot_behind (JSR, X a tile's key, four bytes a tile): A not nought, and the
+            # slot's key said to be the copy's, if the tile's slot of video RAM is behind the copy;
+            # nought if it holds what the copy holds already, as when a pass painted a tile on its
+            # way (a flush with the log full) and ended where the last pass did. A key of nought is
+            # a tile painted at once, which no key says: always sent. Keeps X and Y.
+            def emit_slot_behind(asm, memory)
+              copy = memory[KEYS_COPY]
+              shown = memory[KEYS_SHOWN]
+              asm.label("rt_paint_slot_behind")
+              asm.lda(asm.long_x(copy))
+              asm.ora(asm.long_x(copy, 2))
+              asm.beq("rt_paint_slot_behind_yes")
+              asm.lda(asm.long_x(copy))
+              asm.cmp(asm.long_x(shown))
+              asm.bne("rt_paint_slot_behind_yes")
+              asm.lda(asm.long_x(copy, 2))
+              asm.cmp(asm.long_x(shown, 2))
+              asm.bne("rt_paint_slot_behind_yes")
+              asm.lda(0)
+              asm.rts
+              asm.label("rt_paint_slot_behind_yes")
+              2.times do |half|
+                asm.lda(asm.long_x(copy, half * 2))
+                asm.sta(asm.long_x(shown, half * 2))
+              end
+              asm.lda(1)
               asm.rts
             end
 

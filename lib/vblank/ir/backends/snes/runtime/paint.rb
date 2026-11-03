@@ -891,7 +891,7 @@ module VBlank
             # pixels), the tiles' rows between (all eight), and a tile's row at the right edge.
             def emit_fill(asm, memory, s, bank, logged)
               asm.label("rt_paint_fill")
-              emit_op_begin(asm, PaintLog::KIND_FILL, 20, 2, "rt_paint_fill_now") if logged
+              emit_op_begin(asm, PaintLog::KIND_FILL, 20, "rt_paint_fill_now") if logged
               asm.jsr(asm.abs("rt_paint_take_area"))
               [[R.call(0), R.call(2), R.call(5)], [R.call(1), R.call(3), R.call(6)]].each do |at, size, out|
                 asm.clc
@@ -993,12 +993,11 @@ module VBlank
             end
 
             # A painting's start, on a plain cartridge: its kind and the +bytes+ of working numbers it
-            # is known by, for PaintLog to hash and write down, a word every +step+ bytes. Painting it
-            # again starts at +now+.
-            def emit_op_begin(asm, kind, bytes, step, now)
+            # is known by (PaintLog::HASHED_NUMBERS), for PaintLog to hash and write down. Painting
+            # it again starts at +now+.
+            def emit_op_begin(asm, kind, bytes, now)
               asm.lda(kind)
               asm.ldx(bytes)
-              asm.ldy(step)
               asm.jsr(asm.abs("rt_paint_op_begin"))
               asm.label(now)
             end
@@ -1088,7 +1087,7 @@ module VBlank
               asm.label("rt_paint_blit")
               # A picture's number and its place: the place is held near the screen (below), where
               # its low word says it all, and the low word is all that is hashed.
-              emit_op_begin(asm, PaintLog::KIND_BLIT, 12, 4, "rt_paint_blit_now") if logged
+              emit_op_begin(asm, PaintLog::KIND_BLIT, 12, "rt_paint_blit_now") if logged
               # Near enough the screen to paint anything at all.
               [[R.call(1), WIDTH], [R.call(2), HEIGHT]].each do |at, edge|
                 asm.clc
@@ -1197,12 +1196,16 @@ module VBlank
                 asm.lda(asm.direct(from))
                 asm.sta(asm.direct(to))
               end
+              emit_blit_whole_tiles_check(asm, s)
+              # Held to the area, each tile column's pixels it allows (whole tiles need none).
+              asm.lda(asm.direct(s.planes))
+              asm.bne("rt_paint_blit_masks_unneeded")
               asm.lda(asm.direct(s.chunk))
               asm.sta(asm.direct(s.tile))
               asm.lda(asm.direct(s.last))
               asm.sta(asm.direct(s.mark_count))
               asm.jsr(asm.abs("rt_paint_column_masks"))
-              emit_blit_whole_tiles_check(asm, s)
+              asm.label("rt_paint_blit_masks_unneeded")
               emit_into_copy(asm, bank)
               asm.lda(asm.direct(s.top))
               asm.sta(asm.direct(s.y))
@@ -1929,6 +1932,8 @@ module VBlank
             # The same on a plain cartridge (PaintLog): a tile is sent when its copy changed since its
             # slot was last sent, whatever its generation, and it is on the screen if the map video
             # RAM holds now (MAP_COPY, before rt_paint_map_runs changes it) points at it.
+            # (A tile whose slot of video RAM already holds what the copy does is not sent either:
+            # PaintLog's rt_paint_slot_behind.)
             def emit_prepare_kind_logged(asm, memory, s)
               asm.lda(asm.long_x(memory[PaintLog::UNSENT]))
               asm.and_a(0x00FF)
@@ -1938,6 +1943,12 @@ module VBlank
               asm.sta(asm.long_x(memory[PaintLog::UNSENT]))
               asm.rep(0x20)
               asm.txa
+              asm.asl
+              asm.asl
+              asm.tax
+              asm.jsr(asm.abs("rt_paint_slot_behind"))
+              asm.branch_long(:beq, "rt_paint_prepare_older") # its slot holds it already
+              asm.lda(asm.direct(s.tile))
               asm.asl
               asm.tax
               asm.lda(asm.long_x(memory[MAP_COPY]))
@@ -2039,6 +2050,7 @@ module VBlank
               asm.cmp(Blank::BLANK_BYTES + 1)
               asm.bcs("rt_paint_upload_apart")
               asm.jsr(asm.abs("rt_blank_room"))
+              asm.jsr(asm.abs("rt_paint_send_ready"))
               asm.ldx(asm.abs(memory[IN_PLACE_START]))
               asm.label("rt_paint_upload_in_place")
               asm.cpx(MOST_RUNS * 4)
@@ -2154,6 +2166,7 @@ module VBlank
               asm.clc
               asm.adc(RUN_SETTING_UP + RUN_PICKING)
               asm.jsr(asm.abs("rt_blank_taken"))
+              asm.jsr(asm.abs("rt_paint_send_ready"))
               asm.lda(asm.long_x(memory[RUNS] + 2))
               asm.pha
               asm.lda(asm.direct(s.y))
@@ -2172,6 +2185,7 @@ module VBlank
               asm.brl("rt_paint_send_runs")
               asm.label("rt_paint_send_runs_go")
               asm.jsr(asm.abs("rt_blank_taken"))
+              asm.jsr(asm.abs("rt_paint_send_ready"))
               asm.label("rt_paint_send_runs_one")
               asm.cpx(asm.direct(s.mark_count))
               asm.branch_long(:bcs, "rt_paint_send_runs")
@@ -2185,10 +2199,25 @@ module VBlank
               asm.rts
             end
 
-            # rt_paint_send_run (JSR): the run at X of RUNS copied to video RAM from the copy in
-            # +bank+, its tiles to their own slots. Keeps X.
+            # rt_paint_send_ready (JSR): the copying engine's channel 0 set to copy from the copy in
+            # +bank+ to video RAM's two ports, what every run shares, so each run (rt_paint_send_run)
+            # sets only its own place and length. Said again after anything else could copy, as
+            # after a wait for the next blank.
+            # rt_paint_send_run (JSR): the run at X of RUNS copied to video RAM, its tiles to their
+            # own slots. Keeps X.
             def emit_send_run(asm, memory, bank)
               h = Console::SNESHardware
+              asm.label("rt_paint_send_ready")
+              asm.sep(0x20)
+              asm.lda(bank)
+              asm.sta(asm.abs(h::DMA_BASE + h::A1B))
+              asm.lda(h::DMA_TO_TWO_PORTS)
+              asm.sta(asm.abs(h::DMA_BASE + h::DMAP))
+              asm.lda(h::VMDATAL & 0xFF)
+              asm.sta(asm.abs(h::DMA_BASE + h::BBAD))
+              asm.rep(0x20)
+              asm.rts
+
               asm.label("rt_paint_send_run")
               asm.lda(asm.long_x(memory[RUNS] + 2))
               6.times { asm.asl }
@@ -2199,14 +2228,16 @@ module VBlank
               asm.asl # ...and its byte in the copy
               asm.sta(asm.abs(h::DMA_BASE + h::A1TL))
               asm.sep(0x20)
-              asm.lda(bank)
-              emit_copy_to_video_ram(asm)
+              asm.lda(1)
+              asm.sta(asm.abs(h::MDMAEN))
+              asm.rep(0x20)
               asm.rts
             end
 
             # What setting a run going costs the blank, counted as bytes copied: two thirds of a
             # line as Blank counts them (about 146 bytes), for the hundred or so cycles of code that
-            # start its copy.
+            # start its copy (rt_paint_send_run sets only what differs from run to run, which keeps
+            # it inside that even for many runs of a tile each).
             RUN_SETTING_UP = 96
             # What picking a run for a handful costs the blank (rt_paint_send_runs), counted the same
             # way: a third of a line, for the sixty or so cycles of looking at it.

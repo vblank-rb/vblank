@@ -462,6 +462,153 @@ class TestSNESPaint < Minitest::Test
     assert_equal 16, run[:n]
   end
 
+  # A TILE'S KEY TAKES IN EVERY PAINTING OVER IT IN ORDER, however many. Here one tile has 36
+  # paintings: two of them, the 4th and the 36th, colour the same pixel, and they change places
+  # every pass. A key that let paintings 32 apart trade places unseen would keep the last
+  # pass's colour on the screen.
+  def test_two_paintings_far_apart_on_one_tile_that_change_places
+    run = checked(frames: 8) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        36.times do |i|
+          if i == 3
+            fill_rect 4, 4, 1, 1, :red if n % 2 == 0
+            fill_rect 4, 4, 1, 1, :blue if n % 2 == 1
+          elsif i == 35
+            fill_rect 4, 4, 1, 1, :blue if n % 2 == 0
+            fill_rect 4, 4, 1, 1, :red if n % 2 == 1
+          else
+            fill_rect i % 8, i / 8, 1, 1, :green
+          end
+        end
+        n += 1
+      end
+    end
+
+    assert_equal 8, run[:n]
+  end
+
+  # MORE PAINTINGS THAN THE LOG HOLDS: the pass paints what it has written down when the log is
+  # full, and goes on. Every tile here is painted before that and after it, half of them the
+  # same every pass and half changing.
+  def test_a_pass_of_more_paintings_than_the_log_holds
+    run = checked(frames: 5) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        80.times { |t| fill_rect (t % 16) * 8, (t / 16) * 8, 6, 6, :green }
+        80.times do |t|
+          draw_rect_at (t % 16) * 8 + 1, (t / 16) * 8 + 1, 3, 3, :red if t.even?
+          draw_rect_at (t % 16) * 8 + 1 + (n % 3), (t / 16) * 8 + 1, 3, 3, :yellow if t.odd?
+        end
+        n += 1
+      end
+    end
+
+    assert_equal 5, run[:n]
+  end
+
+  # ...and a screen of that many paintings that is the same every pass sends nothing: what the
+  # pass ends with is what video RAM shows already, though the copy was painted on the way.
+  def test_an_unchanged_screen_of_more_paintings_than_the_log_holds_sends_nothing
+    rom = VBlank.build("PAINT LOG FULL", console: :snes, out: StringIO.new, err: StringIO.new) do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        2.times do |sweep|
+          80.times { |t| fill_rect ((t % 16) * 8) + sweep, (t / 16) * 8, 4, 4, sweep.zero? ? :green : :red }
+        end
+      end
+    end
+    result = VBlank::Diagnostics::SNESProfiler.run(rom, frames: 6, settle: 4)
+
+    assert_nil result.runtime.find { |spent| spent.routine == "rt_paint_send_run" }, "no tile is sent"
+  end
+
+  # A clear to another colour changes every tile's key: text drawn the same on the new colour is
+  # painted and sent again.
+  def test_the_same_text_on_a_clear_colour_that_changes
+    run = checked(frames: 6) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :blue if n % 3 == 0
+        clear_screen :black if n % 3 != 0
+        draw_text "SAME", 9, 9, :white
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:black), run.screen.pixel(2, 2)
+  end
+
+  # A tile painted after the first clear and again, the same, after the 257th, when the
+  # generations have come round: the copy still holds it, and the screen shows it.
+  def test_a_tile_painted_the_same_across_the_generations_coming_round
+    run = checked(frames: 258) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :blue
+        fill_rect 0, 0, 8, 8, :red if n == 0 || n == 256
+        draw_text "ON", 20, 20, :white
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:blue), run.screen.pixel(1, 1), "the pass after it, cleared again"
+  end
+
+  # A pass that changes more tiles than a blank holds sends them over several, a run cut where a
+  # blank fills, and the screen shows the last pass's picture until it shows this one's. Each
+  # pass paints the half the last one left clear, in a colour it was not painted last time.
+  def test_a_change_bigger_than_a_blank_is_cut_across_blanks
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 120, 224, :red if n % 6 == 0
+        fill_rect 128, 0, 120, 224, :green if n % 6 == 1
+        fill_rect 0, 0, 120, 224, :blue if n % 6 == 2
+        fill_rect 128, 0, 120, 224, :red if n % 6 == 3
+        fill_rect 0, 0, 120, 224, :green if n % 6 == 4
+        fill_rect 128, 0, 120, 224, :blue if n % 6 == 5
+        n += 1
+      end
+    end
+    SNES::CheckedRun.new.run(program, frames: 5)
+    run = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 5)
+
+    assert_operator run.frames_took(3), :>, 1, "more than a blank holds"
+    assert_empty run.torn_frames
+  end
+
+  # Many runs of one tile each, more than a blank holds, every pass: each blank is filled only as
+  # far as it has time for, setting each run going included, and every tile arrives.
+  def test_many_single_tile_changes_across_blanks
+    run = checked(frames: 6) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        12.times do |row|
+          16.times do |column|
+            next unless (row + column).even?
+
+            draw_rect_at (column * 16) + (n % 4), row * 16, 2, 2, :yellow
+          end
+        end
+        n += 1
+      end
+    end
+
+    assert_equal 6, run[:n]
+  end
+
   private def clear_and_draw_program
     program_of do
       screen :bitmap
