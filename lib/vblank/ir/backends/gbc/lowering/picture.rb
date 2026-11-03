@@ -156,7 +156,8 @@ module VBlank
                              grouped: grouped_pictures, room_colors: @plans_room_colors,
                              first_cleared_to: @program.walk.find { |node| node.kind == :clear_screen }&.color,
                              backdrop: color_backdrop, piece_height: piece_height,
-                             scene_pictures: (scene_pictures if @plans_scene_pictures))
+                             scene_pictures: (scene_pictures if @plans_scene_pictures),
+                             indexes_in_banks: @indexes_in_banks)
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run says its sprites by
@@ -792,7 +793,13 @@ module VBlank
             def emit_lend_scene(scene)
               return unless @art.lists_by_scene?
 
-              @asm.load(:hl, @art.lent_scene_label(scene))
+              record = if @art.indexes_in_banks?
+                         colors, families = @art.lent_scene_record(scene)
+                         routine_data_label([[:word, colors], [:word, families], [:bank, colors]])
+                       else
+                         @art.lent_scene_label(scene)
+                       end
+              @asm.load(:hl, record)
               @asm.call("rt_lend_scene")
             end
 

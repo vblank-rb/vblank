@@ -188,8 +188,15 @@ module VBlank
           # a sprite of pieces stacked in pairs takes half the forty. Each tile a sprite keeps is then
           # a pair of the console's tiles at an even number, cut 8 wide and 16 tall, and turned upside
           # down whole, which is how the console turns a tall piece: the two halves change places.
+          #
+          # +indexes_in_banks+ keeps the tables of where each picture, grid, screen's tiles and
+          # colours and lent list are in a bank of the cartridge rather than the part always in view
+          # (#index_section), and each scene's record of its own lists beside the code that hands
+          # it over (#lent_scene_record).
           def initialize(square_colors: nil, lends: false, grouped: {}, room_colors: false, first_cleared_to: nil,
-                         backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil)
+                         backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil,
+                         indexes_in_banks: false)
+            @indexes_in_banks = indexes_in_banks
             @piece_height = piece_height
             @scene_pictures = scene_pictures
             @scene_tiles = Hash.new { |all, scene| all[scene] = [] } # a scene -> its own tiles, 16 bytes each
@@ -304,6 +311,18 @@ module VBlank
             @scene_palettes[scene] ||= []
             "art_lent_scene_#{scenes_with_own_lists.index(scene)}"
           end
+
+          # ...that record's labels, for a game whose indexes are in banks (#indexes_in_banks?),
+          # where the code handing the scene over keeps the record beside it: where the scene's own
+          # lists' colours are, where their families are, and the bank both are in, which the
+          # lowering writes as a word, a word and a byte, as #tables_section would.
+          def lent_scene_record(scene)
+            at = lent_scene_label(scene).delete_prefix("art_lent_scene_")
+            ["art_lent_scene_#{at}_colors", "art_lent_scene_#{at}_families"]
+          end
+
+          # Are the tables of where each thing is kept in a bank (#initialize)?
+          def indexes_in_banks? = @indexes_in_banks
 
           # Has any sprite lists of its own to step through (#lent_family)?
           def lent_families? = lends? && lent_family.any?
@@ -1023,7 +1042,10 @@ module VBlank
           def sections
             refuse_too_many_tiles!
             @scene_palettes.each_key { |scene| refuse_scene_lists_past_most!(scene) }
-            [tables_section,
+            fixed = SM83.new("art tables", home: :fixed, holds: PICTURE_TABLES)
+            indexes = indexes_in_banks? ? SM83.new("art indexes", home: :banked, holds: PICTURE_TABLES) : fixed
+            [tables_section(fixed, indexes),
+             *([indexes.section] if indexes_in_banks?),
              *scenes_with_own_lists.each_with_index.map { |scene, at| lent_scene_section(scene, at) },
              *@sprite_pictures.each_value.map { |picture| picture_section(picture) },
              data_section("art sprite tiles", "art_sprite_tiles", @sprite_tiles.flatten, holds: SPRITE_PICTURES),
@@ -1048,8 +1070,11 @@ module VBlank
 
           private
 
-          def tables_section
-            asm = SM83.new("art tables", home: :fixed, holds: PICTURE_TABLES)
+          # The palettes at power-on, in +asm+, the part always in view; and the indexes — where
+          # every picture, grid and big map is, the lists lent and each screen's tiles and colours —
+          # in +indexes+, which is +asm+ again unless the game keeps them in a bank (#initialize).
+          # A big map's table and the picture groups' stay in view: a game has few of either.
+          def tables_section(asm, indexes)
             asm.label("art_palettes")
             # A game that lends its sprites' lists starts with nothing in the eight.
             [[background_colors_at_power_on, @backdrop], [lends? ? [] : @sprite_palettes, BACKDROP]].each do |palettes, unused|
@@ -1059,15 +1084,18 @@ module VBlank
               end
             end
             if lends?
-              asm.label("art_lent_palettes")
-              @sprite_palettes.each { |colors| asm.data_words(colors) }
+              indexes.label("art_lent_palettes")
+              @sprite_palettes.each { |colors| indexes.data_words(colors) }
               if lent_families?
-                asm.label("art_lent_families")
-                asm.data_bytes(@sprite_palettes.each_index.map { |at| lent_family.fetch([nil, kept_list_number(at)], 0) })
+                indexes.label("art_lent_families")
+                indexes.data_bytes(@sprite_palettes.each_index.map { |at| lent_family.fetch([nil, kept_list_number(at)], 0) })
               end
               # Each scene's record for the lending: where its own lists' colours and families are,
-              # and their bank.
+              # and their bank. A game whose indexes are in banks keeps each beside the code that
+              # hands its scene over instead (#lent_scene_record).
               scenes_with_own_lists.each_index do |at|
+                next if indexes_in_banks?
+
                 asm.label("art_lent_scene_#{at}")
                 asm.data_words("art_lent_scene_#{at}_colors", "art_lent_scene_#{at}_families")
                 asm.data_bank_of("art_lent_scene_#{at}_colors")
@@ -1075,20 +1103,20 @@ module VBlank
             end
             # Where each sprite picture's pieces and mask are, and the bank each is in (#picture_section).
             pictures = @sprite_pictures.values
-            asm.label("art_pictures")
+            indexes.label("art_pictures")
             pictures.each do |picture|
-              asm.data_words("art_pieces_#{picture.number}")
-              asm.data_bank_of("art_pieces_#{picture.number}")
+              indexes.data_words("art_pieces_#{picture.number}")
+              indexes.data_bank_of("art_pieces_#{picture.number}")
             end
-            asm.label("art_masks")
+            indexes.label("art_masks")
             pictures.each do |picture|
-              asm.data_words("art_mask_#{picture.number}")
-              asm.data_bank_of("art_mask_#{picture.number}")
+              indexes.data_words("art_mask_#{picture.number}")
+              indexes.data_bank_of("art_mask_#{picture.number}")
             end
-            asm.label("art_grids")
+            indexes.label("art_grids")
             @grids.each_index do |i|
-              asm.data_words("art_grid_#{i}")
-              asm.data_bank_of("art_grid_#{i}")
+              indexes.data_words("art_grid_#{i}")
+              indexes.data_bank_of("art_grid_#{i}")
             end
             # Each map bigger than the grid as Runtime::BigMaps reads it: where its table of rows is
             # (each row's place and bank), a byte unused, and its size.
@@ -1110,7 +1138,8 @@ module VBlank
               end
             end
             group_rooms.each_value { |room| emit_group_tables(asm, room) }
-            emit_room_tables(asm) unless @rooms.empty?
+            emit_room_tables(indexes) unless @rooms.empty?
+            indexes.data_bytes(0) if indexes_in_banks? && indexes.here.zero? # a label has to be somewhere
             asm.section
           end
 
@@ -1127,9 +1156,12 @@ module VBlank
                 room_chunks(link).each do |chunk|
                   asm.data_bytes(chunk.tiles.length)
                   asm.data_words(chunk.label)
-                  asm.data_bank_of(chunk.label)
+                  # Kept in a bank, the table names the chunk's own bank last, which the runtime
+                  # puts in view only once it has read the rest of the entry.
+                  asm.data_bank_of(chunk.label) unless indexes_in_banks?
                   asm.data_bytes(chunk.bank)
                   asm.data_words(chunk.to)
+                  asm.data_bank_of(chunk.label) if indexes_in_banks?
                 end
               end
               asm.data_bytes(0)

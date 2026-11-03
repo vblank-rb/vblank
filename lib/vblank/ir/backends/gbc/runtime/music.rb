@@ -80,9 +80,18 @@ module VBlank
             # Whether the game holds its music (TUNE_HELD).
             def holds?(memory) = memory.reserved?(TUNE_HELD)
 
+            # SONGS' ENTRIES KEPT IN A BANK (GBC::Music#entries_in_banks?): the playing song's entry,
+            # copied here from its bank as the song starts, which SONG then names. Every reading of the
+            # song after that — its parts, its length, where it comes round from — reads this copy, so
+            # the player puts no bank in view for it on any other frame.
+            ENTRY_COPY = "rt music entry copy"
+
+            def entries_in_banks?(memory) = memory.reserved?(ENTRY_COPY)
+
             def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, swells: false, noise_swells: false, banked: false,
-                        holds: false, effect_table: false)
-              memory.reserve(BANK_NOTED, 1) if banked
+                        holds: false, effect_table: false, entries_in_banks: false)
+              memory.reserve(BANK_NOTED, 1) if banked || entries_in_banks
+              memory.reserve(ENTRY_COPY, GBC::Music::ENTRY_MOST) if entries_in_banks
               memory.reserve(TUNE_HELD, 1) if holds
               reserve_song_player(memory, banked)
               memory.reserve(WAVE_LOADED, 1) unless effects.empty? && !Clips.any?(memory)
@@ -736,10 +745,14 @@ module VBlank
               asm.load(:h, 0)
               asm.load(:de, "music_songs")
               asm.add_hl(:de)
-              asm.load(:a, [:hli])
-              asm.load([memory[SONG]], :a)
-              asm.load(:a, [:hl])
-              asm.load([memory[SONG] + 1], :a)
+              if entries_in_banks?(memory)
+                emit_entry_copy(asm, memory)
+              else
+                asm.load(:a, [:hli])
+                asm.load([memory[SONG]], :a)
+                asm.load(:a, [:hl])
+                asm.load([memory[SONG] + 1], :a)
+              end
               asm.load(:hl, memory[FRAME])
               asm.xor_a(:a)
               asm.load([:hli], :a)
@@ -931,6 +944,36 @@ module VBlank
                 asm.label("rt_music_quiet_kept_#{voice}")
               end
               asm.ret
+            end
+
+            # THE STARTING SONG'S ENTRY COPIED OUT OF ITS BANK (ENTRY_COPY), with HL at its place in
+            # the table of songs, and SONG naming the copy.
+            #
+            # The cartridge shows the processor one bank of 16K at 0x4000 to 0x7FFF at a time, and
+            # which one is a number written to the cartridge's memory bank controller (an MBC5, or an
+            # MBC3 on a cartridge with a clock): a write to 0x2000 says the bank. Nothing can read that
+            # number back, which is why the runtime notes it as it writes it. The table of songs is in
+            # one of the banks, so it is
+            # put in view for the copy. This runs in the frame's interrupt, between two instructions of
+            # the game's — possibly the game's own code in a bank, or the runtime reading a table in
+            # another — so the bank put in view is not noted (SM83#select_rom_bank_unnoted), and the
+            # bank the game noted last is put back after it. Without that, the game would carry on
+            # reading the songs' bank where its own code or table was.
+            def emit_entry_copy(asm, memory)
+              asm.load_bank_of(:a, "music_songs")
+              asm.select_rom_bank_unnoted
+              asm.load(:a, [:hli])
+              asm.load(:h, [:hl])
+              asm.load(:l, :a)
+              asm.load(:de, memory[ENTRY_COPY])
+              asm.load(:b, GBC::Music::ENTRY_MOST)
+              asm.call("rt_copy_b")
+              asm.load(:a, [memory[BANK_NOTED]])
+              asm.select_rom_bank_unnoted
+              asm.load(:a, memory[ENTRY_COPY] & 0xFF)
+              asm.load([memory[SONG]], :a)
+              asm.load(:a, memory[ENTRY_COPY] >> 8)
+              asm.load([memory[SONG] + 1], :a)
             end
 
             # The bank the part at HL keeps its notes in (the last byte of its entry,

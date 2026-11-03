@@ -99,15 +99,24 @@ module VBlank
           # +banked+ keeps each song's notes in the cartridge's banks rather than the part always in
           # view (#sections). +effects_in_banks+ keeps the sound effects' there too, each with a row
           # that says what it is, and has them played from those rows (Runtime::EffectTable).
-          def initialize(program, banked: false, effects_in_banks: false)
+          # +entries_in_banks+ keeps the songs' entries in a bank as well, with their notes in banks
+          # (#emit_song_entries).
+          def initialize(program, banked: false, effects_in_banks: false, entries_in_banks: false)
             @songs = program.walk.select { |node| node.kind == :song }.uniq(&:name)
             @effect_names = Tunes.effects(program).uniq
             @effects_in_banks = effects_in_banks && !@effect_names.empty?
-            @banked = banked || @effects_in_banks
+            @entries_in_banks = entries_in_banks && !@songs.empty?
+            @banked = banked || @effects_in_banks || @entries_in_banks
           end
 
           def banked? = @banked
           def effects_in_banks? = @effects_in_banks
+          def entries_in_banks? = @entries_in_banks
+
+          # The most bytes a song's entry takes: how long it is, where it comes round from, whether it
+          # ends, how many parts, and each part's entry, in a game whose notes are in banks.
+          ENTRY_HEAD = 6
+          ENTRY_MOST = ENTRY_HEAD + (Runtime::Music::PARTS * (ENTRY_BANK + 1))
 
           # The number +name+ is played by.
           def number(name)
@@ -154,11 +163,24 @@ module VBlank
           # instead, a section a part, and its entry says which bank; the player puts that bank in
           # view while it reads the part (Runtime::Music). What a song is — how long, its parts —
           # and the sound effects' notes stay in view.
+          #
+          # SONGS' ENTRIES KEPT IN A BANK TOO (#entries_in_banks?). What a song is still takes a few
+          # dozen bytes a song in view, so a game that keeps adding songs fills that part with them.
+          # Such a game keeps the table of where each song is, and every song's entry, in a section of
+          # their own in the banks, and the player copies the entry of a song into work memory as the
+          # song starts (Runtime::Music::ENTRY_COPY), with that bank put in view for the copy. It
+          # copies ENTRY_MOST bytes whatever the song's parts, so the section ends with enough
+          # bytes after the last entry for that copy to read only the section's own.
           def sections
             asm = SM83.new("music", home: :fixed, holds: SONGS)
-            asm.label("music_songs")
-            @songs.each_index { |i| asm.data_words("music_song_#{i}") }
-            parts = @songs.each_with_index.map { |song, i| emit_song(asm, song, i) }
+            entries = entries_in_banks? ? SM83.new("music songs", home: :banked, holds: SONGS) : asm
+            entries.label("music_songs")
+            @songs.each_index { |i| entries.data_words("music_song_#{i}") }
+            parts = @songs.each_with_index.map { |song, i| emit_song(entries, song, i) }
+            if entries_in_banks?
+              entries.data_bytes(Array.new(ENTRY_MOST, 0))
+              parts.unshift(entries.section)
+            end
             asm.label("music_waves")
             waveforms.each { |shape| asm.data_bytes(packed_waveform(shape)) }
             asm.data_bytes(0) # a label has to be somewhere

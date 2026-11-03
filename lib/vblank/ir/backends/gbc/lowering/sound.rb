@@ -53,7 +53,8 @@ module VBlank
 
             def prepare_sound
               @defined_sounds = @program.walk.select { |node| node.kind == :define_sound }.to_h { |node| [node.name, node.effect] }
-              @music = Music.new(@program, banked: @banked_songs, effects_in_banks: @effects_in_banks)
+              @music = Music.new(@program, banked: @banked_songs, effects_in_banks: @effects_in_banks,
+                                           entries_in_banks: @indexes_in_banks)
               @clips = Clips.new(@program)
               @sound_tables = {}
             end

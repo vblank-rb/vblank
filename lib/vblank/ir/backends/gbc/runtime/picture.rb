@@ -185,26 +185,28 @@ module VBlank
             def emit(asm, memory, sprite_tiles:, background_tiles:, runs: [], drawn_palettes: nil, lends: false,
                      palettes_in_use:, groups: false, bar_rows: nil, bar_maps: false, rooms: false, picture_rooms: false,
                      room_colors: false, lent_families: false, backdrop: nil, banked_colors: false, first_kept_list: nil,
-                     tall_pieces: false, sprites_over_picture: false)
+                     tall_pieces: false, sprites_over_picture: false, indexes_in_banks: false)
               emit_start(asm, memory, sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                                       drawn_palettes: drawn_palettes, bar: !bar_rows.nil?, backdrop: backdrop,
                                       tall_pieces: tall_pieces)
-              emit_rooms(asm, memory, colors: room_colors) if rooms
+              emit_rooms(asm, memory, colors: room_colors, in_bank: indexes_in_banks) if rooms
               emit_upload(asm, memory, groups: groups, bar: !bar_rows.nil?, label: rooms ? "rt_upload_now" : "rt_upload",
                                        over_picture: sprites_over_picture)
               emit_oam_dma_held(asm)
               PictureGroups.emit(asm, memory) if groups
               emit_tile_runs(asm, runs)
-              emit_sprites(asm, memory, lends: lends, tall_pieces: tall_pieces, over_picture: sprites_over_picture)
+              emit_sprites(asm, memory, lends: lends, tall_pieces: tall_pieces, over_picture: sprites_over_picture,
+                                        index_in_bank: indexes_in_banks)
               emit_lend_colors(asm, memory, drawn_palettes, families: lent_families,
-                                                            first_kept: (first_kept_list if lends == :by_scene)) if lends
+                                                            first_kept: (first_kept_list if lends == :by_scene),
+                                                            kept_in_bank: indexes_in_banks) if lends
               paced = (memory[ROOMS] + ROOM_DISPLAY_OFF if picture_rooms)
-              emit_background(asm, memory, bar: !bar_rows.nil?, paced: paced)
-              emit_bar(asm, memory, bar_rows, paced: paced) if bar_rows
+              emit_background(asm, memory, bar: !bar_rows.nil?, paced: paced, grids_in_bank: indexes_in_banks)
+              emit_bar(asm, memory, bar_rows, paced: paced, grids_in_bank: indexes_in_banks) if bar_rows
               emit_bar_covers(asm, memory) if memory.reserved?(BAR_COVERS)
               emit_bar_show(asm, memory) if bar_maps
               emit_choices(asm, memory)
-              emit_overlap(asm, memory)
+              emit_overlap(asm, memory, index_in_bank: indexes_in_banks)
               emit_tint(asm, memory, drawn_palettes, palettes_in_use)
               emit_background_colors(asm, drawn_palettes) if drawn_palettes
               emit_background_colors_far(asm) if banked_colors
@@ -312,7 +314,10 @@ module VBlank
             # In a game whose scenes number their own lists (+first_kept+, #emit_lend_scene), a list
             # numbered from +first_kept+ up is one every scene keeps, and its colours are in
             # art_lent_palettes; one below is the scene up's own, read from the bank its table is in.
-            def emit_lend_colors(asm, memory, drawn_palettes, families: false, first_kept: nil)
+            #
+            # +kept_in_bank+ says the lists every scene keeps, and their families, are in a bank of
+            # their own as well (GBC#build_with_indexes_in_banks), read as a scene's own are.
+            def emit_lend_colors(asm, memory, drawn_palettes, families: false, first_kept: nil, kept_in_bank: false)
               lent = memory[LENT]
               sprite_colors = drawn_palettes + 64
               asm.label("rt_lend_list")
@@ -404,7 +409,7 @@ module VBlank
               asm.label("rt_lend_answer")
               asm.ret
               emit_lend_family(asm, lent, first_kept: first_kept) if families
-              emit_lend_tables(asm, memory, first_kept) if first_kept
+              emit_lend_tables(asm, memory, first_kept, kept_in_bank) if first_kept
             end
 
             # rt_lend_family: C = a list, one up, that found none of the eight free. One that holds a
@@ -472,7 +477,7 @@ module VBlank
             # eight that held a list of the scene before's own: that number means another list now.
             # Those are free again at once, since the scene before's sprites are not placed from here.
             # One holding a list every scene keeps stays as it is.
-            def emit_lend_tables(asm, memory, first_kept)
+            def emit_lend_tables(asm, memory, first_kept, kept_in_bank)
               lent = memory[LENT]
               table = memory[LENT_TABLE]
               asm.label("rt_lend_scene")
@@ -517,7 +522,7 @@ module VBlank
               3.times { asm.add_hl(:hl) }
               asm.load(:de, "art_lent_palettes")
               asm.add_hl(:de)
-              asm.xor_a(:a)
+              emit_kept_lists_bank(asm, "art_lent_palettes", kept_in_bank)
               asm.ret
               asm.label("rt_lend_colors_own")
               asm.dec(:a)
@@ -543,7 +548,7 @@ module VBlank
               asm.load(:d, 0)
               asm.load(:hl, "art_lent_families")
               asm.add_hl(:de)
-              asm.xor_a(:a)
+              emit_kept_lists_bank(asm, "art_lent_families", kept_in_bank)
               asm.ret
               asm.label("rt_lend_family_own")
               asm.dec(:a)
@@ -580,6 +585,16 @@ module VBlank
 
               # rt_lend_copy(HL = from, DE = to, B = how many, A = the bank HL is in).
               KeptSprites.emit_in_bank(asm, "rt_lend_copy", "rt_copy_b")
+            end
+
+            # A = the bank +table+ of the lists every scene keeps is in: nought, the part always in
+            # view, unless +in_bank+.
+            def emit_kept_lists_bank(asm, table, in_bank)
+              if in_bank
+                asm.load_bank_of(:a, table)
+              else
+                asm.xor_a(:a)
+              end
             end
 
             # rt_background_colors: HL = a table of a background's colours (Lowering::Picture
@@ -1261,7 +1276,7 @@ module VBlank
             # A game whose sprites are shown over a painted screen (+over_picture+) turns the sprite
             # layer on whatever screen is up: it has painted screens only (Checks::SpriteOverPictureBesideTiles),
             # and its sprites are drawn over the picture by the display, never into it.
-            def emit_sprites(asm, memory, lends: false, tall_pieces: false, over_picture: false)
+            def emit_sprites(asm, memory, lends: false, tall_pieces: false, over_picture: false, index_in_bank: false)
               args = ->(i) { Calls.arg(memory, i, 4) }
               asm.label("rt_sprites_begin")
               if lends
@@ -1368,7 +1383,7 @@ module VBlank
               # The pieces' bank in view while they are read, and the game's back after. Only the
               # borrowing of a scene's own list switches it while a piece is placed, and puts it back
               # from PIECES_BANK (#emit_lend_on_first_piece).
-              emit_banked_entry(asm, "art_pictures")
+              emit_banked_entry(asm, "art_pictures", in_bank: index_in_bank)
               asm.load([memory[PIECES_BANK]], :a) if memory.reserved?(PIECES_BANK)
               asm.load(:h, :d)
               asm.load(:l, :e) # HL = the picture's pieces
@@ -1640,7 +1655,7 @@ module VBlank
             # #emit_background_hardware) and the interpreter shows (Reference#put_up_background);
             # handing a background another of its maps keeps the view where it is (rt_big_show
             # likewise, beside rt_big_put_up).
-            def emit_background(asm, memory, bar: false, paced: nil)
+            def emit_background(asm, memory, bar: false, paced: nil, grids_in_bank: false)
               h = Console::GBCHardware
               emit_background_cell(asm, memory)
               emit_cells_write_now(asm, memory)
@@ -1666,12 +1681,14 @@ module VBlank
               asm.load(:d, 0)
               asm.load(:hl, "art_grids")
               3.times { asm.add_hl(:de) }
+              emit_grids_bank_in_view(asm, grids_in_bank)
               asm.load(:a, [:hli])
               asm.load([memory[MAP_JOB] + 1], :a)
               asm.load(:a, [:hli])
               asm.load([memory[MAP_JOB] + 2], :a)
               asm.load(:a, [:hl])
               asm.load([memory[MAP_JOB] + 5], :a)
+              asm.call("rt_bank_back") if grids_in_bank
               asm.xor_a(:a) # the first row of the console's grid
               asm.load([memory[MAP_JOB] + 3], :a)
               asm.load(:a, h::TILE_MAP0 >> 8)
@@ -1732,7 +1749,11 @@ module VBlank
             # the room's palettes (art_room_colors) into the colours drawn now as it asks, and those
             # through the fade or tint in force into the copy the blank sends (rt_background_colors):
             # so they reach the console in the same blank as the tiles, already faded as the rest.
-            def emit_rooms(asm, memory, colors: false)
+            #
+            # With +in_bank+ the tables of every room's tiles and colours are in one bank of the
+            # cartridge rather than the part always in view (GBC#build_with_indexes_in_banks): each
+            # reading of them puts that bank in view, and the game's back after.
+            def emit_rooms(asm, memory, colors: false, in_bank: false)
               h = Console::GBCHardware
               asm.label("rt_tiles_put_up")
               asm.load_hl_sp(2)
@@ -1749,10 +1770,19 @@ module VBlank
                 asm.load(:d, 0)
                 asm.load(:hl, "art_room_colors")
                 asm.add_hl(:de)
+                if in_bank
+                  asm.load_bank_of(:a, "art_room_colors")
+                  asm.select_rom_bank
+                end
                 asm.load(:a, [:hli])
                 asm.load(:h, [:hl])
                 asm.load(:l, :a)
-                asm.jump("rt_background_colors")
+                if in_bank
+                  asm.call("rt_background_colors")
+                  asm.jump("rt_bank_back")
+                else
+                  asm.jump("rt_background_colors")
+                end
               else
                 asm.ret
               end
@@ -1785,6 +1815,10 @@ module VBlank
               asm.add_hl(:de)
               asm.dec(:hl)
               asm.dec(:hl)
+              if in_bank
+                asm.load_bank_of(:a, "art_rooms")
+                asm.select_rom_bank
+              end
               asm.load(:a, [:hli])
               asm.load(:h, [:hl])
               asm.load(:l, :a)
@@ -1793,7 +1827,11 @@ module VBlank
               if colors # a room that brings colours alone in holds the display on: no chunk to copy
                 asm.load(:a, [:hl])
                 asm.and_a(:a)
-                asm.ret(:z)
+                if in_bank
+                  asm.jump(:z, "rt_bank_back")
+                else
+                  asm.ret(:z)
+                end
               end
               asm.load_high(:a, h::LCDC)
               asm.bit(7, :a)
@@ -1812,13 +1850,28 @@ module VBlank
               asm.load(:e, :a)
               asm.load(:a, [:hli])
               asm.load(:d, :a) # DE = where they are
-              asm.load(:a, [:hli])
-              asm.select_rom_bank
-              asm.load(:a, [:hli])
-              asm.load_high(h::VBK, :a)
-              asm.load(:a, [:hli])
-              asm.load(:b, :a)
-              asm.load(:a, [:hli]) # where they go: B low, A high
+              if in_bank
+                # The chunk's own bank is last in its entry (GBC::Art#emit_room_tables), so the whole
+                # entry is read from the rooms' bank before the tiles' bank is put in view, and the
+                # rooms' put back for the next chunk.
+                asm.load(:a, [:hli])
+                asm.load_high(h::VBK, :a)
+                asm.load(:a, [:hli])
+                asm.load(:b, :a)
+                asm.load(:a, [:hli]) # where they go: B low, A high
+                asm.push(:af)
+                asm.load(:a, [:hli])
+                asm.select_rom_bank
+                asm.pop(:af)
+              else
+                asm.load(:a, [:hli])
+                asm.select_rom_bank
+                asm.load(:a, [:hli])
+                asm.load_high(h::VBK, :a)
+                asm.load(:a, [:hli])
+                asm.load(:b, :a)
+                asm.load(:a, [:hli]) # where they go: B low, A high
+              end
               asm.push(:hl)
               asm.load(:h, :d)
               asm.load(:l, :e)
@@ -1826,11 +1879,26 @@ module VBlank
               asm.load(:e, :b)
               asm.call("rt_gdma")
               asm.pop(:hl)
+              if in_bank
+                asm.load_bank_of(:a, "art_rooms")
+                asm.select_rom_bank
+              end
               asm.jump_relative("rt_tiles_chunk")
               asm.label("rt_tiles_brought_in")
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
               asm.jump("rt_bank_back")
+            end
+
+            # The table of where each grid is (art_grids) put in view, where it is kept in a bank
+            # (+in_bank+, GBC#build_with_indexes_in_banks): the reader takes its three bytes and puts
+            # the game's bank back (rt_bank_back), since it returns to the game's code, which is in a
+            # bank of its own. Keeps HL.
+            def emit_grids_bank_in_view(asm, in_bank)
+              return unless in_bank
+
+              asm.load_bank_of(:a, "art_grids")
+              asm.select_rom_bank
             end
 
             # A GRID BEING PUT UP, a few rows a blank: +job+ is where it is kept — the rows left,
@@ -1948,7 +2016,7 @@ module VBlank
             # rt_place_bar(top): its top at +top+, kept between 0 and the bottom of the screen.
             # rt_bar_take_down: the window off, for a screen with no bar; and its grid forgotten too
             # when the kind of screen changes, since a painted screen keeps its own grid there.
-            def emit_bar(asm, memory, rows, paced: nil)
+            def emit_bar(asm, memory, rows, paced: nil, grids_in_bank: false)
               h = Console::GBCHardware
               top = Calls.arg(memory, 0, 1)
               asm.label("rt_bar_put_up")
@@ -1966,12 +2034,14 @@ module VBlank
               asm.load(:d, 0)
               asm.load(:hl, "art_grids")
               3.times { asm.add_hl(:de) }
+              emit_grids_bank_in_view(asm, grids_in_bank)
               asm.load(:a, [:hli])
               asm.load([memory[BAR_JOB] + 1], :a)
               asm.load(:a, [:hli])
               asm.load([memory[BAR_JOB] + 2], :a)
               asm.load(:a, [:hl])
               asm.load([memory[BAR_JOB] + 5], :a)
+              asm.call("rt_bank_back") if grids_in_bank
               asm.xor_a(:a)
               asm.load([memory[BAR_JOB] + 3], :a)
               asm.load(:a, h::TILE_MAP1 >> 8)
@@ -2325,14 +2395,20 @@ module VBlank
             # A SPRITE PICTURE'S ENTRY IN +table+ (art_pictures, art_masks): three bytes for each
             # picture, where its data is and the bank of the cartridge it is in (GBC::Art). With the
             # picture's number in HL, this leaves DE where its data is, that bank in view, and the
-            # bank's number in A.
-            def emit_banked_entry(asm, table)
+            # bank's number in A. With +in_bank+ the table itself is in a bank of the cartridge
+            # (GBC#build_with_indexes_in_banks), which is put in view first, and noted, since the
+            # picture's own bank is noted after it the same way.
+            def emit_banked_entry(asm, table, in_bank: false)
               asm.load(:d, :h)
               asm.load(:e, :l)
               asm.add_hl(:hl)
               asm.add_hl(:de)
               asm.load(:de, table)
               asm.add_hl(:de)
+              if in_bank
+                asm.load_bank_of(:a, table)
+                asm.select_rom_bank
+              end
               asm.load(:a, [:hli])
               asm.load(:e, :a)
               asm.load(:a, [:hli])
@@ -2356,7 +2432,7 @@ module VBlank
             # The two masks can be in different banks of the cartridge (GBC::Art#picture_section),
             # and only one bank is in view at a time, so each read of a mask puts its own bank in
             # view (rt_overlap_bit), and the game's goes back at the end.
-            def emit_overlap(asm, memory)
+            def emit_overlap(asm, memory, index_in_bank: false)
               at = memory[OVERLAP]
               a_mask = at # width, height, bytes a row, its bank, where its rows start
               b_mask = at + MASK_RECORD_BYTES
@@ -2489,7 +2565,7 @@ module VBlank
               asm.load(:h, [:hl])
               asm.load(:l, :a)
               asm.push(:de)
-              emit_banked_entry(asm, "art_masks")
+              emit_banked_entry(asm, "art_masks", in_bank: index_in_bank)
               asm.load(:b, :a)
               asm.load(:h, :d)
               asm.load(:l, :e) # HL = the mask

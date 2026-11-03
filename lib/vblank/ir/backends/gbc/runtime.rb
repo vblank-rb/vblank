@@ -51,11 +51,13 @@ module VBlank
           # +cells_shown_now+ that it changes a cell on the frame being drawn
           # (Lowering::Picture#cells_shown_now?), and +bar_covers+ that it tells a status bar to
           # cover sprites (Lowering::Picture#bar_covers_sprites?). +tile_loads+ says it loads sprite
-          # tiles from the cartridge (Lowering::SpriteTiles#loads_sprite_tiles?).
+          # tiles from the cartridge (Lowering::SpriteTiles#loads_sprite_tiles?). +song_entries_in_banks+
+          # says its songs' entries are kept in a bank, and copied out as each song starts
+          # (GBC::Music#entries_in_banks?).
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
-                      bar_covers: false, tile_loads: false)
+                      bar_covers: false, tile_loads: false, song_entries_in_banks: false)
             SpriteTileLoads.reserve(memory) if tile_loads
             Clips.reserve(memory, laps: clip_laps) if clips
             Rumble.reserve(memory) if rumble
@@ -66,7 +68,8 @@ module VBlank
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, swells: swells, noise_swells: noise_swells,
-                                  banked: banked_songs, holds: holds_music, effect_table: effect_table)
+                                  banked: banked_songs, holds: holds_music, effect_table: effect_table,
+                                  entries_in_banks: song_entries_in_banks)
           end
 
           # The runtime's sections: the processor's entry points, and everything else in one.
@@ -88,11 +91,12 @@ module VBlank
           # from a list's front (Lists#emit_queue_routines), and +half_queues+ that it pushes onto a list
           # of halves or takes one from the front (Lists#emit_queue_routines). +sprites_over_picture+
           # says its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
-          # sprite layer is on there.
+          # sprite layer is on there. +indexes_in_banks+ says the tables of where its pictures, its
+          # screens' tiles and colours and its maps are kept are in a bank (GBC#build_with_indexes_in_banks).
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
                        count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,
-                       sprites_over_picture: false)
+                       sprites_over_picture: false, indexes_in_banks: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
             # recording writes down every bank put in view, for the timer to put back (Runtime::Clips).
@@ -113,7 +117,7 @@ module VBlank
                                       room_colors: art.room_colors?, lent_families: art.lent_families?,
                                       backdrop: art.first_screen_backdrop, banked_colors: banked_colors,
                                       first_kept_list: art.first_kept_list, tall_pieces: art.tall_pieces?,
-                                      sprites_over_picture: sprites_over_picture)
+                                      sprites_over_picture: sprites_over_picture, indexes_in_banks: indexes_in_banks)
             BigMaps.emit(asm, memory, buffer: big_maps&.first, staged: big_maps&.last)
             Paint.emit(asm, memory, painting: art.painting?, map_count: art.square_maps.length, bar: !bar_rows.nil?)
             Sound.emit(asm, memory)

@@ -125,7 +125,8 @@ module VBlank
         # its own colours in as well (Art::TooManyBackgroundLists). And one whose part of the
         # cartridge always in view is too full is built again with its songs' notes kept in the
         # banks (Linker::TooBigForView, GBC::Music#sections), and then, if it is still too full, with
-        # its sprites' tables of poses in each list kept there as well (Lowering::Picture).
+        # its sprites' tables of poses in each list kept there as well (Lowering::Picture), and last
+        # with the indexes that say where each thing is kept there too (#build_with_indexes_in_banks).
         #
         # What a lowering works out from the program alone, and not from how this attempt is built,
         # is kept from one attempt to the next (Lowering's +known+).
@@ -170,13 +171,14 @@ module VBlank
 
         def build_cartridge(program, title, lends:, tile_rooms:, room_colors:, banked_songs: false, bank_pose_tables: false,
                             bank_background_colors: false, banked_table_bytes: Lowering::BANKED_TABLE_BYTES,
-                            effects_in_banks: false)
+                            effects_in_banks: false, indexes_in_banks: false)
           memory = Memory.new
           lowering = Lowering.new(program, memory: memory, lends_sprite_colors: lends, tile_rooms: tile_rooms,
                                            scene_pictures: @scene_pictures,
                                            room_colors: room_colors, banked_songs: banked_songs, bank_pose_tables: bank_pose_tables,
                                            bank_background_colors: bank_background_colors, banked_table_bytes: banked_table_bytes,
-                                           effects_in_banks: effects_in_banks, known: @known)
+                                           effects_in_banks: effects_in_banks, indexes_in_banks: indexes_in_banks,
+                                           known: @known)
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
                                   bar_rows: lowering.bar_rows, slides: lowering.music.slides?,
@@ -187,6 +189,7 @@ module VBlank
                                   dark: lowering.counts_dark_frames?, rumble: lowering.rumbles?,
                                   kept_sprites: lowering.keeps_unchanged_sprites?,
                                   holds_music: lowering.holds_music?, effect_table: lowering.music.effects_in_banks?,
+                                  song_entries_in_banks: lowering.music.entries_in_banks?,
                                   cells_shown_now: lowering.cells_shown_now?,
                                   bar_covers: lowering.bar_covers_sprites?, tile_loads: lowering.loads_sprite_tiles?)
           game = lowering.sections
@@ -201,7 +204,8 @@ module VBlank
                                              banked_colors: bank_background_colors && !lowering.drawn_palettes.nil?,
                                              byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?,
                                              half_queues: lowering.keeps_half_queues?,
-                                             sprites_over_picture: IR::SpritesOverPicture.any?(program))
+                                             sprites_over_picture: IR::SpritesOverPicture.any?(program),
+                                             indexes_in_banks: indexes_in_banks)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           begin
             linked = Linker.new(runtime + game + data, fixed_from: Console::GBCHardware::HEADER_END,
@@ -217,10 +221,19 @@ module VBlank
             # tables of what its backgrounds' palettes show at each step of a fade, and last its
             # own smaller tables, which are the ones a game reads most. All of that failing, it
             # starts again with its sound effects kept in the banks, which make the most room and
-            # play a little slower, and a game that fits without them keeps its bytes.
+            # play a little slower, and a game that fits without them keeps its bytes. And that
+            # failing too, with everything in the banks at once and the indexes besides
+            # (#build_with_indexes_in_banks).
             smaller = Lowering::SMALLER_BANKED_TABLE_BYTES.find { |bytes| bytes < banked_table_bytes }
             if bank_background_colors && !smaller
-              raise if effects_in_banks || lowering.music.effects.empty?
+              if effects_in_banks || lowering.music.effects.empty?
+                raise if indexes_in_banks
+
+                return build_with_indexes_in_banks(program, title, lends: lends, tile_rooms: tile_rooms,
+                                                                   room_colors: room_colors,
+                                                                   songs: lowering.music.any?,
+                                                                   effects_in_banks: effects_in_banks)
+              end
 
               return build_cartridge(program, title, lends: lends, tile_rooms: tile_rooms, room_colors: room_colors,
                                                      effects_in_banks: true)
@@ -231,7 +244,7 @@ module VBlank
                                                    banked_songs: banked_songs || songs, bank_pose_tables: bank_pose_tables || !songs,
                                                    bank_background_colors: bank_pose_tables,
                                                    banked_table_bytes: bank_background_colors ? smaller : banked_table_bytes,
-                                                   effects_in_banks: effects_in_banks)
+                                                   effects_in_banks: effects_in_banks, indexes_in_banks: indexes_in_banks)
           end
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
@@ -247,6 +260,26 @@ module VBlank
           save_bytes = SaveLayout.named_by?(program) ? Runtime::Saving::SIZE : 0
           Cartridge::GBCROM.new(linked.banks, title: title, save_bytes: save_bytes, clock: lowering.clock?,
                                               rumble: lowering.rumbles?, built: built)
+        end
+
+        # THE LAST WAY TO FIT THE PART ALWAYS IN VIEW: everything kept in the banks that the build
+        # can keep there — its songs' notes, its sound effects, its sprites' pose tables, its fades'
+        # colour tables and every table of its own but the smallest — and the INDEXES as well, the
+        # small tables that say where each of those things is. Each is a few bytes, but a few bytes
+        # for every song, every sprite picture, every screen and every routine a call picks from
+        # add up, so a game that keeps adding songs and screens fills the part always in view with
+        # them long after the things themselves went to the banks. Kept there, a song or a screen
+        # more costs nothing in view that grows with it. Each index is read with its bank put in
+        # view (Runtime::Music copies a song's entry out as it starts; Runtime::Picture reads where a
+        # picture, a screen's tiles or its colours are), or sits in the bank of the code that reads
+        # it (Lowering#routine_data_label). A game whose sprites borrow the eight lists has each
+        # scene number its own, so a screen's lists are kept with it in a bank as well.
+        def build_with_indexes_in_banks(program, title, lends:, tile_rooms:, room_colors:, songs:, effects_in_banks:)
+          build_cartridge(program, title, lends: lends == true ? :by_scene : lends, tile_rooms: tile_rooms,
+                                          room_colors: room_colors, banked_songs: songs, bank_pose_tables: true,
+                                          bank_background_colors: true,
+                                          banked_table_bytes: Lowering::SMALLER_BANKED_TABLE_BYTES.min,
+                                          effects_in_banks: effects_in_banks, indexes_in_banks: true)
         end
 
         # Where the runtime keeps how the run stands (Runtime::Frame's names and the rest).

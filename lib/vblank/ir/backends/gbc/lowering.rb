@@ -158,7 +158,9 @@ module VBlank
           # +bank_pose_tables+ the tables of its sprites' poses in each list (Picture#picture_and_attributes_drawn),
           # and +bank_background_colors+ the tables of its backgrounds' colours (Picture#emit_background_colors_for_declaration).
           # +banked_table_bytes+ is how big one of the game's tables has to be to go to a bank (#banked_tables).
-          # +effects_in_banks+ keeps its sound effects there too (GBC::Music#effects_in_banks?).
+          # +effects_in_banks+ keeps its sound effects there too (GBC::Music#effects_in_banks?), and
+          # +indexes_in_banks+ the tables that say where each song, picture, screen and routine is
+          # (GBC#build_with_indexes_in_banks).
           # +known+ holds what is worked out from +program+ alone, kept from one attempt at a build to
           # the next (GBC#build): nothing in it depends on how this one is built.
           # +scene_pictures+ says each scene brings its own sprite pictures in (Art::TooManySpriteTiles),
@@ -166,9 +168,11 @@ module VBlank
           # need rooms too.
           def initialize(program, memory:, lends_sprite_colors: false, tile_rooms: false, room_colors: false,
                          banked_songs: false, bank_pose_tables: false, bank_background_colors: false, known: {},
-                         scene_pictures: false, banked_table_bytes: BANKED_TABLE_BYTES, effects_in_banks: false)
+                         scene_pictures: false, banked_table_bytes: BANKED_TABLE_BYTES, effects_in_banks: false,
+                         indexes_in_banks: false)
             @program = program
             @effects_in_banks = effects_in_banks
+            @indexes_in_banks = indexes_in_banks
             @banked_table_bytes = banked_table_bytes
             @known = known
             @plans_scene_pictures = scene_pictures
@@ -448,6 +452,7 @@ module VBlank
             @routine = label
             @labels = 0
             @constants = {}
+            @routine_data = {}
             @asm.label(label)
             body.each { |node| statement(node) }
             yield if block_given?
@@ -456,7 +461,31 @@ module VBlank
               @asm.label(at)
               Array(value).each { |number| @asm.data_bytes(little_endian(number, 4)) }
             end
+            emit_routine_data
             @asm.section
+          end
+
+          # DATA KEPT BESIDE THE CODE THAT READS IT, in a game whose indexes are in banks
+          # (GBC#build_with_indexes_in_banks): a list of routines a call picks from, a scene's record
+          # of its own sprite lists. The routine's code runs in its own bank, which is in view while
+          # it runs and while the runtime routines it calls read what it hands them, so data in the
+          # same section is read with no bank put in view, and takes nothing of the part always in
+          # view. Each routine that reads such a table keeps a copy of its own. +entries+ are
+          # [:word, label] (where a label is) and [:bank, label] (the bank it is in), in order; the
+          # label the data goes by is handed back.
+          def routine_data_label(entries)
+            @routine_data[entries] ||= fresh("data")
+          end
+
+          ROUTINE_DATA_BYTES = Ractor.make_shareable({ word: 2, bank: 1 })
+
+          def routine_data_bytes = @routine_data.keys.sum { |entries| entries.sum { |kind, _| ROUTINE_DATA_BYTES.fetch(kind) } }
+
+          def emit_routine_data
+            @routine_data.each do |entries, at|
+              @asm.label(at)
+              entries.each { |kind, label| kind == :word ? @asm.data_words(label) : @asm.data_bank_of(label) }
+            end
           end
 
           def routine_said(name) = @plan.routine_said(name)
@@ -501,16 +530,17 @@ module VBlank
 
           # How many bytes +list+ comes to, made on its own and thrown away.
           def bytes_of(list)
-            saved = [@asm, @routine, @labels, @constants, @locals.dup, @drawing_tables.length]
+            saved = [@asm, @routine, @labels, @constants, @routine_data, @locals.dup, @drawing_tables.length]
             @measuring = true
             @asm = SM83.new("measuring", home: :banked)
             @labels = 0
             @constants = {}
+            @routine_data = {}
             list.each { |node| statement(node) }
-            @asm.here + @constants.keys.sum { |value| Array(value).length * 4 }
+            @asm.here + @constants.keys.sum { |value| Array(value).length * 4 } + routine_data_bytes
           ensure
             @measuring = false
-            @asm, @routine, @labels, @constants, @locals, tables = saved
+            @asm, @routine, @labels, @constants, @routine_data, @locals, tables = saved
             @drawing_tables.slice!(tables..)
           end
 
@@ -754,7 +784,13 @@ module VBlank
             @asm.call("rt_cmpu32")
             @asm.cp_a(1) # below the list's length
             @asm.jump(:nz, none)
-            table = @routine_tables[node.targets] ||= "routines #{@routine_tables.length + 1}"
+            table = if @indexes_in_banks
+                      routine_data_label(node.targets.flat_map do |name|
+                        [[:word, self.class.routine_label(name)], [:bank, self.class.routine_label(name)]]
+                      end)
+                    else
+                      @routine_tables[node.targets] ||= "routines #{@routine_tables.length + 1}"
+                    end
             value(which)
             @asm.load(:h, :d)
             @asm.load(:l, :e)
