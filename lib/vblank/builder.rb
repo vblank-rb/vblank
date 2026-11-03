@@ -221,8 +221,9 @@ module VBlank
       # the program says it is for.
       @program = Build.program(console: options.console, variant: options.variant,
                                sprite_piece_sizes: options.sprite_piece_size.to_a,
-                               players: Cartridge::Players.on_build(options.players, console: options.console,
-                                                                                     for_computer: options.for_computer),
+                               players: Cartridge::Players.fewest_and_most_on_build(options.players,
+                                                                                    console: options.console,
+                                                                                    for_computer: options.for_computer),
                                for_computer: options.for_computer)
       @console = @program.described_console
       @container_stack = [@program]

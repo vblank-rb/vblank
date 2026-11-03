@@ -34,7 +34,7 @@ module VBlank
 
       # The players the game takes on a build for +console+ (nil for a test's program, which names
       # none), as [fewest, most], or nil where it said nothing for that build.
-      def on_build(players, console:, for_computer:)
+      def fewest_and_most_on_build(players, console:, for_computer:)
         keys = [(:computer if for_computer), console, :else].compact
         range = players.values_at(*keys).compact.first or return nil
         [range.first, range.last]

@@ -125,7 +125,7 @@ module VBlank
         def masks(held) = Buttons.masks(held, @connected).tap { |list| @connected = list.length }
 
         # ...written as the headless programs read it: the numbers on one line, a space between.
-        def line(held) = masks(held).join(" ")
+        def headless_input_line(held) = masks(held).join(" ")
       end
 
       # +player+'s buttons among +held+ as one number, a bit each in NAMES's order.

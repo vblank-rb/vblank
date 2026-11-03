@@ -303,14 +303,23 @@ module VBlank
           # refused before anything is written.
           def refuse_players_past_runtime!
             most = most_players_read
+            declared = @program.most_players
+            if declared && declared > most
+              raise LoweringError, "this game takes up to #{declared} players (`players:`), and #{build_name} reads " \
+                                   "#{most} players at most for now. To fix this, set the most players in " \
+                                   "`players:` to #{most} for this build. #{ruby_build_reads_more}"
+            end
             player = @reachable.select { |node| %i[held pressed].include?(node.kind) }
                                .map(&:player).select { |each| each.is_a?(Integer) }.max
-            asked = [player, @program.most_players].compact.max
-            return if asked.nil? || asked <= most
+            return if player.nil? || player <= most
 
-            raise LoweringError,
-                  "this game reads player #{asked}, and #{build_name} reads #{most} players at most for now. To " \
-                  "fix this, read players 1 to #{most} only. Or play the game as Ruby (`vblank run`)."
+            raise LoweringError, "this game reads player #{player}, and #{build_name} reads #{most} players at most " \
+                                 "for now. To fix this, read players 1 to #{most} only. #{ruby_build_reads_more}"
+          end
+
+          def ruby_build_reads_more
+            "You can also play the game as Ruby with `vblank run`: the Ruby build reads up to " \
+              "#{Buttons::MOST_PLAYERS} players."
           end
 
           # What is refused is only what the program can reach: a console-only step in a routine

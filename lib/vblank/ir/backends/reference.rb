@@ -184,7 +184,7 @@ module VBlank
           @seen = Set.new          # buttons down at the last frame the screen showed
           @pressed = Set.new       # buttons that went down since the last pass took its presses
           @connected = 1           # players connected: the highest who has held a button (IR::Buttons.masks)
-          @screen_frame = 0       # frames the screen has shown, which a pass may span several of
+          @screen_frame = 0        # frames the screen has shown, which a pass may span several of
           @input_script = nil      # optional ->(frame) { buttons } to drive input over time
           @frames_script = nil     # optional ->(pass) { frames } to say a pass ran late
           @frames_setting_up = 0   # frames the screen was off for before the first (see #frames_setting_up)

@@ -70,7 +70,7 @@ module VBlank
             @on_vblank&.call(frame)
             sent = true
             @asking = false
-            stdin.puts(@pass_buttons.line(buttons))
+            stdin.puts(@pass_buttons.headless_input_line(buttons))
             stdin.flush
             expect_next_frame
           ensure

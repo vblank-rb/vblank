@@ -410,7 +410,7 @@ module VBlank
           # frame on, as the interpreter's does. Each is one line of each connected player's
           # buttons (IR::Buttons::PassButtons), which is what the program reads.
           def held_options
-            @held.empty? ? [] : ["--held-from-power-on", @pass_buttons.line(@held)]
+            @held.empty? ? [] : ["--held-from-power-on", @pass_buttons.headless_input_line(@held)]
           end
 
           # The clock's moment as the program takes it: the date and the hour the Time says, as
@@ -490,7 +490,7 @@ module VBlank
             end
             buttons =@input_script ? @input_script.call(frame) : @held
             @on_vblank&.call(frame)
-            stdin.puts(@pass_buttons.line(buttons))
+            stdin.puts(@pass_buttons.headless_input_line(buttons))
             stdin.flush
             expect_next_frame
           end

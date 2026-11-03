@@ -32,6 +32,18 @@ class TestNativeRefusals < Minitest::Test
     assert_match(/2 players/, error.message)
   end
 
+  # ...and a game that says it takes more than two is refused the same way, naming `players:`, even
+  # where no line reads the third player yet.
+  def test_a_game_for_three_players_is_refused_naming_players
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: 3))
+    builder.instance_eval { game_loop { halt if pressed(:a, player: :any) } }
+    builder.finalize_program
+
+    error = assert_raises(LoweringError) { Native.new.lower(builder.program) }
+    assert_match(/`players:`/, error.message)
+    assert_match(/up to 3 players/, error.message)
+  end
+
   def test_two_players_play_as_on_the_interpreter
     program = program_of do
       second = 0
