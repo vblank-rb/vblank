@@ -335,7 +335,7 @@ module VBlank
               check_stack_depth_fits!
               prepare_backgrounds(program)
             end
-            @sprites_over_picture = program.walk.any? { |node| node.kind == :object && node.over_picture }
+            @sprites_over_picture = IR::SpritesOverPicture.any?(program)
             prepare_objects(program) if program.walk.any? { |node| node.kind == :object }
           end
 

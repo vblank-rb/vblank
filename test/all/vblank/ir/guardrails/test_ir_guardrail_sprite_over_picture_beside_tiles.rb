@@ -46,10 +46,11 @@ class TestIRGuardrailSpriteOverPictureBesideTiles < Minitest::Test
     assert_match(/sprite :gun is shown over_picture: true.*also has a tiled screen/, refusal(program))
   end
 
-  def test_the_interpreter_refuses_it_too
+  # Played on each run's own build, which refuses it as the interpreter does.
+  def test_playing_it_is_refused_too
     program = gun_program(map_screen: :tiled)
 
-    error = assert_raises(VBlank::IR::ProgramError) { Reference.new.run(program, frames: 2) }
+    error = assert_raises(VBlank::IR::ProgramError, VBlank::BuildError) { game_player.run(program, frames: 2) }
     assert_match(/painted screens only/, error.message)
   end
 end

@@ -314,10 +314,7 @@ module VBlank
           # Does it show sprites over a painted screen (see #show_objects_over_picture)? Then the
           # statement that places them is kept, for the gap where a two-page screen publishes a
           # page (#advance_frame).
-          @present_over_picture =
-            if node.walk.any? { |child| child.kind == :object && child.over_picture }
-              node.walk.find { |child| child.kind == :present_objects }
-            end
+          @present_over_picture = (IR::SpritesOverPicture.frame_sprite_step(node) if IR::SpritesOverPicture.any?(node))
           # Which part of the display each fade in this program uses. Settled here rather
           # than asked per fade, because the answer is about the whole program (see
           # IR::Fading) and a fade walked over frames runs on every one of them.
@@ -2743,7 +2740,7 @@ module VBlank
         # screen this frame and recomposite the whole view (scrolled scene, then these
         # objects on top). See #request_repaint.
         def exec_present_objects(node)
-          @drawn =@sprites_hidden ? [] : objects_on_screen(names_in_draw_order(node))
+          @drawn = @sprites_hidden ? [] : objects_on_screen(names_in_draw_order(node))
           @sprites_hidden = false
           refuse_pictures_not_up!(@drawn)
           # Kept whichever way the picture is made, with each sprite's depth and colours as they

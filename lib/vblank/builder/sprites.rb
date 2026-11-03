@@ -102,6 +102,7 @@ module VBlank
                  from_aseprite: nil, dirs: nil, tile: nil, transparent: false, rate: nil, shown: true, hitbox: nil,
                  colors: nil, over_picture: false)
         colors = imported_colors(name, colors, imports: from_aseprite || facing_from || frames_from)
+        refuse_non_boolean_over_picture!(over_picture)
         over = over_painted_picture?(over_picture)
         if from_aseprite
           reject_other_pose_sources!(name, facing: facing, frames: frames, frames_from: frames_from, facing_from: facing_from)
@@ -363,12 +364,12 @@ module VBlank
       # IS THIS SPRITE THE CONSOLE'S OWN, SHOWN OVER A PICTURE THE GAME PAINTS? Only when the
       # game asked (`over_picture: true`) on a painted screen. On a tiled screen every sprite is
       # the console's already, so the setting changes nothing there and is taken quietly.
-      def over_painted_picture?(asked)
-        unless [true, false].include?(asked)
-          raise ArgumentError, "sprite over_picture: must be true or false. Got #{asked.inspect}."
-        end
+      def over_painted_picture?(asked) = asked && (@screen_mode.nil? || @screen_mode == :bitmap)
 
-        asked && (@screen_mode.nil? || @screen_mode == :bitmap)
+      def refuse_non_boolean_over_picture!(asked)
+        return if [true, false].include?(asked)
+
+        raise ArgumentError, "sprite over_picture: must be true or false. Got #{asked.inspect}."
       end
 
       # Where +names+ sit side by side among the layers +nodes+ can be put in, adding them at

@@ -689,13 +689,13 @@ module VBlank
           end
 
           # Does the game show sprites over a painted screen (`sprite ..., over_picture: true`)?
-          def sprites_over_picture? = @objects.each_value.any?(&:over_picture)
+          def sprites_over_picture? = IR::SpritesOverPicture.any?(@program)
 
           # Reference#advance_frame: the routine the runtime calls as a two-page screen publishes
           # the page just finished, placing the sprites over the picture from the numbers then, as
           # the frame's own placing does after the wait. Empty in a game without such sprites.
           def sprites_over_picture_routine
-            present = sprites_over_picture? && @program.walk.find { |node| node.kind == :present_objects }
+            present = sprites_over_picture? && IR::SpritesOverPicture.frame_sprite_step(@program)
             C::Function.new(name: @names.own("sprites_over_picture"), body: present ? lower_present_objects(present) : [],
                             exported: true)
           end

@@ -19,7 +19,7 @@ module VBlank
           PLAIN_NAME = "a sprite shown over a painted screen in a game that also has a tiled screen"
 
           def detect(program)
-            sprite = program.walk.find { |node| node.kind == :object && node.over_picture }
+            sprite = IR::SpritesOverPicture.first_in(program)
             return [] unless sprite && Modes.resolve(program).crosses_display_systems?
 
             name = sprite.declared || sprite.name

@@ -317,9 +317,6 @@ static int32_t sprites_seen_through(void) {
  * of its own, which keeps none. */
 static int32_t keeps_picture_without_sprites(void) { return target != scenery && sprites_seen_through(); }
 
-/* Framebuffer#set_pixel: a cell drawing may not land on is dropped. A sprite is mixed with the
- * picture as it is with no sprite on it, where that is kept, and anything else with what is
- * already in the cell. */
 /* SPRITES OVER A PAINTED PICTURE (Reference#show_objects_over_picture): a layer of their own in
  * front of the picture, at the screen's own places, one color or NOTHING_OVER for each. While
  * +painting_over_picture+ is set, what set_pixel paints lands here and nowhere else. */
@@ -327,6 +324,9 @@ enum { NOTHING_OVER = 0x8000 };
 static uint16_t over_picture[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
 static int32_t over_picture_up, painting_over_picture;
 
+/* Framebuffer#set_pixel: a cell drawing may not land on is dropped. A sprite is mixed with the
+ * picture as it is with no sprite on it, where that is kept, and anything else with what is
+ * already in the cell. */
 static void set_pixel(int64_t x, int64_t y, int32_t color) {
   if (painting_over_picture) {
     if (on_screen(x, y)) over_picture[y * RG_SCREEN_WIDTH + x] = (uint16_t)color;

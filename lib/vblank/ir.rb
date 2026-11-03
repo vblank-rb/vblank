@@ -28,6 +28,7 @@ require_relative "ir/modes"
 require_relative "ir/stacking" # the one rule turning declared layers into a drawing order
 require_relative "ir/scene_handover" # what a scene does to the screen as it takes over
 require_relative "ir/late_pages" # ...and when a page finished too late is shown
+require_relative "ir/sprites_over_picture" # ...whether it shows sprites over a picture it paints
 require_relative "ir/movement" # ...and which of the things it stacks move, so the rest need not be redrawn
 require_relative "ir/sprite_rows" # ...and which sprites of scenes never up together share a row of the table
 require_relative "ir/picture_group_places" # ...and where pictures grouped by room go in sprite memory

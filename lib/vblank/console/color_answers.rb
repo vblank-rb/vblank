@@ -136,8 +136,9 @@ module VBlank
                       "is off while they come in, and the scene takes over on the same frame as when " \
                       "every picture fits. A scene that needs more " \
                       "than 256 tiles, with the pictures that every scene shows, is refused. A sprite with " \
-                      "`over_picture: true` is shown over a painted screen, as on the Advance. Then the sprites " \
-                      "are copied to the console in each blank, so the painted screen's tiles have less of it."),
+                      "`over_picture: true` is shown over a painted screen, as on the Advance. The sprites are " \
+                      "then copied to the console in each blank. So less of each blank is left to copy " \
+                      "the painted screen's tiles."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),
         picture_groups: works("the Color copies a group's pictures into its sprite memory when the group comes " \
