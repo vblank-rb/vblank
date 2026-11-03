@@ -43,6 +43,7 @@ test/all/test_suites.rb
 test/all/vblank/console/test_kit.rb
 test/all/vblank/test_method_names.rb
 test/all/vblank/test_dsl_reference.rb
+test/all/vblank/console/test_answers.rb
 test/all/vblank/ir/test_kind_coverage.rb
 
 # Each console
