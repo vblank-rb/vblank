@@ -261,7 +261,7 @@ module VBlank
         return if %i[tiled rotozoom].include?(node.mode)
 
         raise ArgumentError, "The backdrop takes its color from the list :#{@backdrop_list.name}. The `screen` at " \
-                             "#{node.source} is not a tiled screen, and a bitmap screen has no backdrop. To fix this, " \
+                             "#{node.source} is not a tiled screen. A bitmap screen has no backdrop. To fix this, " \
                              "use `screen :tiled` there, or give backdrop: a color."
       end
 

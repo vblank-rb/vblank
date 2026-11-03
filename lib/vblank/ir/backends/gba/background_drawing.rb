@@ -76,6 +76,7 @@ module VBlank
             @uploads.emit_dma_blob(BG_SHARED_CHAR, VRAM_START, @layout.screen.bg_shared.tile_units)    # pictures -> video memory
             @palette_tint.emit_tint_reset_if_tinting # the table now holds the originals again
             @palette_tint.emit_record_bg_palette_source # ...the first area's, for a game that walks between areas
+            @palette_tint.emit_changed_bg_lists_again # ...and the groups drawn from another list put back over it
             emit_boot_box_window
           end
 

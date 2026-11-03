@@ -234,15 +234,32 @@ module VBlank
           # wherever it pointed, and nothing would ever put them right. Every copy of a set
           # goes in through the tint in force, so a build that never tints reads that too.
           # Nothing for a build with no list that changes and no group lent to a list.
+          #
+          # The same goes for the background groups a layer or the backdrop is drawing from a list
+          # (#emit_changed_bg_lists_again): the boot copy of the background colours reads them too.
           def emit_changed_lists_at_power_on
             lists = @layout.screen.color_lists
-            backdrop = @layout.screen.backdrop_colors
-            return if lists.empty? && @layout.screen.lending.nil? && backdrop.nil?
+            bg_lists = @layout.bg_recolor_restore_banks.map { |_dest, source_var, *| source_var }.uniq
+            return if lists.empty? && @layout.screen.lending.nil? && bg_lists.empty?
 
             emit_tint_state_init
             @emitter.emit_number(ACC, 0)
             lists.each_value { |list| @primitives.store_var(ACC, list.source_var) }
-            @primitives.store_var(ACC, ScreenLayout::BACKDROP_AT) if backdrop # the backdrop, as the screen says it
+            bg_lists.each { |source_var| @primitives.store_var(ACC, source_var) }
+          end
+
+          # PUT BACK WHAT THE BACKGROUND COLOURS' BOOT COPY WROTE OVER. Changing the kind of screen
+          # (into a turning one and out again) sends the background colours as the cartridge holds
+          # them, so the groups a layer draws from another list, and the backdrop that follows a
+          # list, are the declared colours again — and a scene that sends no colours of its own
+          # would leave them so until the list next changed. So each is written again from the
+          # list it shows now, through the tint in force, as a scene sending its own colours does
+          # (#emit_send_bg_colors). Nothing for a game with no such group.
+          def emit_changed_bg_lists_again
+            return if @layout.bg_recolor_restore_banks.empty?
+
+            emit_tint_shares_from_state
+            emit_recolored_banks
           end
 
           # PUT THE SET A CHANGING LIST NOW HOLDS INTO THE GROUP ITS SPRITES READ, through

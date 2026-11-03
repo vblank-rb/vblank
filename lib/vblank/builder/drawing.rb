@@ -154,8 +154,8 @@ module VBlank
       private def refuse_backdrop_on_painted_screen!(mode)
         return unless mode == :bitmap
 
-        raise ArgumentError, "`screen :bitmap` says backdrop:. A bitmap screen draws every pixel, so no backdrop " \
-                             "shows. To fill the screen with a colour, use clear_screen."
+        raise ArgumentError, "`screen :bitmap` says backdrop:. A bitmap screen draws every pixel. No backdrop " \
+                             "shows on it. To fill the screen with a color, use clear_screen."
       end
 
       # The breaks a pass may take and be on time, as the IR keeps them: nil for one.

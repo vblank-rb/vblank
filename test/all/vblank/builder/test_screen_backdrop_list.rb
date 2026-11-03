@@ -21,7 +21,8 @@ class TestScreenBackdropList < Minitest::Test
   # A tiled game that draws nothing and steps :screen_colors one set a pass, from black to blue,
   # with the backdrop following the list. A sprite drawn with the list stands at (40, 40) if
   # +with_sprite+, its pixels the list's second colour. The backdrop is the list's colour at +place+.
-  private def stepping_game(with_sprite: false, place: 0)
+  # With +tinted+, a tint halfway to red is in force from the second pass on.
+  private def stepping_game(with_sprite: false, place: 0, tinted: false)
     b = Builder.new
     b.instance_eval do
       colors :screen_colors, %i[black black]
@@ -36,6 +37,7 @@ class TestScreenBackdropList < Minitest::Test
       game_loop do
         step += 1 if step < STEPS.length - 1
         recolor :screen_colors, STEPS.each_index.map { |n| :"step#{n}" }, showing: step
+        tint :red, 50 if tinted && step >= 2
       end
     end
     b.finalize_program
@@ -75,6 +77,15 @@ class TestScreenBackdropList < Minitest::Test
 
       assert_equal [shown(STEPS[pass].last)] * 2, [screen.pixel(100, 100), screen.pixel(43, 43)], "pass #{pass}"
     end
+  end
+
+  # THROUGH A TINT: the backdrop is the list's colour moved by the tint in force, as everything
+  # drawn with the list is, on every console.
+  def test_a_tint_moves_the_backdrop_the_list_holds
+    screen = after_pass(stepping_game(with_sprite: true, tinted: true), 3)
+
+    refute_equal shown(BLUE), screen.pixel(100, 100), "the tint reaches the backdrop"
+    assert_backends_agree(stepping_game(with_sprite: true, tinted: true), frames: [2, 3, 5], name: "BDTINT")
   end
 
   # THE CONSOLE SHOWS IT TOO, pixel for pixel, as the list steps.
