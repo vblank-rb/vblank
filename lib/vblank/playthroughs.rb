@@ -12,6 +12,7 @@ require_relative "playthroughs/lowered_game" # ...on a way of running a game oth
 require_relative "playthroughs/watched_game" # ...and shown in a window at the console's frame rate
 require_relative "playthroughs/pass_stepped_game" # ...and counted in passes of the game loop and not frames
 require_relative "playthroughs/tape" # ...and the presses it made, written down to play again
+require_relative "playthroughs/tape_export" # ...and that tape written out for another emulator
 require_relative "playthroughs/playthrough_picture_folder" # ...and the folder its pictures are written into
 require_relative "playthroughs/comparison" # two cartridges played side by side on the same presses
 require_relative "playthroughs/comparison_ignored_frames" # ...and the stretches of the playing it does not look at

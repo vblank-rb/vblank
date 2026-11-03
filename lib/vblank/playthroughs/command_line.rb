@@ -41,7 +41,7 @@ module VBlank
                          window: window, in_passes: in_passes_asked }.compact
             playing.play(cartridge, **settings).tap do |played|
               say_frames_and_moments(played, playing, cartridge)
-              write_tape_and_save(played)
+              write_tape_and_save(played, cartridge)
             end
           end
         end
@@ -277,8 +277,10 @@ module VBlank
         moments.each { |name, reached| say "  #{name.to_s.ljust(width)}  #{yield reached}" }
       end
 
-      def write_tape_and_save(played)
+      def write_tape_and_save(played, cartridge)
         say "Wrote the tape to #{played.tape.write(options[:write_tape])}." if options[:write_tape]
+        say "Wrote the mGBA script to #{played.tape.write_mgba_script(cartridge, options[:write_mgba_script])}." if options[:write_mgba_script]
+        say "Wrote the BizHawk movie to #{played.tape.write_bizhawk_movie(cartridge, options[:write_bk2])}." if options[:write_bk2]
         return unless options[:write_save]
         return say("This cartridge has no save memory, so no save was written.") unless played.save
 

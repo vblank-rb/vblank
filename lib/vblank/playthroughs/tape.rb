@@ -200,6 +200,61 @@ module VBlank
                              "two cartridges, use a tape of frames, or `same: :script` on the playthrough."
       end
 
+      # THE SAME GAME AS A TAPE OF FRAMES, for +cartridge+ alone: a tape of passes played once on it,
+      # with each line holding the frames its passes took there. A tape of frames comes back as it
+      # is. What comes back is as strict as any tape of frames, and this tape stays the master.
+      def in_frames_on(cartridge)
+        return self unless in_passes
+
+        cartridge = Playthrough.cartridge_from(cartridge)
+        refuse_export_from_elsewhere!
+        Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
+        running = Playthrough.power_on(cartridge, count_passes: in_passes == true)
+        game = PassSteppedGame.new(running, in_passes)
+        taping = Taping.new
+        steps.each { |step| step.frames.zero? ? taping.moment(step.name) : hold_on(game, step, taping) }
+        Tape.recorded_on(cartridge, taping.steps, save: nil)
+      end
+
+      private def hold_on(game, step, taping)
+        before = game.frames_played
+        game.step(step.frames, keys: Playthrough.key_mask(step.buttons))
+        taping.hold(step.buttons, game.frames_played - before)
+      end
+
+      # WRITE THE TAPE AS A SCRIPT FOR mGBA at +path+ (see TapeExport), for +cartridge+. +pictures_in+
+      # is a folder for mGBA to write the screen at each moment into, to lay beside the pictures
+      # here. The path is handed back.
+      def write_mgba_script(cartridge, path, pictures_in: nil)
+        File.write(path, TapeExport.mgba_script(exported_on(cartridge), pictures_in: pictures_in))
+        path
+      end
+
+      # WRITE THE TAPE AS A BIZHAWK MOVIE at +path+ (see TapeExport), for +cartridge+. The path is
+      # handed back.
+      def write_bizhawk_movie(cartridge, path)
+        cartridge = Playthrough.cartridge_from(cartridge)
+        File.binwrite(path, TapeExport.bizhawk_movie(exported_on(cartridge), cartridge))
+        path
+      end
+
+      private def exported_on(cartridge)
+        cartridge = Playthrough.cartridge_from(cartridge)
+        refuse_export_from_elsewhere!
+        unless cartridge.console == Console::ADVANCE.name
+          raise ArgumentError, "A tape is written out for another emulator for a Game Boy Advance cartridge only, and this " \
+                               "one is for #{cartridge.console}. To fix this, give a Game Boy Advance cartridge."
+        end
+        in_frames_on(cartridge)
+      end
+
+      private def refuse_export_from_elsewhere!
+        return unless recorded_from_save? || recorded_after_lead_in?
+
+        raise ArgumentError, "This tape starts from #{starts_from}. An export starts from power-on with empty save memory, " \
+                             "so it would play another game. To fix this, record a tape from power-on."
+      end
+
       # The settings that only mean something of a script played on each cartridge by
       # itself. They are refused here, as a tape's own mistake, before the comparison
       # reads the rest and says something about a script that is not there.
