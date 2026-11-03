@@ -566,7 +566,7 @@ class TestCLI < Minitest::Test
       out, status = run_in_dummy_window(dir, "demo.rb", "--pictures", "3", "--console", "gba")
 
       assert status.success?, out
-      assert_match(/Building DEMO/, out)
+      assert_match(/^Building DEMO - Please wait\.$/, out)
       assert_match(/in Ruby #{Regexp.escape(RUBY_VERSION)} with YJIT\./o, out)
       assert_match(/Press P to pause/, out)
       refute_match(/No window|Played \d+ frames/, out)

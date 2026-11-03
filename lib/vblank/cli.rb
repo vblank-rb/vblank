@@ -939,9 +939,9 @@ module VBlank
     # +for_computer+ is what the game's `built_for_computer?` answers. A run written out for an
     # emulator is built as the cartridge is, with false, so the run is the game the cartridge holds.
     def program_to_run(game, console: console_to_play(game), for_computer: true)
-      # A big game takes a while to read and check, and somebody is waiting for the window. It
-      # says so before it starts, since the first phase can take most of a minute.
-      say "Building #{game.title}. A big game can take a minute."
+      # A big game takes a while to read and check, and somebody is waiting for the window, so a
+      # status line goes out before the first phase starts. It says what is happening and no more.
+      say "Building #{game.title} - Please wait."
       game.checked_program(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console,
                            for_computer: for_computer)
     rescue ArgumentError, VBlank::BuildError => e
@@ -1347,8 +1347,7 @@ module VBlank
         plain = "#{plain}-desktop" if File.directory?(plain)
         target == :windows ? "#{plain}.exe" : plain
       end
-      say "Building #{File.basename(path)} for #{target ? options[:target] : 'this computer'} " \
-          "(the first build compiles SDL, which takes a while)"
+      say "Building #{File.basename(path)} for #{target ? options[:target] : 'this computer'} - Please wait."
       VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
                                                                  strip: options[:strip])
       say "Built #{path}"
