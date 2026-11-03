@@ -26,6 +26,7 @@ module VBlank
               "RG_CONSOLE_TICKS_A_FRAME" => console.cycles_a_frame,
               "RG_CONSOLE_BLENDS" => console.blends, "RG_CONSOLE_DIMS" => console.fades_by_brightness,
               "RG_CONSOLE_RUMBLES" => console.rumbles,
+              "RG_SPRITE_PIECES_A_LINE" => console.sprite_pieces_drawn_a_line || 0,
               "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date, "RG_COLOR_BITS" => console.color_bits }
           end
 

@@ -355,7 +355,10 @@ module VBlank
         # out on a smaller console's screen is drawn on that screen here too. A tree made by hand
         # with no program at its root is played the way a program naming no console is.
         def size_screen_for(node)
-          @console = (node.kind == :program ? node : Build.program).described_console
+          program = node.kind == :program ? node : Build.program
+          @console = program.described_console
+          # How tall a piece of a sprite is on that console, for the lines it counts (#mark_slices_left_out).
+          @sprite_piece_height = (program.sprite_piece_size_on(@console.name) || [SpritePieces::SIZE] * 2).last
           width, height = @console.screen_size
           unless [@screen.width, @screen.height] == [width, height]
             @screen = Framebuffer.new(width: width, height: height, color_bits: @console.color_bits)
@@ -2714,7 +2717,7 @@ module VBlank
                                           scales: object_scales?(@objects.fetch(obj[:name])), recolor: recolor)
           end
 
-          blit_image(obj[:image], obj[:x], obj[:y], recolor: recolor)
+          blit_image(obj[:image], obj[:x], obj[:y], recolor: recolor, left_out: obj[:left_out])
         end
 
         # ONE SPRITE IN BLOCKS, while the picture is shown in them (see SpriteBlocks, which
@@ -2808,6 +2811,7 @@ module VBlank
           @drawn = @sprites_hidden ? [] : objects_on_screen(names_in_draw_order(node))
           @sprites_hidden = false
           refuse_pictures_not_up!(@drawn)
+          mark_slices_left_out(@drawn)
           # Kept whichever way the picture is made, with each sprite's depth and colours as they
           # are now: a scene taking over later in this pass builds the picture again from it
           # (see #redraw_sprites_over_arrived_scenery).
@@ -2830,9 +2834,39 @@ module VBlank
             @obj_prev[name] = nil
           end
           @drawn.each do |on|
-            draw_object(on[:object], on[:picture], on[:x], on[:y])
+            draw_object(on[:object], on[:picture], on[:x], on[:y], left_out: on[:left_out])
             @obj_prev[on[:object].name] = [on[:x], on[:y]]
           end
+        end
+
+        # THE SLICES OF THIS FRAME'S SPRITES A CROWDED LINE LEAVES OUT, on a console that draws only
+        # so many pieces of sprites on a line of the screen (Backends::SpriteLines, which says how
+        # the console picks). Its table lists them front-most first: the deepest layer last, and
+        # inside a layer the one drawn last first. Each sprite that loses a slice has it kept as
+        # its +:left_out+, which drawing it reads.
+        def mark_slices_left_out(drawn)
+          most = @console.sprite_pieces_drawn_a_line or return
+          return if drawn.empty?
+
+          order = drawn.each_index.sort_by { |at| [object_level(drawn[at][:object]), at] }.reverse
+          sprites = order.map { |at| [drawn[at][:x], drawn[at][:y], sprite_piece_places(drawn[at][:picture])] }
+          cuts = SpriteLines.left_out(sprites, most: most, piece_height: @sprite_piece_height,
+                                               screen_width: @screen.width, screen_height: @screen.height)
+          order.zip(cuts).each { |at, lines| drawn[at][:left_out] = lines if lines }
+        end
+
+        # Where the pieces of the picture +name+ stand in it, as the console's sprite table holds
+        # them: a picture painted from a list or drawn from loaded tiles by its grid or its tiles,
+        # any other by what it draws.
+        def sprite_piece_places(name)
+          @sprite_piece_places ||= {}
+          @sprite_piece_places[name] ||= if (run = @tile_runs.each_value.find { |r| r.picture == name })
+                                           SpriteLines.painted_places(run.width, run.height, piece_height: @sprite_piece_height)
+                                         elsif (pose = @tile_poses[name])
+                                           SpriteLines.tile_pose_places(pose.pieces, piece_height: @sprite_piece_height)
+                                         else
+                                           SpriteLines.picture_places(@bitmaps.fetch(name), piece_height: @sprite_piece_height)
+                                         end
         end
 
         # SPRITES OVER A PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`). The console
@@ -2850,7 +2884,7 @@ module VBlank
 
           layer = Framebuffer.new(width: @screen.width, height: @screen.height, fill: nil)
           drawing_into(layer) do
-            @drawn.each { |on| draw_object(on[:object], on[:picture], on[:x], on[:y]) }
+            @drawn.each { |on| draw_object(on[:object], on[:picture], on[:x], on[:y], left_out: on[:left_out]) }
           end
           @screen.over_picture = layer.to_a
         end
@@ -2899,14 +2933,15 @@ module VBlank
 
         # Draw one object's picture at (x, y): straight when it never turns or resizes,
         # through the transform when it does. Shared by the still-scene present path and
-        # the scrolling-scene recomposite.
-        def draw_object(obj, image, x, y)
+        # the scrolling-scene recomposite. +left_out+ is the slices a crowded line leaves out of it
+        # (#mark_slices_left_out), or nil.
+        def draw_object(obj, image, x, y, left_out: nil)
           set_see_through_for(obj.name)
           recolor = object_recolor(obj, image)
           if object_transformed?(obj)
             blit_image_transformed(image, x, y, *object_transform(obj), scales: object_scales?(obj), recolor: recolor)
           else
-            blit_image(image, x, y, recolor: recolor)
+            blit_image(image, x, y, recolor: recolor, left_out: left_out)
           end
           @screen.set_paint_see_through(nil)
         end
@@ -3035,7 +3070,7 @@ module VBlank
             obj = on[:object]
             image = on[:picture]
             snap = { name: obj.name, image: image, x: on[:x], y: on[:y],
-                     level: object_level(obj), color_list: object_color_list(obj) }
+                     level: object_level(obj), color_list: object_color_list(obj), left_out: on[:left_out] }
             snap[:transform] = object_transform(obj) if object_transformed?(obj)
             snap
           end
@@ -3253,8 +3288,9 @@ module VBlank
         # pixel is a little-endian 15-bit halfword in the stored bytes; set_pixel
         # clips any that fall off-screen, matching how the hardware framebuffer
         # behaves, and a transparent pixel is skipped so the background shows through.
-        # +recolor+ maps a colour to the one it is drawn in instead (see #object_recolor).
-        def blit_image(name, x, y, recolor: nil)
+        # +recolor+ maps a colour to the one it is drawn in instead (see #object_recolor), and
+        # +left_out+ is a sprite's slices a crowded line leaves out (#mark_slices_left_out).
+        def blit_image(name, x, y, recolor: nil, left_out: nil)
           bmp = @bitmaps.fetch(name) { raise ProgramError, "blit of undefined image #{name.inspect}" }
           pixels = @data.fetch(name)
           transparent = bmp.transparent
@@ -3265,6 +3301,7 @@ module VBlank
               i = at * 2
               color = pixels.getbyte(i) | (pixels.getbyte(i + 1) << 8)
               next if transparent && color == transparent
+              next if left_out && SpriteLines.left_out_at?(left_out, col, y + row)
               @screen.set_pixel(x + col, y + row, recolor ? recolor.color_for(at, color) : color)
             end
           end

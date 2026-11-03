@@ -37,6 +37,53 @@ module VBlank
           end
         end
 
+        # A PICTURE THE GAME MADE OF 8×8 PIECES, as a console drawing pieces +piece_height+ tall
+        # draws them: [across, down, numbers] each, as they are where pieces are 8×8. Where they are
+        # 8×16, a piece with the one the game put right under it (or over it) is one tall piece, in
+        # the place of the earlier of the two in the order, and a piece with none has a see-through
+        # half under it. A piece's numbers are an Array, its rows one after another; a tall piece's
+        # are the upper half's and then the lower's.
+        def self.stacked(pieces, piece_height: SIZE)
+          return pieces if piece_height == SIZE
+
+          left = pieces.dup
+          blank = Array.new(SIZE * SIZE, 0)
+          drawn = []
+          until left.empty?
+            dx, dy, piece = left.shift
+            under = left.index { |x, y, _| x == dx && y == dy + SIZE }
+            over = left.index { |x, y, _| x == dx && y == dy - SIZE } unless under
+            drawn << if under then [dx, dy, piece + left.delete_at(under)[2]]
+                     elsif over then [dx, dy - SIZE, left.delete_at(over)[2] + piece]
+                     else [dx, dy, piece + blank]
+                     end
+          end
+          drawn
+        end
+
+        # A POSE DRAWN FROM A SET OF SPRITE TILES ([across, down, tile] each), as a console drawing
+        # pieces 8×16 draws it: a tile with the next tile of the set right under it (or the one before
+        # over it) is one tall piece, [across, down, the upper tile]. A tile with no such partner is
+        # handed to the block, whose answer stands in for it; with no block it stays a piece alone.
+        def self.paired_tiles(pieces)
+          left = pieces.dup
+          paired = []
+          until left.empty?
+            dx, dy, tile = left.shift
+            under = left.index { |x, y, t| x == dx && y == dy + SIZE && t == tile + 1 }
+            over = left.index { |x, y, t| x == dx && y == dy - SIZE && t == tile - 1 } unless under
+            top = under ? tile : tile - 1
+            unless (under || over) && top.even?
+              paired << (block_given? ? yield(dx, dy, tile) : [dx, dy, tile])
+              next
+            end
+
+            paired << (under ? [dx, dy, tile] : [dx, dy - SIZE, tile - 1])
+            left.delete_at(under || over)
+          end
+          paired
+        end
+
         # THE PICTURE COVERED BY RECTANGLES OF SQUARES, each up to +most+ squares across and +most+ down,
         # as Blocks. Every square with something drawn in it is in one; a rectangle may take in blank
         # squares too, which cost the console a tile of memory each but no entry of its table. The block

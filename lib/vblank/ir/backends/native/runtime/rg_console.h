@@ -46,6 +46,12 @@
 #define RG_CONSOLE_BLENDS 1
 #endif
 
+/* How many pieces of sprites the console draws on one line of the screen, the rest of the line's
+ * left out, or 0 where every piece is drawn (Console::Description#sprite_pieces_drawn_a_line). */
+#ifndef RG_SPRITE_PIECES_A_LINE
+#define RG_SPRITE_PIECES_A_LINE 0
+#endif
+
 /* Whether the console's cartridge carries a motor that a game's `rumble` runs
  * (Console::Description#rumbles). */
 #ifndef RG_CONSOLE_RUMBLES

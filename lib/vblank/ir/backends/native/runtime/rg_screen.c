@@ -185,8 +185,9 @@ static background_turn turns[RG_MAX_BACKGROUNDS];
 
 /* The sprites on screen this frame: being said (drawing), and as the last rebuild draws them.
  * One that turns or resizes carries its angle and its size for this frame, and whether its size
- * ever changes. */
-typedef struct { int32_t sprite, image, x, y, level, turned, angle, size, resizes; } placed_object;
+ * ever changes. One that loses slices to a crowded line has them listed in left_out, +cut_count+
+ * of them from +cut_from+ (mark_slices_left_out). */
+typedef struct { int32_t sprite, image, x, y, level, turned, angle, size, resizes, cut_from, cut_count; } placed_object;
 static placed_object drawing[RG_MAX_SPRITES], sprite_layer[RG_MAX_SPRITES];
 static int32_t drawing_count, sprite_layer_count;
 
@@ -1656,10 +1657,91 @@ static void blit_image_turned(int32_t image, int32_t x, int32_t y, int32_t angle
   }
 }
 
+/* --- how many sprites a line of the screen shows (Backends::SpriteLines, which says how the
+ * console picks) ---
+ *
+ * A console that draws only so many pieces of sprites on a line (RG_SPRITE_PIECES_A_LINE, 0 for
+ * none) draws the first that many its table holds there and leaves the rest out of that line. Each
+ * picture's pieces are listed in rg_game_image_pieces: its first number is how tall a piece is,
+ * then for each image where its list starts, and a list is how many pieces, then each piece's
+ * across and down inside the picture, in the table's order. */
+enum { MAX_LEFT_OUT = 16384, PIECE_WIDTH = 8 };
+typedef struct { int32_t line, piece; } left_out_piece;
+static left_out_piece left_out[MAX_LEFT_OUT];
+static int32_t left_out_count;
+
+static int32_t sprite_piece_height(void) { return rg_game_image_pieces[0]; }
+static const int32_t *pieces_of_image(int32_t image) { return rg_game_image_pieces + rg_game_image_pieces[1 + image]; }
+
+/* Reference#mark_slices_left_out: the slices of these sprites that a crowded line leaves out. The
+ * table lists them front-most first: the deepest level last, and inside a level the one drawn last
+ * first. A piece takes its place on every line of the screen it covers, unless it is wholly off
+ * the left or right, which the table never holds. */
+static void mark_slices_left_out(placed_object *placed, int32_t count) {
+  left_out_count = 0;
+  for (int32_t i = 0; i < count; i++) placed[i].cut_from = placed[i].cut_count = 0;
+  if (RG_SPRITE_PIECES_A_LINE == 0 || count == 0) return;
+  int32_t order[RG_MAX_SPRITES], taken[RG_SCREEN_HEIGHT] = {0};
+  for (int32_t i = 0; i < count; i++) {
+    int32_t at = i;
+    while (at > 0 && placed[order[at - 1]].level <= placed[i].level) {
+      order[at] = order[at - 1];
+      at--;
+    }
+    order[at] = i;
+  }
+  int32_t tall = sprite_piece_height();
+  for (int32_t k = 0; k < count; k++) {
+    placed_object *sprite = &placed[order[k]];
+    const int32_t *pieces = pieces_of_image(sprite->image);
+    sprite->cut_from = left_out_count;
+    for (int32_t piece = 0; piece < pieces[0]; piece++) {
+      int64_t left = (int64_t)sprite->x + pieces[1 + 2 * piece], top = (int64_t)sprite->y + pieces[2 + 2 * piece];
+      if (left <= -PIECE_WIDTH || left >= RG_SCREEN_WIDTH) continue;
+      int64_t first = top > 0 ? top : 0, past = top + tall < RG_SCREEN_HEIGHT ? top + tall : RG_SCREEN_HEIGHT;
+      for (int64_t line = first; line < past; line++) {
+        if (taken[line]++ < RG_SPRITE_PIECES_A_LINE) continue;
+        if (left_out_count >= MAX_LEFT_OUT) rg_fault("more than %d slices of sprites left out of crowded lines", MAX_LEFT_OUT);
+        left_out[left_out_count++] = (left_out_piece){(int32_t)line, piece};
+      }
+    }
+    sprite->cut_count = left_out_count - sprite->cut_from;
+  }
+}
+
+/* SpriteLines.left_out_at?: is column +col+, row +row+ of a sprite's picture, on screen line +line+,
+ * left out? It is where a piece left out of that line covers it and no piece drawn there does. */
+static int left_out_at(const placed_object *placed, int64_t col, int64_t row, int64_t line) {
+  const int32_t *pieces = pieces_of_image(placed->image);
+  int32_t tall = sprite_piece_height(), covered = 0;
+  for (int32_t piece = 0; piece < pieces[0]; piece++) {
+    int64_t across = pieces[1 + 2 * piece], down = pieces[2 + 2 * piece];
+    if (col < across || col >= across + PIECE_WIDTH || row < down || row >= down + tall) continue;
+    int cut = 0;
+    for (int32_t i = placed->cut_from; i < placed->cut_from + placed->cut_count && !cut; i++)
+      cut = left_out[i].line == line && left_out[i].piece == piece;
+    if (!cut) return 0;
+    covered = 1;
+  }
+  return covered;
+}
+
+/* Reference#blit_image with a sprite's slices left out. */
+static void blit_with_slices_left_out(const placed_object *placed) {
+  picture art = picture_of(placed->image);
+  for (int32_t row = 0; row < art.height; row++)
+    for (int32_t col = 0; col < art.width; col++) {
+      int32_t color = art.pixels[row * art.width + col];
+      int64_t line = (int64_t)placed->y + row;
+      if (color != RG_NOT_DRAWN && !left_out_at(placed, col, row, line)) set_pixel((int64_t)placed->x + col, line, color);
+    }
+}
+
 /* Reference#draw_object and #paint_snapshot_object */
 static void draw_placed(const placed_object *placed) {
   if (placed->turned)
     blit_image_turned(placed->image, placed->x, placed->y, placed->angle, placed->size, placed->resizes);
+  else if (placed->cut_count) blit_with_slices_left_out(placed);
   else blit_image(placed->image, placed->x, placed->y);
 }
 
@@ -1921,6 +2003,7 @@ void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, 
  * time, and this only when something moved. On one that is not, each is drawn where it is now,
  * and where that was is remembered for taking it off again. */
 void rg_objects_end(void) {
+  mark_slices_left_out(drawing, drawing_count);
   /* Kept whichever way the picture is made: a scene taking over later in this pass builds the
    * picture again from it (rg_scene_redraw_sprites). Compared as they are laid down, field by
    * field, so nothing is worked out for a frame where nothing moved. */

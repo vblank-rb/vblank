@@ -23,7 +23,12 @@ module VBlank
     # Advance's does (Backends::GBA::SpriteDrawing::HeldTable), and the same where it does not.
     # +sprites_a_row+ is how many pieces of sprites, eight pixels wide, it draws on one row of the
     # screen before it leaves the rest of that row's out, or nil where the build does not count
-    # them. +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
+    # them. +sprite_pieces_drawn_a_line+ is the same limit as every backend draws it, or nil where
+    # none does: on each line of the screen the first that many pieces the console's sprite table
+    # holds there, front-most first, are drawn, and the rest are left out of that line alone
+    # (Backends::SpriteLines). It is nil where the console counts a line some other way than
+    # pieces eight pixels wide in its table's order, until that way is drawn too.
+    # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
     # where one turns. +bar_is_a_background+ says whether a status bar is one of those layers, or a
     # layer the console keeps beside them. +turning_sprites+ says whether a sprite can turn and resize.
@@ -106,7 +111,7 @@ module VBlank
     # that nothing else in the game uses (the Super Nintendo); nil where nothing can.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
                               :holds_background_above_row, :background_box, :glides_recordings, :sprites, :sprite_places,
-                              :sprites_a_row, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
+                              :sprites_a_row, :sprite_pieces_drawn_a_line, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
@@ -158,7 +163,7 @@ module VBlank
                               # What limits a row on the Advance is the time the display has to
                               # draw it, which depends on how wide each sprite is and whether it
                               # turns, and the build does not work that out.
-                              sprites_a_row: nil, turning_sprites: true, sprite_sizes: Hardware::OBJ_SIZES.keys, tile_planes: nil,
+                              sprites_a_row: nil, sprite_pieces_drawn_a_line: nil, turning_sprites: true, sprite_sizes: Hardware::OBJ_SIZES.keys, tile_planes: nil,
                               # Four layers that scroll, or two that scroll and one that turns.
                               backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
                               # A status bar is one of those layers.
@@ -193,7 +198,9 @@ module VBlank
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, controllers: 1,
                             holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 40, sprite_places: 40,
-                            sprites_a_row: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
+                            # The first ten pieces its table holds on a line, every other left out
+                            # (each piece is a sprite of its own, 8 wide).
+                            sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false,
@@ -237,7 +244,10 @@ module VBlank
                                      sprite_places: 128,
                                      # A row of the screen shows at most 32 sprites and 34 of their
                                      # 8-pixel pieces; a piece is what this counts.
-                                     sprites_a_row: 34, turning_sprites: false,
+                                     # Which are left out is not drawn yet: the first 32 in range
+                                     # of a line are kept, its squares of 16×16 count as one sprite
+                                     # and two slivers, and a piece just off an edge is in range.
+                                     sprites_a_row: 34, sprite_pieces_drawn_a_line: nil, turning_sprites: false,
                                      # Every sprite picture is cut into 8×8 pieces (Backends::SNES::Art).
                                      sprite_sizes: nil, tile_planes: 4,
                                      # The build shows a game's backgrounds on the arrangement of
@@ -286,7 +296,9 @@ module VBlank
                               holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 80, sprite_places: 80,
                               # A row of the screen shows at most 20 sprites (16 on a screen of 256
                               # across), and a sprite here is one piece of a picture, up to 32×32.
-                              sprites_a_row: 20, turning_sprites: false,
+                              # Which are left out is not drawn yet: a piece up to 32 wide is one
+                              # of the twenty, and the 320 pixels a line counts blank ones too.
+                              sprites_a_row: 20, sprite_pieces_drawn_a_line: nil, turning_sprites: false,
                               # Every sprite picture is covered by pieces of whole 8×8 tiles, up to
                               # four across and four down (Backends::SpritePieces.cover).
                               sprite_sizes: nil, tile_planes: nil,

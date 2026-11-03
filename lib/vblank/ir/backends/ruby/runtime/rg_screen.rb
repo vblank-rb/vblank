@@ -154,8 +154,9 @@ class RgMixes
 end
 
 # One sprite on screen this frame. One that turns or resizes carries its angle and its size for
-# this frame, and whether its size ever changes.
-RgPlaced = Struct.new(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes)
+# this frame, and whether its size ever changes. One that loses slices to a crowded line keeps them
+# as +cuts+, [line, piece] each (#rg_mark_slices_left_out).
+RgPlaced = Struct.new(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes, :cuts)
 
 # How a background is turned, once it has been turned or resized at all (Reference @bg_affine).
 RgTurn = Struct.new(:turned, :angle, :size, :pivot_x, :pivot_y)
@@ -1769,10 +1770,76 @@ def rg_blit_image_turned(image, x, y, angle, size, resizes)
   end
 end
 
+# --- how many sprites a line of the screen shows (rg_screen.c's, Backends::SpriteLines) ---
+#
+# @rg_game_image_pieces: how tall a piece is, then where each image's pieces start, and there how
+# many, then each one's across and down. RG_SPRITE_PIECES_A_LINE is 0 where every piece is drawn.
+RG_PIECE_WIDTH = 8
+
+# Reference#mark_slices_left_out: each sprite that loses slices to a crowded line keeps them as its
+# +cuts+. The table lists them front-most first: the deepest level last, and inside a level the one
+# drawn last first.
+def rg_mark_slices_left_out(placed)
+  placed.each { |sprite| sprite.cuts = nil }
+  return if RG_SPRITE_PIECES_A_LINE == 0 || placed.empty?
+
+  pieces = @rg_game_image_pieces
+  tall = pieces[0]
+  taken = Array.new(RG_SCREEN_HEIGHT, 0)
+  placed.each_index.sort_by { |at| [placed[at].level, at] }.reverse_each do |at|
+    sprite = placed[at]
+    start = pieces[1 + sprite.image]
+    cuts = []
+    pieces[start].times do |piece|
+      left = sprite.x + pieces[start + 1 + (2 * piece)]
+      top = sprite.y + pieces[start + 2 + (2 * piece)]
+      next if left <= -RG_PIECE_WIDTH || left >= RG_SCREEN_WIDTH
+
+      ([top, 0].max...[top + tall, RG_SCREEN_HEIGHT].min).each do |line|
+        cuts << [line, piece] if taken[line] >= RG_SPRITE_PIECES_A_LINE
+        taken[line] += 1
+      end
+    end
+    sprite.cuts = cuts unless cuts.empty?
+  end
+end
+
+# SpriteLines.left_out_at?: left out where a piece left out of the line covers it and no piece
+# drawn there does.
+def rg_left_out_at?(placed, col, row, line)
+  pieces = @rg_game_image_pieces
+  start = pieces[1 + placed.image]
+  tall = pieces[0]
+  covered = false
+  pieces[start].times do |piece|
+    across = pieces[start + 1 + (2 * piece)]
+    down = pieces[start + 2 + (2 * piece)]
+    next if col < across || col >= across + RG_PIECE_WIDTH || row < down || row >= down + tall
+    return false unless placed.cuts.include?([line, piece])
+
+    covered = true
+  end
+  covered
+end
+
+# Reference#blit_image with a sprite's slices left out.
+def rg_blit_with_slices_left_out(placed)
+  art, start, width, height = rg_picture_of(placed.image)
+  height.times do |row|
+    line = placed.y + row
+    width.times do |col|
+      color = art[start + (row * width) + col]
+      rg_set_pixel(placed.x + col, line, color) if color != RG_NOT_DRAWN && !rg_left_out_at?(placed, col, row, line)
+    end
+  end
+end
+
 # Reference#draw_object and #paint_snapshot_object
 def rg_draw_placed(placed)
   if placed.turned
     rg_blit_image_turned(placed.image, placed.x, placed.y, placed.angle, placed.size, placed.resizes)
+  elsif placed.cuts
+    rg_blit_with_slices_left_out(placed)
   else
     rg_blit_image(placed.image, placed.x, placed.y)
   end
@@ -2050,6 +2117,7 @@ end
 # where that was is remembered for taking it off again. Kept whichever way the picture is made: a
 # scene taking over later in this pass builds the picture again from it.
 def rg_objects_end
+  rg_mark_slices_left_out(@rg_drawing)
   kept = @rg_sprite_layer
   @rg_sprite_layer = @rg_drawing.dup
   # Reference#show_objects_over_picture: in the layer in front of a painted picture, never into it.

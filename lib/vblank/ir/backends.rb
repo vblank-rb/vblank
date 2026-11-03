@@ -3,6 +3,7 @@
 require_relative "backends/fade_steps"
 require_relative "backends/blocks"
 require_relative "backends/sprite_cut"
+require_relative "backends/sprite_lines"
 require_relative "backends/game_boy_sound"
 require_relative "backends/reference"
 require_relative "backends/run_comparison"

@@ -157,7 +157,7 @@ module VBlank
 
           def picture_data
             [*image_arrays, *background_arrays, *see_through_arrays, sprite_fade_places_array, *sprite_block_arrays,
-             *run_arrays,
+             *run_arrays, image_pieces_array,
              runtime_array("picture_sizes", "int32_t",
                     [@stacking.scenery.length, @stacking.depths.count, @handover.always_up.scenery.length,
                      rebuilt_every_frame? ? 1 : 0, @see_through.size,
@@ -228,6 +228,36 @@ module VBlank
               boxes = cut.fetch(obj.poses.index(pose))
               [@drawn_sprites.picture_number(pose), boxes.length, *boxes.flatten]
             end]
+          end
+
+          # Reference#sprite_piece_places, for a console that draws only so many pieces of sprites on
+          # a line: how tall a piece is, then where each image's pieces start, then each image's
+          # pieces (see rg_screen.h for the layout). Only how tall a piece is where the console
+          # draws them all.
+          def image_pieces_array
+            console = @program.described_console
+            tall = (@program.sprite_piece_size_on(console.name) || [SpritePieces::SIZE] * 2).last
+            values = [tall]
+            if console.sprite_pieces_drawn_a_line
+              lists = @images.each_key.map { |name, _| sprite_piece_places(name, tall) }
+              start = 1 + lists.length
+              lists.each do |places|
+                values << start
+                start += 1 + (2 * places.length)
+              end
+              lists.each { |places| values.push(places.length, *places.flatten) }
+            end
+            runtime_array("image_pieces", "int32_t", values)
+          end
+
+          # Where the pieces of the picture +name+ stand in it, as the console's table holds them.
+          def sprite_piece_places(name, tall)
+            return SpriteLines.tile_pose_places(@tile_poses.fetch(name).pieces, piece_height: tall) if @tile_poses.key?(name)
+
+            run = @tile_runs.each_value.find { |r| r.picture == name }
+            return SpriteLines.painted_places(run.width, run.height, piece_height: tall) if run
+
+            SpriteLines.picture_places(sprite_pictures.fetch(name), piece_height: tall)
           end
 
           # Every picture the program defines, as SpriteCut reads one.

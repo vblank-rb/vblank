@@ -530,21 +530,7 @@ module VBlank
           # A piece the game put between the two in its order, over one of them, goes behind the
           # pair rather than between its halves; nothing else changes which is in front.
           def drawn_pieces(pieces)
-            left = pieces.map { |dx, dy, own| [dx, dy, own.bytes] }
-            return left if @piece_height == SpritePieces::SIZE
-
-            blank = Array.new(SpritePieces::SIZE * SpritePieces::SIZE, 0)
-            drawn = []
-            until left.empty?
-              dx, dy, piece = left.shift
-              under = left.index { |x, y, _| x == dx && y == dy + 8 }
-              over = left.index { |x, y, _| x == dx && y == dy - 8 } unless under
-              drawn << if under then [dx, dy, piece + left.delete_at(under)[2]]
-                       elsif over then [dx, dy - 8, left.delete_at(over)[2] + piece]
-                       else [dx, dy, piece + blank]
-                       end
-            end
-            drawn
+            SpritePieces.stacked(pieces.map { |dx, dy, own| [dx, dy, own.bytes] }, piece_height: @piece_height)
           end
 
           # A SPRITE'S PICTURE THE GAME PAINTS from a list (Nodes::TileRun with a picture): every 8×8
@@ -599,24 +585,12 @@ module VBlank
           def tile_pose_pieces(pose)
             return pose.pieces unless tall_pieces?
 
-            left = pose.pieces.dup
-            paired = []
-            until left.empty?
-              dx, dy, tile = left.shift
-              under = left.index { |x, y, t| x == dx && y == dy + 8 && t == tile + 1 }
-              over = left.index { |x, y, t| x == dx && y == dy - 8 && t == tile - 1 } unless under
-              top = under ? tile : tile - 1
-              unless (under || over) && top.even?
-                raise LoweringError, "image :#{pose.name} has the tile #{tile} at [#{dx}, #{dy}]. This Game Boy Color " \
-                                     "game draws sprites in pieces of 8×16, and each piece is two tiles of the set " \
-                                     "one under the other: an even tile, and the next tile under it. To fix this, " \
-                                     "give each tile of :#{pose.name} its partner, or draw sprites in pieces of 8×8."
-              end
-
-              paired << (under ? [dx, dy, tile] : [dx, dy - 8, tile - 1])
-              left.delete_at(under || over)
+            SpritePieces.paired_tiles(pose.pieces) do |dx, dy, tile|
+              raise LoweringError, "image :#{pose.name} has the tile #{tile} at [#{dx}, #{dy}]. This Game Boy Color " \
+                                   "game draws sprites in pieces of 8×16, and each piece is two tiles of the set " \
+                                   "one under the other: an even tile, and the next tile under it. To fix this, " \
+                                   "give each tile of :#{pose.name} its partner, or draw sprites in pieces of 8×8."
             end
-            paired
           end
 
           # The palette a painted picture is drawn in from +colors+, a list by place, see-through first,
