@@ -68,6 +68,20 @@ class TestPlayerOption < Minitest::Test
                             out: StringIO.new, err: StringIO.new) { game_loop { halt if held(:left, player: 8) } }
   end
 
+  # A game for the Super Nintendo built for a computer is judged by what that build can do: the
+  # computer's runtime counts the players connected, though the cartridge build does not yet, and
+  # says so by name.
+  def test_a_super_nintendo_game_built_for_a_computer_asks_how_many_players_are_connected
+    counting = proc { game_loop { halt if players_connected > 1 } }
+    VBlank.build("PLAYERS", console: :snes, cartridge: false, for_computer: true, out: StringIO.new,
+                            err: StringIO.new, &counting)
+
+    error = assert_raises(VBlank::BuildError) do
+      VBlank.build("PLAYERS", console: :snes, out: StringIO.new, err: StringIO.new, &counting)
+    end
+    assert_match(/players_connected/, error.message)
+  end
+
   def test_a_line_reading_a_player_past_the_ones_the_game_takes_is_refused_in_plain_words
     error = assert_raises(ArgumentError) do
       VBlank.build("PLAYERS", console: :snes, players: 1, out: StringIO.new, err: StringIO.new) do

@@ -83,7 +83,8 @@ module VBlank
           # above to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the picture" => %i[show_picture_group data_byte],
-                                                    "sprite tiles the game loads" => %i[load_sprite_tiles]
+                                                    "sprite tiles the game loads" => %i[load_sprite_tiles],
+                                                    "telling which controllers are connected" => %i[players_connected]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by

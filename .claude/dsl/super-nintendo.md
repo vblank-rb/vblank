@@ -133,7 +133,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `pressed` — works: see `held`.
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.
-- `players_connected` — **refused**: this build cannot yet tell if the second controller is connected. A controller that is not connected holds no buttons, so wait for a button on it instead, like `pressed(:start, player: 2)`.
+- `players_connected` — works: a build for a computer answers it. The cartridge build does not make it yet: it refuses it and says so, because it cannot yet tell if the second controller is connected. A controller that is not connected holds no buttons, so a cartridge can wait for a button on it instead, like `pressed(:start, player: 2)`.
 - `rumble` — works: nothing is felt. A Super Nintendo cartridge has no rumble motor, so the game plays the same without it.
 - `seed` — works: the same as on the Advance.
 - `randomize` — works: the same as on the Advance.
@@ -167,3 +167,4 @@ and a game that reaches one of these steps is refused, naming the step, until it
 
 - the picture: `show_picture_group`, `data_byte`
 - sprite tiles the game loads: `load_sprite_tiles`
+- telling which controllers are connected: `players_connected`
