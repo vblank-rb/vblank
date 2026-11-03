@@ -120,12 +120,13 @@ module VBlank
       # (Diagnostics::SNESProfiler), reported for a person or as JSON. +keys+ are held from
       # power-on, and +settle+ passes run before the +frames+ passes measured.
       def profile(format: :human, out: $stdout, frames: Diagnostics::SNESProfiler::FRAMES,
-                  settle: Diagnostics::SNESProfiler::SETTLE, keys: [], scene: nil, from: nil)
+                  settle: Diagnostics::SNESProfiler::SETTLE, keys: [], scene: nil, from: nil, press: [])
         if scene || from
           raise ArgumentError, "a Super Nintendo profile measures the game as it plays from power-on, and cannot be " \
                                "told a #{scene ? 'scene' : 'saved moment'} yet. To fix this, leave out " \
                                "#{scene ? '--scene' : '--from'}, and use --keys and --settle to reach the moment."
         end
+        Diagnostics::TimeByRoutine.refuse_press!(press, "Super Nintendo")
 
         result = Diagnostics::SNESProfiler.run(self, frames: frames, settle: settle, keys: keys)
         case format

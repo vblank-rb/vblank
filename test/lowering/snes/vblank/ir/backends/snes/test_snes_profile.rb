@@ -191,6 +191,29 @@ class TestSNESProfile < Minitest::Test
     assert_equal 5, JSON.parse(out.string).fetch("passes")
   end
 
+  # A game that costs more while a button is down, as a walking player does.
+  WALKER = VBlank.game("WALKER", consoles: %i[snes]) do
+    total = 0
+    game_loop { repeat(9000) { total += 3 } if held(:up) }
+  end
+
+  # What the command line hands over, `press:` among it: holding a button is how a walking player
+  # is measured.
+  def test_a_button_held_is_measured
+    still = rom_of(WALKER).profile(out: StringIO.new, frames: 10, keys: [], press: [])
+    walking = rom_of(WALKER).profile(out: StringIO.new, frames: 10, keys: [:up], press: [])
+
+    assert_equal 1, still.slowest_frames
+    assert_operator walking.slowest_frames, :>, 1
+  end
+
+  def test_a_button_pressed_as_the_measuring_starts_is_refused_in_plain_words
+    error = assert_raises(ArgumentError) { rom_of(LIGHT).profile(out: StringIO.new, press: [:a]) }
+
+    assert_match(/--press/, error.message)
+    assert_match(/--keys/, error.message)
+  end
+
   def test_a_scene_to_measure_is_refused_in_plain_words
     error = assert_raises(ArgumentError) { rom_of(LIGHT).profile(out: StringIO.new, scene: :title) }
 

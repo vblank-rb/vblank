@@ -16,6 +16,14 @@ module VBlank
       # routines by share, the game's and the runtime's apart.
       Report = Data.define(:idle_share, :fewest_lines_spare, :game, :runtime)
 
+      # Only the Advance's profile can put a button down as the measured frames begin.
+      def self.refuse_press!(press, console)
+        return if press.empty?
+
+        raise ArgumentError, "A #{console} profile cannot press a button as the measuring starts yet. To fix this, leave " \
+                             "out --press, and hold the button with --keys."
+      end
+
       # +code+ is a build's labels and their addresses, and +line+ how much of the emulator's count a
       # line of the picture takes. +game_labels+ matches the labels of the game's own code, for a
       # build that keeps no record of it to give +routine_at+.
