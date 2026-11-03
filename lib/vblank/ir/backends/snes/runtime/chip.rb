@@ -18,48 +18,68 @@ module VBlank
           #     bytes, whatever the address), so the console cannot run its own code from the
           #     cartridge while it waits: the waiting loop is copied into work RAM at power-on and
           #     runs from there (rt_chip_wait, at WAIT).
-          #   - ITS INTERRUPTS GO ELSEWHERE. While the chip owns the ROM, the console's interrupt
-          #     vectors read as $0100 to $010C in work RAM, where this runtime keeps the vertical
-          #     blank's direct page. So the vertical blank's interrupt is switched off while the chip
-          #     runs, and the waiting loop counts the blanks that go by instead, reading HVBJOY. Once
-          #     the chip stops, the frames it took are added to the frame count, and the interrupt is
-          #     switched on again; the one blank it would have announced is let go, so it never lands
-          #     outside the blank and copies into video memory while the picture is being drawn.
+          #   - ITS INTERRUPTS GO TO WORK RAM. The console finds an interrupt's routine by reading
+          #     its address (its "vector") from the end of the ROM's first bank. While the chip owns
+          #     the ROM, the cartridge answers every read of the ROM with the same sixteen bytes,
+          #     picked by the address's last four bits, and those bytes are laid out so that each
+          #     vector reads as an address in work RAM's second page: the vertical blank's interrupt
+          #     (the NMI, whose vector is at $FFEA) as $0108, and the other interrupt (the IRQ, at
+          #     $FFEE) as $010C (bsnes, SuperFX::CPUROM::read in sfc/coprocessor/superfx/bus.cpp).
+          #     So a long jump is written at $0108 (NMI_LANDING), to a copy of the whole vertical
+          #     blank's interrupt kept in work RAM (INTERRUPT), and a return at $010C (IRQ_LANDING).
+          #     That copy reads nothing from the cartridge, which would answer with the same sixteen
+          #     bytes: the buttons' reading is written into it rather than called
+          #     (Frame#emit_interrupt_whole). So the interrupt keeps coming while the chip runs: every
+          #     frame is counted and every frame's buttons read, as the interpreter counts and reads
+          #     them however long a pass is. Those bytes are in the vertical blank's own direct page,
+          #     whose first bytes nothing else uses (Memory). The moment the chip stops, the vectors
+          #     read from the ROM again and the cartridge's own interrupt is taken; the two keep the
+          #     same counts in the same places, so it does not matter which of them a blank lands in.
+          #
+          #     The music is not played in the interrupt but where a pass's wait ends, once for each
+          #     frame the pass took (Sound's rt_sound_frame), and it reads its notes from the ROM. So
+          #     a long chip run is caught up at the end of its pass, as any long pass is, and nothing
+          #     of the music needs the ROM while the chip has it. The sound unit goes on sounding the
+          #     notes it was given meanwhile, as it does through any long pass.
           #
           # The chip runs at 21 MHz (CLSR), and is told not to interrupt the console when it stops
           # (CFGR): the waiting loop sees its GO bit fall instead.
           #
-          # What the chip runs is a game's routines marked `on_chip: true` (ChipCode). While it runs,
-          # the frames still go by, but the interrupt that reads the buttons does not: a press that
-          # starts and ends inside one run is not seen.
+          # What the chip runs is a game's routines marked `on_chip: true` (ChipCode).
           module Chip
             WAIT = "rt chip wait"
-            SEEN = "rt chip seen"
-            MISSED = "rt chip missed"
-            WAIT_BYTES = 56
+            INTERRUPT = "rt chip interrupt"
+            WAIT_BYTES = 32
+            # Where the console goes for each interrupt while the chip owns the ROM.
+            NMI_LANDING = 0x0108
+            IRQ_LANDING = 0x010C
 
             module_function
 
-            def reserve(memory)
+            # +extra_buttons+ and +second_controller+ say what the interrupt reads, as Frame.emit is
+            # told. Its size does not hang on which byte of the direct page it reads the controller
+            # in, so it is measured with any.
+            def reserve(memory, extra_buttons: false, second_controller: false)
               memory.reserve(WAIT, WAIT_BYTES)
-              memory.reserve(SEEN, 1)
-              memory.reserve(MISSED, 2)
+              size = interrupt_code(memory, pad: 0, extra_buttons: extra_buttons, second_controller: second_controller).bytesize
+              memory.reserve_far(INTERRUPT, size)
             end
 
-            # rt_chip_start: the chip set up and the waiting loop copied into work RAM, once, at
-            # power-on. rt_chip_run: the GSU program at the 24-bit address in R0's low three bytes
-            # run to its STOP, with R0's fourth byte the picture's layout bits for SCMR (its colours
-            # and height; nought when it plots nothing). Both are called long (JSL) with A, X and Y
-            # 16 bits wide, and give them back so. The chip's other registers ($3000-$301D) are the
-            # caller's to set before rt_chip_run.
-            def emit(asm, memory)
-              emit_start(asm, memory)
+            # rt_chip_start: the chip set up, and the waiting loop and the interrupt copied into work
+            # RAM with the jumps to the interrupt written, once, at power-on. rt_chip_run: the GSU
+            # program at the 24-bit address in R0's low three bytes run to its STOP, with R0's fourth
+            # byte the picture's layout bits for SCMR (its colours and height; nought when it plots
+            # nothing). Both are called long (JSL) with A, X and Y 16 bits wide, and give them back
+            # so. The chip's other registers ($3000-$301D) are the caller's to set before
+            # rt_chip_run. +pad+, +extra_buttons+ and +second_controller+ are what Frame.emit is told.
+            def emit(asm, memory, pad:, extra_buttons: false, second_controller: false)
+              interrupt = interrupt_code(memory, pad: pad, extra_buttons: extra_buttons, second_controller: second_controller)
+              emit_start(asm, memory, interrupt)
               emit_run(asm, memory)
             end
 
-            def emit_start(asm, memory)
+            def emit_start(asm, memory, interrupt)
               h = Console::SNESHardware
-              code = wait_code(memory)
               asm.label("rt_chip_start")
               asm.sep(0x20)
               asm.lda(h::GSU_FAST_CLOCK)
@@ -67,31 +87,43 @@ module VBlank
               asm.lda(h::GSU_IRQ_OFF)
               asm.sta(asm.abs(h::GSU_CFGR))
               asm.stz(asm.abs(h::GSU_SCMR))
-              asm.ldx(0)
-              asm.label("rt_chip_copy_wait")
-              asm.lda(asm.long_x("rt_chip_wait_code"))
-              asm.sta(asm.abs_x(memory[WAIT]))
-              asm.inx
-              asm.cpx(code.bytesize)
-              asm.bne("rt_chip_copy_wait")
+              emit_copy(asm, "rt_chip_wait_code", memory[WAIT], wait_code.bytesize)
+              emit_copy(asm, "rt_chip_interrupt_code", memory[INTERRUPT], interrupt.bytesize)
+              emit_interrupt_landings(asm, memory[INTERRUPT])
               asm.rep(0x20)
               asm.rtl
               asm.label("rt_chip_wait_code")
-              asm.data_bytes(code.unpack("C*"))
+              asm.data_bytes(wait_code.unpack("C*"))
+              asm.label("rt_chip_interrupt_code")
+              asm.data_bytes(interrupt.unpack("C*"))
+            end
+
+            # +count+ bytes from the cartridge at +from+ to work RAM at +to+ (a long address), A 8 bits
+            # wide.
+            def emit_copy(asm, from, to, count)
+              asm.ldx(0)
+              asm.label("#{from}_copy")
+              asm.lda(asm.long_x(from))
+              asm.sta(asm.long_x(to | 0x7E0000))
+              asm.inx
+              asm.cpx(count)
+              asm.bne("#{from}_copy")
+            end
+
+            # JML to +interrupt+ at NMI_LANDING, and RTI at IRQ_LANDING, A 8 bits wide.
+            def emit_interrupt_landings(asm, interrupt)
+              jml = W65816::OPERATED[:jml][:long]
+              bytes = [jml, interrupt & 0xFF, (interrupt >> 8) & 0xFF, interrupt >> 16, W65816::SINGLES[:rti]]
+              bytes.each_with_index do |byte, at|
+                asm.lda(byte)
+                asm.sta(asm.abs(NMI_LANDING + at))
+              end
             end
 
             def emit_run(asm, memory)
               h = Console::SNESHardware
-              at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               asm.label("rt_chip_run")
               asm.sep(0x20)
-              asm.stz(asm.abs(h::NMITIMEN))
-              asm.lda(asm.abs(h::RDNMI))
-              asm.lda(asm.abs(h::HVBJOY))
-              asm.and_a(0x80)
-              asm.sta(at.call(SEEN))
-              asm.stz(at.call(MISSED))
-              asm.stz(at.call(MISSED, 1))
               # The chip sees the cartridge's ROM in banks $00-$3F, where the console sees it in
               # banks $80-$BF as well.
               asm.lda(asm.direct(2))
@@ -104,33 +136,19 @@ module VBlank
               asm.tax # what SCMR will say, handed to the waiting loop
               asm.lda(asm.direct(0)) # where the program starts, the same
               asm.jsl(asm.long(memory[WAIT]))
-              # The frames gone by are added before the interrupt comes back, since it adds to the
-              # same count and one taken part way through this would be lost.
-              asm.rep(0x20)
-              asm.lda(at.call(MISSED))
-              asm.clc
-              asm.adc(at.call(Frame::FRAMES))
-              asm.sta(at.call(Frame::FRAMES))
-              asm.bcc("rt_chip_ran")
-              asm.inc(at.call(Frame::FRAMES, 2))
-              asm.label("rt_chip_ran")
-              asm.sep(0x20)
-              asm.lda(asm.abs(h::RDNMI))
-              asm.lda(h::NMI_ON)
-              asm.sta(asm.abs(h::NMITIMEN))
               asm.rep(0x20)
               asm.rtl
             end
 
             # The waiting loop, as bytes to copy into work RAM. Called long with A, X and Y 16 bits
             # wide, A the program's address and X what SCMR is to say, it hands the chip the ROM and
-            # its RAM and starts it, goes round until the chip's GO bit falls, adding one to MISSED
-            # each time the vertical blank begins, and takes the ROM and RAM back. All of that is
-            # here rather than in the cartridge because from the moment the chip owns the ROM until
-            # it gives it back, the console must not read an instruction from there. Its branches
-            # are relative and every address it names is fixed, so it runs wherever it is copied to.
-            # It gives A back 8 bits wide.
-            def wait_code(memory)
+            # its RAM and starts it, goes round until the chip's GO bit falls, and takes the ROM and
+            # RAM back. All of that is here rather than in the cartridge because from the moment the
+            # chip owns the ROM until it gives it back, the console must not read an instruction from
+            # there. The vertical blank's interrupt goes on meanwhile, through NMI_LANDING. Its
+            # branches are relative and every address it names is fixed, so it runs wherever it is
+            # copied to. It gives A back 8 bits wide.
+            def wait_code
               h = Console::SNESHardware
               asm = W65816.new("rt chip wait")
               asm.tay
@@ -145,25 +163,21 @@ module VBlank
               asm.label("wait")
               asm.lda(asm.abs(h::GSU_SFR))
               asm.and_a(h::GSU_GO)
-              asm.beq("stopped")
-              asm.lda(asm.abs(h::HVBJOY))
-              asm.and_a(0x80)
-              asm.cmp(asm.abs(memory[SEEN]))
-              asm.beq("wait")
-              asm.sta(asm.abs(memory[SEEN]))
-              asm.and_a(0x80) # a store leaves the flags as the comparison set them; this sets them anew
-              asm.beq("wait") # the blank ended
-              asm.rep(0x20) # a count that a run of many frames can take past a byte
-              asm.inc(asm.abs(memory[MISSED])) # a blank began
-              asm.sep(0x20)
-              asm.bra("wait")
-              asm.label("stopped")
+              asm.bne("wait")
               asm.stz(asm.abs(h::GSU_SCMR)) # the ROM and the RAM are the console's again
               asm.rtl
               code = Linker.new([asm.section]).link.bytes.byteslice(0, asm.here)
               raise "the chip's waiting loop is #{code.bytesize} bytes, over #{WAIT_BYTES}" if code.bytesize > WAIT_BYTES
 
               code
+            end
+
+            # The vertical blank's interrupt whole (Frame#emit_interrupt_whole), as bytes to copy
+            # into work RAM.
+            def interrupt_code(memory, pad:, extra_buttons:, second_controller:)
+              asm = W65816.new("rt chip interrupt")
+              Frame.emit_interrupt_whole(asm, memory, pad: pad, extra_buttons: extra_buttons, second_controller: second_controller)
+              Linker.new([asm.section]).link.bytes.byteslice(0, asm.here)
             end
           end
         end

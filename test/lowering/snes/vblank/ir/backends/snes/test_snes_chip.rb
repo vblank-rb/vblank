@@ -18,8 +18,9 @@ class TestSNESChip < Minitest::Test
     assert_equal 0xC3, wram.getbyte(DONE), "the console came back to the cartridge after the chip stopped"
   end
 
-  # While the chip runs the vertical blank's interrupt is off, and the waiting loop counts the blanks
-  # instead: once each, however many go by.
+  # While the chip runs, the vertical blank's interrupt lands in work RAM, where the runtime's copy of
+  # it counts the blanks; outside the run, the cartridge's own (here one that only counts). Each blank
+  # is counted once, however many go by.
   def test_the_frames_the_chip_took_are_counted_once_each
     memory = new_memory
     rom = cartridge(memory) do
@@ -80,7 +81,8 @@ class TestSNESChip < Minitest::Test
       stop
     end
     runtime = SNES::W65816.new("runtime")
-    SNES::Runtime::Chip.emit(runtime, memory)
+    SNES::Runtime::Chip.emit(runtime, memory, pad: SNES::Memory::SCRATCH)
+    frames = memory[SNES::Runtime::Frame::FRAMES]
 
     boot = SNES::W65816.new("boot", home: :first)
     boot.instance_eval do
@@ -99,6 +101,11 @@ class TestSNESChip < Minitest::Test
       plb
       rep 0x20
       jsl long("rt_chip_start")
+      sep 0x20
+      lda abs(H::RDNMI)
+      lda H::NMI_ON
+      sta abs(H::NMITIMEN)
+      rep 0x20
       lda imm("chip program")
       sta direct(0)
       lda bank_of("chip program")
@@ -110,6 +117,14 @@ class TestSNESChip < Minitest::Test
       label "forever"
       bra "forever"
       label "interrupted"
+      php
+      sep 0x20
+      pha
+      lda abs(H::RDNMI)
+      pla
+      rep 0x20
+      inc abs(frames)
+      plp
       rti
     end
 

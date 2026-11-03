@@ -38,7 +38,7 @@ module VBlank
 
           # The runtime's own places in work RAM, asked for before the game's, for a cartridge that
           # carries +carries+ (Carries). A cartridge with a Super FX keeps the chip's waiting loop and
-          # its counts after the rest, so a plain cartridge's places do not move.
+          # the copy of the screen's interrupt it runs meanwhile after the rest, so a plain cartridge's places do not move.
           def reserve(memory, carries)
             c = carries
             Paint.reserve(memory, chip: c.chip?) if c.painted
@@ -48,7 +48,7 @@ module VBlank
                                     bar_covers: c.bar_covers, tile_sizes: c.tile_sizes, scene_tiles: c.scene_tiles,
                                     scene_background_tiles: c.scene_background_tiles)
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
-            Chip.reserve(memory) if c.chip?
+            Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides) if c.samples
@@ -74,7 +74,8 @@ module VBlank
             Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast)
             Boot.emit_zero(asm)
             Int32.emit(asm, Int32.scratch(memory), divides: lowering.divides?)
-            Frame.emit(asm, memory, pad: memory.scratch(4), sound: c.sound, extra_buttons: c.extra_buttons,
+            pad = memory.scratch(4)
+            Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
                                     second_controller: c.second_controller, dims: c.dims)
             Blank.emit(asm, memory, Blank.scratch(memory))
             Lists.emit(asm, memory, Lists.scratch(memory))
@@ -89,7 +90,7 @@ module VBlank
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops)
             Collide.emit(asm, memory, Collide.scratch(memory))
-            Chip.emit(asm, memory) if c.chip?
+            Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             Saving.emit(asm, memory, Saving.scratch(memory)) if c.saves
             emit_sound_routines(asm, memory, c, lowered)
             emit_start(asm, chip: c.chip?, sound: c.sound)
@@ -153,8 +154,7 @@ module VBlank
           # again after). A blank already under way is not a frame the game showed: a blank sets
           # a flag as it begins, and switching the interrupt on while it is set calls the
           # interrupt at once, so a setting up that happened to end inside a blank would count one
-          # frame more from power-on. Reading RDNMI clears the flag first, as Runtime::Chip does
-          # when it switches the interrupt on again.
+          # frame more from power-on. Reading RDNMI clears the flag first.
           def emit_interrupt_on(asm)
             asm.sep(0x20)
             asm.lda(asm.abs(Console::SNESHardware::RDNMI))

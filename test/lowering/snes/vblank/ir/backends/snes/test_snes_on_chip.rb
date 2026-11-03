@@ -144,6 +144,65 @@ class TestSNESOnChip < Minitest::Test
     assert_operator on_the_chip, :<, on_console, "the chip took fewer frames"
   end
 
+  # A routine the chip takes several frames over, called on every pass: the frames still count, a
+  # press made and let go while the chip works is still seen, and a song still moves on, as on the
+  # interpreter, which reads the buttons and moves the music on at every frame however long a pass is.
+  # Turns enough for three frames a pass, ending well inside the third rather than in its blank. A
+  # game with music that ends a pass in the blank goes straight on without waiting
+  # (Frame#emit_sleep_unless_in_blank), and the run reading the cartridge, which looks once a frame,
+  # does not see that pass end at all.
+  CHIP_TURNS = 3600
+  PRESSED_ON = [17, 24, 31, 38, 45, 52].freeze
+
+  private def long_chip_run(song: false)
+    superfx_game("CHIP LONG RUN") do
+      if song
+        enable_sound
+        song(:tune) { voice(:lead) { 16.times { note :C4, :eighth; note :E4, :sixteenth } } }
+        play_song :tune
+      end
+      total = var :total, 0
+      presses = var :presses, 0
+      frames = var :frames, 0
+      func :heavy, on_chip: true do
+        repeat(CHIP_TURNS) { |i| total.store!(total + (i * 3) - (total >> 2)) }
+      end
+      game_loop do
+        call :heavy
+        presses += 1 if pressed(:a)
+        frames = frames_since_power_on
+      end
+    end
+  end
+
+  private def frames_of_long_chip_run
+    run = SNES::HeadlessRun.new.run(superfx_program(long_chip_run), frames: 30)
+    (2...8).map { |pass| run.frames_took(pass) }.min
+  end
+
+  def test_a_chip_run_of_several_frames_is_long_enough_to_test
+    assert_operator frames_of_long_chip_run, :>=, 3, "the chip takes several frames a pass"
+  end
+
+  def test_a_press_made_and_let_go_inside_a_long_chip_run_is_counted_as_on_the_interpreter
+    player = game_player.input_each_frame { |frame| PRESSED_ON.include?(frame) ? [:a] : [] }
+    run = player.run(superfx_program(long_chip_run), frames: 70)
+
+    assert_equal PRESSED_ON.length, run[:presses], "every press was seen"
+  end
+
+  def test_frames_since_power_on_across_long_chip_runs_agrees_with_the_interpreter
+    run = game_player.run(superfx_program(long_chip_run), frames: 40)
+
+    assert_operator run[:frames], :>=, 30, "the frames the chip ran through were counted"
+  end
+
+  def test_a_song_across_long_chip_runs_agrees_with_the_interpreter
+    run = game_player.run(superfx_program(long_chip_run(song: true)), frames: 60)
+
+    assert_operator run[:frames], :>=, 50, "the song played on through the chip's runs"
+  end
+
   private def refusal_of(&body)
     game = superfx_game("REFUSED", &body)
     assert_raises(LoweringError) { game.build_rom(console: :snes, variant: :superfx, profile: false, out: nil, err: nil) }

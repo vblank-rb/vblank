@@ -135,40 +135,10 @@ module VBlank
             # interrupt's, that reading the controller works in. +sound+ for a game that makes sound,
             # whose wait ends in Sound's rt_sound_frame.
             def emit(asm, memory, pad:, sound: false, extra_buttons: false, second_controller: false, dims: false)
-              h = Console::SNESHardware
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
-              # The interrupt that says a frame has been drawn. Everything it touches is saved, and it
-              # works on a direct page of its own. The frame is counted and the buttons read, so a pass
-              # that spans several frames answers for each of them, as the interpreter's does.
               asm.label("rt_vblank_interrupt")
-              asm.rep(0x30)
-              asm.pha
-              asm.phx
-              asm.phy
-              asm.phb
-              asm.phd
-              asm.lda(Memory::INTERRUPT_PAGE)
-              asm.tcd
-              asm.sep(0x20)
-              asm.lda(0x80)
-              asm.pha
-              asm.plb
-              asm.lda(asm.abs(h::RDNMI)) # read, so the interrupt is not taken again
-              asm.rep(0x20)
-              asm.jsr(asm.abs("rt_pad_read"))
-              asm.inc(at.call(FRAMES))
-              asm.bne("rt_vblank_counted")
-              asm.inc(at.call(FRAMES, 2))
-              asm.label("rt_vblank_counted")
-              asm.lda(1)
-              asm.sta(at.call(VBLANK))
-              asm.pld
-              asm.plb
-              asm.ply
-              asm.plx
-              asm.pla
-              asm.rti
+              emit_interrupt_body(asm, memory) { asm.jsr(asm.abs("rt_pad_read")) }
 
               # The end of a pass: count it, move on what keeps time by the frame, say the game is
               # waiting, and wait for the screen. What keeps time by the frame moves on here, before
@@ -194,10 +164,72 @@ module VBlank
               asm.jsl(asm.long("rt_sound_frame")) if sound # the music of the frames the pass took (Sound)
               asm.rtl
 
-              # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time,
-              # the screen is still off, so everything set up so far is copied while nothing is drawn,
-              # and the screen comes on in the blank after, showing it; after that, the pass's changes
-              # are copied in the blank.
+              emit_show_pass_routines(asm, memory, at, dims)
+              emit_buttons(asm, memory, pad, extra_buttons, second_controller)
+              emit_stopping(asm, memory)
+            end
+
+            # The interrupt that says a frame has been drawn. Everything it touches is saved, and it
+            # works on a direct page of its own. The frame is counted and the buttons read (the
+            # block emits the reading), so a pass that spans several frames answers for each of them,
+            # as the interpreter's does.
+            def emit_interrupt_body(asm, memory)
+              h = Console::SNESHardware
+              at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
+              asm.rep(0x30)
+              asm.pha
+              asm.phx
+              asm.phy
+              asm.phb
+              asm.phd
+              asm.lda(Memory::INTERRUPT_PAGE)
+              asm.tcd
+              asm.sep(0x20)
+              asm.lda(0x80)
+              asm.pha
+              asm.plb
+              asm.lda(asm.abs(h::RDNMI)) # read, so the interrupt is not taken again
+              asm.rep(0x20)
+              yield
+              asm.inc(at.call(FRAMES))
+              asm.bne("rt_vblank_counted")
+              asm.inc(at.call(FRAMES, 2))
+              asm.label("rt_vblank_counted")
+              asm.lda(1)
+              asm.sta(at.call(VBLANK))
+              asm.pld
+              asm.plb
+              asm.ply
+              asm.plx
+              asm.pla
+              asm.rti
+            end
+
+            # The same interrupt, as a routine of its own with the buttons' reading written into it
+            # rather than called, for a copy of it that runs from work RAM (Runtime::Chip). Its
+            # branches are relative and every address it names is fixed, so it runs wherever it is
+            # copied to.
+            def emit_interrupt_whole(asm, memory, pad:, extra_buttons: false, second_controller: false)
+              at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
+              emit_interrupt_body(asm, memory) do
+                emit_controller_update(asm, at, pad, SEEN, PAD_PRESSED, PAD_HELD) do
+                  emit_controller_bits(asm, pad, "rt_whole_buttons", 0x4016, extra_buttons)
+                end
+                if second_controller
+                  emit_controller_update(asm, at, pad, SECOND_SEEN, SECOND_PAD_PRESSED, SECOND_PAD_HELD) do
+                    emit_controller_bits(asm, pad, "rt_whole_second_buttons", 0x4017, extra_buttons)
+                  end
+                end
+              end
+            end
+
+            # rt_show_pass: what the pass drew, on the screen, and SHOWN saying so. The first time,
+            # the screen is still off, so everything set up so far is copied while nothing is drawn,
+            # and the screen comes on in the blank after, showing it; after that, the pass's changes
+            # are copied in the blank. Then the sleeps it waits for the blank in, and the step that
+            # moves on what keeps time by the frame.
+            def emit_show_pass_routines(asm, memory, at, dims)
+              h = Console::SNESHardware
               asm.label("rt_show_pass")
               asm.lda(at.call(DISPLAY_ON))
               asm.bne("rt_show_pass_on")
@@ -215,7 +247,7 @@ module VBlank
               asm.sta(at.call(DISPLAY_ON))
               asm.bra("rt_show_pass_shown")
               asm.label("rt_show_pass_on")
-              asm.jsr(asm.abs(memory.reserved?(Sound::QUEUE) ? "rt_sleep_unless_in_blank" : "rt_sleep_until_vblank"))
+              asm.jsr(asm.abs(memory.reserved?(Sound::QUEUE) ?"rt_sleep_unless_in_blank" : "rt_sleep_until_vblank"))
               asm.jsl(asm.long("rt_upload"))
               # After it, since a big change takes several blanks and the brightness belongs to
               # the picture it arrives with, as the colours do.
@@ -251,9 +283,6 @@ module VBlank
               asm.jsl(asm.long("rt_frame_begins"))
               asm.label("rt_frame_begins_skipped")
               asm.rts
-
-              emit_buttons(asm, memory, pad, extra_buttons, second_controller)
-              emit_stopping(asm, memory)
             end
 
             # A PASS THAT ENDS A LITTLE INTO THE BLANK STILL MAKES IT. Music plays where a wait ends,
@@ -300,9 +329,11 @@ module VBlank
               # In the interrupt, every frame: the buttons held now, and every one that went down
               # since the frame before added to those pressed during the pass.
               asm.label("rt_pad_read")
-              emit_controller_update(asm, at, pad, "rt_buttons_now", SEEN, PAD_PRESSED, PAD_HELD)
+              emit_controller_update(asm, at, pad, SEEN, PAD_PRESSED, PAD_HELD) { asm.jsr(asm.abs("rt_buttons_now")) }
               if second_controller
-                emit_controller_update(asm, at, pad, "rt_second_buttons_now", SECOND_SEEN, SECOND_PAD_PRESSED, SECOND_PAD_HELD)
+                emit_controller_update(asm, at, pad, SECOND_SEEN, SECOND_PAD_PRESSED, SECOND_PAD_HELD) do
+                  asm.jsr(asm.abs("rt_second_buttons_now"))
+                end
               end
               asm.rts
 
@@ -370,8 +401,14 @@ module VBlank
             # The routine at +label+: A = the buttons held now on the controller read through
             # +port+, a bit each in IR::Buttons's order.
             def emit_controller_read(asm, pad, label, port, extra_buttons)
-              joyser = 0x4016
               asm.label(label)
+              emit_controller_bits(asm, pad, label, port, extra_buttons)
+              asm.rts
+            end
+
+            # What that routine does, written in place: A = the buttons, its labels named from +label+.
+            def emit_controller_bits(asm, pad, label, port, extra_buttons)
+              joyser = 0x4016
               asm.sep(0x20)
               asm.lda(1)
               asm.sta(asm.abs(joyser))
@@ -399,12 +436,12 @@ module VBlank
                 asm.label(skip)
               end
               asm.lda(asm.direct(pad + 2))
-              asm.rts
             end
 
-            # One controller's frame: call +reader+, and keep what it says.
-            def emit_controller_update(asm, at, pad, reader, seen, pressed, held)
-              asm.jsr(asm.abs(reader))
+            # One controller's frame: the buttons read (the block emits that, leaving them in A), and
+            # what they say kept.
+            def emit_controller_update(asm, at, pad, seen, pressed, held)
+              yield
               asm.sta(asm.direct(pad))
               asm.lda(at.call(seen))
               asm.eor(0xFFFF)

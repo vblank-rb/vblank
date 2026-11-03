@@ -16,7 +16,10 @@ module VBlank
         #                naming a direct page byte is a byte shorter and a cycle quicker than any
         #                other, which is why the arithmetic works here.
         #   $0100-$01FF  the direct page of the vertical blank's interrupt, which has its own so that
-        #                arriving in the middle of a sum never disturbs the sum
+        #                arriving in the middle of a sum never disturbs the sum. It uses only the
+        #                runtime's scratch there, so its first bytes are free: on a Super FX cartridge
+        #                $0108 to $010C hold the jumps the interrupts take while that chip owns the
+        #                ROM (Runtime::Chip)
         #   $0200-...    the runtime's own state, then the game's variables
         #   ...-$1FFF    the stack, 1K of it, growing down from the top
         #   $7E:2000-    the lists and pools, a long address each (reserve_far)
