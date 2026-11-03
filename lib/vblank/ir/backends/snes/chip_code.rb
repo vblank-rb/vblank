@@ -503,8 +503,8 @@ module VBlank
 
           # --- tables ---
 
-          # Reference#value_of_table_get: an index out of range made safe — a power-of-two length
-          # wraps it, any other holds it to the ends — and the entry read from the cartridge.
+          # Reference#value_of_table_get: the index made safe (LoweringPlan.index_kept_in_range), and
+          # the entry read from the cartridge.
           #
           # THE CHIP READS THE CARTRIDGE ITSELF, through a buffer: ROMB says the bank, and writing
           # R14 starts the read of the byte at that address, which GETB then takes (waiting for it if
@@ -512,12 +512,7 @@ module VBlank
           # table is in one bank, as every section is, so its bank is a number the linker knows.
           def value_of_table_get(node)
             table = @tables.fetch(node.name)
-            safe = if table.count.positive? && table.count.nobits?(table.count - 1)
-                     Build.binop(:&, node.index, Build.int(table.count - 1))
-                   else
-                     Build.clamped(node.index, Build.int(0), Build.int(table.count - 1))
-                   end
-            value(safe)
+            value(LoweringPlan.index_kept_in_range(node.index, table.count))
             (table.bytes.bit_length - 1).times do
               @gsu.with(LOW)
               @gsu.add(LOW)

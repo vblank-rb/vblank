@@ -57,6 +57,17 @@ module VBlank
                                          or: ->(a, b) { !Int32.wrap(a).zero? || !Int32.wrap(b).zero? ? 1 : 0 }
                                        })
 
+        # Reference#exec_table_get: a table index out of range made safe. A table whose length is a
+        # power of two wraps it (what an angle wants), any other holds it to the ends.
+        def self.index_wraps?(count) = count.positive? && count.nobits?(count - 1)
+
+        # ...as the sum a lowering works out before it reads the entry at +index+ (a value node).
+        def self.index_kept_in_range(index, count)
+          return Build.binop(:&, index, Build.int(count - 1)) if index_wraps?(count)
+
+          Build.clamped(index, Build.int(0), Build.int(count - 1))
+        end
+
         # The console the cartridge is for (a Console::Description), whose answers and frame order
         # the plan follows.
         attr_reader :console
@@ -234,7 +245,7 @@ module VBlank
           return nil unless index && values&.any?
 
           count = values.length
-          at = count.nobits?(count - 1) ? index & (count - 1) : index.clamp(0, count - 1)
+          at = self.class.index_wraps?(count) ? index & (count - 1) : index.clamp(0, count - 1)
           Int32.wrap(values[at])
         end
 

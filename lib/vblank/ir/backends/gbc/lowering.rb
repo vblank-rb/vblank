@@ -1025,18 +1025,12 @@ module VBlank
             @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
           end
 
-          # Reference#exec_table_get: an index out of range made safe — a table whose length is a
-          # power of two wraps it (what an angle wants), any other holds it to the ends.
+          # Reference#exec_table_get: the index made safe (LoweringPlan.index_kept_in_range).
           def value_of_table_get(node)
             table = @tables.fetch(node.name) { raise LoweringError, "the table #{node.name.inspect} is read and never declared" }
             count = table.values.length
-            safe = if count.positive? && (count & (count - 1)).zero?
-                     Build.binop(:&, node.index, Build.int(count - 1))
-                   else
-                     Build.clamped(node.index, Build.int(0), Build.int(count - 1))
-                   end
             bytes, signed = table_keeping(table)
-            value(safe)
+            value(LoweringPlan.index_kept_in_range(node.index, count))
             reader = TABLE_KEPT.fetch([bytes, signed]).last
             return emit_far_entry_read(table, bytes, reader) if bytes * count > 0x10000
 
