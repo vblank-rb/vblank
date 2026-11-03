@@ -93,6 +93,10 @@ def rg_headless_main(argv)
     end
     i += 1
   end
+  # Which of Ruby's compilers is turning this game's Ruby into machine code as it plays: "jit yjit",
+  # or "jit none". Said once, before the first frame, by the Ruby that runs the game, which is not
+  # the one that started it: that one's settings say nothing about this one's.
+  $stdout.write("jit #{defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? 'yjit' : 'none'}\n")
   rg_game_main
   rg_headless_finish
 end

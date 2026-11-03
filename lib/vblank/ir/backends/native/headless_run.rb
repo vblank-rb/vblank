@@ -338,6 +338,11 @@ module VBlank
           def write_save_copy(*) = refuse_unanswered!(:write_save_copy)
           def write_save_vars(*) = refuse_unanswered!(:write_save_vars)
 
+          # Which compiler the program's own language turns its code into machine code with, as the
+          # program says itself before its first frame: :yjit or :none from the Ruby lowering's, and
+          # nil from a program that does not say (C needs none, and node's is always on).
+          attr_reader :running_jit
+
           private
 
           def refuse_unanswered!(name)
@@ -460,6 +465,7 @@ module VBlank
                 when /\Aframe (\d+)\z/ then frame = Integer(Regexp.last_match(1))
                                             rows = []
                 when "end" then rows = []
+                when /\Ajit (\w+)\z/ then @running_jit = Regexp.last_match(1).to_sym
                 when /\Asound / then @audio_played << @sound_log.entry_from(line)
                                      @audio << @audio_played.last
                 when "buttons?" then record_frame_and_send_buttons(stdin, frame, rows)

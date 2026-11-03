@@ -112,10 +112,12 @@ module VBlank
 
       # THE PROGRAM A GAME PLAYED AS RUBY RUNS: checked as a build checks it, every guardrail on and
       # their warnings printed to +err+, without making the cartridge (VBlank.build's +cartridge+).
-      # +progress+, +settings+ and +console+ are as for #build_rom.
-      def checked_program(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first)
+      # +progress+, +settings+ and +console+ are as for #build_rom. +for_computer+ is what the game's
+      # `built_for_computer?` answers: true, unless the run is to stand for the cartridge's game.
+      def checked_program(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first,
+                          for_computer: true)
         build_rom(out: nil, err: err, progress: progress, profile: false, settings: settings, console: console,
-                  cartridge: false, for_computer: true)
+                  cartridge: false, for_computer: for_computer)
       end
 
       # The variant the game names for +console+ in `variants:`, or nil.

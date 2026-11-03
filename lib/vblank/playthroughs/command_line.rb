@@ -38,18 +38,27 @@ module VBlank
       # it builds the game, and that takes a while. +export_cartridge+ makes the Advance's
       # cartridge, which only a tape written out for another emulator needs. +progress+ is told
       # how far the playing has got. Hands back what the playing came to.
+      #
+      # A run written out for another emulator is counted in passes (unless --in-passes names a
+      # variable to count), since a pass is the one thing the run here and the cartridge share:
+      # the export then plays those passes on the cartridge in the emulator to find the frame each
+      # fell on (Tape#in_frames_on). A tape of frames is refused for an export, since its frames
+      # are the run's here and not the cartridge's.
       def play(on:, window:, export_cartridge:, progress: Messages::Progress.silent)
+        @settings_with_flags = RUN_SETTINGS_WITH_FLAGS
         saying_errors_plainly do
           refuse_flags_beside_logic!(on)
           refuse_in_passes_beside_tape!
           playing = tape_or_playthrough(lead_in_flag: :lead_in)
+          refuse_export_of_frames!(playing)
           lead_in = lead_in_named(options[:lead_in])
           refuse_unwritable_file!(:write_tape)
           game = yield
           in_window_if_asked(game, window) do |device|
             settings = { lead_in: lead_in, pictures_in: options[:pictures_in], on: WAYS.fetch(on), window: device,
                          progress: progress }
-            settings[:in_passes] = in_passes_asked if in_passes_asked
+            counted = in_passes_asked || (true if exporting? && !options[:tape])
+            settings[:in_passes] = counted if counted
             playing.play(game, **settings).tap do |played|
               say_frames_and_moments(played, playing, game)
               write_tapes(played, export_cartridge)
@@ -57,6 +66,9 @@ module VBlank
           end
         end
       end
+
+      # Whether the presses are to be written out for another emulator.
+      def exporting? = !!(options[:write_mgba_script] || options[:write_bk2])
 
       # Everything a playing with nobody at the controls is told on the command line, and so
       # nothing a person playing needs: each is refused without --tape or --script.
@@ -111,6 +123,9 @@ module VBlank
       # On the command line each is the flag of the same name.
       SETTINGS_WITH_FLAGS = (Comparison.settings + %i[lead_in pictures_in]).freeze
 
+      # ...and the ones `vblank run` has a flag for, which are fewer: it starts no game from a save.
+      RUN_SETTINGS_WITH_FLAGS = %i[lead_in pictures_in in_passes].freeze
+
       # What a playing or a comparison stops with that is the caller's to fix: a setting that
       # makes no sense, a game that would not build (the checks stopped it, or its console's
       # lowering refused it), a wait that never ended, a reading that could not be read, a
@@ -125,7 +140,7 @@ module VBlank
       # A message from the library names a setting the way Ruby writes it (`ignoring_frames:`).
       # The message is kept as it is, and a line under it says which flag that setting is.
       def message_with_flags(message)
-        named = message.scan(/`(\w+):/).flatten.uniq.map(&:to_sym) & SETTINGS_WITH_FLAGS
+        named = message.scan(/`(\w+):/).flatten.uniq.map(&:to_sym) & (@settings_with_flags || SETTINGS_WITH_FLAGS)
         return message if named.empty?
 
         "#{message}\nOn the command line, #{named.map { |setting| "`#{setting}:` is #{flag_of(setting)}" }.join(', and ')}."
@@ -137,6 +152,16 @@ module VBlank
       def in_passes_asked
         said = options[:in_passes] or return nil
         said == Tape::COUNTS_PASSES ? true : said.to_sym
+      end
+
+      # A tape of frames made here is a pass a frame, which is not how the cartridge plays it.
+      def refuse_export_of_frames!(playing)
+        return unless exporting? && playing.is_a?(Tape) && playing.in_passes.nil?
+
+        raise Refused, "The tape #{options[:tape]} counts frames. Here a game plays one pass each frame, and on the " \
+                       "cartridge a pass can take more than one frame, so the frames of the tape are not the frames " \
+                       "of the cartridge. To write a run for an emulator, play the script with --script and " \
+                       "--write-mgba-script or --write-bk2. The run is then counted in passes."
       end
 
       # A tape says for itself what it counts.
@@ -196,6 +221,11 @@ module VBlank
       # A tape says what it was recorded from, and the same presses from anywhere else are a
       # different game. What it needs is asked for by its flag, before anything is built.
       def refuse_tape_missing_start!(tape, lead_in_flag)
+        if tape.recorded_from_save? && lead_in_flag == :lead_in
+          raise Refused, "The tape #{options[:tape]} was recorded on a cartridge that started from a save. vblank run " \
+                         "starts every game from power-on, so it does not play this tape. To play it, start the " \
+                         "cartridge from that save in Ruby: `tape.play(cartridge, save: \"game.sav\")`."
+        end
         if tape.recorded_from_save? && !options[:save]
           raise Refused, "The tape #{options[:tape]} was recorded from a save. Give that save with --save."
         end

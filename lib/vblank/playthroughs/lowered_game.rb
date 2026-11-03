@@ -72,6 +72,10 @@ module VBlank
       # game that has ended finishes no more.
       def passes = @frames
 
+      # :yjit or :none, as the Ruby that plays a game built as Ruby says of itself; nil for a way that
+      # does not say (the interpreter runs in this Ruby, C needs no compiler, node's is always on).
+      def running_jit = (@run.running_jit if @run.respond_to?(:running_jit))
+
       def var(name) = @run[name]
       def list(name) = @run.list(name)
       def pool(name, field) = @run.pool(name, field)

@@ -21,7 +21,14 @@ module VBlank
 
           # The script is played by the Ruby running this, without RubyGems, which nothing in it
           # needs, and without the bundler settings a test run under `bundle exec` would hand on.
-          def program_command(script) = [PROGRAM_ENVIRONMENT, RbConfig.ruby, "--disable-gems", script]
+          #
+          # It runs with YJIT when this Ruby does, and without when this one does not. YJIT is
+          # what makes a game played as Ruby several times faster, and `vblank run` turns it on in
+          # its own Ruby (or not, with --no-yjit): the Ruby that actually plays the game is this
+          # one's child, which inherits none of that, so it is told on its command line.
+          def program_command(script) = [PROGRAM_ENVIRONMENT, RbConfig.ruby, "--disable-gems", *jit_flags, script]
+
+          def jit_flags = defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? ["--yjit"] : []
 
           def lowering_name = "the Ruby lowering"
           def skip_helper_name = "skip_on_ruby"

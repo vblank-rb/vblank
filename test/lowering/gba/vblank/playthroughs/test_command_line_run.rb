@@ -20,13 +20,45 @@ class TestCommandLineRun < Minitest::Test
   BLUE = [0, 0, 255].freeze
   WHITE = [255, 255, 255].freeze
 
-  # A script that asks the process playing it whether YJIT is on. Its block runs in that process,
-  # so a wait that gives up says YJIT was off there.
+  # A script that asks the Ruby the game runs in whether YJIT is on there. The game runs in a Ruby
+  # of its own, which says so itself (`running_jit`), so a wait that gives up says YJIT was off in
+  # the process that plays the game, whatever the command's own Ruby has.
   ASK_THE_JIT = <<~RUBY
     VBlank.playthrough "ask the jit" do
-      wait_until("YJIT is on", within: 1) { |game| RubyVM.const_defined?(:YJIT) && RubyVM::YJIT.enabled? }
+      wait_until("YJIT is on", within: 1) { |game| game.running_jit == :yjit }
     end
   RUBY
+
+  # A walker that is heavy every fourth pass: on the cartridge that pass takes more than a frame,
+  # so the frames the cartridge plays are more than the passes. Built for a computer it walks four
+  # pixels a pass, and on a cartridge two.
+  HEAVY_WALKER = <<~RUBY
+    require "vblank"
+
+    VBlank.game "HEAVY", consoles: %i[gba gbc] do
+      screen :bitmap
+      step = built_for_computer? ? 4 : 2
+      pass = var :pass, 0
+      spent = var :spent, 0
+      x = var :x, 20
+      game_loop do
+        pass += 1
+        x += step if held(:right)
+        repeat(3000) { spent += 1 } if (pass & 3) == 0
+        clear_screen :blue
+        draw_rect_at x, 60, 8, 8, :white
+      end
+    end
+  RUBY
+
+  # A tape that says it started from a save.
+  FROM_A_SAVE = <<~TAPE
+    vblank tape 1
+    recorded on: WALKER 0x00000000
+    starts from: a save 0x1A2B3C4D
+
+    10 -
+  TAPE
 
   # THE RUN COMMAND ON A GAME FILE AND A SCRIPT says, in its first line, that there is no window,
   # what runs the game and how to get one; then that it builds the game; then what was played. It
@@ -142,6 +174,77 @@ class TestCommandLineRun < Minitest::Test
       assert status.success?, out
       assert_match(/Wrote the mGBA script to .*walk\.lua\./, out)
       assert File.file?(File.join(dir, "walk.lua"))
+    end
+  end
+
+  # THE EXPORT IS IN THE CARTRIDGE'S FRAMES. The run is counted in passes, and the passes are
+  # played on the cartridge in the emulator to find the frame each fell on: the heavy walker takes
+  # more frames there than passes, so the movie has more frames than the tape has passes.
+  def test_an_export_is_the_cartridges_frames_for_the_passes_played
+    with_game_and_scripts do |dir|
+      File.write(File.join(dir, "heavy.rb"), HEAVY_WALKER)
+      out, status = cli("run", "heavy.rb", "--console", "gba", "--script", "walk.rb", "--write-tape", "walk.tape",
+                        "--write-bk2", "walk.bk2", dir: dir)
+
+      assert status.success?, out
+      assert_includes File.read(File.join(dir, "walk.tape")), "counts: passes\n"
+      movie, unzipped = Open3.capture2("unzip", "-p", File.join(dir, "walk.bk2"), "Input Log.txt")
+      skip_on_this_machine "unzip is not installed" unless unzipped.success?
+      assert_operator movie.lines.grep(/\A\|/).length, :>, 60, "sixty passes take more frames on the cartridge"
+    end
+  end
+
+  # AN EXPORTED RUN IS THE CARTRIDGE'S GAME. A cartridge answers `built_for_computer?` with false,
+  # so a run written out for an emulator is played as the cartridge is built: the walker takes two
+  # pixels a pass, and reaches sixty after twenty passes of RIGHT, where with no export it takes ten.
+  def test_an_exported_run_plays_the_game_the_cartridge_holds
+    with_game_and_scripts do |dir|
+      File.write(File.join(dir, "heavy.rb"), HEAVY_WALKER)
+      to_sixty = ["run", "heavy.rb", "--console", "gba", "--script", "several.rb", "--playthrough", "walk to sixty"]
+
+      alone, = cli(*to_sixty, dir: dir)
+      exported, status = cli(*to_sixty, "--write-bk2", "walk.bk2", dir: dir)
+
+      assert status.success?, exported
+      assert_match(/arrived +frame 20$/, alone)
+      assert_match(/arrived +frame 30$/, exported)
+    end
+  end
+
+  # AN EXPORT IS FOR THE ADVANCE'S CARTRIDGE, so another console is refused before anything is built.
+  def test_an_export_for_another_console_is_refused_before_the_build
+    with_game_and_scripts do |dir|
+      File.write(File.join(dir, "heavy.rb"), HEAVY_WALKER)
+      File.write(File.join(dir, "color.rb"), HEAVY_WALKER.sub("%i[gba gbc]", "%i[gbc]"))
+      File.write(File.join(dir, "color_first.rb"), HEAVY_WALKER.sub("%i[gba gbc]", "%i[gbc gba]"))
+      {
+        ["heavy.rb", "--console", "gbc"] => /--console gba/,
+        ["color_first.rb"] => /--console gba/,
+        ["color.rb"] => /COLOR|Game Boy Advance/,
+      }.each do |args, says|
+        out, status = cli("run", *args, "--script", "walk.rb", "--write-mgba-script", "walk.lua", dir: dir)
+
+        refute status.success?, args.inspect
+        assert_match(says, out, args.inspect)
+        assert_match(/Game Boy Advance/, out, args.inspect)
+        refute_match(/Building/, out, "refused before the build: #{args.inspect}")
+      end
+    end
+  end
+
+  # A TAPE THAT STARTS FROM A SAVE is not played by this command, which starts every game from
+  # power-on, and the words say how it is played, with no flag the command does not have.
+  def test_a_tape_from_a_save_says_how_it_is_played
+    with_game_and_scripts do |dir|
+      File.write(File.join(dir, "saved.tape"), FROM_A_SAVE)
+
+      out, status = cli("run", "walker.rb", "--tape", "saved.tape", dir: dir)
+
+      refute status.success?, out
+      assert_match(/from a save/, out)
+      assert_match(/power-on/, out)
+      assert_match(/save:/, out)
+      refute_match(/with --save/, out)
     end
   end
 

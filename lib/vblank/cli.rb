@@ -935,12 +935,15 @@ module VBlank
     # The checked program of +game+, as the console --console names plays it, or the first the game
     # names, saying so when there was a choice. The Ruby runtime draws whichever console's screen
     # the program is for. The game plays as Ruby, so no cartridge is made for it.
-    def program_to_run(game)
-      console = console_to_play(game)
+    #
+    # +for_computer+ is what the game's `built_for_computer?` answers. A run written out for an
+    # emulator is built as the cartridge is, with false, so the run is the game the cartridge holds.
+    def program_to_run(game, console: console_to_play(game), for_computer: true)
       # A big game takes a while to read and check, and somebody is waiting for the window. It
       # says so before it starts, since the first phase can take most of a minute.
       say "Building #{game.title}. A big game can take a minute."
-      game.checked_program(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console)
+      game.checked_program(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console,
+                           for_computer: for_computer)
     rescue ArgumentError, VBlank::BuildError => e
       raise Thor::Error, e.message
     end
@@ -1070,12 +1073,14 @@ module VBlank
     def play_unattended(game_file, way)
       window = options[:window].nil? ? way != VBlank::Playthroughs::LoweredGame::LOGIC && $stdout.tty? : options[:window]
       say window ? "A window shows the play. #{runner_words(way).delete_suffix(',')} runs the game." : no_window_line(way)
+      refuse_export_for_other_console!
       command = VBlank::Playthroughs::CommandLine.new(options, out: $stdout, build: nil)
       game = nil
-      export = -> { game.build_rom(settings: given_settings, console: :gba) }
+      export = -> { game.build_rom(settings: given_settings, console: EXPORTED_CONSOLE) }
       command.play(on: way, window: window, export_cartridge: export, progress: VBlank::Messages::Progress.to($stderr)) do
         game = load_game(game_file)
-        program = program_to_run(game)
+        refuse_export_for_other_console!(game)
+        program = exporting? ? program_to_run(game, console: EXPORTED_CONSOLE, for_computer: false) : program_to_run(game)
         VBlank::Playthroughs::UnbuiltGame.new(program, title: game.title,
                                                        source: [File.binread(game_file), given_settings, program.console])
       end
@@ -1084,6 +1089,31 @@ module VBlank
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game&.title || game_file} as Ruby yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Give another way with --on, such as --on native."
+    end
+
+    # The console whose cartridge a tape is written out for: mGBA's script and BizHawk's movie are
+    # lists of frames for one Game Boy Advance cartridge.
+    EXPORTED_CONSOLE = :gba
+
+    def exporting? = !!(options[:write_mgba_script] || options[:write_bk2])
+
+    # A tape is written out for the Advance's cartridge, and the run has to be that console's game, so
+    # anything else is refused before the build and the play: from the options alone, and then,
+    # with +game+ loaded, a game that is not for the Advance or names another console first.
+    def refuse_export_for_other_console!(game = nil)
+      return unless exporting?
+
+      said = "--write-mgba-script and --write-bk2 write the tape for a Game Boy Advance cartridge, so the game " \
+             "must play as the Game Boy Advance."
+      asked = options[:console]
+      raise Thor::Error, "#{said} To fix this, use --console gba in place of --console #{asked}." if asked && asked != "gba"
+      return if game.nil?
+      unless game.consoles.include?(EXPORTED_CONSOLE)
+        raise Thor::Error, "#{said} #{game.title} is not for the Game Boy Advance. To fix this, add :gba to its consoles:."
+      end
+      return if asked || game.consoles.first == EXPORTED_CONSOLE
+
+      raise Thor::Error, "#{said} #{game.title} plays first as another console. To fix this, add --console gba."
     end
 
     # "No window: the output is not a terminal. Ruby 3.4.1, with YJIT, runs the game as fast as this
