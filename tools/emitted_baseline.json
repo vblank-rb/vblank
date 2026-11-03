@@ -220,6 +220,14 @@
     "tower@genesis": {
       "code": 7324,
       "data": 3728
+    },
+    "wanderers": {
+      "code": 2320,
+      "data": 0
+    },
+    "wanderers@gbc": {
+      "code": 8018,
+      "data": 5600
     }
   }
 }
