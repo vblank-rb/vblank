@@ -65,9 +65,10 @@ module VBlank
           # A table the chip reads: the label of its entries, how many it has, and how each is kept
           # (bytes, and whether it has a sign).
           TableRead = Data.define(:label, :count, :bytes, :signed)
-          # A picture whose columns the chip draws: its size, and the label of the table of where
-          # each of its columns starts in the cartridge (Lowering::Paint), four bytes a column.
-          ColumnPicture = Data.define(:width, :height, :starts)
+          # A picture whose columns the chip draws: its size, the label of the table of where each of
+          # its columns starts in the cartridge (Lowering::Paint), four bytes a column, and whether
+          # it has see-through pixels.
+          ColumnPicture = Data.define(:width, :height, :starts, :see_through)
           # A list the chip reads and writes: its 16-bit place in the chip's RAM (its header, then its
           # slots, as Runtime::Lists lays them out), how many bytes a slot takes, and whether the
           # game takes items from its front anywhere, which makes its slots a ring.
@@ -95,10 +96,8 @@ module VBlank
           FIRST_NUMBER = Runtime::ChipPaint::NUMBERS - Runtime::ChipPaint::COPY
           NUMBERS_END = Runtime::ChipPaint::NUMBERS_END - Runtime::ChipPaint::COPY
 
-          # The chip's own numbers for a column it draws (#emit_draw_column_at), named so no game's
-          # variable can be one of them.
-          COLUMN_NUMBERS = Ractor.make_shareable(%i[height slice x left top first last at step rows y texels texel_bank]
-                                                   .to_h { |what| [what, :"chip column #{what}"] })
+          # Where painting is held to, as the console hands it over, named so no game's variable can
+          # be one of them.
           AREA = Ractor.make_shareable(%i[left top right bottom].map { |edge| :"chip paint area #{edge}" })
 
           # A shift by a number written in the program is written in place up to this many steps
@@ -147,11 +146,11 @@ module VBlank
           # The words of the chip's RAM a painting run reads and writes (Runtime::ChipColumns::Places).
           def paint_places
             @paint_places ||= Runtime::ChipColumns::Places.new(
-              **%i[x y rows at step texels texel_bank].to_h { |what| [what, place_of(COLUMN_NUMBERS.fetch(what))] },
-              back: place_of(:"chip column back", bytes: 2), generation: place_of(:"chip paint generation", bytes: 2),
+              **Runtime::ChipColumns::BYTES.to_h { |what, bytes| [what, place_of(:"chip columns #{what}", bytes: bytes)] },
+              generation: place_of(:"chip paint generation", bytes: 2),
               clear: place_of(:"chip paint clear", bytes: 8), dirty: place_of(:"chip paint dirty", bytes: Runtime::Paint::ROWS * 4),
               readied_count: place_of(:"chip paint readied count", bytes: 2),
-              readied: place_of(:"chip paint readied", bytes: Runtime::Paint::TILES * 2)
+              readied: place_of(:"chip paint readied", bytes: Runtime::Paint::TILES * 2), area: area_places
             )
           end
 
@@ -263,15 +262,22 @@ module VBlank
             @depth = 0
             @routines.each { |name| emit_entry(name) }
             @routines.each { |name| emit_routine(name) }
+            paints = @routines.any? { |name| paints?(name) }
+            @sums_called |= [Sums::MULTIPLY] if paints
             Sums.emit(@gsu, @sums_called, back: place_of(:sum_back, bytes: 2), kept: place_of(:sum_kept, bytes: 2))
-            Runtime::ChipColumns.emit(@gsu, paint_places) if @routines.any? { |name| paints?(name) }
+            Runtime::ChipColumns.emit(@gsu, paint_places, multiply: Sums::MULTIPLY) if paints
             @gsu.section
           end
 
-          # Where the console starts the chip: the routine, and STOP.
+          # Where the console starts the chip: the routine, and STOP. A run that paints holds the
+          # columns it draws back to paint them together (Runtime::ChipColumns), and paints the last
+          # of them before it stops.
           def emit_entry(name)
             @gsu.label(self.class.entry_label(name))
+            paints = paints?(name)
+            emit_call_of(Runtime::ChipColumns::START) if paints
             emit_call_of(self.class.routine_label(name))
+            emit_call_of(Runtime::ChipColumns::FINISH) if paints
             @gsu.stop
           end
 
@@ -410,9 +416,10 @@ module VBlank
           # Reference#exec_repeat: the count worked out once, the index counting 0, 1, 2... and stored
           # in the game's variable at the top of each pass, and +stop_when+ asked BEFORE the body.
           #
-          # CACHE before the top keeps the first 512 bytes from here in the chip's quick memory, where
-          # a byte takes a fifth of the time it takes from the ROM. It only costs the once: a loop that
-          # starts it is a loop that goes round.
+          # CACHE at the top keeps the first 512 bytes from here in the chip's quick memory, where a
+          # byte takes a fifth of the time it takes from the ROM. It is asked again each time round,
+          # which costs a cycle when nothing has moved the quick memory since: a routine the body
+          # calls may have moved it to its own code, and the loop would go on from the ROM.
           def emit_repeat(node)
             count = local_place(node, :count)
             index = local_place(node, :index)
@@ -424,8 +431,8 @@ module VBlank
             @gsu.sm(index + 2, LOW)
             top = fresh("repeat")
             done = fresh("end_repeat")
-            @gsu.cache
             @gsu.label(top)
+            @gsu.cache
             load_place(index, LOW, HIGH)
             load_place(count, RIGHT_LOW, RIGHT_HIGH)
             emit_flags_of_less(LOW, HIGH, RIGHT_LOW, RIGHT_HIGH)
@@ -465,46 +472,70 @@ module VBlank
 
           # --- a picture's column ---
 
-          # Reference#exec_draw_column_at, worked out as Lowering::Paint#emit_column_walk works it out
-          # on the console: a height of nought or less draws nothing; the step down the picture is
-          # its height in 65536ths over the column's; only the rows on the screen and inside the
-          # area are walked, and where the walk stands at the first of them is that row times the
-          # step. Then Runtime::ChipColumns paints it, once for each column of the strip that is
-          # inside the area across.
+          # Reference#exec_draw_column_at: a height of nought or less draws nothing. Any other column
+          # goes on Runtime::ChipColumns's queue as its numbers are now (its x, top and height, and
+          # where the picture's column +slice+ starts in the cartridge), with what is known of the
+          # picture and the strip as the game is built, and the queue is worked through when it is
+          # full. ChipColumns works out the rest as the console's lowering does
+          # (Lowering::Paint#emit_column_walk).
           def emit_draw_column_at(node)
             picture = @columns.fetch(node.name)
-            number = ->(what) { Build.var_ref(COLUMN_NUMBERS.fetch(what)) }
-            left, top_edge, right, bottom = AREA.map { |name| Build.var_ref(name) }
             done = fresh("no_column")
             value(node.height)
-            store(COLUMN_NUMBERS.fetch(:height))
-            jump_unless(Build.binop(:>, number.(:height), Build.int(0)), done)
-            [[:slice, Build.clamped(node.slice, Build.int(0), Build.int(picture.width - 1))], [:left, node.x],
-             [:top, node.top], [:step, Build.binop(:/, Build.int(picture.height << Reference::FIXED), number.(:height))],
-             [:first, Build.clamped(Build.binop(:-, top_edge, number.(:top)), Build.int(0), Build.int(Int32::MAX))],
-             [:last, Build.clamped(number.(:height), Build.int(Int32::MIN), Build.binop(:-, bottom, number.(:top)))]]
-              .each { |what, sum| value(sum).then { store(COLUMN_NUMBERS.fetch(what)) } }
-            jump_unless(Build.binop(:<, number.(:first), number.(:last)), done)
-            [[:at, Build.binop(:*, number.(:first), number.(:step))], [:rows, Build.binop(:-, number.(:last), number.(:first))],
-             [:y, Build.binop(:+, number.(:top), number.(:first))]]
-              .each { |what, sum| value(sum).then { store(COLUMN_NUMBERS.fetch(what)) } }
+            @gsu.moves(0, HIGH)
+            emit_branch(:bmi, done)
+            @gsu.from(HIGH).to(0).or_(LOW)
+            emit_branch(:beq, done)
+            emit_queued(Runtime::ChipColumns::HEIGHT)
+            value(Build.clamped(node.slice, Build.int(0), Build.int(picture.width - 1)))
             emit_column_start(picture)
-            (node.width || 1).times do |across|
-              beside = fresh("column_beside")
-              value(Build.binop(:+, number.(:left), Build.int(across)))
-              store(COLUMN_NUMBERS.fetch(:x))
-              jump_unless(Build.binop(:>=, number.(:x), left), beside)
-              jump_unless(Build.binop(:<, number.(:x), right), beside)
-              emit_call_of(Runtime::ChipColumns::ROUTINE)
-              @gsu.label(beside)
-            end
+            emit_queued(Runtime::ChipColumns::TEXELS)
+            value(node.x)
+            emit_queued(Runtime::ChipColumns::X)
+            value(node.top)
+            emit_queued(Runtime::ChipColumns::TOP)
+            emit_column_queued(picture, node.width || 1)
             @gsu.label(done)
           end
 
-          # Where the picture's column +slice+ starts in the cartridge, read from its table of
-          # starts (three bytes of four: the address, then the bank), into the column's numbers.
+          # LOW and HIGH into the column at the end of the queue, +offset+ bytes into it.
+          def emit_queued(offset)
+            @gsu.lm(6, paint_places.queue_end)
+            unless offset.zero?
+              @gsu.ibt(0, offset)
+              @gsu.with(6).add(0)
+            end
+            @gsu.from(LOW).stw(6)
+            2.times { @gsu.inc(6) }
+            @gsu.from(HIGH).stw(6)
+          end
+
+          # The rest of the column at the end of the queue (the picture's height, the strip's width,
+          # whether the picture has see-through pixels), the queue moved on past it, and worked
+          # through when full.
+          def emit_column_queued(picture, width)
+            columns = Runtime::ChipColumns
+            places = paint_places
+            worked = fresh("queue_room")
+            @gsu.lm(6, places.queue_end)
+            @gsu.ibt(0, columns::PICTURE_HEIGHT)
+            @gsu.with(6).add(0)
+            [picture.height, width, picture.see_through ? 1 : 0].each do |word|
+              @gsu.iwt(0, word)
+              @gsu.stw(6)
+              2.times { @gsu.inc(6) }
+            end
+            @gsu.sm(places.queue_end, 6)
+            @gsu.iwt(0, places.queue_limit)
+            @gsu.from(6).cmp(0)
+            emit_branch(:bne, worked)
+            emit_call_of(columns::PROCESS)
+            @gsu.label(worked)
+          end
+
+          # Where the picture's column LOW starts in the cartridge, read from its table of starts
+          # (three bytes of four: the address, then the bank), into LOW and HIGH.
           def emit_column_start(picture)
-            load_variable(COLUMN_NUMBERS.fetch(:slice), LOW, HIGH)
             2.times { @gsu.with(LOW).add(LOW) }
             @gsu.ibt_bank_of(0, picture.starts)
             @gsu.romb
@@ -513,8 +544,6 @@ module VBlank
             emit_word_read(LOW)
             @gsu.inc(14)
             @gsu.to(HIGH).getb
-            @gsu.sm(place_of(COLUMN_NUMBERS.fetch(:texels)), LOW)
-            @gsu.sm(place_of(COLUMN_NUMBERS.fetch(:texel_bank)), HIGH)
           end
 
           # --- lists ---

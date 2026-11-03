@@ -143,11 +143,17 @@ module VBlank
               end
               columns = chip_column_pictures.to_h do |name|
                 image = Assets::Image.of(picture_named(name))
-                [name, ChipCode::ColumnPicture.new(width: image.width, height: image.height, starts: "column starts of #{name}")]
+                see_through = (0...(image.width * image.height)).any? { |at| !image.drawn_at?(at) }
+                [name, ChipCode::ColumnPicture.new(width: image.width, height: image.height, starts: chip_column_starts(name),
+                                                   see_through: see_through)]
               end
               @chip_code = ChipCode.new(routines: @chip_routines, funcs: @funcs, plan: @plan, holds: ROUTINES,
                                         tables: tables, lists: @chip_lists, columns: columns, numbers_end: @chip_numbers_end)
             end
+
+            # The label of the table of where each column of the picture +name+ starts, as the chip
+            # reads it (Lowering::Paint#column_sections).
+            def chip_column_starts(name) = "chip column starts of #{name}"
 
             # The pictures a run of a chip routine draws columns of (draw_column_at), by name.
             def chip_column_pictures
@@ -174,6 +180,7 @@ module VBlank
               paints = @chip_code.paints?(name)
               emit_paint_handed_to_chip if paints
               value(LongAddress.new(ChipCode.entry_label(name)))
+              emit_plotting_layout if paints
               call_routine("rt_chip_run")
               @chip_code.variables_changed(name).product(HALVES).each do |(variable, at), half|
                 @asm.lda(@asm.long(chip_ram_address(at) + half))
@@ -181,6 +188,21 @@ module VBlank
               end
               emit_paint_taken_from_chip if paints
               emit_chip_fault_check(name) if faults
+            end
+
+            # A run that paints plots (Runtime::ChipColumns), so the chip is told how the picture it
+            # plots into is laid out: rt_chip_run puts R0's fourth byte in SCMR, whose two low bits
+            # say eight bits a pixel. Where in its RAM the picture starts (SCBR) is its first byte,
+            # where Paint's copy is.
+            PLOTS_256_COLORS = 0x03
+
+            def emit_plotting_layout
+              @asm.lda(@asm.direct(R0 + 2))
+              @asm.ora(PLOTS_256_COLORS << 8)
+              @asm.sta(@asm.direct(R0 + 2))
+              @asm.sep(0x20)
+              @asm.stz(@asm.abs(Console::SNESHardware::GSU_SCBR))
+              @asm.rep(0x20)
             end
 
             # What a run that paints needs of the painted screen, which the chip cannot see in work

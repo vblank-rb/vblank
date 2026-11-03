@@ -57,8 +57,15 @@ module VBlank
 
             def painted? = @painted
 
-            # Does the game draw columns of pictures (Runtime::Paint's rt_paint_column)?
-            def paints_columns? = @painted && @reachable.any? { |node| node.kind == :draw_column_at }
+            # Does the game draw columns of pictures on the console (Runtime::Paint's
+            # rt_paint_column)? Columns drawn in a routine on the Super FX chip are the chip's own
+            # (Runtime::ChipColumns).
+            def paints_columns?
+              return false unless @painted
+
+              on_chip = @chip_routines.flat_map { |name| Reach.statements_under(@funcs.fetch(name)) }.to_h { |node| [node.object_id, true] }
+              @reachable.any? { |node| node.kind == :draw_column_at && !on_chip[node.object_id] }
+            end
 
             # The numbers a column is handed over in, kept before any routine is made, since a routine
             # can be lowered more than once.
@@ -69,11 +76,17 @@ module VBlank
             end
 
             # The routine that draws a column of each picture drawn so on the console, and the table of
-            # its columns for each picture drawn so on the console or the Super FX chip.
+            # its columns for each picture drawn so on the console or the Super FX chip. The chip's
+            # tables are their own: a see-through pixel is place 0 there, and black another place
+            # (PaintedArt#place_never_nought).
             def column_sections
-              (@column_routines.keys | chip_column_pictures).each do |name|
+              @column_routines.each_key do |name|
                 image = Assets::Image.of(picture_named(name))
-                @column_tables[name] = Array.new(image.width) { |slice| column_places(image, slice) }
+                @column_tables["column starts of #{name}"] = Array.new(image.width) { |slice| column_places(image, slice) }
+              end
+              chip_column_pictures.each do |name|
+                image = Assets::Image.of(picture_named(name))
+                @column_tables[chip_column_starts(name)] = Array.new(image.width) { |slice| chip_column_places(image, slice) }
               end
               @column_routines.map do |name, label|
                 image = Assets::Image.of(picture_named(name))
@@ -131,23 +144,23 @@ module VBlank
             # a wall of many pictures side by side can be bigger than a bank. Where each column
             # starts is a table of its own, in the part that does not move.
             def column_table_sections
-              @column_tables.flat_map do |name, columns|
-                starts = W65816.new("column starts of #{name}", holds: Picture::ART)
-                starts.label("column starts of #{name}")
+              @column_tables.flat_map do |label, columns|
+                starts = W65816.new(label, holds: Picture::ART)
+                starts.label(label)
                 columns.each_index do |slice|
-                  starts.data_longs("column #{name}.#{slice}")
+                  starts.data_longs("#{label}, column #{slice}")
                   starts.data_bytes(0)
                 end
                 [starts.section, *columns.each_slice(ROWS_A_SECTION / columns.first.length).with_index.map do |part, number|
-                  column_bytes_section(name, part, number * (ROWS_A_SECTION / columns.first.length))
+                  column_bytes_section(label, part, number * (ROWS_A_SECTION / columns.first.length))
                 end]
               end
             end
 
-            def column_bytes_section(name, columns, first)
-              asm = W65816.new("column bytes of #{name}, from #{first}", holds: Picture::ART)
+            def column_bytes_section(label, columns, first)
+              asm = W65816.new("#{label}, columns from #{first}", holds: Picture::ART)
               columns.each_with_index do |places, number|
-                asm.label("column #{name}.#{first + number}")
+                asm.label("#{label}, column #{first + number}")
                 asm.data_bytes(places)
               end
               asm.section
@@ -157,6 +170,13 @@ module VBlank
               Array.new(image.height) do |row|
                 at = (row * image.width) + slice
                 image.drawn_at?(at) ? @painted_art.place_of(image.color_at(at)) : SEE_THROUGH
+              end
+            end
+
+            def chip_column_places(image, slice)
+              Array.new(image.height) do |row|
+                at = (row * image.width) + slice
+                image.drawn_at?(at) ? @painted_art.place_never_nought(image.color_at(at)) : 0
               end
             end
 

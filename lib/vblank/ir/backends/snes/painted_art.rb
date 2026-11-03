@@ -55,11 +55,28 @@ module VBlank
           # The place of +color+ (15-bit) in the colour list, added there the first time.
           def place_of(color)
             @places[color] ||= begin
-              if @colors.length >= COLORS
-                raise TooMuch, "This game paints more than #{COLORS} different colours. A Super Nintendo shows " \
-                               "#{COLORS} colours on a painted screen. To fix this, use fewer colours."
-              end
+              refuse_too_many_colors! if @colors.length >= COLORS
               @colors << color
+              @colors.length - 1
+            end
+          end
+
+          def refuse_too_many_colors!
+            raise TooMuch, "This game paints more than #{COLORS} different colours. A Super Nintendo shows " \
+                           "#{COLORS} colours on a painted screen. To fix this, use fewer colours."
+          end
+
+          # The place of +color+ where place 0 may not stand for it: black, which is place 0, gets a
+          # place of its own besides, the same black. The Super FX's PLOT leaves a pixel of place 0
+          # as it was (Runtime::ChipColumns), so a picture it paints keeps place 0 for its
+          # see-through pixels and paints its black from this other place.
+          def place_never_nought(color)
+            place = place_of(color)
+            return place unless place.zero?
+
+            @black_twin ||= begin
+              refuse_too_many_colors! if @colors.length >= COLORS
+              @colors << BLACK
               @colors.length - 1
             end
           end
