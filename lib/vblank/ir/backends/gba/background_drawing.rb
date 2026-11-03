@@ -962,9 +962,26 @@ module VBlank
             # cartridge and would otherwise put the colours the tiles were DRAWN in back over
             # these groups. See PaletteTint#emit_recolored_banks, which reads this.
             store_var(ACC, lists.at)
-            # One list into each group the layer's tiles read, side by side in the version. The
-            # groups themselves need not be side by side, so each is a copy of its own.
-            lists.banks.each_with_index do |bank, at|
+            return emit_groups_send(lists, lists.banks) unless lists.area_bytes
+
+            # A walking layer's groups are the area's that is up: each area hands its groups out
+            # again, and another walking layer can be drawing from one of this area's.
+            lists.banks.each_with_index do |groups, set|
+              other_area = gensym
+              load_var(TMP, bg.sets.var)
+              emit(ASM.cmp_imm(TMP, set))
+              emit_branch(:bcond, other_area, cond: :ne)
+              load_var(ACC, lists.at)
+              emit_groups_send(lists, groups)
+              place_label(other_area)
+            end
+          end
+
+          # One list into each of +groups+, side by side in the version that ACC and +lists+'s
+          # variable hold where it starts. The groups themselves need not be side by side, so each
+          # is a copy of its own.
+          def emit_groups_send(lists, groups)
+            groups.each_with_index do |bank, at|
               unless at.zero?
                 load_var(ACC, lists.at)
                 emit(ASM.add_imm(ACC, ACC, at * COLOR_LIST_BYTES))

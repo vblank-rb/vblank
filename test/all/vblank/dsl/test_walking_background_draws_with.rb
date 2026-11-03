@@ -112,6 +112,53 @@ class TestWalkingBackgroundDrawsWith < Minitest::Test
     assert_backends_agree(walking_while_borrowed, frames: [5, 7, 8, 12, 14, 16], name: "AREADWW")
   end
 
+  # The shrine borrows its dark list, the game walks into the clearing and back without saying
+  # draw_with again, and the shrine shows the dark list it was told last.
+  private def walking_back_to_a_borrowed_list
+    two_areas do |ground|
+      tick = var :tick, 0
+      room = var :room, 0
+      game_loop do
+        tick += 1
+        ground.draw_with({ shrine_own: :shrine_dark }) if tick == 3
+        room = 1 if tick == 6
+        room = 0 if tick == 9
+        ground.show_map room
+      end
+    end
+  end
+
+  def test_walking_back_to_an_area_shows_the_list_it_borrowed
+    assert_equal shown_pair(:blue, :white), colors_at(walking_back_to_a_borrowed_list, 8), "the clearing as drawn"
+    assert_equal shown_pair(:yellow, :cyan), colors_at(walking_back_to_a_borrowed_list, 12), "the shrine, dark again"
+  end
+
+  def test_the_console_walks_back_to_a_borrowed_list_the_same_way
+    assert_backends_agree(walking_back_to_a_borrowed_list, frames: [5, 8, 12], name: "AREADWB")
+  end
+
+  # The same walk under a blue tint: each area's colours arrive through it, and so does the list it
+  # borrowed.
+  private def walking_while_borrowed_under_a_tint
+    two_areas do |ground|
+      tick = var :tick, 0
+      room = var :room, 0
+      tint :blue, 50
+      game_loop do
+        tick += 1
+        ground.draw_with({ shrine_own: :shrine_dark }) if tick == 3
+        room = 1 if tick == 6
+        ground.draw_with({ clearing_own: :clearing_dark }) if tick == 8
+        room = 0 if tick == 10
+        ground.show_map room
+      end
+    end
+  end
+
+  def test_the_console_walks_while_borrowing_under_a_tint_the_same_way
+    assert_backends_agree(walking_while_borrowed_under_a_tint, frames: [5, 7, 9, 12], name: "AREADWT")
+  end
+
   def test_a_list_none_of_the_areas_draws_from_is_refused
     error = assert_raises(ArgumentError) do
       two_areas { |ground| ground.draw_with({ meadow: :shrine_dark }) }

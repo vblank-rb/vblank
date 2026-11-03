@@ -168,8 +168,9 @@ module VBlank
                           "A fade or a tint that is on then changes them too. A scene or an area that needs " \
                           "more than eight lists, with the lists that every scene shares, is refused. A " \
                           "background that walks between areas can be told `draw_with` when the console holds " \
-                          "the lists of every area at once. If each area brings its own lists in, `draw_with` " \
-                          "on such a background is refused. This build does not make it yet."),
+                          "the lists of every area at once. If the game uses more lists than the console holds " \
+                          "at once, each area brings its own lists in. Then `draw_with` on a background that " \
+                          "walks between areas is refused."),
         status_bar: works("the bar is a layer of its own beside the one background, so a game with a bar " \
                           "still has its background. The bar's tiles and the background's tiles share the " \
                           "room for 512 tiles. A game with a bar cannot have a `screen :bitmap`, because the " \

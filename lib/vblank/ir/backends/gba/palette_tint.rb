@@ -730,23 +730,31 @@ module VBlank
           # +marker+ is the note that says whose groups are up (see SceneEntry): the scenery's
           # for a layer, the sprite pictures' for a list of sprite colours.
           # A group is sixteen colours unless it says how many (the backdrop is one).
+          # A group of a layer that walks between areas says which area it is the layer's in (see
+          # ScreenLayout#walking_restore_banks), and is written only while that area is up.
           def emit_recolored_banks_of(banks, marker, up)
-            banks.each do |dest, source_var, along, scene, units = COLORS_IN_A_BANK|
+            banks.each do |dest, source_var, along, scene, units = COLORS_IN_A_BANK, area = nil|
               next if scene && up != :unknown && scene != up
 
               if scene && up == :unknown
-                @drawing.scene_entry.emit_if_scene_up(marker, scene) { emit_recolored_bank(dest, source_var, along, units) }
+                @drawing.scene_entry.emit_if_scene_up(marker, scene) { emit_recolored_bank(dest, source_var, along, units, area) }
               else
-                emit_recolored_bank(dest, source_var, along, units)
+                emit_recolored_bank(dest, source_var, along, units, area)
               end
             end
           end
 
           # Write one recoloured layer's group again from the list it is showing.
-          def emit_recolored_bank(dest, source_var, along, units = COLORS_IN_A_BANK)
+          def emit_recolored_bank(dest, source_var, along, units = COLORS_IN_A_BANK, area = nil)
+            past = @emitter.gensym
+            if area
+              area_var, number = area
+              @primitives.load_var(TINT_SRC, area_var)
+              @emitter.emit(ASM.cmp_imm(TINT_SRC, number))
+              @emitter.emit_branch(:bcond, past, cond: :ne)
+            end
             @primitives.load_var(TINT_SRC, source_var)
             @emitter.emit(ASM.cmp_imm(TINT_SRC, 0))
-            past = @emitter.gensym
             @emitter.emit_branch(:bcond, past, cond: :eq)
             @emitter.emit(ASM.add_imm(TINT_SRC, TINT_SRC, along)) unless along.zero?
             emit_blend_run(dest, units)
