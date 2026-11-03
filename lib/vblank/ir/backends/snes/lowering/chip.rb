@@ -91,14 +91,14 @@ module VBlank
 
             def emit_chip_run(name)
               @chip_code.variables_sent(name).product(HALVES).each do |(variable, at), half|
-                @asm.lda(@asm.abs(place_of(variable) + half))
+                @asm.lda(at_place(place_of(variable) + half))
                 @asm.sta(@asm.long(chip_ram_address(at) + half))
               end
               value(LongAddress.new(ChipCode.entry_label(name)))
               call_routine("rt_chip_run")
               @chip_code.variables_changed(name).product(HALVES).each do |(variable, at), half|
                 @asm.lda(@asm.long(chip_ram_address(at) + half))
-                @asm.sta(@asm.abs(place_of(variable) + half))
+                @asm.sta(at_place(place_of(variable) + half))
               end
             end
 

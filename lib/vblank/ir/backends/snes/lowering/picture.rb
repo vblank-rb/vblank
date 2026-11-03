@@ -1165,16 +1165,16 @@ module VBlank
             # would otherwise take, each of 32 bits.
             def emit_jump_unless_below(name, limit, label)
               at = place_of(name)
-              @asm.lda(@asm.abs(at + 2))
+              @asm.lda(at_place(at + 2))
               @asm.branch_long(:bne, label)
-              @asm.lda(@asm.abs(at))
+              @asm.lda(at_place(at))
               @asm.cmp(limit)
               @asm.branch_long(:bcs, label)
             end
 
             # rt_set_cell, which reads only the low half of each number.
             def emit_set_cell_call(layer, column, row, word)
-              [@asm.imm(layer), @asm.abs(place_of(column)), @asm.abs(place_of(row)), @asm.imm(word)].each_with_index do |from, i|
+              [@asm.imm(layer), at_place(place_of(column)), at_place(place_of(row)), @asm.imm(word)].each_with_index do |from, i|
                 @asm.lda(from)
                 @asm.sta(@asm.direct(Memory.register(i)))
               end

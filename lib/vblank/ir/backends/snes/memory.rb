@@ -67,6 +67,9 @@ module VBlank
             end
           end
 
+          # How many bytes of the first 8K are still free.
+          def near_bytes_left = LOW_END - @next
+
           # +bytes+ of the rest of work RAM for +name+, and its 24-bit address. A place never
           # straddles the edge of a 64K bank, so a 16-bit index from its start stays inside it.
           def reserve_far(name, bytes)

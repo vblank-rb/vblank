@@ -179,7 +179,7 @@ module VBlank
             reserve_patches
             # ...and the ones a game loop keeps of its own in the console's order (IR::Frames::ConsoleLoop).
             loops = @plan.game_loops.flat_map { |node| console_loop(node).variables }
-            (Reach.variables(@program) | loops).each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
+            place_variables(Reach.variables(@program) | loops)
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
               place = @memory.reserve_far("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
@@ -362,6 +362,39 @@ module VBlank
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
 
+          # What the lowering reads and writes a number at: a variable in the first 8K, which every
+          # bank the code runs in can see, or one past it, named by its whole address. That costs a
+          # byte more and a cycle more each time.
+          def at_place(at) = at > 0xFFFF ? @asm.long(at) : @asm.abs(at)
+
+          # Bytes of the first 8K left for what is kept after the variables: the routines' own
+          # numbers, and what the runtime asks for as it is written.
+          NEAR_BYTES_KEPT = 0x400
+
+          # EVERY VARIABLE A PLACE, THE ONES USED MOST IN THE FIRST 8K OF WORK RAM. That is the part
+          # the code reaches quickly, and a game with many numbers can want more of it than there
+          # is. The ones it names least go past it, in the rest of the 128K. A game that fits is
+          # laid out as it always was. What the framework keeps for itself stays near, since the
+          # runtime reads some of it by a 16-bit address.
+          def place_variables(names)
+            far = variables_kept_far(names)
+            names.each do |name|
+              label = "the variable #{name.inspect}"
+              @variables[name] = far.include?(name) ? @memory.reserve_far(label, 4) : @memory.reserve(label, 4)
+            end
+          end
+
+          def variables_kept_far(names)
+            over = ((names.length * 4) - (@memory.near_bytes_left - NEAR_BYTES_KEPT)).ceildiv(4)
+            return [] unless over.positive?
+
+            uses = @program.walk.each_with_object(Hash.new(0)) do |node, count|
+              named = node.kind == :var_ref ? node.name : (node.var if %i[set add sub].include?(node.kind))
+              count[named] += 1 if named
+            end
+            names.reject { |name| name.start_with?("__") }.min_by(over) { |name| uses[name] }
+          end
+
           # A routine of the game's, or the runtime's, called wherever it is.
           def call_routine(label) = @asm.jsl(@asm.long(label))
 
@@ -464,9 +497,9 @@ module VBlank
           def store(name)
             at = place_of(name)
             @asm.lda(@asm.direct(R0))
-            @asm.sta(@asm.abs(at))
+            @asm.sta(at_place(at))
             @asm.lda(@asm.direct(R0 + 2))
-            @asm.sta(@asm.abs(at + 2))
+            @asm.sta(at_place(at + 2))
           end
 
           # A variable set to itself changes nothing, so nothing is made for one.
@@ -484,11 +517,11 @@ module VBlank
           def store_number(at, number)
             number &= 0xFFFF_FFFF
             [number & 0xFFFF, number >> 16].each_with_index do |half, i|
-              if half.zero?
+              if half.zero? && at <= 0xFFFF # nothing stores a nought straight to a whole address
                 @asm.stz(@asm.abs(at + (2 * i)))
               else
                 @asm.lda(half)
-                @asm.sta(@asm.abs(at + (2 * i)))
+                @asm.sta(at_place(at + (2 * i)))
               end
             end
           end
@@ -509,9 +542,9 @@ module VBlank
             carry, sum = IN_PLACE_SUMS.fetch(op)
             @asm.public_send(carry)
             2.times do |i|
-              @asm.lda(@asm.abs(at + (2 * i)))
+              @asm.lda(at_place(at + (2 * i)))
               @asm.public_send(sum, right[i])
-              @asm.sta(@asm.abs(at + (2 * i)))
+              @asm.sta(at_place(at + (2 * i)))
             end
           end
 
@@ -1384,9 +1417,9 @@ module VBlank
 
           def load_variable(name)
             at = place_of(name)
-            @asm.lda(@asm.abs(at))
+            @asm.lda(at_place(at))
             @asm.sta(@asm.direct(R0))
-            @asm.lda(@asm.abs(at + 2))
+            @asm.lda(at_place(at + 2))
             @asm.sta(@asm.direct(R0 + 2))
           end
 
@@ -1430,7 +1463,7 @@ module VBlank
             return nil unless name
 
             at = place_of(name)
-            [@asm.abs(at), @asm.abs(at + 2)]
+            [at_place(at), at_place(at + 2)]
           end
 
           # The left side worked out into R0, and the block handed where the two halves of the right
