@@ -255,6 +255,52 @@ class TestSNESOnChip < Minitest::Test
     assert_operator on_the_chip, :<, on_console, "the chip took fewer frames"
   end
 
+  # A table whose length is not a power of two holds an index to its ends rather than wrapping it,
+  # below nought as well as past the end; and a narrow slot of a list keeps the low bits and reads
+  # back with its sign, on the chip as on the interpreter.
+  def test_held_table_indexes_and_narrow_slots_on_the_chip_play_as_on_the_interpreter
+    game = superfx_game("CHIP EDGES") do
+      odd = table :odd, [5, -6, 7, 300, -9]
+      bytes = list :bytes, capacity: 3, width: :byte, full_of: 0
+      halves = list :halves, capacity: 2, width: :half, full_of: 0
+      step = var :step, 0
+      low = var :_low, 0
+      high = var :_high, 0
+      func :edges, on_chip: true do
+        low = odd[step - 3]
+        high = odd[step + 2]
+        bytes[0] = odd[3] - 100
+        bytes[1] = step * 70
+        bytes[2] = low
+        halves[0] = step * 9000
+        halves[1] = high - 70_000
+      end
+      game_loop do
+        step += 1
+        call :edges
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 10)
+
+    assert_operator run[:step], :>=, 5, "passes past both ends were checked"
+  end
+
+  # A list the chip reaches lives in the chip's own memory, and the reader of a finished cartridge
+  # finds it there as it finds any other list.
+  def test_the_reader_reads_a_list_kept_in_the_chip_s_memory
+    game = superfx_game("CHIP LIST") do
+      cells = list :cells, capacity: 4, full_of: 0
+      func :fill, on_chip: true do
+        repeat(4) { |at| cells[at] = (at * 7) + 3 }
+      end
+      call :fill
+      game_loop { wait_vblank }
+    end
+    rom = game.build_rom(console: :snes, variant: :superfx, profile: false, out: nil, err: nil)
+
+    assert_equal [3, 10, 17, 24], VBlank::Diagnostics::Verifier.new(rom, frames: 20, vars: rom.var_addresses).list(:cells)
+  end
+
   # A list read on the chip at an index outside it stops the game, in the interpreter's words.
   def test_a_list_read_out_of_range_on_the_chip_stops_the_game
     game = superfx_game("CHIP FAULT") do

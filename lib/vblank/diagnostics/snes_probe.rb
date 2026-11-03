@@ -49,9 +49,9 @@ module VBlank
                              "eight voices together. To fix this, remove `only:` and `without:`."
       end
 
-      def read8(address) = @core.wram_read8(work_ram_offset(address))
-      def read16(address) = @core.wram_read16(work_ram_offset(address))
-      def read32(address) = @core.wram_read32(work_ram_offset(address))
+      def read8(address) = SNESMemory.read8(@core, address)
+      def read16(address) = SNESMemory.read16(@core, address)
+      def read32(address) = SNESMemory.read32(@core, address)
 
       def palette = @core.cgram.unpack("v*")
 
@@ -61,10 +61,6 @@ module VBlank
       private
 
       def widened(channel) = (channel << 3) | (channel >> 2)
-
-      # The console's addresses for work RAM start at bank $7E; a game's own low addresses are the
-      # same bytes.
-      def work_ram_offset(address) = address >= 0x7E0000 ? address - 0x7E0000 : address
     end
   end
 end

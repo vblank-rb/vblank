@@ -440,19 +440,12 @@ module VBlank
           # which picture, where — and SpriteNames turns the numbers back into names.
           def read_sprites = @places.drawn_sprite_rows(@drawn_sprites, method(:half))
 
-          # Where +address+ is in work RAM: an address in the first 8K is its own offset, and one in
-          # banks $7E and $7F is counted from $7E:0000.
-          def wram_offset(address) = address >= 0x7E0000 ? address - 0x7E0000 : address
-
-          # The Super Nintendo's work RAM, read and written by offset. A list the Super FX reaches
-          # lives in the chip's own RAM, bank $70 (Lowering::Chip), and is read from there.
-          def byte(address) = chip_ram?(address) ? chip_ram(address, 1).getbyte(0) : @core.wram_read8(wram_offset(address))
-          def half(address) = chip_ram?(address) ? chip_ram(address, 2).unpack1("v") : @core.wram_read16(wram_offset(address))
-          def read32(address) = chip_ram?(address) ? chip_ram(address, 4).unpack1("V") : @core.wram_read32(wram_offset(address))
-
-          def chip_ram?(address) = (address >> 16) == Console::SNESHardware::GSU_RAM_BANK
-          def chip_ram(address, count) = @core.save_ram_bytes(address & 0xFFFF, count)
-          def write32(address, value) = @core.wram_write32(wram_offset(address), value)
+          # The game's memory, work RAM or the Super FX chip's, by the address its code uses
+          # (Diagnostics::SNESMemory, which the finished-cartridge reader reads through too).
+          def byte(address) = Diagnostics::SNESMemory.read8(@core, address)
+          def half(address) = Diagnostics::SNESMemory.read16(@core, address)
+          def read32(address) = Diagnostics::SNESMemory.read32(@core, address)
+          def write32(address, value) = @core.wram_write32(Diagnostics::SNESMemory.work_ram_offset(address), value)
 
           def state = half(runtime_place(Runtime::Frame::STATE))
           def waiting? = half(runtime_place(Runtime::Frame::WAITING)) == 1

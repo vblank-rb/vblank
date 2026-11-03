@@ -15,6 +15,7 @@ require_relative "diagnostics/recorded_sound" # the sound of a run, the older pa
 require_relative "diagnostics/verifier" # ...and reading real pixels and real sound back through it
 require_relative "diagnostics/sound_recording" # what a game sounds like on the cartridge, the desktop build or as Ruby
 require_relative "diagnostics/counted_passes" # ...the passes of a console whose runtime counts them
+require_relative "diagnostics/snes_memory" # ...its memory, work RAM and the Super FX chip's, by address
 require_relative "diagnostics/snes_probe" # ...a running Super Nintendo cartridge, as the reader asks of one
 require_relative "diagnostics/runtime_lists" # ...a list as the Color's and the Super Nintendo's runtimes keep it
 require_relative "diagnostics/advance_reading" # ...what an Advance cartridge keeps its own way
