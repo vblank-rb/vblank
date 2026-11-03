@@ -377,7 +377,8 @@ module VBlank
           def enter_buffered_mode(held = 0)
             @background_drawing.reset_bg2_affine_if_needed
             emit_painted_screen_in_blocks
-            base = MODE_4 | BG2_ENABLE | display_window_bits
+            emit_sprites_over_picture_again
+            base = MODE_4 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits
             @primitives.store_word_immediate(base, @primitives.var_addr(DISPCNT_STATE))
             @primitives.store_word_immediate(PAGE1, @primitives.var_addr(BACKBUF))
             @emitter.write_reg16(REG_DISPCNT, base | held)
@@ -402,7 +403,8 @@ module VBlank
           def enter_direct_mode(held = 0)
             @background_drawing.reset_bg2_affine_if_needed
             emit_painted_screen_in_blocks
-            @emitter.write_reg16(REG_DISPCNT, MODE_3 | BG2_ENABLE | display_window_bits | held)
+            emit_sprites_over_picture_again
+            @emitter.write_reg16(REG_DISPCNT, MODE_3 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits | held)
             @primitives.store_word_immediate(MODE_DIRECT, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
             @effects.emit_kept_tint_on_entry(IR::Modes::DIRECT)
@@ -440,6 +442,20 @@ module VBlank
 
             @sprite_drawing.emit_boot_objects # sprite palette + tiles, and clear the sprite table
             @palette_tint.emit_changed_obj_lists_again(up: nil)
+          end
+
+          # A PAINTED SCREEN WITH SPRITES SHOWN OVER IT (`sprite ..., over_picture: true`) keeps
+          # the sprite layer on, as a tiled screen does: the display draws those sprites over
+          # the picture as it sends it to the screen. Their pictures are in the half of sprite
+          # memory no painted picture reaches (ScreenLayout#first_sprite_tile), so they are only
+          # sent again here because this is also how a game starts on such a screen, and the
+          # table of sprites is cleared with them. A game with no such sprite emits nothing.
+          def sprites_over_picture? = @layout.screen.sprites_over_picture?
+
+          def sprites_over_picture_bits = sprites_over_picture? ? OBJ_ENABLE | OBJ_1D_MAP : 0
+
+          def emit_sprites_over_picture_again
+            emit_objects_again if sprites_over_picture?
           end
 
           # Switch the hardware into the affine layer (Mode 2): re-upload the shared BG

@@ -311,6 +311,13 @@ module VBlank
           # times? Then the painted one is left alone by what rebuilds the other (see
           # #request_repaint).
           @changes_screen_kind = IR::Modes.resolve(node).crosses_display_systems?
+          # Does it show sprites over a painted screen (see #show_objects_over_picture)? Then the
+          # statement that places them is kept, for the gap where a two-page screen publishes a
+          # page (#advance_frame).
+          @present_over_picture =
+            if node.walk.any? { |child| child.kind == :object && child.over_picture }
+              node.walk.find { |child| child.kind == :present_objects }
+            end
           # Which part of the display each fade in this program uses. Settled here rather
           # than asked per fade, because the answer is about the whole program (see
           # IR::Fading) and a fade walked over frames runs on every one of them.
@@ -963,6 +970,7 @@ module VBlank
           if crossing
             @backdrop = backdrop
             @screen.clear(@backdrop)
+            @screen.over_picture = nil
             reset_scenery_state
           else
             show_backdrop(backdrop)
@@ -1212,6 +1220,11 @@ module VBlank
           if @buffered
             paint_owed_repaint # the page being published has to be the finished one
             @screen.flip_pages
+            # Sprites over the picture are placed in this same gap, from the numbers the pass
+            # just finished, and the console shows them with the page it publishes here. So they
+            # are placed now, before a run that stops here, rather than only where the program
+            # says so after the wait — where they are placed again from the same numbers.
+            exec_present_objects(@present_over_picture) if @present_over_picture
           end
 
           # This is a frame boundary: if we're past the budget, stop HERE — the frame just
@@ -2730,13 +2743,14 @@ module VBlank
         # screen this frame and recomposite the whole view (scrolled scene, then these
         # objects on top). See #request_repaint.
         def exec_present_objects(node)
-          @drawn = @sprites_hidden ? [] : objects_on_screen(names_in_draw_order(node))
+          @drawn =@sprites_hidden ? [] : objects_on_screen(names_in_draw_order(node))
           @sprites_hidden = false
           refuse_pictures_not_up!(@drawn)
           # Kept whichever way the picture is made, with each sprite's depth and colours as they
           # are now: a scene taking over later in this pass builds the picture again from it
           # (see #redraw_sprites_over_arrived_scenery).
           snapshot_object_layer
+          return show_objects_over_picture if @present_over_picture && painted_screen?
 
           if @repaints
             request_repaint
@@ -2757,6 +2771,26 @@ module VBlank
             draw_object(on[:object], on[:picture], on[:x], on[:y])
             @obj_prev[on[:object].name] = [on[:x], on[:y]]
           end
+        end
+
+        # SPRITES OVER A PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`). The console
+        # draws them over the painted picture as the picture goes to the screen, and never
+        # into it: the picture the game paints stays as it painted it, on both pages of a
+        # tear-free screen, and a sprite that moves leaves nothing behind. So they are drawn
+        # here into a layer of their own, which the screen shows in front of the picture.
+        # The layer is at the screen's own places: moving the view over the picture
+        # (`camera`) does not move it, as it does not move a sprite on the console.
+        def show_objects_over_picture
+          if @drawn.empty?
+            @screen.over_picture = nil
+            return
+          end
+
+          layer = Framebuffer.new(width: @screen.width, height: @screen.height, fill: nil)
+          drawing_into(layer) do
+            @drawn.each { |on| draw_object(on[:object], on[:picture], on[:x], on[:y]) }
+          end
+          @screen.over_picture = layer.to_a
         end
 
         # NO SPRITE ON THE NEXT FRAME. The sprites are drawn as the next pass begins, from the

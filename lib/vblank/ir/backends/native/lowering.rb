@@ -180,7 +180,8 @@ module VBlank
           # above them in the file.
           def top_level
             routines = @called.map { |name| C::Function.new(name: routine(name), body: body_of(@funcs.fetch(name))) }
-            answers = [see_through_amounts, bend_offsets, work_out_bends, shade_span, shade_amount, timer_ticks]
+            answers = [see_through_amounts, bend_offsets, work_out_bends, shade_span, shade_amount, timer_ticks,
+                       sprites_over_picture_routine]
             main = C::Function.new(name: @names.own("main"), body: [*power_on, *lower(@program)], exported: true)
             [C::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
              C::Include.new("rg_int32.h"), C::Include.new("rg_runtime.h"), C::Include.new("rg_list.h"),

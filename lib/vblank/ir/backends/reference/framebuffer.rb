@@ -272,10 +272,24 @@ module VBlank
             return nil unless on_screen?(x, y)
             return HELD_OFF if @held
 
-            seen_x, seen_y = @block > 1 ? block_corner(x, y) : [x, y]
-            color = shown_color(seen_x + @camera_x, seen_y + @camera_y, fade_here: fade_reaches?(x, y))
+            over = @over_picture && @over_picture[(y * @width) + x]
+            color = if over
+                      faded(over, fade_here: fade_reaches?(x, y))
+                    else
+                      seen_x, seen_y = @block > 1 ? block_corner(x, y) : [x, y]
+                      shown_color(seen_x + @camera_x, seen_y + @camera_y, fade_here: fade_reaches?(x, y))
+                    end
             displayed(lit?(x, y) ? color : darkened_by_display(color, @shade_steps))
           end
+
+          # WHAT IS SHOWN IN FRONT OF A PAINTED PICTURE: the sprites the console draws over it
+          # (`sprite ..., over_picture: true`), one colour or nil for each place on the screen,
+          # in rows, or nil for nothing. It is part of neither page and is not in the picture,
+          # so painting the picture again leaves it, and it stays where it is on the screen
+          # however the view over the picture moves. It is not put into blocks with the
+          # picture, as the console does not put its sprites into blocks unless told to. A fade
+          # reaches it as it reaches the picture.
+          attr_writer :over_picture
 
           # DARKEN THE PICTURE OUTSIDE ONE SPAN OF EACH ROW, by +steps+ sixteenths, from now
           # on: +spans+ holds a [left, right] for every row, the columns from left up to but
@@ -413,7 +427,9 @@ module VBlank
           # "Stored" is about effects, not pages: no camera offset and no fade, but still
           # the picture a viewer is looking at (see #shown, which blends this one).
           def to_a
-            @shown_pixels.dup
+            return @shown_pixels.dup unless @over_picture
+
+            @shown_pixels.each_with_index.map { |color, at| @over_picture[at] || color }
           end
 
           # The same screen as it is SHOWN: the window's offset applied, and whatever fade
@@ -431,7 +447,7 @@ module VBlank
 
             # Most frames show what the last one did, and comparing the stored picture is far quicker
             # than walking it, so the colors are rounded once for a picture that has not changed.
-            unless @shown_pixels == @pixels_rounded
+            unless (@over_picture ? to_a : @shown_pixels) == @pixels_rounded
               @pixels_rounded = to_a
               @rounded = @pixels_rounded.map { |color| displayed(color) }
             end

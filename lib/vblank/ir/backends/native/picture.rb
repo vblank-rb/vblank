@@ -156,7 +156,8 @@ module VBlank
                     [@stacking.scenery.length, @stacking.depths.count, @handover.always_up.scenery.length,
                      rebuilt_every_frame? ? 1 : 0, @see_through.size,
                      Modes.resolve(@program).crosses_display_systems? ? 1 : 0, Blocks::LARGEST,
-                     @tile_runs.size, @tile_runs.each_value.sum { |run| run_pixels(run) }, @images.size]),
+                     @tile_runs.size, @tile_runs.each_value.sum { |run| run_pixels(run) }, @images.size,
+                     sprites_over_picture? ? 1 : 0]),
              runtime_array("always_up", "int32_t", @handover.always_up.scenery.map { |bg| entry_of(bg) }),
              runtime_array("sines", "int32_t", (0...450).map { |degrees| Affine.sine(degrees) }),
              runtime_array("turn_rules", "int32_t", [Build::SCALE_ONE, Affine::ONE_TH, Affine::MAX, Affine::MIN_SCALE])]
@@ -685,6 +686,18 @@ module VBlank
             end
             [eval_call("rg_objects_begin"), *drawn.map { |obj| sprite_removal(obj) },
              *placements, eval_call("rg_objects_end")]
+          end
+
+          # Does the game show sprites over a painted screen (`sprite ..., over_picture: true`)?
+          def sprites_over_picture? = @objects.each_value.any?(&:over_picture)
+
+          # Reference#advance_frame: the routine the runtime calls as a two-page screen publishes
+          # the page just finished, placing the sprites over the picture from the numbers then, as
+          # the frame's own placing does after the wait. Empty in a game without such sprites.
+          def sprites_over_picture_routine
+            present = sprites_over_picture? && @program.walk.find { |node| node.kind == :present_objects }
+            C::Function.new(name: @names.own("sprites_over_picture"), body: present ? lower_present_objects(present) : [],
+                            exported: true)
           end
 
           # Reference#exec_hide_sprites: noted, for the frame drawn after this pass.

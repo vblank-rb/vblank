@@ -22,7 +22,9 @@ module VBlank
     # whole picture — background and sprites — every frame from scratch. That means it
     # costs no per-pixel work to move, and (in a later slice) sprites can stack over
     # each other with a set order, which software save-under can't do. The trade is
-    # that it only exists on a `screen :tiled`, drawn from tiles.
+    # that it only exists on a `screen :tiled`, drawn from tiles — or over a `screen :bitmap`
+    # where the game asked for one with `sprite ..., over_picture: true`, in front of all of
+    # the painted picture.
     #
     # You don't call a draw verb. Builder#wait_vblank draws every hardware sprite once
     # per frame, during the vertical blank — the brief safe window to change the
@@ -275,7 +277,8 @@ module VBlank
       #
       # The first turn makes this a rotating sprite; one that never turns draws upright and
       # costs nothing extra. The angle wraps, so 370 is the same as 10, and -90 the same as
-      # 270. Only a `screen :tiled` sprite can turn (the console rotates it in hardware).
+      # 270. Only a sprite the console draws can turn (the console rotates it in hardware): one
+      # on `screen :tiled`, or one with `over_picture: true`.
       def face_angle(degrees)
         ensure_rotatable
         fixed = Value.fixed_number(degrees)
@@ -323,7 +326,7 @@ module VBlank
       #
       # Twice the drawn size is the ceiling: the console gives a turned sprite a box twice
       # as wide and tall to swing its corners through, and past that the picture runs out
-      # of box and its edges are cut off. Only a `screen :tiled` sprite can resize.
+      # of box and its edges are cut off. Only a sprite the console draws can resize, as above.
       def scale(size = nil)
         ensure_scalable
         return scale_value if size.nil?
@@ -406,6 +409,12 @@ module VBlank
       # A number outside the list leaves it in the layer it was declared in. The change shows
       # on the frame the sprite's position and pose next do, never before or after them.
       def put_in_layer(which, showing: nil)
+        if @object_node.over_picture
+          raise ArgumentError,
+                "The sprite :#{@object_node.declared || @object_name} is shown over_picture: true, so it is in front " \
+                "of all of the painted picture. It cannot put_in_layer. To put a sprite behind part of a picture, " \
+                "use `screen :tiled` and layers."
+        end
         @layer_var ||= :"#{@object_name}_layer"
         @builder.put_objects_in_layer([@object_node], @layer_var, which, showing: showing,
                                                                          subject: "The sprite :#{@object_node.declared || @object_name}")

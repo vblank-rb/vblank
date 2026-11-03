@@ -262,8 +262,9 @@ module VBlank
       end
 
       TURN_NEEDS_TILED =
-        "This sprite cannot turn to an angle. Turning needs `screen :tiled`. " \
-        "On `screen :bitmap`, face a few fixed ways with `facing:` poses and `face` instead."
+        "This sprite cannot turn to an angle. Turning needs a sprite the console draws: one on " \
+        "`screen :tiled`, or one declared with `over_picture: true` on `screen :bitmap`. " \
+        "Or face a few fixed ways with `facing:` poses and `face` instead."
 
       # Resizing uses the same console hardware as turning, so it has the same boundary. A
       # bitmap sprite is copied to the screen pixel for pixel and there is no step where a
@@ -273,8 +274,9 @@ module VBlank
       end
 
       SCALE_NEEDS_TILED =
-        "This sprite cannot change size. Resizing needs `screen :tiled`. " \
-        "On `screen :bitmap`, draw the sizes you need as separate `image`s and swap between them."
+        "This sprite cannot change size. Resizing needs a sprite the console draws: one on " \
+        "`screen :tiled`, or one declared with `over_picture: true` on `screen :bitmap`. " \
+        "Or draw the sizes you need as separate `image`s and swap between them."
 
       # Play a named animation from the sprite's Aseprite sheet (a frameTag). It runs from
       # its first frame and loops until you play another one. Only for a sprite made with

@@ -185,16 +185,17 @@ module VBlank
             def emit(asm, memory, sprite_tiles:, background_tiles:, runs: [], drawn_palettes: nil, lends: false,
                      palettes_in_use:, groups: false, bar_rows: nil, bar_maps: false, rooms: false, picture_rooms: false,
                      room_colors: false, lent_families: false, backdrop: nil, banked_colors: false, first_kept_list: nil,
-                     tall_pieces: false)
+                     tall_pieces: false, sprites_over_picture: false)
               emit_start(asm, memory, sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                                       drawn_palettes: drawn_palettes, bar: !bar_rows.nil?, backdrop: backdrop,
                                       tall_pieces: tall_pieces)
               emit_rooms(asm, memory, colors: room_colors) if rooms
-              emit_upload(asm, memory, groups: groups, bar: !bar_rows.nil?, label: rooms ? "rt_upload_now" : "rt_upload")
+              emit_upload(asm, memory, groups: groups, bar: !bar_rows.nil?, label: rooms ? "rt_upload_now" : "rt_upload",
+                                       over_picture: sprites_over_picture)
               emit_oam_dma_held(asm)
               PictureGroups.emit(asm, memory) if groups
               emit_tile_runs(asm, runs)
-              emit_sprites(asm, memory, lends: lends, tall_pieces: tall_pieces)
+              emit_sprites(asm, memory, lends: lends, tall_pieces: tall_pieces, over_picture: sprites_over_picture)
               emit_lend_colors(asm, memory, drawn_palettes, families: lent_families,
                                                             first_kept: (first_kept_list if lends == :by_scene)) if lends
               paced = (memory[ROOMS] + ROOM_DISPLAY_OFF if picture_rooms)
@@ -1014,13 +1015,21 @@ module VBlank
             # In a game with pictures grouped by room (+groups+), the groups the sprites placed need
             # are copied in too (Runtime::PictureGroups), before the screen's switches, which keep the
             # sprite layer off while one is still being copied in.
-            def emit_upload(asm, memory, groups: false, bar: false, label: "rt_upload")
+            #
+            # A game whose sprites are shown over a painted screen (+over_picture+) copies the sprite
+            # table on every screen, since the sprites show there too, and leaves the picture that
+            # much less of the blank.
+            def emit_upload(asm, memory, groups: false, bar: false, label: "rt_upload", over_picture: false)
               h = Console::GBCHardware
               pending = memory[PictureGroups::JOB] + PictureGroups::PENDING if groups
               asm.label(label)
-              asm.load(:a, [memory[Paint::SCREEN_KIND]])
-              asm.cp_a(Paint::PAINTED)
-              asm.call(:nz, "rt_oam_dma_held")
+              if over_picture
+                asm.call("rt_oam_dma_held")
+              else
+                asm.load(:a, [memory[Paint::SCREEN_KIND]])
+                asm.cp_a(Paint::PAINTED)
+                asm.call(:nz, "rt_oam_dma_held")
+              end
               asm.load(:a, [memory[PALETTES_CHANGED]])
               asm.and_a(:a)
               asm.call(:nz, "rt_picture_write_palettes")
@@ -1247,7 +1256,11 @@ module VBlank
             #
             # A piece is on the screen while any row of it is: one 8×16 (+tall_pieces+) still shows
             # its lower half when it stands up to fifteen rows above the top.
-            def emit_sprites(asm, memory, lends: false, tall_pieces: false)
+            #
+            # A game whose sprites are shown over a painted screen (+over_picture+) turns the sprite
+            # layer on whatever screen is up: it has painted screens only (Checks::SpriteOverPictureBesideTiles),
+            # and its sprites are drawn over the picture by the display, never into it.
+            def emit_sprites(asm, memory, lends: false, tall_pieces: false, over_picture: false)
               args = ->(i) { Calls.arg(memory, i, 4) }
               asm.label("rt_sprites_begin")
               if lends
@@ -1274,9 +1287,13 @@ module VBlank
                 asm.label("rt_sprites_end_lent")
               end
               # The sprites shown from here, on a screen drawn from tiles (rt_screen).
-              asm.load(:a, [memory[Paint::SCREEN_KIND]])
-              asm.cp_a(Paint::PAINTED)
-              asm.call(:nz, "rt_sprites_on")
+              if over_picture
+                asm.call("rt_sprites_on")
+              else
+                asm.load(:a, [memory[Paint::SCREEN_KIND]])
+                asm.cp_a(Paint::PAINTED)
+                asm.call(:nz, "rt_sprites_on")
+              end
               asm.load(:a, [memory[NEXT_SPRITE]])
               asm.load(:l, :a)
               asm.load(:h, Memory::SHADOW_OAM >> 8)

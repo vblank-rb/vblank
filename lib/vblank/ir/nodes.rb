@@ -927,12 +927,17 @@ module VBlank
         # both are absent on a thing that never changes layer. Any other number
         # leaves it in +layer+, the one it was declared in. That is how one thing walks
         # behind scenery on one floor of a room and in front of it on the next.
+        #
+        # +over_picture+ says it is shown over a screen the program paints, rather than over
+        # scenery drawn from tiles. It is drawn over the painted picture and never into it,
+        # so painting the picture again does not touch it, and it is in front of everything
+        # the program paints there.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
-                 layers: :list, layer_pick: :name
+                 layers: :list, layer_pick: :name, over_picture: :flag
       end
 
       class OnTimer

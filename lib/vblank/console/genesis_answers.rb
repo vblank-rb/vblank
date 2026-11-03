@@ -114,7 +114,8 @@ module VBlank
         sprite: works("a sprite is made of the console's pieces, 80 pieces at once and 20 pieces of 8×8 on " \
                       "any one row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
                       "as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot " \
-                      "turn or resize a sprite. Draw the turns as poses."),
+                      "turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` on a " \
+                      "painted screen is not made yet: the build refuses it and says so (see Not made yet)."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),
         picture_groups: works,

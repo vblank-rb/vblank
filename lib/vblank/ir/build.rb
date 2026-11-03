@@ -910,14 +910,18 @@ module VBlank
       end
 
       # Reserves the object; #present_objects is what actually draws it for a frame.
+      #
+      # +over_picture+ marks one shown over a screen the program paints (see
+      # Nodes::Object): drawn over that picture, never into it.
       def object(name, poses:, pose:, x:, y:, active:, angle: 0, scale: SCALE_ONE, layer: nil, scene: nil,
-                 recolor: NO_RECOLOR, recolors: [], declared: nil, layers: [], layer_pick: nil)
+                 recolor: NO_RECOLOR, recolors: [], declared: nil, layers: [], layer_pick: nil, over_picture: false)
         Nodes.build(:object, name: name, poses: poses, pose: to_value_node(pose),
                           x: to_value_node(x), y: to_value_node(y), active: to_value_node(active),
                           angle: to_value_node(angle), scale: to_value_node(scale),
                           recolor: to_value_node(recolor), recolors: recolors,
                           **layer_choice_fields(layers, layer_pick),
-                          **declared_field(declared), **layer_field(layer), **scene_field(scene))
+                          **declared_field(declared), **layer_field(layer), **scene_field(scene),
+                          **(over_picture ? { over_picture: true } : {}))
       end
 
       # The +recolor+ an object that is drawn in its own colours holds: a number that names

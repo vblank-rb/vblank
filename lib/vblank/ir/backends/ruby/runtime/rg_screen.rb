@@ -127,6 +127,7 @@ RG_SIZE_LARGEST_BLOCK = 6
 RG_SIZE_RUNS = 7
 RG_SIZE_RUN_PIXELS = 8
 RG_SIZE_IMAGES = 9
+RG_SIZE_SPRITES_OVER_PICTURE = 10
 
 RG_NOBODY_ASKED = -1
 RG_NO_CELL = -1        # a cell of a saved patch that hung off the picture
@@ -425,7 +426,14 @@ def rg_keeps_picture_without_sprites? = !@rg_target.equal?(@rg_scenery) && rg_sp
 # Framebuffer#set_pixel: a cell drawing may not land on is dropped. A sprite is mixed with the
 # picture as it is with no sprite on it, where that is kept, and anything else with what is
 # already in the cell.
+#
+# While the sprites over a painted picture are drawn (@rg_over_picture, rg_screen.c's over_picture),
+# what is painted lands in their layer in front of the picture, and nowhere else.
 def rg_set_pixel(x, y, color)
+  if @rg_over_picture_painting
+    @rg_over_picture[(y * RG_SCREEN_WIDTH) + x] = color if rg_on_screen?(x, y)
+    return
+  end
   return unless rg_paintable?(x, y)
 
   @rg_picture_touched = true
@@ -2013,6 +2021,15 @@ end
 def rg_objects_end
   kept = @rg_sprite_layer
   @rg_sprite_layer = @rg_drawing.dup
+  # Reference#show_objects_over_picture: in the layer in front of a painted picture, never into it.
+  if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SPRITES_OVER_PICTURE] != 0
+    @rg_over_picture = Array.new(RG_SCREEN_CELLS)
+    @rg_over_picture_painting = true
+    @rg_drawing.each { |placed| rg_draw_placed(placed) }
+    @rg_over_picture_painting = false
+    @rg_over_picture = nil if @rg_drawing.empty?
+    return
+  end
   if rg_rebuilt_whole?
     return rg_skip_repaint if @rg_drawing == kept
 
@@ -2180,6 +2197,7 @@ def rg_screen_frame_ended
   @rg_viewed = finished
   @rg_target = @rg_pixels
   @rg_picture_touched = true # the page handed over was built before the one just shown
+  rg_game_sprites_over_picture # Reference#advance_frame: placed with the page published
 end
 
 # Reference#exec_screen. Every kind of screen is a display of its own, so any change of kind wipes
@@ -2196,6 +2214,7 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
     # What was under each sprite went with the old screen, so nothing is put back over the new
     # one. A console that places its sprites at the end of a pass takes them off after this.
     @rg_last_drawn.fill(nil)
+    @rg_over_picture = nil
   else
     rg_show_backdrop(new_backdrop)
   end
@@ -2367,8 +2386,11 @@ def rg_screen_shown_in_five_bits
   viewed = @rg_viewed
   held = @rg_screen_held != 0
   return shown.fill(RG_SWITCHED_OFF) if held
+  over = @rg_over_picture
   if @rg_tint_mode == :none && @rg_fade_steps == 0 && @rg_read_block == 1 && rg_all_lit?
-    return rg_screen_shown_plain(shown, viewed)
+    rg_screen_shown_plain(shown, viewed)
+    over&.each_with_index { |color, at| shown[at] = color if color }
+    return shown
   end
 
   # A fade or a tint does the same to every cell of one color, so each color's answer is worked out
@@ -2390,7 +2412,10 @@ def rg_screen_shown_in_five_bits
     while x < RG_SCREEN_WIDTH
       from_x = (block == 1 ? x : rg_block_corner_across(x)) + camera_x
       fade_here = whole_fade || rg_fade_reaches?(x, y)
-      color = if from_x >= 0 && from_x < RG_SCREEN_WIDTH && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
+      on_top = over && over[row + x]
+      color = if on_top
+                rg_faded_where(on_top, fade_here) # a sprite over the picture is not in blocks
+              elsif from_x >= 0 && from_x < RG_SCREEN_WIDTH && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
                 at = (from_y * RG_SCREEN_WIDTH) + from_x
                 stored = viewed[at]
                 if remixed && mixed_cells[at] != 0

@@ -335,6 +335,7 @@ module VBlank
               check_stack_depth_fits!
               prepare_backgrounds(program)
             end
+            @sprites_over_picture = program.walk.any? { |node| node.kind == :object && node.over_picture }
             prepare_objects(program) if program.walk.any? { |node| node.kind == :object }
           end
 
@@ -368,6 +369,11 @@ module VBlank
           attr_reader :lending # where groups lent to lists come from, or nil when every list has its own (see LentColors)
 
           attr_reader :picture, :screenfuls # how the picture stacks, whole and one screen at a time
+
+          # Does the game show a sprite over a painted screen (`sprite ..., over_picture: true`)?
+          # Then the sprite layer is on there, and every sprite picture is kept in the half of
+          # sprite memory a painted picture never reaches (see SPRITE_TILES_UNDER_PICTURE).
+          def sprites_over_picture? = @sprites_over_picture
           attr_reader :handover # what each scene puts up as it takes over (see IR::SceneHandover)
           attr_reader :backgrounds, :hardware_layers, :bg_shared, :vram,
                       :objects, :obj_pictures, :sprite_art, :placed_fade, :pixelation,
@@ -1181,6 +1187,33 @@ module VBlank
           # run's address is.
           def obj_tile_vram_offset = SpriteDrawing::OBJ_TILE_BASE - VRAM_START
 
+          # SPRITES OVER A PAINTED SCREEN HAVE HALF THE SPRITE MEMORY.
+          #
+          # A painted screen keeps its picture in video memory too, and a whole picture is
+          # bigger than the room set aside for backgrounds: the direct-colour screen's runs
+          # 0x2C00 bytes into the sprites' memory, and the second page of the tear-free screen
+          # ends 0x3600 bytes into it. So in the painted modes the display itself draws no
+          # sprite picture from the first 512 tiles of that memory (the first 16K), and takes
+          # them from the 512 after. A game with a sprite shown over a painted screen keeps
+          # every sprite picture there. Tile numbers still count from the start of sprite
+          # memory, so the first is 512.
+          SPRITE_TILES_UNDER_PICTURE = 512
+          SPRITE_MEMORY_BESIDE_PICTURE = OBJ_TILE_CAPACITY / 2
+
+          # The first tile a sprite picture may take (see SPRITE_TILES_UNDER_PICTURE).
+          def first_sprite_tile = sprites_over_picture? ? SPRITE_TILES_UNDER_PICTURE : 0
+
+          # How many bytes of sprite pictures fit, at the most.
+          def sprite_memory_capacity = sprites_over_picture? ? SPRITE_MEMORY_BESIDE_PICTURE : OBJ_TILE_CAPACITY
+
+          # What the words for sprite memory that is full add for a game with sprites over a
+          # painted screen: why it is half.
+          def beside_painted_screen_words
+            return "" unless sprites_over_picture?
+
+            ", because the painted screen keeps its picture in the other half of that memory"
+          end
+
           # WHERE EACH RUN OF PAINTED TILES LANDED, as bytes into video memory: the copy that
           # paints it writes there (see BackgroundDrawing#emit_copy_tiles). One copy is one
           # stretch of memory, so the run has to have landed in order and side by side, which
@@ -1825,12 +1858,12 @@ module VBlank
             sets.reject! { |set| set.sprites.any?(&:grouped?) }
             loop do
               @sprite_art = SpriteLayout.new(nodes: nodes, pictures: @obj_pictures, painted: painted,
-                                             one_frame: one_frame, blobs: blobs,
+                                             one_frame: one_frame, blobs: blobs, first_tile: first_sprite_tile,
                                              grouped: @grouped_pictures) do |pictures, placed|
                 object_record(pictures, slot: slot_of.fetch(pictures.name),
                                         affine_slot: affine_of[pictures.name], **placed)
               end
-              break if @sprite_art.fits?(OBJ_TILE_CAPACITY)
+              break if @sprite_art.fits?(sprite_memory_capacity)
 
               set = pick_set_for_one_frame(sets, one_frame) or sprite_memory_full!(nodes)
               set.names.each { |name| @blobs.delete(:"__obj_tiles_#{name}") }
@@ -1910,7 +1943,7 @@ module VBlank
           def least_sprite_screens(nodes, sets, painted)
             smaller = sets.select { |set| set.can_keep_to_one_frame? && set.smaller_kept_to_one_frame? }
             blobs = SpriteLayout::Blobs.new(data_blobs: {}, keep_plain: ->(_name) {})
-            SpriteLayout.new(nodes: nodes, pictures: @obj_pictures, painted: painted,
+            SpriteLayout.new(nodes: nodes, pictures: @obj_pictures, painted: painted, first_tile: first_sprite_tile,
                              one_frame: Set.new(smaller.flat_map(&:names)), blobs: blobs,
                              grouped: @grouped_pictures) { |_pictures, placed| placed }
                         .screens
@@ -2036,7 +2069,7 @@ module VBlank
             named = worst.map { |node| ":#{node.poses.first} (#{sprites[node.name].tile_units * 32})" }
             biggest = named.any? ? ", and its biggest pictures are #{named.uniq.join(', ')}" : ""
             "The sprites' pictures need #{@sprite_art.bytes} bytes at once, and the console keeps them in " \
-              "#{OBJ_TILE_CAPACITY}. Only one scene's are needed at a time. #{fullest_scene_phrase(scene)}" \
+              "#{sprite_memory_capacity}#{beside_painted_screen_words}. Only one scene's are needed at a time. #{fullest_scene_phrase(scene)}" \
               "#{biggest}. When that makes room, a sprite that animates keeps only one frame at a time in this " \
               "memory, and that was not enough. To fix this, use fewer pictures there, or smaller ones." \
               "#{picture_groups_overflow_words(scene)}" \
@@ -2048,7 +2081,7 @@ module VBlank
           # every group's room out of the scene would still leave it too full.
           def picture_groups_overflow_words(scene)
             worst = @grouped_pictures.biggest_set_on(scene)
-            return "" unless worst && @grouped_pictures.room_bytes_on(scene) >= @sprite_art.bytes - OBJ_TILE_CAPACITY
+            return "" unless worst && @grouped_pictures.room_bytes_on(scene) >= @sprite_art.bytes - sprite_memory_capacity
 
             pictures = worst.biggest.map { |picture, size| ":#{picture} (#{size})" }.join(", ")
             together = VBlank::Diagnostics::VideoMemory::UpTogether.groups_words(worst.groups)
@@ -2827,7 +2860,7 @@ module VBlank
             # keeping one frame here at a time, and those are different savings to report.
             one_frame = objects.count { |_name, obj| obj.frames }
             shared = objects.count { |_name, obj| obj.tiles.nil? && obj.frames.nil? }
-            VBlank::Diagnostics::VideoMemory::Area.new(used: @sprite_art.bytes, capacity: OBJ_TILE_CAPACITY,
+            VBlank::Diagnostics::VideoMemory::Area.new(used: @sprite_art.bytes, capacity: sprite_memory_capacity,
                                            small: small, big: objects.size - small,
                                            saved: sprite_memory_saved(objects), shared: shared,
                                            one_frame: one_frame, repeats: @sprite_art.repeats,

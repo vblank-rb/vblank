@@ -24,14 +24,19 @@ module VBlank
         # or the console would read it starting halfway through a tile. The gap that
         # leaves is at most 32 bytes and only ever appears where a small picture is
         # followed by a big one.
+        #
+        # +first_unit+ is where the pictures start: the first unit of sprite memory, or halfway
+        # along it in a game whose sprites are shown over a painted screen, whose picture
+        # takes the first half (see ScreenLayout#first_sprite_tile).
         class ObjectArt
-          def initialize(data_blobs)
+          def initialize(data_blobs, first_unit: 0)
             @data_blobs = data_blobs # where each picture goes in the cartridge, by name
-            @units = 0        # how far the pictures have grown, in 32-byte units
+            @first_unit = first_unit
+            @units = first_unit # how far the pictures have grown, in 32-byte units
             @at = {}          # encoded bytes -> the unit they were stored at
             @saved = 0        # ...and what not storing them twice came to
-            @peak = 0         # the most ever needed at once: the resident art plus one scene's
-            @resident_units = 0
+            @peak = first_unit # the most ever needed at once: the resident art plus one scene's
+            @resident_units = first_unit
             @resident = {}
             @scene_blobs = nil # while a scene's art is being laid out: what it has to send
           end
@@ -39,8 +44,12 @@ module VBlank
           # How much sprite memory the game needs at its fullest — the always-there art
           # plus the biggest single scene's, since no two scenes' pictures are wanted at
           # the same time.
-          def bytes = [@units, @peak].max * 32
-          attr_reader :saved, :resident_units
+          def bytes = ([@units, @peak].max - @first_unit) * 32
+
+          # How many tiles the always-there art takes, from the first one it may use.
+          def resident_units = @resident_units - @first_unit
+
+          attr_reader :saved
 
           # The always-there art is finished: remember where it ended and what it holds,
           # so every scene starts from the same place and can still share it.
@@ -69,7 +78,7 @@ module VBlank
 
           # What the always-there art and the scene being laid out come to together, which is
           # what that scene has to fit into.
-          def bytes_so_far = @units * 32
+          def bytes_so_far = (@units - @first_unit) * 32
 
           # ...and this is what it has to send when it takes over: each blob, where it
           # goes, and how many units it is.

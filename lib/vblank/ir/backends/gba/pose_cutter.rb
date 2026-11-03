@@ -137,13 +137,15 @@ module VBlank
               next if (bmp.width % TILE_PX).zero? && (bmp.height % TILE_PX).zero?
 
               raise LoweringError,
-                    "A sprite in screen :tiled is built from #{TILE_PX}x#{TILE_PX} tiles. So its picture " \
+                    "A sprite the console draws (in screen :tiled, or with over_picture: true) is built " \
+                    "from #{TILE_PX}x#{TILE_PX} tiles. So its picture " \
                     "must be a multiple of #{TILE_PX} pixels each way. The picture :#{pose} is " \
                     "#{bmp.width}x#{bmp.height}. To fix this, resize it."
             end
             if width > MAX_OBJECT_CANVAS || height > MAX_OBJECT_CANVAS
               raise LoweringError,
-                    "A sprite in screen :tiled can be #{MAX_OBJECT_CANVAS} pixels each way at most. " \
+                    "A sprite the console draws (in screen :tiled, or with over_picture: true) can be " \
+                    "#{MAX_OBJECT_CANVAS} pixels each way at most. " \
                     "The picture :#{art} is #{width}x#{height}. To fix this, draw it smaller, or build " \
                     "this part of the picture from a background instead."
             end

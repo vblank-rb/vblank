@@ -82,8 +82,11 @@ module VBlank
           # +grouped+ is the game's sets of picture groups (see GroupedPictures). Each set's room
           # is kept on the screen it belongs to, ahead of that screen's sprites, and a grouped
           # pose is drawn from its place there.
-          def initialize(nodes:, pictures:, one_frame:, blobs:, painted: {}, grouped: nil, &record)
-            @art = ObjectArt.new(blobs.data_blobs)
+          #
+          # +first_tile+ is the first tile of sprite memory the pictures may take (see
+          # ScreenLayout#first_sprite_tile).
+          def initialize(nodes:, pictures:, one_frame:, blobs:, painted: {}, grouped: nil, first_tile: 0, &record)
+            @art = ObjectArt.new(blobs.data_blobs, first_unit: first_tile)
             @pictures = pictures
             @grouped = grouped
             @group_bases = {} # a set of picture groups -> the unit its room starts at

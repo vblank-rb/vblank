@@ -320,7 +320,18 @@ static int32_t keeps_picture_without_sprites(void) { return target != scenery &&
 /* Framebuffer#set_pixel: a cell drawing may not land on is dropped. A sprite is mixed with the
  * picture as it is with no sprite on it, where that is kept, and anything else with what is
  * already in the cell. */
+/* SPRITES OVER A PAINTED PICTURE (Reference#show_objects_over_picture): a layer of their own in
+ * front of the picture, at the screen's own places, one color or NOTHING_OVER for each. While
+ * +painting_over_picture+ is set, what set_pixel paints lands here and nowhere else. */
+enum { NOTHING_OVER = 0x8000 };
+static uint16_t over_picture[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+static int32_t over_picture_up, painting_over_picture;
+
 static void set_pixel(int64_t x, int64_t y, int32_t color) {
+  if (painting_over_picture) {
+    if (on_screen(x, y)) over_picture[y * RG_SCREEN_WIDTH + x] = (uint16_t)color;
+    return;
+  }
   if (!paintable(x, y)) return;
   picture_touched = 1;
   int64_t at = y * RG_SCREEN_WIDTH + x;
@@ -1886,6 +1897,16 @@ void rg_objects_end(void) {
                   memcmp(sprite_layer, drawing, (size_t)drawing_count * sizeof drawing[0]) != 0);
   for (int32_t i = 0; i < drawing_count; i++) sprite_layer[i] = drawing[i];
   sprite_layer_count = drawing_count;
+  /* Reference#show_objects_over_picture: on a painted screen of a game whose sprites are shown over
+   * the picture, they go in the layer in front of it, and never into it. */
+  if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SPRITES_OVER_PICTURE]) {
+    for (int32_t at = 0; at < RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT; at++) over_picture[at] = NOTHING_OVER;
+    painting_over_picture = 1;
+    for (int32_t i = 0; i < drawing_count; i++) draw_placed(&drawing[i]);
+    painting_over_picture = 0;
+    over_picture_up = drawing_count > 0;
+    return;
+  }
   if (rebuilt_whole()) {
     if (moved) request_repaint();
     else skip_repaint();
@@ -2046,6 +2067,8 @@ void rg_screen_frame_ended(void) {
   viewed = finished;
   target = pixels;
   picture_touched = 1; /* the page handed over was built before the one just shown */
+  /* Reference#advance_frame: sprites over the picture are placed with the page published. */
+  rg_game_sprites_over_picture();
 }
 
 /* Reference#show_backdrop: the colour wherever nothing is drawn becomes +color+, the picture painted
@@ -2073,6 +2096,7 @@ int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop)
     /* What was under each sprite went with the old screen, so nothing is put back over the new
      * one. A console that places its sprites at the end of a pass takes them off after this. */
     memset(last_drawn, 0, sizeof last_drawn);
+    over_picture_up = 0;
   } else {
     show_backdrop(new_backdrop);
   }
@@ -2250,15 +2274,24 @@ const uint16_t *rg_screen_shown(void) {
   rg_screen_paint_owed_rebuild();
   if (!held && tint_mode == TINT_NONE && fade_steps == 0 && read_block == 1 && every_pixel_lit()) {
     shown_plain();
+    if (over_picture_up)
+      for (int32_t at = 0; at < RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT; at++)
+        if (over_picture[at] != NOTHING_OVER) shown[at] = over_picture[at];
     keep_console_colors();
     return shown;
   }
   for (int32_t y = 0; y < RG_SCREEN_HEIGHT; y++)
     for (int32_t x = 0; x < RG_SCREEN_WIDTH; x++) {
-      int64_t from_x = block_corner_across(x) + camera_x, from_y = (int64_t)(y - y % read_block) + camera_y;
-      int64_t at = from_y * RG_SCREEN_WIDTH + from_x;
       int32_t fade_here = fade_reaches(x, y);
-      uint16_t color = on_screen(from_x, from_y) ? shown_color(at, viewed[at], fade_here) : faded_where(0, fade_here);
+      uint16_t over = over_picture_up ? over_picture[y * RG_SCREEN_WIDTH + x] : (uint16_t)NOTHING_OVER;
+      uint16_t color;
+      if (over != NOTHING_OVER) {
+        color = faded_where(over, fade_here); /* Framebuffer#pixel: a sprite over the picture is not in blocks */
+      } else {
+        int64_t from_x = block_corner_across(x) + camera_x, from_y = (int64_t)(y - y % read_block) + camera_y;
+        int64_t at = from_y * RG_SCREEN_WIDTH + from_x;
+        color = on_screen(from_x, from_y) ? shown_color(at, viewed[at], fade_here) : faded_where(0, fade_here);
+      }
       shown[y * RG_SCREEN_WIDTH + x] = held ? (uint16_t)0x7FFF : lit(x, y) ? color : darkened_by_display(color, shade_steps);
     }
   keep_console_colors();

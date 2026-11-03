@@ -441,12 +441,18 @@ extern const int16_t rg_game_map_cells[];
  * screen drawn from tiles shows, 1 for a game whose whole view is rebuilt from its layers, how
  * many layers it can be seen through, 1 for a game that shows more than one kind of screen, the
  * biggest block a picture can be shown in (Backends::Blocks), how many runs of tiles it paints
- * from lists, how many pixels those runs hold between them, how many images it has] */
+ * from lists, how many pixels those runs hold between them, how many images it has, 1 for a game
+ * whose sprites are shown over a painted screen] */
 enum {
   RG_SIZE_BACKGROUNDS, RG_SIZE_DEPTHS, RG_SIZE_ALWAYS_UP, RG_SIZE_REBUILT_WHOLE, RG_SIZE_SEE_THROUGH,
-  RG_SIZE_SCREEN_KINDS_CHANGE, RG_SIZE_LARGEST_BLOCK, RG_SIZE_RUNS, RG_SIZE_RUN_PIXELS, RG_SIZE_IMAGES
+  RG_SIZE_SCREEN_KINDS_CHANGE, RG_SIZE_LARGEST_BLOCK, RG_SIZE_RUNS, RG_SIZE_RUN_PIXELS, RG_SIZE_IMAGES,
+  RG_SIZE_SPRITES_OVER_PICTURE
 };
 extern const int32_t rg_game_picture_sizes[];
+
+/* The game's own: places its sprites over a painted screen again, as a two-page screen publishes
+ * the page just finished (Reference#advance_frame). Nothing in a game without such sprites. */
+void rg_game_sprites_over_picture(void);
 extern const int32_t rg_game_always_up[];
 
 /* sin(d) in 256ths for d = 0..449, the table every backend turns a picture by (IR::Affine), and

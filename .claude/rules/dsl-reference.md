@@ -46,7 +46,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Images & sprites — `.claude/dsl/sprites.md`
 
 - `image :name, "#" => :red do … end` — ASCII art, `data:`, `from: "file.png"`, or `from: list` painted at run time.
-- `sprite :name, at: [x, y]` → `Sprite` (software on bitmap, hardware on tiled): moving, facing, frames, hitbox, turning.
+- `sprite :name, at: [x, y]` → `Sprite` (software on bitmap, hardware on tiled): moving, facing, frames, hitbox, turning. `over_picture: true` on bitmap: the console's own, in front of all the picture.
 - `blit :name, x, y` — a picture at a run-time place, clipped.
 - `mirror(:pic)` / `upside_down(:pic)` — the picture turned.
 - `colors :hurt, [...]` + `draw_with`; `recolor :slot, :goblin` at run time; `colors_in_use` (a hint).

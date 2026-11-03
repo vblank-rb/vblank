@@ -112,7 +112,10 @@ module VBlank
                       "shows as the game runs. The build warns when the sprites one screen declares pass " \
                       "128, and when it gives up the squares of 16×16 to fit the tiles. It does not count " \
                       "pools or letters of text. `scale`, `face_angle` and `turn` are refused: a Super " \
-                      "Nintendo cannot turn or resize a sprite. Draw the turns as poses."),
+                      "Nintendo cannot turn or resize a sprite. Draw the turns as poses. A sprite with " \
+                      "`over_picture: true` on a painted screen is not made yet: the build refuses it and says " \
+                      "so. That painted screen uses nearly all the video memory and all 256 colours, and the " \
+                      "sprites need some of both."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),
         picture_groups: works,

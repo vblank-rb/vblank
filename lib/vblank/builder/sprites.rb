@@ -51,6 +51,15 @@ module VBlank
       # work and can stack cleanly over other sprites. The handle is the same either
       # way — `x`/`y`/`move`/`move_to` — so the game code doesn't change.
       #
+      # Pass +over_picture: true+ on a `screen :bitmap` for the console's own sprite there
+      # too: the display draws it over the painted picture, never into it, so it costs no
+      # painting and nothing has to be put back when it moves or when the game repaints the
+      # whole picture. It is the same handle a tiled screen gives (turning and resizing
+      # included). The display knows nothing of what the picture shows, so such a sprite is
+      # in front of ALL of it — right for a gun in the player's hands, a cursor or a marker,
+      # and wrong for something that should go behind part of the picture. That is why it is
+      # asked for, sprite by sprite. On a `screen :tiled` it changes nothing.
+      #
       # Pass +frames:+ a list of same-size images and +rate:+ to make the sprite a
       # FLIPBOOK: the framework cycles through those frames — one every +rate+ frames —
       # with the timer hidden and managed for you, so a coin spins or a torch flickers
@@ -91,13 +100,14 @@ module VBlank
       # @return [Sprite, HardwareSprite] a handle: x / y / move / move_to (and, in bitmap mode, face / hide / show)
       def sprite(name, at:, facing: nil, frames: nil, frames_from: nil, facing_from: nil,
                  from_aseprite: nil, dirs: nil, tile: nil, transparent: false, rate: nil, shown: true, hitbox: nil,
-                 colors: nil)
+                 colors: nil, over_picture: false)
         colors = imported_colors(name, colors, imports: from_aseprite || facing_from || frames_from)
+        over = over_painted_picture?(over_picture)
         if from_aseprite
           reject_other_pose_sources!(name, facing: facing, frames: frames, frames_from: frames_from, facing_from: facing_from)
           poses, clips, width, height, durations = import_aseprite(name, from_aseprite, transparent, colors)
-          return clip_hardware_sprite(name, at: at, poses: poses, clips: clips, durations: durations, width: width, height: height, shown: shown, hitbox: hitbox) \
-            if @screen_mode == :tiled
+          return clip_hardware_sprite(name, at: at, poses: poses, clips: clips, durations: durations, width: width, height: height, shown: shown, hitbox: hitbox, over_picture: over) \
+            if @screen_mode == :tiled || over
 
           return clip_sprite(name, at: at, poses: poses, clips: clips, durations: durations, width: width, height: height, shown: shown, hitbox: hitbox)
         end
@@ -115,8 +125,9 @@ module VBlank
           frames = import_frames(name: name, path: frames_from, tile: tile, transparent: transparent, colors: colors)
         end
         validate_animation!(name, facing, frames, rate, frames_from: frames_from)
-        return hardware_sprite(name, at: at, facing: facing, frames: frames, rate: rate, shown: shown, hitbox: hitbox) \
-          if @screen_mode == :tiled
+        return hardware_sprite(name, at: at, facing: facing, frames: frames, rate: rate, shown: shown, hitbox: hitbox,
+                                     over_picture: over) \
+          if @screen_mode == :tiled || over
 
         poses, facing_dirs, width, height, frames_per_dir = resolve_sprite_art(name, facing, frames)
         has_poses = !poses.nil?
@@ -349,6 +360,17 @@ module VBlank
 
       private
 
+      # IS THIS SPRITE THE CONSOLE'S OWN, SHOWN OVER A PICTURE THE GAME PAINTS? Only when the
+      # game asked (`over_picture: true`) on a painted screen. On a tiled screen every sprite is
+      # the console's already, so the setting changes nothing there and is taken quietly.
+      def over_painted_picture?(asked)
+        unless [true, false].include?(asked)
+          raise ArgumentError, "sprite over_picture: must be true or false. Got #{asked.inspect}."
+        end
+
+        asked && (@screen_mode.nil? || @screen_mode == :bitmap)
+      end
+
       # Where +names+ sit side by side among the layers +nodes+ can be put in, adding them at
       # the end when they do not — so a set picked by a number is that number plus where the
       # set starts, rather than a test per layer. Every node keeps the same list, since they
@@ -450,7 +472,7 @@ module VBlank
       # software Sprite's, so game code reads the same in either mode — including
       # `facing:` poses, which on hardware swap which of the sprite's uploaded pictures
       # the console draws (the tile data is managed for you).
-      def hardware_sprite(name, at:, facing:, frames:, rate:, shown:, hitbox:)
+      def hardware_sprite(name, at:, facing:, frames:, rate:, shown:, hitbox:, over_picture: false)
         poses, facing_dirs, width, height, frames_per_dir = resolve_sprite_art(name, facing, frames)
         poses ||= [name] # a plain sprite is a single-pose object
         animated_facing = frames_per_dir > 1 # a facing: with a list of frames per direction
@@ -497,7 +519,7 @@ module VBlank
         object_node = Build.object(object_name, poses: poses, pose: pose,
                                                 x: Build.var_ref(pos_x), y: Build.var_ref(pos_y),
                                                 active: gated_by_scene(Build.var_ref(active)),
-                                                scene: declaring_scene, declared: name)
+                                                scene: declaring_scene, declared: name, over_picture: over_picture)
         record(object_node)
         handle = DSL::HardwareSprite.new(self, object_name: object_name, object_node: object_node, x: pos_x, y: pos_y,
                                           active: active, hitbox: box, poses: poses, pixel_perfect: hitbox.nil?,
@@ -934,7 +956,7 @@ module VBlank
       # A hardware (tiled) sprite driven by named animation clips — the console composites
       # it. Tool-agnostic, the same clip model as #clip_sprite; the object's pose is the
       # current clip's offset plus the frame within it.
-      def clip_hardware_sprite(name, at:, poses:, clips:, durations:, width:, height:, shown:, hitbox:)
+      def clip_hardware_sprite(name, at:, poses:, clips:, durations:, width:, height:, shown:, hitbox:, over_picture: false)
         box = collision_box(name: name, images: poses, width: width, height: height, hitbox: hitbox)
         start_x, start_y = at
         id = (@sprite_seq += 1)
@@ -953,7 +975,7 @@ module VBlank
         object_node = Build.object(object_name, poses: poses, pose: pose,
                                                 x: Build.var_ref(pos_x), y: Build.var_ref(pos_y),
                                                 active: gated_by_scene(Build.var_ref(active)),
-                                                scene: declaring_scene, declared: name)
+                                                scene: declaring_scene, declared: name, over_picture: over_picture)
         record(object_node)
         handle = DSL::HardwareSprite.new(self, object_name: object_name, object_node: object_node, x: pos_x, y: pos_y,
                                           active: active, hitbox: box, poses: poses, pixel_perfect: hitbox.nil?,

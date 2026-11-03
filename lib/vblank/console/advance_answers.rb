@@ -38,7 +38,9 @@ module VBlank
 
         # --- pictures and sprites ---
         image: works, color: works, rgb: works, rgb8: works, colors: works, recolor: works,
-        colors_in_use: works, color_walk: works, mirror: works, upside_down: works, blit: works, sprite: works,
+        colors_in_use: works, color_walk: works, mirror: works, upside_down: works, blit: works,
+        sprite: works("a sprite with `over_picture: true` on a painted screen is the console's own sprite. The " \
+                      "painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K."),
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
 
         # --- backgrounds and layers ---
