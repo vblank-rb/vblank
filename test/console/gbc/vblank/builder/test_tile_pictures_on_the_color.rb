@@ -8,6 +8,7 @@ require "test_helper"
 class TestTilePicturesOnTheColor < Minitest::Test
   TILES = 24
   PICTURES = 3
+  ASKED_ON_PASS = 8
 
   private def billboard
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
@@ -77,6 +78,49 @@ class TestTilePicturesOnTheColor < Minitest::Test
     end
     b.finalize_program
     b.program
+  end
+
+  # A cell moved and a picture shown on one pass, in colours that tell every state apart.
+  private def picture_beside_moved_cell
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled, backdrop: :black
+      colors :board, %i[transparent yellow orange cyan white]
+      colors :field, %i[transparent white red green blue]
+      image :before, width: 8, height: 8, colors: :board, places: Array.new(64, 1)
+      image :after, width: 8, height: 8, colors: :board, places: Array.new(64, 2)
+      image :plain, width: 8, height: 8, colors: :field, places: Array.new(64, 1)
+      image :moved, width: 8, height: 8, colors: :field, places: Array.new(64, 2)
+      group = tile_pictures :billboard, tiles: { a: %i[before after] }, colors: :board
+      tiles :set, "." => :plain, "m" => :moved, "a" => group[:a]
+      ground = background :ground, tiles: :set, map: ["a."]
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        if pass == ASKED_ON_PASS
+          group.show 1
+          ground.set_tile 1, 0, "m"
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # What a pass says of the picture and of a cell, it says of one frame. The game was waiting on a
+  # moved cell and a group's picture landing together.
+  def test_a_picture_shows_on_the_frame_a_cell_moved_on_its_pass_shows
+    player = game_player
+    picture = []
+    cell = []
+    player.each_vblank do |frame|
+      picture << frame if player.screen.pixel(0, 0) == Color.resolve(:orange)
+      cell << frame if player.screen.pixel(8, 0) == Color.resolve(:red)
+    end
+    player.run(picture_beside_moved_cell, frames: ASKED_ON_PASS + 6)
+
+    assert_equal cell.first, picture.first
+    refute_nil cell.first
   end
 
   def test_pictures_too_many_for_the_part_always_in_view_are_kept_in_a_bank

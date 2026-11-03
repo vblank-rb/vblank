@@ -41,16 +41,18 @@ module VBlank
       PLACED_AT_BOUNDARY = %i[scroll_background place_bar show_map background_colors affine_background
                               copy_owed_tiles color_list_holds see_through present_objects].freeze
 
-      # ...and the routines that put the frame's sprites in order for it (a pool's things, a
-      # `draw_in_order`), by the kind of name the builder makes for each (Messages::MadeNames).
-      ORDERING_SPRITES = %i[pool_stacking draw_order].freeze
+      # ...and the routines that do such a write for it: putting the frame's sprites in order (a
+      # pool's things, a `draw_in_order`) and copying the tiles painted since, which a walk of the
+      # loop's own statements sees only as a call. They go by the kind of name the builder makes for
+      # each (Messages::MadeNames).
+      BOUNDARY_ROUTINES = %i[pool_stacking draw_order painted_copies].freeze
 
       # Is +statement+ one of the boundary's writes for the display (PLACED_AT_BOUNDARY,
-      # ORDERING_SPRITES)?
+      # BOUNDARY_ROUTINES)?
       def self.placed_at_boundary?(statement)
         statement.walk.any? do |node|
           PLACED_AT_BOUNDARY.include?(node.kind) ||
-            (node.kind == :call && ORDERING_SPRITES.include?(Messages::MadeNames.read(node.target)&.first))
+            (node.kind == :call && BOUNDARY_ROUTINES.include?(Messages::MadeNames.read(node.target)&.first))
         end
       end
 

@@ -223,8 +223,9 @@ class TestTileRuns < Minitest::Test
       end
     end
 
-    refute_equal WHITE, pixel(prog, 3, 48, 20), "not on the frame it was written"
-    assert_equal WHITE, pixel(prog, 4, 48, 20), "on the next frame, the same as tiles a background shows"
+    shows_on = 3 + framework_drawing_lag
+    refute_equal WHITE, pixel(prog, shows_on - 1, 48, 20), "not before the gap's copy"
+    assert_equal WHITE, pixel(prog, shows_on, 48, 20), "with the gap's copy, the same as tiles a background shows"
   end
 
   # A game that says `changed now: true` has the list copied where it said so, inside the
@@ -358,7 +359,8 @@ class TestTileRuns < Minitest::Test
   end
 
   # Said now and then said plainly in the same pass, each keeps its own timing: the first
-  # pixel shows on this frame, and the one written after it on the next, with the gap's copy.
+  # pixel shows on this frame, and the one written after it with the gap's copy, which is the same
+  # frame on a console that places its picture before the wait.
   private def tag_changed_now_then_later_game
     tag_game do |canvas, tag, frame|
       if frame == 3
@@ -373,8 +375,10 @@ class TestTileRuns < Minitest::Test
   def test_a_plain_changed_after_a_changed_now_still_copies_in_the_gap
     prog = tag_changed_now_then_later_game
 
-    assert_equal [WHITE, 0], [pixel(prog, 3, 48, 20), pixel(prog, 3, 40, 20)], "only the first pixel, at once"
-    assert_equal [WHITE, WHITE], [pixel(prog, 4, 48, 20), pixel(prog, 4, 40, 20)], "both, a frame later"
+    gap = 3 + framework_drawing_lag
+    assert_equal WHITE, pixel(prog, 3, 48, 20), "the first pixel, at once"
+    assert_equal 0, pixel(prog, gap - 1, 40, 20), "not the second before the gap's copy"
+    assert_equal [WHITE, WHITE], [pixel(prog, gap, 48, 20), pixel(prog, gap, 40, 20)], "both, with the gap's copy"
     [3, 4].each { |frames| assert_backends_agree(prog, frames: frames) }
   end
 
