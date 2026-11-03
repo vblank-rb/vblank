@@ -190,6 +190,67 @@ class TestWornListsSharePicturesOnTheSuperNintendo < Minitest::Test
     assert_equal FLASH[Random.new(0).rand(1..15)], played.screen.pixel(0, 0)
   end
 
+  WALK_POSES = 40
+  DEATH_POSES = 8
+  ENEMY_POSES = 16
+  POSE_SIZE = 16
+
+  # A stage of two heroes of one walk, worn in their own lists and a shield's, their deaths in theirs,
+  # a sign and an enemy each in a list of its own: five lists of sprite colours on one screen. A copy
+  # of each pose per list is past the 512 tiles; one set of them fits. The title before it has a
+  # see-through sprite, which the console's colour math reaches only through the last four sets of
+  # sprite colours, while the stage, where the math is off, can draw from all eight.
+  private def stage_of_five_lists_game(shown)
+    poses = ->(prefix, count, list, seed) do
+      Array.new(count) do |n|
+        image :"#{prefix}#{n}", width: POSE_SIZE, height: POSE_SIZE, colors: list,
+                                places: Random.new(seed + n).then { |rng| Array.new(POSE_SIZE * POSE_SIZE) { rng.rand(1..15) } }
+        :"#{prefix}#{n}"
+      end
+    end
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      layers :ghosts
+      (1..6).each { |n| colors :"list#{n}", SceneColorLists.full_list(n) }
+      walk = instance_exec(:walk, WALK_POSES, :list1, 0, &poses)
+      death = instance_exec(:death, DEATH_POSES, :list1, 100, &poses)
+      enemy = instance_exec(:enemy, ENEMY_POSES, :list5, 200, &poses)
+      sign = instance_exec(:sign, 1, :list4, 300, &poses).first
+      instance_exec(:ghost, 1, :list6, 400, &poses)
+      worn = var :worn, shown
+      scene(:title) { layer(:ghosts, shows: 100, shows_behind: 100) { sprite :ghost0, at: [0, 0] } }
+      scene(:stage) do
+        one = sprite :one, frames: walk, rate: 60, at: [0, 0]
+        one.draw_with %i[list1 list3], showing: worn
+        two = sprite :two, frames: walk, rate: 60, at: [32, 0]
+        two.draw_with %i[list2 list3], showing: worn
+        sprite(:one_dying, frames: death, rate: 60, at: [64, 0]).draw_with :list1
+        sprite(:two_dying, frames: death, rate: 60, at: [96, 0]).draw_with :list2
+        sprite :enemy, frames: enemy, rate: 60, at: [128, 0]
+        sprite(sign, at: [160, 0]).draw_with :list4
+      end
+      var :state, 1
+      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :stage } }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  private def first_place(seed) = Random.new(seed).rand(1..15)
+
+  def test_five_lists_on_a_stage_wear_one_set_of_pictures_beside_a_see_through_title
+    { 0 => [1, 2], 1 => [3, 3] }.each do |shown, (first_list, second_list)|
+      played = game_player.run(stage_of_five_lists_game(shown), frames: 4)
+
+      assert_equal list_of(first_list)[first_place(0)], played.screen.pixel(0, 0), "hero, list #{shown}"
+      assert_equal list_of(second_list)[first_place(0)], played.screen.pixel(32, 0), "second hero, list #{shown}"
+      assert_equal list_of(2)[first_place(100)], played.screen.pixel(96, 0), "second hero dying"
+      assert_equal list_of(5)[first_place(200)], played.screen.pixel(128, 0), "enemy"
+      assert_equal list_of(4)[first_place(300)], played.screen.pixel(160, 0), "sign"
+    end
+  end
+
   private def corner_color(which, number)
     played = game_player.run(game_of_two_lists(which), frames: 4)
     played.screen.pixel((number % COLUMNS) * SIZE, (number / COLUMNS) * SIZE)

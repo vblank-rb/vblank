@@ -156,6 +156,7 @@ module VBlank
             @sprite_tile_numbers = {}
             @sprite_palettes = [] # each a list of up to fifteen colours, or nil for one not used yet
             @sprite_palettes_for = { false => (0...PALETTES), true => (0...PALETTES) }
+            @unmixed_scenes = []
             @held_palettes = {} # whose list => its palette (#held_palette)
             @held = { backgrounds: [], sprites: [] }
             @scene_held = {} # a scene -> the same, for its own copy of the background palettes
@@ -271,7 +272,7 @@ module VBlank
           end
 
           def held_sprite_palette(key, colors, mixed: false, scene: nil)
-            held_palette(sprite_palettes(scene), key, colors, "sprites", @sprite_palettes_for.fetch(mixed))
+            allocate_sprite_palette(mixed, scene) { |within| held_palette(sprite_palettes(scene), key, colors, "sprites", within) }
           end
 
           # The colours and tiles of +image+, a picture of what every screen keeps, placed before any
@@ -357,8 +358,15 @@ module VBlank
           MIXED_SPRITE_PALETTES = (4...PALETTES)
 
           # Keeps the last four sprite palettes for see-through sprites, before any sprite is made.
-          def split_sprite_palettes!
+          #
+          # A see-through layer that only some scenes show leaves the colour math off while any other
+          # scene is up (Lowering::Picture#emit_see_through_for_scene), and then the last four sets
+          # blend nothing. +unmixed_scenes+ names those scenes: in a game where each scene brings its
+          # own sprite colours in (+sprite_colors+), a picture of one of them that fills the first
+          # four goes on into the last four, as a console game's stage does with all eight.
+          def split_sprite_palettes!(unmixed_scenes: [])
             @sprite_palettes_for = { false => (0...MIXED_SPRITE_PALETTES.begin), true => MIXED_SPRITE_PALETTES }
+            @unmixed_scenes = unmixed_scenes
           end
 
           # The sprite picture +name+ (an Assets::Image), cut into pieces. A picture whose width or
@@ -374,8 +382,10 @@ module VBlank
               next pieced_sprite_picture(name, image, mixed, held, scene, number) if image.pieces
 
               palettes = sprite_palettes(scene)
-              palette = held || palette_for(palettes, sprite_image_colors(image), "sprites", @sprite_palettes_for.fetch(mixed))
-              cut = SpritePieces.cut(image.width, image.height) do |x, y|
+              palette = held || allocate_sprite_palette(mixed, scene) do |within|
+                palette_for(palettes, sprite_image_colors(image), "sprites", within)
+              end
+              cut =SpritePieces.cut(image.width, image.height) do |x, y|
                 i = (y * image.width) + x
                 if !image.drawn_at?(i) then 0
                 elsif held then place_in_list(image, i)
@@ -621,7 +631,9 @@ module VBlank
           def pieced_sprite_picture(name, image, mixed, held, scene, number)
             given = (squares_here? ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
             palettes = sprite_palettes(scene)
-            palette = held || palette_for(palettes, sprite_image_colors(image), "sprites", @sprite_palettes_for.fetch(mixed))
+            palette = held || allocate_sprite_palette(mixed, scene) do |within|
+              palette_for(palettes, sprite_image_colors(image), "sprites", within)
+            end
             # Last given first: sprites go into the table back-most first (Lowering::Picture
             # #emit_present_objects), so the piece placed last is the one in front.
             pieces = given.map { |dx, dy, own| sprite_piece_from_places(dx, dy, own, image, palette, held, palettes) }.reverse
@@ -672,6 +684,19 @@ module VBlank
           end
 
           def square_tiles_from(first) = [first, first + 1, first + TILES_ACROSS, first + TILES_ACROSS + 1]
+
+          # The sprite palette the block allocates from the sets it is handed: those a picture that is
+          # +mixed+ (or not) is drawn from, and where those are full, all eight in a scene of
+          # +unmixed_scenes+ (#split_sprite_palettes!). The four come first, so a game they hold
+          # keeps the palettes it had. Neither the block's palette_for nor held_palette changes a
+          # set before refusing, so the second try starts from what the first found.
+          def allocate_sprite_palette(mixed, scene)
+            yield @sprite_palettes_for.fetch(mixed)
+          rescue TooMuch
+            raise if mixed || !@unmixed_scenes.include?(scene)
+
+            yield (0...PALETTES)
+          end
 
           # The palette of +palettes+ that holds every one of +colors+, adding them to one with
           # room where none does, or starting another — of the palettes +within+. +what+ names

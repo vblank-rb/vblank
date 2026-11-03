@@ -171,7 +171,7 @@ module VBlank
             # sprite palettes, and every other picture from the first four (Art#split_sprite_palettes!),
             # so a picture both kinds of sprite show would need to be made twice, which is not made yet.
             def make_sprite_art
-              @art.split_sprite_palettes! unless see_through_sprites.empty?
+              @art.split_sprite_palettes!(unmixed_scenes: scenes_without_see_through) unless see_through_sprites.empty?
               @sprite_pictures = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
               mixed = see_through_sprites.flat_map { |name| @objects.fetch(name).poses }.uniq
               solid = (@objects.values.reject { |obj| see_through_sprites.include?(obj.name) }.flat_map(&:poses) +
@@ -1438,6 +1438,14 @@ module VBlank
             # The names of the sprites in the see-through layer, drawn from the palettes the
             # colour math reaches (Art#split_sprite_palettes!).
             def see_through_sprites = @see_through_sprites || []
+
+            # The scenes the see-through layer is not on, whose colour math is off while they are up
+            # (#emit_see_through_for_scene); none for a layer every screen shows.
+            def scenes_without_see_through
+              return [] unless @see_through_scenes
+
+              @scenes.keys.reject { |scene| @see_through_scenes.include?(@scenes.fetch(scene)) }
+            end
 
             HALF = [SeeThrough::STEPS / 2, SeeThrough::STEPS / 2].freeze
 
