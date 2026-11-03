@@ -443,6 +443,37 @@ module VBlank
         compare(:!=, other)
       end
 
+      # Ruby's own questions about a number, as a game writes them: `if lives.zero?`. Each is the
+      # comparison with nought, so it costs what `lives == 0` costs.
+      def zero? = compare(:==, 0)
+      def positive? = compare(:>, 0)
+      def negative? = compare(:<, 0)
+
+      # The number questions Ruby has that a game's numbers do not answer here. Asking one is
+      # refused in plain words with the comparison to write, rather than with Ruby's own
+      # "undefined method", which names a class of the library's and nothing a game wrote.
+      NUMBER_QUESTIONS_INSTEAD = {
+        nonzero?: "!= 0", even?: "% 2 == 0", odd?: "% 2 != 0", finite?: nil, infinite?: nil,
+        integer?: nil
+      }.freeze
+
+      def method_missing(name, *args, &)
+        return super unless NUMBER_QUESTIONS_INSTEAD.key?(name) || (name.end_with?("?") && 0.respond_to?(name))
+
+        instead = NUMBER_QUESTIONS_INSTEAD[name]
+        written = @name ? name_as_written : "the number"
+        fix = instead ? " Write the comparison instead: `#{written} #{instead}`." : ""
+        raise ArgumentError,
+              "A game's number does not answer `#{name}`. It answers `zero?`, `positive?` and " \
+              "`negative?`, and the comparisons `==`, `!=`, `<`, `<=`, `>` and `>=`.#{fix}#{at_dsl_line}"
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        return false if NUMBER_QUESTIONS_INSTEAD.key?(name) || (name.end_with?("?") && 0.respond_to?(name))
+
+        super
+      end
+
       # --- mutation: record a statement (variable handles only) ---
 
       # A number worked out on the spot is not somewhere a value can be kept, so neither a
