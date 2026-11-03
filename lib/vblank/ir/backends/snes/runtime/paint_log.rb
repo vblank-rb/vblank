@@ -84,9 +84,15 @@ module VBlank
             # The log: each painting ENTRY_BYTES, its kind, the area, the first five working numbers,
             # then its rows of tiles, top and bottom, its first and last tile across, and a word for
             # the flush.
+            #
+            # A pass of more paintings than the log holds paints what is written down when it fills,
+            # and every tile painted on both sides of that is painted twice (and its key compared
+            # with one the pass had not finished), so the log takes what work RAM has left once the
+            # game's own places are known, up to MOST_LOG_ENTRIES, and LEAST_LOG_ENTRIES at least.
             LOG = "rt paint log"
             LOG_END = "rt paint log end"
-            LOG_ENTRIES = 128
+            LEAST_LOG_ENTRIES = 128
+            MOST_LOG_ENTRIES = 512
             ENTRY_BYTES = 40
             ENTRY_AREA = 2
             ENTRY_NUMBERS = 10
@@ -134,7 +140,7 @@ module VBlank
               tiles = Paint::TILES
               { KEYS_NOW => tiles * 4, KEYS_COPY => tiles * 4, KEYS_SHOWN => tiles * 4, PAINTED_IN => tiles, REPAINT => tiles,
                 UNSENT => tiles, READIED => Paint::ROWS * 4, MAP_DIRTY => Paint::ROWS * 4,
-                MAP_RUNS => Paint::ROWS * 4, LOG => LOG_ENTRIES * ENTRY_BYTES, KEPT_PAGE => 0x100 }.each do |name, bytes|
+                MAP_RUNS => Paint::ROWS * 4, KEPT_PAGE => 0x100 }.each do |name, bytes|
                 memory.reserve_far(name, bytes)
               end
               [MAP_RUNS_END, MAP_RUN_BYTES, LOG_END, OP_KIND, OP_BYTES, REPLAYING, LOGGING, SENDING, RESTORES, STAMP].each do |name|
@@ -269,8 +275,10 @@ module VBlank
             end
 
             def emit(asm, memory, s, bank)
+              log_bytes = memory.reserve_far_up_to(LOG, least: LEAST_LOG_ENTRIES * ENTRY_BYTES,
+                                                        most: MOST_LOG_ENTRIES * ENTRY_BYTES, step: ENTRY_BYTES)
               emit_hash(asm, memory)
-              emit_op_begin(asm, memory)
+              emit_op_begin(asm, memory, log_bytes)
               emit_mark(asm, memory, s)
               emit_mark_now(asm, memory, s)
               emit_log_append(asm, memory, s)
@@ -365,8 +373,8 @@ module VBlank
 
             # rt_paint_op_begin (JSR, A the kind, X the bytes of working numbers it is known by,
             # HASHED_NUMBERS): while paintings are written down, the log painted first if it is
-            # full, then the painting's hash.
-            def emit_op_begin(asm, memory)
+            # full (+log_bytes+), then the painting's hash.
+            def emit_op_begin(asm, memory, log_bytes)
               asm.label("rt_paint_op_begin")
               asm.sta(asm.abs(memory[OP_KIND]))
               asm.stx(asm.abs(memory[OP_BYTES]))
@@ -378,7 +386,7 @@ module VBlank
               asm.rts
               asm.label("rt_paint_op_begin_logged")
               asm.lda(asm.abs(memory[LOG_END]))
-              asm.cmp(LOG_ENTRIES * ENTRY_BYTES)
+              asm.cmp(log_bytes)
               asm.bcc("rt_paint_op_begin_room")
               asm.jsr(asm.abs("rt_paint_flush_keeping"))
               asm.label("rt_paint_op_begin_room")

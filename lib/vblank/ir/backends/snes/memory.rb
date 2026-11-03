@@ -85,6 +85,18 @@ module VBlank
             end
           end
 
+          # As many +bytes+ as are left of the rest of work RAM, up to +most+ and in steps of +step+,
+          # for +name+, reserved as #reserve_far does once the game's own places are known: and how
+          # many that came to. At least +least+, or the game keeps more than there is room for.
+          def reserve_far_up_to(name, least:, most:, step:)
+            bank_end = (@next_far & 0xFF0000) + 0x10000
+            left = [bank_end, @far_end].min - @next_far
+            left = [@far_end - bank_end, 0x10000].min if left < least && bank_end < @far_end
+            bytes = [[left, most].min / step * step, least].max
+            reserve_far(name, bytes)
+            bytes
+          end
+
           # +bytes+ of work RAM's last bank, $7F:0000 on, for +name+ — a painted screen's copy, which
           # wants a bank of its own so a 16-bit address is a byte of it, then what the painted screen
           # keeps beside it — each after the one asked for before, and the far places asked for

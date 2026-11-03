@@ -77,6 +77,8 @@ module VBlank
           #   rt_paint_fill     a rectangle in one colour
           #   rt_paint_blit     a picture (SNES::PaintedArt's) at a place
           #   rt_paint_blit_one_of  one of a list of pictures, by number
+          #   rt_paint_blit_inked   text whose colour is picked as the game runs, in an ink whose
+          #                         colour changes rather than its tiles
           #   rt_paint_save     the patch of the screen under a sprite, kept
           #   rt_paint_restore  the patch put back
           #   rt_paint_prepare  as a pass ends: the runs of tiles to send
@@ -176,6 +178,11 @@ module VBlank
             SHOWN_GENERATION = "rt paint shown generation"
             NOTHING_SHOWN = 0xFFFF
 
+            # The most inks a game paints text in (rt_paint_blit_inked), and for each the generation it
+            # was last set in, a word.
+            MOST_INKS = 64
+            INK_GENERATIONS = "rt paint ink generations"
+
             # The direct page the routines work on.
             Scratch = Data.define(:left, :right, :top, :bottom, :area, :y, :row, :count, :chunk, :last,
                                   :shift, :mask, :not_mask, :planes, :left_planes, :right_planes,
@@ -202,6 +209,7 @@ module VBlank
               far.call(CLEAR_TILE_COPY, TILE_BYTES)
               far.call(RUNS, MOST_RUNS * 4)
               far.call(SHOWN_IN, TILES)
+              memory.reserve_far(INK_GENERATIONS, MOST_INKS * 2)
               memory.reserve(AREA, 8)
               memory.reserve(DIRTY, ROWS * 4)
               memory.reserve(COLUMN_MASKS, COLUMNS * 2)
@@ -299,6 +307,8 @@ module VBlank
               asm.stz(asm.abs(h::CGADD))
               asm.rep(0x20)
               Picture.emit_dma(asm, h::DMA_TO_ONE_PORT, h::CGDATA, asm.imm("art colors"), asm.bank_of("art colors"), 512)
+              # ...and where they change as the game runs (an ink's, rt_paint_blit_inked), there too.
+              asm.jsl(asm.long("rt_colors_start")) if memory.reserved?(Tint::COLORS_NOW)
               # Paint anywhere, and nothing changed yet. The screen starts cleared to place 0, black,
               # in generation 0, which no tile is in yet; the copy, the clear tile in video RAM and the
               # clear colour's planes start all nought, as Boot leaves them.
@@ -1051,6 +1061,81 @@ module VBlank
 
             # --- pictures ---
 
+            # rt_paint_blit_inked(list, showing, x, y, ink): text whose colour is picked as the game
+            # runs (Lowering::Paint#emit_draw_text), from the list of its three pictures — in the
+            # colour shown, in the colour picked, and in its INK, a place of the colour list no other
+            # colour is painted in.
+            #
+            # The ink's picture is painted when the ink can stand for the colour wanted: the ink
+            # holds it already, or nothing has painted in the ink since the screen was last cleared
+            # whole, and then the ink is set to it. Every pixel of the ink on the screen then is this
+            # text's, painted since that clear (a tile of an older generation shows the clear tile),
+            # so changing the ink's colour changes no pixel the interpreter would keep. Text painted
+            # the same each pass in a colour that changes is then the same tiles, which are neither
+            # painted nor sent again (PaintLog): only the colour list changes, with the map in the
+            # pass's last blank (Tint). A second colour wanted of the ink before the next clear is
+            # painted in its own colour's picture, as is any colour when the generations come round
+            # to the one the ink was last set in.
+            #
+            # INK_GENERATIONS keeps, for each ink, one more than the generation it was last set in:
+            # nought, at power-on, is none. (+temp+ is the colour wanted, +temp+ + 2 its place's byte.)
+            def emit_blit_inked(asm, memory, s)
+              now = memory[Tint::COLORS_NOW]
+              state = memory[Tint::STATE]
+              asm.label("rt_paint_blit_inked")
+              asm.lda(asm.direct(R.call(4)))
+              3.times { asm.asl }
+              asm.tax
+              asm.lda(asm.direct(R.call(1)))
+              asm.ora(asm.direct(R.call(1) + 2))
+              asm.beq("rt_paint_blit_inked_shown")
+              asm.lda(asm.long_x("paint inks", 4))
+              asm.bra("rt_paint_blit_inked_wanted")
+              asm.label("rt_paint_blit_inked_shown")
+              asm.lda(asm.long_x("paint inks", 2))
+              asm.label("rt_paint_blit_inked_wanted")
+              asm.sta(asm.direct(s.temp))
+              asm.lda(asm.long_x("paint inks"))
+              asm.sta(asm.direct(s.temp + 2))
+              asm.lda(asm.direct(R.call(4)))
+              asm.asl
+              asm.tax
+              asm.lda(asm.abs(memory[GENERATION]))
+              asm.inc
+              asm.cmp(asm.long_x(memory[INK_GENERATIONS]))
+              asm.beq("rt_paint_blit_inked_set")
+              asm.sta(asm.long_x(memory[INK_GENERATIONS]))
+              asm.ldx(asm.direct(s.temp + 2))
+              asm.lda(asm.direct(s.temp))
+              asm.cmp(asm.long_x(now))
+              asm.beq("rt_paint_blit_inked_ink")
+              # The ink's colour changed: in the colours a fade moves from, and, with no fade in
+              # force, in the copy the blank sends, as Tint's rt_colors_hold changes a colour.
+              asm.sta(asm.long_x(now))
+              asm.ldy(asm.abs(state + Tint::STEPS_AT))
+              asm.bne("rt_paint_blit_inked_faded")
+              asm.sta(asm.long_x(memory[Tint::SHADOW]))
+              asm.lda(asm.abs(state + Tint::CHANGED))
+              asm.bne("rt_paint_blit_inked_ink")
+              asm.lda(Tint::TO_SEND)
+              asm.bra("rt_paint_blit_inked_noted")
+              asm.label("rt_paint_blit_inked_faded")
+              asm.lda(Tint::TO_WORK_OUT)
+              asm.label("rt_paint_blit_inked_noted")
+              asm.sta(asm.abs(state + Tint::CHANGED))
+              asm.bra("rt_paint_blit_inked_ink")
+              # Set in this generation already: the ink stands for the colour only if it holds it.
+              asm.label("rt_paint_blit_inked_set")
+              asm.ldx(asm.direct(s.temp + 2))
+              asm.lda(asm.direct(s.temp))
+              asm.cmp(asm.long_x(now))
+              asm.bne("rt_paint_blit_one_of") # +showing+ picks the picture in the colour
+              asm.label("rt_paint_blit_inked_ink")
+              asm.lda(2) # the third picture, the ink's
+              asm.sta(asm.direct(R.call(1)))
+              asm.stz(asm.direct(R.call(1) + 2))
+            end
+
             # rt_paint_blit_one_of(list, which, x, y): the picture numbered +which+ in the list of
             # pictures numbered +list+ (the table "paint picture lists": each a count, then the
             # pictures' numbers), or none for a number outside it. rt_paint_blit(picture, x, y).
@@ -1058,6 +1143,7 @@ module VBlank
             # A picture placed more than 2048 pixels off the screen's left or top, or past its right
             # or bottom, paints nothing, so everything below works in 16 bits; no picture is that big.
             def emit_blit(asm, memory, s, bank, logged)
+              emit_blit_inked(asm, memory, s) if memory.reserved?(Tint::COLORS_NOW)
               asm.label("rt_paint_blit_one_of")
               asm.lda(asm.direct(R.call(0)))
               asm.asl
@@ -1837,12 +1923,23 @@ module VBlank
 
               # rt_paint_run_end (JSR): the run started at +chunk+, if one is, ended before +tile+
               # and put on its list: the runs of tiles not on the screen from the start, the others
-              # from the end back.
+              # from the end back. A run that starts where the last one put on its list ends — the
+              # next row's, after a row changed to its end — is that run made longer: the tiles are
+              # side by side in video RAM and in the copy, and one copy costs a blank less of its
+              # time than two.
               asm.label("rt_paint_run_end")
               asm.lda(asm.direct(s.chunk))
               asm.bmi("rt_paint_run_end_none")
               asm.lda(asm.direct(s.mask))
               asm.bne("rt_paint_run_end_in_place")
+              asm.ldx(asm.abs(memory[RUNS_END]))
+              asm.beq("rt_paint_run_end_new")
+              asm.dex
+              asm.dex
+              asm.dex
+              asm.dex
+              emit_run_joined(asm, memory, s, "rt_paint_run_end_new")
+              asm.label("rt_paint_run_end_new")
               asm.ldx(asm.abs(memory[RUNS_END]))
               asm.txa
               asm.clc
@@ -1850,6 +1947,11 @@ module VBlank
               asm.sta(asm.abs(memory[RUNS_END]))
               asm.bra("rt_paint_run_end_put")
               asm.label("rt_paint_run_end_in_place")
+              asm.ldx(asm.abs(memory[IN_PLACE_START]))
+              asm.cpx(MOST_RUNS * 4)
+              asm.bcs("rt_paint_run_end_new_in_place")
+              emit_run_joined(asm, memory, s, "rt_paint_run_end_new_in_place")
+              asm.label("rt_paint_run_end_new_in_place")
               asm.lda(asm.abs(memory[IN_PLACE_START]))
               asm.sec
               asm.sbc(4)
@@ -1865,6 +1967,23 @@ module VBlank
               asm.lda(0xFFFF)
               asm.sta(asm.direct(s.chunk))
               asm.label("rt_paint_run_end_none")
+              asm.rts
+            end
+
+            # In rt_paint_run_end, X the run last put on the list: if it ends where the run at +chunk+
+            # starts, it takes the run's tiles too, and the routine returns; else on to +apart+.
+            def emit_run_joined(asm, memory, s, apart)
+              asm.lda(asm.long_x(memory[RUNS]))
+              asm.clc
+              asm.adc(asm.long_x(memory[RUNS] + 2))
+              asm.cmp(asm.direct(s.chunk))
+              asm.bne(apart)
+              asm.lda(asm.direct(s.tile))
+              asm.sec
+              asm.sbc(asm.long_x(memory[RUNS]))
+              asm.sta(asm.long_x(memory[RUNS] + 2))
+              asm.lda(0xFFFF)
+              asm.sta(asm.direct(s.chunk))
               asm.rts
             end
 
@@ -2112,13 +2231,13 @@ module VBlank
             end
 
             # rt_paint_send_runs (JSR): the runs of RUNS from X up to +last+, as many at a time as
-            # the blank has room and time for (Blank's rt_blank_left), each counted RUN_SETTING_UP
-            # more; when not even the next fits, as many of its tiles as do, and the rest in the next
-            # blank. One check of the blank for each
-            # handful of runs rather than for each run, which costs as much as copying a tile. The
-            # handful then goes on that one check (rt_blank_taken), so each run is counted for the
-            # time it takes to pick it too (RUN_PICKING), which a handful of many small runs makes
-            # lines of.
+            # the blank has time for (Blank's rt_blank_left), each counted RUN_SETTING_UP more; when
+            # not even the next fits, as many of its tiles as do, and the rest in the next blank.
+            # One check of the blank for each handful of runs rather than for each run, which costs
+            # as much as copying a tile. The handful then goes on that one check, so each run is
+            # counted for the time it takes to pick it too (RUN_PICKING), which a handful of many
+            # small runs makes lines of. After a handful the line is asked again, and the rest of
+            # the blank filled.
             # (+tile+ is where the handful starts, +mark_count+ where it ends, +chunk+ the room,
             # +count+ the handful's bytes.)
             def emit_send_runs(asm, memory, s)
@@ -2162,10 +2281,6 @@ module VBlank
               6.times { asm.lsr }
               asm.beq("rt_paint_send_runs_full")
               asm.sta(asm.direct(s.y)) # the tiles that fit
-              6.times { asm.asl }
-              asm.clc
-              asm.adc(RUN_SETTING_UP + RUN_PICKING)
-              asm.jsr(asm.abs("rt_blank_taken"))
               asm.jsr(asm.abs("rt_paint_send_ready"))
               asm.lda(asm.long_x(memory[RUNS] + 2))
               asm.pha
@@ -2184,7 +2299,6 @@ module VBlank
               asm.jsr(asm.abs("rt_blank_next"))
               asm.brl("rt_paint_send_runs")
               asm.label("rt_paint_send_runs_go")
-              asm.jsr(asm.abs("rt_blank_taken"))
               asm.jsr(asm.abs("rt_paint_send_ready"))
               asm.label("rt_paint_send_runs_one")
               asm.cpx(asm.direct(s.mark_count))
@@ -2234,13 +2348,13 @@ module VBlank
               asm.rts
             end
 
-            # What setting a run going costs the blank, counted as bytes copied: two thirds of a
-            # line as Blank counts them (about 146 bytes), for the hundred or so cycles of code that
-            # start its copy (rt_paint_send_run sets only what differs from run to run, which keeps
-            # it inside that even for many runs of a tile each).
+            # What setting a run going costs the blank, counted as bytes copied: a little over half a
+            # line (Blank::BYTES_A_LINE), for the hundred or so cycles of code that start its copy
+            # (rt_paint_send_run sets only what differs from run to run, which keeps it inside that
+            # even for many runs of a tile each).
             RUN_SETTING_UP = 96
             # What picking a run for a handful costs the blank (rt_paint_send_runs), counted the same
-            # way: a third of a line, for the sixty or so cycles of looking at it.
+            # way: under a third of a line, for the sixty or so cycles of looking at it.
             RUN_PICKING = 48
 
             # The run at X of RUNS added to +chunk+, as its bytes and RUN_SETTING_UP; X on to the next.

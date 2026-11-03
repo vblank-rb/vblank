@@ -490,6 +490,90 @@ class TestSNESPaint < Minitest::Test
     assert_equal 8, run[:n]
   end
 
+  # TEXT WHOSE COLOUR CHANGES EVERY PASS is painted in an ink of its own, whose colour is all that
+  # changes: four rows of 21 letters, white and yellow by turns, take one frame a pass, as on the
+  # Advance, and never show a frame of some rows in one colour and some in the other. Painting and
+  # sending their tiles again took five frames a pass.
+  def test_text_whose_colour_changes_every_pass_takes_one_frame_a_pass
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        4.times { |row| draw_text "ABCDEFGHIJKLMNOPQRSTU", 8, 40 + (row * 20), %i[white yellow], showing: n % 2 == 1 }
+        n += 1
+      end
+    end
+    SNES::CheckedRun.new.run(program, frames: 8)
+    run = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 8)
+
+    assert_equal [1] * 5, (4..8).map { |pass| run.frames_took(pass) }
+    assert_empty run.torn_frames
+  end
+
+  # An ink stands for one colour from one clear of the screen to the next. The same text drawn
+  # twice a pass, its left half in one colour and its right half in the other, and on the passes
+  # between clears in the colours the other way round: each half keeps the colour it was drawn in.
+  # An ink set again for the second would turn the first half too.
+  def test_text_drawn_in_both_its_colours_before_the_next_clear_keeps_each
+    run = checked(frames: 10) do
+      screen :bitmap
+      n = 0
+      pick = 0
+      func(:word) { draw_text "INK", 8, 8, %i[red green], showing: pick == 1 }
+      game_loop do
+        clear_screen :blue if n % 3 == 0
+        pick = n % 2
+        inside(0, 0, 20, 40) { call :word }
+        pick = (n + 1) % 2
+        inside(20, 0, 40, 40) { call :word }
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:blue), run.screen.pixel(2, 2)
+  end
+
+  # MORE PAINTINGS THAN THE LOG HELD: the log takes what work RAM has left, so a pass of 160 small
+  # rectangles, the same every pass, writes them all down and paints none of them again. With a
+  # log of 128 the pass painted its first 128 when the log filled, and then the 32 tiles painted
+  # on both sides of that a second time, every pass: 11 frames, where painting it all every pass
+  # had taken 8.
+  def test_a_pass_of_160_paintings_paints_none_of_them_again
+    program = program_of do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        2.times do |sweep|
+          80.times { |t| fill_rect ((t % 16) * 8) + sweep, (t / 16) * 8, 4, 4, sweep.zero? ? :green : :red }
+        end
+      end
+    end
+    run = SNES::HeadlessRun.new.run(program, frames: 5)
+
+    assert_operator (3..5).map { |pass| run.frames_took(pass) }.max, :<=, 8
+  end
+
+  # A BLANK CARRIES WHAT THE CONSOLE CAN COPY IN IT: 165 bytes a line, from where the copying
+  # starts to the blank's last line, and a run of tiles that goes on into the next row copied as
+  # one. The whole screen in a new colour every other pass sends all 896 tiles, which took 14
+  # blanks at 146 bytes a line with two lines kept back and a copy for every row.
+  def test_the_whole_screen_in_a_new_colour_fills_every_blank
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 256, 224, :red if n % 2 == 0
+        fill_rect 0, 0, 256, 224, :green if n % 2 == 1
+        n += 1
+      end
+    end
+    run = SNES::HeadlessRun.new.run(program, frames: 3)
+
+    assert_operator run.frames_took(3), :<=, 33
+  end
+
   # MORE PAINTINGS THAN THE LOG HOLDS: the pass paints what it has written down when the log is
   # full, and goes on. Every tile here is painted before that and after it, half of them the
   # same every pass and half changing.
@@ -499,7 +583,7 @@ class TestSNESPaint < Minitest::Test
       n = 0
       game_loop do
         clear_screen :black
-        80.times { |t| fill_rect (t % 16) * 8, (t / 16) * 8, 6, 6, :green }
+        480.times { |t| fill_rect (t % 32) * 8, (t / 32) * 8, 6, 6, t < 240 ? :green : :blue }
         80.times do |t|
           draw_rect_at (t % 16) * 8 + 1, (t / 16) * 8 + 1, 3, 3, :red if t.even?
           draw_rect_at (t % 16) * 8 + 1 + (n % 3), (t / 16) * 8 + 1, 3, 3, :yellow if t.odd?
@@ -518,12 +602,12 @@ class TestSNESPaint < Minitest::Test
       screen :bitmap
       game_loop do
         clear_screen :black
-        2.times do |sweep|
-          80.times { |t| fill_rect ((t % 16) * 8) + sweep, (t / 16) * 8, 4, 4, sweep.zero? ? :green : :red }
+        6.times do |sweep|
+          100.times { |t| fill_rect ((t % 20) * 8) + sweep, (t / 20) * 8, 2, 2, sweep.even? ? :green : :red }
         end
       end
     end
-    result = VBlank::Diagnostics::SNESProfiler.run(rom, frames: 6, settle: 4)
+    result = VBlank::Diagnostics::SNESProfiler.run(rom, frames: 60, settle: 120)
 
     assert_nil result.runtime.find { |spent| spent.routine == "rt_paint_send_run" }, "no tile is sent"
   end

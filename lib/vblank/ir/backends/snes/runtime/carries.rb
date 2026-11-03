@@ -51,7 +51,8 @@ module VBlank
                   row_held: picture.background_rows_held?(program), bends: picture.bends?(program),
                   scene_bends: picture.scene_bends?(program), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
-                  changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program),
+                  changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) ||
+                                   Lowering::Paint.inks?(program),
                   scene_backdrops: backdrops, backdrop_follows: picture.backdrop_follows_list?(program),
                   dims: picture.fades_to_black?(program),
                   math_turns: picture.see_through_turns_solid?(program), bar_covers: picture.bar_covers_sprites?(program),

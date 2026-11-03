@@ -92,6 +92,21 @@ module VBlank
             end
           end
 
+          # A place of the colour list kept for one ink (Lowering::Paint#emit_draw_text): no other
+          # colour is painted in it, so the colour it holds can change as the game runs. A picture
+          # drawn with an Ink paints its place, not a colour's.
+          Ink = Data.define(:place)
+
+          # A new place of the colour list, holding +color+ (15-bit) at power-on.
+          def ink(color)
+            refuse_too_many_colors! if @colors.length >= COLORS
+            @colors << color
+            Ink.new(place: @colors.length - 1)
+          end
+
+          # How many places are left in the colour list.
+          def places_left = COLORS - @colors.length
+
           # How many of the colour memory's colours the game paints in, from colour 0: the rest are
           # black and never painted with.
           def colors_painted = @colors.length
@@ -123,7 +138,7 @@ module VBlank
               next if color.nil?
 
               planes[0] |= 0x80 >> bit
-              place = place_of(color)
+              place = color.is_a?(Ink) ? color.place : place_of(color)
               8.times { |plane| planes[plane + 1] |= 0x80 >> bit if place[plane] == 1 }
             end
             [planes[0], *planes].pack("C*")

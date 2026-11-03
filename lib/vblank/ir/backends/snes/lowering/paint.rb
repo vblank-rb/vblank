@@ -53,6 +53,14 @@ module VBlank
               @patches = {} # a backing buffer's name -> [its place, its width, its height]
               @column_routines = {} # a picture's name -> the routine that draws a column of it
               @column_tables = {} # a picture's name -> its columns' places
+              @inks = [] # each a TextInk, by its number
+              @text_inks = {} # a draw_text node's object_id -> its ink's number, or nil for none
+            end
+
+            # Whether +program+ paints text in a colour picked as it runs, which an ink can paint
+            # (#emit_draw_text): its colours then change as it runs (Runtime::Tint::COLORS_NOW).
+            def self.inks?(program)
+              painted?(program) && program.walk.any? { |node| node.kind == :draw_text && node.picked }
             end
 
             def painted? = @painted
@@ -125,6 +133,10 @@ module VBlank
                 tables.label("paint picture list #{number}")
                 tables.data_words(numbers.length, *numbers)
               end
+              # Each ink: its place's byte in the colour list, the colour shown and the colour picked.
+              tables.label("paint inks")
+              @inks.each { |ink| tables.data_words(ink.ink.place * 2, ink.shown, ink.picked, 0) }
+              tables.data_words(0) if @inks.empty?
               @painted_art.pictures.each do |picture|
                 tables.label("paint rows #{picture.number}")
                 picture.height.times do |row|
@@ -303,6 +315,14 @@ module VBlank
             # Reference#exec_draw_text: the words as a picture in their colour — or, with a colour
             # picked while the game runs, one of two pictures, the picked one when +showing+ is not
             # nought.
+            #
+            # TEXT WHOSE COLOUR IS PICKED AS THE GAME RUNS is painted in an INK of its own, where
+            # there is a place of the colour list to spare for one: a third picture of the words,
+            # painted in the ink's place, whose colour is set as the text is drawn
+            # (Runtime::Paint's rt_paint_blit_inked). The ink's pixels are the same whichever colour
+            # is picked, so text that changes only its colour paints and sends no tile: the colour
+            # list changes, as the console's own games change the colour of their text. Where the
+            # ink cannot stand for the colour (see the runtime) the picture in the colour is painted.
             def emit_draw_text(node)
               shown = text_picture(node.text, node.font, node.fonts, node.color)
               unless node.picked
@@ -310,9 +330,34 @@ module VBlank
               end
 
               picked = text_picture(node.text, node.font, node.fonts, node.picked)
-              runtime_call("rt_paint_blit_one_of", [Build.int(picture_list([shown, picked])),
-                                                    Build.binop(:!=, value_node(node.showing), Build.int(0)),
-                                                    value_node(node.x), value_node(node.y)])
+              showing = Build.binop(:!=, value_node(node.showing), Build.int(0))
+              number = text_ink(node)
+              unless number
+                return runtime_call("rt_paint_blit_one_of", [Build.int(picture_list([shown, picked])), showing,
+                                                             value_node(node.x), value_node(node.y)])
+              end
+
+              inked = text_picture(node.text, node.font, node.fonts, @inks.fetch(number).ink)
+              runtime_call("rt_paint_blit_inked", [Build.int(picture_list([shown, picked, inked])), showing,
+                                                   value_node(node.x), value_node(node.y), Build.int(number)])
+            end
+
+            # An ink and the two colours its text is drawn in.
+            TextInk = Data.define(:ink, :shown, :picked)
+
+            # The number of +node+'s ink, made the first time it is lowered (a routine can be lowered
+            # more than once), or nil when there is none. The game's own colours must all fit in the
+            # colour list, and they are not all met yet, so an ink takes a place only while more than
+            # half the list is free, and a game has MOST_INKS at most.
+            def text_ink(node)
+              @text_inks.fetch(node.object_id) do
+                @text_inks[node.object_id] =
+                  if @inks.length < Runtime::Paint::MOST_INKS && @painted_art.places_left > PaintedArt::COLORS / 2
+                    shown = Graphics::Color.resolve(node.color)
+                    @inks << TextInk.new(ink: @painted_art.ink(shown), shown: shown, picked: Graphics::Color.resolve(node.picked))
+                    @inks.length - 1
+                  end
+              end
             end
 
             # Reference#exec_draw_digit: one of the ten digits' pictures; a number outside 0 to 9 none.
@@ -361,7 +406,7 @@ module VBlank
 
             # The number of the picture of +text+ in +font+ and +color+.
             def text_picture(text, font, fonts, color)
-              resolved = Graphics::Color.resolve(color)
+              resolved = color.is_a?(PaintedArt::Ink) ? color : Graphics::Color.resolve(color)
               @painted_art.picture([:text, text, font, resolved]) do
                 drawn = {}
                 fonts.get(font).each_pixel(text) { |x, y| drawn[[x, y]] = resolved }

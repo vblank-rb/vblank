@@ -1427,7 +1427,6 @@ module VBlank
               asm.rtl
 
               asm.label("rt_upload_copy")
-              asm.jsr(asm.abs("rt_blank_begin"))
               if painted
                 asm.jmp(asm.abs("rt_paint_upload"))
                 return
@@ -1525,7 +1524,7 @@ module VBlank
               asm.label("rt_upload_together_bytes")
               asm.clc
               asm.adc(544)
-              asm.jsr(asm.abs("rt_blank_room"))
+              asm.jsr(asm.abs("rt_blank_room_with_registers"))
               asm.stz(asm.abs(h::OAMADDL))
               emit_dma(asm, h::DMA_TO_ONE_PORT, h::OAMDATA, asm.imm(memory[SHADOW_OAM] & 0xFFFF),
                        memory[SHADOW_OAM] >> 16, 544)

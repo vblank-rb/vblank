@@ -15,85 +15,95 @@ module VBlank
           # blank ends, and only while the blank has room for it: a change bigger than one blank
           # holds arrives over several, and the pass counts as shown once it is all there.
           #
-          # A blank is 37 of the console's lines, each 1364 of its master clock's cycles, and the
-          # copying engine takes 8 of those cycles a byte (fullsnes, "SNES Timing" and "SNES DMA"):
-          # about 6300 bytes a blank. What decides whether a piece goes is the line the picture is
-          # on, read as it is asked, so the interrupt's time and the setting up are already counted;
-          # BLANK_BYTES is a blank's copying, a little short of the whole, as a second guard. With
-          # the screen still off, before the first pass is shown, there is always room.
+          # A blank is 37 of the console's lines, 225 to 261, each 1364 of its master clock's
+          # cycles, and the copying engine takes 8 of those cycles a byte and stops for 40 of them a
+          # line while the console refreshes its work RAM (fullsnes, "SNES Timing" and "SNES DMA"):
+          # BYTES_A_LINE. Video RAM takes writes until close to the end of line 261, so a copy
+          # started on line L has the rest of that line and every line after it up to 261. The room
+          # is counted as the whole lines after L alone, less EDGE_BYTES for the end of 261 and the
+          # few cycles of setting the copy going: the part of line L left is never counted, so a
+          # copy that starts at the very end of its line still ends inside the blank.
           #
-          #   rt_blank_begin  as a blank's copying starts (JSR): nothing sent in it yet
-          #   rt_blank_room   before each piece (JSR): A is its bytes; returns once there is room
+          # What decides whether a piece goes is the line the picture is on, read as it is asked, so
+          # the interrupt's time and the setting up so far are already counted. BLANK_BYTES is what a
+          # blank holds counted from where its copying starts, a few lines in, once the interrupt has
+          # read the controller: the whole lines from there, the rest of that line standing for the
+          # edge. A piece that big goes in a blank of its own: rt_blank_room sends a piece it finds
+          # no room for at once if the blank's copying has only just started, as no blank has more,
+          # and else waits for the next. With the screen still off, before the first pass is shown,
+          # there is always room.
+          #
+          #   rt_blank_room   before a piece (JSR): A is its bytes; returns once there is room for
+          #                   it and AFTER_PIECE_LINES more, for the writes that follow it
+          #   rt_blank_room_with_registers (JSR): the same, AFTER_LUMP_LINES more
           #   rt_blank_time   before a write that is not a copy (JSR): returns once the blank has a
           #                   line left for it
           #   rt_blank_time_for_cells (JSR): the same, for CELLS_A_LOOK cells of a map
-          #   rt_blank_left   (JSR) A = the bytes this blank still has room and time for, 0 for none,
-          #                   so a run of pieces can be sent together
-          #   rt_blank_taken  (JSR) A = the bytes of pieces rt_blank_left has just made room for,
-          #                   counted as sent in this blank. rt_blank_room would ask by a reckoning
-          #                   of its own, rounded the other way, and can find the blank a line
-          #                   short of what rt_blank_left found and wait out a whole frame
+          #   rt_blank_left   (JSR) A = the bytes this blank still has time for, 0 for none, so a
+          #                   run of pieces can be sent together
           #   rt_blank_next   (JSR): the next blank waited for
           module Blank
-            BLANK_BYTES = 6144
+            # What the copying engine moves in one of the console's lines, measured in bsnes with
+            # the screen on: 1364 cycles, less 40 of refresh, at 8 a byte.
+            BYTES_A_LINE = 165
+            # What a blank is short of its whole lines at its end, and the setting going of a copy,
+            # counted as bytes: a copy started on line 225 lands a little under 37 lines' worth, and
+            # on a Super FX cartridge a run of pieces needs a line more than that to stay inside.
+            EDGE_BYTES = 200
             # The lines of a North American frame, 0 to 261; the blank is 225 to 261.
             LINES = 262
             FIRST_BLANK_LINE = 225
+            LAST_BLANK_LINE = LINES - 1
+            # The line a blank's copying starts on: the interrupt has read the controller and the
+            # pass's wait has ended.
+            COPY_START_LINE = 228
             # How many cells of a map go on one look at the line, and the lines left that asks for:
             # a cell is about fifty of the processor's cycles and a line about 190, so eight take
             # about two lines, and one more is kept for the look itself.
             CELLS_A_LOOK = 8
             LINES_FOR_CELLS = 4
+            # The lines rt_blank_room keeps after a piece for the few writes that follow it without
+            # asking, and rt_blank_room_with_registers for a tiled screen's lump of the sprite table
+            # and the colours, which each layer's registers, its scroll, and a bar's and a bend's
+            # tables follow.
+            AFTER_PIECE_LINES = 1
+            AFTER_LUMP_LINES = 3
+            BLANK_BYTES = (LAST_BLANK_LINE - COPY_START_LINE) * BYTES_A_LINE
 
-            # The direct page it works on: the piece's bytes, the bytes sent in this blank, and
-            # the line the picture is on.
-            Scratch = Data.define(:wanted, :sent, :line)
+            # The direct page it works on: the piece's bytes, the room the blank has left, and the
+            # lines it has left.
+            Scratch = Data.define(:wanted, :room, :line)
 
             module_function
 
-            def scratch(memory) = Scratch.new(wanted: memory.scratch(2), sent: memory.scratch(2), line: memory.scratch(2))
+            def scratch(memory) = Scratch.new(wanted: memory.scratch(2), room: memory.scratch(2), line: memory.scratch(2))
 
             # Each routine keeps X and Y; A is not kept.
             def emit(asm, memory, s)
-              asm.label("rt_blank_begin")
-              asm.stz(asm.direct(s.sent))
-              asm.rts
-
+              asm.label("rt_blank_room_with_registers")
+              asm.clc
+              asm.adc((AFTER_LUMP_LINES - AFTER_PIECE_LINES) * BYTES_A_LINE)
               asm.label("rt_blank_room")
               asm.sta(asm.direct(s.wanted))
               asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
               asm.beq("rt_blank_room_there")
+              asm.jsr(asm.abs("rt_blank_left_on"))
+              asm.sta(asm.direct(s.room))
               asm.lda(asm.direct(s.wanted))
               asm.clc
-              asm.adc(asm.direct(s.sent))
-              asm.cmp(BLANK_BYTES + 1)
-              asm.bcs("rt_blank_room_wait")
+              asm.adc(AFTER_PIECE_LINES * BYTES_A_LINE)
+              asm.cmp(asm.direct(s.room))
+              asm.bcc("rt_blank_room_there")
+              asm.beq("rt_blank_room_there")
+              # Short of room as the blank's copying starts, no blank has more: it goes now.
               emit_line_now(asm)
               asm.cmp(FIRST_BLANK_LINE)
               asm.bcc("rt_blank_room_wait")
-              # The lines it takes: a line copies about 170 bytes, and this counts one for every
-              # 146 or so (a 128th of the bytes, less a 1024th), and one line more.
-              asm.sta(asm.direct(s.line))
-              asm.lda(asm.direct(s.wanted))
-              10.times { asm.lsr }
-              asm.eor(0xFFFF)
-              asm.sec
-              asm.adc(asm.direct(s.line))
-              asm.sta(asm.direct(s.line))
-              asm.lda(asm.direct(s.wanted))
-              7.times { asm.lsr }
-              asm.sec
-              asm.adc(asm.direct(s.line))
-              asm.cmp(LINES - 1)
+              asm.cmp(COPY_START_LINE + 1)
               asm.bcc("rt_blank_room_there")
               asm.label("rt_blank_room_wait")
-              emit_next_blank(asm, s)
+              emit_next_blank(asm)
               asm.label("rt_blank_room_there")
-              asm.lda(asm.direct(s.wanted))
-              asm.label("rt_blank_taken")
-              asm.clc
-              asm.adc(asm.direct(s.sent))
-              asm.sta(asm.direct(s.sent))
               asm.rts
 
               # A single write takes far less than a line, so a line left before the blank ends is
@@ -107,7 +117,7 @@ module VBlank
               asm.cmp(LINES - 1)
               asm.bcc("rt_blank_time_there")
               asm.label("rt_blank_time_wait")
-              emit_next_blank(asm, s)
+              emit_next_blank(asm)
               asm.label("rt_blank_time_there")
               asm.rts
 
@@ -121,13 +131,13 @@ module VBlank
               asm.cmp(LINES - LINES_FOR_CELLS)
               asm.bcc("rt_blank_cells_there")
               asm.label("rt_blank_cells_wait")
-              emit_next_blank(asm, s)
+              emit_next_blank(asm)
               asm.label("rt_blank_cells_there")
               asm.rts
 
-              # The bytes the lines left allow, at 146 a line as rt_blank_room counts them (a 128th
-              # and a 1024th, less), two lines kept back for its line more and for rounding; held to
-              # what BLANK_BYTES leaves.
+              # The whole lines after this one up to the blank's last, BYTES_A_LINE each, less
+              # EDGE_BYTES. With the screen off there is no blank to fit in, and a blank's worth is
+              # what a piece is cut to.
               asm.label("rt_blank_left")
               asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
               asm.bne("rt_blank_left_on")
@@ -139,49 +149,44 @@ module VBlank
               asm.bcc("rt_blank_left_none")
               asm.eor(0xFFFF)
               asm.sec
-              asm.adc(LINES - 3) # the lines left, less two
+              asm.adc(LAST_BLANK_LINE) # the whole lines left
               asm.bmi("rt_blank_left_none")
               asm.beq("rt_blank_left_none")
               asm.sta(asm.direct(s.line))
-              # × 146: × 128, + × 16, + × 2
+              # × 165: × 128, + × 32, + × 4, + × 1. Fewer than 37 lines, so it never carries.
               7.times { asm.asl }
-              asm.sta(asm.direct(s.wanted))
+              asm.sta(asm.direct(s.room))
               asm.lda(asm.direct(s.line))
-              4.times { asm.asl }
+              5.times { asm.asl }
               asm.clc
-              asm.adc(asm.direct(s.wanted))
-              asm.sta(asm.direct(s.wanted))
+              asm.adc(asm.direct(s.room))
+              asm.sta(asm.direct(s.room))
               asm.lda(asm.direct(s.line))
-              asm.asl
+              2.times { asm.asl }
               asm.clc
-              asm.adc(asm.direct(s.wanted))
-              asm.sta(asm.direct(s.wanted))
-              asm.lda(BLANK_BYTES)
+              asm.adc(asm.direct(s.line))
+              asm.clc
+              asm.adc(asm.direct(s.room))
               asm.sec
-              asm.sbc(asm.direct(s.sent))
+              asm.sbc(EDGE_BYTES)
               asm.bcc("rt_blank_left_none")
-              asm.cmp(asm.direct(s.wanted))
-              asm.bcc("rt_blank_left_budget") # the budget left is the less
-              asm.lda(asm.direct(s.wanted))
-              asm.label("rt_blank_left_budget")
               asm.rts
               asm.label("rt_blank_left_none")
               asm.lda(0)
               asm.rts
 
               asm.label("rt_blank_next")
-              emit_next_blank(asm, s)
+              emit_next_blank(asm)
               asm.rts
             end
 
-            # The next blank waited for, and nothing sent in it yet; X and Y kept.
-            def emit_next_blank(asm, s)
+            # The next blank waited for; X and Y kept.
+            def emit_next_blank(asm)
               asm.phx
               asm.phy
               asm.jsr(asm.abs("rt_sleep_until_vblank"))
               asm.ply
               asm.plx
-              asm.stz(asm.direct(s.sent))
             end
 
             # A = the line the picture is on now (OPVCT, nine bits), latched by reading SLHV, which
