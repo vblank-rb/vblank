@@ -88,6 +88,7 @@ module VBlank
         present_objects: :free,
         scroll_background: :free,
         place_bar: :free,
+        box_background: :free,
         # ...and one cell of it becoming a different tile, or the whole of it becoming
         # another map. Both change a background that already has a depth of its own, so
         # neither is itself at one.

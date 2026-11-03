@@ -532,6 +532,7 @@ module VBlank
             blit: @drawing.method(:emit_blit), blit_pose: @drawing.method(:emit_blit_pose),
             background: @drawing.method(:emit_background), scroll_background: @background_drawing.method(:emit_scroll_background),
             place_bar: @background_drawing.method(:emit_place_bar),
+            box_background: @background_drawing.method(:emit_box_background),
             affine_background: @background_drawing.method(:emit_affine_background),
             scroll_rows: Lowering::NOTHING, shade_outside: Lowering::NOTHING,
             show_light_now: @raster.method(:emit_light_now),

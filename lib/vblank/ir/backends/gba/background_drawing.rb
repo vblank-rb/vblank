@@ -76,6 +76,7 @@ module VBlank
             @uploads.emit_dma_blob(BG_SHARED_CHAR, VRAM_START, @layout.screen.bg_shared.tile_units)    # pictures -> video memory
             @palette_tint.emit_tint_reset_if_tinting # the table now holds the originals again
             @palette_tint.emit_record_bg_palette_source # ...the first area's, for a game that walks between areas
+            emit_boot_box_window
           end
 
           # Point one layer's hardware at its data: DMA its map into its own screen block,
@@ -186,6 +187,98 @@ module VBlank
             bar_layer = 1 << bg.bg
             write_reg16(REG_WININ, (bar_layer | WIN_OBJ | WIN_EFFECT) << WIN1_SHIFT)
             write_reg16(REG_WINOUT, (WIN_ALL_LAYERS & ~bar_layer) | WIN_EFFECT)
+          end
+
+          # A BACKGROUND HELD TO A BOX (Reference#exec_box_background) IS THE DISPLAY'S SECOND WINDOW.
+          #
+          # A window is a rectangle of the screen the display is told about, and two switches for
+          # each layer: whether it is drawn inside the rectangle, and whether outside every window.
+          # The display reads those switches for each pixel as it draws, so the layer is never
+          # drawn outside the box at all, and the layers behind it and the backdrop show there.
+          # Inside window 1 every layer is on, set once at boot (#emit_boot_box_window); outside,
+          # every layer but the boxed one is. The rectangle is told as two pairs of edges, the left
+          # and the one just past the right in one register, the top and the one just past the
+          # bottom in another, each a byte, which is why the box is kept to the screen first.
+          #
+          # Held to no box, the boxed layer's switch outside is on again, and the window no longer
+          # hides anything. A box with nothing on the screen is a window with nothing in it, edges
+          # of nought, so the layer is hidden everywhere.
+          BOX_LEFT = 4
+          BOX_TOP = 5
+          BOX_RIGHT = 6
+          BOX_BOTTOM = 7
+
+          def emit_box_background(node)
+            bg = @layout.screen.backgrounds[node.name]
+            # The same layer for every declaration of one name (see ScreenLayout#layer_slots); a
+            # background on a screen with no tiled layer has none, and nothing is told; nor is
+            # anything in a game whose boxes only ever show everywhere, which has no window.
+            return if bg.nil? || !@layout.screen.boxes_backgrounds?
+
+            outside = (WIN_ALL_LAYERS & ~(1 << bg.bg)) | WIN_EFFECT
+            everywhere = gensym
+            empty = gensym
+            done = gensym
+            @lowering.value(node.held)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, everywhere, cond: :eq)
+            [[node.x, BOX_LEFT], [node.y, BOX_TOP], [node.width, BOX_RIGHT], [node.height, BOX_BOTTOM]].each do |value, reg|
+              @lowering.value(value)
+              emit(ASM.mov_reg(reg, ACC))
+            end
+            # A width or height of nought or less holds nothing; otherwise the far edges are the
+            # near ones and the size, and then all four are kept to the screen.
+            [BOX_RIGHT, BOX_BOTTOM].each do |size|
+              emit(ASM.cmp_imm(size, 0))
+              emit_branch(:bcond, empty, cond: :le)
+            end
+            emit(ASM.add_reg(BOX_RIGHT, BOX_LEFT, BOX_RIGHT))
+            emit(ASM.add_reg(BOX_BOTTOM, BOX_TOP, BOX_BOTTOM))
+            [[BOX_LEFT, SCREEN_WIDTH], [BOX_RIGHT, SCREEN_WIDTH], [BOX_TOP, SCREEN_HEIGHT], [BOX_BOTTOM, SCREEN_HEIGHT]].each do |reg, edge|
+              emit(ASM.cmp_imm(reg, 0))
+              emit(ASM.mov_imm_cond(:lt, reg, 0))
+              emit(ASM.cmp_imm(reg, edge))
+              emit(ASM.mov_imm_cond(:gt, reg, edge))
+            end
+            # ...and a box wholly off the screen has nothing left once it is.
+            emit(ASM.cmp_reg(BOX_RIGHT, BOX_LEFT))
+            emit_branch(:bcond, empty, cond: :le)
+            emit(ASM.cmp_reg(BOX_BOTTOM, BOX_TOP))
+            emit_branch(:bcond, empty, cond: :le)
+            emit(ASM.orr_reg_lsl(ACC, BOX_RIGHT, BOX_LEFT, 8))
+            store_halfword_acc(REG_WIN1H)
+            emit(ASM.orr_reg_lsl(ACC, BOX_BOTTOM, BOX_TOP, 8))
+            store_halfword_acc(REG_WIN1V)
+            write_reg16(REG_WINOUT, outside)
+            emit_branch(:b, done)
+            place_label(empty)
+            write_reg16(REG_WIN1H, 0)
+            write_reg16(REG_WIN1V, 0)
+            write_reg16(REG_WINOUT, outside)
+            emit_branch(:b, done)
+            place_label(everywhere)
+            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
+            place_label(done)
+          end
+
+          # WINDOW 1 FOR A GAME THAT HOLDS A BACKGROUND TO A BOX, set at boot: every layer and the
+          # colour effect inside it and outside, and a rectangle with nothing in it, so the window
+          # changes nothing until a box is said. It is switched on with the layers (see
+          # Drawing#tiled_dispcnt), and a game with a box has no other window (see
+          # Checks::BoxedBackgroundCannotShare).
+          def emit_boot_box_window
+            return unless @layout.screen.boxes_backgrounds?
+
+            write_reg16(REG_WIN1H, 0)
+            write_reg16(REG_WIN1V, 0)
+            write_reg16(REG_WININ, (WIN_ALL_LAYERS | WIN_EFFECT) << WIN1_SHIFT)
+            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
+          end
+
+          # A SCENE PUTTING ITS BACKGROUNDS UP SHOWS THEM EVERYWHERE: the last scene's box is set
+          # aside, and this scene's own, if it says one, is told in the gap after this pass.
+          def emit_box_set_aside
+            write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT) if @layout.screen.boxes_backgrounds?
           end
 
           # PUT A DIFFERENT TILE IN ONE CELL, while the game runs.

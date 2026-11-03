@@ -246,6 +246,13 @@ module ConformanceFixture
       # (Checks::StatusBarCannotShare); the bar is played on every lowering by
       # test/all/vblank/builder/test_status_bar.rb.
       B.place_bar(:grid, top: B.var_ref(:y)),
+      # The grid shown everywhere, its box set aside: a box worked out from variables, held to
+      # nothing. A real box cannot be here, since this program also has a light and fades under a
+      # layer, which the Advance refuses beside one (Checks::BoxedBackgroundCannotShare); what this
+      # pins is that every backend is told a box at all. A box held is played on every lowering by
+      # test/background_box_tests.rb.
+      B.box_background(:grid, x: B.var_ref(:x), y: B.var_ref(:y), width: B.var_ref(:x), height: B.int(8),
+                              held: B.int(0)),
       # A tile the program paints itself: its pixels are a list's bytes, two places to a
       # byte, shown once the list is copied over. This program's screen is a bitmap, where
       # no background can show such a tile (a real game is refused one there), so nothing

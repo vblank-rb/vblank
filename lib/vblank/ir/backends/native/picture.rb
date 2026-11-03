@@ -42,7 +42,7 @@ module VBlank
           # The kinds the interpreter's picture is rebuilt whole every frame for (see
           # Reference#collect_definitions and #run, and #rebuilt_every_frame? for the rest of the
           # rule).
-          REBUILT_FOR = %i[tile_run scroll_background place_bar scroll_rows affine_background set_tile show_map
+          REBUILT_FOR = %i[tile_run scroll_background place_bar box_background scroll_rows affine_background set_tile show_map
                            background_colors pixelate].freeze
 
           # A sprite the game leaves as drawn whatever size the picture's blocks are (RG_NOT_IN_BLOCKS).
@@ -634,6 +634,12 @@ module VBlank
 
             covers = node.covers && eval_call("rg_bar_covers", background_number(node), value(node.covers))
             [covers, eval_call("rg_place_bar", background_number(node), value(node.top))].compact
+          end
+
+          # Reference#exec_box_background
+          def lower_box_background(node)
+            [eval_call("rg_background_box", background_number(node), value(node.x), value(node.y),
+                       value(node.width), value(node.height), value(node.held))]
           end
 
           def lower_scroll_background(node)

@@ -80,10 +80,14 @@ module VBlank
         #
         # +above_row+ shows it only on the rows of the screen above that row. Below it the background
         # is not drawn at all and what is behind shows. Absent on every other background.
+        #
+        # +boxed+, on a background the game holds to a box (BoxBackground), names the variable that
+        # says whether it is held to one now. It goes back to 0, shown everywhere, as the scene the
+        # background belongs to takes over, as +choice+ does. Absent on every other background.
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int
+                 above_row: :int, boxed: :name
 
         # Each of +palettes+ as a tile drawn from it says which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.
@@ -133,6 +137,26 @@ module VBlank
         # The variable a status bar's top row is kept in, which the gap between frames shows.
         def self.bar_top_var(name) = :"__bar_#{name}_top"
         def self.bar_covers_var(name) = :"__bar_#{name}_covers"
+
+        # The variables a box a background is held to is kept in: its left, top, width and height
+        # in pixels, then whether it is held to the box at all (0 shows it everywhere).
+        def self.box_vars(name) = %i[x y w h held].map { |part| :"__bg_#{name}_box_#{part}" }
+      end
+
+      # A BACKGROUND SHOWN ONLY INSIDE A BOX on the screen, +x+ and +y+ its top-left corner and
+      # +width+ and +height+ its size, in pixels; each may be worked out as the program runs.
+      # Outside the box the background is not drawn at all, and what is behind it shows. Sprites
+      # are not held to it. A box past the screen's edges is the part of it on the screen, and a
+      # width or height of 0 or less shows the background nowhere. +held+ of 0 shows it everywhere
+      # again, the box set aside.
+      #
+      # Written in the gap between frames, as a scroll is, so the picture shows it from the frame
+      # after. Telling a background that is not up changes nothing.
+      class BoxBackground
+        include Node
+        kind :box_background
+        category :draw
+        operands name: :name, x: :value, y: :value, width: :value, height: :value, held: :value
       end
 
       # WHERE A STATUS BAR'S TOP IS, in screen rows: the bar covers the screen from there to the

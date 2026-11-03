@@ -341,6 +341,47 @@ module VBlank
         record_scroll_write
       end
 
+      # SHOW THE BACKGROUND ONLY INSIDE A BOX on the screen, from the frame after, the way a
+      # scroll shows:
+      #
+      #   tall = var :tall, 0
+      #   game_loop do
+      #     tall += 2 if tall < 48
+      #     dialogue.show_only_inside 16, 112 - (tall / 2), 208, tall   # opens out from its middle
+      #   end
+      #
+      # +x+ and +y+ are the box's top-left corner and +width+ and +height+ its size, in pixels
+      # of the screen, not of the map, and each may be worked out as the game runs. Outside the
+      # box the background is not drawn at all, so the layers behind it and the backdrop show
+      # there; inside, it is drawn as ever, scrolled where it is scrolled. Sprites are not held
+      # to the box. A box past an edge of the screen is the part of it on the screen, and a
+      # width or height of 0 or less shows the background nowhere.
+      #
+      # The console's display does this itself as it draws, so it costs a few register writes in
+      # the gap between frames, however big the box.
+      #
+      # It belongs to the scene the background belongs to: a scene taking over shows its
+      # backgrounds everywhere again, and a box said for a background that is not up waits for
+      # nothing — it is set aside when that scene comes back.
+      def show_only_inside(x, y, width, height)
+        refuse_box_on_bitmap_screen!("show_only_inside")
+        x_var, y_var, w_var, h_var, held_var = @builder.hold_background_to_box(@name)
+        { x_var => x, y_var => y, w_var => width, h_var => height }.each do |var, value|
+          record(Build.set(var, Value.node_for(value)))
+        end
+        record(Build.set(held_var, Build.int(1)))
+        record_box_write
+      end
+
+      # SHOW THE BACKGROUND EVERYWHERE AGAIN, the box set aside, from the frame after. A
+      # background never held to a box is shown everywhere already, and this changes nothing.
+      def show_everywhere
+        refuse_box_on_bitmap_screen!("show_everywhere")
+        *, held_var = @builder.hold_background_to_box(@name)
+        record(Build.set(held_var, Build.int(0)))
+        record_box_write
+      end
+
       # Slide each ROW of the picture sideways by its own amount, so the whole background
       # bends instead of moving as one flat rectangle. The block is given the row (0 at the
       # top of the screen, 159 at the bottom) and gives back how far across that row sits:
@@ -490,6 +531,17 @@ module VBlank
               "background :#{@name} was declared under `screen :bitmap`, where a background is " \
               "painted into the picture once — so there is no cell left for #{verb} to change. " \
               "#{instead}, or use `screen :tiled`."
+      end
+
+      # A BOX IS A LAYER'S, and a `screen :bitmap` has no layers: its background is painted into
+      # the one picture where it is declared, and nothing draws it again.
+      def refuse_box_on_bitmap_screen!(verb)
+        return unless @bitmap
+
+        raise ArgumentError,
+              "background :#{@name} is on a `screen :bitmap`, so #{verb} cannot hold it to a box. On this " \
+              "screen, a background is painted into the picture one time. To show only a part of it, draw " \
+              "that part with `blit`, or use `screen :tiled`."
       end
 
       # Every map's walls, one grid after another, a byte a cell. A map with no walls of its
@@ -765,6 +817,15 @@ module VBlank
       def record_scroll_write
         node = record(Build.scroll_background(@name, x: Build.var_ref(@scroll_x), y: Build.var_ref(@scroll_y)))
         @builder.defer_scroll_write(@name, @scroll_x, @scroll_y, node)
+        self
+      end
+
+      # Show the box where it is now. Recorded here as well as moved to the gap between frames,
+      # as a scroll is (#record_scroll_write): a program with no game loop has no gap to move it to.
+      def record_box_write
+        box = IR::Nodes::Background.box_vars(@name).map { |var| Build.var_ref(var) }
+        node = record(Build.box_background(@name, x: box[0], y: box[1], width: box[2], height: box[3], held: box[4]))
+        @builder.record_inline_box_node(node)
         self
       end
 

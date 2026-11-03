@@ -88,6 +88,9 @@ void rg_background_scroll(int32_t background, int32_t x, int32_t y);
 void rg_place_bar(int32_t background, int32_t top);
 /* Reference#exec_place_bar's +covers+: whether a status bar hides the sprites from its top down. */
 void rg_bar_covers(int32_t background, int32_t covers);
+/* Reference#exec_box_background: a background shown only inside a box of the screen while +held+ is
+ * not 0, and everywhere while it is. */
+void rg_background_box(int32_t background, int32_t x, int32_t y, int32_t width, int32_t height, int32_t held);
 /* Reference#exec_in_loop: while +on+, a scroll or a bar's top is the end of a pass placing the
  * frame's writes, and a background that pass put up still shows from its corner. */
 void rg_screen_placing_at_pass_end(int32_t on);

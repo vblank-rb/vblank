@@ -214,6 +214,7 @@ module VBlank
           @sprites_hidden = false  # is the next frame drawn without its sprites? (see #exec_hide_sprites)
           @repaints = false        # must the whole view be rebuilt every frame? (decided in collect_definitions)
           @bg_scroll = {}          # background name -> [x, y] its window is currently offset to
+          @bg_box = {}             # background name -> [left, top, right, bottom] it is held to, if it is
           @bar_top = {}            # status bar name -> the screen row its top was last placed at
           @bar_covers = {}         # status bar name -> whether it hides the sprites from its top down
           @bg_maps = {}            # ...and this run's own copy of its cells, once any of them has changed
@@ -602,7 +603,7 @@ module VBlank
               # and by name so scroll_background can re-window that one.
               @bg_nodes << n
               @bg_by_name[n.name] = n
-            when :scroll_background, :place_bar
+            when :scroll_background, :place_bar, :box_background
               # A program that scrolls even once can put its background at a non-zero
               # offset, so the whole scene has to be repainted every frame — the static
               # save-under trick objects normally ride on no longer holds. Remember that
@@ -729,6 +730,7 @@ module VBlank
           background: :exec_background,
           scroll_background: :exec_scroll_background,
           place_bar: :exec_place_bar,
+          box_background: :exec_box_background,
           affine_background: :exec_affine_background,
           background_colors: :exec_background_colors,
           color_list_holds: :exec_color_list_holds,
@@ -1540,7 +1542,11 @@ module VBlank
 
         # Stamp +node+ onto the picture, in its place in the stack.
         def put_up_background(node)
-          @bg_maps.delete(node.name) if @handover.on_arrival?(node)
+          if @handover.on_arrival?(node)
+            @bg_maps.delete(node.name)
+            # ...and a background its scene puts up shows everywhere, whatever box it had before.
+            @bg_box.delete(node.name)
+          end
           # A layer can put this background BEHIND one that is already on screen, and a
           # stamp only covers where it has solid pixels — so painting it now would leave
           # it in front. Painting the ones it belongs behind back over it settles the
@@ -1566,7 +1572,8 @@ module VBlank
           # only scenery turns had nothing else to say it.
           # ...and so is a status bar, which is painted from its own top rather than the screen's,
           # and anything put up while one shows, which a stamp would paint over the bar's rows.
-          return request_repaint if @bg_affine.key?(node.name) || node.bar? || node.above_row || bar_showing
+          return request_repaint if @bg_affine.key?(node.name) || node.bar? || node.above_row || bar_showing ||
+                                    @bg_box.key?(node.name)
 
           stamp_background(node)
           in_stack_order(over).each { |bg| stamp_background(bg) }
@@ -1773,8 +1780,8 @@ module VBlank
         def stamp_background(node)
           # A status bar is painted from its own top, with nothing under it, as the whole view is
           # built (#repaint_view), never stamped from the screen's corner. A background held above a
-          # row is the same, since a stamp would reach past its row.
-          return request_repaint if node.bar? || node.above_row
+          # row is the same, since a stamp would reach past its row, and so is one held to a box.
+          return request_repaint if node.bar? || node.above_row || @bg_box.key?(node.name)
 
           tiles = node.tiles
           tile_w = node.tile_w
@@ -2249,7 +2256,7 @@ module VBlank
         # ...and the ones that change what the picture is built from and then always repaint, so
         # an owed repaint is replaced rather than painted — plus `background`, which settles one
         # itself when it has anything to put up (see #exec_background).
-        REPAINTING = %i[scroll_background place_bar show_map set_tile copy_tiles copy_owed_tiles background_colors see_through present_objects
+        REPAINTING = %i[scroll_background place_bar box_background show_map set_tile copy_tiles copy_owed_tiles background_colors see_through present_objects
                         background affine_background].freeze
         # ...and the ones that are mostly laid over the picture as the screen is read, and that
         # owe the picture again themselves on the occasions they change what is painted (see
@@ -2414,9 +2421,57 @@ module VBlank
         # Paint one background where it sits in the view: as drawn, or in blocks while the
         # picture is shown in them.
         def paint_scenery(bg)
+          box = @bg_box[bg.name]
+          return paint_scenery_in_box(bg, box) if box
           return paint_background_window(bg) unless in_blocks?(bg.name)
 
           paint_scenery_in_blocks(bg)
+        end
+
+        # A BACKGROUND HELD TO A BOX, and the rule is the display's window: a switch for each pixel
+        # the display draws, which leaves this layer out of every pixel outside the box. So it is
+        # painted onto a sheet of its own as it would be anywhere, scrolled, bent and in blocks as
+        # it is, and only the pixels inside the box are laid onto the picture. Outside, nothing of
+        # it is painted, and the layers behind and the backdrop show there as they were.
+        def paint_scenery_in_box(bg, box)
+          left, top, right, bottom = box
+          return if right <= left || bottom <= top
+
+          sheet = framebuffer_like_screen(fill: nil)
+          drawing_into(sheet) { in_blocks?(bg.name) ? paint_scenery_in_blocks(bg) : paint_background_window(bg) }
+          (top...bottom).each do |py|
+            row = (left...right).map { |px| sheet.stored_pixel(px, py) }
+            @screen.paint_row(left, py, row, from: 0, count: right - left)
+          end
+        end
+
+        # Hold a background to a box, or show it everywhere again: the box kept to the screen, as
+        # [left, top, right, bottom], right and bottom just past it, or nil for everywhere. A width
+        # or height of 0 or less is a box with nothing in it.
+        def exec_box_background(node)
+          @bg_by_name.fetch(node.name) { raise ProgramError, "box of undeclared background #{node.name.inspect}" }
+          if eval_value(node.held).zero?
+            @bg_box.delete(node.name)
+          else
+            x = eval_value(node.x)
+            y = eval_value(node.y)
+            width = eval_value(node.width)
+            height = eval_value(node.height)
+            @bg_box[node.name] = screen_box(x, y, width, height)
+          end
+          request_repaint
+        end
+
+        # The part of a box on the screen, as #exec_box_background keeps it: an empty one at the
+        # corner where nothing of it is on the screen.
+        def screen_box(x, y, width, height)
+          return [0, 0, 0, 0] if width <= 0 || height <= 0
+
+          left = x.clamp(0, @screen.width)
+          right = (x + width).clamp(0, @screen.width)
+          top = y.clamp(0, @screen.height)
+          bottom = (y + height).clamp(0, @screen.height)
+          right <= left || bottom <= top ? [0, 0, 0, 0] : [left, top, right, bottom]
         end
 
         # ONE BACKGROUND IN BLOCKS, and the rule is the display's own.

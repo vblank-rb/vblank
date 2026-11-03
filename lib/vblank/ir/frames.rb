@@ -52,7 +52,7 @@ module VBlank
       # sprites — each write held to its scene's turn, or to a change, by an `if`. The builder
       # moves every such write out of the game's own lines to put it there, so a statement of the
       # loop holding one of these is one of the boundary's.
-      PLACED_AT_BOUNDARY = %i[scroll_background place_bar show_map background_colors affine_background
+      PLACED_AT_BOUNDARY = %i[scroll_background place_bar box_background show_map background_colors affine_background
                               copy_owed_tiles color_list_holds see_through present_objects].freeze
 
       # ...and the routines that do such a write for it: putting the frame's sprites in order (a

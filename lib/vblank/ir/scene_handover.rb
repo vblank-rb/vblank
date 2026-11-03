@@ -119,7 +119,7 @@ module VBlank
           screen = @funcs[scene]&.children&.find { |node| node.kind == :screen }
           tiled = self.class.tiles?(Modes::SCREEN_OF_MODE.fetch(@modes.mode_of(scene)))
           Arrival.new(scene: scene, screen: screen, backdrop: tiled ? screen&.backdrop || game_backdrop : 0,
-                      mode: @modes.mode_of(scene), scenery: scenery, map_choices: scenery.flat_map(&:choice),
+                      mode: @modes.mode_of(scene), scenery: scenery, map_choices: choices_put_back(scenery),
                       painted_tiles: painted_tiles_of(scenery), painted_pictures: pictures,
                       takes_down_scenery: scenery.empty? && @scenery.any? { |node| on_arrival?(node) },
                       takes_down_art: pictures.empty? && @objects.any? { |obj| obj.scene && painted?(obj) },
@@ -179,10 +179,14 @@ module VBlank
       def always_up
         @always_up ||= begin
           scenery = @scenery.select { |node| node.scene.nil? }
-          AlwaysUp.new(scenery: scenery, map_choices: scenery.flat_map(&:choice),
+          AlwaysUp.new(scenery: scenery, map_choices: choices_put_back(scenery),
                        painted_tiles: painted_tiles_of(scenery), painted_pictures: painted_pictures_of(@objects.reject(&:scene)))
         end
       end
+
+      # The variables put back to 0 as +scenery+ goes up: which map each shows, back to the first,
+      # and whether each is held to a box, back to everywhere.
+      def choices_put_back(scenery) = scenery.flat_map { |node| node.choice + [node.boxed].compact }
 
       # The scenery on screen while +scene+ runs: what every screen shows, and its own.
       def showing(scene) = @scenery.select { |node| node.scene.nil? || node.scene == scene }

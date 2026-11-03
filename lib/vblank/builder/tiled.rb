@@ -59,9 +59,10 @@ module VBlank
       # #scrolls? is the same question as asking whether the game ever scrolled it.
       DeclaredBackground = Struct.new(:node, :scroll_x, :scroll_y, :shown_map, :live_map,
                                       :angle, :scale, :scene_gates, :bends_rows, :pivot,
-                                      :shown_colors, :live_colors,
+                                      :shown_colors, :live_colors, :box,
                                       keyword_init: true) do
         def scrolls? = !scroll_x.nil?
+        def held_to_box? = !box.nil?
         def swaps_maps? = !shown_map.nil?
         def bends_rows? = !bends_rows.nil?
         def draws_with_colors? = !shown_colors.nil?

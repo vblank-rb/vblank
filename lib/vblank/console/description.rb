@@ -99,8 +99,13 @@ module VBlank
     #
     # +holds_background_above_row+ says a background can be kept to the rows above a row (`above_row:`),
     # and +glides_recordings+ that a recorded note can carry on at a new pitch (`glides: true`).
+    #
+    # +background_box+ says how a background is held to a box the game moves (`show_only_inside`):
+    # :shared_windows where the display's windows do it and the light, a status bar and a fade held
+    # to part of the screen use the same windows (the Advance); :own_window where a window does it
+    # that nothing else in the game uses (the Super Nintendo); nil where nothing can.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
-                              :holds_background_above_row, :glides_recordings, :sprites, :sprite_places,
+                              :holds_background_above_row, :background_box, :glides_recordings, :sprites, :sprite_places,
                               :sprites_a_row, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
@@ -147,7 +152,7 @@ module VBlank
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
-                              holds_background_above_row: false, glides_recordings: false, sprites: 128,
+                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: false, sprites: 128,
                               # The most the desktop and web builds draw in one frame, too.
                               sprite_places: 512,
                               # What limits a row on the Advance is the time the display has to
@@ -187,7 +192,7 @@ module VBlank
     # each verb does on it is Console::ColorAnswers's to say.
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, controllers: 1,
-                            holds_background_above_row: false, glides_recordings: false, sprites: 40, sprite_places: 40,
+                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 40, sprite_places: 40,
                             sprites_a_row: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
@@ -228,7 +233,7 @@ module VBlank
     # verb does on it is Console::SNESAnswers's to say.
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
                                      buttons: %i[a b select start right left up down r l x y].freeze, controllers: 2,
-                                     holds_background_above_row: true, glides_recordings: true, sprites: 128,
+                                     holds_background_above_row: true, background_box: nil, glides_recordings: true, sprites: 128,
                                      sprite_places: 128,
                                      # A row of the screen shows at most 32 sprites and 34 of their
                                      # 8-pixel pieces; a piece is what this counts.
@@ -278,7 +283,7 @@ module VBlank
     # channel. What each verb does on it is Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
-                              holds_background_above_row: false, glides_recordings: false, sprites: 80, sprite_places: 80,
+                              holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 80, sprite_places: 80,
                               # A row of the screen shows at most 20 sprites (16 on a screen of 256
                               # across), and a sprite here is one 8-pixel piece of a picture.
                               sprites_a_row: 20, turning_sprites: false,

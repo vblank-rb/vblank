@@ -626,6 +626,19 @@ module VBlank
           # Which backdrop each scene shows (IR::SceneHandover#arrival, #game_backdrop).
           def backdrops = @backdrops ||= IR::SceneHandover.of(@program)
 
+          # Does the game hold a background to a box (`show_only_inside`), which takes the display's
+          # second window (see BackgroundDrawing#emit_box_background)? A line that only ever shows a
+          # background everywhere (held 0, written in the program) needs no window, as
+          # Checks::BoxedBackgroundCannotShare says.
+          def boxes_backgrounds?
+            return @boxes_backgrounds unless @boxes_backgrounds.nil?
+
+            @boxes_backgrounds = @program.walk.any? do |node|
+              node.kind == :box_background && !(node.held.kind == :int && node.held.value.zero?)
+            end
+          end
+          public :boxes_backgrounds?
+
           # Fill in part of what +scene+ sends as it takes over.
           def record_scene_send(scene, **part) = @scene_sends[scene] = scene_send(scene).with(**part)
 

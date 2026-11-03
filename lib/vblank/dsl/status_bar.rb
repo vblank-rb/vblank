@@ -81,6 +81,11 @@ module VBlank
         self
       end
 
+      # A BAR IS NOT HELD TO A BOX. It is already held to the rows from its top down, and the
+      # console uses the part of its display that would hold the box for that.
+      def show_only_inside(*) = refuse_box!("show_only_inside")
+      def show_everywhere = refuse_box!("show_everywhere")
+
       # SHOW ANOTHER OF THE BAR'S MAPS, for a bar declared with several. The whole bar changes in
       # one call, which is how a game clears a message that is too many cells to change with
       # `set_tile` in one pass: give the bar an empty map and show it. Cells changed with
@@ -89,6 +94,15 @@ module VBlank
       def show_map(which)
         @background.show_map_now(which)
         self
+      end
+
+      private
+
+      def refuse_box!(verb)
+        raise ArgumentError,
+              "status_bar :#{@name} cannot use #{verb}. A status bar always shows from its top row to the " \
+              "bottom of the screen. To move it, use `move_to`. To show tiles only inside a box, declare them " \
+              "with `background` and use `show_only_inside`."
       end
     end
   end

@@ -6,11 +6,12 @@ module VBlank
       module Checks
         # THE LAYERS A SCREEN CANNOT HAVE, asked by the interpreter and by each console's lowering as
         # well as by the build: more backgrounds than the console stacks, more than one status bar,
-        # and a status bar beside something that needs the same part of the display. A program handed
+        # and a status bar, or a background held to a box, beside something that needs the same part
+        # of the display. A program handed
         # straight to a backend never passes the build's checks, so each backend asks these itself,
         # and all of them stop with the same words.
         module LayerRefusals
-          CHECKS = [TooManyBackgroundLayers, TooManyStatusBars, StatusBarCannotShare].freeze
+          CHECKS = [TooManyBackgroundLayers, TooManyStatusBars, StatusBarCannotShare, BoxedBackgroundCannotShare].freeze
 
           module_function
 

@@ -149,7 +149,9 @@ module VBlank
         tiles: works("tiles of four colours each."),
         background: works("one background at a time, scrolled and changed as on the Advance, and bent " \
                           "row by row with `scroll_each_row`. `above_row:` is refused: this build does not " \
-                          "make it yet. The console holds 32×32 cells of a map at " \
+                          "make it yet. `show_only_inside` is refused: a Game Boy Color cannot hide its " \
+                          "background outside a box. Its one window is a layer that covers the background " \
+                          "from a corner to the bottom right of the screen. The console holds 32×32 cells of a map at " \
                           "once, so a bigger map is brought into view as the view moves. A second " \
                           "background showing at once is refused, and so are `rotate` and `scale`: a " \
                           "Game Boy Color cannot turn or resize a background. The console holds 512 " \

@@ -293,7 +293,7 @@ module VBlank
             on = boot.on if boot
             turning = (boot ? boot.turning : turning_background?) if turning.nil?
             bar = (boot ? boot.bar : bar_on_screen?) if bar.nil?
-            (turning ? MODE_1 : MODE_0) | tiled_bg_enable_bits(*[on].compact) | (bar ? WIN1_ENABLE : 0)
+            (turning ? MODE_1 : MODE_0) | tiled_bg_enable_bits(*[on].compact) | (bar || @layout.screen.boxes_backgrounds? ? WIN1_ENABLE : 0)
           end
 
           # THE SCREEN THE CONSOLE IS SET UP FOR BEFORE ANY SCENE HAS RUN, or nothing at all
@@ -586,6 +586,7 @@ module VBlank
                 tiles = @layout.screen.scene_send(name).tiles
                 @uploads.emit_dma_blob(tiles.blob, VRAM_START + tiles.offset, tiles.units) if tiles
                 arrival.scenery.each { |node| @background_drawing.emit_background_hardware(node) }
+                @background_drawing.emit_box_set_aside
                 arrival.painted_tiles.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
                 @raster.emit_bends_on_arrival(name)
               end

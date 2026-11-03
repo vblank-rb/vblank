@@ -192,6 +192,7 @@ module VBlank
       @inline_map_nodes = []     # show_map nodes recorded at their call site, dropped once a frame boundary exists
       @inline_color_nodes = []   # background_colors nodes, the same, for a layer drawn with other colours
       @inline_bar_nodes = []     # place_bar nodes, the same, for a status bar the game moves
+      @inline_box_nodes = []     # box_background nodes, the same, for a background held to a box
       @bars_covering = {}        # the status bars the game tells to cover sprites, by name
       @per_frame_routines = []   # func names `once_a_frame` declared, called at every frame boundary
       @per_pass_routines = []    # func names the framework calls once a pass, after the frame boundary
@@ -586,6 +587,7 @@ module VBlank
       finalize_draw_orders # after the pools: a pool's numbers are copied with its things
       finalize_background_scrolls
       finalize_status_bars
+      finalize_background_boxes
       finalize_background_maps
       refuse_shifted_tile_run_lists!
       refuse_filled_shifted_lists!
@@ -680,6 +682,23 @@ module VBlank
     # there is a frame boundary to move it to, as a scroll's is (see #finalize_status_bars).
     def record_inline_bar_node(node)
       @inline_bar_nodes << node
+    end
+
+    # THE VARIABLES A BOX THE BACKGROUND +name+ IS HELD TO IS KEPT IN (Background#show_only_inside),
+    # made the first time the game says one: a background nobody holds to a box keeps none, and
+    # its game builds as it did. All five start at 0, which is everywhere.
+    def hold_background_to_box(name)
+      declared = declared_background(name)
+      declared.box ||= IR::Nodes::Background.box_vars(name).each do |var|
+        at_boot(Build.set(var, Build.int(0)))
+        ensure_var(var)
+      end
+    end
+
+    # A box written where the game said it, dropped once there is a frame boundary to move it to,
+    # as a scroll's is (see #finalize_background_boxes).
+    def record_inline_box_node(node)
+      @inline_box_nodes << node
     end
 
     # The variable that says whether the status bar +name+ covers sprites, made the first time a
@@ -1221,6 +1240,22 @@ module VBlank
         while_any_scene_up(background.scene_gates,
                            Build.place_bar(name, top: Build.var_ref(IR::Nodes::Background.bar_top_var(name)),
                                                  covers: covers && Build.var_ref(covers)))
+      end
+    end
+
+    # Show the box each background is held to, in the gap between frames, gated to its scene, for
+    # the reason a scroll is written there: the display reads which layers show where as it draws
+    # each line, so a box moved while it draws would show two boxes on one picture. Every
+    # declaration of the name carries the variable that says whether it is held, which goes back to
+    # everywhere as its scene takes over (IR::SceneHandover).
+    def finalize_background_boxes
+      boxed = backgrounds_that(&:held_to_box?)
+      held = boxed.to_h { |name, background| [name, background.box.last] }
+      @program.walk.each { |node| node.boxed = held[node.name] if node.kind == :background && held.key?(node.name) }
+      write_between_frames(@inline_box_nodes, boxed) do |name, background|
+        x, y, width, height, on = background.box.map { |var| Build.var_ref(var) }
+        while_any_scene_up(background.scene_gates,
+                           Build.box_background(name, x: x, y: y, width: width, height: height, held: on))
       end
     end
 

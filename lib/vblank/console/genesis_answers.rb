@@ -124,7 +124,10 @@ module VBlank
         # --- backgrounds and layers ---
         tiles: works("tiles of fifteen colours each and see-through, from one of the four lists."),
         background: works("two backgrounds at a time, scrolled and changed as on the Advance. `above_row:` is " \
-                          "refused: this build does not make it yet. A background is " \
+                          "refused: this build does not make it yet. `show_only_inside` is refused: a Genesis " \
+                          "cannot hide a background outside a box. Its window plane takes the place of one " \
+                          "background in whole cells from an edge of the screen, and does not hide an " \
+                          "ordinary background. A background is " \
                           "at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are " \
                           "refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for " \
                           "all 224 rows each pass. A game can change 64 tiles with `set_tile` in one pass. " \

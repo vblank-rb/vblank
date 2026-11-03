@@ -159,6 +159,14 @@ static background_cells cells_now[RG_MAX_BACKGROUNDS];
 typedef struct { int32_t x, y; } background_scroll;
 static background_scroll scrolls[RG_MAX_BACKGROUNDS];
 
+/* The box a background is held to (Reference @bg_box), by the entry that keeps its name: whether
+ * it is held to one, and its left, top, and the column and row just past it, kept to the screen
+ * (Reference#screen_box). Held to none until the game says one. */
+typedef struct { int32_t held, left, top, right, bottom; } background_box;
+static background_box boxes[RG_MAX_BACKGROUNDS];
+/* The box the background being laid on the picture keeps to, or nothing (paint_scenery_in_box). */
+static const background_box *laying_box;
+
 /* The backgrounds put up this pass, shown from their top-left corner whatever their scroll
  * (Reference @bg_from_corner), whether there are any, and whether their pass has ended
  * (Reference @bg_corners_expired). */
@@ -884,7 +892,7 @@ void rg_background_stamp(int32_t background) {
   /* Reference#stamp_background: a status bar is painted from its own top as the view is built, and
    * a background held above a row stops at it. */
   if (background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
-      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR) {
+      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || boxes[keeper_of(background)].held) {
     request_repaint();
     return;
   }
@@ -1039,12 +1047,16 @@ void rg_background_forget_cells(int32_t background) { forget_own_cells(backgroun
  * and a status bar from its own top,
  * rather than stamped as drawn. */
 void rg_background_put_up(int32_t background) {
-  if (background_field(background, RG_BG_ON_ARRIVAL)) forget_own_cells(background);
+  if (background_field(background, RG_BG_ON_ARRIVAL)) {
+    forget_own_cells(background);
+    boxes[keeper_of(background)].held = 0; /* its scene puts it up showing everywhere */
+  }
   remember_put_up(background);
   mark_from_corner(background);
   scenery_kept = 0;
   if (turns[keeper_of(background)].turned || background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
-      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || bar_showing() >= 0) {
+      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || bar_showing() >= 0 ||
+      boxes[keeper_of(background)].held) {
     request_repaint();
     return;
   }
@@ -1093,6 +1105,23 @@ void rg_place_bar(int32_t background, int32_t top) {
   bar_tops[keeper_of(background)] = clamp32(top, 0, RG_SCREEN_HEIGHT);
   bar_placed[keeper_of(background)] = 1;
   if (!placing_at_pass_end) from_corner[keeper_of(background)] = 0;
+  request_repaint();
+}
+
+/* Reference#exec_box_background and #screen_box: a box with nothing on the screen is an empty one
+ * at the corner. */
+void rg_background_box(int32_t background, int32_t x, int32_t y, int32_t width, int32_t height, int32_t held) {
+  background_box *box = &boxes[keeper_of(background)];
+  if (held == 0) {
+    box->held = 0;
+  } else {
+    *box = (background_box){1, 0, 0, 0, 0};
+    if (width > 0 && height > 0) {
+      int32_t left = clamp32(x, 0, RG_SCREEN_WIDTH), right = clamp32((int64_t)x + width, 0, RG_SCREEN_WIDTH);
+      int32_t top = clamp32(y, 0, RG_SCREEN_HEIGHT), bottom = clamp32((int64_t)y + height, 0, RG_SCREEN_HEIGHT);
+      if (right > left && bottom > top) *box = (background_box){1, left, top, right, bottom};
+    }
+  }
   request_repaint();
 }
 
@@ -1391,6 +1420,9 @@ static void paint_scenery_in_blocks(int32_t background) {
   int32_t wide = background_field(background, RG_BG_CAN_TURN) && block == 2 ? 1 : block;
   for (int64_t py = 0, rows = scenery_rows(); py < rows; py++)
     for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) {
+      if (laying_box && (px < laying_box->left || px >= laying_box->right || py < laying_box->top ||
+                         py >= laying_box->bottom))
+        continue;
       int32_t color = sheet[py * RG_SCREEN_WIDTH + px - px % wide];
       if (color != NOTHING_ON_SHEET) lay_scenery(px, py, (uint16_t)color);
     }
@@ -1403,9 +1435,33 @@ static void paint_status_bar(int32_t bar) {
   for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++) paint_map_row(bar, py - top, 0, 0, py);
 }
 
+/* Reference#paint_scenery_in_box: a background held to a box goes onto the sheet as it would onto
+ * the picture, and only its pixels inside the box are laid on the picture. In blocks, the blocks'
+ * own laying keeps to the box (paint_scenery_in_blocks). */
+static void paint_scenery_in_box(int32_t background, const background_box *box) {
+  if (box->right <= box->left || box->bottom <= box->top) return;
+  laying_box = box;
+  if (block > 1 && background_field(background, RG_BG_IN_BLOCKS)) {
+    paint_scenery_in_blocks(background);
+  } else {
+    for (int32_t i = 0; i < CELLS; i++) sheet[i] = NOTHING_ON_SHEET;
+    onto_sheet = 1;
+    paint_background(background);
+    onto_sheet = 0;
+    for (int64_t py = box->top; py < box->bottom; py++)
+      for (int64_t px = box->left; px < box->right; px++) {
+        int32_t color = sheet[py * RG_SCREEN_WIDTH + px];
+        if (color != NOTHING_ON_SHEET) lay_scenery(px, py, (uint16_t)color);
+      }
+  }
+  laying_box = NULL;
+}
+
 /* Reference#paint_scenery */
 static void paint_scenery(int32_t background) {
-  if (block > 1 && background_field(background, RG_BG_IN_BLOCKS)) paint_scenery_in_blocks(background);
+  const background_box *box = &boxes[keeper_of(background)];
+  if (box->held) paint_scenery_in_box(background, box);
+  else if (block > 1 && background_field(background, RG_BG_IN_BLOCKS)) paint_scenery_in_blocks(background);
   else paint_background(background);
 }
 

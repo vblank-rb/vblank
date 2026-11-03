@@ -250,6 +250,11 @@ def rg_screen_setup
   @rg_from_corner = Array.new(RG_MAX_BACKGROUNDS, false)
   @rg_bar_tops = Array.new(RG_MAX_BACKGROUNDS, 0) # where each status bar was last placed
   @rg_bar_placed = Array.new(RG_MAX_BACKGROUNDS, false) # ...and whether it has been
+  # The box each is held to (@bg_box): left, top, and the column and row just past it, kept to the
+  # screen (Reference#screen_box), or nil where it shows everywhere; and the box the background being
+  # laid on the picture keeps to, or nil.
+  @rg_boxes = Array.new(RG_MAX_BACKGROUNDS)
+  @rg_laying_box = nil
   @rg_bar_covers = Array.new(RG_MAX_BACKGROUNDS, false) # ...and whether it hides the sprites under it
   @rg_any_from_corner = false
   @rg_corners_expired = false
@@ -962,7 +967,7 @@ end
 # Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it.
 def rg_background_stamp(background)
   # Reference#stamp_background: a status bar is painted from its own top as the view is built.
-  return rg_request_repaint if rg_bar?(background) || rg_held_above_row?(background)
+  return rg_request_repaint if rg_bar?(background) || rg_held_above_row?(background) || rg_held_to_box?(background)
 
   rg_mix_as_layer(rg_background_field(background, RG_BG_SEE_THROUGH))
   map = rg_map_now(background)
@@ -1094,12 +1099,15 @@ end
 # named layer puts BEHIND one already up would land in front of it; the ones it belongs behind are
 # stamped again over it. A turned background is painted through its turn at the next rebuild.
 def rg_background_put_up(background)
-  rg_forget_own_cells(background) if rg_background_field(background, RG_BG_ON_ARRIVAL) != 0
+  if rg_background_field(background, RG_BG_ON_ARRIVAL) != 0
+    rg_forget_own_cells(background)
+    @rg_boxes[rg_keeper_of(background)] = nil # its scene puts it up showing everywhere
+  end
   @rg_shown_backgrounds << background
   rg_mark_from_corner(background)
   @rg_scenery_kept = false
   return rg_request_repaint if @rg_turns[rg_keeper_of(background)].turned || rg_bar?(background) ||
-                               rg_held_above_row?(background) || rg_bar_showing
+                               rg_held_above_row?(background) || rg_bar_showing || rg_held_to_box?(background)
 
   rg_background_stamp(background)
   rg_stamp_in_stack_order(background)
@@ -1158,6 +1166,26 @@ def rg_place_bar(background, top)
   @rg_from_corner[keeper] = false unless @rg_placing_at_pass_end
   rg_request_repaint
 end
+
+# Reference#exec_box_background and #screen_box: a box with nothing on the screen is an empty one at
+# the corner.
+def rg_background_box(background, x, y, width, height, held)
+  @rg_boxes[rg_keeper_of(background)] = held.zero? ? nil : rg_screen_box(x, y, width, height)
+  rg_request_repaint
+end
+
+def rg_screen_box(x, y, width, height)
+  return [0, 0, 0, 0] if width <= 0 || height <= 0
+
+  left = rg_clamp_wide(x, 0, RG_SCREEN_WIDTH)
+  right = rg_clamp_wide(x + width, 0, RG_SCREEN_WIDTH)
+  top = rg_clamp_wide(y, 0, RG_SCREEN_HEIGHT)
+  bottom = rg_clamp_wide(y + height, 0, RG_SCREEN_HEIGHT)
+  right <= left || bottom <= top ? [0, 0, 0, 0] : [left, top, right, bottom]
+end
+
+# Whether a background is held to a box (Reference @bg_box).
+def rg_held_to_box?(background) = !@rg_boxes[rg_keeper_of(background)].nil?
 
 # Reference#exec_place_bar's covers
 def rg_bar_covers(background, covers)
@@ -1524,15 +1552,47 @@ def rg_paint_scenery_in_blocks(background)
   wide = rg_background_field(background, RG_BG_CAN_TURN) != 0 && @rg_block == 2 ? 1 : @rg_block
   rg_scenery_rows.times do |py|
     RG_SCREEN_WIDTH.times do |px|
+      next if @rg_laying_box && !rg_inside_box?(@rg_laying_box, px, py)
+
       color = @rg_sheet[(py * RG_SCREEN_WIDTH) + px - (px % wide)]
       rg_lay_scenery(px, py, color) if color != RG_NOTHING_ON_SHEET
     end
   end
 end
 
+# Whether (px, py) is inside +box+, [left, top, right, bottom].
+def rg_inside_box?(box, px, py) = px >= box[0] && px < box[2] && py >= box[1] && py < box[3]
+
+# Reference#paint_scenery_in_box
+def rg_paint_scenery_in_box(background, box)
+  left, top, right, bottom = box
+  return if right <= left || bottom <= top
+
+  @rg_laying_box = box
+  if @rg_block > 1 && rg_background_field(background, RG_BG_IN_BLOCKS) != 0
+    rg_paint_scenery_in_blocks(background)
+  else
+    @rg_sheet.fill(RG_NOTHING_ON_SHEET)
+    @rg_onto_sheet = true
+    rg_paint_background(background)
+    @rg_onto_sheet = false
+    (top...bottom).each do |py|
+      (left...right).each do |px|
+        color = @rg_sheet[(py * RG_SCREEN_WIDTH) + px]
+        rg_lay_scenery(px, py, color) if color != RG_NOTHING_ON_SHEET
+      end
+    end
+  end
+ensure
+  @rg_laying_box = nil
+end
+
 # Reference#paint_scenery
 def rg_paint_scenery(background)
-  if @rg_block > 1 && rg_background_field(background, RG_BG_IN_BLOCKS) != 0
+  box = @rg_boxes[rg_keeper_of(background)]
+  if box
+    rg_paint_scenery_in_box(background, box)
+  elsif @rg_block > 1 && rg_background_field(background, RG_BG_IN_BLOCKS) != 0
     rg_paint_scenery_in_blocks(background)
   else
     rg_paint_background(background)
