@@ -208,6 +208,14 @@ module VBlank
 
       # LoROM read at the slow speed: a board whose ROM cannot keep up with the faster one.
       LOROM_SLOW = 0x20
+
+      # THE OTHER USUAL LAYOUT, HiROM, which VBlank never builds but about half the console's
+      # retail cartridges use. Its banks are 64K: the processor sees the top half of each, $8000-
+      # $FFFF of banks $00-$3F, as the file from bank * $10000 + $8000. So $00:FFC0, where the
+      # header always is, is offset $FFC0 of the file, $8000 further in than a LoROM file's. Its
+      # map mode is $21, and $31 when it is read at the faster speed.
+      HIROM_HEADER_SHIFT = 0x8000
+      HIROM_SLOW = 0x21
       # The cartridge type of a board with a Super FX: its high four bits $1, its low ones "ROM, the
       # chip and its RAM" ($4), or that RAM kept by a battery ($5). (fullsnes, "SNES Cartridge ROM
       # Header"; bsnes, heuristics/super-famicom.cpp, board.)

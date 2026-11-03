@@ -92,18 +92,36 @@ module VBlank
 
       def size = @bytes.bytesize
 
+      # Where a cartridge file's header can be, for each of the two usual layouts: how much further
+      # into the file it is than a LoROM file's, and the map mode that layout's header says, its
+      # fast bit aside. LoROM is first, so a file whose bytes read as a header at both places, as
+      # one VBlank builds might by chance, is read as the LoROM cartridge it is.
+      HeaderPlace = Data.define(:shift, :map_mode)
+      HEADER_PLACES = [HeaderPlace.new(shift: 0, map_mode: LOROM_SLOW),
+                       HeaderPlace.new(shift: HIROM_HEADER_SHIFT, map_mode: HIROM_SLOW)].freeze
+      FAST_BIT = LOROM_FAST ^ LOROM_SLOW
+
       # The console a cartridge of this kind is for; whether +bytes+ are one (a header whose
-      # checksum and complement agree, and which says LoROM); and its title field.
+      # checksum and complement agree, at the place of the layout its map mode says); and its
+      # title field.
       def self.console = :snes
 
-      def self.header?(bytes)
-        return false if bytes.bytesize < SMALLEST
+      def self.header?(bytes) = !header_place_of(bytes).nil?
 
-        checksum, complement = bytes.byteslice(COMPLEMENT_AT, 4).unpack("v2").reverse
-        (checksum ^ complement) == 0xFFFF && (bytes.getbyte(MAP_MODE_AT) & 0xEF) == 0x20
+      # The title field of the header found, or the LoROM place's bytes when none is.
+      def self.title_field_of(bytes)
+        bytes.byteslice(TITLE_AT + (header_place_of(bytes)&.shift || 0), TITLE_LENGTH)
       end
 
-      def self.title_field_of(bytes) = bytes.byteslice(TITLE_AT, TITLE_LENGTH)
+      # The first of HEADER_PLACES that holds a header of its own layout in +bytes+, or nil.
+      def self.header_place_of(bytes)
+        HEADER_PLACES.find do |place|
+          next false if bytes.bytesize < place.shift + SMALLEST
+
+          complement, checksum = bytes.byteslice(COMPLEMENT_AT + place.shift, 4).unpack("v2")
+          (checksum ^ complement) == 0xFFFF && (bytes.getbyte(MAP_MODE_AT + place.shift) & ~FAST_BIT) == place.map_mode
+        end
+      end
 
       def console = self.class.console
       def header_title = self.class.title_field_of(@bytes)
