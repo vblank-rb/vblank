@@ -332,6 +332,136 @@ class TestSNESPaint < Minitest::Test
     assert_equal Color.resolve(:cyan), run.screen.pixel(1, 7)
   end
 
+  # A PASS THAT PAINTS WHAT THE LAST ONE DID costs almost nothing: a clear and the same paintings
+  # at the same places leave every tile as it was, so none is painted again or sent. The menu
+  # tests' game clears and draws four rows and a cursor every pass, and a tap moves the cursor,
+  # which paints two rows and the cursor again: each pass takes one frame, the first included,
+  # as on the interpreter.
+  def test_the_menu_tests_game_takes_one_frame_a_pass
+    program = program_of do
+      screen :bitmap
+      chose = var :chose, 0
+      game_loop do
+        clear_screen :black
+        menu(:main, at: [60, 40], spacing: 20, color: :gray, picked: :white, disabled: :red, press: :a) do |rows|
+          %w[ONE TWO THREE FOUR].each_with_index { |label, i| rows.item(label, enabled: i != 1) { chose = i + 1 } }
+        end
+      end
+    end
+    taps = ->(frame) { frame % 3 == 1 ? [:down] : [] }
+    SNES::CheckedRun.new.input_each_frame(&taps).run(program, frames: 12)
+    run = SNES::HeadlessRun.new.input_each_frame(&taps).run(program, frames: 12)
+
+    assert_equal [1] * 11, (2..12).map { |pass| run.frames_took(pass) }
+  end
+
+  # Four rows of 21 letters, cleared and written again every pass, the same each time: once the
+  # first pass has painted them, each pass takes one frame. Painting them every pass took six.
+  def test_four_rows_of_unchanged_text_take_one_frame_a_pass
+    program = program_of do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        4.times { |row| draw_text "ABCDEFGHIJKLMNOPQRSTU", 8, 40 + (row * 20), :white }
+      end
+    end
+    SNES::CheckedRun.new.run(program, frames: 8)
+    run = SNES::HeadlessRun.new.run(program, frames: 8)
+
+    assert_equal [1] * 5, (4..8).map { |pass| run.frames_took(pass) }
+  end
+
+  # Text that changes every pass beside text that does not: the changed tiles are painted again
+  # and sent, and the rest are left alone, which the interpreter's picture checks pass by pass.
+  def test_text_that_changes_every_pass_beside_text_that_does_not
+    run = checked(frames: 12) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :blue
+        draw_text "SCORE", 8, 8, :white
+        draw_number n, 60, 8, :yellow, digits: 3
+        draw_text "LEFT", 9, 30, %i[red green], showing: n % 2 == 1
+        draw_number n / 3, 41, 31, :white, digits: 2
+        n += 1
+      end
+    end
+
+    assert_equal 12, run[:n]
+  end
+
+  # TWO PAINTINGS THAT SHARE A TILE, one changing and one not: the tile is painted again with
+  # both, in the order the game painted them. A bar under a picture whose colour changes, a
+  # picture over a bar that moves a pixel at a time, and a rectangle over both, each across tile
+  # edges, so a tile painted with only the paintings that changed, or in the wrong order, shows.
+  def test_paintings_that_share_a_tile_come_out_in_order
+    run = checked(frames: 14) do
+      screen :bitmap
+      image :gem, "." => :transparent, "r" => :red, "w" => :white do
+        ".rrrr.\nrwwwwr\n.rrrr.\n"
+      end
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 3, 3, 20, 6, :green
+        blit :gem, 6, 4 if n % 2 == 0
+        draw_text "A", 13, 2, %i[yellow cyan], showing: n % 4 < 2
+        draw_rect_at 30 + (n % 5), 12, 9, 5, :orange
+        blit :gem, 33, 11
+        fill_rect 10, 6, 3, 3, :magenta
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:magenta), run.screen.pixel(10, 6), "the last painting is on top"
+  end
+
+  # A bar across two tiles, a square over it in the first, and a dot that moves in the second:
+  # the bar is painted again for the second tile, and so the first is painted again too, square
+  # and all. Later passes paint a dot into the first tile without clearing, on what is there,
+  # so a first tile left with the bar over its square would show.
+  def test_a_painting_done_again_takes_every_painting_of_its_tiles_with_it
+    run = checked(frames: 10) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        if n < 6
+          clear_screen :black
+          fill_rect 0, 40, 16, 8, :green
+          fill_rect 2, 42, 3, 3, :white
+          draw_rect_at 10 + (n % 3), 42, 2, 2, :red
+        end
+        fill_rect 6, 46, 1, 1, :yellow if n >= 6
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:white), run.screen.pixel(3, 43), "the square stays over the bar"
+  end
+
+  # Painted again every pass, a painting under a clear made at once in an earlier pass, and a
+  # sprite's patch kept and put back over a screen that was cleared: what a pass paints at once
+  # and what it writes down meet in the same tiles.
+  def test_a_sprite_over_a_screen_cleared_every_other_pass
+    run = checked(frames: 16) do
+      screen :bitmap
+      image :ball, "." => :transparent, "o" => :white do
+        ".oo.\noooo\noooo\n.oo.\n"
+      end
+      ball = sprite :ball, at: [10, 10]
+      n = 0
+      game_loop do
+        clear_screen :blue if n % 2 == 0
+        fill_rect 8, 8, 12, 12, :red
+        draw_rect_at 4 + n, 9, 5, 3, :yellow
+        ball.move_to 6 + (n * 2), 10
+        n += 1
+      end
+    end
+
+    assert_equal 16, run[:n]
+  end
+
   private def clear_and_draw_program
     program_of do
       screen :bitmap
