@@ -168,6 +168,20 @@ class TestQuickMemoryPlan < Minitest::Test
     assert plan.kept?(:__frame)
   end
 
+  # ...but a split is used where one set keeps a small routine every frame runs and leaves out the
+  # game loop itself, which the split keeps: the game loop is ranked first, so it decides. Here a
+  # busy routine ranked ahead of the loop leaves one set no room for it, and the light's rows go in
+  # instead; the split keeps the loop and has no room left for the light's rows.
+  def test_a_split_that_keeps_the_game_loop_one_set_left_out_is_used
+    plan = Plan.choose([claim(:busy, 500), claim(:__frame, 700, every_frame: true),
+                        claim(:light_rows, 200, every_frame: true), claim(:play_work, 250, scene: :_scene_play),
+                        claim(:title_work, 60, scene: :_scene_title)],
+                       room: 1000, dispatch: Plan::Dispatch.new(scenes: %i[_scene_title _scene_play], clauses: 2))
+
+    assert_includes plan.resident, :__frame
+    refute plan.kept?(:light_rows)
+  end
+
   # THE PROMISE THE RULE IS FOR: however play grows, what the file screen insisted on keeps its
   # room — and whatever the build would have picked ahead of it, measured or not, the answer for
   # what the author insisted on is the same.

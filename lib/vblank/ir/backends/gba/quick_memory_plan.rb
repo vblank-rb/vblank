@@ -38,7 +38,8 @@ module VBlank
           # +every_frame+ marks what every frame runs or reads — the game loop, the routine the
           # console interrupts into, the routines placed with the game loop, a collection a frame
           # touches where nothing measured how often. A set per scene is not used where it would
-          # leave one of those out that one set for the whole game kept.
+          # leave one of those out that one set for the whole game kept, unless that one set left
+          # out one ranked ahead of it that the split keeps.
           #
           # +scene_work+ is what a frame of each scene was measured to spend in it, by scene
           # routine — empty for a routine measured in no scene's counts, nil for one never
@@ -106,8 +107,8 @@ module VBlank
             private
 
             # WHAT ONE SET LEFT OUT, a scene's own room may hold. Answers the split, or nil where it
-            # is no better than +one+ set: it keeps nothing in a scene's set, or it leaves out
-            # something every frame runs that one set kept. With no +one+ — what the author
+            # is no better than +one+ set: it keeps nothing in a scene's set, or it keeps what every
+            # frame runs less well (see #keeps_dearer_every_frame_claim?). With no +one+ — what the author
             # insisted on fits only in a split — the split is the answer, and a split that cannot
             # hold what was insisted on stops the build.
             #
@@ -163,10 +164,29 @@ module VBlank
               plan = split.plan
               return nil if plan.sets.empty?
 
-              # A scene's own every-frame routine is not held to that: in its scene's set it is
-              # still in the quick memory whenever it runs.
-              every_frame = optional.select { |claim| claim.every_frame && claim.scene.nil? && one.kept?(claim.name) }
-              every_frame.all? { |claim| plan.resident.include?(claim.name) } ? split : nil
+              split if keeps_dearer_every_frame_claim?(plan, one, optional)
+            end
+
+            # DOES THE SPLIT KEEP WHAT EVERY FRAME RUNS AT LEAST AS WELL AS ONE SET DID? Taken in the
+            # order the build ranks them, the first such claim the two disagree about decides: the
+            # one that keeps it wins. A split that leaves out something every frame runs is no
+            # better than the one set that kept it — unless that one set left out something ranked
+            # ahead of it, which the split keeps.
+            #
+            # Not "every one the one set kept", which is what this used to ask. The one set can
+            # pass over the game loop itself, which is too big for it while each scene's work is
+            # still a part of the loop, and keep a small routine the loop calls; the split keeps
+            # the loop and has no room left for that small routine. Asked that way, the split lost
+            # for the small routine, the game loop ran from the cartridge, and nothing measured
+            # the loop as it would be in a split, with each scene's work its own routine, which is
+            # smaller (see Placement#choose_fast_funcs).
+            #
+            # A scene's own every-frame routine is not counted: in its scene's set it is still in
+            # the quick memory whenever it runs.
+            def keeps_dearer_every_frame_claim?(plan, one, optional)
+              every_frame = optional.select { |claim| claim.every_frame && claim.scene.nil? }
+              first = every_frame.find { |claim| one.kept?(claim.name) != plan.resident.include?(claim.name) }
+              first.nil? || plan.resident.include?(first.name)
             end
 
             def one_set = Layout.new(by_name(@claims), { game: @room }, swaps: false)
