@@ -53,6 +53,18 @@ can't be allowlisted, and can't be denied granularly.
   inspectable and re-runnable.
 - Prefer one clear command over a clever pipeline, even for read-only inspection.
 
+## Worktrees — two items in flight, at most
+
+Non-trivial work goes in a worktree of its own, `.claude/worktrees/<item>` on a branch named for
+the item, so `main` stays the tested tree a whole run plays. Two at once is the ceiling; the
+worktrees under `.claude/worktrees/` (`git worktree list`) are the count.
+
+- A second item is one that touches different files: another milestone and another lowering
+  than the first. Two branches in the same files collide when they land.
+- Each worktree runs its rake with `VBLANK_SUITE_LOCK=checkout`. One `rake test:golden` runs on
+  the machine at a time: two together push both past their time limit.
+- An item lands by cherry-picking its commits onto `main` once its own tests pass there, then
+  its worktree and branch are removed.
 
 ## Emulator & integration tests
 
