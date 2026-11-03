@@ -19,10 +19,14 @@ class TestTapeManyPlayers < Minitest::Test
     b.instance_eval do
       first = var :first, 0
       third = var :third, 0
+      second_presses = var :second_presses, 0
+      first_presses = var :first_presses, 0
       connected = var :connected, 0
       game_loop do
         first += 1 if held(:right)
         third += 1 if held(:right, player: 3)
+        second_presses += 1 if pressed(:a, player: 2)
+        first_presses += 1 if pressed(:a)
         connected.store!(players_connected)
       end
     end
@@ -49,9 +53,28 @@ class TestTapeManyPlayers < Minitest::Test
       tape.steps.each { |step| game.step(step.frames, keys: Playthrough.key_mask(step.buttons)) }
 
       assert_equal 0, game.var(:first), way
-      assert_operator game.var(:third), :>=, 3, way
+      assert_equal 4, game.var(:third), "#{way}: one pass for each of the four frames held"
+      assert_equal 1, game.var(:second_presses), "#{way}: the second player's A, held two frames, is one press"
+      assert_equal 0, game.var(:first_presses), "#{way}: and it is not the first player's"
       assert_equal 3, game.var(:connected), way
       game.finish
+    end
+  end
+
+  # A cartridge has the controllers its console has, so a tape that presses another player's
+  # buttons is refused in plain words before the emulator is handed keys it has no room for.
+  def test_a_cartridge_refuses_a_tape_pressing_a_player_it_has_no_controller_for
+    cartridge = VBlank.build("ONE", console: :gba, out: StringIO.new, err: StringIO.new) { game_loop {} }
+
+    error = assert_raises(ArgumentError) { tape.play(cartridge) }
+    assert_match(/player 3/, error.message)
+    assert_match(/1 controller/, error.message)
+  end
+
+  def test_a_tape_written_out_for_another_emulator_refuses_another_players_buttons
+    %i[mgba_script bizhawk_input_log].each do |written|
+      error = assert_raises(ArgumentError, written.to_s) { VBlank::Playthroughs::TapeExport.public_send(written, tape) }
+      assert_match(/player 3/, error.message)
     end
   end
 

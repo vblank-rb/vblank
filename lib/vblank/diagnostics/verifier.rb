@@ -859,7 +859,24 @@ module VBlank
         held = holding || @keys
         return 0 unless held
 
-        held.respond_to?(:call) ? held.call(frame) : held
+        refuse_players_past_controllers!(held.respond_to?(:call) ? held.call(frame) : held)
+      end
+
+      # +keys+, when every button in it is on a controller the cartridge's console has. Each
+      # player's buttons sit IR::Buttons::PLAYER_SHIFT bits above the one before's
+      # (IR::Buttons.mask), so a third player's are past the 32 bits a console's keys hold, and the
+      # emulator would stop on them with no word of why.
+      def refuse_players_past_controllers!(keys)
+        return keys unless keys.is_a?(Integer) && keys.positive?
+
+        player = ((keys.bit_length - 1) / IR::Buttons::PLAYER_SHIFT) + 1
+        console = Console.described(@rom.console)
+        return keys if player <= console.controllers
+
+        controllers = console.controllers == 1 ? "1 controller" : "#{console.controllers} controllers"
+        raise ArgumentError, "The buttons held include the buttons of player #{player}, and a #{console.title} " \
+                             "cartridge has #{controllers}. To fix this, hold only the buttons of " \
+                             "#{console.controllers == 1 ? 'player 1' : "players 1 to #{console.controllers}"}."
       end
 
       def validate_coords!(x, y)

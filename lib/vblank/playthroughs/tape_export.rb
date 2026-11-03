@@ -102,7 +102,20 @@ module VBlank
         tape.moments.map { |name, frame| "subtitle #{frame} 8 8 #{SUBTITLE_FRAMES} #{SUBTITLE_COLOR} #{name}\n" }.join
       end
 
-      def holds_of(tape) = tape.steps.select { |step| step.frames.positive? }
+      # The holds of +tape+, each held for a frame or more. Both files are for a Game Boy Advance,
+      # which has one controller, so a tape that presses another player's buttons is refused: an
+      # mGBA script would hand the emulator keys wider than its own, and a BizHawk movie would
+      # leave them out without a word.
+      def holds_of(tape)
+        holds = tape.steps.select { |step| step.frames.positive? }
+        player = IR::Buttons.highest_player(holds.flat_map(&:buttons))
+        if player > Console::ADVANCE.controllers
+          raise ArgumentError, "The tape presses the buttons of player #{player}, and a #{Console::ADVANCE.title} " \
+                               "cartridge has 1 controller. To fix this, remove the buttons of player #{player} " \
+                               "from the tape."
+        end
+        holds
+      end
 
       # +files+ as a zip with nothing compressed, which every zip reader takes. Ruby has no zip of
       # its own, and these are a few plain files.
