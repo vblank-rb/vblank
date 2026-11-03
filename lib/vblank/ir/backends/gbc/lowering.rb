@@ -259,9 +259,6 @@ module VBlank
 
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
-          # Does the game keep tile pictures in a bank? Then its runtime carries the copy from one.
-          def copies_from_banks? = @program.walk.any? { |node| node.kind == :tile_run && node.held_in }
-
           def fills_byte_lists?
             lists = @program.walk.select { |node| node.kind == :list_new && node.width == :byte }
             names = lists.map(&:name)

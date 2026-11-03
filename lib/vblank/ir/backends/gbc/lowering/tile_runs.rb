@@ -21,17 +21,20 @@ module VBlank
           #
           # A GROUP OF `tile_pictures` needs none of that. Its pictures are all known when the
           # cartridge is built, so its table is written in the Color's own form, and its list is never
-          # made here: where a list stood, two bytes say which picture, and the run's copy takes it from
-          # the table straight to the stretch of work memory, with nothing turned. On the Color a frame turns about 30 tiles, and copies
-          # many times that. Everything above the lowering still sees the list and the Advance's form,
-          # so the interpreter and the computer builds play a group as any other painted run.
+          # made here: where a list stood, two bytes say which picture. The console's copy takes the
+          # picture straight from the cartridge in the blank, with its bank put in view, so a show
+          # costs a pass a few instructions and no stretch of work memory at all. Everything above
+          # the lowering still sees the list and the Advance's form, so the interpreter and the
+          # computer builds play a group as any other painted run.
           module TileRuns
             STATEMENTS = Ractor.make_shareable({ copy_tiles: :emit_copy_tiles, copy_owed_tiles: :emit_copy_owed_tiles })
 
             # Where a run's repacked tiles wait for the blank, and its flag saying they are waiting,
             # with where in picture memory each of its tiles goes — its bank and its address — for the
-            # runtime's copy (Runtime::Picture).
-            RunUpload = Data.define(:owed, :staging, :tiles)
+            # runtime's copy (Runtime::Picture). In a game with a group of `tile_pictures`,
+            # +source_now+ is where that copy keeps what a run's places are counted from; nil in any
+            # other.
+            RunUpload = Data.define(:owed, :staging, :tiles, :source_now)
 
             # Bytes a tile takes in the Color's picture memory.
             TILE_BYTES = 16
@@ -42,7 +45,7 @@ module VBlank
             # Every painted run's copy, for the runtime, once #keep_tile_runs has placed them.
             def run_uploads
               (@run_places || {}).filter_map do |name, (owed, staging)|
-                RunUpload.new(owed: owed, staging: staging, tiles: run_tile_places(tile_runs.fetch(name)))
+                RunUpload.new(owed: owed, staging: staging, tiles: run_tile_places(tile_runs.fetch(name)), source_now: @source_now)
               end
             end
 
@@ -70,8 +73,9 @@ module VBlank
 
             def held_picture_table?(table) = tile_runs.each_value.any? { |run| run.held_in == table.name }
 
-            # A group's pictures in a bank, all of them in one piece, since one show copies across it.
-            # Nothing reads them but that copy, so they ask nothing of the part always in view.
+            # A group's pictures in a bank, all of them in one piece, since one show copies across it,
+            # and starting on a multiple of 16, which is the only place the console's copy reads
+            # from. Nothing reads them but that copy, so they ask nothing of the part always in view.
             def held_pictures_section(table)
               bytes = held_pictures_as_tiles(table)
               if bytes.length > BANK_BYTES
@@ -80,7 +84,7 @@ module VBlank
                                      "put the tiles in two groups."
               end
 
-              asm = SM83.new(table_label(table.name), home: :banked, holds: DATA)
+              asm = SM83.new(table_label(table.name), home: :aligned16, holds: DATA)
               asm.label(table_label(table.name))
               asm.data_bytes(bytes)
               asm.section
@@ -167,13 +171,20 @@ module VBlank
             end
 
             # Each run's flag and its repacked tiles' stretch of work memory, which the console's copy
-            # reads from an address that is a multiple of 16.
+            # reads from an address that is a multiple of 16. A group has no such stretch: its tiles'
+            # places are counted from nought, and from the picture it shows when it is copied.
+            #
+            # In a game with a group, a run's flag says which bank to put in view for its copy, and
+            # the two bytes after it where its places are counted from. A list's run sets the flag
+            # alone, and those two stay nought, as boot left them.
             def keep_tile_runs
-              @held_pictures = tile_runs.values.select(&:held_in).to_h do |run|
-                [run.name, @memory.reserve("the picture #{run.name.inspect} shows", 2)]
-              end
+              held = tile_runs.values.select(&:held_in)
+              @held_pictures = held.to_h { |run| [run.name, @memory.reserve("the picture #{run.name.inspect} shows", 2)] }
+              @source_now = @memory.reserve("where a painted run's copy reads from", 2) if held.any?
               @run_places = tile_runs.values.to_h do |run|
-                owed = @memory.reserve("the painted tiles #{run.name.inspect}, waiting", 1)
+                owed = @memory.reserve("the painted tiles #{run.name.inspect}, waiting", held.any? ? 3 : 1)
+                next [run.name, [owed, 0]] if run.held_in
+
                 room = @memory.reserve("the painted tiles #{run.name.inspect}", (run_tile_count(run) * TILE_BYTES) + 15)
                 [run.name, [owed, (room + 15) & ~15]]
               end
@@ -200,7 +211,9 @@ module VBlank
 
             def emit_run_copy(run)
               owed, staging = @run_places.fetch(run.name)
-              run.held_in ? emit_held_picture_to_staging(run, staging) : emit_list_to_staging(run, staging)
+              return emit_held_picture_source(run, owed) if run.held_in
+
+              emit_list_to_staging(run, staging)
               @asm.load(:a, 1)
               @asm.load([owed], :a)
             end
@@ -230,7 +243,9 @@ module VBlank
               @asm.load([picture + 1], :a)
             end
 
-            def emit_held_picture_to_staging(run, staging)
+            # Where in the cartridge the picture shown is, for the blank's copy, and its bank, which is
+            # never nought, as the flag that says the run is waiting.
+            def emit_held_picture_source(run, owed)
               picture = @held_pictures.fetch(run.name)
               @asm.load(:a, [picture])
               @asm.load(:e, :a)
@@ -238,10 +253,12 @@ module VBlank
               @asm.load(:d, :a)
               @asm.load(:hl, table_label(run.held_in))
               @asm.add_hl(:de)
-              @asm.load(:de, staging)
-              @asm.load(:bc, run_tile_count(run) * TILE_BYTES)
+              @asm.load(:a, :l)
+              @asm.load([owed + 1], :a)
+              @asm.load(:a, :h)
+              @asm.load([owed + 2], :a)
               @asm.load_bank_of(:a, table_label(run.held_in))
-              @asm.call("rt_far_copy_bc")
+              @asm.load([owed], :a)
             end
           end
         end

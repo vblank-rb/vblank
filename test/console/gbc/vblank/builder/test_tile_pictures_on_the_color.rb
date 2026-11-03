@@ -10,7 +10,7 @@ class TestTilePicturesOnTheColor < Minitest::Test
   PICTURES = 3
   ASKED_ON_PASS = 8
 
-  private def billboard
+  private def billboard(work: 0)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do
       screen :tiled
@@ -37,8 +37,10 @@ class TestTilePicturesOnTheColor < Minitest::Test
       tiles :field, keys
       ground = background :ground, tiles: :field, map: ["abcdef", "ghijkl", "mnopqr", "stuvwx", "ABCDEF"]
       pass = var :pass, 0
+      spent = var :spent, 0
       game_loop do
         pass += 1
+        repeat(work) { spent += 1 }
         which = (pass / 4) % PICTURES
         warm.show which
         cool.show which
@@ -135,6 +137,14 @@ class TestTilePicturesOnTheColor < Minitest::Test
 
   def test_showing_two_groups_keeps_a_frame_a_pass
     run = VBlank::IR::Backends::GBC::HeadlessRun.new.run(billboard, frames: 40)
+
+    assert_empty (8...40).select { |pass| run.frames_took(pass) > 1 }
+  end
+
+  # The pictures are copied in the gap between frames, straight from the cartridge, so a show asks
+  # nothing of a pass with little room left. Copied a byte at a time in the pass, it ran over.
+  def test_showing_two_groups_on_a_nearly_full_pass_keeps_a_frame_a_pass
+    run = VBlank::IR::Backends::GBC::HeadlessRun.new.run(billboard(work: 135), frames: 40)
 
     assert_empty (8...40).select { |pass| run.frames_took(pass) > 1 }
   end

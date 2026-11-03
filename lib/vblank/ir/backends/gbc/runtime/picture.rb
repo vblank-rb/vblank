@@ -850,7 +850,7 @@ module VBlank
                 return
               end
 
-              emit_tile_runs_upload(asm)
+              emit_tile_runs_upload(asm, runs.first.source_now)
               emit_tile_runs_table(asm, runs)
             end
 
@@ -862,7 +862,13 @@ module VBlank
             # Each run is the address of its "owed" flag, then its stretches, each the side of picture
             # memory, where it goes, where it comes from and how many blocks of 16 bytes less one,
             # then RUN_ENDS. An address of nought ends the table.
-            def emit_tile_runs_upload(asm)
+            #
+            # A GROUP OF TILE PICTURES IS COPIED STRAIGHT FROM THE CARTRIDGE, so a game with one has
+            # a little more here (+source_now+ is where it keeps this, see Lowering::TileRuns). The
+            # flag is the bank to put in view for the copy and the two bytes after it what the
+            # run's places are counted from: the picture shown for a group, and nought for a list's
+            # run, whose bank nothing reads. The bank the game was in comes back after the run.
+            def emit_tile_runs_upload(asm, source_now)
               h = Console::GBCHardware
               read_pair = lambda do |low, high|
                 asm.load(:a, [:hli])
@@ -887,6 +893,7 @@ module VBlank
               asm.add_hl(:de)
               asm.jump_relative("rt_tile_runs_pass")
               asm.label("rt_tile_runs_owed")
+              emit_run_source_in_view(asm, source_now) if source_now
               asm.xor_a(:a)
               asm.load([:de], :a)
               asm.label("rt_tile_runs_stretch")
@@ -901,13 +908,46 @@ module VBlank
               asm.load(:l, :c)
               asm.load(:h, :b)
               asm.load(:c, :a)
+              if source_now # C is the blocks, kept while BC is what the places count from
+                asm.push(:bc)
+                asm.load(:a, [source_now])
+                asm.load(:c, :a)
+                asm.load(:a, [source_now + 1])
+                asm.load(:b, :a)
+                asm.add_hl(:bc)
+                asm.pop(:bc)
+              end
               asm.call("rt_gdma")
               asm.pop(:hl)
               asm.jump_relative("rt_tile_runs_stretch")
               asm.label("rt_tile_runs_done")
+              if source_now
+                asm.pop(:af)
+                asm.load_high(Memory::CURRENT_BANK, :a)
+                asm.select_rom_bank
+              end
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
               asm.jump_relative("rt_tile_runs_next")
+            end
+
+            # DE the run's flag and A what it holds: the game's bank kept on the stack, the flag's
+            # bank put in view, what the run's places count from kept at +source_now+, and DE left
+            # on the flag.
+            def emit_run_source_in_view(asm, source_now)
+              asm.load(:b, :a)
+              asm.load_high(:a, Memory::CURRENT_BANK)
+              asm.push(:af)
+              asm.load(:a, :b)
+              asm.load_high(Memory::CURRENT_BANK, :a)
+              asm.select_rom_bank
+              [0, 1].each do |byte|
+                asm.inc(:de)
+                asm.load(:a, [:de])
+                asm.load([source_now + byte], :a)
+              end
+              asm.dec(:de)
+              asm.dec(:de)
             end
 
             RUN_ENDS = 0xFF
