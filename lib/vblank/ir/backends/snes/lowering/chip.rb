@@ -117,7 +117,8 @@ module VBlank
             def refuse_chip_lists_too_big!(name)
               room = ChipCode::NUMBERS_END - ChipCode::FIRST_NUMBER - CHIP_NUMBERS_KEPT
               raise LoweringError, "The list #{name.inspect} is used on the Super FX chip, and the lists the chip " \
-                                   "uses do not fit in its RAM. Those lists and the chip's numbers share 8K, and " \
+                                   "uses do not fit in its RAM. Those lists and the chip's numbers share " \
+                                   "#{ChipCode::NUMBERS_END - ChipCode::FIRST_NUMBER} bytes, and " \
                                    "the lists can take #{room} bytes of it. To fix this, give those lists smaller " \
                                    "capacities, or use #{name.inspect} only outside the routines marked on_chip: true."
             end
@@ -140,8 +141,19 @@ module VBlank
                 [table.name, ChipCode::TableRead.new(label: table_label(table.name), count: table.values.length,
                                                      bytes: bytes, signed: signed)]
               end
+              columns = chip_column_pictures.to_h do |name|
+                image = Assets::Image.of(picture_named(name))
+                [name, ChipCode::ColumnPicture.new(width: image.width, height: image.height, starts: "column starts of #{name}")]
+              end
               @chip_code = ChipCode.new(routines: @chip_routines, funcs: @funcs, plan: @plan, holds: ROUTINES,
-                                        tables: tables, lists: @chip_lists, numbers_end: @chip_numbers_end)
+                                        tables: tables, lists: @chip_lists, columns: columns, numbers_end: @chip_numbers_end)
+            end
+
+            # The pictures a run of a chip routine draws columns of (draw_column_at), by name.
+            def chip_column_pictures
+              @chip_routines.flat_map do |name|
+                Reach.statements_under(@funcs.fetch(name)).filter_map { |node| node.name if node.kind == :draw_column_at }
+              end.uniq
             end
 
             # The 65816 routine that stands for +name+.
@@ -159,13 +171,87 @@ module VBlank
                 @asm.lda(at_place(place_of(variable) + half))
                 @asm.sta(@asm.long(chip_ram_address(at) + half))
               end
+              paints = @chip_code.paints?(name)
+              emit_paint_handed_to_chip if paints
               value(LongAddress.new(ChipCode.entry_label(name)))
               call_routine("rt_chip_run")
               @chip_code.variables_changed(name).product(HALVES).each do |(variable, at), half|
                 @asm.lda(@asm.long(chip_ram_address(at) + half))
                 @asm.sta(at_place(place_of(variable) + half))
               end
+              emit_paint_taken_from_chip if paints
               emit_chip_fault_check(name) if faults
+            end
+
+            # What a run that paints needs of the painted screen, which the chip cannot see in work
+            # RAM (Runtime::ChipColumns): the area painting is held to, the screen's generation, the
+            # clear colour's planes, and each row of tiles' changed tiles. No tile is made ready yet.
+            def emit_paint_handed_to_chip
+              paint = Runtime::Paint
+              places = @chip_code.paint_places
+              area = @memory[paint::AREA]
+              @chip_code.area_places.each_with_index do |at, edge|
+                @asm.lda(@asm.abs(area + (edge * 2)))
+                @asm.sta(@asm.long(chip_ram_address(at)))
+                @asm.lda(0)
+                @asm.sta(@asm.long(chip_ram_address(at) + 2))
+              end
+              @asm.lda(@asm.abs(@memory[paint::GENERATION]))
+              @asm.sta(@asm.long(chip_ram_address(places.generation)))
+              4.times do |pair|
+                @asm.lda(@asm.abs(@memory[paint::CLEAR_PLANES] + (pair * 2)))
+                @asm.sta(@asm.long(chip_ram_address(places.clear) + (pair * 2)))
+              end
+              @asm.lda(0)
+              @asm.sta(@asm.long(chip_ram_address(places.readied_count)))
+              emit_dirty_copied(to_chip: true)
+            end
+
+            # What a run that painted changed of the painted screen: the changed tiles of each row,
+            # and the map's cell of each tile the chip made ready pointed back at that tile, as
+            # Runtime::Paint's rt_paint_ready does.
+            def emit_paint_taken_from_chip
+              paint = Runtime::Paint
+              places = @chip_code.paint_places
+              emit_dirty_copied(to_chip: false)
+              none = fresh("none_readied")
+              tile = fresh("readied_tile")
+              @asm.lda(@asm.long(chip_ram_address(places.readied_count)))
+              @asm.beq(none)
+              @asm.sta(@asm.direct(R0))
+              @asm.ldx(0)
+              @asm.label(tile)
+              @asm.phx
+              @asm.lda(@asm.long_x(chip_ram_address(places.readied)))
+              @asm.pha
+              @asm.asl
+              @asm.tax
+              @asm.pla
+              @asm.sta(@asm.long_x(@memory[paint::MAP_COPY]))
+              @asm.plx
+              @asm.inx
+              @asm.inx
+              @asm.cpx(@asm.direct(R0))
+              @asm.bne(tile)
+              @asm.lda(1)
+              @asm.sta(@asm.abs(@memory[paint::MAP_CHANGED]))
+              @asm.label(none)
+            end
+
+            # Each row of tiles' leftmost and rightmost changed tile (Runtime::Paint's DIRTY), copied
+            # into the chip's RAM or back.
+            def emit_dirty_copied(to_chip:)
+              dirty = @memory[Runtime::Paint::DIRTY]
+              chip = chip_ram_address(@chip_code.paint_places.dirty)
+              word = fresh("dirty_word")
+              @asm.ldx(0)
+              @asm.label(word)
+              @asm.lda(to_chip ? @asm.abs_x(dirty) : @asm.long_x(chip))
+              @asm.sta(to_chip ? @asm.long_x(chip) : @asm.abs_x(dirty))
+              @asm.inx
+              @asm.inx
+              @asm.cpx(Runtime::Paint::ROWS * 4)
+              @asm.bne(word)
             end
 
             # A list the chip found at fault stops the game here, in Runtime::Lists's words. An index

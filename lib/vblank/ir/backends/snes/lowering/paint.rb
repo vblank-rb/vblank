@@ -68,11 +68,15 @@ module VBlank
               @column_numbers = COLUMN.to_h { |what| [what, keep_local(:"column_#{what}")] }
             end
 
-            # The routine that draws a column of each picture drawn so.
+            # The routine that draws a column of each picture drawn so on the console, and the table of
+            # its columns for each picture drawn so on the console or the Super FX chip.
             def column_sections
-              @column_routines.map do |name, label|
+              (@column_routines.keys | chip_column_pictures).each do |name|
                 image = Assets::Image.of(picture_named(name))
                 @column_tables[name] = Array.new(image.width) { |slice| column_places(image, slice) }
+              end
+              @column_routines.map do |name, label|
+                image = Assets::Image.of(picture_named(name))
                 routine_section(label, [], routine: "#{name.inspect} drawn a column at a time") { emit_column_walk(name, image) }
               end
             end

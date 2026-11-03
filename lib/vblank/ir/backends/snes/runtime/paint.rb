@@ -191,7 +191,7 @@ module VBlank
             def reserve(memory, chip: false)
               memory.reserve_last_bank("rt paint copy", COPY_BYTES) unless chip
               far = chip ? memory.method(:reserve_far) : memory.method(:reserve_last_bank)
-              far.call(GENERATIONS, TILES)
+              chip ? memory.name_place(GENERATIONS, ChipPaint::GENERATIONS) : far.call(GENERATIONS, TILES)
               far.call(MAP_COPY, MAP_BYTES)
               far.call(CLEAR_TILE_COPY, TILE_BYTES)
               far.call(RUNS, MOST_RUNS * 4)
@@ -294,7 +294,7 @@ module VBlank
               # in generation 0, which no tile is in yet; the copy, the clear tile in video RAM and the
               # clear colour's planes start all nought, as Boot leaves them.
               asm.jsl(asm.long("rt_paint_anywhere"))
-              emit_fill_work_ram(asm, memory[GENERATIONS], TILES, "rt_paint_no_generation")
+              emit_no_generation_everywhere(asm, memory, "rt_paint_start")
               emit_fill_work_ram(asm, memory[SHOWN_IN], TILES, "rt_paint_no_generation")
               emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
               [GENERATION, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END].each do |name|
@@ -324,6 +324,24 @@ module VBlank
               asm.cpx(ROWS * 4)
               asm.bne("rt_paint_start_row")
               asm.rtl
+            end
+
+            # Every tile put in NO_GENERATION. In work RAM the copying engine does it
+            # (#emit_fill_work_ram); in a Super FX's RAM (ChipPaint), which the engine's work RAM port
+            # cannot reach, a loop of 16-bit stores does, two tiles a store. +prefix+ makes its labels
+            # its own. A changes; X is left at the end.
+            def emit_no_generation_everywhere(asm, memory, prefix)
+              address = memory[GENERATIONS]
+              return emit_fill_work_ram(asm, address, TILES, "rt_paint_no_generation") if address >= WORK_RAM
+
+              asm.ldx(0)
+              asm.lda((NO_GENERATION << 8) | NO_GENERATION)
+              asm.label("#{prefix}_no_generation")
+              asm.sta(asm.long_x(address))
+              asm.inx
+              asm.inx
+              asm.cpx(TILES)
+              asm.bne("#{prefix}_no_generation")
             end
 
             # +bytes+ of work RAM from +address+ (24 bits) all the byte at +label+, by the copying
@@ -727,7 +745,7 @@ module VBlank
               asm.inc
               asm.cmp(NO_GENERATION)
               asm.bcc("rt_paint_clear_generation")
-              emit_fill_work_ram(asm, memory[GENERATIONS], TILES, "rt_paint_no_generation")
+              emit_no_generation_everywhere(asm, memory, "rt_paint_clear")
               asm.lda(0)
               asm.label("rt_paint_clear_generation")
               asm.sta(asm.abs(memory[GENERATION]))

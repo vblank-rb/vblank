@@ -99,6 +99,12 @@ module VBlank
             end
           end
 
+          # +name+ kept at +address+, a long address outside work RAM (a cartridge's own RAM), so it
+          # is asked for and read back by name like any other place.
+          def name_place(name, address)
+            @places[name] = address
+          end
+
           # +bytes+ of the runtime's scratch on the direct page, and its address there.
           def scratch(bytes)
             raise Full, "the runtime's direct page is full" if @next_scratch + bytes > SCRATCH_END

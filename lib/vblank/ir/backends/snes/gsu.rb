@@ -179,6 +179,9 @@ module VBlank
           def lms(register, address) = emit(ALT1, 0xA0 | checked_register(register), checked_short_address(address))
           def sms(address, register) = emit(ALT2, 0xA0 | checked_register(register), checked_short_address(address))
 
+          # Bytes that are not instructions: a table the chip reads from the cartridge with GETB.
+          def data_bytes(values) = emit(*values)
+
           private
 
           def checked_register(value)
