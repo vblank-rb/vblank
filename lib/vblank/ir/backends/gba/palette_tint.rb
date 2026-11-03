@@ -714,9 +714,27 @@ module VBlank
           # taking over — and its layers and the ones every scene shows are written; with +up+
           # unknown, as in a tint, a scene's layer is written only while its scenery is the one
           # up.
+          #
+          # WRITTEN ONCE AND CALLED. Every tint the game writes, and every area or screen that
+          # sends its colours, puts these groups back, and each group is a check and a walk of its
+          # own: written out at each of them, a layer of six borrowed lists was most of the code of
+          # a game that tints in a few places, and enough to push the routine that runs every
+          # frame out of the console's quick memory. So with +up+ unknown, which is where all of
+          # them but a scene's own arrival are, it is a routine (RECOLORED_BANKS_ROUTINE) and this
+          # is the call. The tint's shares are in their registers already, and the routine reads
+          # them as the walk written out here did.
           def emit_recolored_banks(up: :unknown)
+            return @lowering.statement(Build.call(RECOLORED_BANKS_ROUTINE)) if up == :unknown && recolored_banks_routine?
+
             emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, up)
           end
+
+          # The routine's name and whether this build has it: only one with a group to put back.
+          RECOLORED_BANKS_ROUTINE = :__recolored_banks
+          def recolored_banks_routine? = @layout.bg_recolor_restore_banks.any?
+
+          # The body of that routine.
+          def emit_recolored_banks_routine = emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, :unknown)
 
           # THE SAME AGREEMENT FOR SPRITES: a list of sprite colours that changes has a group of
           # its own, and whatever has just rewritten the sprite colours — a tint's walk, a scene

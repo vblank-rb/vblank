@@ -962,19 +962,38 @@ module VBlank
             # cartridge and would otherwise put the colours the tiles were DRAWN in back over
             # these groups. See PaletteTint#emit_recolored_banks, which reads this.
             store_var(ACC, lists.at)
-            return emit_groups_send(lists, lists.banks) unless lists.area_bytes
-
-            # A walking layer's groups are the area's that is up: each area hands its groups out
-            # again, and another walking layer can be drawing from one of this area's.
-            lists.banks.each_with_index do |groups, set|
-              other_area = gensym
-              load_var(TMP, bg.sets.var)
-              emit(ASM.cmp_imm(TMP, set))
-              emit_branch(:bcond, other_area, cond: :ne)
-              load_var(ACC, lists.at)
-              emit_groups_send(lists, groups)
-              place_label(other_area)
+            if lists.area_bytes
+              # A walking layer's groups are the area's that is up: each area hands its groups
+              # out again, and another walking layer can be drawing from one of this area's.
+              lists.banks.each_with_index do |groups, set|
+                other_area = gensym
+                load_var(TMP, bg.sets.var)
+                emit(ASM.cmp_imm(TMP, set))
+                emit_branch(:bcond, other_area, cond: :ne)
+                load_var(ACC, lists.at)
+                emit_groups_send(lists, groups)
+                place_label(other_area)
+              end
+            else
+              emit_groups_send(lists, lists.banks)
             end
+            emit_forget_own_version(node, lists)
+          end
+
+          # A LAYER GIVEN ITS OWN COLOURS BACK is as it was before it was told anything: the
+          # table in the console holds them, as the cartridge does. So where its version starts
+          # goes back to nought, which every tint, area and scene reads as "nothing to put back"
+          # (PaletteTint#emit_recolored_banks, #emit_point_colors_at_area). Kept, the version
+          # would be its own colours written again over the same colours on every tint, for the
+          # rest of the game.
+          def emit_forget_own_version(node, lists)
+            borrowed = gensym
+            @lowering.value(node.which)
+            emit(ASM.cmp_imm(ACC, lists.count)) # unsigned, as #emit_version_address reads it
+            emit_branch(:bcond, borrowed, cond: :lo)
+            emit_number(ACC, 0)
+            store_var(ACC, lists.at)
+            place_label(borrowed)
           end
 
           # One list into each of +groups+, side by side in the version that ACC and +lists+'s
