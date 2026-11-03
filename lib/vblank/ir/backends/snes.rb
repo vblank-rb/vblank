@@ -22,6 +22,7 @@ require_relative "snes/samples"
 require_relative "snes/dsp_writes"
 require_relative "snes/music"
 require_relative "snes/runtime"
+require_relative "snes/chip_code"
 require_relative "snes/art"
 require_relative "snes/painted_art"
 require_relative "snes/row_bands"
@@ -30,6 +31,7 @@ require_relative "snes/lowering/paint"
 require_relative "snes/lowering/collision"
 require_relative "snes/lowering/saving"
 require_relative "snes/lowering/sound"
+require_relative "snes/lowering/chip"
 require_relative "snes/lowering"
 require_relative "snes/headless_run"
 require_relative "snes/checked_run"
@@ -48,8 +50,8 @@ module VBlank
       # THE BOARD. A plain cartridge is ROM alone, with battery-backed RAM when the game saves, and
       # runs on a plain console. A game that names the Super FX 2 (`variants: { snes: :superfx }`)
       # gets that chip's board instead (Cartridge::SNESROM::SUPER_FX): the same 65816 code, read at
-      # the slow speed, with the chip's registers and RAM beside it. The SA-1 and the MSU-1 are
-      # not made.
+      # the slow speed, with the chip's registers and RAM beside it, and the routines the game marks
+      # `on_chip: true` lowered to the chip's own code (ChipCode). The SA-1 and the MSU-1 are not made.
       class SNES
         # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes says: every
         # variable by the game's name (its address in work RAM), every list ([its 24-bit place, its
@@ -126,7 +128,7 @@ module VBlank
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
-                                                one_sprite_tile_set: one_sprite_tile_set)
+                                                one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                       small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set }

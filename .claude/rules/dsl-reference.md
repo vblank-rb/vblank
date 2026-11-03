@@ -100,7 +100,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Scenes & funcs — `.claude/dsl/scenes.md`
 
-- `func(:name) { … }` + `call :name` (or `call [:a, :b], number: n`); `dump_func :name` disassembles one.
+- `func(:name) { … }` + `call :name` (or `call [:a, :b], number: n`); `on_chip: true` runs it on a Super FX cartridge's chip; `dump_func :name` disassembles one.
 - `scene(:name) { … }` + `case_var(:state) do when_val 0, :title end` — game states; a scene owns what it draws.
 
 ## Input — `.claude/dsl/input.md`

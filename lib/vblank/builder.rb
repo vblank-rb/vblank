@@ -132,6 +132,7 @@ module VBlank
       @painted_colors_names = {} # ...and the name those colours were declared under, where they were
       @inline_tile_copies = [] # their copies where `changed` was said, moved to the frame gap at finalize
       @func_fast = {}          # name → where the author insisted the routine live (func fast:)
+      @func_on_chip = {}       # name → true for a routine to run on a cartridge's chip (func on_chip:)
       @scene_loads_first = {}  # scene routine → true where its work waits a pass (scene loads_first:)
       @dump_requests = []      # function names to disassemble from the lowered ROM
       @songs = {}              # name → Music::SongContext or Score (for build-time validation)
@@ -639,7 +640,8 @@ module VBlank
           @deferred_layer = @routine_layer[name]
           @screen_mode = default_screen_mode
           @building_routine = name
-          push_container(Build.func(name, fast: @func_fast[name], loads_first: @scene_loads_first[name])) do
+          push_container(Build.func(name, fast: @func_fast[name], loads_first: @scene_loads_first[name],
+                                          on_chip: @func_on_chip[name])) do
             run_block(&block)
           end
           @scene_screens[name] = @screen_mode if @building_scene

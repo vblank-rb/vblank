@@ -65,6 +65,7 @@ module VBlank
           include Collision
           include Saving
           include Sound
+          include Chip
 
           VALUES = Ractor.make_shareable({
                                            int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
@@ -123,9 +124,10 @@ module VBlank
           # +screen_colors+ has each scene bring its own background colours in, and +sprite_colors+ its
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own
           # background tiles (Art). +one_sprite_tile_set+ makes one set of a sprite's pictures for
-          # all the lists of colours it wears (Picture#palette_in_places).
+          # all the lists of colours it wears (Picture#palette_in_places). +chip+ is a cartridge
+          # with a Super FX, which runs the routines marked for it (Chip).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false)
+                         background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false)
             @program = program
             @one_sprite_tile_set = one_sprite_tile_set
             @small_sprite_scenes = small_sprite_scenes
@@ -159,6 +161,7 @@ module VBlank
             prepare_paint
             prepare_collision
             prepare_sound
+            prepare_chip(chip)
           end
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
@@ -167,6 +170,7 @@ module VBlank
             refuse_unlowered_kinds!
             refuse_what_snes_lacks!
             @plan.refuse_routines_that_call_themselves!
+            refuse_what_chip_cannot_run!
             refuse_unmade_picture!
             refuse_unsupported_save_memory!
             assign_background_layers unless painted?
@@ -189,7 +193,10 @@ module VBlank
             keep_scene_tiles_up
             keep_loop_running
             keep_column_numbers
+            make_chip_code
             routines = @called.flat_map do |name|
+              next [chip_routine_section(name)] if on_chip?(name)
+
               @lowering_scene = @scenes.key?(name) ? name : nil
               routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
             end
@@ -198,7 +205,7 @@ module VBlank
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             placings = sprite_placing_sections
             columns = column_sections
-            [data_section, *table_sections, *routines, *timers, *main, *placings, *columns]
+            [data_section, *table_sections, *routines, *timers, *main, *placings, *columns, *chip_sections]
           end
 
           # Whether the game has a division only a runtime routine can do (Runtime::Int32), once
@@ -409,7 +416,7 @@ module VBlank
           # What the lowering only reads while it makes a statement, shared as it is: numbers, names,
           # the program and what is worked out from it before any statement is made.
           SHARED_WHEN_MEASURING = [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
-                                   SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan].freeze
+                                   SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode].freeze
 
           # What the lowering keeps that making a statement never changes, shared as it is: the
           # statements already cut into parts, which only cutting adds to.

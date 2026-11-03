@@ -665,7 +665,7 @@ module VBlank
         kind :func
         declaration!
         category :control
-        operands name: :name, fast: :flag, loads_first: :flag
+        operands name: :name, fast: :flag, loads_first: :flag, on_chip: :flag
       end
 
       # A part of the picture that everything inside this stays within. Whatever the children

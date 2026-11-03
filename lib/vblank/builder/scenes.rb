@@ -23,10 +23,17 @@ module VBlank
       # room is left. (See VBlank.build's `fast_code:` to turn the choosing off
       # altogether.)
       #
+      # `on_chip: true` is for a Super Nintendo cartridge with a Super FX (`variants: { snes:
+      # :superfx }`): the routine runs on that chip, several times quicker, while the console
+      # waits for it. It can do sums, `if`, loops and calls of other `on_chip` routines. Anything
+      # else in it, a list or a drawing for example, stops the build and says so. On every other
+      # cartridge, and on every other console, the word changes nothing.
+      #
       # @param name [Symbol] function name
       # @param fast [Boolean, nil] keep it in the quick memory (nil = let the framework decide)
-      def func(name, fast: nil, &block)
-        declare_func(name, fast: fast, wrote: "func :#{name}", &block)
+      # @param on_chip [Boolean, nil] run it on the cartridge's chip, where there is one
+      def func(name, fast: nil, on_chip: nil, &block)
+        declare_func(name, fast: fast, on_chip: on_chip, wrote: "func :#{name}", &block)
       end
 
       # Call a named subroutine. The target is resolved by name when the tree is
@@ -231,11 +238,12 @@ module VBlank
       # nothing with a depth, so it never trips the rule. +wrote+ is what the author
       # typed, for that message; the framework's own routines leave it alone and are
       # never the subject of one.
-      def declare_func(name, fast: nil, wrote: nil, &block)
+      def declare_func(name, fast: nil, on_chip: nil, wrote: nil, &block)
         raise ArgumentError, "The function :#{name} is already defined. Use a different name for each function." if @functions.key?(name)
 
         @functions[name] = block
         @func_fast[name] = fast unless fast.nil?
+        @func_on_chip[name] = true if on_chip
         @routine_layer[name] = [@current_layer, wrote] if @current_layer && wrote
       end
 

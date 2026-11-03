@@ -440,8 +440,12 @@ module VBlank
       # +loads_first+, on a scene's routine, is not a hint: the scene's own work starts on the
       # pass after it takes over, so the pictures it puts up have that pass to themselves (see
       # SceneHandover::Arrival#loads_first?).
-      def func(name, *body, fast: nil, loads_first: nil)
-        Nodes.build(:func, children: body, name: name, fast: fast, loads_first: loads_first)
+      #
+      # +on_chip+ is a hint of the +fast+ kind: on a target with a second, quicker processor in
+      # the cartridge, this routine runs there while the first one waits. Everywhere else it means
+      # nothing, and what the routine does is the same either way.
+      def func(name, *body, fast: nil, loads_first: nil, on_chip: nil)
+        Nodes.build(:func, children: body, name: name, fast: fast, loads_first: loads_first, on_chip: on_chip)
       end
 
       # --- hardware timers ---

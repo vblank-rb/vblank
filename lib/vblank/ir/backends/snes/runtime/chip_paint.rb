@@ -18,8 +18,13 @@ module VBlank
           # the chip has nothing of the clear to do. The copy to video RAM is Paint's
           # rt_paint_upload, a blank at a time with the screen on, from the chip's RAM rather than
           # work RAM.
+          #
+          # THE CHIP'S NUMBERS ARE PAST THE PICTURE: the last 8K of its 64K, whatever the game's
+          # screen is, are where a routine run on the chip finds the variables it uses (ChipCode).
           module ChipPaint
             COPY = Console::SNESHardware::GSU_RAM_BANK << 16
+            NUMBERS = COPY + Paint::COPY_BYTES
+            NUMBERS_END = COPY + 0x1_0000
           end
         end
       end

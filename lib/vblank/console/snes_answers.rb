@@ -174,7 +174,9 @@ module VBlank
         list: works,
         if_eq: works, if_ne: works, if_gt: works, if_lt: works, if_ge: works, if_le: works,
         if_gte: works, if_lte: works,
-        func: works("`fast:` means nothing on a Super Nintendo, which runs all of its code alike."),
+        func: works("`fast:` means nothing on a Super Nintendo, which runs all of its code alike. `on_chip: true` " \
+                    "runs the routine on a Super FX cartridge's chip (sums, `if`, loops and calls of other `on_chip` " \
+                    "routines; any other step is refused)."),
         call: works,
         scene: works("see `func` for `fast:`."),
         case_var: works,

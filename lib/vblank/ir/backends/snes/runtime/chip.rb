@@ -28,6 +28,10 @@ module VBlank
           #
           # The chip runs at 21 MHz (CLSR), and is told not to interrupt the console when it stops
           # (CFGR): the waiting loop sees its GO bit fall instead.
+          #
+          # What the chip runs is a game's routines marked `on_chip: true` (ChipCode). While it runs,
+          # the frames still go by, but the interrupt that reads the buttons does not: a press that
+          # starts and ends inside one run is not seen.
           module Chip
             WAIT = "rt chip wait"
             SEEN = "rt chip seen"
