@@ -627,7 +627,7 @@ module VBlank
       # ...and the same pair for which list of colours the tiles are drawn from: what the
       # game said, and what is really in the display's table.
       def colors_var = :"__bg_#{@name}_colors"
-      def live_colors_var = :"__bg_#{@name}_live_colors"
+      def live_colors_var = IR::Nodes::Background.live_colors_var(@name)
 
       # The other lists this background can be drawn with, made on the first `draw_with` and
       # kept, so several calls in several branches count the same lists the same way. The
@@ -734,6 +734,12 @@ module VBlank
              (colors && drawn_lists.index { |name, own| name.nil? && own == colors })
         return at if at
 
+        if @walks_areas
+          raise ArgumentError,
+                "background :#{@name} walks between areas, and it was told to draw :#{list} with other colors. " \
+                "No tile of its areas is drawn from :#{list}. To fix this, name a list that the tiles of one of " \
+                "its areas are drawn from: #{drawn_list_names.map { |n| ":#{n}" }.join(', ')}."
+        end
         raise ArgumentError,
               "#{error_subject} was told to draw :#{list} with other colors, but none of its tiles is drawn " \
               "from :#{list}. Name a list its tiles were given with `image ..., colors: :name`" \

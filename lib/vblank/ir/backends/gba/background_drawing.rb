@@ -576,6 +576,7 @@ module VBlank
             layers_back_on = gensym
             emit_map_copy(Build.show_map(name, which: Build.var_ref(SET_SWAP_MAP)), bg, layers_back_on)
             emit_stream_fill(bg) if bg.stream # ...the view of it, while the layers are still off
+            emit_point_colors_at_area(name, bg)
             emit_area_colors(swap, from_var: true)
             place_label(layers_back_on)
             load_var(ACC, SET_SWAP_DISPLAY)
@@ -588,7 +589,34 @@ module VBlank
           # since they all start in the same area. Nothing for scenery that stays in one area.
           def emit_first_area_colors(nodes, up: :unknown)
             walking = @layout.screen.walking_placements(nodes).first
-            emit_area_colors(walking.sets, up: up) if walking
+            return unless walking
+
+            nodes.each do |node|
+              bg = @layout.screen.declared_background(node)
+              emit_point_colors_at_area(node.name, bg, first: true) if bg&.sets
+            end
+            emit_area_colors(walking.sets, up: up)
+          end
+
+          # A WALKING LAYER TOLD `draw_with` keeps a version of its lists for each area (see
+          # ScreenLayout#walking_color_lists), so the version it shows is pointed at the area
+          # just brought in — its first with +first+, otherwise the one its set says — before
+          # the area's colours go in, which put the version back over the groups it reads (see
+          # PaletteTint#emit_send_bg_colors). The list the game said stays said: an area walked
+          # into shows it on the lists of its own the game named, and its own colours on the
+          # rest. A layer told nothing yet keeps nought there, and the area's own table is right.
+          def emit_point_colors_at_area(name, bg, first: false)
+            lists = bg.colors
+            return unless lists&.area_bytes
+
+            told_nothing = gensym
+            load_var(ACC, lists.at)
+            emit(ASM.cmp_imm(ACC, 0))
+            emit_branch(:bcond, told_nothing, cond: :eq)
+            load_var(ACC, IR::Nodes::Background.live_colors_var(name))
+            emit_version_address(bg, lists, first: first)
+            store_var(ACC, lists.at)
+            place_label(told_nothing)
           end
 
           # Send in the colours of the area a walking background's set belongs to: the set
@@ -922,20 +950,14 @@ module VBlank
               lists = bg&.colors
               next if lists.nil? # no tiled layer here, or nothing else to draw it with
 
-              emit_color_list_send(node, lists)
+              emit_color_list_send(node, bg, lists)
             end
           end
 
           # Send the list +node+ picks out of +lists+ into the groups the layer's tiles read.
-          def emit_color_list_send(node, lists)
+          def emit_color_list_send(node, bg, lists)
             @lowering.value(node.which)
-            # One unsigned compare catches both ends: a negative number reads as a very large
-            # one, so anything outside 0...count fails the same test.
-            emit(ASM.cmp_imm(ACC, lists.count))
-            emit(ASM.mov_imm_cond(:hs, ACC, lists.count))
-            emit(ASM.lsl_imm(TMP, ACC, lists.shift))
-            emit_load_data_address(ACC, lists.blob)
-            emit(ASM.add_reg(ACC, ACC, TMP))
+            emit_version_address(bg, lists)
             # Remembered as well as written, because a tint walks the whole table from the
             # cartridge and would otherwise put the colours the tiles were DRAWN in back over
             # these groups. See PaletteTint#emit_recolored_banks, which reads this.
@@ -949,6 +971,25 @@ module VBlank
               end
               @palette_tint.emit_colors_into_bank(BG_PALETTE + (bank * COLOR_LIST_BYTES), COLOR_LIST_UNITS)
             end
+          end
+
+          # ACC = where the version numbered by ACC starts in +lists+'s blob. One unsigned compare
+          # catches both ends: a negative number reads as a very large one, so anything outside
+          # 0...count fails the same test and picks the layer's own colours, last in the blob.
+          # A walking layer's versions are the area's, a multiply along (see
+          # ScreenLayout#walking_color_lists): the area its set says, or its first with +first+.
+          def emit_version_address(bg, lists, first: false)
+            emit(ASM.cmp_imm(ACC, lists.count))
+            emit(ASM.mov_imm_cond(:hs, ACC, lists.count))
+            emit(ASM.lsl_imm(TMP, ACC, lists.shift))
+            if lists.area_bytes && !first
+              load_var(ACC, bg.sets.var)
+              emit_number(SET_STRIDE, lists.area_bytes)
+              emit(ASM.mul(ACC, SET_STRIDE, ACC))
+              emit(ASM.add_reg(TMP, TMP, ACC))
+            end
+            emit_load_data_address(ACC, lists.blob)
+            emit(ASM.add_reg(ACC, ACC, TMP))
           end
 
           # A group is sixteen colours, and a colour is two bytes — so a list is 32 bytes and

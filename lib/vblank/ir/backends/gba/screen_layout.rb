@@ -122,7 +122,14 @@ module VBlank
           # three lists take the room of four. +count+ is how many versions there are besides
           # its own. +at+ names the variable holding where the version it is showing NOW starts,
           # which is what lets a tint put the swap back after walking the whole table over it.
-          BackgroundColorLists = Data.define(:blob, :banks, :count, :at, :shift)
+          #
+          # A LAYER THAT WALKS BETWEEN AREAS has one set of versions for each area, area after
+          # area, +area_bytes+ apart (nil for every other layer). Its lists sit in different
+          # groups in each area, and two areas' lists can share a group, since only one area's
+          # colours are up at a time. So +banks+ is every group any area's lists are in, and an
+          # area's version holds, for a group none of its own lists is in, the colours the area
+          # keeps there anyway: writing every group then changes only the area that is up.
+          BackgroundColorLists = Data.define(:blob, :banks, :count, :at, :shift, :area_bytes)
 
           # A BACKGROUND'S GRID OF CELLS, for changing one of them while the game runs: how many
           # cells there are each way, and what to write into one to show a given tile. Nothing
@@ -1060,9 +1067,11 @@ module VBlank
             refuse_walking_layers_starting_apart!(walking)
             areas = walking.flat_map(&:sets).uniq
             by_area = areas.to_h do |area|
+              # A tile of a layer told `draw_with` keeps its group to the layer and its list, as
+              # on a layer that stays in one area (#bank_pictures).
               pictures = walking.flat_map do |node|
                 set = node.sets.index(area)
-                set ? node.set_tiles(set).map { |i| tile_bank_picture(node, i, nil) } : []
+                set ? node.set_tiles(set).map { |i| tile_bank_picture(node, i, recolored_bank_owner(node, i)) } : []
               end
               [area, area_palette_banks(area, pictures, fixed)]
             end
@@ -1096,13 +1105,6 @@ module VBlank
           end
 
           def refuse_walking_layers_stored_big!(walking)
-            recolored = walking.find { |node| !node.recolors.empty? }
-            if recolored
-              raise LoweringError,
-                    "background :#{recolored.name} walks between areas, and the game tells it to draw_with other " \
-                    "colors. A background that walks between areas reads its colors from the area it is in. " \
-                    "To fix this, remove draw_with from it."
-            end
             big = walking.find { |node| !every_tile_small?(node) }
             return unless big
 
@@ -1534,6 +1536,7 @@ module VBlank
             return nil if node.recolors.empty?
 
             raise LoweringError, recolor_colors_message(node) unless small
+            return walking_color_lists(node, banks) if node.several_sets?
 
             room = 1 << (node.palettes.length - 1).bit_length # lists a version takes, rounded up to a power of two
             blob = :"__bg_colors_#{declaration_tag(node)}"
@@ -1544,7 +1547,39 @@ module VBlank
             BackgroundColorLists.new(blob: blob, count: node.recolors.length,
                                      banks: node.drawn_lists.map { |list| bank_drawn_from(node, list, banks) },
                                      at: :"__bg_#{node.name}_colors_at",
-                                     shift: BackgroundDrawing::COLOR_LIST_SHIFT + room.bit_length - 1)
+                                     shift: BackgroundDrawing::COLOR_LIST_SHIFT + room.bit_length - 1, area_bytes: nil)
+          end
+
+          # THE OTHER LISTS OF A LAYER THAT WALKS BETWEEN AREAS: each area's versions, area after
+          # area, in the order of the layer's sets (see BackgroundColorLists). In each version
+          # every group any area's lists are in, in the same order, so one send writes all of
+          # them: a group the area's own lists are in gets that list's version, and any other
+          # group the colours the area keeps there, which is no change at all.
+          def walking_color_lists(node, banks)
+            palettes_by_area = node.sets.each_index.map do |set|
+              node.set_tiles(set).to_h do |i|
+                drawn = node.recolored_list_of(@bitmaps.fetch(node.tiles[i]).list_drawn_from)
+                [banks.placement(tile_key(node, i)).bank, node.drawn_lists.index(drawn)]
+              end
+            end
+            groups = palettes_by_area.flat_map(&:keys).uniq.sort
+            room = 1 << (groups.length - 1).bit_length # groups a version takes, rounded up to a power of two
+            versions = node.recolors + [node.palettes]
+            blob = :"__bg_colors_#{declaration_tag(node)}"
+            @blobs[blob] = node.sets.each_with_index.flat_map do |area, set|
+              table = banks.area_entries(area, node.scene)
+              versions.flat_map do |version|
+                groups.flat_map do |bank|
+                  palette = palettes_by_area[set][bank]
+                  palette ? pad_to_bank(version[palette]) : table[bank * PaletteBanks::BANK_SIZE, PaletteBanks::BANK_SIZE]
+                end + ([0] * (PaletteBanks::BANK_SIZE * (room - groups.length)))
+              end
+            end.pack("v*")
+            keep_unpacked!(blob)
+            BackgroundColorLists.new(blob: blob, count: node.recolors.length, banks: groups,
+                                     at: :"__bg_#{node.name}_colors_at",
+                                     shift: BackgroundDrawing::COLOR_LIST_SHIFT + room.bit_length - 1,
+                                     area_bytes: versions.length * room * BackgroundDrawing::COLOR_LIST_BYTES)
           end
 
           # The group of sixteen a layer's tiles drawn from +list+ (its name and colours) read. Every

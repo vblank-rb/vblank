@@ -117,6 +117,10 @@ module VBlank
         # it as a scene takes over names the same one.
         def self.set_var(name) = :"__bg_#{name}_set"
 
+        # The variable that says which list of colours a background told `draw_with` is really
+        # drawn with now, written in the gap between frames (BackgroundColors).
+        def self.live_colors_var(name) = :"__bg_#{name}_live_colors"
+
         # For a background brought into view a strip at a time (see #streams?): which map the
         # cells around the view are copied from, and whether they hold it yet — 0 until they
         # are, which asks a target that copies strips for the whole view again. Only such a
