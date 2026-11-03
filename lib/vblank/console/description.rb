@@ -219,7 +219,7 @@ module VBlank
                             # runtime's own state are in it before any variable, which the Color
                             # lowering's tests hold this to (test_gbc_memory.rb).
                             largest_memory_bytes: 8 * 1024,
-                            work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 1536,
+                            work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 2048,
                             roomier_memory_bytes: 0,
                             # The sprite table and the scroll are sent from a copy as the wait
                             # ends, so a pass's are placed before it to show on the frame after.

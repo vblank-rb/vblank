@@ -95,7 +95,7 @@ module VBlank
               asm.load([:hli], :a)
               asm.load(:b, :a)
               asm.load(:a, :h)
-              asm.cp_a((memory.banked_half_used? ? Memory::HIGH_END : Memory::HIGH_START) >> 8)
+              asm.cp_a((memory&.banked_half_used? ? Memory::HIGH_END : Memory::HIGH_START) >> 8)
               asm.load(:a, :b)
               asm.jump_relative(:nz, "rt_boot_clear_work")
               asm.load(:hl, Memory::QUICK_FIRST)

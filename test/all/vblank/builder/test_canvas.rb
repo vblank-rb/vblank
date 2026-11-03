@@ -37,11 +37,14 @@ class TestCanvas < Minitest::Test
 
   private def screen(prog, frames) = game_player.run(prog, frames: frames).screen
 
+  # The framework copies the canvas's tiles for the game, so they show as late as anything else it
+  # draws: a frame after on the Advance, on the pass just ended on the Color (framework_drawing_lag).
   def test_a_pixel_shows_on_the_frame_after_it_is_drawn
     prog = game { |board, frame| board.pixel 3, 2, :white if frame == 2 }
+    lag = framework_drawing_lag
 
-    assert_equal 0, screen(prog, 2).pixel(3, 2)
-    assert_equal WHITE, screen(prog, 3).pixel(3, 2)
+    assert_equal 0, screen(prog, 1 + lag).pixel(3, 2)
+    assert_equal WHITE, screen(prog, 2 + lag).pixel(3, 2)
   end
 
   def test_a_canvas_changed_now_shows_on_the_frame_it_is_drawn
