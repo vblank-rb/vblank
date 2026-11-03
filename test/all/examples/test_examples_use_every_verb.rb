@@ -10,9 +10,11 @@ class TestExamplesUseEveryVerb < Minitest::Test
 
   # What a game has no reason to show: tools for finding a fault, the low-level spellings of `if`,
   # and the flat spellings that exist only to refuse with a friendly error naming the new one.
+  # `built_for_computer?` is a Ruby true or false read while the game is built and makes nothing
+  # of its own, so an example naming it would give the golden path nothing more to build.
   NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func
                           if_eq if_ne if_gt if_lt if_ge if_gte if_le if_lte if_held if_pressed
-                          add_var sub sub_var negate].freeze
+                          add_var sub sub_var negate built_for_computer?].freeze
 
   def test_every_verb_appears_in_an_example
     written = Dir[VBlank.root.join("examples/**/*.rb").to_s].map { |path| File.read(path) }.join("\n")

@@ -548,9 +548,11 @@ module VBlank
         --pictures-in DIR        Write the screen at each moment to DIR, as a PNG
                                  named for the moment.
         --write-tape PATH        Write the presses that were made, as a tape.
-        --write-mgba-script PATH Write them as a script mGBA loads in Tools > Scripting.
-        --write-bk2 PATH         Write them as a BizHawk movie. Both are for a Game Boy
-                                 Advance cartridge, from power-on with no BIOS screen.
+        --write-mgba-script PATH Write them as a script mGBA loads in
+                                 Tools > Scripting.
+        --write-bk2 PATH         Write them as a BizHawk movie. Both are for a
+                                 Game Boy Advance cartridge, from power-on with
+                                 no BIOS screen.
         --write-save PATH        Write the save memory as the last frame left it.
         #{SET}
     TEXT
