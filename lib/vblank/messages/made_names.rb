@@ -182,6 +182,9 @@ module VBlank
                              end),
         see_through_amounts: Kind.new(spelling: "__see_through_%{layer}", parts: { layer: ANY },
                                       words: ->(parts) { "telling the display how see-through layer :#{parts[:layer]} is" }),
+        # The routine `start_over :play` calls: part :play's things back as declared.
+        start_over: Kind.new(spelling: "__start_over_%{part}", parts: { part: ANY },
+                             words: ->(parts) { "putting part :#{parts[:part]} back as declared, for a new game" }),
       }.then { |kinds| Ractor.make_shareable(kinds) }
 
       # Each kind's spelling as the pattern a name is read back with, worked out once: a

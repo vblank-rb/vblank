@@ -50,6 +50,7 @@ class TestMadeNames < Minitest::Test
     tile_pictures_part: { group: :water, part: :shown },
     sprite_tiles_source: { picture: :great_ball },
     draw_order: { number: 1, part: :sort },
+    start_over: { part: :play },
   }.freeze
 
   def test_every_kind_of_name_is_in_the_samples
@@ -75,6 +76,7 @@ class TestMadeNames < Minitest::Test
       MadeNames.make(:still_sprites) => "writing the sprites nothing moves",
       MadeNames.make(:picture_groups, set: :rooms) => "bringing in the pictures of picture_groups :rooms",
       MadeNames.make(:see_through_amounts, layer: :rays) => "telling the display how see-through layer :rays is",
+      MadeNames.make(:start_over, part: :play) => "putting part :play back as declared, for a new game",
       MadeNames.make(:pool_stacking, pool: :guard) => "putting the sprites of pool :guard oldest in front",
       MadeNames.make(:draw_order, number: 1, part: :sort) => "putting the sprites of draw_in_order #1 in order",
       MadeNames.make(:set_swap, background: :ground) => "bringing background :ground another set of tiles",

@@ -35,6 +35,7 @@ require_relative "builder/sampled_audio"
 require_relative "builder/layers"
 require_relative "builder/draw_order"
 require_relative "builder/settings"
+require_relative "builder/parts"
 require_relative "builder/save_program"
 require_relative "builder/save_records"
 require_relative "builder/save_half"
@@ -95,6 +96,7 @@ module VBlank
     include DrawOrder  # draw_in_order (sprites drawn in an order the game works out)
     include Settings   # setting (what this build was told: which floors, which screen it boots on)
     include SaveData   # save_data (records of the game's state, saved when the game says so; see Saves)
+    include Parts      # part, start_over (a new game: a part of the game's state back as declared)
     include GameEffects # uses (a game's own effect packs, for its build alone)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree
@@ -348,6 +350,7 @@ module VBlank
       record(Build.list_new(name, capacity, width: width, fast: fast,
                                             full_of: list_starting_item(name, full_of, bits)))
       @fraction_lists[name] = bits if bits
+      note_part_member(:list, name)
       DSL::List.new(self, name, fraction_bits: bits)
     end
 
@@ -655,7 +658,7 @@ module VBlank
           @building_routine = name
           push_container(Build.func(name, fast: @func_fast[name], loads_first: @scene_loads_first[name],
                                           on_chip: @func_on_chip[name])) do
-            run_block(&block)
+            with_part_of_routine(name) { run_block(&block) }
           end
           @scene_screens[name] = @screen_mode if @building_scene
         ensure
