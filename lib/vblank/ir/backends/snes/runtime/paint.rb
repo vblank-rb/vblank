@@ -1796,7 +1796,10 @@ module VBlank
             # rt_paint_send_runs (JSR): the runs of RUNS from X up to +last+, as many at a time as
             # the blank has room and time for (Blank's rt_blank_left), each counted RUN_SETTING_UP
             # more; when not even the next fits, in the next blank. One check of the blank for each
-            # handful of runs rather than for each run, which costs as much as copying a tile.
+            # handful of runs rather than for each run, which costs as much as copying a tile. The
+            # handful then goes on that one check (rt_blank_taken), so each run is counted for the
+            # time it takes to pick it too (RUN_PICKING), which a handful of many small runs makes
+            # lines of.
             # (+tile+ is where the handful starts, +mark_count+ where it ends, +chunk+ the room,
             # +count+ the handful's bytes.)
             def emit_send_runs(asm, memory, s)
@@ -1813,7 +1816,7 @@ module VBlank
               asm.lda(asm.long_x(memory[RUNS] + 2))
               6.times { asm.asl }
               asm.clc
-              asm.adc(RUN_SETTING_UP)
+              asm.adc(RUN_SETTING_UP + RUN_PICKING)
               asm.clc
               asm.adc(asm.direct(s.count))
               asm.cmp(asm.direct(s.chunk))
@@ -1834,7 +1837,7 @@ module VBlank
               asm.jsr(asm.abs("rt_blank_next"))
               asm.bra("rt_paint_send_runs")
               asm.label("rt_paint_send_runs_go")
-              asm.jsr(asm.abs("rt_blank_room"))
+              asm.jsr(asm.abs("rt_blank_taken"))
               asm.label("rt_paint_send_runs_one")
               asm.cpx(asm.direct(s.mark_count))
               asm.bcs("rt_paint_send_runs")
@@ -1871,6 +1874,9 @@ module VBlank
             # line as Blank counts them (about 146 bytes), for the hundred or so cycles of code that
             # start its copy.
             RUN_SETTING_UP = 96
+            # What picking a run for a handful costs the blank (rt_paint_send_runs), counted the same
+            # way: a third of a line, for the sixty or so cycles of looking at it.
+            RUN_PICKING = 48
 
             # The run at X of RUNS added to +chunk+, as its bytes and RUN_SETTING_UP; X on to the next.
             def emit_add_run_bytes(asm, memory, s)

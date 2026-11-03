@@ -28,8 +28,11 @@ module VBlank
           #                   line left for it
           #   rt_blank_time_for_cells (JSR): the same, for CELLS_A_LOOK cells of a map
           #   rt_blank_left   (JSR) A = the bytes this blank still has room and time for, 0 for none,
-          #                   so a run of pieces can be sent together (rt_blank_room then lets
-          #                   them go at once)
+          #                   so a run of pieces can be sent together
+          #   rt_blank_taken  (JSR) A = the bytes of pieces rt_blank_left has just made room for,
+          #                   counted as sent in this blank. rt_blank_room would ask by a reckoning
+          #                   of its own, rounded the other way, and can find the blank a line
+          #                   short of what rt_blank_left found and wait out a whole frame
           #   rt_blank_next   (JSR): the next blank waited for
           module Blank
             BLANK_BYTES = 6144
@@ -87,6 +90,7 @@ module VBlank
               emit_next_blank(asm, s)
               asm.label("rt_blank_room_there")
               asm.lda(asm.direct(s.wanted))
+              asm.label("rt_blank_taken")
               asm.clc
               asm.adc(asm.direct(s.sent))
               asm.sta(asm.direct(s.sent))
