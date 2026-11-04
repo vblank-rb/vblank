@@ -22,7 +22,9 @@ module VBlank
         #                ROM (Runtime::Chip)
         #   $0200-...    the runtime's own state, then the game's variables
         #   ...-$1FFF    the stack, 1K of it, growing down from the top
-        #   $7E:2000-    the lists and pools, a long address each (reserve_far)
+        #   $7E:2000-    the lists and pools, a long address each (reserve_far); the variables the
+        #                game names least, when the first 8K cannot hold them all; and the runtime's
+        #                tables, when even that was not enough (reserve_table)
         #
         # Nothing here is placed by the linker: work RAM is the same addresses on every console, so
         # every place is known as soon as it is asked for.
@@ -50,7 +52,13 @@ module VBlank
           # is a refusal like the lowering's others, said to the author in the same way.
           class Full < LoweringError; end
 
-          def initialize
+          # Raised when the first 8K is what is full. A build can then try again with the runtime's
+          # tables far (+far_tables+), and that is only a refusal when it was already trying that.
+          class NearFull < Full; end
+
+          # +far_tables+ puts the runtime's tables past the first 8K (#reserve_table).
+          def initialize(far_tables: false)
+            @far_tables = far_tables
             @next = FIRST
             @next_far = FAR_FIRST
             @next_last = LAST_BANK
@@ -63,11 +71,41 @@ module VBlank
           # same place.
           def reserve(name, bytes)
             @places.fetch(name) do
-              raise Full, full_message(name, bytes, LOW_END - @next, "the part of its work RAM every variable is in") if
-                @next + bytes > LOW_END
+              raise near_full(name, bytes) if @next + bytes > LOW_END
 
               @places[name] = @next.tap { @next += bytes }
             end
+          end
+
+          # +bytes+ for +name+, a table of the runtime's that its code only reads and writes through
+          # X with an instruction that has a long form (#indexed): in the first 8K, or past it when the
+          # build said the tables go far. A game with room for them near is laid out as it always
+          # was; one without keeps its variables near in their place, since the game's code reads
+          # those far more often than the runtime reads these.
+          def reserve_table(name, bytes) = @far_tables ? reserve_far(name, bytes) : reserve(name, bytes)
+
+          # Whether the runtime's tables are past the first 8K.
+          def far_tables? = @far_tables
+
+          # The operand for +name+'s byte +plus+ along, plus X: a 16-bit address in the first 8K, or
+          # the whole address past it. The whole address costs a byte and a cycle more each time.
+          def indexed(asm, name, plus = 0)
+            at = self[name]
+            at > 0xFFFF ? asm.long_x(at, plus) : asm.abs_x(at, plus)
+          end
+
+          # The error #reserve raises when +bytes+ for +name+ do not fit the first 8K, for a caller
+          # that knows sooner that they will not.
+          #
+          # By the time this is said to the author, everything that can go further on has gone:
+          # what is left in the first 8K is the runtime's state, most of it the sound effects'.
+          def near_full(name, bytes)
+            NearFull.new(
+              "This game keeps more than the first 8K of a Super Nintendo's work RAM holds. " \
+              "#{name.sub(/\A./, &:upcase)} needs #{bytes} bytes there, and #{[LOW_END - @next, 0].max} are left. " \
+              "Variables and lists can go into the rest of the work RAM, but the state of the sound effects cannot. " \
+              "Each sound effect uses #{Runtime::Effects::STATE_BYTES} bytes of this part. To fix this, use fewer sound effects."
+            )
           end
 
           # How many bytes of the first 8K are still free.

@@ -369,9 +369,13 @@ module VBlank
 
           # A number of the routine's own, kept in work RAM, by a name of its own that a value can
           # read as a variable. +start+ is what it holds from power-on.
+          #
+          # It goes in the first 8K while that has more room than the runtime still asks for after
+          # the lowering (NEAR_BYTES_LAST), and past it after that, as the variables named least do.
           def keep_local(what, start: 0)
             name = :"#{@routine || 'game'}.#{what}#{@locals.length + 1}"
-            @locals[name] = @memory.reserve("the game's number #{name}", 4)
+            label = "the game's number #{name}"
+            @locals[name] = @memory.near_bytes_left >= NEAR_BYTES_LAST + 4 ? @memory.reserve(label, 4) : @memory.reserve_far(label, 4)
             @starts << [@locals[name], start] unless start.zero?
             name
           end
@@ -389,11 +393,16 @@ module VBlank
           # numbers, and what the runtime asks for as it is written.
           NEAR_BYTES_KEPT = 0x400
 
+          # Bytes of the first 8K left for what the runtime asks for as it is written, after the
+          # lowering: a routine's own numbers go past it rather than into these.
+          NEAR_BYTES_LAST = 0x80
+
           # EVERY VARIABLE A PLACE, THE ONES USED MOST IN THE FIRST 8K OF WORK RAM. That is the part
           # the code reaches quickly, and a game with many numbers can want more of it than there
-          # is. The ones it names least go past it, in the rest of the 128K. A game that fits is
-          # laid out as it always was. What the framework keeps for itself stays near, since the
-          # runtime reads some of it by a 16-bit address.
+          # is. The ones it names least go past it, in the rest of the 128K: the game's own and the
+          # ones the framework keeps for it (`__approach_2`) alike, since the lowering reads and
+          # writes every one by the address it was given. A game that fits is laid out as it always
+          # was. Only the variables the runtime reads by a 16-bit address stay near (NEAR_ONLY).
           def place_variables(names)
             far = variables_kept_far(names)
             names.each do |name|
@@ -402,15 +411,23 @@ module VBlank
             end
           end
 
+          # The variables the runtime's own code reads by a 16-bit address: the music's volume,
+          # which the tune's player reads (Runtime::Music#emit_level).
+          NEAR_ONLY = [IR::Tunes::LEVEL].freeze
+
+          # The variables that go past the first 8K, the ones named least. Before any variable goes far the runtime's tables do (Memory#reserve_table): the runtime
+          # reads those a few times a frame, and the game's code reads its variables all the time. So
+          # a game that does not fit with the tables near is built again with them far (SNES#build).
           def variables_kept_far(names)
             over = ((names.length * 4) - (@memory.near_bytes_left - NEAR_BYTES_KEPT)).ceildiv(4)
             return [] unless over.positive?
+            raise @memory.near_full("the variable #{names.last.inspect}", 4) unless @memory.far_tables?
 
             uses = @program.walk.each_with_object(Hash.new(0)) do |node, count|
               named = node.kind == :var_ref ? node.name : (node.var if %i[set add sub].include?(node.kind))
               count[named] += 1 if named
             end
-            names.reject { |name| name.start_with?("__") }.min_by(over) { |name| uses[name] }
+            (names - NEAR_ONLY).min_by(over) { |name| uses[name] }
           end
 
           # A routine of the game's, or the runtime's, called wherever it is.
@@ -812,16 +829,21 @@ module VBlank
             emit_corners_forgotten
             count = place_of(Frames::COUNT)
             @asm.clc
-            @asm.lda(@asm.abs(count))
+            @asm.lda(at_place(count))
             @asm.adc(@asm.abs(@memory[Runtime::Frame::FRAMES_TAKEN]))
-            @asm.sta(@asm.abs(count))
-            @asm.lda(@asm.abs(count + 2))
+            @asm.sta(at_place(count))
+            @asm.lda(at_place(count + 2))
             @asm.adc(0)
-            @asm.sta(@asm.abs(count + 2))
+            @asm.sta(at_place(count + 2))
             step = place_of(Frames::STEP)
             @asm.lda(@asm.abs(@memory[Runtime::Frame::STEP_TAKEN]))
-            @asm.sta(@asm.abs(step))
-            @asm.stz(@asm.abs(step + 2))
+            @asm.sta(at_place(step))
+            if step > 0xFFFF # nothing stores a nought straight to a whole address
+              @asm.lda(0)
+              @asm.sta(at_place(step + 2))
+            else
+              @asm.stz(@asm.abs(step + 2))
+            end
             value(Frames::COUNT)
             store(Frames::SEEN)
           end

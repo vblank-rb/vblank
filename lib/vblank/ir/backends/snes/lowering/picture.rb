@@ -1627,7 +1627,7 @@ module VBlank
               up = fresh("bend_up")
               past = fresh("bend_not_up")
               scenes.each do |number|
-                @asm.lda(@asm.abs(place_of(@scene)))
+                @asm.lda(at_place(place_of(@scene)))
                 @asm.cmp(number)
                 @asm.beq(up)
               end

@@ -101,8 +101,10 @@ module VBlank
             LAYER_SCROLL_X = 12
             LAYER_SCROLL_Y = 14
             LAYER_STATE_BYTES = 16
-            # Cells changed since the last blank: how many, then each its video RAM address and word.
+            # Cells changed since the last blank: how many, then each its video RAM address and word
+            # (a table, so right after the count unless the build put the tables far).
             CELLS = "rt cells"
+            CELL_ENTRIES = "rt cell entries"
             MOST_CELLS = 256
             # The most of a map copied at once: a quarter of a 64×64 map, half of what a blank holds.
             MAP_PIECE = 2048
@@ -242,7 +244,8 @@ module VBlank
               memory.reserve_far(DRAWN, 2 + (MOST_SPRITES * DRAWN_BYTES))
               memory.reserve(NEXT_ROW, 2)
               memory.reserve(LAYERS, LAYER_MAPS.length * LAYER_STATE_BYTES)
-              memory.reserve(CELLS, 2 + (MOST_CELLS * 4))
+              memory.reserve(CELLS, 2)
+              memory.reserve_table(CELL_ENTRIES, MOST_CELLS * 4)
             end
 
             # +work+ is four words of the direct page the routines use. +bar+ for a game with a
@@ -887,9 +890,9 @@ module VBlank
               asm.asl
               asm.tax
               asm.lda(asm.direct(work))
-              asm.sta(asm.abs_x(memory[CELLS] + 2))
+              asm.sta(memory.indexed(asm, CELL_ENTRIES))
               asm.lda(asm.direct(r.call(3)))
-              asm.sta(asm.abs_x(memory[CELLS] + 4))
+              asm.sta(memory.indexed(asm, CELL_ENTRIES, 2))
               asm.inc(asm.abs(memory[CELLS]))
               asm.rtl
             end
@@ -1526,9 +1529,9 @@ module VBlank
               asm.jsr(asm.abs("rt_blank_time_for_cells"))
               asm.label("rt_upload_cell_in_time")
               asm.dec(asm.abs(memory[CELLS]))
-              asm.lda(asm.abs_x(memory[CELLS] + 2))
+              asm.lda(memory.indexed(asm, CELL_ENTRIES))
               asm.sta(asm.abs(h::VMADDL))
-              asm.lda(asm.abs_x(memory[CELLS] + 4))
+              asm.lda(memory.indexed(asm, CELL_ENTRIES, 2))
               asm.sta(asm.abs(h::VMDATAL))
               asm.inx
               asm.inx

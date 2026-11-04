@@ -343,7 +343,7 @@ module VBlank
               @asm.ldx(@asm.direct(R0))
               2.times do |half|
                 @asm.lda(@asm.long_x("column starts of #{name}", half * 2))
-                @asm.sta(@asm.abs(place_of(pointer), half * 2))
+                @asm.sta(at_place(place_of(pointer) + (half * 2)))
               end
               value(Build.clamped(Build.neg(top), Build.int(0), Build.int(Int32::MAX)))
               store(first)

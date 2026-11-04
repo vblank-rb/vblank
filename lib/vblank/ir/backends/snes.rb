@@ -118,10 +118,26 @@ module VBlank
         # pictures, worn in every list (+one_sprite_tile_set+): what it costs is a whole set of
         # colours for each list, so it is tried only where the sprites do not fit otherwise, and
         # given up if the lists do not fit that way.
-        def build(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                  background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false)
+        #
+        # A game whose runtime and variables do not fit the first 8K of work RAM, even with the
+        # variables it names least past it (Lowering#place_variables), is built again with the
+        # runtime's tables past it too (+far_tables+, Memory#reserve_table).
+        def build(program, far_tables: false, **choices)
+          build_laid_out(program, far_tables: far_tables, **choices)
+        rescue Memory::NearFull
+          raise if far_tables
+
+          build(program, **choices, far_tables: true)
+        end
+
+        private
+
+        # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ says.
+        def build_laid_out(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false,
+                           sprite_tiles: false, background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false,
+                           far_tables: false)
           board = board_for(program)
-          memory = Memory.new
+          memory = Memory.new(far_tables: far_tables)
           carries = Runtime::Carries.of(program, board: board, screen_colors: screen_colors, sprite_colors: sprite_colors,
                                                  sprite_tiles: sprite_tiles, background_tiles: background_tiles)
           Runtime.reserve(memory, carries)
@@ -131,7 +147,8 @@ module VBlank
                                                 one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
-                      small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set }
+                      small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,
+                      far_tables: far_tables }
           begin
             game = lowering.sections + lowering.art_sections
           rescue Art::ScreenSpritesFull => e
@@ -176,8 +193,6 @@ module VBlank
                                                built: built, board: board,
                                                save_bytes: carries.saves ? Runtime::Saving::SIZE : 0)
         end
-
-        private
 
         # The game built with one set of its sprites' pictures (#build), or nil where that does not
         # apply or does not fit, which leaves the other ways of fitting it to be tried, once, and with

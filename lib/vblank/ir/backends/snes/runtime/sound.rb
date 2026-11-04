@@ -186,21 +186,21 @@ module VBlank
 
             def reserve(memory, queued: false, effects: false)
               if queued
-                memory.reserve(QUEUE, QUEUE_ENTRIES * ENTRY_BYTES)
+                memory.reserve_table(QUEUE, QUEUE_ENTRIES * ENTRY_BYTES)
                 memory.reserve(QUEUE_HEAD, 2)
                 memory.reserve(QUEUE_TAIL, 2)
                 memory.reserve(QUEUE_TAIL_KEPT, 2)
               end
               if queued && effects
-                memory.reserve(AHEAD, AHEAD_ENTRIES * ENTRY_BYTES)
+                memory.reserve_table(AHEAD, AHEAD_ENTRIES * ENTRY_BYTES)
                 [AHEAD_HEAD, AHEAD_TAIL, ASKING_AHEAD, FRONT_LEFT, FORGET_KEEPS].each { |name| memory.reserve(name, 2) }
               end
               memory.reserve(LIVE, 2)
               memory.reserve(SENT, 2)
               memory.reserve(DROPPED, 2)
               memory.reserve(LOGGED, 2)
-              memory.reserve(LOG, LOG_LENGTH * 2)
-              memory.reserve(LOGGED_BY_PASS, Frame::STEPS_KEPT * LOGGED_SLOT_BYTES)
+              memory.reserve_table(LOG, LOG_LENGTH * 2)
+              memory.reserve_table(LOGGED_BY_PASS, Frame::STEPS_KEPT * LOGGED_SLOT_BYTES)
               memory.reserve(TICKS_LEFT, 2)
             end
 
@@ -385,9 +385,9 @@ module VBlank
               asm.asl
               asm.tax
               asm.lda(asm.abs(memory[LOGGED]))
-              asm.sta(asm.abs_x(memory[LOGGED_BY_PASS], 2))
+              asm.sta(memory.indexed(asm, LOGGED_BY_PASS, 2))
               asm.lda(asm.abs(memory[Frame::PASSES]))
-              asm.sta(asm.abs_x(memory[LOGGED_BY_PASS]))
+              asm.sta(memory.indexed(asm, LOGGED_BY_PASS))
               asm.rtl
             end
 
@@ -399,7 +399,7 @@ module VBlank
               asm.asl
               asm.tax
               asm.lda(asm.direct(R0))
-              asm.sta(asm.abs_x(memory[LOG]))
+              asm.sta(memory.indexed(asm, LOG))
               asm.inc(asm.abs(memory[LOGGED]))
               asm.rtl
             end
@@ -554,11 +554,11 @@ module VBlank
               asm.beq("rt_sound_write_in_line")
               asm.sta(asm.abs(memory[AHEAD_TAIL]))
               asm.lda(asm.direct(R2))
-              asm.sta(asm.abs_x(memory[AHEAD], ENTRY_COMMAND))
+              asm.sta(memory.indexed(asm, AHEAD,ENTRY_COMMAND))
               asm.lda(asm.direct(R0))
-              asm.sta(asm.abs_x(memory[AHEAD], ENTRY_REGISTER))
+              asm.sta(memory.indexed(asm, AHEAD,ENTRY_REGISTER))
               asm.lda(asm.direct(R1))
-              asm.sta(asm.abs_x(memory[AHEAD], ENTRY_VALUE))
+              asm.sta(memory.indexed(asm, AHEAD,ENTRY_VALUE))
               asm.brl("rt_sound_write_done")
               asm.label("rt_sound_write_in_line")
             end
@@ -573,7 +573,7 @@ module VBlank
               asm.cpx(asm.abs(memory[AHEAD_TAIL]))
               asm.beq("rt_sound_move_ahead_done")
               [ENTRY_COMMAND, ENTRY_REGISTER, ENTRY_VALUE].each do |field|
-                asm.lda(asm.abs_x(memory[AHEAD], field))
+                asm.lda(memory.indexed(asm, AHEAD,field))
                 asm.pha
               end
               asm.txa
@@ -589,7 +589,7 @@ module VBlank
               asm.tax
               [ENTRY_VALUE, ENTRY_REGISTER, ENTRY_COMMAND].each do |field|
                 asm.pla
-                asm.sta(asm.abs_x(memory[QUEUE], field))
+                asm.sta(memory.indexed(asm, QUEUE,field))
               end
               asm.lda(1)
               asm.sta(asm.abs(memory[FRONT_LEFT]))
@@ -619,12 +619,12 @@ module VBlank
               asm.label("rt_sound_forget_next")
               asm.cpx(asm.abs(memory[QUEUE_TAIL]))
               asm.beq("rt_sound_forget_done")
-              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.lda(memory.indexed(asm, QUEUE,ENTRY_COMMAND))
               asm.cmp(SET_KEY_OFF_BITS)
               asm.bne("rt_sound_forget_not_key_off")
-              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.lda(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
               asm.and_a(asm.abs(memory[FORGET_KEEPS]))
-              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.sta(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
               asm.bra("rt_sound_forget_past")
               asm.label("rt_sound_forget_not_key_off")
               asm.cmp(START_NOTE)
@@ -632,10 +632,10 @@ module VBlank
               asm.cmp(FORGOTTEN) # past the three that say a place, and a command told whole
               asm.bcs("rt_sound_forget_past")
               asm.tya
-              asm.cmp(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.cmp(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
               asm.bne("rt_sound_forget_past")
               asm.lda(FORGOTTEN)
-              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.sta(memory.indexed(asm, QUEUE,ENTRY_COMMAND))
               asm.label("rt_sound_forget_past")
               asm.txa
               emit_advance_queue_place(asm)
@@ -699,11 +699,11 @@ module VBlank
               asm.pla
               asm.sta(asm.abs(memory[QUEUE_TAIL]))
               asm.lda(asm.direct(R2))
-              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.sta(memory.indexed(asm, QUEUE,ENTRY_COMMAND))
               asm.lda(asm.direct(R0))
-              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.sta(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
               asm.lda(asm.direct(R1))
-              asm.sta(asm.abs_x(memory[QUEUE], ENTRY_VALUE))
+              asm.sta(memory.indexed(asm, QUEUE,ENTRY_VALUE))
             end
 
             # A = the place in the queue after the place A holds, round from its end to its start.
@@ -740,10 +740,10 @@ module VBlank
               asm.inc(asm.abs(memory[DROPPED]))
               if samples # a loudness dropped is no longer waiting (Recordings#emit_shapes)
                 asm.ldx(asm.abs(memory[QUEUE_HEAD]))
-                asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+                asm.lda(memory.indexed(asm, QUEUE,ENTRY_COMMAND))
                 asm.cmp(NOTE_VOLUME)
                 asm.bne("rt_sound_queue_drop_counted")
-                asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+                asm.lda(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
                 asm.tax
                 asm.lda(0)
                 asm.sta(asm.abs_x(memory[Recordings::PLACES_STATE], Recordings::VOLUME_WAITING))
@@ -780,7 +780,7 @@ module VBlank
               asm.cpx(asm.abs(memory[QUEUE_TAIL]))
               asm.beq("rt_sound_send_queued_done")
               if samples
-                asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+                asm.lda(memory.indexed(asm, QUEUE,ENTRY_COMMAND))
                 if memory.reserved?(AHEAD)
                   asm.cmp(FORGOTTEN)
                   asm.bne("rt_sound_send_queued_not_forgotten")
@@ -802,11 +802,11 @@ module VBlank
               asm.lda(asm.abs(h::APUIO0))
               asm.cmp(asm.abs(memory[SENT]))
               asm.bne("rt_sound_send_queued_unanswered")
-              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.lda(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
               asm.sta(asm.abs(h::APUIO2))
-              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_VALUE))
+              asm.lda(memory.indexed(asm, QUEUE,ENTRY_VALUE))
               asm.sta(asm.abs(h::APUIO3))
-              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_COMMAND))
+              asm.lda(memory.indexed(asm, QUEUE,ENTRY_COMMAND))
               asm.sta(asm.abs(h::APUIO1))
               asm.lda(asm.abs(memory[SENT]))
               asm.inc
@@ -850,9 +850,9 @@ module VBlank
                 asm.lda(asm.abs(memory[name]))
                 asm.pha
               end
-              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_REGISTER))
+              asm.lda(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
               asm.sta(asm.abs(memory[Recordings::PLACE]))
-              asm.lda(asm.abs_x(memory[QUEUE], ENTRY_VALUE))
+              asm.lda(memory.indexed(asm, QUEUE,ENTRY_VALUE))
               asm.sta(asm.abs(memory[Recordings::ROW]))
               asm.lda(asm.abs(memory[QUEUE_TAIL]))
               asm.sta(asm.abs(memory[QUEUE_TAIL_KEPT]))
