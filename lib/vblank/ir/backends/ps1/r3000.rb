@@ -79,7 +79,7 @@ module VBlank
           STORES = { sb: 0x28, sh: 0x29, sw: 0x2B }.freeze
           # `op rs, rt, label` and `op rs, label`. A REGIMM branch's kind is in the rt field.
           TWO_REGISTER_BRANCHES = { beq: 0x04, bne: 0x05 }.freeze
-          ONE_REGISTER_BRANCHES = { blez: [0x06, 0], bgtz: [0x07, 0], bltz: [0x01, 0x00], bgez: [0x01, 0x01] }.freeze
+          ONE_REGISTER_BRANCHES = Ractor.make_shareable({ blez: [0x06, 0], bgtz: [0x07, 0], bltz: [0x01, 0x00], bgez: [0x01, 0x01] })
 
           # A word to be filled in later, written as noughts.
           ZERO_WORD = "\0\0\0\0".b.freeze
@@ -151,27 +151,22 @@ module VBlank
 
           # --- arithmetic and logic ---
 
+          # The instructions made from the tables above are written out as plain methods, not made from
+          # blocks, so a lowering in a Ractor can call them.
           THREE_REGISTERS.each do |op, function|
-            define_method(op) { |rd, rs, rt| r_type(function, rs: rs, rt: rt, rd: rd) }
+            class_eval("def #{op}(rd, rs, rt) = r_type(#{function}, rs: rs, rt: rt, rd: rd)", __FILE__, __LINE__)
           end
 
           VARIABLE_SHIFTS.each do |op, function|
-            define_method(op) { |rd, rt, rs| r_type(function, rs: rs, rt: rt, rd: rd) }
+            class_eval("def #{op}(rd, rt, rs) = r_type(#{function}, rs: rs, rt: rt, rd: rd)", __FILE__, __LINE__)
           end
 
           SHIFTS.each do |op, function|
-            define_method(op) do |rd, rt, count|
-              raise Error, "#{op} shifts by 0 to 31, not #{count}" unless count.between?(0, 31)
-
-              r_type(function, rt: rt, rd: rd, shift: count)
-            end
+            class_eval("def #{op}(rd, rt, count) = emit_shift(:#{op}, #{function}, rd, rt, count)", __FILE__, __LINE__)
           end
 
           MULTIPLY_DIVIDE.each do |op, function|
-            define_method(op) do |rs, rt|
-              emit_word(0) while @since_hi_lo < 2
-              r_type(function, rs: rs, rt: rt)
-            end
+            class_eval("def #{op}(rs, rt) = emit_multiply_divide(#{function}, rs, rt)", __FILE__, __LINE__)
           end
 
           def mfhi(rd) = read_hi_lo(0x10, rd)
@@ -180,19 +175,13 @@ module VBlank
           def mtlo(rs) = r_type(0x13, rs: rs)
 
           SIGNED_IMMEDIATES.each do |op, opcode|
-            define_method(op) do |rt, rs, number|
-              raise Error, "#{op} takes -32768 to 32767, not #{number}" unless number.between?(-0x8000, 0x7FFF)
-
-              i_type(opcode, rs: rs, rt: rt, immediate: number, writes: rt)
-            end
+            class_eval("def #{op}(rt, rs, number) = emit_immediate(:#{op}, #{opcode}, rt, rs, number, -0x8000..0x7FFF)",
+                       __FILE__, __LINE__)
           end
 
           UNSIGNED_IMMEDIATES.each do |op, opcode|
-            define_method(op) do |rt, rs, number|
-              raise Error, "#{op} takes 0 to 65535, not #{number}" unless number.between?(0, 0xFFFF)
-
-              i_type(opcode, rs: rs, rt: rt, immediate: number, writes: rt)
-            end
+            class_eval("def #{op}(rt, rs, number) = emit_immediate(:#{op}, #{opcode}, rt, rs, number, 0..0xFFFF)",
+                       __FILE__, __LINE__)
           end
 
           def lui(rt, number)
@@ -229,18 +218,11 @@ module VBlank
           # --- memory ---
 
           LOADS.each do |op, opcode|
-            define_method(op) do |rt, distance, base|
-              refuse_distance!(op, distance)
-              i_type(opcode, rs: base, rt: rt, immediate: distance, writes: rt)
-              @loaded = register(rt)
-            end
+            class_eval("def #{op}(rt, distance, base) = emit_load(:#{op}, #{opcode}, rt, distance, base)", __FILE__, __LINE__)
           end
 
           STORES.each do |op, opcode|
-            define_method(op) do |rt, distance, base|
-              refuse_distance!(op, distance)
-              i_type(opcode, rs: base, rt: rt, immediate: distance, reads: [rt, base])
-            end
+            class_eval("def #{op}(rt, distance, base) = emit_store(:#{op}, #{opcode}, rt, distance, base)", __FILE__, __LINE__)
           end
 
           # --- branches and jumps ---
@@ -250,19 +232,12 @@ module VBlank
           # `delay: :none` only where a test wants the one word alone.
 
           TWO_REGISTER_BRANCHES.each do |op, opcode|
-            define_method(op) do |rs, rt, target, &slot|
-              fixup(:branch16, target)
-              i_type(opcode, rs: rs, rt: rt, immediate: 0)
-              delay_slot(slot)
-            end
+            class_eval("def #{op}(rs, rt, target, &slot) = emit_branch(#{opcode << 26}, [rs, rt], target, slot)", __FILE__, __LINE__)
           end
 
           ONE_REGISTER_BRANCHES.each do |op, (opcode, kind)|
-            define_method(op) do |rs, target, &slot|
-              fixup(:branch16, target)
-              emit(opcode << 26 | (register(rs) << 21) | (kind << 16), reads: [rs])
-              delay_slot(slot)
-            end
+            class_eval("def #{op}(rs, target, &slot) = emit_branch(#{(opcode << 26) | (kind << 16)}, [rs, :zero], target, slot)",
+                       __FILE__, __LINE__)
           end
 
           # Always: BEQ zero, zero.
@@ -299,6 +274,42 @@ module VBlank
           def nop = emit_word(0)
 
           private
+
+          def emit_shift(op, function, rd, rt, count)
+            raise Error, "#{op} shifts by 0 to 31, not #{count}" unless count.between?(0, 31)
+
+            r_type(function, rt: rt, rd: rd, shift: count)
+          end
+
+          def emit_multiply_divide(function, rs, rt)
+            emit_word(0) while @since_hi_lo < 2
+            r_type(function, rs: rs, rt: rt)
+          end
+
+          def emit_immediate(op, opcode, rt, rs, number, range)
+            raise Error, "#{op} takes #{range.min} to #{range.max}, not #{number}" unless range.cover?(number)
+
+            i_type(opcode, rs: rs, rt: rt, immediate: number, writes: rt)
+          end
+
+          def emit_load(op, opcode, rt, distance, base)
+            refuse_distance!(op, distance)
+            i_type(opcode, rs: base, rt: rt, immediate: distance, writes: rt)
+            @loaded = register(rt)
+          end
+
+          def emit_store(op, opcode, rt, distance, base)
+            refuse_distance!(op, distance)
+            i_type(opcode, rs: base, rt: rt, immediate: distance, reads: [rt, base])
+          end
+
+          # A branch: +word+ with the two registers it compares (rs, then rt) put in, its distance filled in
+          # by the Linker, and its delay slot.
+          def emit_branch(word, (rs, rt), target, slot)
+            fixup(:branch16, target)
+            emit(word | (register(rs) << 21) | (register(rt) << 16), reads: [rs, rt])
+            delay_slot(slot)
+          end
 
           def register(name)
             REGISTERS.fetch(name) { raise Error, "the R3000 has no register #{name.inspect}" }
