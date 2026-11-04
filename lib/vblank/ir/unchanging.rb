@@ -8,7 +8,7 @@ module VBlank
     # as a change. A chance's number was drawn before the test, so asking it changes nothing.
     module Unchanging
       PARTS = Ractor.make_shareable(
-        { int: [], var_ref: [], list_len: [], held: [], pressed: [], players_connected: [],
+        { int: [], var_ref: [], list_len: [], held: [], pressed: [], players_connected: [], local_player: [],
           neg: [:operand], bit_not: [:operand], absolute: [:operand], shift_right: [:operand],
           clamped: %i[operand min max], chance: [:draw], table_get: [:index],
           binop: %i[lhs rhs], mul_fix: %i[lhs rhs], div_fix: %i[lhs rhs] }

@@ -177,6 +177,7 @@ module ConformanceFixture
       B.set(:acc, B.held(:a)),                # held (button read)
       B.set(:acc, B.pressed(:b)),             # pressed (edge read)
       B.set(:acc, B.players_connected),       # players_connected (how many are connected)
+      B.set(:acc, B.local_player),            # local_player (which player this machine is: 1 here)
       B.set(:acc, B.chance(B.var_ref(:x), 50)), # chance (draw-below-threshold read)
       B.set(:acc, B.pixels_overlap(              # per-pixel sprite collision (two posed sprites)
               a_poses: [:sprite, :pose_b], a_pose: B.int(0), a_x: B.int(0), a_y: B.int(0),

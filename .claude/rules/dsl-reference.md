@@ -54,7 +54,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 - `color_walk :city, from: :black` → the lists of a console game's fade, for `draw_with` or `recolor` with `showing:`.
 - `picture_groups :rooms, {…}` + `show` — sprite pictures by room, so only the rooms up take sprite memory.
 - `sprite_tiles :ball, count: 32, colors:` → `SpriteTileSet`; `image :spin0, tiles_from: :ball, pieces: [[dx, dy, tile], …]` — poses drawn from one set of tiles; `set.copy_from :pic, at:, count:, to:` loads tiles from the cartridge.
-- `hide_sprites` — no sprite (tiled text included) on the next frame drawn; all back the frame after. Tiled screens only.
+- `hide_sprites` — no sprite (tiled text too) on the next frame drawn. Tiled screens only.
 - `rgb r, g, b` (0–31), `rgb8` (0–255), `color value` — a 15-bit colour.
 
 ## Tiled backgrounds — `.claude/dsl/backgrounds.md`
@@ -110,8 +110,8 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Input — `.claude/dsl/input.md`
 
 - `held(:left)`, `pressed(:start)` (`:any`); low-level `if_held`, `if_pressed`. Buttons `a b select start right left up down r l`, and `x y` on the Super Nintendo.
-- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `most_players` → the most this build seats (at build time); `players_connected` → how many are connected now.
-- `rumble frames: 12, pattern: "##..##.."` — shake the player's hands, on a cartridge with a motor (the Color's).
+- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `most_players` → most this build seats; `drawing_for_local_player { |me| … }` → draw what only this player sees; `players_connected` → how many are connected now.
+- `rumble frames: 12, pattern: "##..##.."` — shake the hands, on a cartridge with a motor (the Color's).
 
 ## Menus — `.claude/dsl/menus.md`
 
@@ -149,7 +149,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Playing a finished game with nobody at the controls — `.claude/dsl/playthroughs.md`
 
 - `VBlank.playthrough "name" do … end` — scripted presses on a cartridge; `vblank compare`.
-- `vblank run game.rb --script s.rb` / `--tape t.tape` — the one command that plays a game: a person without either, nobody with one; as Ruby with YJIT unless `--on js|native|logic|interpreter`. No cartridge: `--write-mgba-script`, `--write-bk2` reach a console. `vblank play` is refused.
+- `vblank run game.rb --script s.rb` / `--tape t.tape` — the one command that plays a game: a person without either, nobody with one; as Ruby with YJIT unless `--on js|native|logic|interpreter`. No cartridge: `--write-mgba-script`, `--write-bk2` reach a console.
 
 ## The Game Boy Advance — `.claude/dsl/game-boy-advance.md`
 

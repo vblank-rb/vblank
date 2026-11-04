@@ -821,6 +821,16 @@ module VBlank
         category :value
       end
 
+      # WHICH PLAYER THIS MACHINE'S PERSON IS, from 1: the one number that is different on each machine
+      # of a match by design. The build lets it reach nothing but what is drawn
+      # (Builder#drawing_for_local_player), so it can never make two machines play different games.
+      # A machine that plays alone, and every console, answers 1.
+      class LocalPlayer
+        include Node
+        kind :local_player
+        category :value
+      end
+
       class Held
         include Node
         kind :held

@@ -81,7 +81,8 @@ module VBlank
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
                                            timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
                                            mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
-                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected
+                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected,
+                                           local_player: :value_of_local_player
                                          }.merge(Collision::VALUES))
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
@@ -975,6 +976,9 @@ module VBlank
 
           # This build reads the first pad only, so one player is connected, always.
           def value_of_players_connected(_node) = load_constant(1)
+
+          # A cartridge is played by one person, the first player.
+          def value_of_local_player(_node) = load_constant(1)
           def value_of_var_ref(node) = load_variable(node.name)
 
           # One byte of a named blob of data, which the game says where to look in as it is built, so it is a number

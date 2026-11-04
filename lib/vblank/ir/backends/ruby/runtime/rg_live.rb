@@ -15,10 +15,12 @@ require "zlib"
 # Plays the game for +player+ until the game ends, halts, or the player stops it. A game that
 # stopped itself gives back the picture it stopped on, as the screen shows it, for the player to
 # keep up; one the player stopped gives back nil. +match_seed+ is the seed machines in one match
-# share for the game's random numbers, or nil when the game is played alone.
-def rg_live_main(player, match_seed = nil)
+# share for the game's random numbers, and +local_player+ which player the person here is, both nil
+# when the game is played alone.
+def rg_live_main(player, match_seed = nil, local_player = nil)
   @rg_live = player
   @rg_match_seed = match_seed
+  @rg_local_player = local_player
   stopped_by = catch(:rg_live_stop) do
     rg_game_main
     nil

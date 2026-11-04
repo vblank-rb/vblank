@@ -98,7 +98,7 @@ module VBlank
                                            clamped: :value_of_clamped, mul_fix: :value_of_mul_fix,
                                            div_fix: :value_of_div_fix, shift_right: :value_of_shift_right,
                                            held: :value_of_held, pressed: :value_of_pressed,
-                                           players_connected: :value_of_players_connected,
+                                           players_connected: :value_of_players_connected, local_player: :value_of_local_player,
                                            chance: :value_of_chance, table_get: :value_of_table_get,
                                            data_byte: :value_of_data_byte, list_get: :value_of_list_get,
                                            list_len: :value_of_list_len, timer_ticks: :value_of_timer_ticks,
@@ -668,6 +668,7 @@ module VBlank
           # How many players are connected now (IR::Buttons.masks): the length of the list of
           # buttons the driver hands the runtime each pass.
           def value_of_players_connected(_node) = call("rg_players_connected")
+          def value_of_local_player(_node) = call("rg_local_player")
 
           # A chance holds when the random draw lands below the threshold.
           def value_of_chance(node) = call("rg_lt", value(node.draw), C::Int.new(node.percent))

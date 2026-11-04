@@ -24,6 +24,7 @@ and a test fails when the two differ.
 - `pressed` — works: see `held`.
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.
+- `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `players_connected` — works: always 1: a Game Boy Advance has one controller.
 - `rumble` — works: nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, so the game plays the same without it.
 - `songs` — works: a recorded note with `glides: true` is refused: this build does not make it yet.

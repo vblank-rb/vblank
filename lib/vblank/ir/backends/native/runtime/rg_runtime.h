@@ -66,6 +66,8 @@ int32_t rg_held_by(int32_t player, int32_t mask);
 int32_t rg_pressed_by(int32_t player, int32_t mask);
 /* How many players are connected now: at least 1. */
 int32_t rg_players_connected(void);
+/* Which player the person at this machine is, from 1. Only what the game draws may depend on it. */
+int32_t rg_local_player(void);
 
 /* A GAME'S TIMERS (`timer :beat, per_second: 60`): counters that tick so many times a second,
  * whatever the game is doing. Each has a number of its own. There is no clock here: a frame is

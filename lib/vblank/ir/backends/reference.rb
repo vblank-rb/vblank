@@ -91,6 +91,10 @@ module VBlank
 
         attr_reader :vars, :log, :frame, :screen_mode, :buffered, :audio, :save
 
+        # Which player the person at this interpreter is, from 1: what `drawing_for_local_player`
+        # hands the game. A test says another to see what that machine would draw.
+        attr_writer :local_player
+
         # WHAT THE RUN MADE A NOISE ABOUT, read back through the mixer that kept it. The
         # interpreter holds no audio state of its own: {Mixer} keeps the voices and {Player}
         # keeps the tune, and these stay here because a test asks the interpreter what happened
@@ -184,6 +188,7 @@ module VBlank
           @seen = Set.new          # buttons down at the last frame the screen showed
           @pressed = Set.new       # buttons that went down since the last pass took its presses
           @connected = 1           # players connected: the highest who has held a button (IR::Buttons.masks)
+          @local_player = 1        # which player the person at this machine is (see #local_player=)
           @screen_frame = 0        # frames the screen has shown, which a pass may span several of
           @input_script = nil      # optional ->(frame) { buttons } to drive input over time
           @frames_script = nil     # optional ->(pass) { frames } to say a pass ran late
@@ -3600,6 +3605,7 @@ module VBlank
           held: :value_of_held,
           pressed: :value_of_pressed,
           players_connected: :value_of_players_connected,
+          local_player: :value_of_local_player,
           chance: :value_of_chance,
           pixels_overlap: :value_of_pixels_overlap,
           data_byte: :value_of_data_byte,
@@ -3689,6 +3695,9 @@ module VBlank
         end
 
         def value_of_players_connected(_node) = @connected
+
+        # Which player the person at this interpreter is: the first, unless a test says another.
+        def value_of_local_player(_node) = @local_player
 
         # A player is connected from the first time one of their buttons is down, and stays so:
         # the length of the list IR::Buttons.masks hands a computer's runtime each pass.

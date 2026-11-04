@@ -72,7 +72,7 @@ module VBlank
       def play(device)
         begin_play(device)
         @network&.begin_match
-        stopped_on = @game.play(self, match_seed: @network&.seed)
+        stopped_on = @game.play(self, match_seed: @network&.seed, local_player: @network&.player)
         rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
                         stopped_itself: !stopped_on.nil?)
         keep_showing(stopped_on) if stopped_on

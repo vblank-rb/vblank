@@ -78,7 +78,8 @@ module VBlank
                                            shift_right: :value_of_shift_right, held: :value_of_held,
                                            pressed: :value_of_pressed, list_get: :value_of_list_get,
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
-                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance
+                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
+                                           local_player: :value_of_local_player
                                          }.merge(Collision::VALUES).merge(Saving::VALUES))
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
@@ -1428,6 +1429,9 @@ module VBlank
           end
 
           def value_of_int(node) = load_constant(node.value)
+
+          # A cartridge is played by one person, the first player.
+          def value_of_local_player(_node) = load_constant(1)
           def value_of_var_ref(node) = load_variable(node.name)
 
           def value_of_binop(node)

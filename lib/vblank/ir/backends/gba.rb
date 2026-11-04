@@ -495,6 +495,7 @@ module VBlank
             shift_right: @expressions.method(:eval_shift_right), held: @expressions.method(:eval_held_node),
             pressed: @expressions.method(:eval_pressed_node), chance: @expressions.method(:eval_chance),
             players_connected: @expressions.method(:eval_players_connected),
+            local_player: @expressions.method(:eval_local_player),
             pixels_overlap: @collision.method(:eval_pixels_overlap),
             data_byte: @expressions.method(:eval_data_byte), table_get: @expressions.method(:eval_table_get),
             list_get: @lists.method(:eval_list_get), list_len: @lists.method(:eval_list_len),

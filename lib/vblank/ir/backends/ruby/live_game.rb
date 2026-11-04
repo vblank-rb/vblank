@@ -37,9 +37,10 @@ module VBlank
           #
           # +match_seed+ is the seed a match shared by several machines gives the game's random
           # numbers (Network::Lockstep), mixed in once the game has set itself up; nil for a game
-          # played alone.
-          def play(player, match_seed: nil)
-            @game.rg_live_main(player, match_seed)
+          # played alone. +local_player+ is which player the person at this machine is (from 1), which
+          # the game may draw but never keep (Builder#drawing_for_local_player); 1 when played alone.
+          def play(player, match_seed: nil, local_player: nil)
+            @game.rg_live_main(player, match_seed, local_player)
           rescue @game.class::RgFault => e
             raise IR::ProgramError, e.message
           end

@@ -30,6 +30,9 @@ module VBlank
           def chance_comparison(node) = Build.binop(:<, node.draw, Build.int(node.percent))
           # The Advance has one controller, so one player is connected, always: one move.
           def eval_players_connected(_node) = @emitter.emit_number(ACC, 1)
+
+          # A cartridge is played by one person, the first player.
+          def eval_local_player(_node) = @emitter.emit_number(ACC, 1)
           def eval_held_node(node) = eval_held(node.button)
           def eval_pressed_node(node) = eval_pressed(node.button)
           # Read VCOUNT — the scanline being drawn right now (0..227) — into the

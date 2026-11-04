@@ -203,6 +203,7 @@ module VBlank
         if_held: works("see `held`."),
         if_pressed: works("see `held`."),
         most_players: works,
+        drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         players_connected: works("always 1: this build reads the first pad only."),
         rumble: works("nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same " \
                       "without it."),

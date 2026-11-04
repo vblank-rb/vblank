@@ -100,6 +100,10 @@ end
 # How many players are connected now: one for each number in the driver's list.
 def rg_players_connected = @rg_held.length
 
+# Which player the person at this machine is, from 1: the first unless a match gave another. It
+# reaches only what the game draws (Builder#drawing_for_local_player).
+def rg_local_player = @rg_local_player || 1
+
 # The seed a match shared by several machines gives the game's random numbers, which the game
 # adds to its own stream once it has set itself up (rg_game_mix_seed). Nought when it plays alone.
 def rg_match_seed = @rg_match_seed || 0

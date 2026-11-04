@@ -138,6 +138,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.
 - `most_players` — works: the same as on the Advance.
+- `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `players_connected` — works: always 1: a Game Boy Color has one controller.
 - `rumble` — works: the cartridge carries a rumble motor, and the motor runs on the frames the pattern says. A cartridge with a `clock` has no motor, so a game that uses both is refused.
 - `seed` — works: the same as on the Advance.

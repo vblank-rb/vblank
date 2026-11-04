@@ -1196,6 +1196,11 @@ module VBlank
         Nodes.build(:held, button: button, player: player)
       end
 
+      # Which player this machine's person is, from 1 (see Nodes::LocalPlayer).
+      def local_player
+        Nodes.build(:local_player)
+      end
+
       # How many players are connected now, at least 1.
       def players_connected
         Nodes.build(:players_connected)

@@ -72,7 +72,8 @@ module VBlank
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
                                            save_read: :value_of_save_read, save_sum: :value_of_save_sum,
                                            timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
-                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected
+                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected,
+                                           local_player: :value_of_local_player
                                          }.merge(Picture::VALUES).merge(Clock::VALUES))
 
           include Picture
@@ -1672,6 +1673,9 @@ module VBlank
 
           # The Color has one controller, so one player is connected, always.
           def value_of_players_connected(_node) = load_constant(1)
+
+          # A cartridge is played by one person, the first player.
+          def value_of_local_player(_node) = load_constant(1)
           def value_of_var_ref(node) = load_variable(node.name)
 
           def value_of_binop(node)

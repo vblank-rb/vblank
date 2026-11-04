@@ -109,6 +109,10 @@ module Wanderers
     # `players:` gives this build, so no line below reads a player the build does not seat.
     seats = most_players
 
+    # Whether to say which walker is this machine's own. A test that wants every machine of a match to
+    # show one picture turns it off, since that line is the one thing that differs.
+    show_you_line = setting :you_line, true
+
     # The random numbers start here. Every build of the game starts from the same seed, so the
     # same presses always pick the same colours; a match played across several machines will
     # hand them all one seed, and they will all agree.
@@ -171,6 +175,17 @@ module Wanderers
     # holding NOT_PICKED until then.
     walkers = (1..seats).map { |player| sprite :walker, at: here.starts[player - 1], shown: false }
     colors_picked = (1..seats).map { |player| var(:"hue#{player}", NOT_PICKED) }
+
+    # Which walker is mine, said at the top of the screen: "YOU 2" on the machine of the second
+    # player. Who "me" is is different on each machine of a match, so it may only change what is
+    # drawn: the block is held to drawing, and nothing the game remembers can depend on it. (A
+    # tiled screen shows text at a place the game wrote down, not one it worked out as it ran, so
+    # this is a line in the corner and not a mark over the walker.)
+    if show_you_line && seats > 1
+      drawing_for_local_player do |me|
+        (1..seats).each { |player| draw_text "YOU #{player}", 8, 8, :white if me == player }
+      end
+    end
 
     game_loop do
       # Plain Ruby, run while the game is built: the loop body is written out once for each

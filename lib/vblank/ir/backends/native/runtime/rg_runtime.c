@@ -336,3 +336,6 @@ int32_t rg_pressed_by(int32_t player, int32_t mask) { return down_by(pressed, pl
 
 /* How many players are connected now. */
 int32_t rg_players_connected(void) { return connected; }
+
+/* Which player the person at this machine is: the first, until a match says otherwise. */
+int32_t rg_local_player(void) { return 1; }

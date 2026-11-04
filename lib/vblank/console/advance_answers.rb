@@ -92,6 +92,7 @@ module VBlank
                     "`player: :any` reads that one controller."),
         pressed: works("see `held`."), if_held: works("see `held`."), if_pressed: works("see `held`."),
         most_players: works,
+        drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         players_connected: works("always 1: a Game Boy Advance has one controller."),
         rumble: works("nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, " \
                       "so the game plays the same without it."),

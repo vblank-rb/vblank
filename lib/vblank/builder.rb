@@ -17,6 +17,7 @@ require_relative "builder/picture_groups"
 VBlank.require_game_file "builder/sprites"
 require_relative "builder/sprite_import"
 require_relative "builder/input"
+require_relative "builder/local_view"
 require_relative "builder/drawing"
 VBlank.require_game_file "builder/spotlights" # the circle a spotlight lights, a row at a time
 require_relative "builder/variables"
@@ -78,6 +79,7 @@ module VBlank
     include Sprites    # sprite (software + hardware, facing/frames/clip animation, hitboxes)
     include SpriteImport # sprite art adapters (sheets, Aseprite) feeding the sprite builder
     include Input      # if_held, if_pressed, held, pressed
+    include LocalView  # drawing_for_local_player (what only this machine's person sees, in a networked match)
     include Drawing    # screen, pixel, fill_rect, clear_screen, dma_fill_rect, draw_rect_at
     include Variables  # set/var, add, sub, negate/flip, copy, abs, negate_abs, clamp, variables
     include ControlFlow # game_loop, wait_vblank, repeat, every, after, halt, debug_halt, if_eq..if_le
@@ -131,6 +133,7 @@ module VBlank
       @name_dispatches = []    # [dispatch node, NameSet] — filled in at finalize, once every name is known
       @scene_name_sets = []    # the NameSet of each `call` that picks a scene, checked once every name is known
       @functions = {}          # name → deferred body block (evaluated at emit time)
+      @view_statements = []    # the statements of each drawing_for_local_player block (see LocalView)
       @tile_runs = []          # runs of tiles painted from a list, in declaration order (see TileRuns)
       @painted_colors = {}     # picture painted from a list → the colours its places pick (see TileRuns)
       @painted_colors_names = {} # ...and the name those colours were declared under, where they were
@@ -631,6 +634,7 @@ module VBlank
       resolve_save_data_peeks
       swap_save_stores_for_change_flags
       finalize_kept_widths
+      refuse_local_player_outside_views!
     end
 
     # A routine the framework writes whose body depends on every line of the game, built only
