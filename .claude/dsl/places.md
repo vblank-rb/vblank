@@ -28,8 +28,23 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
 - `viewer :eye, at: [x, y, z], facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] }` →
   `DSL::Viewer` — the spot a place is seen from, and which way it faces. `facing:` is three arrows,
   each three numbers of length one and square to the other two (a friendly error otherwise); left out,
-  the viewer faces along the place's own arrows. A viewer is twelve variables, so it can be moved and
-  turned later; this build sets it where it is declared and nothing moves it yet.
+  the viewer faces along the place's own arrows. A viewer is twelve variables, and the game moves and
+  turns it as it runs:
+  - `eye.move :ahead, by: 0.05` — along its own arrows: `:ahead`, `:back`, `:left`, `:right`, `:up`,
+    `:down`, by a number or a value the game works out (a whole number or a fraction).
+  - `eye.turn :left, by: 2` — degrees, `:left`, `:right`, `:up` (tip up) or `:down`; `eye.roll :left,
+    by: 2` rolls round the way it faces, `:left` or `:right`. The angle is a number written in the
+    game (one the game works out is refused as not made yet). **Every turn keeps the arrows square and
+    of length one**, so a game can turn for as long as it likes and the place never comes out
+    stretched: each turn ends by making ahead length one, taking from up whatever part of it lies along
+    ahead, making up length one, and making right from the two.
+  - `eye.at x, y, z` and `eye.face right: [...], up: [...], ahead: [...]` — set the spot, or the three
+    arrows, from numbers or values the game works out (a game with a flight model of its own hands its
+    arrows straight in; they are taken as given, not squared up).
+  - `eye.spot`, `eye.right_arrow`, `eye.up_arrow`, `eye.ahead_arrow` — read them back, three fractions
+    each.
+
+  Worked example: `examples/cube3d.rb`, a crate flown round with the buttons.
 - `draw_place :cube, seen_by: eye` — draw the place as the viewer sees it, across the screen or the
   `inside` area it is drawn in. Each point is turned to the viewer, put on the screen, and each face
   filled with its picture, a later face over an earlier one. **A face that reaches nearer than the near
@@ -48,7 +63,9 @@ the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bi
 and `div_fix`), and only the fill of a face, of three to eight corners, is written by hand for each
 (`Reference#exec_fill_face` is the rule every one follows). So the interpreter and every build draw the same pixels. **What it
 costs on the Advance**: the fill takes about 36 of the console's cycles a pixel, so a face covering
-the whole screen runs at 10 pictures a second. `rom.profile`
+the whole screen runs at 10 pictures a second. `examples/cube3d.rb`, the crate's near side covering
+a third of the screen across, runs at 30 with 44% of each frame spare, and the fill is 79% of the
+time. `rom.profile`
 names the fill "filling the faces of a place with their pictures".
 
 **Each console**: the Advance draws a place (its page says how). The Game Boy Color, the Super

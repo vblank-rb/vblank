@@ -58,8 +58,9 @@ module VBlank
           raise ArgumentError, "There is already a viewer :#{name}. To fix this, give each viewer its own name."
         end
 
-        seen = DSL::Viewer.new(name)
+        seen = DSL::Viewer.new(self, name)
         DSL::Viewer.starting_numbers(name, at, facing).zip(seen.variables).each { |number, variable| var(variable, number) }
+        seen.scratch_variables.each { |variable| var(variable, 0) }
         @viewers[name] = seen
       end
 
