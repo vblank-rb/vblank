@@ -18,7 +18,7 @@ class TestBots < Minitest::Test
 
   PASSES = 70
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   # A bot that walks its walker toward the first player's, on a line across and then up or down.
   private def chaser

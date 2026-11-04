@@ -32,7 +32,7 @@ class TestLobbyChat < Minitest::Test
     end
   end
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   private def world
     relay = Network::StandInRelay.new

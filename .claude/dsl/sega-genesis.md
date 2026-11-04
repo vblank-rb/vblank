@@ -138,6 +138,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `if_pressed` — works: see `held`.
 - `most_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
+- `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: always 1: this build reads the first pad only.
 - `rumble` — works: nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same without it.
 - `seed` — works: the same as on the Advance.

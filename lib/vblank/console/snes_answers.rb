@@ -214,6 +214,7 @@ module VBlank
         if_pressed: works("see `held`."),
         most_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
+        mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),
         players_connected: works("a build for a computer answers it. The cartridge build does not make it yet: " \
                                  "it refuses it and says so, because it cannot yet tell if the second controller " \
                                  "is connected. A controller that is not connected holds no buttons, so a " \

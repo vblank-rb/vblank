@@ -16,7 +16,7 @@ class TestLockstepOverRelay < Minitest::Test
 
   PASSES = 30
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   # One copy: it makes the room (the first) or joins the code the first one wrote down.
   private def copy(relay, scheduler, room_code, walks:, game: program, title: "WANDERERS")
@@ -70,7 +70,7 @@ class TestLockstepOverRelay < Minitest::Test
     relay = Network::StandInRelay.new
     scheduler = Network::Scheduler.new(movement: -> { relay.pending? })
     code = []
-    other = Wanderers::GAME.checked_program(err: nil, console: :gbc, settings: { you_line: false })
+    other = Wanderers::GAME.checked_program(err: nil, console: :gbc, settings: { you_mark: false })
 
     outcomes = play(relay, scheduler, [copy(relay, scheduler, code, walks: :right), copy(relay, scheduler, code, walks: :left, game: other),
                                        copy(relay, scheduler, code, walks: :left)])

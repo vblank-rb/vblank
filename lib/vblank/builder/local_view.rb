@@ -42,7 +42,58 @@ module VBlank
         nil
       end
 
+      # A picture shown over +over+ (a sprite of the console's: any sprite on a `screen :tiled`, or one
+      # made with `over_picture: true`), centred just above it, and moved +offset+ [dx, dy] from there.
+      #
+      #   drawing_for_local_player do |me|
+      #     walkers.each.with_index(1) { |walker, player| mark over: walker, with: :arrow if me == player }
+      #   end
+      #
+      # WHY A MARK HAS NO VARIABLES. A tiled screen shows only sprites and backgrounds, so the "you"
+      # arrow over a walker must be a sprite. But an ordinary sprite's place and its shown flag are
+      # game variables, and in a match the variables are what every machine checks against every
+      # other: an arrow moved or shown from `me` would differ from machine to machine, and the match
+      # would stop. Two shapes were weighed. One was a sprite marked `local: true`, whose variables
+      # the state number leaves out and which may be written only in the block: it needs every
+      # runtime to learn which variables to skip, and a game could still read them into its real
+      # state, which the build would have to chase. The shape taken is the other one: a sprite whose
+      # place and shown flag are not variables at all but sums the console works out on every frame
+      # from the marked sprite's own (`hero.x + 4`, "hero is shown, and `me == 2`"). There is
+      # nothing the game can write, nothing the state number has to leave out, and no lowering
+      # learns anything new: every one already draws a sprite at a place worked out from numbers.
+      # The guarantee stays the build's to check, as the block's is: `me` may be in the sums only
+      # when the mark is written inside `drawing_for_local_player`.
+      #
+      # It is not only for a match: a label over a boss is a mark too. A game with no `mark` builds
+      # the same bytes as before.
+      def mark(over:, with:, offset: [0, 0])
+        refuse_unmarkable_sprite!(over, with)
+        mark_width, mark_height = resolve_sprite_art(with, nil, nil, subject: "mark")[2, 2]
+        sprite_width = @images.fetch(over.collision_poses.first, [mark_width])[0]
+        dx, dy = offset
+        x = over.x + (((sprite_width - mark_width) / 2) + dx)
+        y = over.y + (dy - mark_height)
+        node = over.object_node
+        name = :"__mark#{@sprite_seq += 1}"
+        record(Build.object(name, poses: [with], pose: Build.int(0),
+                                  x: DSL::Value.node_for(x), y: DSL::Value.node_for(y),
+                                  active: gated_by_open_conditions(gated_by_scene(node.active.copy)),
+                                  scene: declaring_scene || node.scene, declared: with, layer: node.layer,
+                                  over_picture: node.over_picture))
+        @sprite_objects << name
+        DSL::Mark.new(node.declared)
+      end
+
       private
+
+      def refuse_unmarkable_sprite!(over, with)
+        return if over.is_a?(DSL::HardwareSprite)
+
+        raise ArgumentError, "`mark over:` needs a sprite that the console shows. The game gave it a " \
+                             "#{over.class.name.split('::').last}. Each sprite on a `screen :tiled` is one. On a " \
+                             "`screen :bitmap`, make the sprite with `over_picture: true`. Or draw the picture " \
+                             "with `blit :#{with}, x, y` at the place of the sprite."
+      end
 
       # Raises for the first statement under +statement+ that is not a drawing one.
       def refuse_writes_outside_drawing!(statement)

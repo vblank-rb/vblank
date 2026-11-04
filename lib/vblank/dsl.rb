@@ -34,6 +34,7 @@ VBlank.require_game_file "dsl/sprite"
 VBlank.require_game_file "dsl/recolors" # the other colours a sprite or a pool can be drawn with
 require_relative "dsl/picture_groups" # a scene's sprite pictures in groups, some of them up at a time
 VBlank.require_game_file "dsl/hardware_sprite"
+require_relative "dsl/mark" # a picture over a sprite, with no place of its own
 require_relative "dsl/timer"
 require_relative "dsl/clock" # the date and time, as the cartridge's clock keeps them
 VBlank.require_game_file "dsl/pass_job" # a step an effect takes once a pass, started and stopped by the game

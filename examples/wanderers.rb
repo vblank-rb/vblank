@@ -24,6 +24,8 @@
 #     one match from one seed draw everybody in the same colours.
 #   * RECOLOURING — every walker is the same picture; `draw_with` dresses each in its own list
 #     of colours, picked by a number the game worked out.
+#   * WHICH ONE IS ME — in a match over a network, each machine shows an arrow over its own
+#     walker (`drawing_for_local_player` and `mark`), and the game stays the same on every machine.
 #
 # THE CONSOLES. It is for the Game Boy Advance and the Game Boy Color, as one player. Both
 # consoles read one controller, so a cartridge for either is a one-player walk round the meadow:
@@ -101,6 +103,18 @@ module Wanderers
     .#....#.
   ART
 
+  # The arrow over this machine's own walker, pointing down at it.
+  YOU_ARROW_ART = <<~ART
+    ........
+    .######.
+    .######.
+    ..####..
+    ..####..
+    ...##...
+    ...##...
+    ........
+  ART
+
   GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc], players: { computer: 1..SEATS_ON_A_COMPUTER, else: 1 }) do
     screen :tiled # a background for the meadow, and the console's own sprites for the walkers
     here = Layout.new(width: screen_width, height: screen_height)
@@ -109,9 +123,9 @@ module Wanderers
     # `players:` gives this build, so no line below reads a player the build does not seat.
     seats = most_players
 
-    # Whether to say which walker is this machine's own. A test that wants every machine of a match to
-    # show one picture turns it off, since that line is the one thing that differs.
-    show_you_line = setting :you_line, true
+    # Whether to mark which walker is this machine's own. A test that wants every machine of a match
+    # to show one picture turns it off, since that mark is the one thing that differs.
+    show_you_mark = setting :you_mark, true
 
     # The random numbers start here. Every build of the game starts from the same seed, so the
     # same presses always pick the same colours; a match played across several machines will
@@ -176,14 +190,17 @@ module Wanderers
     walkers = (1..seats).map { |player| sprite :walker, at: here.starts[player - 1], shown: false }
     colors_picked = (1..seats).map { |player| var(:"hue#{player}", NOT_PICKED) }
 
-    # Which walker is mine, said at the top of the screen: "YOU 2" on the machine of the second
-    # player. Who "me" is is different on each machine of a match, so it may only change what is
-    # drawn: the block is held to drawing, and nothing the game remembers can depend on it. (A
-    # tiled screen shows text at a place the game wrote down, not one it worked out as it ran, so
-    # this is a line in the corner and not a mark over the walker.)
-    if show_you_line && seats > 1
+    # Which walker is mine: a little arrow over it, on this machine only. Who "me" is is different
+    # on each machine of a match, so it may only change what is drawn: the block is held to drawing,
+    # and nothing the game remembers can depend on it. A `mark` has no place of its own to remember;
+    # it is shown over its walker, wherever the walker is, while the `if` around it holds. A
+    # cartridge seats one player, so it has no arrow to show.
+    if show_you_mark && seats > 1
+      image :you_arrow, "#" => :white, "." => :transparent do
+        YOU_ARROW_ART
+      end
       drawing_for_local_player do |me|
-        (1..seats).each { |player| draw_text "YOU #{player}", 8, 8, :white if me == player }
+        walkers.each.with_index(1) { |walker, player| mark over: walker, with: :you_arrow if me == player }
       end
     end
 

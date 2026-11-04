@@ -23,7 +23,7 @@ class TestDirectConnection < Minitest::Test
   # Each thread reports its own failure through #value, and no failure prints a trace as well.
   Thread.report_on_exception = false
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   private def fingerprint_of(game = program) = Network::Fingerprint.of(game, title: "WANDERERS")
 

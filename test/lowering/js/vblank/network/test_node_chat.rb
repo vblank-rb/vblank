@@ -31,7 +31,7 @@ class TestNodeChat < Minitest::Test
     end
   end
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   private def settings = { seed: 0, input_delay: 2, checkpoint_every: 1, players: 2 }
 

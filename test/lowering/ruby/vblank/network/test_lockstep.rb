@@ -18,9 +18,9 @@ class TestLockstep < Minitest::Test
   # The bit the right button is in a player's buttons (IR::Buttons::NAMES lists a, b, select, start, right).
   RIGHT_BIT = 1 << 4
 
-  # Wanderers says which player each machine is, in a corner of the screen, so no two machines show the
-  # same picture. These tests are about the pictures agreeing, so they leave that line out.
-  NO_LINE = { you_line: false }.freeze
+  # Wanderers marks each machine's own walker with an arrow, so no two machines show the same
+  # picture. These tests are about the pictures agreeing, so they leave that mark out.
+  NO_MARK = { you_mark: false }.freeze
 
   # How long each machine plays, in passes (pictures shown).
   PASSES = 40
@@ -30,7 +30,7 @@ class TestLockstep < Minitest::Test
   WALKS = { 1 => :right, 2 => :left, 3 => :up, 4 => :down }.freeze
 
   private def program
-    @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: NO_LINE)
+    @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: NO_MARK)
   end
 
   private def fingerprint(of = program, title: "WANDERERS") = Network::Fingerprint.of(of, title: title)
@@ -251,7 +251,7 @@ class TestLockstep < Minitest::Test
   def test_a_copy_built_for_another_console_is_refused_and_told_which
     net = Network::SimulatedNetwork.new
     host = copy_for(net, players: 2)
-    colour = copy_for(net, game: Wanderers::GAME.checked_program(err: nil, console: :gbc, settings: NO_LINE))
+    colour = copy_for(net, game: Wanderers::GAME.checked_program(err: nil, console: :gbc, settings: NO_MARK))
     friend = copy_for(net)
 
     outcomes = play(net, [host, colour, friend])

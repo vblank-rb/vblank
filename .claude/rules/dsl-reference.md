@@ -110,7 +110,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Input — `.claude/dsl/input.md`
 
 - `held(:left)`, `pressed(:start)` (`:any`); low-level `if_held`, `if_pressed`. Buttons `a b select start right left up down r l`, and `x y` on the Super Nintendo.
-- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `most_players` → most this build seats; `drawing_for_local_player { |me| … }` → draw for this player alone; `players_connected` → how many now. `vblank run --host` / `--join`: a match.
+- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game`; `most_players`; `drawing_for_local_player { |me| … }` → draw for this player alone, `mark over: hero, with: :arrow` there; `players_connected` → how many now. `vblank run --host` / `--join`: a match.
 - `rumble frames: 12, pattern: "##..##.."` — shake the hands, on a cartridge with a motor (the Color's).
 
 ## Menus — `.claude/dsl/menus.md`

@@ -19,7 +19,7 @@ class TestNodeLockstep < Minitest::Test
   RIGHT = 1 << 4
   LEFT = 1 << 5
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   private def settings(players, delay: 2) = { seed: 5, input_delay: delay, checkpoint_every: 1, players: players }
 

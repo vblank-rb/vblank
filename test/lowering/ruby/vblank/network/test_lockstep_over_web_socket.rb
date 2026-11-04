@@ -21,7 +21,7 @@ class TestLockstepOverWebSocket < Minitest::Test
 
   Thread.report_on_exception = false
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   private def with_relay
     server = Network::StandInRelayServer.new(relay: Network::StandInRelay.new).start

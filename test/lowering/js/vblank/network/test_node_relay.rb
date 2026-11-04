@@ -19,7 +19,7 @@ class TestNodeRelay < Minitest::Test
   RIGHT = 1 << 4
   LEFT = 1 << 5
 
-  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
+  private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_mark: false })
 
   private def settings(players) = { seed: 5, input_delay: 2, checkpoint_every: 1, players: players }
 
@@ -118,7 +118,7 @@ class TestNodeRelay < Minitest::Test
   def test_a_game_of_another_console_is_refused_through_the_relay_in_plain_words
     relay, scheduler = world
     box = []
-    other = Wanderers::GAME.checked_program(err: nil, console: :gbc, settings: { you_line: false })
+    other = Wanderers::GAME.checked_program(err: nil, console: :gbc, settings: { you_mark: false })
     refused = NodeCopy.relay_copy(other, line: line_for(relay, scheduler), passes: PASSES, code_box: box, hold: LEFT)
 
     host, intruder, friend = scheduler.play([node(relay, scheduler, box, RIGHT, host: settings(2)), refused, node(relay, scheduler, box, LEFT)]).map(&:value)

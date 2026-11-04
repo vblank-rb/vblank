@@ -6,7 +6,7 @@ require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
 
 # WHICH PLAYER I AM, IN A MATCH. Each machine of a match is a different player, and the game may
-# draw that (examples/wanderers.rb says "YOU 2" on the second player's screen) but may not keep it.
+# draw that (examples/wanderers.rb puts an arrow over the machine's own walker) but may not keep it.
 # These play wanderers as a match of two and four machines, with a checkpoint on every pass, so any
 # difference in what the game remembers is named at once.
 class TestLocalViewInAMatch < Minitest::Test
@@ -17,10 +17,26 @@ class TestLocalViewInAMatch < Minitest::Test
 
   PASSES = 12
 
-  # The rows of the corner where wanderers says which player this is.
-  CORNER_ROWS = (8..16)
+  # Where the four walkers start on the Advance's screen. Each machine presses `a`, which joins its
+  # player and moves nobody, so they stay there.
+  STARTS = Wanderers::Layout.new(width: 240, height: 160).starts
 
-  private def machines(count, program)
+  # A pixel of the arrow over a walker at [x, y]: the arrow is the 8x8 tile just above the walker,
+  # and its stem is in columns 3 and 4 of its sixth row.
+  private def arrow_pixel(x, y) = [x + 3, y - 8 + 5]
+
+  # The players whose walker has the arrow over it in +picture+.
+  private def marked_players(picture)
+    STARTS.each_with_index.filter_map do |(x, y), index|
+      px, py = arrow_pixel(x, y)
+      index + 1 if picture.pixels[(py * picture.width) + px] == white(picture)
+    end
+  end
+
+  # The arrow is white, and white is the largest number a pixel can hold, so it is the picture's largest.
+  private def white(picture) = picture.pixels.max
+
+  private def machines(count, program, press: :right)
     net = Network::SimulatedNetwork.new
     copies = Array.new(count) do
       endpoint = net.connect
@@ -31,7 +47,7 @@ class TestLocalViewInAMatch < Minitest::Test
                  else
                    Network::Lockstep.join(transport: endpoint, fingerprint: fingerprint)
                  end
-      device = Headless.new(frames: PASSES, buttons: (2..PASSES).to_h { |pass| [pass, [:right]] })
+      device = Headless.new(frames: PASSES, buttons: (2..PASSES).to_h { |pass| [pass, [press]] })
       [Session.new(program, network: lockstep), device]
     end
     [net, copies]
@@ -41,27 +57,38 @@ class TestLocalViewInAMatch < Minitest::Test
     net.play(copies.map { |session, device| -> { session.play(device) } })
   end
 
-  # Each picture's rows outside the corner line, as a number, and the corner's alone.
-  private def pieces_of(device)
+  # Each picture as a number, with the four places an arrow can be in left out.
+  private def pictures_without_arrows(device)
+    arrow_boxes = STARTS.map { |x, y| [(x...(x + 8)), ((y - 8)...y)] }
     device.pictures.map do |picture|
-      rows = picture.pixels.each_slice(picture.width).to_a
-      corner = rows.values_at(*CORNER_ROWS).flatten
-      elsewhere = rows.each_with_index.reject { |_row, index| CORNER_ROWS.cover?(index) }.flat_map(&:first)
-      [Zlib.crc32(elsewhere.pack("v*")), Zlib.crc32(corner.pack("v*"))]
+      kept = picture.pixels.each_with_index.reject do |_pixel, index|
+        arrow_boxes.any? { |xs, ys| xs.cover?(index % picture.width) && ys.cover?(index / picture.width) }
+      end
+      Zlib.crc32(kept.map(&:first).pack("V*"))
     end
   end
 
-  def test_four_machines_say_who_they_are_and_still_agree_on_every_pass
+  def test_each_of_four_machines_marks_its_own_walker_and_all_agree_on_every_pass
     program = Wanderers::GAME.checked_program(err: nil, console: :gba)
-    net, copies = machines(4, program)
+    net, copies = machines(4, program, press: :a)
 
     outcomes = play(net, copies)
 
     outcomes.each_with_index { |outcome, index| assert_nil outcome.error, "machine #{index + 1}: #{outcome.error.inspect}" }
-    pieces = copies.map { |_session, device| pieces_of(device) }
-    assert_equal 1, pieces.map { |each_copy| each_copy.map(&:first) }.uniq.size, "everything but the corner is the same"
-    corners = pieces.map { |each_copy| each_copy.last.last }
-    assert_equal 4, corners.uniq.size, "each machine says a different player"
+    copies.each.with_index(1) do |(_session, device), machine|
+      assert_equal [machine], marked_players(device.pictures.last), "machine #{machine} marks its own walker alone"
+    end
+    agreeing = copies.map { |_session, device| pictures_without_arrows(device) }
+    assert_equal 1, agreeing.uniq.size, "every picture is the same away from the arrows"
+  end
+
+  def test_two_machines_agree_on_every_pass_while_the_marked_walkers_move
+    program = Wanderers::GAME.checked_program(err: nil, console: :gba)
+    net, copies = machines(2, program)
+
+    outcomes = play(net, copies)
+
+    outcomes.each_with_index { |outcome, index| assert_nil outcome.error, "machine #{index + 1}: #{outcome.error.inspect}" }
   end
 
   # What would happen with no guard: a game that keeps the number in a variable plays differently
