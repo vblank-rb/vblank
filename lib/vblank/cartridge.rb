@@ -14,6 +14,7 @@ require_relative "cartridge/rom"
 require_relative "cartridge/gbc_rom" # a Game Boy Color cartridge: its header and checksums
 require_relative "cartridge/snes_rom" # a Super Nintendo cartridge: its header, vectors and checksum
 require_relative "cartridge/genesis_rom" # a Sega Genesis cartridge: its vectors, header and checksum
+require_relative "cartridge/ps1_exe" # a PlayStation program: a PS-X EXE header and its code
 require_relative "cartridge/players" # how many players a game takes, by console
 require_relative "cartridge/options" # how a game is built, as one value
 require_relative "cartridge/evaluated_game" # the one place a game's block becomes a program

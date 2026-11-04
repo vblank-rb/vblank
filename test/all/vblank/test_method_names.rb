@@ -25,10 +25,11 @@ class TestMethodNames < Minitest::Test
   # is plain English.
   SHORT_NAMES = %w[x y w h id at of to io op ok bx lm sm].freeze
 
-  # `d` and `a` are the 68000's data and address registers, as every listing of it spells them, so
-  # they are let through in its encoder alone. Anywhere else one letter names nothing.
-  M68000_ENCODER = "vblank/ir/backends/genesis/m68000.rb"
-  M68000_REGISTERS = %w[d a].freeze
+  # `d` and `a` are the 68000's data and address registers, as every listing of it spells them, and
+  # `li`, `la`, `b`, `j` and `jr` are MIPS instructions, as every listing of the R3000 spells them, so
+  # each is let through in its own encoder alone. Anywhere else one letter names nothing.
+  ENCODER_NAMES = { "vblank/ir/backends/genesis/m68000.rb" => %w[d a],
+                    "vblank/ir/backends/ps1/r3000.rb" => %w[li la b j jr] }.freeze
 
   private def defined_methods
     Dir.glob("#{LIB}/**/*.rb").flat_map do |path|
@@ -44,7 +45,7 @@ class TestMethodNames < Minitest::Test
                    .map { |name, where| "#{where}  #{name}" }
   end
 
-  private def m68000_register?(name, where) = M68000_REGISTERS.include?(name) && where.start_with?(M68000_ENCODER)
+  private def encoder_name?(name, where) = ENCODER_NAMES.any? { |encoder, names| where.start_with?(encoder) && names.include?(name) }
 
   private def assert_none(found, why)
     assert_empty found, "#{why}\n#{found.join("\n")}"
@@ -70,7 +71,7 @@ class TestMethodNames < Minitest::Test
     found = offenders { |name| name.length <= 2 && !SHORT_NAMES.include?(name) }
     found.reject! do |offender|
       where, name = offender.split
-      m68000_register?(name, where)
+      encoder_name?(name, where)
     end
     assert_none found, "These names are abbreviations. Spell out what they hold or do:"
   end

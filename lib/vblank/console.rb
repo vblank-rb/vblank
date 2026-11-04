@@ -14,6 +14,7 @@ require_relative "console/variant" # hardware some copies of a console have: a c
 require_relative "console/gbc_hardware" # the Game Boy Color's register addresses, flags and memory map
 require_relative "console/snes_hardware" # the Super Nintendo's register addresses, flags and memory map
 require_relative "console/genesis_hardware" # the Sega Genesis's ports, registers, header and memory map
+require_relative "console/ps1_hardware" # the PlayStation's ports, graphics commands and memory map
 require_relative "console/questions" # what a line of a game asks of the console it runs on
 require_relative "console/answers" # what an answer to "what does this verb do here?" is
 require_relative "console/advance_answers" # ...the Game Boy Advance's: every verb works
