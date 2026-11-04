@@ -20,7 +20,10 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
   MARK_AT = [160, 120].freeze
 
   # +loads_first+ gives each scene's hand-over a pass of its own (`scene ..., loads_first: true`).
-  private def two_scenes(loads_first: false)
+  # +handed_over_by_scene+ sets the variable at the end of each scene's own routine rather than in
+  # the loop before the dispatch, so the next scene arrives on the pass after.
+  # +dispatched_inside_test+ writes the dispatch inside an `if` of the loop rather than straight in it.
+  private def two_scenes(loads_first: false, handed_over_by_scene: false, dispatched_inside_test: false)
     switch = SWITCH_AT
     count = EACH_SCENE
     mark = MARK_AT
@@ -38,18 +41,29 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
       scene(:one, loads_first: loads_first) do
         background :one, tiles: :one_set, map: first
         sprite :one_mark, at: mark
+        state = 1 if tick == switch if handed_over_by_scene
       end
       scene(:two, loads_first: loads_first) do
         background :two, tiles: :two_set, map: second
         sprite :two_mark, at: mark
+        state = 0 if tick == switch * 3 if handed_over_by_scene
       end
-      game_loop do
-        tick += 1
-        state = 1 if tick == switch
-        state = 0 if tick == switch * 3
+      dispatch = lambda do
         case_var(:state) do
           when_val 0, :one
           when_val 1, :two
+        end
+      end
+      game_loop do
+        tick += 1
+        unless handed_over_by_scene
+          state = 1 if tick == switch
+          state = 0 if tick == switch * 3
+        end
+        if dispatched_inside_test
+          dispatch.call if tick >= 0
+        else
+          dispatch.call
         end
       end
     end
@@ -80,6 +94,31 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
     assert_equal shown(:red), game_player.run(program, frames: SWITCH_AT - 1).screen.pixel(*SECOND_TILE), "the first scene"
     assert_equal shown(:green), game_player.run(program, frames: SWITCH_AT).screen.pixel(*SECOND_TILE), "the hand-over"
     assert_equal shown(:red), game_player.run(program, frames: SWITCH_AT * 3).screen.pixel(*SECOND_TILE), "and back"
+  end
+
+  # A SCENE THAT HANDS OVER AT THE END OF ITS OWN ROUTINE: the variable names the next scene for the
+  # rest of that pass, and the next scene arrives on the pass after. Checked on every pass, neither
+  # scene's sprite is drawn from the other's tiles.
+  def test_a_scene_handing_over_at_its_end_shows_each_sprite_in_its_own_tiles
+    game_player.run(two_scenes(handed_over_by_scene: true), frames: SWITCH_AT * 5)
+    pass
+  end
+
+  def test_a_scene_loading_first_after_a_hand_over_at_the_end_shows_each_sprite_in_its_own_tiles
+    game_player.run(two_scenes(loads_first: true, handed_over_by_scene: true), frames: SWITCH_AT * 5)
+    pass
+  end
+
+  # A DISPATCH INSIDE AN `if` notes the scene for the frame's sprites as the pass starts
+  # (IR::Frames.loop_in_console_order), so the pass a scene takes over on shows the arriving scene's
+  # map with the leaving scene's sprite. Both scenes' tiles are wanted in that frame, and the
+  # leaving scene's sprite is never drawn from the arriving scene's tiles.
+  def test_the_hand_over_frame_of_a_dispatch_inside_a_test_shows_the_leaving_sprite_in_its_own_tiles
+    program = two_scenes(dispatched_inside_test: true)
+    x, y = MARK_AT
+
+    assert_equal shown(:yellow), game_player.run(program, frames: SWITCH_AT).screen.pixel(x, y), "the leaving scene's sprite"
+    game_player.run(program, frames: SWITCH_AT * 5)
   end
 
   def test_each_scenes_sprite_is_drawn_from_its_own_tiles

@@ -201,31 +201,34 @@ module VBlank
                                    "build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
             end
 
-            # The sprite picture +name+, made into pieces (Art#sprite_picture) from the tiles of the scene that
-            # alone shows it, in a game of +scene_tiles+.
+            # The sprite picture +name+, made into pieces (Art#sprite_picture).
             def make_sprite_picture(name)
               image = Assets::Image.of(picture_named(name))
-              @art.with_tiles_of(tiles_scene_of_picture(name)) do
-                if (list = followed_list_of(name))
-                  @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
-                elsif recolored?(name)
-                  @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
-                else
-                  @art.sprite_picture(name, image)
-                end
+              if (list = followed_list_of(name))
+                @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
+              elsif recolored?(name)
+                @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+              else
+                @art.sprite_picture(name, image)
               end
             end
 
             # THE ART OF A GAME WHOSE SCENES EACH KEEP THEIR OWN TILES (Art's +scene_tiles+): what every
             # screen shows made first, so its tiles are numbered before any scene takes its copy, then each
-            # scene's own. A tile a `set_tile` can put on a background is made here too, though no map shows
-            # it, so it is numbered with its background's tiles rather than after a scene's.
+            # scene's own backgrounds. A tile a `set_tile` can put on a background is made here too, though
+            # no map shows it, so it is numbered with its background's tiles rather than after a scene's.
+            #
+            # EVERY SPRITE PICTURE IS ONE EVERY SCREEN SHOWS here, a scene's own included, and stays in
+            # video memory for the whole game. The frame a scene takes over on can want a sprite of the
+            # scene that went beside the map of the one that came: a dispatch inside an `if` places the
+            # pass's sprites for the scene up as the pass started (IR::Frames.loop_in_console_order),
+            # while the arriving scene's map is up already. Kept in the room the scenes take turns
+            # with, that sprite would be drawn from whatever the arriving scene put there. A scene's
+            # sprite pictures are few tiles beside its backgrounds, so keeping them all costs little.
             def make_art_by_scene(poses)
-              shared_poses, own_poses = poses.partition { |name| tiles_scene_of_picture(name).nil? }
               shared_backgrounds, own_backgrounds = @backgrounds.partition { |bg| tiles_scene_of(bg).nil? }
-              shared_poses.each { |name| make_sprite_picture(name) }
+              poses.each { |name| make_sprite_picture(name) }
               shared_backgrounds.each { |bg| make_background_art(bg) }
-              own_poses.each { |name| make_sprite_picture(name) }
               own_backgrounds.each { |bg| make_background_art(bg) }
               @objects.each_value { |obj| recolor_palettes(obj) }
             end
@@ -244,25 +247,17 @@ module VBlank
             # declared in, which puts it up as it takes over; nil for scenery every screen shows.
             def tiles_scene_of(bg) = @scene_tiles ? scene_owning_background(bg) : nil
 
-            # The same for the sprite picture +name+ (LoweringPlan#scene_showing_picture).
-            def tiles_scene_of_picture(name) = @scene_tiles ? scene_owning_picture(name) : nil
-
             def scene_owning_background(bg) = (bg.scene if @handover.on_arrival?(bg) && @scenes.key?(bg.scene))
 
-            def scene_owning_picture(name)
-              scene = @plan.scene_showing_picture(name)
-              scene if @scenes.key?(scene)
-            end
-
-            # WHETHER SOME ART BELONGS TO ONE SCENE, so that bringing each scene's tiles in as it takes over
-            # can leave room (Genesis#build). Only in a game of one dispatch: a second variable picking
-            # scenes can have one of its scenes up beside one of the first's, and the two would want their
-            # own tiles in the same room at once.
+            # WHETHER SOME BACKGROUND BELONGS TO ONE SCENE, so that bringing each scene's tiles in as it
+            # takes over can leave room (Genesis#build); sprite pictures stay in for the whole game
+            # (#make_art_by_scene). Only in a game of one dispatch: a second variable picking scenes can
+            # have one of its scenes up beside one of the first's, and the two would want their own tiles
+            # in the same room at once.
             public def art_of_one_scene?
               return false unless tiled? && @program.walk.count { |node| node.kind == :case } == 1
 
-              @backgrounds.any? { |bg| scene_owning_background(bg) } ||
-                @objects.values.flat_map(&:poses).any? { |name| scene_owning_picture(name) }
+              @backgrounds.any? { |bg| scene_owning_background(bg) }
             end
 
             # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
