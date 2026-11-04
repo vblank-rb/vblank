@@ -108,6 +108,16 @@ module VBlank
         chip_ram > SUPER_FX.chip_ram_bytes ? SUPER_FX.save_offset : 0
       end
 
+      # Whether a cartridge's header says its RAM is kept by a battery, so is a save at all. The low
+      # half of the type byte says what is on the board: 2 is RAM and a battery, 5 and 6 a chip with
+      # a battery (with RAM and without), 9 and $A those with a clock too. A Super FX board's RAM is
+      # there either way, the chip's working memory; only with a battery is any of it a save.
+      BATTERY_KINDS = [0x2, 0x5, 0x6, 0x9, 0xA].freeze
+      def self.battery?(bytes)
+        place = header_place_of(bytes) or return false
+        BATTERY_KINDS.include?(bytes.getbyte(CARTRIDGE_TYPE_AT + place.shift) & 0x0F)
+      end
+
       # +banks+ is the linked cartridge, its first 32K first. +vectors+ names where each vector
       # points, by VECTORS's names; one not named points where reset does.
       # +save_bytes+ is how much battery-backed RAM it has, a power of two from 2K, or nought.

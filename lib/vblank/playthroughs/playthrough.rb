@@ -258,8 +258,8 @@ module VBlank
       end
 
       # THE SAVE THAT WAS HANDED OVER, as save memory: the save another playing handed back,
-      # or the path of a save file, which is that memory byte for byte. Nothing handed over
-      # is no save, and a cartridge nobody has played.
+      # or the path of a save file, read as a SaveFile until the cartridge says where its save
+      # memory is in it. Nothing handed over is no save, and a cartridge nobody has played.
       #
       # A save the framework has a model of is copied, so what was handed over is left as it
       # was. One it only has the bytes of cannot be changed, and is handed on as it is.
@@ -277,7 +277,24 @@ module VBlank
         end
         raise ArgumentError, "There is no save file at #{given}. Give the path of a save file." unless File.file?(given)
 
-        Diagnostics::SaveBytes.save_holding(File.binread(given), from: "The save file at #{given}")
+        SaveFile.new(bytes: File.binread(given), from: "The save file at #{given}")
+      end
+
+      # A SAVE FILE READ FROM A PATH, which can be the emulator's own file and not the save memory
+      # alone: a Super FX board's file has the chip's working RAM before the save, and a clock's
+      # file the clock's bytes after it. Where the save memory is in it is the cartridge's to say
+      # (Console::Kit#save_file_of), so it becomes a save once the cartridge is known.
+      SaveFile = Data.define(:bytes, :from) do
+        def memory_for(cartridge)
+          memory = Console.for(cartridge.console).save_file_of(cartridge).memory_in(bytes)
+          Diagnostics::SaveBytes.save_holding(memory, from: from)
+        end
+      end
+
+      # The save memory in +bytes+, the emulator's save file of +cartridge+, or nil when it holds none.
+      def self.save_memory_in(cartridge, bytes)
+        memory = bytes && Console.for(cartridge.console).save_file_of(cartridge).memory_in(bytes)
+        memory unless memory.nil? || memory.empty?
       end
 
       # +save+ MADE TO FIT +cartridge+, or refused. A cartridge this framework built says how
@@ -285,6 +302,7 @@ module VBlank
       # from another game, or is not a save at all. A cartridge it did not build says
       # nothing, so its save is taken as it comes.
       def self.save_fitted_to(cartridge, save)
+        save = save.memory_for(cartridge) if save.is_a?(SaveFile)
         program = cartridge.source_program or return save
         memory = IR::SaveLayout.memory_of(program)
         if save.is_a?(Diagnostics::SaveBytes)
@@ -477,10 +495,11 @@ module VBlank
 
         # The cartridge's save memory as the last frame left it, or nil for a cartridge with
         # none. Whatever size it is: a cartridge somebody else made can keep a save of a
-        # size the framework has no model of, and that one comes back as its bytes.
+        # size the framework has no model of, and that one comes back as its bytes. It is the
+        # save memory alone, without what else the emulator keeps in its file (Playthrough.save_memory_in).
         def save_left
-          bytes = @game.save_bytes
-          bytes && Diagnostics::SaveBytes.save_holding(bytes, from: "The save this playthrough left")
+          memory = Playthrough.save_memory_in(@cartridge, @game.save_bytes)
+          memory && Diagnostics::SaveBytes.save_holding(memory, from: "The save this playthrough left")
         end
       end
 

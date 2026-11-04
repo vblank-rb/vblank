@@ -66,8 +66,11 @@ module VBlank
         def initialize(whole:, clock_bytes:, memory_at: 0) = super
 
         # The save memory in +file+ (the bytes of the emulator's file), without the clock's bytes.
+        #
+        # A file no bigger than the save memory is the save memory alone, written on its own (a
+        # playthrough's save written with SaveImage#write_sav), and is handed back as it is.
         def memory_in(file)
-          return file.byteslice(memory_at, whole) if memory_at.positive?
+          return file.byteslice(memory_at, whole) if memory_at.positive? && file.bytesize > whole
           return file unless file.bytesize % whole == clock_bytes
 
           file.byteslice(0, file.bytesize - clock_bytes)
@@ -427,9 +430,15 @@ module VBlank
       # The save chip as it is now, as the bytes of the file the emulator keeps it in, or nil
       # for a cartridge with no save chip. This is every chip there is, whatever its size;
       # {#save_image} is the same bytes as a chip the framework has a model of.
+      #
+      # An emulator that writes its file only when the cartridge is taken out (bsnes) hands over
+      # those bytes itself (SNESProbe#save_memory_file); libmgba keeps its file written as it goes.
       def save_bytes
         ensure_rendered!
-        File.binread(save_path) if File.size?(save_path)
+        bytes = if @probe.respond_to?(:save_memory_file) then @probe.save_memory_file
+                elsif File.size?(save_path) then File.binread(save_path)
+                end
+        bytes unless bytes.nil? || bytes.empty?
       end
 
       # Read a program variable's value from IWRAM, by name. Needs the variable-address

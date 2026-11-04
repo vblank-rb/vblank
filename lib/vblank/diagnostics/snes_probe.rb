@@ -14,8 +14,15 @@ module VBlank
       # read this as they read any console's.
       def initialize(path, save_dir: nil)
         @core = Emulator.open_snes(path, save_dir: save_dir)
+        @battery = Cartridge::SNESROM.battery?(File.binread(path))
         @last_audio = []
       end
+
+      # THE BYTES OF THE .srm FILE AS IT WOULD BE WRITTEN NOW, or nil for a cartridge with no
+      # battery. bsnes writes that file only when the cartridge is taken out, so a reader asking
+      # while the cartridge runs reads the RAM the file is made from. On a Super FX board that is
+      # the chip's RAM, its working memory first (SNESReading.save_file_of says where the save is).
+      def save_memory_file = (@core.save_ram if @battery)
 
       def width = @core.width
       def height = @core.height
