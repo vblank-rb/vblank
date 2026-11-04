@@ -2016,8 +2016,10 @@ module VBlank
           # The number an operand half is, when it is one written in the program; nil otherwise.
           def written_half(half) = (half.value if half&.mode == :imm && half.value.is_a?(Integer))
 
+          # A nought goes in with STZ where it can; the 65816 has no STZ to a long address, so a
+          # variable kept past $FFFF takes its nought through A, as store_number does.
           def store_half(number, to)
-            return @asm.stz(to) if number.zero?
+            return @asm.stz(to) if number.zero? && to.mode != :long
 
             @asm.lda(number)
             @asm.sta(to)

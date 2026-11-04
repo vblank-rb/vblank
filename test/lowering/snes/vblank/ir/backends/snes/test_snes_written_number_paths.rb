@@ -100,4 +100,30 @@ class TestSNESWrittenNumberPaths < Minitest::Test
   def test_every_answer_is_the_interpreters_at_each_edge
     game_player.run(self.class.game_of_edges, frames: EDGES.size + 2)
   end
+
+  # Enough variables that the least used go past the first 8K of work RAM, to a long address. A
+  # half written as nought goes straight into the variable, and the 65816 has no STZ to a long
+  # address, so it must go through A there.
+  def self.game_of_far_halves
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      many = Array.new(1900) { |i| var :"many#{i}", i }
+      n = var :n, 0x1234_5678
+      low = var :low, 0
+      high = var :high, 0
+      total = var :total, 0
+      func(:touch_every_one) { many.each { |each_one| total.increase!(each_one) } }
+      game_loop do
+        low.store!(n & 0xFF)
+        high.store!(n & -0x1_0000)
+        n.increase!(0x1_0001)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_nought_half_into_a_far_variable_is_the_interpreters
+    game_player.run(self.class.game_of_far_halves, frames: 4)
+  end
 end
