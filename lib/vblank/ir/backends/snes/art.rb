@@ -33,7 +33,28 @@ module VBlank
           MOST_BACKGROUND_TILES = 1024
           MOST_SPRITE_TILES = 512
 
+          # In a game with a status bar on the third layer the last 64 of the 1024 places hold
+          # that layer's map instead (Runtime::Picture::THIRD_LAYER_MAP).
+          THIRD_LAYER_TILE_PLACES = 960
+
           TILE_BYTES = 32
+
+          # THE THIRD LAYER'S TILES are four-colour: two bit planes, so each pixel is one of four
+          # places (place 0 see-through) and a tile is 16 bytes, the first half of a sixteen-colour
+          # tile's 32 (#tile_bytes). The console reads them from video memory address 0, as the
+          # other two layers do, counting 16 bytes a tile where those count 32; so one place of the
+          # backgrounds' list holds two of them, numbered twice its own number and one more.
+          # Their number is ten bits of a cell, so those places are among the first 512.
+          BAR_TILE_BYTES = 16
+          BAR_TILE_SLOTS = 512
+
+          # And their colours are eight lists of three (and see-through), in the first 32 colours
+          # of the colour memory: list n is colours 4n+1 to 4n+3. Those are where the backgrounds'
+          # lists 0 and 1 are, so each four of the bar's lists take one of the backgrounds' eight
+          # away from them (#reserve_bar_palettes).
+          BAR_PALETTES = 8
+          BAR_OWN_COLORS = 3
+          BAR_PALETTES_A_LIST = PLACES / (BAR_OWN_COLORS + 1)
 
           # A tile number and attributes as a cell of a map holds them: the tile in the low ten
           # bits, the palette in the next three.
@@ -106,6 +127,10 @@ module VBlank
           # The same for the backgrounds' tiles (+background_tiles+).
           class TooManyBackgroundTiles < TooMuch; end
 
+          # A status bar on the third layer whose art does not fit four-colour tiles. Nothing a
+          # second build tries can help, so it is not one of TooMuch.
+          class BarArtTooColorful < LoweringError; end
+
           attr_reader :background_tiles, :sprite_tiles, :grids, :sprite_pictures
 
           # The backdrop of a game that says none: black, as the interpreter's empty screen is.
@@ -132,8 +157,15 @@ module VBlank
           # and stay. Each scene starts from a copy of that list and adds its own in the places left
           # (#with_sprite_tiles_of), and those come in as it takes over (#scene_sprite_tiles). The
           # backgrounds' 1024 tiles go the same way (+background_tiles+, #with_background_tiles_of).
+          #
+          # A STATUS BAR ON THE THIRD LAYER (+third_layer+, #bar_cell) takes the last 64 tile places
+          # for its map (Runtime::Picture::THIRD_LAYER_MAP), so the backgrounds keep 960.
           def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [])
+                         background_tiles: false, small_sprite_scenes: [], third_layer: false)
+            @most_background_tiles = third_layer ? THIRD_LAYER_TILE_PLACES : MOST_BACKGROUND_TILES
+            @bar_palettes = []
+            @bar_tile_numbers = { blank_bar_tile => 0 }
+            @bar_open_slots = {}.compare_by_identity
             @sprite_squares = sprite_squares
             @small_sprite_scenes = small_sprite_scenes
             @scene_of_sprite_tiles = nil
@@ -193,7 +225,7 @@ module VBlank
             number = with_background_tiles_of(tile_scene) do
               @background_tile_numbers[bytes] ||= begin
                 at = @background_tiles.index(nil) || @background_tiles.length
-                refuse_too_many!(at, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+                refuse_too_many!(at, @most_background_tiles, "backgrounds", background_tiles_error)
                 @background_tiles[at] = bytes
                 at
               end
@@ -223,13 +255,48 @@ module VBlank
             number = with_background_tiles_of(tile_scene) do
               @background_tile_numbers[quarters.join] ||= begin
                 at = free_big_place
-                refuse_too_many!(at + BIG_TILE_PLACES.last, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+                refuse_too_many!(at + BIG_TILE_PLACES.last, @most_background_tiles, "backgrounds", background_tiles_error)
                 BIG_TILE_PLACES.zip(quarters) { |offset, bytes| @background_tiles[at + offset] = bytes }
                 at
               end
             end
             [number, palette]
           end
+
+          # THE CELL +image+ (8×8) MAKES ON THE THIRD LAYER, for the status bar +bar+ (a name, for the
+          # words of a refusal): its four-colour tile's number and its list, of the bar's eight. A
+          # tile of more than three colours, or more colours than the eight lists hold, is refused
+          # naming the bar and the tile (+tile+).
+          def bar_cell(image, bar:, tile:)
+            drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
+            colors = drawn.map { |at| image.color_at(at) }.uniq
+            if colors.length > BAR_OWN_COLORS
+              raise BarArtTooColorful, "The status bar :#{bar} shows the tile :#{tile} in #{colors.length} colours. " \
+                                       "On a Super Nintendo, a status bar beside two backgrounds uses tiles of four " \
+                                       "colours. A tile shows #{BAR_OWN_COLORS} colours and see-through. To fix this, " \
+                                       "draw the tile :#{tile} in #{BAR_OWN_COLORS} colours or fewer."
+            end
+
+            palette = bar_palette_for(colors, bar)
+            places = Array.new(64) do |at|
+              image.tile_see_through_at?(at) ? 0 : @bar_palettes[palette].index(image.color_at(at)) + 1
+            end
+            [bar_tile_number(tile_bytes(places).byteslice(0, BAR_TILE_BYTES)), palette]
+          end
+
+          # THE BACKGROUNDS' LISTS THE BAR'S COLOURS ARE IN, kept from the other backgrounds: one for
+          # each four lists of the bar's. Called once the bar's cells are made and before any other
+          # background's, so those are the first lists and nothing else is in them yet.
+          def reserve_bar_palettes
+            ((@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST).times do |palette|
+              @background_palettes[palette] = Array.new(OWN_COLORS, BAR_LIST_HOLDER)
+              @held[:backgrounds] << palette
+            end
+          end
+
+          # What a background list given to the bar holds until the colour memory is written: no
+          # colour a picture can have, so no picture's colours are found in it.
+          BAR_LIST_HOLDER = -1
 
           # A LIST THE GAME CHANGES AS IT RUNS has a palette to itself, its colours in the order of its
           # places: changing it is writing another list over that palette, so every pixel has to
@@ -417,7 +484,7 @@ module VBlank
             palette = held || run_palette(background_palettes(scene), colors, backgrounds_in_message(scene))
             first = with_background_tiles_of(tile_scene) do
               at = @background_tiles.length
-              refuse_too_many!(at + count - 1, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+              refuse_too_many!(at + count - 1, @most_background_tiles, "backgrounds", background_tiles_error)
               count.times { @background_tiles << blank_tile }
               at
             end
@@ -432,7 +499,7 @@ module VBlank
             numbers = with_background_tiles_of(tile_scene) do
               Array.new(count) do
                 at = free_big_place
-                refuse_too_many!(at + BIG_TILE_PLACES.last, MOST_BACKGROUND_TILES, "backgrounds", background_tiles_error)
+                refuse_too_many!(at + BIG_TILE_PLACES.last, @most_background_tiles, "backgrounds", background_tiles_error)
                 BIG_TILE_PLACES.each { |offset| @background_tiles[at + offset] = blank_tile }
                 at
               end
@@ -474,6 +541,11 @@ module VBlank
             colors[0] = @backdrop
             @background_palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = c } }
             @sprite_palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[128 + (p * PLACES) + i + 1] = c } }
+            bar_lists = (@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST
+            (1...(bar_lists * PLACES)).each { |at| colors[at] = 0 }
+            @bar_palettes.each_with_index do |list, p|
+              list.each_with_index { |c, i| colors[(p * (BAR_OWN_COLORS + 1)) + i + 1] = c }
+            end
             colors.pack("v*")
           end
 
@@ -495,6 +567,48 @@ module VBlank
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
+          def blank_bar_tile = ("\0".b * BAR_TILE_BYTES)
+
+          # The bar's list holding every one of +colors+, adding them to one with room, or starting
+          # another of the eight; refused naming +bar+ where none is left.
+          def bar_palette_for(colors, bar)
+            found = @bar_palettes.index { |list| (colors - list).empty? }
+            return found if found
+
+            roomy = @bar_palettes.each_index.select { |p| (@bar_palettes[p] | colors).length <= BAR_OWN_COLORS }
+                                 .max_by { |p| (@bar_palettes[p] & colors).length }
+            return roomy.tap { @bar_palettes[roomy] |= colors } if roomy
+
+            if @bar_palettes.length >= BAR_PALETTES
+              raise BarArtTooColorful, "The tiles of the status bar :#{bar} use more colours than its layer holds. On a " \
+                                       "Super Nintendo, a status bar beside two backgrounds uses tiles of four colours. " \
+                                       "The layer holds #{BAR_PALETTES} lists of #{BAR_OWN_COLORS} colours, and each " \
+                                       "tile uses one list. To fix this, use fewer colours in the bar's tiles."
+            end
+
+            @bar_palettes << colors.dup
+            @bar_palettes.length - 1
+          end
+
+          # A four-colour tile's number: half of one of the backgrounds' places, the second half of
+          # the last place started where it is free (BAR_TILE_BYTES). A place is never shared with a
+          # sixteen-colour tile, and is not one #background_cell can find by its bytes. Each list of
+          # places a scene keeps (#with_background_tiles_of) has a half free of its own.
+          def bar_tile_number(bytes)
+            @bar_tile_numbers[bytes] ||= begin
+              open = @bar_open_slots.delete(@background_tiles)
+              if open
+                @background_tiles[open] = @background_tiles[open].byteslice(0, BAR_TILE_BYTES) + bytes
+                (open * 2) + 1
+              else
+                slot = @background_tiles.index(nil) || @background_tiles.length
+                refuse_too_many!(slot, [@most_background_tiles, BAR_TILE_SLOTS].min, "backgrounds", background_tiles_error)
+                @background_tiles[slot] = bytes + blank_bar_tile
+                @bar_open_slots[@background_tiles] = slot
+                slot * 2
+              end
+            end
+          end
 
           # The palettes of +palettes+ that hold a list the game changes, which nothing else can share.
           def held_in(palettes)

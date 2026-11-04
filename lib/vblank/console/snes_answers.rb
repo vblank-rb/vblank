@@ -125,7 +125,9 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works("tiles of sixteen colours each."),
-        background: works("two backgrounds at a time, scrolled and changed as on the Advance. `above_row:` " \
+        background: works("two backgrounds at a time, and a status bar beside them. Three backgrounds with no " \
+                          "status bar among them are refused: this build does not make that yet. The backgrounds " \
+                          "are scrolled and changed as on the Advance. `above_row:` " \
                           "keeps a background to the rows above that row, and takes no processor time as the " \
                           "screen is drawn. A game with it cannot have a status bar yet. `show_only_inside` is " \
                           "refused: this build does not make it yet. `rotate` and " \
@@ -139,7 +141,13 @@ module VBlank
                           "while that scene is away. Any other block runs as usual, because it can change a number. " \
                           "`held: true` changes nothing: a Super Nintendo writes its video memory only between " \
                           "frames, so the cells a pass changes with `set_tile` already show together."),
-        status_bar: works("the bar is one of the two backgrounds. `set_tile` with `now: true` is refused: " \
+        status_bar: works("beside one background, the bar is one of the two background layers. Beside two " \
+                          "backgrounds, the bar is on the third layer, which has tiles of four colours. Then each " \
+                          "tile of the bar must show 3 colours or fewer, and all its tiles together use 8 lists " \
+                          "of 3 colours or fewer. The game then has room for 960 background tiles, not 1024. " \
+                          "On the third layer, a bar drawn with other colours (`draw_with`), a bar of 16×16 tiles " \
+                          "and a bar of tiles painted from a list are refused: this build does not make them yet. " \
+                          "`set_tile` with `now: true` is refused: " \
                           "a Super Nintendo writes its video memory only between frames, so a change " \
                           "shows on the frame after the pass."),
         canvas: works,

@@ -283,8 +283,12 @@ module VBlank
                                      sprite_sizes: nil, tile_planes: 4,
                                      # The build shows a game's backgrounds on the arrangement of
                                      # layers called mode 1: two of sixteen colours and one of four.
+                                     # The build puts a status bar on the one of four, beside two
+                                     # other backgrounds (Backends::SNES::Lowering::Picture
+                                     # .status_bar_on_third_layer?); three with no bar among them it
+                                     # does not make yet, and says so.
                                      # Mode 7 turns one layer, alone; the build does not use it.
-                                     backgrounds: 2, turning_backgrounds: 0, backgrounds_beside_turning: 0,
+                                     backgrounds: 3, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                                      bar_is_a_background: true,
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.

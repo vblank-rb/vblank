@@ -19,7 +19,8 @@ module VBlank
           # shares the voices with +effects+ sound effects; +samples+ plays its own recordings, on
           # +recording_voices+. +holds_music+, +wobbles+, +steps_shapes+, +swells+, +slides+ and +sides+
           # are the parts of the player its songs use. +status_bar+ has a status bar (Picture's
-          # rt_bar_place), and +row_held+ a background held above a row, which takes the same line table.
+          # rt_bar_place), on the third layer with +third_layer+ (a screen shows it beside two other
+          # backgrounds), and +row_held+ a background held above a row, which takes the same line table.
           # +bends+ bends a background row by row, a scene's own with +scene_bends+. +tile_runs+ is the
           # bytes of each run of tiles painted from lists, staged for the blank, +straight_tile_runs+ that
           # one of them keeps the console's own form, and +held_runs+ those with pictures held in the
@@ -37,7 +38,7 @@ module VBlank
                                 :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
-                                :paint_turns) do
+                                :paint_turns, :third_layer) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             def self.of(program, board:, screen_colors:, sprite_colors:, sprite_tiles:, background_tiles:)
@@ -63,7 +64,8 @@ module VBlank
                   scene_background_tiles: background_tiles, extra_buttons: Frame.reads_extra_buttons?(program),
                   second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program),
                   text_layer: board.name != :super_fx && Lowering::Paint.text_layer?(program),
-                  paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program))
+                  paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),
+                  third_layer: picture.status_bar_on_third_layer?(program))
             end
 
             # A Super FX on the board (Chip).

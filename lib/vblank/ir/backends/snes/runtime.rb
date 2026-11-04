@@ -52,7 +52,7 @@ module VBlank
             Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, bends: c.bends, scene_bends: c.scene_bends,
                                     tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,
                                     bar_covers: c.bar_covers, tile_sizes: c.tile_sizes, scene_tiles: c.scene_tiles,
-                                    scene_background_tiles: c.scene_background_tiles)
+                                    scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer)
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
             Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
@@ -91,7 +91,7 @@ module VBlank
                                       run_scratch: (Picture.run_scratch(memory) if run_count.positive?),
                                       see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
-                                      math_turns: c.math_turns, scene_bars: lowered[:scene_bars])
+                                      math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer)
             Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?) if c.painted
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)

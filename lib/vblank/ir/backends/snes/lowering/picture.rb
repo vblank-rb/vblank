@@ -13,7 +13,8 @@ module VBlank
           # layers of sixteen-colour tiles, the one declared last in front (BG1), as the interpreter
           # paints the one declared last over the rest. Each map it can show is made into a grid of
           # 32 or 64 cells each way (IR::TileMap), kept whole in the cartridge and copied onto its
-          # layer when it is put up. Each sprite is made of the console's 8×8 sprite pieces, placed
+          # layer when it is put up. A status bar shown beside two backgrounds goes on the third
+          # layer, of four-colour tiles (#make_third_layer_art). Each sprite is made of the console's 8×8 sprite pieces, placed
           # in the sprite table every pass the game places its sprites.
           module Picture
             STATEMENTS = Ractor.make_shareable({
@@ -32,6 +33,21 @@ module VBlank
             # Whether +program+ has a status bar, which the runtime then carries what places
             # (Runtime::Picture's rt_bar_place).
             def self.status_bar?(program) = program.walk.any? { |node| node.kind == :background && node.bar? }
+
+            # WHETHER +program+'S STATUS BAR GOES ON THE THIRD LAYER: some screen shows it beside two
+            # other backgrounds. Mode 1 has two layers of sixteen-colour tiles and a third of four,
+            # and the bar is the one that goes there: it is what Super Bomberman puts there (its
+            # stages show an arena and an overlay on the two and the bar on the third), and a bar of
+            # numbers and icons is the picture that fits four colours. A game whose screens show the
+            # bar beside one background at most keeps it on one of the two, as before, and builds the
+            # same bytes.
+            def self.status_bar_on_third_layer?(program)
+              return false if Lowering::Paint.painted?(program)
+
+              Stacking.screenfuls(program).any? do |screenful|
+                screenful.scenery.length > BACKGROUND_LAYERS && screenful.scenery.any?(&:bar?)
+              end
+            end
 
             # Whether +program+ holds a background above a row, which takes the bar's line table.
             def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
@@ -124,9 +140,11 @@ module VBlank
 
             def prepare_picture
               refuse_backdrops_of_its_own!
+              @third_layer = Picture.status_bar_on_third_layer?(@program)
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
-                             background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes)
+                             background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
+                             third_layer: @third_layer)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
@@ -869,7 +887,10 @@ module VBlank
                       if found.fetch(name, priority) != priority
                         refuse_unmade!("a sprite behind a background on one screen and in front of it on another")
                       end
-                      if priority != 3 && screenful.scenery.any?(&:bar?)
+                      # A bar on the third layer is behind every sprite, whatever its priority, and
+                      # the bar's rows show no other layer: so there a sprite can be behind a
+                      # background and still be over the bar, as the interpreter draws it.
+                      if priority != 3 && !@third_layer && screenful.scenery.any?(&:bar?)
                         refuse_unmade!("a status bar beside a sprite behind a background")
                       end
                       found[name] = priority
@@ -989,7 +1010,8 @@ module VBlank
             def keep_corner_notes
               placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && placed_at_pass_end?(node) } }
               if placed.call(:scroll_background)
-                @put_up_this_pass = LAYERS.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
+                layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
+                @put_up_this_pass = layers.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
               end
               @bar_up_this_pass = keep_local(:bar_up_this_pass) if placed.call(:place_bar)
             end
@@ -1023,21 +1045,60 @@ module VBlank
             # behind one every screen shows is not made yet. (Every sprite is in front of every
             # background, SPRITE_IN_FRONT: a background in front of a sprite needs the sprite in a
             # layer, which #refuse_unmade_picture! refuses.)
+            #
+            # A STATUS BAR ON THE THIRD LAYER (Picture.status_bar_on_third_layer?) is left out of that
+            # count and order: it is on THIRD_LAYER whichever screen shows it, and the other two layers
+            # are shared out as they are in a game with no bar.
             def assign_background_layers
               @layers = {}.compare_by_identity
-              always = @handover.always_up.scenery
-              own = @scenes.keys.map { |scene| @handover.arrival(scene).scenery }
+              always = layered_scenery(@handover.always_up.scenery)
+              own = @scenes.keys.map { |scene| layered_scenery(@handover.arrival(scene).scenery) }
               @scene_layers = own.map(&:length).max || 0
               if always.length + @scene_layers > BACKGROUND_LAYERS
-                refuse_unmade!("more than two backgrounds on the screen at once")
+                refuse_unmade!(@third_layer ? "more than two backgrounds on the screen at once beside its status bar" : "more than two backgrounds on the screen at once")
               end
-              @scene_bars = own.flatten.any? { |bg| bg.bar? || bg.above_row }
+              @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any? { |bg| bg.bar? || bg.above_row } }
               refuse_unmade!("a background kept above a row beside a status bar") if Picture.background_rows_held?(@program) && Picture.status_bar?(@program)
               refuse_unmade_stacking!(always)
               refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
+              make_third_layer_art if @third_layer
               refuse_unmade_see_through!
+            end
+
+            # The layer Runtime::Picture keeps a status bar on beside two backgrounds (BG3).
+            THIRD_LAYER = 2
+
+            # +scenery+ less a status bar that is on the third layer.
+            def layered_scenery(scenery) = @third_layer ? scenery.reject(&:bar?) : scenery
+
+            # Whether +bg+ is a status bar on the third layer.
+            def on_third_layer?(bg) = @third_layer && bg.bar?
+
+            # THE BAR'S TILES AND COLOURS, made before any other background's, so that the lists of the
+            # backgrounds its colours take are the first (Art#reserve_bar_palettes) and its tiles are
+            # among the places it can name. Every tile its maps show and every tile the game sets in it
+            # is made now, so none comes later, after a scene has taken its copy of the tiles.
+            def make_third_layer_art
+              backgrounds_declared.select(&:bar?).each do |bar|
+                @layers[bar] = THIRD_LAYER
+                refuse_unmade_third_layer_bar!(bar)
+                bar.every_map.each_index { |which| grid_of(bar, which) }
+                @program.walk.select { |node| node.kind == :set_tile && node.name == bar.name && node.tile.is_a?(Integer) }
+                        .each { |node| cell_of(bar, node.tile) if node.tile < bar.tiles.length }
+              end
+              @art.reserve_bar_palettes
+            end
+
+            # What a bar on the third layer cannot be yet.
+            def refuse_unmade_third_layer_bar!(bar)
+              refuse_unmade!("a status bar beside two backgrounds drawn with other colours (`draw_with`)") unless Array(bar.recolors).empty?
+              refuse_unmade!("a status bar beside two backgrounds drawn from 16×16 tiles") unless bar.tile_w == 8
+              refuse_unmade!("a status bar beside two backgrounds bent row by row") if bends.any? { |bend| bend.name == bar.name }
+              return if @tile_runs.none? { |run| bar.tiles.intersect?(Array(run.tiles)) }
+
+              refuse_unmade!("a status bar beside two backgrounds showing tiles painted from a list")
             end
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no layer" }
@@ -1046,7 +1107,7 @@ module VBlank
             # shows (see #assign_background_layers).
             def refuse_unmade_stacking!(always)
               @scenes.each_key do |scene|
-                own = @handover.arrival(scene).scenery
+                own = layered_scenery(@handover.arrival(scene).scenery)
                 drawn = @handover.showing(scene).select { |bg| (always + own).any? { |up| up.equal?(bg) } }
                 next if drawn.map(&:object_id) == (always + own).map(&:object_id)
 
@@ -1098,8 +1159,11 @@ module VBlank
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
               emit_scene_backdrop(arrival)
-              emit_scene_colors(scene, arrival) if @scene_layers.zero?
-              return if @scene_layers.zero?
+              # (A scene's own status bar on the third layer is a scene's own scenery on no layer of
+              # the two.)
+              own_scenery = !@scene_layers.zero? || scene_bars?
+              emit_scene_colors(scene, arrival) unless own_scenery
+              return unless own_scenery
 
               emit_layers_straight_for(arrival)
               emit_tile_sizes_for(arrival)
@@ -1145,6 +1209,8 @@ module VBlank
               return nil if tile.nil? || tile.negative?
 
               name = bg.tiles.fetch(tile)
+              return @art.bar_cell(Assets::Image.of(picture_named(name)), bar: bg.name, tile: name) if on_third_layer?(bg)
+
               @run_cells.fetch(name) do
                 image = Assets::Image.of(picture_named(name))
                 held = held_background_palette(bg, image)
