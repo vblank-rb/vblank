@@ -60,6 +60,21 @@ class TestWire < Minitest::Test
     end
   end
 
+  def test_a_field_of_the_wrong_kind_is_refused_where_it_is_read_and_named
+    {
+      '{"v":1,"type":"buttons","pass":"x","mask":1}' => /pass "x".*whole number/,
+      '{"v":1,"type":"start","players":[1,"2"]}' => /players.*list of whole numbers/,
+      '{"v":1,"type":"chat","text":7}' => /text 7.*text/,
+      '{"v":1,"type":"checkpoint","pass":4,"crc":1.5}' => /crc/,
+      '{"v":1,"type":"buttons","pass":2,"mask":1,"from":"me"}' => /from/,
+      '{"v":1,"type":"rooms","rooms":["K7QF"]}' => /rooms.*JSON objects/
+    }.each do |text, words|
+      error = assert_raises(Network::BadMessage, text) { Wire.decode(text) }
+
+      assert_match words, error.message
+    end
+  end
+
   def test_a_newer_version_is_refused_with_the_version_this_one_knows
     error = assert_raises(Network::VersionMismatch) { Wire.decode('{"v":2,"type":"left"}') }
 

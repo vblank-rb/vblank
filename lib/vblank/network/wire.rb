@@ -46,6 +46,7 @@ module VBlank
         object = parse(text)
         refuse_other_version!(object)
         type = MESSAGES.fetch(object["type"]) { raise BadMessage, "This message has a type the format does not have: #{object['type'].inspect}." }
+        refuse_wrong_kinds!(object, type)
         message = type.from_wire(object)
         type.relay_message? ? message : Envelope.new(from: object["from"], message: message)
       rescue KeyError => e
@@ -59,6 +60,20 @@ module VBlank
         raise BadMessage, "A message must be a JSON object, and this is #{text[0, 40].inspect}."
       rescue JSON::ParserError
         raise BadMessage, "A message must be JSON, and this is #{text[0, 40].inspect}."
+      end
+
+      # Raises BadMessage when a field the message needs is there and is the wrong kind of value (a pass that is
+      # text), or the room's +from+ is not a whole number. A field that is not there is refused by #decode.
+      def refuse_wrong_kinds!(object, type)
+        kinds = type.field_kinds.merge("from" => Integer)
+        kinds.each do |name, kind|
+          next unless object.key?(name)
+          next if name == "from" && type.relay_message?
+          next if Wirable.kind_of_field?(object[name], kind)
+
+          raise BadMessage, "A #{object['type']} message has #{name} #{object[name].to_json[0, 40]}, and #{name} must be " \
+                            "#{Wirable::KIND_WORDS.fetch(kind)}. The program that sent it does not speak this format."
+        end
       end
 
       def refuse_other_version!(object)

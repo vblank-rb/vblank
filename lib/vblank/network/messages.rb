@@ -28,9 +28,34 @@ module VBlank
         Fingerprint.new(title: fields.fetch("game"), console: fields.fetch("console"), digest: fields.fetch("digest"))
       end
 
+      # The fields a game, a console and a digest are written as, all text.
+      FINGERPRINT_KINDS = { "game" => String, "console" => String, "digest" => String }.freeze
+
+      # What a field's value must be, as #field_kinds names it, and how a person is told so.
+      KIND_WORDS = { Integer => "a whole number", String => "text", integers: "a list of whole numbers",
+                     objects: "a list of JSON objects" }.freeze
+
+      # Whether +value+ is the kind of value +kind+ names.
+      def self.kind_of_field?(value, kind)
+        case kind
+        when :integers then value.is_a?(Array) && value.all?(Integer)
+        when :objects then value.is_a?(Array) && value.all?(Hash)
+        else value.is_a?(kind)
+        end
+      end
+
       module ClassMethods
-        # The name the message has on the wire: its +"type"+. Said once in the message's own class.
-        def wire_type(name = nil) = name ? (@wire_type = name) : @wire_type
+        # The name the message has on the wire: its +"type"+. Said once in the message's own class, with the
+        # kind of value each field it needs must be (Integer, String, :integers for a list of whole numbers, or
+        # :objects for a list of JSON objects), by wire name, which Wire checks when it reads one.
+        def wire_type(name = nil, **kinds)
+          return @wire_type unless name
+
+          @field_kinds = kinds.transform_keys(&:to_s).freeze
+          @wire_type = name
+        end
+
+        def field_kinds = @field_kinds || {}
 
         # Marks a message that is between a machine and the relay and is never handed on to the room.
         def relay_message! = @relay_message = true
@@ -54,7 +79,7 @@ module VBlank
     # what it is running: the game's title (for a person), its console, and its digest.
     Join = Data.define(:fingerprint) do
       include Wirable
-      wire_type "join"
+      wire_type "join", **Wirable::FINGERPRINT_KINDS
 
       def self.from_wire(fields) = new(fingerprint: Wirable.fingerprint_in(fields))
       def wire_fields = Wirable.fingerprint_fields(fingerprint)
@@ -66,14 +91,14 @@ module VBlank
     # passes lie between two checkpoints, and how many players the match holds when it is full.
     Welcome = Data.define(:to, :seed, :input_delay, :checkpoint_every, :players) do
       include Wirable
-      wire_type "welcome"
+      wire_type "welcome", to: Integer, seed: Integer, input_delay: Integer, checkpoint_every: Integer, players: Integer
     end
 
     # The host's answer to a Join that is not let in, with the reason as a symbol (see Refused) and
     # what the host is running, so the refusal can name it.
     Refuse = Data.define(:to, :reason, :fingerprint) do
       include Wirable
-      wire_type "refuse"
+      wire_type "refuse", to: Integer, reason: String, **Wirable::FINGERPRINT_KINDS
 
       def self.from_wire(fields)
         new(to: fields.fetch("to"), reason: fields.fetch("reason").to_sym, fingerprint: Wirable.fingerprint_in(fields))
@@ -85,14 +110,14 @@ module VBlank
     # Said by the host to everybody when a machine has been let in, so each can show who is here.
     Joined = Data.define(:player) do
       include Wirable
-      wire_type "joined"
+      wire_type "joined", player: Integer
     end
 
     # "The match begins." Said by the host once the match is full. +players+ is the list of player
     # numbers in it. Pass 2, the first pass that reads buttons, comes next.
     Start = Data.define(:players) do
       include Wirable
-      wire_type "start"
+      wire_type "start", players: :integers
     end
 
     # --- during the match ---
@@ -102,7 +127,7 @@ module VBlank
     # what gives the network that long to carry it.
     Buttons = Data.define(:pass, :mask) do
       include Wirable
-      wire_type "buttons"
+      wire_type "buttons", pass: Integer, mask: Integer
     end
 
     # A short number (a CRC-32) of the whole of the sender's game state as it stood after pass
@@ -110,7 +135,7 @@ module VBlank
     # pass, so a difference is a machine that has gone wrong.
     Checkpoint = Data.define(:pass, :crc) do
       include Wirable
-      wire_type "checkpoint"
+      wire_type "checkpoint", pass: Integer, crc: Integer
     end
 
     # A line of chat from a player, for the others of the room to read. It is not a button and not state: the
@@ -118,7 +143,7 @@ module VBlank
     # only the number the room stamps on it.
     Chat = Data.define(:text) do
       include Wirable
-      wire_type "chat"
+      wire_type "chat", text: String
     end
 
     # A line of chat as a machine shows it: who said it (a player number, since no name goes over the network) and
@@ -165,14 +190,14 @@ module VBlank
     # Asks the relay which public rooms there are for the game with this +digest+.
     RelayListRooms = Data.define(:digest) do
       include Wirable
-      wire_type "list_rooms"
+      wire_type "list_rooms", digest: String
       relay_message!
     end
 
     # The relay's list: the rooms (PublicRoom) for the game that was asked about, in the order they were made.
     RelayRooms = Data.define(:rooms) do
       include Wirable
-      wire_type "rooms"
+      wire_type "rooms", rooms: :objects
       relay_message!
 
       def self.from_wire(fields) = new(rooms: fields.fetch("rooms").map { |each| PublicRoom.from_wire(each) })
@@ -182,21 +207,21 @@ module VBlank
     # The relay's answer: the code to give to the others, and the sender's number.
     RelayRoomMade = Data.define(:code, :you) do
       include Wirable
-      wire_type "room_made"
+      wire_type "room_made", code: String, you: Integer
       relay_message!
     end
 
     # Asks the relay to put the sender in the room that has +code+.
     RelayJoinRoom = Data.define(:code) do
       include Wirable
-      wire_type "join_room"
+      wire_type "join_room", code: String
       relay_message!
     end
 
     # The relay's answer: the code, the sender's number, and who is in the room already.
     RelayRoomJoined = Data.define(:code, :you, :members) do
       include Wirable
-      wire_type "room_joined"
+      wire_type "room_joined", code: String, you: Integer, members: :integers
       relay_message!
     end
 
@@ -204,7 +229,7 @@ module VBlank
     # a version the relay does not know, the versions it +supported+.
     RelayError = Data.define(:reason, :words, :supported) do
       include Wirable
-      wire_type "error"
+      wire_type "error", reason: String
       relay_message!
 
       def self.from_wire(fields) = new(reason: fields.fetch("reason").to_sym, words: fields["words"], supported: fields["supported"])

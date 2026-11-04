@@ -216,18 +216,25 @@ module VBlank
         end
       end
 
+      # TRUST ONLY WHAT A SENDER MAY SAY. The room stamps who sent each message, so a machine cannot pass for
+      # another, but any machine in the room can send any message. So what only the host decides (who is in, the
+      # settings, the start) is taken from the host alone. Buttons and checkpoints are kept from anybody, since a
+      # player's can come before the host's start does on a slower link, but only the players of the match are
+      # read (#masks_for, #compare_checkpoint): a machine the host refused, still in the room, would otherwise stop
+      # everybody with a false checkpoint. Chat is anybody's in the room, and a join is the host's to answer.
       def apply_message(envelope)
         message = envelope.message
+        from = envelope.from
         case message
-        when Join then admit_or_refuse(envelope.from, message) if host?
-        when Welcome then adopt_settings(message) if message.to == @player
-        when Refuse then @refusal = message if message.to == @player
-        when Joined then @roster |= [message.player]
-        when Start then start_with(message.players)
-        when Buttons then store_buttons(envelope.from, message)
-        when Checkpoint then store_checkpoint(envelope.from, message)
-        when Chat then @chat_lines << ChatLine.new(player: envelope.from, text: plain_line(message.text))
-        when Left then record_departure(envelope.from)
+        when Join then admit_or_refuse(from, message) if host?
+        when Welcome then adopt_settings(message) if from == HOST_PLAYER && message.to == @player
+        when Refuse then @refusal = message if from == HOST_PLAYER && message.to == @player
+        when Joined then @roster |= [message.player] if from == HOST_PLAYER
+        when Start then start_with(message.players) if from == HOST_PLAYER
+        when Buttons then store_buttons(from, message)
+        when Checkpoint then store_checkpoint(from, message)
+        when Chat then @chat_lines << ChatLine.new(player: from, text: plain_line(message.text))
+        when Left then record_departure(from)
         end
       end
 
@@ -299,7 +306,7 @@ module VBlank
       end
 
       def masks_for(pass)
-        masks = Array.new(@roster.max) { |index| @inputs[index + 1][pass] || 0 }
+        masks = Array.new(@roster.max) { |index| @roster.include?(index + 1) ? @inputs[index + 1][pass] || 0 : 0 }
         @inputs.each_value { |by_pass| by_pass.delete(pass - 1) }
         masks
       end
@@ -329,15 +336,22 @@ module VBlank
       # has its own, so every machine that has both of two numbers finds the same difference.
       def compare_checkpoint(pass)
         return unless @checkpoints[pass].key?(@player)
-        return if @checkpoints[pass].values.uniq.one?
 
-        raise Desync, DesyncReport.new(pass: pass, last_agreed_pass: last_agreed_before(pass),
-                                       crcs: @checkpoints[pass].dup, tape: tape)
+        crcs = players_crcs(pass)
+        return if crcs.values.uniq.one?
+
+        raise Desync, DesyncReport.new(pass: pass, last_agreed_pass: last_agreed_before(pass), crcs: crcs, tape: tape)
       end
 
+      # The checkpoints held for +pass+ from the players of the match, and from nobody else.
+      def players_crcs(pass) = @checkpoints[pass].slice(*@roster)
+
       def last_agreed_before(pass)
-        agreed = @checkpoints.select { |earlier, crcs| earlier < pass && crcs.size > 1 && crcs.values.uniq.one? }
-        agreed.keys.max || 0
+        agreed = @checkpoints.keys.select do |earlier|
+          crcs = players_crcs(earlier)
+          earlier < pass && crcs.size > 1 && crcs.values.uniq.one?
+        end
+        agreed.max || 0
       end
 
       # +text+ as one line of plain text: control characters (a new line, an escape) are spaces, and it is at most

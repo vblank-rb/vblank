@@ -114,7 +114,9 @@ module NodeCopy
   def self.deliver(stdin, endpoint)
     any = false
     while (envelope = endpoint.receive_message)
-      stdin.puts("net-in #{Wire.encode(envelope.message, from: envelope.from)}")
+      # A test that sends text of its own (a message the format refuses) sends it as a String, given as it is.
+      text = envelope.message.is_a?(String) ? envelope.message : Wire.encode(envelope.message, from: envelope.from)
+      stdin.puts("net-in #{text}")
       any = true
     end
     any

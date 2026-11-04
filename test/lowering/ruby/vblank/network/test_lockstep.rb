@@ -291,6 +291,32 @@ class TestLockstep < Minitest::Test
     assert_equal picture_checks(copies.first).last, picture_check(played.game.frame_gba)
   end
 
+  # A MACHINE IN THE ROOM THAT IS NOT IN THE MATCH (refused, or never asked) can send any message, and none of
+  # its messages moves the match: a false checkpoint, buttons, and the host's own words, which only the host's
+  # count.
+  def test_a_machine_outside_the_match_cannot_stop_it_or_steer_it
+    net = Network::SimulatedNetwork.new
+    host = copy_for(net, players: 2)
+    friend = copy_for(net)
+    stranger = net.connect
+    lies = lambda do
+      stranger.send_message(Network::Welcome.new(to: 2, seed: 99, input_delay: 0, checkpoint_every: 1, players: 2))
+      stranger.send_message(Network::Start.new(players: [1, 2]))
+      stranger.send_message(Network::Joined.new(player: 3))
+      (2..PASSES).each do |pass|
+        stranger.send_message(Network::Buttons.new(pass: pass, mask: RIGHT_BIT))
+        stranger.send_message(Network::Checkpoint.new(pass: pass, crc: 12_345))
+      end
+    end
+
+    outcomes = net.play([host, friend].map { |copy| -> { copy.session.play(copy.device) } } + [lies])
+
+    assert_all_finished outcomes
+    assert_equal PASSES, friend.device.pictures.size
+    assert_same_pictures([host, friend])
+    assert_equal 7, friend.lockstep.seed
+  end
+
   # A game that is not wanderers, for the same console.
   private def other_game
     VBlank.game("OTHER", consoles: %i[gba], players: 4) { game_loop { pixel 2, 2, :red } }.checked_program(err: nil, console: :gba)

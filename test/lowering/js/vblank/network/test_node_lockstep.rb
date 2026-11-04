@@ -87,6 +87,47 @@ class TestNodeLockstep < Minitest::Test
     assert_equal pictures_of(outcomes.first.value), outcomes.last.value.pictures
   end
 
+  # A machine in the room and not in the match cannot stop it with a false checkpoint, or steer it with words
+  # only the host may say.
+  def test_a_machine_outside_the_match_cannot_stop_or_steer_node_copies
+    net = Network::SimulatedNetwork.new
+    copies = [node(net, hold: RIGHT, host: settings(2)), node(net, hold: LEFT)]
+    stranger = net.connect
+    lies = lambda do
+      stranger.send_message(Network::Welcome.new(to: 2, seed: 99, input_delay: 0, checkpoint_every: 1, players: 2))
+      stranger.send_message(Network::Start.new(players: [1, 2]))
+      stranger.send_message(Network::Joined.new(player: 3))
+      (1..PASSES).each do |pass|
+        stranger.send_message(Network::Buttons.new(pass: pass, mask: RIGHT))
+        stranger.send_message(Network::Checkpoint.new(pass: pass, crc: 12_345))
+      end
+    end
+
+    first, second = net.play([*copies, lies]).first(2).map(&:value)
+
+    assert first.success, first.error
+    assert second.success, second.error
+    assert_equal PASSES - 1, second.states.size
+    assert_equal first.states, second.states
+  end
+
+  # Text the format refuses stops a node copy with the plain words Ruby's Wire gives, at the place it is read.
+  def test_a_message_of_another_version_or_a_wrong_field_is_refused_in_words_by_a_node_copy
+    {
+      '{"v":2,"type":"chat","text":"hi","from":1}' => /newer version of the network format \(2\)/,
+      '{"v":1,"type":"buttons","pass":"x","mask":1,"from":1}' => /pass "x", and pass must be a whole number/
+    }.each do |text, words|
+      net = Network::SimulatedNetwork.new
+      sender = net.connect
+      joining = node(net, hold: LEFT)
+
+      played = net.play([-> { sender.send_message(text) }, joining]).last.value
+
+      refute played.success, text
+      assert_match words, played.error
+    end
+  end
+
   def test_a_player_who_goes_is_seen_leaving_on_the_same_pass_by_a_node_copy
     net = Network::SimulatedNetwork.new
     net.at_round(6) { net.disconnect(3) }
