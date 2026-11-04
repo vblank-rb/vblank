@@ -946,6 +946,19 @@ module VBlank
               asm.stz(asm.direct(s.count)) # tiles to paint
               dirty = memory[Paint::DIRTY]
               dirty_rows = memory[ROWS_OF.fetch(Paint::DIRTY)]
+              # Every tile covered is looked at, so the rows are looked at with the data bank at
+              # the first bank of work RAM, where the keys and the tiles' bytes are: a 16-bit
+              # address reaches them, and the first 8K, where the rest is kept, is the same memory
+              # there as in bank 0.
+              far = [keys_now, keys_copy, memory[PAINTED_IN], memory[UNSENT]]
+              raise ArgumentError, "a tile's keys and bytes share work RAM's first bank" unless far.all? { |at| at >> 16 == Paint::WORK_RAM >> 16 }
+
+              asm.phb
+              asm.sep(0x20)
+              asm.lda(Paint::WORK_RAM >> 16)
+              asm.pha
+              asm.plb
+              asm.rep(0x20)
               asm.ldx(asm.abs(dirty_rows))
               asm.txa
               3.times { asm.asl } # the row's first tile
@@ -977,21 +990,29 @@ module VBlank
               # over. Y counts the tiles and X their keys; +pointer+ points at PAINTED_IN, +planes+
               # at REPAINT and UNSENT.
               asm.label("rt_paint_flush_tile")
-              asm.lda(asm.long_x(keys_now))
-              asm.cmp(asm.long_x(keys_copy))
+              asm.lda(asm.abs_x(keys_now & 0xFFFF))
+              asm.cmp(asm.abs_x(keys_copy & 0xFFFF))
               asm.bne("rt_paint_flush_changed")
-              asm.lda(asm.long_x(keys_now, 2))
-              asm.cmp(asm.long_x(keys_copy, 2))
+              asm.lda(asm.abs_x((keys_now & 0xFFFF) + 2))
+              asm.cmp(asm.abs_x((keys_copy & 0xFFFF) + 2))
               asm.bne("rt_paint_flush_changed")
               # The copy holds it already: nothing painted it since it was painted (in this
               # generation), or it is painted the way it was in an older one.
               asm.sep(0x20)
               asm.lda(generation)
-              asm.sta(asm.ind_long_y(s.pointer))
+              asm.sta(asm.abs_y(memory[PAINTED_IN] & 0xFFFF))
               asm.rep(0x20)
               asm.lda(asm.abs(memory[SENDING]))
               asm.beq("rt_paint_flush_tile_done")
-              asm.jsr(asm.abs("rt_paint_flush_send_tile")) # it may be unsent from an earlier flush
+              # It may be unsent from an earlier flush; one that is not, with no run started, is
+              # nothing to send, and is passed over here rather than in a call.
+              asm.lda(asm.abs_y(memory[UNSENT] & 0xFFFF))
+              asm.and_a(0x00FF)
+              asm.bne("rt_paint_flush_tile_send")
+              asm.lda(asm.direct(s.chunk))
+              asm.bmi("rt_paint_flush_tile_done")
+              asm.label("rt_paint_flush_tile_send")
+              asm.jsr(asm.abs("rt_paint_flush_send_tile"))
               asm.bra("rt_paint_flush_tile_done")
               asm.label("rt_paint_flush_changed")
               asm.lda(asm.ind_long_y(s.pointer))
@@ -1050,6 +1071,7 @@ module VBlank
               asm.cpx(asm.abs(dirty_rows + 2))
               asm.branch_long(:bcc, "rt_paint_flush_row")
               asm.label("rt_paint_flush_rows_done")
+              asm.plb
               asm.lda(asm.direct(s.count))
               asm.beq("rt_paint_flush_done")
               asm.jsr(asm.abs("rt_paint_replay"))
@@ -1358,16 +1380,26 @@ module VBlank
             # other, into Paint::MAP_COPY, which holds the map as video RAM has it; each row's cells
             # that changed, from the first to the last, a run to send.
             # (+chunk+ is the row's first cell changed, or none, +mark_count+ its last, +last+ the
-            # row's last cell and one; Y counts the cells, X their words of the map, and +pointer+
-            # points at GENERATIONS.)
+            # row's last cell and one; Y counts the cells, X their words of the map, and +mask+ is
+            # the generation.)
+            #
+            # Every cell of a changed row is looked at, which for half the screen changed is all
+            # 896 of them, so the loop over a row's cells works with the data bank at the map's
+            # (GENERATIONS is in the same bank): a 16-bit address reaches both, an instruction a
+            # byte shorter and a cycle quicker than a long one, and the generation is on the
+            # direct page, which the data bank does not move.
             def emit_map_runs(asm, memory, s)
               map = memory[Paint::MAP_COPY]
+              generations = memory[Paint::GENERATIONS]
+              raise ArgumentError, "the map and the generations share a bank" unless map >> 16 == generations >> 16
+
               runs = memory[MAP_RUNS]
               map_rows = memory[ROWS_OF.fetch(MAP_DIRTY)]
               asm.label("rt_paint_map_runs")
               asm.stz(asm.abs(memory[MAP_RUNS_END]))
               asm.stz(asm.abs(memory[MAP_RUN_BYTES]))
-              emit_pointer(asm, s.pointer, memory[Paint::GENERATIONS])
+              asm.lda(asm.abs(memory[Paint::GENERATION]))
+              asm.sta(asm.direct(s.mask))
               asm.ldx(asm.abs(map_rows))
               asm.txa
               3.times { asm.asl } # the row's first cell
@@ -1395,30 +1427,27 @@ module VBlank
               asm.tax
               asm.lda(0xFFFF)
               asm.sta(asm.direct(s.chunk))
-              asm.label("rt_paint_map_runs_cell")
-              asm.lda(asm.ind_long_y(s.pointer))
-              asm.and_a(0x00FF)
-              asm.cmp(asm.abs(memory[Paint::GENERATION]))
-              asm.beq("rt_paint_map_runs_own")
-              asm.lda(Paint::CLEAR_CELL)
-              asm.bra("rt_paint_map_runs_worked_out")
-              asm.label("rt_paint_map_runs_own")
-              asm.tya
-              asm.label("rt_paint_map_runs_worked_out")
-              asm.cmp(asm.long_x(map))
-              asm.beq("rt_paint_map_runs_same")
-              asm.sta(asm.long_x(map))
-              asm.lda(asm.direct(s.chunk))
-              asm.bpl("rt_paint_map_runs_started")
-              asm.sty(asm.direct(s.chunk))
-              asm.label("rt_paint_map_runs_started")
-              asm.sty(asm.direct(s.mark_count))
-              asm.label("rt_paint_map_runs_same")
-              asm.inx
-              asm.inx
-              asm.iny
-              asm.cpy(asm.direct(s.last))
-              asm.bcc("rt_paint_map_runs_cell")
+              asm.phb
+              asm.sep(0x20)
+              asm.lda(map >> 16)
+              asm.pha
+              asm.plb
+              asm.rep(0x20)
+              # The loop twice over: up to the row's first cell that changed, which starts the run,
+              # and then from it, where a cell that changed only moves the run's end. Half the
+              # screen changed is every cell changed, and the run's start asked once a row rather
+              # than at each.
+              emit_map_cells(asm, s, map, generations, "rt_paint_map_runs_cell") do
+                asm.sty(asm.direct(s.chunk))
+                asm.sty(asm.direct(s.mark_count))
+                asm.bra("rt_paint_map_runs_run_next")
+              end
+              asm.bra("rt_paint_map_runs_row_looked")
+              emit_map_cells(asm, s, map, generations, "rt_paint_map_runs_run") do
+                asm.sty(asm.direct(s.mark_count))
+              end
+              asm.label("rt_paint_map_runs_row_looked")
+              asm.plb
               asm.lda(asm.direct(s.chunk))
               asm.bmi("rt_paint_map_runs_none")
               asm.ldx(asm.abs(memory[MAP_RUNS_END]))
@@ -1451,6 +1480,37 @@ module VBlank
               asm.label("rt_paint_map_runs_rows_done")
               emit_no_rows(asm, memory, MAP_DIRTY)
               asm.rts
+            end
+
+            # In rt_paint_map_runs, the data bank the map's: the row's cells from Y (X its word of
+            # the map) up to +last+, each worked out and compared with the map, and one that changed
+            # written there and handed to the block. Out at the end when the row is done; the block
+            # may leave the loop itself. +tag+ names the loop's top, and +tag+_next where the next
+            # cell is taken.
+            def emit_map_cells(asm, s, map, generations, tag)
+              asm.bra(tag)
+              asm.label("#{tag}_older")
+              asm.lda(Paint::CLEAR_CELL)
+              asm.cmp(asm.abs_x(map & 0xFFFF))
+              asm.bne("#{tag}_changed")
+              asm.bra("#{tag}_next")
+              asm.label(tag)
+              asm.lda(asm.abs_y(generations & 0xFFFF))
+              asm.and_a(0x00FF)
+              asm.cmp(asm.direct(s.mask))
+              asm.bne("#{tag}_older")
+              asm.tya # its own tile
+              asm.cmp(asm.abs_x(map & 0xFFFF))
+              asm.beq("#{tag}_next")
+              asm.label("#{tag}_changed")
+              asm.sta(asm.abs_x(map & 0xFFFF))
+              yield
+              asm.label("#{tag}_next")
+              asm.inx
+              asm.inx
+              asm.iny
+              asm.cpy(asm.direct(s.last))
+              asm.bcc(tag)
             end
 
             # In the blank (Paint's rt_paint_upload, with the map's other copies): each run of cells

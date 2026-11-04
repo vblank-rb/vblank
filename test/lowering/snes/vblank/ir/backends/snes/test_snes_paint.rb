@@ -157,6 +157,25 @@ class TestSNESPaint < Minitest::Test
     assert_empty run.torn_frames
   end
 
+  # Half the screen painted on alternate passes changes no tile (the copy holds both halves
+  # already) but 448 tiles' keys and all 896 cells of the map. Looking at each tile and cell with
+  # 16-bit addresses, the map's run started once a row, takes three frames a pass; it took four.
+  def test_half_the_screen_on_alternate_passes_takes_three_frames
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 128, 224, :red if n % 2 == 0
+        fill_rect 128, 0, 128, 224, :green if n % 2 == 1
+        n += 1
+      end
+    end
+    run = SNES::HeadlessRun.new.run(program, frames: 8)
+
+    assert_operator (4..8).map { |pass| run.frames_took(pass) }.max, :<=, 3
+  end
+
   # A TILE ON THE SCREEN PAINTED AGAIN goes into the slot of video RAM its cell shows, so it is
   # seen the moment it arrives. In a big change those tiles go last, with the map, in one blank:
   # here a word at the top changes colour each pass while a band of the screen the last pass left
