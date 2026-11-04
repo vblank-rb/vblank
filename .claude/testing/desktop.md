@@ -23,6 +23,15 @@ window writes the file is plain counting in `runtime/rg_save.c`, tested with no 
 `runtime/rg_console_bios.h` and `Live::ConsoleBIOS`, both held to `test/console_bios_cases.rb`
 with made-up files and a made-up accepted checksum (`known_sha1:`), so no test needs a BIOS.
 
+**The console's start-up** is the BIOS's own code, run by a small emulator of what it touches
+(`runtime/rg_bios_boot.c`) before an Advance game's first frame. `test_native_bios_boot.rb` holds
+its processor to small programs assembled with `GBA::ASM`, and the whole start-up to mGBA frame by
+frame, every pixel and every sample of the console's own mix (`Core#mixed_sound_start`); the window
+plays it only in a player's run, or a scripted one given `--start-up` (`test_native_desktop.rb`).
+The tests that need the BIOS read the file `VBLANK_GBA_BIOS` names and skip without one. When the
+emulator and mGBA part ways, `bios_boot_harness.c trace` prints every instruction with its cycle
+count, to step beside mGBA's `Core#step` and `#registers` and find the first one that differs.
+
 **How evenly it shows its pictures** cannot be seen by a test, and a stutter is exactly that. A
 build started with `--frame-times` says at its end, on the error stream, what paced its frames
 (the monitor or the console's clock), how far apart pictures were handed to the display, which
