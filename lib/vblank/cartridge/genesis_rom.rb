@@ -83,16 +83,24 @@ module VBlank
       # HOW MANY FRAMES ITS PASSES TOOK: the cartridge run in the emulator
       # (Diagnostics::GenesisProfiler), reported for a person or as JSON. +keys+ are held from
       # power-on, and +settle+ passes run before the +frames+ passes measured.
+      #
+      # With a +tape+, the tape is played from power-on and +frames+ is a range of its frames, each
+      # read by itself (Diagnostics::TapeProfile).
       def profile(format: :human, out: $stdout, frames: Diagnostics::GenesisProfiler::FRAMES,
-                  settle: Diagnostics::GenesisProfiler::SETTLE, keys: [], scene: nil, from: nil, press: [])
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
         if scene || from
           raise ArgumentError, "a Genesis profile measures the game as it plays from power-on, and cannot be " \
                                "told a #{scene ? 'scene' : 'saved moment'} yet. To fix this, leave out " \
                                "#{scene ? '--scene' : '--from'}, and use --keys and --settle to reach the moment."
         end
         Diagnostics::TimeByRoutine.refuse_press!(press, "Genesis")
+        if tape
+          return Diagnostics::TapeProfile.profile(self, Diagnostics::GenesisProfiler, tape: tape, frames: frames, keys: keys,
+                                                                                      settle: settle, format: format, out: out)
+        end
 
-        result = Diagnostics::GenesisProfiler.run(self, frames: frames, settle: settle, keys: keys)
+        result = Diagnostics::GenesisProfiler.run(self, frames: frames, settle: settle || Diagnostics::GenesisProfiler::SETTLE,
+                                                        keys: keys)
         case format
         when :human then Diagnostics::GenesisProfiler.render(result, out: out)
         when :json then out.puts(JSON.generate(result.to_h))

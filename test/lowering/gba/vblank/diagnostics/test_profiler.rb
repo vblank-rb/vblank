@@ -370,6 +370,14 @@ class TestProfiler < Minitest::Test
     assert_raises(ArgumentError) { lopsided_game.profile(format: :sideways, out: StringIO.new) }
   end
 
+  # Only the Super Nintendo's and the Genesis's profiles read a tape's frames one at a time.
+  def test_a_tape_is_refused_in_plain_words
+    tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: X 0x00000000\nstarts from: power-on\n")
+    error = assert_raises(ArgumentError) { lopsided_game.profile(out: StringIO.new, tape: tape, frames: 1..2) }
+
+    assert_match(/cannot play a tape/, error.message)
+  end
+
   # --- holding a game in one scene ---
 
   # A game boots to its title and a held button will not get past one, because a menu reads

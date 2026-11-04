@@ -181,7 +181,8 @@ module VBlank
       # addresses each routine runs at cannot be recovered from the bytes, because a routine kept
       # in the console's quick memory was copied there at boot.
       def profile(format: :human, out: $stdout, frames: Diagnostics::Profiler::FRAMES,
-                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil, press: [])
+                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil, press: [], tape: nil)
+        Diagnostics::TapeProfile.refuse_tape!(tape, "Game Boy Advance")
         require_build_record! # a cartridge with no record cannot name its own routines
         result = Diagnostics::Profiler.run(self, frames: frames, settle: settle, keys: keys, scene: scene,
                               from: from, press: press)

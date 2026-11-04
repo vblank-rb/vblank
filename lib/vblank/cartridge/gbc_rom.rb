@@ -107,7 +107,8 @@ module VBlank
       # +frames+ measured. The Advance's profile can be told a scene or a saved moment to measure;
       # the Color's cannot yet, and says so.
       def profile(format: :human, out: $stdout, frames: Diagnostics::GBCProfiler::FRAMES,
-                  settle: Diagnostics::GBCProfiler::SETTLE, keys: [], scene: nil, from: nil, press: [])
+                  settle: Diagnostics::GBCProfiler::SETTLE, keys: [], scene: nil, from: nil, press: [], tape: nil)
+        Diagnostics::TapeProfile.refuse_tape!(tape, "Game Boy Color")
         if scene || from
           raise ArgumentError, "a Game Boy Color profile measures the game as it plays from power-on, and cannot be " \
                                "told a #{scene ? 'scene' : 'saved moment'} yet. To fix this, leave out " \

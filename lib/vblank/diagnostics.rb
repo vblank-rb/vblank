@@ -36,6 +36,7 @@ require_relative "diagnostics/hidden_variables" # the variables normal Ruby need
 require_relative "diagnostics/profiler" # ...and the measured half: where the frames went
 require_relative "diagnostics/gbc_profiler" # ...and where a Game Boy Color cartridge's went
 require_relative "diagnostics/time_by_routine" # a frame's time by routine, from an emulator that counts it by address
+require_relative "diagnostics/tape_profile" # ...each frame of a tape read by itself, and which work held its picture
 require_relative "diagnostics/snes_profiler" # ...and where a Super Nintendo cartridge's frames went
 require_relative "diagnostics/genesis_profiler" # ...and where a Genesis cartridge's frames went
 require_relative "diagnostics/hand_overs" # which scenes run late on the frame the game hands over to them

@@ -33,11 +33,15 @@ module VBlank
 
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is,
       # the frames the slowest took and which pass of the game it was, and how many passes took
-      # each number of frames; and TimeByRoutine::Report's four.
+      # each number of frames; TimeByRoutine::Report's four; and +measured_frames+, the frames the
+      # time was read over, counted from 1 at power-on as a tape counts them.
       Result = Data.define(:passes, :frames, :fps, :slowest_frames, :slowest_pass, :passes_by_frames,
-                           :idle_share, :fewest_lines_spare, :game, :runtime) do
-        def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h))
+                           :idle_share, :fewest_lines_spare, :game, :runtime, :measured_frames) do
+        def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h),
+                               measured_frames: [measured_frames.begin, measured_frames.end])
       end
+
+      FILE_NAME = "game.md"
 
       # +rom+ is a GenesisROM built with its record (Genesis::Places). +keys+ are held from power-on,
       # and +settle+ passes run before the +frames+ passes measured.
@@ -46,32 +50,46 @@ module VBlank
         run = IR::Backends::Genesis::HeadlessRun.new.hold(*keys).run(built.source_program, frames: settle + frames + 1)
         took = ((settle + 1)..(settle + frames)).to_h { |pass| [pass, run.frames_took(pass)] }
         Emulator.load_genesis!
-        result_of(took, time_of(rom, frames: frames, settle: settle, keys: keys))
+        result_of(took, *time_of(rom, frames: frames, settle: settle, keys: keys))
       end
 
-      # The time of the +frames+ after +settle+ passes.
+      # +tape+ played on +rom+ from power-on, and each of +frames+ read by itself (TapeProfile).
+      def self.run_tape(rom, tape:, frames:)
+        places = rom.built or raise ArgumentError, "this cartridge carries no record of its build to play it from"
+        Emulator.load_genesis!
+        TapeProfile.run(rom, tape: tape, frames: frames, time: time_by_routine(places), file_name: FILE_NAME,
+                             shown_at: places.runtime.fetch(IR::Backends::Genesis::Runtime::Frame::SHOWN),
+                             passes_at: places.waits_counted_at)
+      end
+
+      # The time of the +frames+ after +settle+ passes, and which frames those were.
       def self.time_of(rom, frames:, settle:, keys:)
         places = rom.built
-        Emulator.with_cartridge(rom, file_name: "game.md") do |core|
+        Emulator.with_cartridge(rom, file_name: FILE_NAME) do |core|
           core.set_buttons(keys)
           core.run_frame while core.frames < MOST_FRAMES_TO_SETTLE && core.wram_read32(places.waits_counted_at) <= settle
+          first = core.frames + 1
           core.take_processor_time # the first ask starts the count
           by_frame = Array.new(frames) do
             core.run_frame
             core.take_processor_time
           end
-          TimeByRoutine.new(code: places.code, waits: WAITS, line: LINE_CYCLES, game_labels: GAME_LABELS).report(by_frame)
+          [time_by_routine(places).report(by_frame), first..(first + frames - 1)]
         end
       end
 
-      # What the frames each pass took (+took+, by pass) and the +time+ come to.
-      def self.result_of(took, time)
+      def self.time_by_routine(places)
+        TimeByRoutine.new(code: places.code, waits: WAITS, line: LINE_CYCLES, game_labels: GAME_LABELS)
+      end
+
+      # What the frames each pass took (+took+, by pass) and the +time+ come to, over +measured_frames+.
+      def self.result_of(took, time, measured_frames)
         frames = took.values.sum
         counted, slowest_frames = took.max_by { |pass, count| [count, -pass] }
         # The runtime counts the wait before the game's first pass as a pass of its own.
         Result.new(passes: took.size, frames: frames, fps: FRAME_RATE * took.size / frames,
                    slowest_frames: slowest_frames, slowest_pass: counted - 1, passes_by_frames: took.values.tally.sort.to_h,
-                   **time.to_h)
+                   measured_frames: measured_frames, **time.to_h)
       end
 
       # The report, for a person.
@@ -79,6 +97,8 @@ module VBlank
         out.puts "Genesis: #{result.passes} passes of the game loop in #{result.frames} frames " \
                  "(#{format('%.1f', result.fps)} a second), waiting #{format('%.1f%%', result.idle_share * 100)} of " \
                  "the time. The tightest frame had #{result.fewest_lines_spare} lines to spare."
+        out.puts "The time was measured over frames #{result.measured_frames.begin} to #{result.measured_frames.end} " \
+                 "from power-on. A tape's frames are counted the same way: `rom.profile(tape:, frames:)` reads each one."
         out.puts "The slowest pass took #{result.slowest_frames} frames: pass #{result.slowest_pass}." if result.slowest_frames > 1
         result.passes_by_frames.each do |frames, passes|
           out.puts format("  %4d of them took %d %s", passes, frames, frames == 1 ? "frame" : "frames")
