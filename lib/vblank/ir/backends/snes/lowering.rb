@@ -130,9 +130,34 @@ module VBlank
           # The routine the game names +name+.
           def self.routine_label(name) = "routine #{name}"
 
-          # What a build of +program+ works out once for all its tries (BuildCache), which SNES#build
-          # hands each try's lowering.
-          def self.build_cache(program) = BuildCache.new(program, console: Console::SUPER_NINTENDO, error: LoweringError)
+          # The console this lowers for (BuildCache).
+          CONSOLE = Console::SUPER_NINTENDO
+
+          # WHAT THE SUPER NINTENDO'S LOWERING ALONE WORKS OUT FROM THE PROGRAM, once a build for all
+          # its tries (BuildCache#facts): what its background pictures' pixels come to
+          # (Art::TileMemo), whether its scenes have backdrops of their own, and what the runtime
+          # carries for each set of choices a try is built with (Runtime::Carries, SNES#build).
+          class BuildFacts
+            attr_reader :tile_memo
+
+            def initialize(cache)
+              @cache = cache
+              @tile_memo = Art::TileMemo.new
+              @carries = {}
+            end
+
+            # Whether a scene says a backdrop of its own (Picture.scene_backdrops?).
+            def scene_backdrops?
+              @scene_backdrops = Picture.scene_backdrops?(@cache.program, @cache.handover) if @scene_backdrops.nil?
+              @scene_backdrops
+            end
+
+            # What the runtime carries for a try built on +board+ with +choices+ (Runtime::Carries.of).
+            def carries(board, **choices)
+              @carries[[board, choices]] ||= Runtime::Carries.of(@cache.program, board: board, handover: @cache.handover,
+                                                                                 stacking: @cache.stacking, **choices)
+            end
+          end
 
           # Where each of the game's variables went, by its name, and each of its lists — [its place,
           # its capacity, the bytes a slot, its name] — once #sections has placed them; the label of
@@ -150,10 +175,10 @@ module VBlank
           # pixels among it (Art::TileMemo).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                          background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
-                         cache: self.class.build_cache(program))
+                         cache: BuildCache.for(SNES, program))
             @program = program
             @cache = cache
-            @tile_memo = cache.fetch(:tile_memo) { Art::TileMemo.new }
+            @tile_memo = cache.facts.tile_memo
             @one_sprite_tile_set = one_sprite_tile_set
             @small_sprite_scenes = small_sprite_scenes
             @memory = memory
@@ -180,10 +205,7 @@ module VBlank
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @section_routines = {}
-            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES, most_part_bytes: MOST_PART_BYTES,
-                                    return_bytes: RETURN_BYTES, measure: method(:bytes_of),
-                                    snapshot: -> { LOWERING_STATE.snapshot(self) },
-                                    found_too_big: cache.fetch(:routines_found_too_big) { Set.new })
+            @cuts = RoutineCuts.for(self, cache)
             prepare_picture
             prepare_paint
             prepare_collision
@@ -1248,7 +1270,7 @@ module VBlank
                 @asm.label(done)
               end
             end
-            [each_tick, *cut.map { |part, statements| routine_section(part, statements, routine: routine) }]
+            [each_tick, *@cuts.part_sections(cut) { |part, statements| routine_section(part, statements, routine: routine) }]
           end
 
           # --- tests: jump unless one holds ---

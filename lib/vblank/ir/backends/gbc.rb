@@ -161,14 +161,13 @@ module VBlank
         # tell will not fit.
         #
         # What a lowering works out from the program alone, and not from how this try is built, is
-        # kept from one try to the next (BuildCache).
-        def build(program, title: "RUBYGBA")
-          @build_cache = Lowering.build_cache(program)
+        # kept from one try to the next in +cache+ (BuildCache), made for this build and handed to each try.
+        def build(program, title: "RUBYGBA", cache: BuildCache.for(GBC, program))
           @scene_pictures = false
           @tries = 0
           art = ArtSettings.new(lends: false, tile_rooms: false, room_colors: false)
           loop do
-            return build_in_view(program, title, art)
+            return build_in_view(program, title, art, cache)
           rescue Art::TooManySpriteTiles
             raise if @scene_pictures
 
@@ -216,10 +215,10 @@ module VBlank
         # past it by a long way would make every try in turn to find the last. So the try that did
         # not fit is measured: its part in view, and how much of it each later step would move to
         # the banks (#bytes_moved_by). A step that would move too little to fit is skipped untried.
-        def build_in_view(program, title, art)
+        def build_in_view(program, title, art, cache)
           view = ViewSettings.first
           loop do
-            lowered = lower(program, art, view)
+            lowered = lower(program, art, view, cache)
             begin
               linked = Linker.new(lowered.sections, fixed_from: Console::GBCHardware::HEADER_END,
                                                     clock: lowered.lowering.clock?).link
@@ -346,8 +345,9 @@ module VBlank
           InViewSpans.new(bytes_by_label: spans)
         end
 
-        # One try lowered with +art+ and +view+, every section of the cartridge made.
-        def lower(program, art, view)
+        # One try lowered with +art+ and +view+, every section of the cartridge made, reading what the
+        # build worked out once from +cache+.
+        def lower(program, art, view, cache)
           @tries += 1
           memory = Memory.new
           # The last step of #build_in_view keeps each scene's record of its lists with its code in a
@@ -359,7 +359,7 @@ module VBlank
                                            bank_background_colors: view.bank_background_colors,
                                            banked_table_bytes: view.banked_table_bytes,
                                            effects_in_banks: view.effects_in_banks,
-                                           indexes_in_banks: view.indexes_in_banks, cache: @build_cache)
+                                           indexes_in_banks: view.indexes_in_banks, cache: cache)
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
                                   bar_rows: lowering.bar_rows, slides: lowering.music.slides?,

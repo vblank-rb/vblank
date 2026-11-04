@@ -134,7 +134,7 @@ module VBlank
           # game whose tiles together do not fit (Genesis#build): :backgrounds for its backgrounds'
           # tiles alone, :sprites for its sprite pictures' too. +cache+ is what the build works out
           # from the program once for all its tries (BuildCache).
-          def initialize(program, memory:, scene_tiles: false, cache: self.class.build_cache(program))
+          def initialize(program, memory:, scene_tiles: false, cache: BuildCache.for(Genesis, program))
             @program = program
             @cache = cache
             @memory = memory
@@ -165,15 +165,11 @@ module VBlank
             prepare_picture
             prepare_collision
             prepare_sound
-            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES, most_part_bytes: MOST_PART_BYTES,
-                                    return_bytes: RETURN_BYTES, measure: method(:bytes_of),
-                                    snapshot: -> { LOWERING_STATE.snapshot(self) },
-                                    found_too_big: cache.fetch(:routines_found_too_big) { Set.new })
+            @cuts = RoutineCuts.for(self, cache)
           end
 
-          # What a build of +program+ works out once for all its tries (BuildCache), which
-          # Genesis#build hands each try's lowering.
-          def self.build_cache(program) = BuildCache.new(program, console: Console::GENESIS, error: LoweringError)
+          # The console this lowers for (BuildCache).
+          CONSOLE = Console::GENESIS
 
           # How the program draws: :painted, :tiled (it says `screen :tiled`, or has a background or a
           # sprite) or :none.
@@ -913,7 +909,7 @@ module VBlank
                 @asm.label(done)
               end
             end
-            [each_tick, *cut.map { |part, statements| routine_section(part, statements, routine: routine) }]
+            [each_tick, *@cuts.part_sections(cut) { |part, statements| routine_section(part, statements, routine: routine) }]
           end
 
           # --- tests: jump unless one holds ---

@@ -205,7 +205,7 @@ module VBlank
                 if painted.include?(name)
                   make_run_art(run) unless @run_places[run]
                 else
-                  @art.sprite_picture(name, Assets::Image.of(picture_named(name)), mixed: mixed.include?(name), number: number,
+                  @art.sprite_picture(name, @cache.image(picture_named(name)), mixed: mixed.include?(name), number: number,
                                                                                   held: picture_palette_in_places(name, mixed.include?(name)),
                                                                                   scene: colors_scene_of_picture(name),
                                                                                   tile_scene: tiles_scene_of_picture(name))
@@ -227,7 +227,7 @@ module VBlank
               each_recolored_picture do |pose, list, swapped|
                 next if scene_of_recolored(pose, list)
 
-                image = Assets::Image.of(picture_named(pose))
+                image = @cache.image(picture_named(pose))
                 held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
                 image = RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
                 @art.reserve_shared_sprite_picture(image, mixed: mixed.include?(pose), held: held)
@@ -236,7 +236,7 @@ module VBlank
               @sprite_pictures.each do |name|
                 next if painted.include?(name) || scene_of_picture(name)
 
-                @art.reserve_shared_sprite_picture(Assets::Image.of(picture_named(name)), mixed: mixed.include?(name),
+                @art.reserve_shared_sprite_picture(@cache.image(picture_named(name)), mixed: mixed.include?(name),
                                                                                          held: picture_palette_in_places(name, mixed.include?(name)))
               end
             end
@@ -287,7 +287,7 @@ module VBlank
             # runs: a list told to hold others (`holds`) is not made yet.
             def make_recolored_art(mixed)
               each_recolored_picture do |pose, list, swapped|
-                image = Assets::Image.of(picture_named(pose))
+                image = @cache.image(picture_named(pose))
                 held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
                 image = RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
                 @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held,
@@ -347,7 +347,7 @@ module VBlank
             def picture_palette_in_places(name, mixed)
               return nil unless @one_sprite_tile_set && @objects.each_value.any? { |obj| !obj.recolors.empty? && obj.poses.include?(name) }
 
-              palette_in_places(Assets::Image.of(picture_named(name)).colors, mixed, colors_scene_of_picture(name))
+              palette_in_places(@cache.image(picture_named(name)).colors, mixed, colors_scene_of_picture(name))
             end
 
             # Whether a sprite wears another list, so that its pictures can share tiles (SNES#build).
@@ -645,7 +645,7 @@ module VBlank
             # to its own, or the game's where it says none. It goes out with the scene's colours and
             # maps (Runtime::Picture's "Together"), through whatever fade is in force.
             def emit_scene_backdrop(arrival)
-              return unless @cache.fetch(:scene_backdrops) { Picture.scene_backdrops?(@program, @cache.handover) } && arrival.backdrop
+              return unless @cache.facts.scene_backdrops? && arrival.backdrop
 
               runtime_call("rt_backdrop_hold", [Build.int(arrival.backdrop & 0x7FFF)])
             end
@@ -1210,10 +1210,10 @@ module VBlank
               return nil if tile.nil? || tile.negative?
 
               name = bg.tiles.fetch(tile)
-              return @art.bar_cell(Assets::Image.of(picture_named(name)), bar: bg.name, tile: name) if on_third_layer?(bg)
+              return @art.bar_cell(@cache.image(picture_named(name)), bar: bg.name, tile: name) if on_third_layer?(bg)
 
               @run_cells.fetch(name) do
-                image = Assets::Image.of(picture_named(name))
+                image = @cache.image(picture_named(name))
                 held = held_background_palette(bg, image)
                 places = { held: held, scene: colors_scene_of(bg), tile_scene: tiles_scene_of(bg) }
                 bg.tile_w == BIG_TILE ? @art.background_big_cell(image, **places) : @art.background_cell(image, **places)
@@ -1368,7 +1368,7 @@ module VBlank
               return if layers.empty?
 
               layer = layers.first
-              parts = Picture.see_through_parts(@program, layer)
+              parts = Picture.see_through_parts(@program, layer, @cache.stacking)
               seen_through = parts.seen_through
               sprites = parts.sprites
               @see_through_sprites = sprites.map(&:name)
@@ -1397,8 +1397,7 @@ module VBlank
             SeeThroughParts = Data.define(:seen_through, :sprites, :behind)
 
             # What a see-through +layer+ is made of, and the backgrounds behind it, of every scene.
-            def self.see_through_parts(program, layer)
-              picture = Stacking.picture(program)
+            def self.see_through_parts(program, layer, picture = Stacking.picture(program))
               scenery = picture.scenery.reject(&:bar?)
               at = picture.stack.index(layer.name)
               SeeThroughParts.new(seen_through: scenery.select { |bg| bg.layer == layer.name },
@@ -1408,11 +1407,11 @@ module VBlank
 
             # Whether +program+'s see-through layer is on some scenes only, or over a background only
             # some scenes put up, so the colour math changes as scenes take over.
-            def self.see_through_in_scene?(program)
+            def self.see_through_in_scene?(program, picture = Stacking.picture(program))
               layer = SeeThrough.layers(program).first
               return false unless layer
 
-              parts = see_through_parts(program, layer)
+              parts = see_through_parts(program, layer, picture)
               own = parts.seen_through + parts.sprites
               !own.empty? && (own + parts.behind).any?(&:scene)
             end
@@ -1420,7 +1419,7 @@ module VBlank
             # The backgrounds behind the see-through layer on the scenes that show it, one lot, and
             # which those scenes are (@see_through_scenes, nil for a layer every screen shows alike).
             def see_through_behind_in_its_scenes(parts)
-              return parts.behind unless Picture.see_through_in_scene?(@program)
+              return parts.behind unless Picture.see_through_in_scene?(@program, @cache.stacking)
 
               own = parts.seen_through + parts.sprites
               names = own.filter_map(&:scene).uniq
@@ -1467,9 +1466,9 @@ module VBlank
 
             # Whether +program+ turns a see-through layer solid as it runs, which the runtime then keeps
             # what the colour math is told in (Runtime::Picture's rt_see_through_math).
-            def self.see_through_turns_solid?(program)
+            def self.see_through_turns_solid?(program, picture = Stacking.picture(program))
               SeeThrough.layers(program).any? { |layer| !layer.split && layer.behind.kind != :int } ||
-                see_through_in_scene?(program)
+                see_through_in_scene?(program, picture)
             end
 
             # Reference#exec_see_through: the colour math on while what is behind shows, and off, the
@@ -1571,7 +1570,7 @@ module VBlank
               # A tile the game paints as it runs is never known solid.
               return false if @tile_runs.any? { |run| !run.picture && run.tiles.include?(bg.tiles.fetch(tile)) }
 
-              image = Assets::Image.of(picture_named(bg.tiles.fetch(tile)))
+              image = @cache.image(picture_named(bg.tiles.fetch(tile)))
               (0...64).none? { |at| image.tile_see_through_at?(at) }
             end
 

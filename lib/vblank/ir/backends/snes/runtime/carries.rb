@@ -41,9 +41,10 @@ module VBlank
                                 :paint_turns, :third_layer) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
-            # +handover+ is what each of its scenes hands the next (SceneHandover), worked out once.
+            # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
+            # its layers stack (Stacking.picture), each worked out once a build (BuildCache).
             def self.of(program, board:, screen_colors:, sprite_colors:, sprite_tiles:, background_tiles:,
-                        handover: IR::SceneHandover.of(program))
+                        handover: IR::SceneHandover.of(program), stacking: Stacking.picture(program))
               picture = Lowering::Picture
               songs = Lowering::Sound.songs?(program)
               backdrops = picture.scene_backdrops?(program, handover)
@@ -61,7 +62,7 @@ module VBlank
                                    Lowering::Paint.inks?(program),
                   scene_backdrops: backdrops, backdrop_follows: picture.backdrop_follows_list?(program),
                   dims: picture.fades_to_black?(program),
-                  math_turns: picture.see_through_turns_solid?(program), bar_covers: picture.bar_covers_sprites?(program),
+                  math_turns: picture.see_through_turns_solid?(program, stacking), bar_covers: picture.bar_covers_sprites?(program),
                   tile_sizes: picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
                   scene_background_tiles: background_tiles, extra_buttons: Frame.reads_extra_buttons?(program),
                   second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program),

@@ -122,12 +122,15 @@ module VBlank
         # A game whose runtime and variables do not fit the first 8K of work RAM, even with the
         # variables it names least past it (Lowering#place_variables), is built again with the
         # runtime's tables past it too (+far_tables+, Memory#reserve_table).
-        def build(program, far_tables: false, **choices)
-          build_laid_out(program, far_tables: far_tables, **choices)
+        #
+        # What every try works out from the program alone is worked out once, in +cache+
+        # (BuildCache), made for this build and handed to each try.
+        def build(program, far_tables: false, cache: BuildCache.for(SNES, program), **choices)
+          build_laid_out(program, far_tables: far_tables, cache: cache, **choices)
         rescue Memory::NearFull
           raise if far_tables
 
-          build(program, **choices, far_tables: true)
+          build(program, **choices, far_tables: true, cache: cache)
         end
 
         private
@@ -135,27 +138,21 @@ module VBlank
         # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ says.
         def build_laid_out(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false,
                            sprite_tiles: false, background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false,
-                           far_tables: false)
+                           far_tables: false, cache:)
           board = board_for(program)
           memory = Memory.new(far_tables: far_tables)
-          # What the runtime carries reads the program and these choices alone, so it is worked out
-          # once for each set of them a build tries.
-          choice = [board, screen_colors, sprite_colors, sprite_tiles, background_tiles]
-          carries = build_cache(program).fetch([:carries, *choice]) do
-            Runtime::Carries.of(program, board: board, screen_colors: screen_colors, sprite_colors: sprite_colors,
-                                         sprite_tiles: sprite_tiles, background_tiles: background_tiles,
-                                         handover: build_cache(program).handover)
-          end
+          carries = cache.facts.carries(board, screen_colors: screen_colors, sprite_colors: sprite_colors,
+                                               sprite_tiles: sprite_tiles, background_tiles: background_tiles)
           Runtime.reserve(memory, carries)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
                                                 one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?,
-                                                cache: build_cache(program))
+                                                cache: cache)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                       small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,
-                      far_tables: far_tables }
+                      far_tables: far_tables, cache: cache }
           begin
             game = lowering.sections + lowering.art_sections
           rescue Art::ScreenSpritesFull => e
@@ -215,12 +212,6 @@ module VBlank
             findings.slice!(said..)
             nil
           end
-        end
-
-        # What every try of a build of +program+ shares (BuildCache): made by the first try.
-        def build_cache(program)
-          @build_cache = nil unless @build_cache&.program.equal?(program)
-          @build_cache ||= Lowering.build_cache(program)
         end
 
         # A word that asks for a chip this cartridge does not have changes nothing, and a game much

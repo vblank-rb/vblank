@@ -13,7 +13,7 @@ module VBlank
       #   what it had. The copies, not what it had, are what is changed: the work memory is shared
       #   with the build and the runtime, which would see a place reserved only to be measured.
       # - a routine made for real and then found too big for a bank (#snapshot, RoutineCuts#sections):
-      #   what it reserved is put back, into the very objects the build holds, and the routine is cut.
+      #   what it reserved is put back, into the very objects the lowering and the build hold.
       #
       # Which of the lowering's things are which is the lowering's to say, as three lists:
       #
@@ -36,82 +36,86 @@ module VBlank
         end
 
         # The block's answer, made on copies of +lowering+'s state, after which the lowering has
-        # what it had before.
+        # what it had before. One object held in two places is one copy held in both.
         def on_copies(lowering)
-          saved = held_by(lowering)
-          copies(saved).each { |name, copy| lowering.instance_variable_set(name, copy) }
+          saved = instance_values(lowering)
+          seen = {}.compare_by_identity
+          kept = kept_values(saved)
+          kept.each { |_, value| seen[value] = value.dup if role_of(value) == :list }
+          kept.each { |name, value| lowering.instance_variable_set(name, copy_of(value, seen)) }
           yield
         ensure
           (lowering.instance_variables - saved.keys).each { |name| lowering.remove_instance_variable(name) }
           saved.each { |name, value| lowering.instance_variable_set(name, value) }
         end
 
-        # +lowering+'s state now, which Snapshot#restore! puts back. A COPIED object's insides are
-        # copied, not the object: it is the same object afterwards, and another of the lowering's
-        # COPIED objects that holds it still holds that one.
+        # +lowering+'s state now, which Snapshot#restore! puts back. What is kept is what each list,
+        # table and COPIED object holds, every one reached from the lowering, and #restore! writes it
+        # back into the same objects: nothing is swapped for a copy, so whatever holds any of them
+        # holds the same object, put back.
         def snapshot(lowering)
-          saved = held_by(lowering)
-          kept = saved.except(*@unchanged)
-          seen = {}.compare_by_identity
-          kept.each_value { |value| seen[value] = value if @copied.any? { |kind| value.is_a?(kind) } }
-          insides = kept.to_h do |name, value|
-            case value
-            when Hash, Array then [name, value.dup]
-            when *@copied then [name, value.instance_variables.to_h { |held| [held, deep_copy(value.instance_variable_get(held), seen)] }]
-            when *@shared then [name, nil]
-            else raise ArgumentError, "#{name} holds a #{value.class}, which a lowering's state neither copies nor shares"
-            end
+          saved = instance_values(lowering)
+          held = {}.compare_by_identity
+          kept_values(saved).each do |_, value|
+            role_of(value) == :list ? held[value] ||= value.dup : note_insides(value, held)
           end
-          Snapshot.new(lowering, saved, insides.compact)
+          Snapshot.new(lowering, saved, held)
         end
 
-        # A lowering's state as it was, put back by #restore!: each of its lists and tables, and the
-        # insides of each COPIED object, written back into the same object, so whatever else holds
-        # one (the build holds the work memory) sees it put back too.
+        # A lowering's state as it was (#snapshot).
         class Snapshot
-          def initialize(lowering, saved, insides)
+          def initialize(lowering, saved, held)
             @lowering = lowering
             @saved = saved
-            @insides = insides
+            @held = held
           end
 
+          # The lowering, and every list, table and object of its it had, as they were.
           def restore!
             (@lowering.instance_variables - @saved.keys).each { |name| @lowering.remove_instance_variable(name) }
-            @saved.each do |name, value|
-              put_back(value, @insides[name]) if @insides.key?(name) && !value.frozen?
-              @lowering.instance_variable_set(name, value)
-            end
-          end
+            @saved.each { |name, value| @lowering.instance_variable_set(name, value) }
+            @held.each do |object, was|
+              next if object.frozen?
 
-          private
-
-          def put_back(value, was)
-            case value
-            when Hash then value.clear.update(was)
-            when Array then value.replace(was)
-            else
-              (value.instance_variables - was.keys).each { |held| value.remove_instance_variable(held) }
-              was.each { |held, inside| value.instance_variable_set(held, inside) }
+              case object
+              when Hash then object.clear.update(was)
+              when Array then object.replace(was)
+              else
+                (object.instance_variables - was.keys).each { |name| object.remove_instance_variable(name) }
+                was.each { |name, inside| object.instance_variable_set(name, inside) }
+              end
             end
           end
         end
 
         private
 
-        def held_by(lowering) = lowering.instance_variables.to_h { |name| [name, lowering.instance_variable_get(name)] }
+        def instance_values(lowering) = lowering.instance_variables.to_h { |name| [name, lowering.instance_variable_get(name)] }
 
-        # A copy of each of +saved+ that making a statement can change, by its name.
-        def copies(saved)
-          seen = {}.compare_by_identity
-          saved.except(*@unchanged).to_h { |name, value| [name, copy_of(name, value, seen)] }
+        # +saved+ but what making a statement never changes, each checked to be something this
+        # state knows how to keep.
+        def kept_values(saved)
+          saved.except(*@unchanged).each do |name, value|
+            next if role_of(value)
+
+            raise ArgumentError, "#{name} holds a #{value.class}, which a lowering's state neither copies nor shares"
+          end
         end
 
-        def copy_of(name, value, seen)
+        # :list for a list or table of the lowering's own, :copied, :shared, or nil for none of those.
+        def role_of(value)
           case value
-          when Hash, Array then value.dup
-          when *@copied then deep_copy(value, seen)
-          when *@shared then value
-          else raise ArgumentError, "#{name} holds a #{value.class}, which a lowering's state neither copies nor shares"
+          when Hash, Array then :list
+          when *@copied then :copied
+          when *@shared then :shared
+          end
+        end
+
+        def copy_of(value, seen)
+          case role_of(value)
+          when :list then seen.fetch(value)
+          when :copied then deep_copy(value, seen)
+          else value
           end
         end
 
@@ -128,6 +132,24 @@ module VBlank
               copy.instance_variables.each { |held| copy.instance_variable_set(held, deep_copy(copy.instance_variable_get(held), seen)) }
             end
           else value
+          end
+        end
+
+        # What +value+ holds, and what each list, table and COPIED object inside it holds, all the
+        # way down, into +held+: a list or table by a copy of it, an object by its instance variables.
+        def note_insides(value, held)
+          return if held.key?(value)
+
+          case value
+          when Hash
+            held[value] = value.dup
+            value.each_value { |inside| note_insides(inside, held) }
+          when Array
+            held[value] = value.dup
+            value.each { |inside| note_insides(inside, held) }
+          when *@copied
+            held[value] = value.instance_variables.to_h { |name| [name, value.instance_variable_get(name)] }
+            held[value].each_value { |inside| note_insides(inside, held) }
           end
         end
       end

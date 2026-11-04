@@ -173,7 +173,7 @@ module VBlank
           def initialize(program, memory:, lends_sprite_colors: false, tile_rooms: false, room_colors: false,
                          banked_songs: false, bank_pose_tables: false, bank_background_colors: false,
                          scene_pictures: false, banked_table_bytes: BANKED_TABLE_BYTES, effects_in_banks: false,
-                         indexes_in_banks: false, cache: self.class.build_cache(program))
+                         indexes_in_banks: false, cache: BuildCache.for(GBC, program))
             @program = program
             @effects_in_banks = effects_in_banks
             @indexes_in_banks = indexes_in_banks
@@ -206,10 +206,7 @@ module VBlank
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
-            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES, most_part_bytes: MOST_PART_BYTES,
-                                    return_bytes: RETURN_BYTES, measure: method(:bytes_of),
-                                    snapshot: -> { LOWERING_STATE.snapshot(self) },
-                                    found_too_big: cache.fetch(:routines_found_too_big) { Set.new })
+            @cuts = RoutineCuts.for(self, cache)
             @section_routines = {} # each routine's section, by its label -> what it is to the author
             prepare_picture
             prepare_sound
@@ -220,8 +217,7 @@ module VBlank
           # the program itself.
           def sections
             refuse_unlowered_kinds!
-            # Asked once a build: it reads the program and the console alone, as the plan does.
-            @cache.fetch(:console_lacks_nothing) { @plan.refuse_what_console_lacks!.nil? }
+            @plan.refuse_what_console_lacks!
             refuse_unsupported_save_memory!
             refuse_unfit_paint_squares!
             refuse_lists_in_use_past_eight!
@@ -486,7 +482,7 @@ module VBlank
           # [:word, label] (where a label is) and [:bank, label] (the bank it is in), in order; the
           # label the data goes by is handed back.
           def routine_data_label(entries)
-            @measured.each { |measured| measured.data[entries] = true } if @measuring
+            @measured.each { |measured| measured.data << entries } if @measuring
             @routine_data[entries] ||= fresh("data")
           end
 
@@ -556,9 +552,39 @@ module VBlank
             unchanged: %i[@cuts @cache]
           )
 
-          # What a build of +program+ works out once for all its tries (BuildCache), which GBC#build
-          # hands each try's lowering.
-          def self.build_cache(program) = BuildCache.new(program, console: Console::COLOR, error: LoweringError)
+          # The console this lowers for (BuildCache).
+          CONSOLE = Console::COLOR
+
+          # WHAT THE COLOR'S LOWERING ALONE WORKS OUT FROM THE PROGRAM, once a build for all its tries
+          # (BuildCache#facts): what each tile's picture says (Art#tile_fact), the tiles each
+          # background shows and its `set_tile`s put in it, the screens' modes, each tile's colours
+          # with each of its background's lists, a background's lists at each step, its recolour
+          # steps, and each sprite picture's pixels in each list. Each is a memo of the program
+          # alone, filled as the lowering asks (Picture#recolor_steps_of and the rest).
+          class BuildFacts
+            attr_reader :tile_facts, :tiles_shown, :tile_colors_with, :recolor_steps, :recolor_steps_made, :list_swaps,
+                        :sprite_pixels
+
+            def initialize(cache)
+              @cache = cache
+              @tile_facts = {}
+              @tiles_shown = {}
+              @tile_colors_with = Hash.new { |all, swaps| all[swaps] = {} }.compare_by_identity
+              @recolor_steps = {}
+              @recolor_steps_made = {}
+              @list_swaps = {}
+              @sprite_pixels = {}
+            end
+
+            # The tiles each background's `set_tile`s put in its cells, by the background's name.
+            def tiles_set_in
+              @tiles_set_in ||= @cache.plan.reachable.select { |node| node.kind == :set_tile }.group_by(&:name)
+                                      .transform_values { |nodes| nodes.map(&:tile) }
+            end
+
+            # How each screen of the program is shown (Modes.resolve).
+            def screen_modes = @screen_modes ||= Modes.resolve(@cache.program)
+          end
 
           # How many bytes +list+ comes to, made on its own and thrown away.
           def bytes_of(list)
@@ -592,7 +618,7 @@ module VBlank
 
           # What a statement being measured has taken so far: where its code starts, and the numbers
           # and routine data it reads, each of which it would keep a copy of on its own.
-          MeasuredStatement = Struct.new(:from, :constants, :data)
+          MeasuredStatement = Data.define(:from, :constants, :data)
 
           # A STATEMENT MADE WHILE A RUN OF THEM IS MEASURED (#bytes_of), its size noted for cutting
           # (RoutineCuts#note_size): the bytes it would come to measured on its own. That is its code,
@@ -602,11 +628,11 @@ module VBlank
           # bank once gives the size of every statement in it, at every depth, and cutting it
           # measures nothing again.
           def statement_measured(node)
-            measured = MeasuredStatement.new(@asm.here, {}, {})
+            measured = MeasuredStatement.new(from: @asm.here, constants: Set.new, data: Set.new)
             @measured << measured
             send(STATEMENTS.fetch(node.kind), node)
-            @cuts.note_size(node, @asm.here - measured.from + measured.constants.keys.sum { |value| Array(value).length * 4 } +
-                                  measured.data.keys.sum { |entries| entries.sum { |kind, _| ROUTINE_DATA_BYTES.fetch(kind) } })
+            @cuts.note_size(node, @asm.here - measured.from + measured.constants.sum { |value| Array(value).length * 4 } +
+                                  measured.data.sum { |entries| entries.sum { |kind, _| ROUTINE_DATA_BYTES.fetch(kind) } })
           ensure
             @measured.pop
           end
@@ -1387,7 +1413,7 @@ module VBlank
                 @asm.label(done)
               end
             end
-            [each_tick, *cut.map { |part, statements| routine_section(part, statements, routine: routine) }]
+            [each_tick, *@cuts.part_sections(cut) { |part, statements| routine_section(part, statements, routine: routine) }]
           end
 
           # --- tests: jump unless one holds ---
@@ -1827,7 +1853,7 @@ module VBlank
           # beside it, and the label of where.
           def constant_label(number)
             key = number.is_a?(Array) ? number.map { |part| part & 0xFFFF_FFFF } : number & 0xFFFF_FFFF
-            @measured.each { |measured| measured.constants[key] = true } if @measuring
+            @measured.each { |measured| measured.constants << key } if @measuring
             @constants[key] ||= fresh("number")
           end
 

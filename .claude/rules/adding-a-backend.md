@@ -106,8 +106,13 @@ lowering made the routines a bend calls and the other did not):
   each table is kept, constant folding, the game loop in the console's order, and the refusals
   every console makes alike (a step only the Advance has, what the console's answers refuse, a
   routine that calls itself).
-- `Backends::RoutineCuts` — cutting a routine too big for a bank into parts; the lowering says how
-  big its bank is and measures its own code.
+- `Backends::BuildCache` — what a build works out from the program alone, once for all its tries:
+  the plan, the handover, the stacking, each picture's pixels, and the lowering's own memos (its
+  `BuildFacts`). A console's build makes one per build (`BuildCache.for`) and hands it to each try.
+- `Backends::RoutineCuts` — making each routine once and cutting one too big for a bank into parts;
+  the lowering says how big its bank is (`MOST_ROUTINE_BYTES`, `RETURN_BYTES`), measures its own
+  code, and says what it holds (`LOWERING_STATE`, a `Backends::LoweringState`) so a routine found
+  too big can be taken back.
 - `Backends::Sections` — what an assembler's section is, first-fit placing of sections in banks,
   and the words for a cartridge too full for the game. Each linker keeps its bank geometry and how
   it fills in a hole.

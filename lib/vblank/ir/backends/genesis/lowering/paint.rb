@@ -189,7 +189,7 @@ module VBlank
             # The number of the picture +name+ declares, made into PaintedArt's form.
             def picture_number(name)
               @painted_art.picture([:image, name]) do
-                image = Assets::Image.of(picture_named(name))
+                image = @cache.image(picture_named(name))
                 drawn = {}
                 (image.width * image.height).times do |at|
                   drawn[[at % image.width, at / image.width]] = image.color_at(at) if image.drawn_at?(at)

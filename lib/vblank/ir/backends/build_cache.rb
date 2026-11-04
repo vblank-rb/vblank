@@ -13,28 +13,39 @@ module VBlank
       # what a tile's picture alone says about its colours. Those are worked out here, once a build,
       # and every try reads them.
       #
-      # So the one rule for what goes in: it depends on the program and the console, and on nothing
-      # a try chooses, and nothing a try does changes it. What a try chooses — where a tile goes,
-      # which palette it takes, where a number is kept — stays in that try's Lowering and Art. The
-      # one exception is a hint about cost that decides nothing: the routines an earlier try found
-      # too big for a bank (RoutineCuts' +found_too_big+), which a later try measures first.
+      # What goes in depends on the program and the console, and on nothing a try chooses: what a
+      # try chooses — where a tile goes, which palette it takes, where a number is kept — stays in
+      # that try's Lowering and Art. Tries add to it only as a memo adds to itself: an answer once
+      # worked out is the answer for every later try. The one thing a try adds that is not such an
+      # answer is a hint about cost that decides nothing: the routines it found too big for a bank
+      # (#routines_found_too_big), which a later try measures before it makes them.
       #
-      # The console's build makes one for each build and hands it to each try's Lowering; a Lowering
-      # made on its own (a test) makes its own.
+      # A console's build makes one at the start of each build (BuildCache.for) and hands it to
+      # every try; nothing keeps it once the build returns. A Lowering made on its own (a test)
+      # makes its own.
       class BuildCache
+        # A cache for a build of +program+ by the cartridge backend +backend+ (GBC, SNES, Genesis):
+        # its Lowering says the console and what else that console keeps (its BuildFacts), and its
+        # LoweringError is what the plan's refusals raise.
+        def self.for(backend, program) = new(program, lowering: backend::Lowering, error: backend::LoweringError)
+
         attr_reader :program
 
-        def initialize(program, console:, error:)
+        # The statements of each routine an earlier try of the build cut to fit a bank, each list by
+        # the identity of the nodes in it (RoutineCuts#sections).
+        attr_reader :routines_found_too_big
+
+        def initialize(program, lowering:, error:)
           @program = program
-          @console = console
+          @lowering = lowering
           @error = error
           @images = {}.compare_by_identity
-          @facts = {}
+          @routines_found_too_big = Set.new
         end
 
         # What the program is before any instruction is made (LoweringPlan): its refusals raise the
-        # lowering's own +error+.
-        def plan = @plan ||= LoweringPlan.new(@program, console: @console, error: @error)
+        # lowering's own error.
+        def plan = @plan ||= LoweringPlan.new(@program, console: @lowering::CONSOLE, error: @error)
 
         # What each scene hands the next (SceneHandover).
         def handover = plan.handover
@@ -46,13 +57,9 @@ module VBlank
         # it is: a node's own hash walks everything under it.
         def image(node) = @images[node] ||= Assets::Image.of(node)
 
-        # Any other fact a lowering works out from the program alone, by a +key+ of its own: worked
-        # out by the block the first time it is asked, and the same answer every time after.
-        def fetch(key)
-          return @facts[key] if @facts.key?(key)
-
-          @facts[key] = yield
-        end
+        # What this console's lowering alone works out from the program (its Lowering::BuildFacts):
+        # its art's memos, kept under names of their own.
+        def facts = @facts ||= @lowering::BuildFacts.new(self)
       end
     end
   end

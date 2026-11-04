@@ -201,15 +201,15 @@ module VBlank
             # (PaintedArt#place_never_nought).
             def column_sections
               @column_routines.each_key do |name|
-                image = Assets::Image.of(picture_named(name))
+                image = @cache.image(picture_named(name))
                 @column_tables["column starts of #{name}"] = Array.new(image.width) { |slice| column_places(image, slice) }
               end
               chip_column_pictures.each do |name|
-                image = Assets::Image.of(picture_named(name))
+                image = @cache.image(picture_named(name))
                 @column_tables[chip_column_starts(name)] = Array.new(image.width) { |slice| chip_column_places(image, slice) }
               end
               @column_routines.map do |name, label|
-                image = Assets::Image.of(picture_named(name))
+                image = @cache.image(picture_named(name))
                 routine_section(label, [], routine: "#{name.inspect} drawn a column at a time") { emit_column_walk(name, image) }
               end
             end
@@ -542,7 +542,7 @@ module VBlank
             # The number of the picture +name+ declares, made into SNES::PaintedArt's form.
             def picture_number(name)
               @painted_art.picture([:image, name]) do
-                image = Assets::Image.of(picture_named(name))
+                image = @cache.image(picture_named(name))
                 drawn = {}
                 (image.width * image.height).times do |at|
                   drawn[[at % image.width, at / image.width]] = image.color_at(at) if image.drawn_at?(at)

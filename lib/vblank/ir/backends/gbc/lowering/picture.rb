@@ -156,7 +156,7 @@ module VBlank
                              first_cleared_to: @program.walk.find { |node| node.kind == :clear_screen }&.color,
                              backdrop: color_backdrop, piece_height: piece_height,
                              scene_pictures: (scene_pictures if @plans_scene_pictures),
-                             indexes_in_banks: @indexes_in_banks, tile_facts: @cache.fetch(:tile_facts) { {} })
+                             indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts)
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run says its sprites by
@@ -371,18 +371,11 @@ module VBlank
             # for a background that walks between areas — and the ones `set_tile` puts in its cells.
             # Worked out once a declaration and area, for every attempt at the build (BuildCache).
             def tiles_shown(bg, area = nil)
-              @cache.fetch(:tiles_shown) { {} }[[bg.object_id, area]] ||= begin
+              @cache.facts.tiles_shown[[bg.object_id, area]] ||= begin
                 maps = bg.every_map.each_index.select { |which| area.nil? || bg.map_sets.fetch(which) == area }
                 named = maps.flat_map { |which| bg.every_map.fetch(which).flat_map { |row| Array(row) } }
-                named += tiles_set_in.fetch(bg.name, [])
+                named += @cache.facts.tiles_set_in.fetch(bg.name, [])
                 named.compact.reject(&:negative?).uniq.map { |index| bg.tiles.fetch(index) }
-              end
-            end
-
-            # The tiles each background's `set_tile`s put in its cells, by the background's name.
-            def tiles_set_in
-              @cache.fetch(:tiles_set_in) do
-                @reachable.select { |node| node.kind == :set_tile }.group_by(&:name).transform_values { |nodes| nodes.map(&:tile) }
               end
             end
 
@@ -1051,7 +1044,7 @@ module VBlank
             def painted_screen_for?(bg) = Modes::SCREEN_OF_MODE.fetch(screen_modes.mode_of(bg.scene)) == :bitmap
 
             # Which screen each scene shows (IR::Modes), worked out once a build.
-            def screen_modes = @cache.fetch(:screen_modes) { Modes.resolve(@program) }
+            def screen_modes = @cache.facts.screen_modes
 
             # Reference#stamp_background on a painted screen: each cell's tile painted where the cell
             # is, its see-through pixels leaving what is there, and nothing past the screen's edge.
@@ -1614,7 +1607,7 @@ module VBlank
             # from #swaps_for, one object for each declaration and step, so it is kept by which
             # object it is rather than hashed through every list it holds.
             def tile_colors_with(name, swaps)
-              by_swaps = @cache.fetch(:tile_colors_with) { Hash.new { |all, held| all[held] = {} }.compare_by_identity }
+              by_swaps = @cache.facts.tile_colors_with
               known = by_swaps[swaps]
               return known[name] if known.key?(name)
 
@@ -1680,7 +1673,7 @@ module VBlank
             def recolor_steps_of(name, bg)
               return nil if Array(bg.recolors).empty?
 
-              known = @cache.fetch(:recolor_steps) { {} }
+              known = @cache.facts.recolor_steps
               key = [name, bg.object_id]
               return known[key] if known.key?(key)
 
@@ -1691,7 +1684,7 @@ module VBlank
 
             # +steps+, or the equal steps #recolor_steps_of handed out first.
             def one_of_equal_steps(steps)
-              made = @cache.fetch(:recolor_steps_made) { {} }
+              made = @cache.facts.recolor_steps_made
               made[steps] ||= steps
             end
 
@@ -1701,7 +1694,7 @@ module VBlank
             # Each of +bg+'s own lists to the list it is drawn with at its step +step+, worked out
             # once a build for each declaration and step: every tile it draws asks.
             def swaps_for(bg, step)
-              @cache.fetch(:list_swaps) { {} }[[bg.object_id, step]] ||= bg.list_swaps(step)
+              @cache.facts.list_swaps[[bg.object_id, step]] ||= bg.list_swaps(step)
             end
 
             # The picture a background's tile +name+ draws (Assets::Image), made once a build: every
@@ -2402,7 +2395,7 @@ module VBlank
 
               # The pixels read once a picture and list a build: every sprite showing it asks again.
               image = picture_named(name)
-              pixels = @cache.fetch(:sprite_pixels) { {} }[[name, colors]] ||= sprite_pixels(image, colors)
+              pixels = @cache.facts.sprite_pixels[[name, colors]] ||= sprite_pixels(image, colors)
               @art.sprite_palette(name, image, pixels, scene: scene)
             end
 

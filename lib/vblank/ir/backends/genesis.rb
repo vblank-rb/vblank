@@ -74,7 +74,10 @@ module VBlank
         # (Lowering::Picture#make_art_by_scene). A game whose sprite pictures do not fit beside its
         # biggest scene's backgrounds is built once more with :sprites too, each scene's sprite
         # pictures taking turns with its backgrounds.
-        def build(program, title: "VBLANK", scene_tiles: false)
+        #
+        # What every try works out from the program alone is worked out once, in +cache+
+        # (BuildCache), made for this build and handed to each try.
+        def build(program, title: "VBLANK", scene_tiles: false, cache: BuildCache.for(Genesis, program))
           memory = Memory.new
           picture = Lowering.picture_of(program)
           colors = Lowering.changing_colors?(program)
@@ -90,16 +93,14 @@ module VBlank
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles)
-          @build_cache = nil unless @build_cache&.program.equal?(program)
-          @build_cache ||= Lowering.build_cache(program) # what every try of the build shares (BuildCache)
-          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, cache: @build_cache)
+          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, cache: cache)
           begin
             game = lowering.sections
           rescue Art::TooManyTiles
             later = scene_tiles_after(scene_tiles, lowering)
             raise unless later
 
-            return build(program, title: title, scene_tiles: later)
+            return build(program, title: title, scene_tiles: later, cache: cache)
           end
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,

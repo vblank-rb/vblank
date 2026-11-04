@@ -3,7 +3,9 @@
 require "test_helper"
 
 # How every cartridge lowering turns a routine into sections (RoutineCuts#sections): made once
-# when it fits a bank, and taken back, measured and cut when it does not.
+# when it fits a bank, and taken back, measured and cut when it does not. RoutineCuts is shared by
+# the cartridge lowerings and plays no game, so its tests are with the Color's, whose builds cut the
+# most routines; test/all/ is for what a game does, asked through game_player.
 class TestRoutineCuts < Minitest::Test
   include VBlank::IR::Build
 

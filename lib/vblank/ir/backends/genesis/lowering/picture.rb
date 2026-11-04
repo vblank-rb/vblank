@@ -204,7 +204,7 @@ module VBlank
             # The sprite picture +name+, made into pieces (Art#sprite_picture) from the tiles of the scene that
             # alone shows it, in a game whose sprite pictures take turns (+scene_tiles+ of :sprites).
             def make_sprite_picture(name)
-              image = Assets::Image.of(picture_named(name))
+              image = @cache.image(picture_named(name))
               @art.with_tiles_of(tiles_scene_of_picture(name)) do
                 if (list = followed_list_of(name))
                   @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
@@ -576,7 +576,7 @@ module VBlank
               return nil if tile.nil? || tile.negative?
 
               @cells_made[[bg.object_id, tile]] ||= begin
-                image = Assets::Image.of(picture_named(bg.tiles.fetch(tile)))
+                image = @cache.image(picture_named(bg.tiles.fetch(tile)))
                 @art.with_tiles_of(tiles_scene_of(bg)) do
                   bg.recolors.empty? ? @art.background_cell(image) : @art.background_cell(image, palette: recolored_palette(bg, image))
                 end

@@ -142,7 +142,7 @@ module VBlank
                                                      bytes: bytes, signed: signed)]
               end
               columns = chip_column_pictures.to_h do |name|
-                image = Assets::Image.of(picture_named(name))
+                image = @cache.image(picture_named(name))
                 see_through = (0...(image.width * image.height)).any? { |at| !image.drawn_at?(at) }
                 [name, ChipCode::ColumnPicture.new(width: image.width, height: image.height, starts: chip_column_starts(name),
                                                    see_through: see_through)]

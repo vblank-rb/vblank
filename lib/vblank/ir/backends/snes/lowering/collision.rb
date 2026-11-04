@@ -24,7 +24,7 @@ module VBlank
               @masks.each_value do |number|
                 tables.data_longs("collision mask #{number}")
                 tables.data_bytes(0)
-                image = Assets::Image.of(picture_named(@masks.key(number)))
+                image = @cache.image(picture_named(@masks.key(number)))
                 tables.data_words(image.width, image.height)
               end
               tables.label("collision lists")
@@ -38,7 +38,7 @@ module VBlank
               end
               @masks.each do |name, number|
                 tables.label("collision mask #{number}")
-                tables.data_bytes(mask_bytes(Assets::Image.of(picture_named(name))))
+                tables.data_bytes(mask_bytes(@cache.image(picture_named(name))))
               end
               [tables.section]
             end
