@@ -45,21 +45,25 @@ module VBlank
 
       # The buttons to hold, as a list of names, for what +view+ shows. A name that is not a button of this
       # player is a friendly error.
-      def buttons_for(view) = Buttons.clean(@decide.call(view), who: "The bot #{name.inspect}")
+      def buttons_for(view)
+        names = Buttons.names_in(@decide.call(view))
+        Buttons.refuse_unknown_buttons!(names, who: "The bot #{name.inspect}")
+        names
+      end
 
-      # What answers a bot can give, checked in one place for every kind of bot.
+      # What answers a bot can give, read and checked in one place for every kind of bot.
       module Buttons
         module_function
 
-        def clean(answer, who:)
-          names = Array(answer).compact
-          names.each do |button|
-            next if IR::Buttons.known?(button)
+        # The button names in a bot's +answer+: an Array of names, one name, or nil for none.
+        def names_in(answer) = Array(answer).compact
 
-            raise ArgumentError, "#{who} answered #{button.inspect}, which is not a button. A bot's player is the " \
-                                 "one the match gave it, so answer the plain names: #{IR::Buttons::NAMES.map(&:inspect).join(', ')}."
-          end
-          names
+        # Raises a friendly ArgumentError when one of +names+ is not a button of a player. +who+ begins the words.
+        def refuse_unknown_buttons!(names, who:)
+          unknown = names.find { |button| !IR::Buttons.known?(button) } or return
+
+          raise ArgumentError, "#{who} answered #{unknown.inspect}, which is not a button. A bot's player is the " \
+                               "one the match gave it, so answer the plain names: #{IR::Buttons::NAMES.map(&:inspect).join(', ')}."
         end
       end
     end
