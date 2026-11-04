@@ -291,7 +291,7 @@ class TestGBCClips < Minitest::Test
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     recording = square_recording(40)
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       enable_sound
       song :busy do
         tempo 240
@@ -354,7 +354,7 @@ class TestGBCClips < Minitest::Test
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     recording = square_recording(200)
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hum = sample :hum, pcm: recording
       x = var :x, 0
       count = 0

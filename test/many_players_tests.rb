@@ -14,13 +14,17 @@
 # (test/lowering/{native,js,ruby}/vblank/ir/backends/*/test_*_many_players.rb). Which console
 # seats how many is test/all/vblank/builder/test_player_option.rb's.
 module ManyPlayersTests
+  # The games are built for a computer, as the runs that play them build them, so a run's build
+  # checks read sixteen players and not the console's controllers.
+  BUILT_FOR_COMPUTER = VBlank::Cartridge::Options.new(for_computer: true)
+
   # The rows the four markers of #four_markers are drawn on, by player.
   MARKER_ROWS = { 1 => 10, 2 => 30, 3 => 50, 4 => 70 }.freeze
 
   # Four people at one game: each moves a marker of their own to the right, anybody's left counts
   # in `anyone_left`, and `connected` is how many players are connected.
   private def four_markers
-    b = VBlank::Builder.new
+    b = VBlank::Builder.new(options: BUILT_FOR_COMPUTER)
     b.instance_eval do
       x1 = 10
       x2 = 10
@@ -50,7 +54,7 @@ module ManyPlayersTests
   # anybody holds left, `taps` counts presses of A by anybody, and `connected` is how many players
   # are connected.
   private def crowd(players)
-    b = VBlank::Builder.new
+    b = VBlank::Builder.new(options: BUILT_FOR_COMPUTER)
     b.instance_eval do
       places = (1..players).map { |player| var(:"x#{player}", 0) }
       anyone = var(:anyone, 0)

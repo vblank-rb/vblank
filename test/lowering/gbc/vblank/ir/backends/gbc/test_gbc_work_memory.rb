@@ -30,7 +30,7 @@ class TestGBCWorkMemory < Minitest::Test
   def test_variables_in_the_banked_half_agree_with_the_interpreter_from_power_on
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       many = Array.new(900) { |n| var :"many_#{n}", 0 }
       spilled = 0
       game_loop do

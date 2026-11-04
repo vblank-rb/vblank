@@ -66,7 +66,7 @@ class TestSNESOnChip < Minitest::Test
   # processors change.
   def test_a_variable_passes_between_the_two_processors
     game = superfx_game("CHIP SHARES") do
-      screen :tiled
+      screen :tiled, backdrop: :black
       shared = var :shared, 5
 
       func :double, on_chip: true do

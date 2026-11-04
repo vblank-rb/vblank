@@ -14,7 +14,7 @@ class TestGBCRumble < Minitest::Test
   private def bumper(saving: false, with_clock: false)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hits = saving ? save_var(:hits, 0) : var(:hits, 0)
       hits += 0 if with_clock && clock.present?
       game_loop do
