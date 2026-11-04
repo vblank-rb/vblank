@@ -848,16 +848,21 @@ module VBlank
             end
 
             # The next generation; coming round, every tile put in none first.
+            # A screen that takes turns (PaintTurns) may show an older generation than the newest, so
+            # the next is one past the newest, and coming round, the other picture is gone too.
             def emit_next_generation(asm, memory, logged)
-              asm.lda(asm.abs(memory[GENERATION]))
+              turns = logged && PaintTurns.kept?(memory)
+              asm.lda(asm.abs(memory[turns ? PaintTurns::NEWEST_GENERATION : GENERATION]))
               asm.inc
               asm.cmp(NO_GENERATION)
               asm.bcc("rt_paint_clear_generation")
               emit_no_generation_everywhere(asm, memory, "rt_paint_clear")
               emit_fill_work_ram(asm, memory[PaintLog::PAINTED_IN], TILES, "rt_paint_no_generation") if logged
+              asm.stz(asm.abs(memory[PaintTurns::OTHER_VALID])) if turns
               asm.lda(0)
               asm.label("rt_paint_clear_generation")
               asm.sta(asm.abs(memory[GENERATION]))
+              asm.sta(asm.abs(memory[PaintTurns::NEWEST_GENERATION])) if turns
             end
 
             # --- a picture's column, stretched ---
@@ -1895,9 +1900,15 @@ module VBlank
                 asm.lda(asm.abs(memory[PaintLog::LOG_END]))
                 asm.cmp(asm.abs(memory[PaintLog::LAST_PASS_END]))
                 asm.beq("rt_paint_prepare_same")
+                if PaintTurns.kept?(memory)
+                  # Short of the last pass's log, it may be the whole of the other picture's.
+                  asm.jsr(asm.abs("rt_paint_try_other_at_end"))
+                  asm.bne("rt_paint_prepare_same")
+                end
                 asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
                 asm.bra("rt_paint_prepare_cleared")
                 asm.label("rt_paint_prepare_same")
+                emit_turn_taken(asm, memory) if PaintTurns.kept?(memory)
                 asm.stz(asm.abs(memory[PaintLog::DEFERRED_CLEAR]))
                 asm.stz(asm.abs(memory[PaintLog::LOGGING]))
                 asm.stz(asm.abs(memory[RUNS_END]))
@@ -1916,6 +1927,7 @@ module VBlank
                 asm.lda(asm.abs(memory[PaintLog::LOGGING]))
                 asm.beq("rt_paint_prepare_split")
                 asm.jsr(asm.abs("rt_paint_flush_sending"))
+                asm.jsr(asm.abs("rt_paint_shared_checked")) if PaintTurns.kept?(memory)
                 asm.stz(asm.abs(memory[PaintLog::LOGGING]))
                 asm.brl("rt_paint_prepare_sent")
               else
@@ -2037,6 +2049,29 @@ module VBlank
               asm.sta(asm.direct(s.chunk))
               asm.label("rt_paint_run_end_none")
               asm.rts
+            end
+
+            # In rt_paint_prepare, a deferred pass that matched the whole of the log it was compared
+            # with: when that was the other picture's (PaintTurns), it takes its turn if it can,
+            # and is otherwise made as any other pass, from rt_paint_prepare_cleared. A pass that
+            # matched the last pass's goes on past.
+            def emit_turn_taken(asm, memory)
+              t = PaintTurns
+              asm.lda(asm.abs(memory[t::MATCHING_OTHER]))
+              asm.beq("rt_paint_prepare_last_pass")
+              asm.lda(asm.abs(memory[t::OTHER_VALID]))
+              asm.beq("rt_paint_prepare_no_turn")
+              asm.lda(asm.abs(memory[t::OTHER_CLEAR]))
+              asm.cmp(asm.abs(memory[CLEAR_PLACE]))
+              asm.bne("rt_paint_prepare_no_turn")
+              asm.jsr(asm.abs("rt_paint_turn"))
+              asm.lda(asm.abs(memory[GENERATION]))
+              asm.sta(asm.abs(memory[SHOWN_GENERATION]))
+              asm.bra("rt_paint_prepare_last_pass")
+              asm.label("rt_paint_prepare_no_turn")
+              asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
+              asm.brl("rt_paint_prepare_cleared")
+              asm.label("rt_paint_prepare_last_pass")
             end
 
             # In rt_paint_run_end, X the run last put on the list: if it ends where the run at +chunk+

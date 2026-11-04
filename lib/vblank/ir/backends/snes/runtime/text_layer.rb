@@ -123,10 +123,10 @@ module VBlank
             # Whether +memory+ keeps a text layer, which every part of the painted screen asks.
             def kept?(memory) = memory.reserved?(COUNT)
 
-            # +limit+ is the log's bytes less the room it keeps for texts taken off the layer.
-            def emit(asm, memory, s, limit)
+            # The routines a painted screen with a text layer adds (see the top).
+            def emit(asm, memory, s)
               emit_start(asm, memory)
-              emit_text(asm, memory, s, limit)
+              emit_text(asm, memory, s)
               emit_find(asm, memory, s)
               emit_free(asm, memory)
               emit_place(asm, memory, s)
@@ -137,6 +137,7 @@ module VBlank
               emit_demote(asm, memory, s)
               emit_check_now(asm, memory, s)
               emit_replace(asm, memory)
+              emit_rebuild(asm, memory) if PaintTurns.kept?(memory)
               emit_upload(asm, memory)
               emit_tables(asm)
             end
@@ -189,13 +190,14 @@ module VBlank
             # not written down (the pass did not clear), inside an area, when the layer is full or
             # another text covers its tiles: a painting that covers the other takes it off the layer
             # first, so the two still come out in order.
-            def emit_text(asm, memory, s, limit)
+            def emit_text(asm, memory, s)
               log = memory[PaintLog::LOG]
               area = memory[Paint::AREA]
               text = memory[TEXT]
               asm.label("rt_paint_layer_text")
               asm.lda(asm.abs(memory[PaintLog::DEFERRED_CLEAR]))
               asm.beq("rt_paint_layer_text_written")
+              asm.label("rt_paint_layer_text_compare")
               asm.ldx(asm.abs(memory[PaintLog::LOG_END]))
               asm.cpx(asm.abs(memory[PaintLog::LAST_PASS_END]))
               asm.bcs("rt_paint_layer_text_differs")
@@ -212,6 +214,7 @@ module VBlank
               asm.sta(asm.abs(memory[PaintLog::LOG_END]))
               asm.rtl
               asm.label("rt_paint_layer_text_differs")
+              PaintLog.emit_other_retried(asm, memory, "rt_paint_layer_text_compare")
               asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
               asm.label("rt_paint_layer_text_written")
               asm.lda(asm.abs(memory[PaintLog::LOGGING]))
@@ -222,7 +225,7 @@ module VBlank
               asm.cmp(MOST_PLACED)
               asm.branch_long(:bcs, "rt_paint_layer_text_painted")
               asm.lda(asm.abs(memory[PaintLog::LOG_END]))
-              asm.cmp(limit)
+              asm.cmp(asm.abs(memory[PaintTurns::LOG_LIMIT]))
               asm.bcc("rt_paint_layer_text_room")
               asm.jsr(asm.abs("rt_paint_flush_keeping"))
               asm.label("rt_paint_layer_text_room")
@@ -657,7 +660,7 @@ module VBlank
               text = memory[TEXT]
               asm.label("rt_paint_layer_demote")
               asm.jsr(asm.abs("rt_paint_layer_remove"))
-              asm.ldx(0)
+              asm.ldx(asm.abs(memory[PaintTurns::LOG_BASE]))
               asm.label("rt_paint_layer_demote_find")
               asm.cpx(asm.abs(memory[PaintLog::LOG_END]))
               asm.bcs("rt_paint_layer_demote_written")
@@ -843,6 +846,34 @@ module VBlank
               asm.plx
               asm.lda(PaintLog::KIND_DEMOTED)
               asm.sta(asm.long_x(log))
+              asm.rts
+            end
+
+            # rt_paint_layer_rebuild (JSR, as the screen takes its turn, PaintTurns): the layer holding
+            # the texts of this pass's log that are on it, and no other. Uses X and Y.
+            def emit_rebuild(asm, memory)
+              log = memory[PaintLog::LOG]
+              asm.label("rt_paint_layer_rebuild")
+              asm.jsr(asm.abs("rt_paint_layer_clear_all"))
+              asm.ldx(asm.abs(memory[PaintTurns::LOG_BASE]))
+              asm.label("rt_paint_layer_rebuild_entry")
+              asm.cpx(asm.abs(memory[PaintLog::LOG_END]))
+              asm.bcs("rt_paint_layer_rebuild_done")
+              asm.lda(asm.long_x(log))
+              asm.cmp(PaintLog::KIND_LAYER)
+              asm.bne("rt_paint_layer_rebuild_next")
+              asm.phx
+              asm.lda(asm.long_x(log, PaintLog::ENTRY_NUMBERS))
+              asm.jsr(asm.abs("rt_paint_layer_find"))
+              asm.jsr(asm.abs("rt_paint_layer_place"))
+              asm.plx
+              asm.label("rt_paint_layer_rebuild_next")
+              asm.txa
+              asm.clc
+              asm.adc(PaintLog::ENTRY_BYTES)
+              asm.tax
+              asm.bra("rt_paint_layer_rebuild_entry")
+              asm.label("rt_paint_layer_rebuild_done")
               asm.rts
             end
 

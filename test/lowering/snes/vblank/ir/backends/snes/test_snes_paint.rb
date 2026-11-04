@@ -157,10 +157,12 @@ class TestSNESPaint < Minitest::Test
     assert_empty run.torn_frames
   end
 
-  # Half the screen painted on alternate passes changes no tile (the copy holds both halves
-  # already) but 448 tiles' keys and all 896 cells of the map. Looking at each tile and cell with
-  # 16-bit addresses, the map's run started once a row, takes three frames a pass; it took four.
-  def test_half_the_screen_on_alternate_passes_takes_three_frames
+  # Half the screen painted on alternate passes is two pictures taking turns (PaintTurns): each
+  # pass paints what the pass before last did, so the screen shows that picture again, its tiles
+  # as they were and the two maps swapped, and nothing is keyed, painted or sent but the map. Made
+  # again tile by tile (448 tiles' keys, their flush and all 896 cells of the map) it took three
+  # frames a pass.
+  def test_half_the_screen_on_alternate_passes_takes_one_frame
     program = program_of do
       screen :bitmap
       n = 0
@@ -171,9 +173,52 @@ class TestSNESPaint < Minitest::Test
         n += 1
       end
     end
-    run = SNES::HeadlessRun.new.run(program, frames: 8)
+    SNES::CheckedRun.new.run(program, frames: 10)
+    run = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 10)
 
-    assert_operator (4..8).map { |pass| run.frames_took(pass) }.max, :<=, 3
+    assert_equal [1] * 7, (4..10).map { |pass| run.frames_took(pass) }
+    assert_empty run.torn_frames
+  end
+
+  # Walls painted every pass, and a big panel beside them painted on every other: the passes with
+  # the panel and the ones without take turns, the walls the same in both.
+  def test_a_panel_shown_every_other_pass_beside_walls_takes_one_frame
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 256, 8, :gray
+        fill_rect 0, 216, 256, 8, :gray
+        fill_rect 0, 8, 8, 208, :gray
+        fill_rect 32, 32, 192, 160, :blue if n % 2 == 0
+        n += 1
+      end
+    end
+    SNES::CheckedRun.new.run(program, frames: 10)
+    run = SNES::HeadlessRun.new.run(program, frames: 10)
+
+    assert_equal [1] * 7, (4..10).map { |pass| run.frames_took(pass) }
+  end
+
+  # A prompt that blinks under words that stay, the words on a layer of their own (TextLayer):
+  # one frame a pass from the first, whichever of the two pictures the pass paints.
+  def test_a_prompt_blinking_under_words_takes_one_frame
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        draw_text "GAME OVER", 100, 52, :red
+        draw_text "SCORE 120", 100, 76, :white
+        draw_text "PRESS START", 95, 110, :gray if (n / 4) % 2 == 0
+        n += 1
+      end
+    end
+    SNES::CheckedRun.new.run(program, frames: 20)
+    run = SNES::HeadlessRun.new.run(program, frames: 20)
+
+    assert_equal [1] * 19, (2..20).map { |pass| run.frames_took(pass) }
   end
 
   # A TILE ON THE SCREEN PAINTED AGAIN goes into the slot of video RAM its cell shows, so it is

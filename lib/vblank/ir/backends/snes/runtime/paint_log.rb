@@ -183,6 +183,7 @@ module VBlank
               memory.reserve(OP_HASH, 4)
               memory.reserve(SEED, 4)
               ROWS_OF.each_value { |name| memory.reserve(name, 4) }
+              PaintTurns.reserve(memory)
             end
 
             # At power-on (Paint's rt_paint_start, the area the whole screen): no tile painted in any
@@ -201,6 +202,8 @@ module VBlank
               asm.cpx(Paint::ROWS * 4)
               asm.bne("rt_paint_log_start_row")
               ROWS_OF.each_key { |name| emit_no_rows(asm, memory, name) }
+              PaintTurns.emit_start(asm, memory)
+              asm.stz(asm.abs(memory[LOG_END]))
               asm.stz(asm.abs(memory[DEFERRED_CLEAR]))
               asm.lda(NO_LAST_PASS)
               asm.sta(asm.abs(memory[LAST_PASS_END]))
@@ -226,7 +229,8 @@ module VBlank
             # As the whole screen is cleared, made now: what was written down is gone, and the log
             # is whole from here.
             def emit_clear(asm, memory)
-              asm.stz(asm.abs(memory[LOG_END]))
+              asm.lda(asm.abs(memory[PaintTurns::LOG_BASE]))
+              asm.sta(asm.abs(memory[LOG_END]))
               asm.lda(1)
               asm.sta(asm.abs(memory[LOGGING]))
               asm.sta(asm.abs(memory[LOG_WHOLE]))
@@ -345,12 +349,20 @@ module VBlank
             def emit(asm, memory, s, bank)
               log_bytes = memory.reserve_far_up_to(LOG, least: LEAST_LOG_ENTRIES * ENTRY_BYTES,
                                                         most: MOST_LOG_ENTRIES * ENTRY_BYTES, step: ENTRY_BYTES)
-              # With a text layer, room for an entry for each text a painting takes off it.
+              # Two halves when it has room for them (PaintTurns), and a pass writes in one; with a
+              # text layer, each keeps room for an entry for each text a painting takes off it.
+              half = log_bytes
+              if log_bytes >= 2 * LEAST_LOG_ENTRIES * ENTRY_BYTES
+                half = log_bytes / 2 / ENTRY_BYTES * ENTRY_BYTES
+                PaintTurns.take_turns(memory)
+              end
               layer = TextLayer.kept?(memory)
-              log_bytes -= TextLayer::MOST_PLACED * ENTRY_BYTES if layer
+              limit = half - (layer ? TextLayer::MOST_PLACED * ENTRY_BYTES : 0)
+              PaintTurns.emit_halves(asm, half, limit)
+              PaintTurns.emit(asm, memory, memory[LOG]) if PaintTurns.kept?(memory)
               emit_hash(asm, memory)
-              emit_op_begin(asm, memory, log_bytes)
-              TextLayer.emit(asm, memory, s, log_bytes) if layer
+              emit_op_begin(asm, memory)
+              TextLayer.emit(asm, memory, s) if layer
               emit_apply_deferred_clear(asm, memory, s)
               emit_mark(asm, memory, s)
               emit_mark_now(asm, memory, s)
@@ -443,8 +455,8 @@ module VBlank
 
             # rt_paint_op_begin (JSR, A the kind, X the bytes of working numbers it is known by,
             # HASHED_NUMBERS): while paintings are written down, the log painted first if it is
-            # full (+log_bytes+), then the painting's hash.
-            def emit_op_begin(asm, memory, log_bytes)
+            # full (PaintTurns::LOG_LIMIT), then the painting's hash.
+            def emit_op_begin(asm, memory)
               asm.label("rt_paint_op_begin")
               asm.sta(asm.abs(memory[OP_KIND]))
               asm.stx(asm.abs(memory[OP_BYTES]))
@@ -456,7 +468,7 @@ module VBlank
               asm.rts
               asm.label("rt_paint_op_begin_logged")
               asm.lda(asm.abs(memory[LOG_END]))
-              asm.cmp(log_bytes)
+              asm.cmp(asm.abs(memory[PaintTurns::LOG_LIMIT]))
               asm.bcc("rt_paint_op_begin_room")
               asm.jsr(asm.abs("rt_paint_flush_keeping"))
               asm.label("rt_paint_op_begin_room")
@@ -477,6 +489,7 @@ module VBlank
               differs = "#{prefix}_differs"
               asm.lda(asm.abs(memory[DEFERRED_CLEAR]))
               asm.branch_long(:beq, "#{prefix}_written")
+              asm.label("#{prefix}_compare")
               asm.ldx(asm.abs(memory[LOG_END]))
               asm.cpx(asm.abs(memory[LAST_PASS_END]))
               asm.branch_long(:bcs, differs)
@@ -503,8 +516,20 @@ module VBlank
               asm.sta(asm.abs(memory[LOG_END]))
               asm.rtl
               asm.label(differs)
+              emit_other_retried(asm, memory, "#{prefix}_compare")
               asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
               asm.label("#{prefix}_written")
+            end
+
+            # Where a deferred pass's painting differs from the last pass's: compared again at
+            # +compare+ with the other picture's, if the pass can be (PaintTurns' rt_paint_try_other).
+            def emit_other_retried(asm, memory, compare)
+              return unless PaintTurns.kept?(memory)
+
+              asm.jsr(asm.abs("rt_paint_try_other"))
+              asm.beq("#{compare}_not_other")
+              asm.brl(compare)
+              asm.label("#{compare}_not_other")
             end
 
             # rt_paint_apply_deferred_clear (JSR): the clear deferred made now (see the top): the
@@ -546,11 +571,13 @@ module VBlank
 
               asm.label("rt_paint_apply_deferred_clear")
               asm.stz(asm.abs(memory[DEFERRED_CLEAR]))
+              # The last pass kept as the other picture, where the pass can (PaintTurns).
+              asm.jsr(asm.abs("rt_paint_become_other")) if PaintTurns.kept?(memory)
               asm.jsr(asm.abs("rt_paint_next_generation"))
               layer = TextLayer.kept?(memory)
               # The layer cleared too, and each text matched put on it again (TextLayer).
               asm.jsr(asm.abs("rt_paint_layer_clear_all")) if layer
-              asm.ldx(0)
+              asm.ldx(asm.abs(memory[PaintTurns::LOG_BASE]))
               asm.label("rt_paint_apply_deferred_clear_entry")
               asm.cpx(asm.abs(memory[LOG_END]))
               asm.bcs("rt_paint_apply_deferred_clear_done")
@@ -658,6 +685,7 @@ module VBlank
               asm.and_a(0x00FF)
               asm.cmp(asm.abs(memory[Paint::GENERATION]))
               asm.beq("rt_paint_mark_known")
+              PaintTurns.emit_shared_noted(asm, memory, "rt_paint_mark") if PaintTurns.kept?(memory)
               asm.sep(0x20)
               asm.lda(asm.abs(memory[Paint::GENERATION]))
               asm.sta(asm.ind_long_y(generations))
@@ -767,6 +795,7 @@ module VBlank
               asm.and_a(0x00FF)
               asm.cmp(generation)
               asm.beq("rt_paint_mark_now_ready")
+              PaintTurns.emit_touched_check(asm, memory, "rt_paint_mark_now") if PaintTurns.kept?(memory)
               asm.sep(0x20)
               asm.lda(generation)
               asm.sta(asm.long_x(memory[Paint::GENERATIONS]))
@@ -941,6 +970,7 @@ module VBlank
               own = [s.pointer, s.pointer + 2, s.tile, s.last, s.count, s.row] + Array.new(4) { |i| s.planes + (i * 2) }
               asm.stz(asm.abs(memory[LOG_WHOLE])) # painted mid-pass: the log is no longer the pass's
               asm.lda(asm.abs(memory[LOG_END]))
+              asm.cmp(asm.abs(memory[PaintTurns::LOG_BASE]))
               asm.bne("rt_paint_flush_keeping_page")
               own.each { |at| asm.pei(asm.direct(at)) }
               asm.jsr(asm.abs("rt_paint_flush"))
@@ -1106,7 +1136,8 @@ module VBlank
               asm.beq("rt_paint_flush_done")
               asm.jsr(asm.abs("rt_paint_replay"))
               asm.label("rt_paint_flush_done")
-              asm.stz(asm.abs(memory[LOG_END]))
+              asm.lda(asm.abs(memory[PaintTurns::LOG_BASE]))
+              asm.sta(asm.abs(memory[LOG_END]))
               asm.rts
 
               # rt_paint_flush_sending (JSR, as the pass ends): the flush, and each tile of the rows
@@ -1275,7 +1306,7 @@ module VBlank
               emit_pointer(asm, s.pointer, memory[REPAINT])
               asm.label("rt_paint_replay_round")
               asm.stz(asm.direct(s.column))
-              asm.ldx(0)
+              asm.ldx(asm.abs(memory[PaintTurns::LOG_BASE]))
               asm.label("rt_paint_replay_look")
               asm.cpx(asm.abs(memory[LOG_END]))
               asm.bcs("rt_paint_replay_looked")
@@ -1309,7 +1340,7 @@ module VBlank
               end
               asm.lda(1)
               asm.sta(asm.abs(memory[REPLAYING]))
-              asm.ldx(0)
+              asm.ldx(asm.abs(memory[PaintTurns::LOG_BASE]))
               asm.label("rt_paint_replay_entry")
               asm.cpx(asm.abs(memory[LOG_END]))
               asm.branch_long(:bcs, "rt_paint_replay_done")
@@ -1446,6 +1477,7 @@ module VBlank
               runs = memory[MAP_RUNS]
               map_rows = memory[ROWS_OF.fetch(MAP_DIRTY)]
               asm.label("rt_paint_map_runs")
+              emit_other_map_kept(asm, memory) if PaintTurns.kept?(memory)
               asm.stz(asm.abs(memory[MAP_RUNS_END]))
               asm.stz(asm.abs(memory[MAP_RUN_BYTES]))
               asm.lda(asm.abs(memory[Paint::GENERATION]))
@@ -1499,7 +1531,8 @@ module VBlank
               asm.label("rt_paint_map_runs_row_looked")
               asm.plb
               asm.lda(asm.direct(s.chunk))
-              asm.bmi("rt_paint_map_runs_none")
+              asm.branch_long(:bmi, "rt_paint_map_runs_none")
+              emit_map_differs_widened(asm, memory, s) if PaintTurns.kept?(memory)
               # A run that starts where the last one ends (a row changed to its end, and the next
               # from its start) is that run made longer: the cells are side by side in the map and
               # in video RAM, and one copy costs the blank less than two.
@@ -1589,6 +1622,67 @@ module VBlank
               asm.iny
               asm.cpy(asm.direct(s.last))
               asm.bcc(tag)
+            end
+
+            # At the top of rt_paint_map_runs, when the last pass's picture became the other one
+            # (PaintTurns::OTHER_MAP_PENDING): the map as it is shown copied to the other's, in the rows
+            # where they may differ, which then do not.
+            def emit_other_map_kept(asm, memory)
+              t = PaintTurns
+              asm.lda(asm.abs(memory[t::OTHER_MAP_PENDING]))
+              asm.beq("rt_paint_other_map_kept")
+              asm.stz(asm.abs(memory[t::OTHER_MAP_PENDING]))
+              # Gone already (a tile of it changed): the map is not kept, and differs where it did.
+              asm.lda(asm.abs(memory[t::OTHER_VALID]))
+              asm.beq("rt_paint_other_map_kept")
+              asm.lda(asm.abs(memory[t::MAP_DIFFERS_LAST]))
+              asm.cmp(asm.abs(memory[t::MAP_DIFFERS_FIRST]))
+              asm.bcc("rt_paint_other_map_same")
+              asm.sec
+              asm.sbc(asm.abs(memory[t::MAP_DIFFERS_FIRST]))
+              asm.inc
+              asm.xba
+              asm.lsr
+              asm.lsr # 64 bytes a row
+              asm.dec
+              asm.pha
+              asm.lda(asm.abs(memory[t::MAP_DIFFERS_FIRST]))
+              asm.xba
+              asm.lsr
+              asm.lsr
+              asm.pha
+              asm.clc
+              asm.adc(memory[Paint::MAP_COPY] & 0xFFFF)
+              asm.tax
+              asm.pla
+              asm.clc
+              asm.adc(memory[t::OTHER_MAP] & 0xFFFF)
+              asm.tay
+              asm.pla
+              asm.phb
+              asm.mvn(memory[t::OTHER_MAP] >> 16, memory[Paint::MAP_COPY] >> 16)
+              asm.plb
+              asm.label("rt_paint_other_map_same")
+              asm.lda(Paint::ROWS)
+              asm.sta(asm.abs(memory[t::MAP_DIFFERS_FIRST]))
+              asm.stz(asm.abs(memory[t::MAP_DIFFERS_LAST]))
+              asm.label("rt_paint_other_map_kept")
+            end
+
+            # In rt_paint_map_runs, a row with cells that changed (its first cell +row+): the rows where
+            # the map may differ from the other picture's take it in.
+            def emit_map_differs_widened(asm, memory, s)
+              t = PaintTurns
+              asm.lda(asm.direct(s.row))
+              5.times { asm.lsr }
+              asm.cmp(asm.abs(memory[t::MAP_DIFFERS_FIRST]))
+              asm.bcs("rt_paint_map_differs_first")
+              asm.sta(asm.abs(memory[t::MAP_DIFFERS_FIRST]))
+              asm.label("rt_paint_map_differs_first")
+              asm.cmp(asm.abs(memory[t::MAP_DIFFERS_LAST]))
+              asm.bcc("rt_paint_map_differs_last")
+              asm.sta(asm.abs(memory[t::MAP_DIFFERS_LAST]))
+              asm.label("rt_paint_map_differs_last")
             end
 
             # In the blank (Paint's rt_paint_upload, with the map's other copies): each run of cells
