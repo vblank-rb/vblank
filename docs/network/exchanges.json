@@ -36,6 +36,51 @@
       ]
     },
     {
+      "name": "the handshake: a machine asks to join, and the host welcomes it, says who joined, and starts the match",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join", "game": "WANDERERS", "console": "gba", "digest": "ab12" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "join", "from": 2, "game": "WANDERERS", "console": "gba", "digest": "ab12" } } ] },
+        { "client": "host", "sends": { "v": 1, "type": "welcome", "to": 2, "seed": 7, "input_delay": 2, "checkpoint_every": 8, "players": 2 },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "welcome", "from": 1, "to": 2, "seed": 7, "input_delay": 2, "checkpoint_every": 8, "players": 2 } } ] },
+        { "client": "host", "sends": { "v": 1, "type": "joined", "player": 2 },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "joined", "from": 1, "player": 2 } } ] },
+        { "client": "host", "sends": { "v": 1, "type": "start", "players": [1, 2] },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "start", "from": 1, "players": [1, 2] } } ] }
+      ]
+    },
+    {
+      "name": "the handshake: the host refuses a machine that plays another game, and every machine in the room hears it",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "other", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "other", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 3, "members": [1, 2] } } ] },
+        { "client": "other", "sends": { "v": 1, "type": "join", "game": "OTHER", "console": "gba", "digest": "cd34" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "join", "from": 3, "game": "OTHER", "console": "gba", "digest": "cd34" } },
+                    { "client": "guest", "message": { "v": 1, "type": "join", "from": 3, "game": "OTHER", "console": "gba", "digest": "cd34" } } ] },
+        { "client": "host", "sends": { "v": 1, "type": "refuse", "to": 3, "reason": "different_game", "game": "WANDERERS", "console": "gba", "digest": "ab12" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "refuse", "from": 1, "to": 3, "reason": "different_game", "game": "WANDERERS", "console": "gba", "digest": "ab12" } },
+                    { "client": "other", "message": { "v": 1, "type": "refuse", "from": 1, "to": 3, "reason": "different_game", "game": "WANDERERS", "console": "gba", "digest": "ab12" } } ] }
+      ]
+    },
+    {
+      "name": "a machine cannot say that a machine has left: only the room says it",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "left" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "error", "reason": "bad_message" } } ] }
+      ]
+    },
+    {
       "name": "a message cannot say it is from somebody else",
       "steps": [
         { "client": "host", "sends": { "v": 1, "type": "make_room" },

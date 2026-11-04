@@ -7,7 +7,8 @@ require "json"
 # reads the same file, so a relay in Ruby, one in JavaScript and the real one are held to one thing.
 #
 # The relay is given as +connect+, which makes one machine's link: something that answers
-# send_text(text), receive_text (the next text for the machine, or nil) and close.
+# send_text(text), receive_text (the next text for the machine, or nil) and close. Every message handed to a
+# machine is read by Network::Wire too, so the examples hold this program's reader as well as the relay.
 module NetworkExchanges
   PATH = VBlank.root.join("docs/network/exchanges.json").to_s
 
@@ -41,7 +42,7 @@ module NetworkExchanges
       texts.map { |text| [name, JSON.parse(text)] }
     end
     expected = step.fetch("gets")
-    problems = []
+    problems = unreadable(got)
     problems << "got #{got.size} messages, expected #{expected.size}: #{got.inspect}" if got.size != expected.size
     expected.zip(got).each do |want, have|
       next unless have
@@ -49,6 +50,17 @@ module NetworkExchanges
       problems << "#{want['client']} was to get #{want['message'].inspect} and #{have.first} got #{have.last.inspect}" unless matches?(want, have, learned)
     end
     problems
+  end
+
+  # What was handed on that this program's own reader (Network::Wire) refuses: every message a relay hands a
+  # machine, the handshake's included, is one a machine must be able to read.
+  def self.unreadable(got)
+    got.filter_map do |name, message|
+      VBlank::Network::Wire.decode(JSON.generate(message))
+      nil
+    rescue VBlank::Network::BadMessage, VBlank::Network::VersionMismatch => e
+      "#{name} got #{message.inspect}, which Wire does not read: #{e.message}"
+    end
   end
 
   def self.matches?(want, have, learned)
