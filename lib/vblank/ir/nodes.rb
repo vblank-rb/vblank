@@ -707,6 +707,54 @@ module VBlank
         operands name: :name, slice: :value, x: :value, top: :value, height: :value, width: :int
       end
 
+      # A PLACE MADE OF FLAT FACES, DRAWN AS A VIEWER SEES IT. The place is data the program
+      # declared (its points and faces, kept as tables) and the viewer is variables the game
+      # changes, so drawing it is one statement here, and the work of drawing it is the
+      # statements under it: they hand the viewer and the edges of the view to a routine the
+      # program holds for the place, which turns each point to the viewer, finds where it lands
+      # on the screen and fills each face with its picture (see IR::PlaceDrawing).
+      #
+      # A target that draws by working those sums out itself runs the children and nothing
+      # else. A target whose hardware turns points and fills faces itself reads +place+ and
+      # +viewer+ instead and leaves the children alone — that is why this is a kind of its own
+      # and not a bare call.
+      #
+      # +perspective+ is how a picture is laid across a face that leans away: :none stretches it
+      # straight between the corners.
+      class DrawPlace
+        include Node
+        kind :draw_place
+        category :control
+        operands place: :name, viewer: :name, perspective: :option
+      end
+
+      # ONE FACE ALREADY ON THE SCREEN, filled with a picture. Four corners, each where it lands on
+      # the screen (+x+, +y+, in sixteenths of a pixel) and where it falls on the picture (+u+
+      # across, +v+ down, in picture pixels with sixteen fraction bits). A face of three corners
+      # gives its last corner twice. The picture repeats past its edges like wallpaper. Nothing
+      # outside +left+, +top+, +right+ and +bottom+ (whole pixels, the right and bottom ones not
+      # drawn) is touched, and those can be worked out as the game runs.
+      #
+      # How the corners become pixels is written down once, in Reference#exec_fill_face, and
+      # every target lands every pixel where that says.
+      class FillFace
+        include Node
+        kind :fill_face
+        category :draw
+        operands picture: :name,
+                 x0: :value, y0: :value, u0: :value, v0: :value,
+                 x1: :value, y1: :value, u1: :value, v1: :value,
+                 x2: :value, y2: :value, u2: :value, v2: :value,
+                 x3: :value, y3: :value, u3: :value, v3: :value,
+                 left: :value, top: :value, right: :value, bottom: :value
+
+        # The corners in order, each [x, y, u, v].
+        def corners = [[x0, y0, u0, v0], [x1, y1, u1, v1], [x2, y2, u2, v2], [x3, y3, u3, v3]]
+
+        # The edges nothing outside is drawn, [left, top, right, bottom].
+        def edges = [left, top, right, bottom]
+      end
+
       # Words at a fixed place. +picked+ is a second colour and +showing+ the test that picks
       # it — the words are drawn in +picked+ while the test holds and in +color+ when it does
       # not. The words are ONE set however many colours they can be, so a backend paints them

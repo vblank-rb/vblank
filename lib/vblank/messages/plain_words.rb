@@ -62,6 +62,7 @@ module VBlank
                    __divide_routine: "dividing",
                    __divide_fix_routine: "dividing numbers that hold a fraction",
                    __mix_routine: "mixing the sound that is playing",
+                   __fill_face_routine: "filling the faces of a place with their pictures",
                    __clock_chip_at_power_on: "asking the cartridge's clock chip whether it is there and set",
                    __clock_chip_each_pass: "reading the date and time off the cartridge's clock chip",
                    __clock_chip_first_reading: "asking the clock chip the time at the first reading of a pass",

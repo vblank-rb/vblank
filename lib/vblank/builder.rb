@@ -19,6 +19,7 @@ require_relative "builder/sprite_import"
 require_relative "builder/input"
 require_relative "builder/local_view"
 require_relative "builder/drawing"
+require_relative "builder/places"
 VBlank.require_game_file "builder/spotlights" # the circle a spotlight lights, a row at a time
 require_relative "builder/variables"
 VBlank.require_game_file "builder/control_flow"
@@ -81,6 +82,7 @@ module VBlank
     include Input      # if_held, if_pressed, held, pressed
     include LocalView  # drawing_for_local_player (what only this machine's person sees, in a networked match)
     include Drawing    # screen, pixel, fill_rect, clear_screen, dma_fill_rect, draw_rect_at
+    include Places     # place, viewer, draw_place (a first-person view of a place made of flat faces)
     include Variables  # set/var, add, sub, negate/flip, copy, abs, negate_abs, clamp, variables
     include ControlFlow # game_loop, wait_vblank, repeat, every, after, halt, debug_halt, if_eq..if_le
     include Scenes     # func, call, scene, case_var, dump_func

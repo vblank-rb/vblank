@@ -138,7 +138,32 @@ class TestConsoleAnswers < Minitest::Test
     game_loop { bar.set_tile 1, 0, "r", now: true if pressed(:down) }
   end
 
+  # A place made of one face, drawn as a viewer sees it.
+  PLACE = VBlank.game("PLACE", consoles: %i[gba gbc snes genesis]) do
+    screen :bitmap, tear_free: true
+    image(:wall, "#" => :white) { "##\n##\n" }
+    place :room do
+      a = point(-1.0, 1.0, 2.0)
+      b = point(1.0, 1.0, 2.0)
+      c = point(1.0, -1.0, 2.0)
+      face a, b, c, picture: :wall, on_picture: [[0, 0], [2, 0], [2, 2]]
+    end
+    eye = viewer :eye, at: [0.0, 0.0, 0.0]
+    game_loop { draw_place :room, seen_by: eye }
+  end
+
   private def findings(game, console) = CHECK.detect(game.program(console: console))
+
+  def test_a_place_is_refused_naming_what_each_console_lacks
+    { gbc: /no multiply instruction/, snes: /Super FX chip/, genesis: /16-bit numbers/ }.each do |console, words|
+      found = findings(PLACE, console)
+
+      assert_equal [:error], found.map(&:severity).uniq, console
+      assert_match(/draw_place/, found.first.message)
+      assert_match(words, found.first.message)
+    end
+    assert_empty findings(PLACE, :gba)
+  end
 
   def test_a_bar_cell_shown_now_is_refused_on_the_super_nintendo
     found = findings(CELL_SHOWN_NOW, :snes)

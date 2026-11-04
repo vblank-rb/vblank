@@ -217,6 +217,7 @@ module VBlank
         root.walk do |node|
           case node.kind
           when :blit, :draw_column_at then names << node.name
+          when :fill_face then names << node.picture
           when :blit_pose, :object then names.concat(node.poses)
           end
         end

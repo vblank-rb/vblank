@@ -750,6 +750,8 @@ module VBlank
           dma_fill_rect: :exec_dma_fill_rect,
           draw_rect_at: :exec_draw_rect_at,
           draw_column_at: :exec_draw_column_at,
+          draw_place: :exec_draw_place,
+          fill_face: :exec_fill_face,
           draw_text: :exec_draw_text,
           draw_digit: :exec_draw_digit,
           background: :exec_background,
@@ -3234,6 +3236,128 @@ module VBlank
             next if bmp.transparent && color == bmp.transparent
 
             width.times { |dx| @screen.set_pixel(x + dx, top + row, color) } # the screen clips
+          end
+        end
+
+        # A place drawn as a viewer sees it: its statements hand the viewer and the view to the
+        # place's routine and call it (see IR::PlaceDrawing). The interpreter works the sums out
+        # itself, so that is all there is to do.
+        def exec_draw_place(node)
+          node.children.each { |child| exec(child) }
+        end
+
+        # ONE FACE ALREADY ON THE SCREEN, FILLED WITH ITS PICTURE. What is written here IS the
+        # specification: every target lands every pixel where this says, so every step is a sum
+        # IR::Int32 does, and nothing else rounds. (Nodes::FillFace says what the numbers are.)
+        #
+        # Walk DOWN THE SCREEN, a row at a time, and ask each of the face's four edges whether it
+        # crosses the middle of that row. Two of them do, for a face that is not bent; the one
+        # further left is where the row's pixels start and the other is where they stop. Along each
+        # edge, where it crosses a row and where on the picture that is are worked out once at its
+        # first row, and then stepped down a row at a time by adding. Across the row, the place on
+        # the picture is stepped a pixel at a time the same way.
+        #
+        # WHICH ROWS AND PIXELS: a pixel is filled when its middle is inside the face, counting the
+        # top and left edges in and the bottom and right ones out, so two faces sharing an edge
+        # neither leave a gap nor fill a pixel twice.
+        def exec_fill_face(node)
+          picture = @bitmaps.fetch(node.picture) do
+            raise ProgramError, "fill_face of undefined image #{node.picture.inspect}"
+          end
+          pixels = @data.fetch(node.picture)
+          corners = node.corners.map { |corner| corner.map { |value| eval_value(value) } }
+          left, top, right, bottom = node.edges.map { |value| eval_value(value) }
+          left = [left, 0].max
+          top = [top, 0].max
+          right = [right, @screen.width].min
+          bottom = [bottom, @screen.height].min
+          edges = FaceEdges.of(corners)
+          return if edges.empty?
+
+          first = [edges.map(&:first_row).min, top].max
+          last = [edges.map(&:past_row).max, bottom].min
+          (first...last).each do |row|
+            crossing = edges.select { |edge| edge.crosses?(row) }.map { |edge| edge.at(row) }
+            next if crossing.length < 2
+
+            fill_face_row(row, crossing.min_by(&:first), crossing.reverse.max_by(&:first), [left, right],
+                          picture, pixels)
+          end
+        end
+
+        # One row of a face, from where the edge +from+ crosses it to where +to+ does, each
+        # [x, u, v] (x in pixels with sixteen fraction bits): the pixels whose middles lie between,
+        # each the picture's pixel at its place on the picture, the place stepped by one equal
+        # amount a pixel. +span+ is [left, right] of what may be drawn.
+        def fill_face_row(row, from, to, span, picture, pixels)
+          half = 1 << 15
+          start = Int32.shift_right(Int32.add(from[0], half - 1), 16)
+          stop = Int32.shift_right(Int32.add(to[0], half - 1), 16)
+          count = Int32.sub(stop, start)
+          return if count <= 0
+
+          step_u = Int32.div(Int32.sub(to[1], from[1]), count)
+          step_v = Int32.div(Int32.sub(to[2], from[2]), count)
+          ([start, span[0]].max...[stop, span[1]].min).each do |x|
+            along = Int32.sub(x, start)
+            u = Int32.add(from[1], Int32.mul(step_u, along))
+            v = Int32.add(from[2], Int32.mul(step_v, along))
+            across = Int32.bit_and(Int32.shift_right(u, 16), picture.width - 1)
+            down = Int32.bit_and(Int32.shift_right(v, 16), picture.height - 1)
+            at = ((down * picture.width) + across) * 2
+            color = pixels.getbyte(at) | (pixels.getbyte(at + 1) << 8)
+            next if picture.transparent && color == picture.transparent
+
+            @screen.set_pixel(x, row, color)
+          end
+        end
+
+        # ONE EDGE OF A FACE, as the fill walks down it: the first row whose middle it crosses and
+        # the row past its last, and at its first row where it crosses (+x+, in pixels with sixteen
+        # fraction bits) and where on the picture that is (+u+, +v+), with how far each moves a row
+        # (+step_x+, +step_u+, +step_v+).
+        #
+        # An edge is taken from its upper end down. How far one row is along it, +along_row+, is
+        # one division, kept with twenty-four fraction bits so that the steps it makes come out
+        # true to a part in millions; the start is found from it too, so an edge costs one division.
+        FaceEdge = Data.define(:first_row, :past_row, :x, :u, :v, :step_x, :step_u, :step_v) do
+          def crosses?(row) = row >= first_row && row < past_row
+
+          # [x, u, v] where this edge crosses +row+.
+          def at(row)
+            rows = Int32.sub(row, first_row)
+            [Int32.add(x, Int32.mul(step_x, rows)), Int32.add(u, Int32.mul(step_u, rows)),
+             Int32.add(v, Int32.mul(step_v, rows))]
+          end
+        end
+
+        # The edges of a face whose corners are +corners+, each [x, y, u, v], that cross the middle
+        # of a row: none for an edge that runs level, or that starts and ends between the same two
+        # row middles.
+        module FaceEdges
+          module_function
+
+          def of(corners)
+            corners.each_index.filter_map do |k|
+              top, bottom = [corners[k], corners[(k + 1) % corners.length]].sort_by { |corner| corner[1] }
+              edge(top, bottom) unless top[1] == bottom[1]
+            end
+          end
+
+          def edge(top, bottom)
+            first_row = Int32.shift_right(Int32.add(top[1], 7), 4)
+            past_row = Int32.shift_right(Int32.add(bottom[1], 7), 4)
+            return nil if first_row >= past_row
+
+            along_row = Int32.div(1 << 28, Int32.sub(bottom[1], top[1]))
+            into = Int32.mul_fix(Int32.sub(Int32.add(Int32.mul(first_row, 16), 8), top[1]), along_row, 4)
+            across = Int32.shift_left(Int32.sub(bottom[0], top[0]), 12)
+            parts = [across, Int32.sub(bottom[2], top[2]), Int32.sub(bottom[3], top[3])]
+            starts = [Int32.shift_left(top[0], 12), top[2], top[3]]
+            x, u, v = starts.zip(parts).map { |start, part| Int32.add(start, Int32.mul_fix(part, into, 24)) }
+            step_x, step_u, step_v = parts.map { |part| Int32.mul_fix(part, along_row, 24) }
+            FaceEdge.new(first_row: first_row, past_row: past_row, x: x, u: u, v: v,
+                         step_x: step_x, step_u: step_u, step_v: step_v)
           end
         end
 

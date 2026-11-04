@@ -53,6 +53,8 @@ class TestMadeNames < Minitest::Test
     start_over: { part: :play },
     held_tiles: {},
     held_tiles_drop: {},
+    place_part: { place: :cube, part: :draw },
+    viewer_part: { viewer: :eye, part: :ahead_z },
   }.freeze
 
   def test_every_kind_of_name_is_in_the_samples

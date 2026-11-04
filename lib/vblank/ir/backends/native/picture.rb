@@ -653,6 +653,16 @@ module VBlank
                        value(node.top), value(node.height), C::Int.new(node.width || 1))]
           end
 
+          # Reference#exec_draw_place: the statements under it, which hand the place's routine the
+          # viewer and the view and call it.
+          def lower_draw_place(node) = body_of(node)
+
+          # Reference#exec_fill_face: the corners in order, then the edges nothing outside is drawn.
+          def lower_fill_face(node)
+            [eval_call("rg_screen_face", C::Int.new(image_number(node.picture)),
+                       *(node.corners.flatten + node.edges).map { |operand| value(operand) })]
+          end
+
           def lower_save_region(node) = [patch_statement("rg_patch_save", node)]
           def lower_restore_region(node) = [patch_statement("rg_patch_restore", node)]
 

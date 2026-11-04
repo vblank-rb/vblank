@@ -43,7 +43,12 @@ module VBlank
         # game's stack, and the game went wrong. So a handler that calls routines gets room for
         # them: the game's own stack starts that much lower (#stack_starts_at, which the boot code
         # sets), and the gap is the interrupt stack's to grow into.
-        TopOfQuickMemory = Data.define(:ceiling, :divide_at, :divide_fix_at, :stack_bytes, :stack_starts_at)
+        #
+        # THE ROUTINE THAT FILLS A FACE OF A PLACE goes below the divide routines, for a game that
+        # draws a place (see Faces): it runs once for every pixel of every face, and from the
+        # cartridge each of its instructions would wait on the cartridge to be read.
+        TopOfQuickMemory = Data.define(:ceiling, :divide_at, :divide_fix_at, :fill_face_at, :stack_bytes,
+                                       :stack_starts_at)
 
         class TopOfQuickMemory
           include Console::Hardware
@@ -72,14 +77,15 @@ module VBlank
 
           # The layout for +program+. +stack_room+ is the bytes a game said its stack wants, or nil
           # for the build to decide; +divides+ and +divides_fractions+ whether it needs each divide
-          # routine.
-          def self.for(program, stack_room: nil, divides: false, divides_fractions: false)
+          # routine, and +fills_faces+ whether it needs the routine that fills a face.
+          def self.for(program, stack_room: nil, divides: false, divides_fractions: false, fills_faces: false)
             stack = stack_room || stack_needed(program).clamp(DEFAULT_STACK_BYTES, MOST_STACK_BYTES)
             starts_at = END_OF_QUICK - CONSOLE_BYTES - interrupt_room_needed(program)
             fix_at = starts_at - stack - (divides_fractions ? Divide::FIX_ROUTINE_BYTES : 0)
             divide_at = fix_at - (divides ? Divide::ROUTINE_BYTES : 0)
-            new(ceiling: divide_at, divide_at: (divide_at if divides), divide_fix_at: (fix_at if divides_fractions),
-                stack_bytes: stack, stack_starts_at: starts_at)
+            fill_at = divide_at - (fills_faces ? Faces::ROUTINE_BYTES : 0)
+            new(ceiling: fill_at, divide_at: (divide_at if divides), divide_fix_at: (fix_at if divides_fractions),
+                fill_face_at: (fill_at if fills_faces), stack_bytes: stack, stack_starts_at: starts_at)
           end
 
           # Whether the game's stack starts somewhere other than where the console puts it, so the

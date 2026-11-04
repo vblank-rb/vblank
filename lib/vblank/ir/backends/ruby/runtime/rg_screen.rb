@@ -2035,6 +2035,82 @@ def rg_screen_column(image, slice, x, top, height, width)
   end
 end
 
+# Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v), as [first_row,
+# past_row, x, u, v, step_x, step_u, step_v], or nil when it crosses no row's middle.
+def rg_face_edge(top, bottom)
+  first_row = rg_shr(rg_add(top[1], 7), 4)
+  past_row = rg_shr(rg_add(bottom[1], 7), 4)
+  return nil if first_row >= past_row
+
+  along_row = rg_div(1 << 28, rg_sub(bottom[1], top[1]))
+  into = rg_mul_fix(rg_sub(rg_add(rg_mul(first_row, 16), 8), top[1]), along_row, 4)
+  across = rg_shl(rg_sub(bottom[0], top[0]), 12)
+  part_u = rg_sub(bottom[2], top[2])
+  part_v = rg_sub(bottom[3], top[3])
+  [first_row, past_row,
+   rg_add(rg_shl(top[0], 12), rg_mul_fix(across, into, 24)),
+   rg_add(top[2], rg_mul_fix(part_u, into, 24)), rg_add(top[3], rg_mul_fix(part_v, into, 24)),
+   rg_mul_fix(across, along_row, 24), rg_mul_fix(part_u, along_row, 24), rg_mul_fix(part_v, along_row, 24)]
+end
+
+# Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v).
+def rg_face_row(row, from, to, left, right, image)
+  start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16)
+  stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16)
+  count = rg_sub(stop, start)
+  return if count <= 0
+
+  art, at, art_width, art_height = rg_picture_of(image)
+  step_u = rg_div(rg_sub(to[1], from[1]), count)
+  step_v = rg_div(rg_sub(to[2], from[2]), count)
+  ([start, left].max...[stop, right].min).each do |x|
+    along = rg_sub(x, start)
+    u = rg_add(from[1], rg_mul(step_u, along))
+    v = rg_add(from[2], rg_mul(step_v, along))
+    across = rg_and(rg_shr(u, 16), art_width - 1)
+    down = rg_and(rg_shr(v, 16), art_height - 1)
+    color = art[at + (down * art_width) + across]
+    rg_set_pixel(x, row, color) unless color == RG_NOT_DRAWN
+  end
+end
+
+# Reference#exec_fill_face: one face already on the screen, filled with its picture.
+def rg_screen_face(image, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2, x3, y3, u3, v3, left, top, right, bottom)
+  corners = [[x0, y0, u0, v0], [x1, y1, u1, v1], [x2, y2, u2, v2], [x3, y3, u3, v3]]
+  left = 0 if left.negative?
+  top = 0 if top.negative?
+  right = RG_SCREEN_WIDTH if right > RG_SCREEN_WIDTH
+  bottom = RG_SCREEN_HEIGHT if bottom > RG_SCREEN_HEIGHT
+  edges = 4.times.filter_map do |k|
+    a = corners[k]
+    b = corners[(k + 1) % 4]
+    next if a[1] == b[1]
+
+    a[1] < b[1] ? rg_face_edge(a, b) : rg_face_edge(b, a)
+  end
+  return if edges.empty?
+
+  first = [edges.map(&:first).min, top].max
+  past = [edges.map { |edge| edge[1] }.max, bottom].min
+  (first...past).each do |row|
+    from = nil
+    to = nil
+    crossing = 0
+    edges.each do |edge|
+      next if row < edge[0] || row >= edge[1]
+
+      rows = rg_sub(row, edge[0])
+      at = [rg_add(edge[2], rg_mul(edge[5], rows)), rg_add(edge[3], rg_mul(edge[6], rows)),
+            rg_add(edge[4], rg_mul(edge[7], rows))]
+      crossing += 1
+      # the leftmost is the first of the leftmost, the rightmost the last of the rightmost
+      from = at if from.nil? || at[0] < from[0]
+      to = at if to.nil? || at[0] >= to[0]
+    end
+    rg_face_row(row, from, to, left, right, image) if crossing >= 2
+  end
+end
+
 # The start of Reference#exec_present_objects. A game that draws its sprites straight onto the
 # picture has the scenery under them kept from here, as the interpreter does.
 def rg_objects_begin

@@ -215,6 +215,22 @@ module VBlank
                                      top: to_value_node(top), height: to_value_node(height), width: width)
       end
 
+      # Draw place +place+ as viewer +viewer+ sees it; +body+ is the work of doing so on a
+      # target that works it out itself (see Nodes::DrawPlace).
+      def draw_place(place, viewer, *body, perspective: :none)
+        Nodes.build(:draw_place, children: body, place: place, viewer: viewer, perspective: perspective)
+      end
+
+      # Fill one face already on the screen with picture +picture+. +corners+ is four
+      # [x, y, u, v], +edges+ is [left, top, right, bottom] (see Nodes::FillFace).
+      def fill_face(picture, corners, edges)
+        fields = corners.each_with_index.flat_map do |(x, y, u, v), k|
+          [[:"x#{k}", x], [:"y#{k}", y], [:"u#{k}", u], [:"v#{k}", v]]
+        end
+        fields += %i[left top right bottom].zip(edges)
+        Nodes.build(:fill_face, picture: picture, **fields.to_h { |name, value| [name, to_value_node(value)] })
+      end
+
       # Fill a rectangle at a fixed position and size — same picture as
       # +fill_rect+, but a backend is free to blast it in with a block transfer.
       # Everything (+x+/+y+/+w+/+h+) is a compile-time constant.

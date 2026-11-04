@@ -30,6 +30,9 @@ module VBlank
         when :sample, :play_sample then recording_question(node, console)
         when :pixelate then Question.new(:pixelate, "This line shows the screen in blocks (`pixelate`)", nil)
         when :clock then Question.new(:clock, "This line reads the clock (`clock`)", nil)
+        when :draw_place then Question.new(:draw_place, "This line draws a place as a viewer sees it (`draw_place`)", nil)
+        # ...and the fill under it, which a program built by hand can hold without a place
+        when :fill_face then Question.new(:draw_place, "This line fills a face of a place (`draw_place`)", nil)
         when :set_clock then Question.new(:clock, "This line sets the clock (`clock.set_to`)", nil)
         # The layers' declaration, which every see-through layer is in: one whose amounts are
         # written in the program is told to the console once and has no step of its own. A

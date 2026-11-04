@@ -186,6 +186,14 @@ module VBlank
                              end),
         see_through_amounts: Kind.new(spelling: "__see_through_%{layer}", parts: { layer: ANY },
                                       words: ->(parts) { "telling the display how see-through layer :#{parts[:layer]} is" }),
+        # A place's tables and lists, the variables its drawing works in, and the routine that
+        # draws it (IR::PlaceDrawing).
+        place_part: Kind.new(spelling: "__place_%{place}__%{part}", parts: { place: POOL, part: PLAIN },
+                             words: lambda do |parts|
+                               "drawing place :#{parts[:place]}" if parts[:part] == "draw"
+                             end),
+        # The twelve variables a viewer is (DSL::Viewer).
+        viewer_part: Kind.new(spelling: "__viewer_%{viewer}__%{part}", parts: { viewer: POOL, part: PLAIN }, words: nil),
         # The routine `start_over :play` calls: part :play's things back as declared.
         start_over: Kind.new(spelling: "__start_over_%{part}", parts: { part: ANY },
                              words: ->(parts) { "putting part :#{parts[:part]} back as declared, for a new game" }),
@@ -228,6 +236,7 @@ module VBlank
         when :canvas_part then "canvas :#{parts[:canvas]}"
         when :tile_pictures_part then "tile_pictures :#{parts[:group]}"
         when :draw_order then "draw_in_order ##{parts[:number]}"
+        when :place_part then "place :#{parts[:place]}"
         else "list :#{list_name}"
         end
       end

@@ -72,6 +72,11 @@ module VBlank
         dma_fill_rect: works,
         draw_rect_at: works,
         draw_column_at: works,
+        place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
+        viewer: works("a viewer is variables. To draw a place from it is refused: see `draw_place`."),
+        draw_place: refused("a Game Boy Color has no multiply instruction, and its processor is too slow to " \
+                            "turn the points of a place and fill its faces while a game plays. For a view " \
+                            "of walls, use `draw_column_at`."),
         clear_screen: works,
         inside: works,
         grid: works,

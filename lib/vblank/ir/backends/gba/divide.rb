@@ -123,6 +123,8 @@ module VBlank
               # A stretched column divides the picture's height by the height asked for, and
               # that height is only known as the game runs.
               when :draw_column_at then true
+              # A face's fill divides once an edge and twice a row (see Faces).
+              when :fill_face then true
               # An affine background always works out one over its current size (see
               # BackgroundDrawing#emit_bg_affine_scale_reciprocal), even the frame it only turns —
               # rotate and scale share one pair of variables, so there's no "never resizes"

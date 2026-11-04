@@ -67,6 +67,7 @@ class TestPlainWords < Minitest::Test
                   VBlank::IR::Backends::GBA::Divide::ROUTINE,
                   VBlank::IR::Backends::GBA::Divide::FIX_ROUTINE,
                   VBlank::IR::Backends::GBA::Mixer::ROUTINE,
+                  VBlank::IR::Backends::GBA::Faces::ROUTINE,
                   *VBlank::IR::Backends::GBA::ClockChip::ROUTINES],
                  PlainWords::ROUTINES.keys
   end

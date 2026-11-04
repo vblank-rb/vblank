@@ -55,6 +55,11 @@ module VBlank
         dma_fill_rect: works,
         draw_rect_at: works,
         draw_column_at: works,
+        place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
+        viewer: works("a viewer is variables. To draw a place from it is refused: see `draw_place`."),
+        draw_place: refused("the processor of a Super Nintendo is too slow to turn the points of a place and " \
+                            "fill its faces while a game plays. Games did this with a Super FX chip on the " \
+                            "cartridge, and this build does not draw a place on that chip yet."),
         clear_screen: works,
         inside: works,
         grid: works,

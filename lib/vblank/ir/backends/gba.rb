@@ -39,6 +39,7 @@ require_relative "gba/top_of_quick_memory" # what the build holds back at its to
 require_relative "gba/scene_quick_memory" # each scene its own share of the quick memory, swapped as it takes over
 require_relative "gba/placement"
 require_relative "gba/buffered"
+require_relative "gba/faces" # a face of a place filled with its picture, on the tear-free screen
 require_relative "gba/sound_registers"
 require_relative "gba/audio"
 require_relative "gba/reciprocal"
@@ -459,6 +460,11 @@ module VBlank
                                         drawing: self, raster: @raster)
           @buffered = Buffered.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                    framebuffer: @framebuffer, call_cold_routine: method(:emit_call_cold_routine))
+          @faces = Faces.new(emitter: @emit, primitives: @primitives, lowering: @lowering, divide: @divide,
+                             framebuffer: @framebuffer,
+                             pictures: lambda { |name|
+                               [@bitmaps.fetch(name), @indexed_bitmaps[name]]
+                             })
           @uploads = BlobUpload.new(emitter: @emit, primitives: @primitives,
                                     codecs: @blob_codecs, raw_bytes: @blob_raw_bytes)
           @effects = ScreenEffects.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
@@ -537,6 +543,7 @@ module VBlank
             pixel: @drawing.method(:emit_pixel), fill_rect: @drawing.method(:emit_fill_rect),
             clear_screen: @drawing.method(:emit_clear_screen), dma_fill_rect: @drawing.method(:emit_dma_fill_rect),
             draw_rect_at: @drawing.method(:emit_draw_rect_at), draw_column_at: @drawing.method(:emit_draw_column_at),
+            draw_place: @faces.method(:emit_draw_place), fill_face: @faces.method(:emit_fill_face),
             draw_text: @drawing.method(:emit_draw_text), draw_digit: @drawing.method(:emit_draw_digit),
             blit: @drawing.method(:emit_blit), blit_pose: @drawing.method(:emit_blit_pose),
             background: @drawing.method(:emit_background), scroll_background: @background_drawing.method(:emit_scroll_background),
@@ -791,6 +798,7 @@ module VBlank
           # actually runs.
           written.merge(lowered_routine_addresses)
                  .merge(@divide.divide_routine_addresses)
+                 .merge(@faces.fill_face_routine_addresses)
                  .merge(@mixer.mix_routine_addresses)
                  .merge(setting_up_addresses)
         end
@@ -884,7 +892,8 @@ module VBlank
           # What is held back at the top of the quick memory, settled before anything has a place
           # there: the stack, and the divide routines this program needs.
           @top = TopOfQuickMemory.for(program, stack_room: @stack_room, divides: needs_divide_routine?(program),
-                                               divides_fractions: needs_divide_fix_routine?(program))
+                                               divides_fractions: needs_divide_fix_routine?(program),
+                                               fills_faces: Faces.fills_faces?(program))
           @memory.ceiling = @top.ceiling
           variables_first.each { |name| var_addr(name) }
           @lists_to_roomy = lists_to_roomy
@@ -908,6 +917,7 @@ module VBlank
           # their places for the ones it needs.
           @divide.reserve_divide_routine(at: @top.divide_at) if @top.divide_at
           @divide.reserve_divide_fix_routine(at: @top.divide_fix_at) if @top.divide_fix_at
+          @faces.reserve_fill_face_routine(at: @top.fill_face_at)
           collect_definitions(program)
           register_frame_routine(program) # the game loop's body counts as a routine once it moves
           @mixer.prepare_direct_sound(program) # embed the program's samples as ROM data
@@ -1035,6 +1045,7 @@ module VBlank
           # A flash chip is told so before anything else touches save memory (see Save).
           @save.emit_wake_chip if @uses_save
           emit_copy_divide_routines_to_iwram # a no-op when neither routine was reserved
+          @faces.emit_copy_fill_face_routine # ...and the routine that fills a face, for a game that draws a place
           @framebuffer.emit_clear_remembered_column_step # no stretched column has worked out a step yet
           @drawing.emit_late_pages_at_power_on # what the game's own screen does with a late page
           @picture_group_copying.emit_clear_groups_at_power_on # no picture group wanted or up yet
@@ -1104,6 +1115,7 @@ module VBlank
           @buffered.emit_digit_routines # ...and its tear-free counterpart
           @drawing.emit_text_points_routine # the loop a long line of big letters calls
           @buffered.emit_text_points_routine # ...and its tear-free counterpart
+          @faces.emit_fill_face_routine # filling a face of a place with its picture
           @background_drawing.emit_set_swap_routines # bringing another set of tiles in, a routine a background
           @background_drawing.emit_held_tiles_routine # writing the cell changes held backgrounds keep
           @sprite_drawing.emit_shared_room_routines # giving a sprite a room for its pose, two routines a set of rooms
@@ -1523,6 +1535,7 @@ module VBlank
           # rounding was thousands of bytes of the console's 32K. See Lists.
           shifted = self.class.shifted_lists(program)
           declarations = [] # every list, gathered here and registered coldest last
+          filled = Faces.pictures_filled(program)
 
           program.walk do |node|
             case node.kind
@@ -1550,7 +1563,10 @@ module VBlank
               # into the code, so it needs no copy — unless a stretched column reads it, which
               # walks the picture as it runs and so needs it there. A scaled sprite in a
               # first-person view is exactly that case.
-              @emit.data_blobs[node.name] = node.pixels if !node.transparent || @stretched_columns.reads?(node.name)
+              # So does a picture a face of a place is filled with (see Faces).
+              if !node.transparent || @stretched_columns.reads?(node.name) || filled.include?(node.name)
+                @emit.data_blobs[node.name] = node.pixels
+              end
               @stretched_columns.register(node)
             when :list_new
               # Storage is reserved once, up front, so every op that touches it (anywhere

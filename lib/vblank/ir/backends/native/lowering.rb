@@ -53,6 +53,7 @@ module VBlank
                                                inside: :lower_inside, camera: :lower_camera,
                                                blit: :lower_blit, blit_pose: :lower_blit_pose,
                                                draw_column_at: :lower_draw_column_at,
+                                               draw_place: :lower_draw_place, fill_face: :lower_fill_face,
                                                save_region: :lower_save_region,
                                                restore_region: :lower_restore_region,
                                                background: :lower_background,

@@ -213,6 +213,19 @@ module ConformanceFixture
       B.inside(80, 30, 8, 4,
                B.draw_column_at(:sprite, B.int(1), B.int(82), B.int(28), B.int(12)),
                B.dma_fill_rect(78, 28, 12, 8, :white)),
+      # A place drawn as a viewer sees it: here the statements under it are one face filled with
+      # a picture, as a place's routine fills one. The corners are in sixteenths of a pixel and
+      # lean, so every row starts and ends somewhere new, and they fall from -1 to 3 on a picture
+      # two pixels wide, so the picture repeats both ways. A backend that stepped an edge or the
+      # picture wrongly, or wrapped a place below nought the wrong way, draws a different face.
+      B.draw_place(:fixture_place, :fixture_viewer,
+                   B.fill_face(:sprite,
+                               [[B.int(1608), B.int(1600), B.int(-65_536), B.int(-65_536)],
+                                [B.int(1930), B.int(1650), B.int(196_608), B.int(-65_536)],
+                                [B.int(1900), B.int(1800), B.int(196_608), B.int(196_608)],
+                                [B.mul_fix(B.var_ref(:x), B.int(229), 0), B.int(1790), B.int(-65_536),
+                                 B.int(196_608)]],
+                               [B.int(0), B.int(0), B.int(115), B.int(160)])),
       B.draw_text("HI", 10, 10, :white),
       # A font the program declared for itself, and a line drawn with it. Every backend has
       # to find a font the program owns, not only the two that ship.

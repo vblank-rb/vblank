@@ -19,6 +19,7 @@ require_relative "ir/save_layout" # ...and where save data lives in save memory
 require_relative "ir/save_image" # ...and that memory held in Ruby, laid out the same way
 require_relative "ir/tile_map" # how big a grid a background scrolls over, for every backend
 require_relative "ir/build"
+require_relative "ir/place_drawing" # how a place made of flat faces is drawn, as statements every target runs
 require_relative "ir/kept_widths" # a variable kept a byte or two wide, on every backend
 require_relative "ir/unchanging" # which values change nothing by being worked out
 require_relative "ir/reach" # what a run can reach: its routines and its variables

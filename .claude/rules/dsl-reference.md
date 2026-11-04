@@ -26,10 +26,10 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 - `VBlank.game "NAME", consoles: %i[gba]` — the game and the consoles it is for (`%i[gba gbc]` for the Color too); `vblank build` makes a cartridge for each. `stack_room:`; `sprite_piece_size: { gbc: [8, 16] }` (taller sprite pieces); `menu: false` (no menu in a computer's window); `players: 4` (input).
 - `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default. `backdrop: :list` (`backdrop_place:`) — a backdrop that fades with a list.
-- `screen_width` / `screen_height` — the screen the game is being built for, to lay it out from.
+- `screen_width` / `screen_height` — the screen's size, to lay a game out from.
 - `border` — round a Color game on the Advance (`:color_screen`).
 - `setting :floors, 60` — a value handed to one build (`settings:`, `--set`).
-- `built_for_computer?` — true in a build that plays on a computer, false in a cartridge, for a default that differs.
+- `built_for_computer?` — true in a computer's build, false in a cartridge's.
 - `wait_vblank`, `halt`, `debug_halt` (truncate the ROM, for bisecting).
 
 ## Drawing — `.claude/dsl/drawing.md`
@@ -54,7 +54,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 - `color_walk :city, from: :black` → the lists of a console game's fade, for `draw_with` or `recolor` with `showing:`.
 - `picture_groups :rooms, {…}` + `show` — sprite pictures by room, so only the rooms up take sprite memory.
 - `sprite_tiles :ball, count: 32, colors:` → `SpriteTileSet`; `image :spin0, tiles_from: :ball, pieces: [[dx, dy, tile], …]` — poses drawn from one set of tiles; `set.copy_from :pic, at:, count:, to:` loads tiles.
-- `hide_sprites` — no sprite (tiled text too) on the next frame drawn. Tiled screens only.
+- `hide_sprites` — no sprite on the next frame drawn (tiled screens).
 - `rgb r, g, b` (0–31), `rgb8` (0–255), `color value` — a 15-bit colour.
 
 ## Tiled backgrounds — `.claude/dsl/backgrounds.md`
@@ -70,6 +70,10 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 - `layers :sky, :world, :ui` — the stack, back to front (`[:a, :b]` inside it: two layers sharing one level); `layer :name do … end` puts what it declares at that depth.
 - `hero.put_in_layer`, `guards.put_in_layer` (a pool); `draw_in_order hero, guards` — sprites re-ordered each frame, lower on screen in front; `take_turns: true` (or `:last`) — the named order and its reverse, a frame each.
+
+## Places — `.claude/dsl/places.md`
+
+- `place :cube do point …; face … end`, `viewer :eye, at:`, `draw_place :cube, seen_by: eye` — flat faces in 3D.
 
 ## Collision — `.claude/dsl/collision.md`
 
@@ -111,7 +115,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 - `held(:left)`, `pressed(:start)` (`:any`); low-level `if_held`, `if_pressed`. Buttons `a b select start right left up down r l`, and `x y` on the Super Nintendo.
 - `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game`; `most_players`; `drawing_for_local_player { |me| … }` → draw for this player alone, `mark over: hero, with: :arrow` there; `players_connected` → how many now. `vblank run --host` / `--join`: a match.
-- `rumble frames: 12, pattern: "##..##.."` — shake the hands, on a cartridge with a motor (the Color's).
+- `rumble frames: 12, pattern: "##..##.."` — shake a cartridge with a motor (the Color's).
 
 ## Menus — `.claude/dsl/menus.md`
 
@@ -154,11 +158,11 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## The Game Boy Advance — `.claude/dsl/game-boy-advance.md`
 
-- `consoles: %i[gba]` — every verb works on the Advance; the page says where it has more to say.
+- `consoles: %i[gba]` — what every verb does on the Advance.
 
 ## The Game Boy Color — `.claude/dsl/game-boy-color.md`
 
-- `consoles: %i[gba gbc]`, `vblank build --console gbc` — the game on a Color too; what every verb does there (works or refused).
+- `consoles: %i[gba gbc]`, `vblank build --console gbc` — the game on a Color too; what every verb does there.
 
 ## The Super Nintendo — `.claude/dsl/super-nintendo.md`
 

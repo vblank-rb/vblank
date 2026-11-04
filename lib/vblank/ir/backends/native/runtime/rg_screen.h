@@ -66,6 +66,12 @@ void rg_screen_blit_pose(const int32_t *poses, int32_t count, int32_t pose, int3
  * across from +x+. */
 void rg_screen_column(int32_t image, int32_t slice, int32_t x, int32_t top, int32_t height, int32_t width);
 
+/* One face of a place, already on the screen, filled with a picture: four corners of x, y, u and
+ * v, then the edges nothing outside is drawn. */
+void rg_screen_face(int32_t image, int32_t x0, int32_t y0, int32_t u0, int32_t v0, int32_t x1, int32_t y1, int32_t u1,
+                    int32_t v1, int32_t x2, int32_t y2, int32_t u2, int32_t v2, int32_t x3, int32_t y3, int32_t u3,
+                    int32_t v3, int32_t left, int32_t top, int32_t right, int32_t bottom);
+
 /* The patch of the picture a sprite on a painted screen is about to cover, +width+ by +height+
  * at (x, y), kept in buffer number +buffer+; and that patch painted back. */
 void rg_patch_save(int32_t buffer, int32_t width, int32_t height, int32_t x, int32_t y);
