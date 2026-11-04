@@ -85,6 +85,31 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   `screen_spot`s is the window of the room beyond (any corner behind: the whole screen; all behind: not
   seen). Worked example: `examples/two_rooms.rb`.
 
+**Lighting a place.** Each corner of a face has a light, from 0 (the darkest level) to 1 (the
+brightest), blended smoothly across the face, and each pixel is drawn in the colour the game's own
+**shading** gives for its colour at the light it has reached. Worked example: `examples/lit_corridor.rb`,
+a corridor whose lamp flickers.
+- `shading :lamplight, colors: [...], levels: [[...], ...]` — the game's colours (as `rgb` gives, or
+  names), and for each level of light, darkest first, one number for each colour: the place in
+  `colors:` of the colour it becomes at that level. A game's own shading tables come over as they are
+  (32 levels, say). A colour not in `colors:` is drawn as it is. Friendly errors: a level whose length
+  is not the number of colours, a place out of range, no levels, a second shading of the same name.
+- `place :hall, shading: :lamplight do … end` lights the place. `face …, light: 0.5` gives every
+  corner of the face that light, and `light: [1.0, 0.5, 0.5, 1.0]` one for each corner in order;
+  left out, 1. A number outside 0 to 1 is a friendly error. A light is held to just under 1.
+- `hall.point_lights[point] = value` — light the game adds to a point as it runs (a lamp, a flash,
+  a flicker), a fraction from a list the place has, one for each point, all 0 at the start. A
+  corner's light is its face's `light:` plus its point's, held to 0..1.
+- `draw_place :hall, seen_by: eye, lit: false` draws a lit place unlit, as its pictures are.
+- The levels step evenly across a face whatever the `perspective:`. A light of 0.5 with 8 levels is
+  level 4. Every lit colour is in the tear-free screen's 256 colours, so a shading of many colours
+  takes room there.
+- **Each console**: the Advance looks each pixel up in a table the build makes from the shading, so
+  every pixel is exactly the colour the shading gives. A lit pixel costs one load more than an unlit
+  one: about two thirds again the unlit fill's cost with `:none`, and about a third again with
+  `:every_8_pixels`. A game that lights no place carries none of it. A console that shades in its own hardware, as the PlayStation and the Nintendo 64 do, would
+  blend each corner's colour across the face: close to the shading, but not exactly it.
+
 **How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`
 and `div_fix`), and only the fill of a face, of three to eight corners, is written by hand for each

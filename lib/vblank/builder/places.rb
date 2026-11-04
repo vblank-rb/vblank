@@ -32,21 +32,54 @@ module VBlank
       #     face a, b, c, d, picture: :crate, on_picture: [[0, 0], [64, 0], [64, 64], [0, 64]]
       #   end
       #
+      # A place lit by a shading (`shading:`, see #shading) is drawn lit: each face's corners give
+      # their light (`face ..., light: [...]`), the place's point_lights add to it as the game runs,
+      # and each pixel is the colour the shading says for the light it has reached.
+      #
       # @param name [Symbol] the place's name
+      # @param shading [Symbol, nil] the shading the place is lit by
       # @return [DSL::Place]
-      def place(name, &block)
+      def place(name, shading: nil, &block)
         raise ArgumentError, "place :#{name} needs a block that declares its points and faces." unless block
 
         refuse_unfit_name!("place", name)
         if (@places ||= {}).key?(name)
           raise ArgumentError, "There is already a place :#{name}. To fix this, give each place its own name."
         end
+        refuse_unknown_shading!(name, shading)
 
         shape = DSL::Place.new(name, @images)
         shape.instance_exec(&block)
         refuse_empty_place!(shape)
         declare_place_data(shape)
+        if shading
+          shape.shading = shading
+          shape.point_lights = list(IR::PlaceDrawing.name_of(name, :point_lights), capacity: shape.points.length,
+                                                                                   full_of: 0.0)
+        end
         @places[name] = shape
+      end
+
+      # A GAME'S OWN SHADING: for each level of light, darkest first, what each of the game's colours
+      # becomes, as the game's tables say. +colors+ are the game's colours (numbers, as `rgb` gives,
+      # or names), and each of +levels+ is one number for each of them: the place in +colors+ of
+      # the colour it becomes at that level. A place lit by it (`place :mine, shading: :fade`) draws
+      # each pixel as the shading says for the light the pixel has reached; a colour not in
+      # +colors+ stays as it is.
+      #
+      #   shading :fade, colors: palette, levels: tables   # 32 levels, as a game's tables give them
+      #
+      # @param name [Symbol] the shading's name
+      # @param colors [Array] the game's colours
+      # @param levels [Array<Array<Integer>>] for each level, darkest first, a place in +colors+ for each colour
+      def shading(name, colors:, levels:)
+        refuse_unfit_name!("shading", name)
+        @shadings ||= {}
+        raise ArgumentError, "There is already a shading :#{name}. To fix this, give each shading its own name." if @shadings.key?(name)
+
+        values = colors.map { |color| Graphics::Color.resolve(color) }
+        refuse_bad_levels!(name, values, levels)
+        @shadings[name] = record(Build.shading(name, values, levels))
       end
 
       # The spot a place is seen from, and which way it faces (see DSL::Viewer). +at+ is [x, y, z];
@@ -88,8 +121,9 @@ module VBlank
       #
       # @param faces [DSL::List] which faces to draw, in order; all of them when not given
       # @param window [Array] four numbers or Values: the edges faces are held to as the game runs
+      # @param lit [Boolean] for a place with a shading, draw it lit (the default) or as its pictures are
       def draw_place(name, seen_by:, perspective: PERSPECTIVE, near: NEAR, view_angle: VIEW_ANGLE, both_sides: false,
-                     faces: nil, window: nil)
+                     faces: nil, window: nil, lit: true)
         shape = known_place(name, "draw_place")
         refuse_unknown_viewer!(name, seen_by)
         refuse_unknown_perspective!(perspective)
@@ -101,8 +135,9 @@ module VBlank
 
         drawing = place_drawing(shape)
         place_draw_routines(drawing)
-        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides, perspective)
-        drawn = faces ?drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
+        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides, perspective,
+                          lit: lit && !shape.shading.nil?)
+        drawn = faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
         record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view),
                                 *place_clip(drawing, view, window_nodes), Build.add(drawing.drawing_var, 1), *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
@@ -210,6 +245,23 @@ module VBlank
                              "fix this, make one with `eye = viewer :eye, at: [0.0, 0.0, -4.0]` and give seen_by: eye."
       end
 
+      def refuse_unknown_shading!(name, shading)
+        return if shading.nil? || (@shadings || {}).key?(shading)
+
+        raise ArgumentError, "place :#{name} is lit by shading: #{shading.inspect}, and there is no such shading. To " \
+                             "fix this, declare it with `shading :#{shading}, colors: [...], levels: [...]` first."
+      end
+
+      def refuse_bad_levels!(name, colors, levels)
+        fits = levels.is_a?(Array) && !levels.empty? &&
+               levels.all? { |level| level.is_a?(Array) && level.length == colors.length && level.all? { |place| place.is_a?(Integer) && place.between?(0, colors.length - 1) } }
+        return if fits
+
+        raise ArgumentError, "shading :#{name} has levels: that do not fit its #{colors.length} colours. Each level is a " \
+                             "list of #{colors.length} numbers, each the place of a colour in colors:. To fix this, give " \
+                             "one or more such lists, darkest first."
+      end
+
       def refuse_unknown_perspective!(perspective)
         return if PERSPECTIVES.include?(perspective)
 
@@ -259,7 +311,8 @@ module VBlank
       # where one of its points lands.
       def place_drawing(shape)
         drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, points: shape.points.length,
-                                                   pictures: shape.slots)
+                                                   pictures: shape.slots, shading: shape.shading,
+                                                   point_lights: shape.point_lights&.name)
         @place_variables ||= {}
         @place_variables[shape.name] ||= drawing.variables.each { |variable| ensure_var(variable) }
         drawing
@@ -301,10 +354,10 @@ module VBlank
       end
 
       # The view the place is drawn into: the `inside` area drawing is held to, or the screen.
-      def place_view(near, view_angle, both_sides, perspective = :none)
+      def place_view(near, view_angle, both_sides, perspective = :none, lit: false)
         left, top, width, height = @inside_area || [0, 0, screen_width, screen_height]
         IR::PlaceDrawing::View.over(left, top, width, height, degrees: view_angle, near: near, both_sides: both_sides,
-                                                              perspective: perspective)
+                                                              perspective: perspective, lit: lit)
       end
 
       # What the routine is told before it draws: where the viewer is and which way it faces, and

@@ -663,7 +663,16 @@ module VBlank
             pictures = drawing_array("pictures", "int32_t", node.pictures.map { |name| image_number(name) })
             [eval_call("rg_screen_face", pictures, C::Int.new(node.pictures.length), value(node.picture),
                        C::AddressOf.new(list(node.corners)), value(node.count),
-                       *node.edges.map { |operand| value(operand) }, value(node.perspective))]
+                       *node.edges.map { |operand| value(operand) }, value(node.perspective), shading_array(node))]
+          end
+
+          # A lit fill's shading as the runtime reads it: how many levels, how many colours, the
+          # colours, then each level's places (Nodes::Shading); a fill that is not lit hands the one
+          # number nought.
+          def shading_array(node)
+            shading = node.shading && @shadings.fetch(node.shading)
+            values = shading ? [shading.levels.length, shading.colors.length, *shading.colors, *shading.levels.flatten] : [0]
+            drawing_array("shading", "int32_t", values)
           end
 
           def lower_save_region(node) = [patch_statement("rg_patch_save", node)]

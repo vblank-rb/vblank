@@ -80,17 +80,23 @@ module PlaceGames
   # pass wants 1. The cartridge's picture is compared at a frame, and the cartridge reaches its
   # first pass a pass later than this small a program usually does, so it wants a change slow
   # enough that the frame compared is in the middle of one.
-  def self.moving_five_corners(passes: 1)
-    numbers = [[100, 20, -3, -2, 1 << 26], [140, 30, 12, -2, 1 << 24], [135, 70, 12, 9, 3 << 23],
-               [95, 80, -3, 13, 1 << 25], [80, 50, -5, 5, 1 << 27]]
-              .flat_map { |x, y, u, v, w| [x * 16, y * 16, u << 16, v << 16, w] }
+  #
+  # +lit+ lights it from its corners (the last of each corner's numbers) by a small shading.
+  def self.moving_five_corners(passes: 1, lit: false)
+    numbers = [[100, 20, -3, -2, 1 << 26, 0], [140, 30, 12, -2, 1 << 24, 0x8000], [135, 70, 12, 9, 3 << 23, 0xFFFF],
+               [95, 80, -3, 13, 1 << 25, 0x4000], [80, 50, -5, 5, 1 << 27, 0xC000]]
+              .flat_map { |x, y, u, v, w, light| [x * 16, y * 16, u << 16, v << 16, w, light] }
     builder = VBlank::Builder.new
     builder.instance_eval do
       b = VBlank::IR::Build
       screen :bitmap, tear_free: true
       image :tile, width: 8, height: 8, data: TILE
       image(:stripes, "r" => :red, "w" => :white) { "rw\nrw\n" }
-      corners = list :corners, capacity: 40, full_of: 0
+      # The stripes darken in the dimmer half of the light; the tile's colours are not the
+      # shading's, so they stay as they are.
+      shading :dim, colors: [rgb(31, 31, 31), rgb(31, 0, 0), rgb(16, 16, 16), rgb(16, 0, 0)],
+                    levels: [[2, 3, 2, 3], [0, 1, 2, 3]]
+      corners = list :corners, capacity: 48, full_of: 0
       numbers.each_with_index { |number, at| corners[at] = number }
       frame = var :frame, 0
       game_loop do
@@ -102,7 +108,7 @@ module PlaceGames
         record(b.fill_face(%i[tile stripes], b.binop(:%, at, 2), :corners, 5,
                            [b.binop(:+, 70, b.binop(:%, b.binop(:*, at, 7), 40)), b.binop(:%, b.binop(:*, at, 3), 40),
                             b.binop(:-, 140, b.binop(:%, b.binop(:*, at, 11), 30)), 160],
-                           perspective: perspective))
+                           perspective: perspective, shading: lit ? :dim : nil))
         frame += 1
       end
     end
@@ -128,6 +134,38 @@ module PlaceGames
       game_loop do
         clear_screen :black
         draw_place :side, seen_by: eye, perspective: perspective
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # The four colours of a small shading, and its four levels, darkest first: white goes black at
+  # the darkest level, then dark gray, then gray, and is itself at the brightest.
+  SHADES = Ractor.make_shareable([0x7FFF, 0x4210, 0x2108, 0x0000])
+  SHADE_LEVELS = Ractor.make_shareable([[3, 3, 3, 3], [2, 2, 2, 3], [1, 1, 2, 3], [0, 1, 2, 3]])
+
+  # The square face (x 60 to 179, y 20 to 139) all white, lit by the shading, its left corners'
+  # light +left+ and its right corners' +right+, and +added+ added to every point's light as the
+  # game runs (a lamp the game turns up). +see_through+ leaves every third pixel of the picture
+  # out, and +far+ is how far ahead its right side is.
+  def self.lit_square(left:, right:, added: 0.0, perspective: :none, see_through: false, far: 2.0)
+    clear = see_through ? 0x001F : nil
+    pixels = Array.new(64) { |at| see_through && (at % 3).zero? ? clear : 0x7FFF }
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :white, width: 8, height: 8, data: pixels, transparent: clear
+      shading :fade, colors: SHADES, levels: SHADE_LEVELS
+      wall = place :wall, shading: :fade do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, far), point(1.0, -1.0, far), point(-1.0, -1.0, 2.0),
+             picture: :white, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: [left, right, right, left]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        4.times { |point| wall.point_lights[point] = added }
+        clear_screen :black
+        draw_place :wall, seen_by: eye, perspective: perspective
       end
     end
     builder.finalize_program
@@ -319,6 +357,13 @@ class TestPlacesOnTheAdvance < Minitest::Test
     refute_equal BLACK, screen.pixel(110, 60)
   end
 
+  # The same, lit from its corners: every pass checked with the light blended across it.
+  def test_a_lit_face_whose_edges_and_picture_change_every_pass
+    screen = game_player.run(PlaceGames.moving_five_corners(lit: true), frames: 8).screen
+
+    refute_equal BLACK, screen.pixel(110, 60)
+  end
+
   def test_each_face_shows_its_own_picture_and_a_face_can_have_three_corners
     screen = game_player.run(PlaceGames.two_faces, frames: 2).screen
 
@@ -342,6 +387,28 @@ class TestPlacesOnTheAdvance < Minitest::Test
     end
     assert_equal blue, none.pixel(92, 80), "stretched straight, x 92 is past halfway"
     assert_equal red, none.pixel(80, 80)
+  end
+
+  # Lit from dark at its left corners to bright at its right, the face's white goes through the
+  # shading's four levels across it: a pixel's level is its light times four, whole part.
+  def test_a_face_is_lit_from_its_corners_through_the_shading
+    %i[none every_8_pixels].each do |perspective|
+      screen = game_player.run(PlaceGames.lit_square(left: 0.0, right: 1.0, perspective: perspective), frames: 2).screen
+
+      assert_equal shown(0x0000), screen.pixel(62, 80), "dark at the left"
+      assert_equal shown(0x2108), screen.pixel(95, 80), "a third of the way: the second level"
+      assert_equal shown(0x4210), screen.pixel(125, 80), "past halfway: the third level"
+      assert_equal shown(0x7FFF), screen.pixel(175, 80), "bright at the right"
+    end
+  end
+
+  # What the game adds to each point's light as it runs lights the face, held to the brightest.
+  def test_light_the_game_adds_to_its_points_lights_the_face
+    screen = game_player.run(PlaceGames.lit_square(left: 0.0, right: 0.0, added: 0.8), frames: 2).screen
+    brightest = game_player.run(PlaceGames.lit_square(left: 0.5, right: 0.5, added: 0.9), frames: 2).screen
+
+    assert_equal shown(0x7FFF), screen.pixel(120, 80), "0.8 of the way up is the brightest of four levels"
+    assert_equal shown(0x7FFF), brightest.pixel(120, 80), "more than all the light is all of it"
   end
 
   def test_the_default_perspective_is_every_8_pixels

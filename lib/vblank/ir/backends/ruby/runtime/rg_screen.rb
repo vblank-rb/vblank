@@ -2041,7 +2041,7 @@ RgFaceEdge = Data.define(:first_row, :past_row, :at, :step) do
   def crosses?(row) = row >= first_row && row < past_row
 end
 
-# Reference::FaceEdge#at: [x, u, v, w] where +edge+ crosses +row+.
+# Reference::FaceEdge#at: [x, u, v, w, shade] where +edge+ crosses +row+.
 def rg_face_crossing(edge, row)
   rows = rg_sub(row, edge.first_row)
   edge.at.each_with_index.map { |start, part| rg_add(start, rg_mul(edge.step[part], rows)) }
@@ -2050,8 +2050,8 @@ end
 # The most corners a face has (Nodes::FillFace::MOST_CORNERS).
 RG_FACE_MOST_CORNERS = 8
 
-# Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v, w), or nil when it
-# crosses no row's middle.
+# Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v, w, shade), or nil
+# when it crosses no row's middle.
 def rg_face_edge(top, bottom)
   first_row = rg_shr(rg_add(top[1], 7), 4)
   past_row = rg_shr(rg_add(bottom[1], 7), 4)
@@ -2059,8 +2059,8 @@ def rg_face_edge(top, bottom)
 
   along_row = rg_div(1 << 28, rg_sub(bottom[1], top[1]))
   into = rg_mul_fix(rg_sub(rg_add(rg_mul(first_row, 16), 8), top[1]), along_row, 4)
-  parts = [rg_shl(rg_sub(bottom[0], top[0]), 12), *(2..4).map { |field| rg_sub(bottom[field], top[field]) }]
-  starts = [rg_shl(top[0], 12), *top[2..4]]
+  parts = [rg_shl(rg_sub(bottom[0], top[0]), 12), *(2..5).map { |field| rg_sub(bottom[field], top[field]) }]
+  starts = [rg_shl(top[0], 12), *top[2..5]]
   RgFaceEdge.new(first_row: first_row, past_row: past_row,
                  at: starts.zip(parts).map { |start, part| rg_add(start, rg_mul_fix(part, into, 24)) },
                  step: parts.map { |part| rg_mul_fix(part, along_row, 24) })
@@ -2083,16 +2083,34 @@ def rg_face_place_in_perspective(from, steps, along)
   [rg_mul_fix(over[0], distance, 14), rg_mul_fix(over[1], distance, 14)]
 end
 
-# Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v, w), in
-# perspective every +spans+ pixels (none when nought).
-def rg_face_row(row, from, to, left, right, image, spans)
+# Reference::Shade#color_at: the colour +color+ becomes at +shade+ (its level in the top sixteen
+# bits). A colour not in the shading's list stays as it is. Where each colour stands in the list is
+# worked out once for each shading drawn with.
+def rg_shaded_color(shading, color, shade)
+  colors = shading[1]
+  @rg_shading_places ||= {}.compare_by_identity
+  places = @rg_shading_places[shading] ||= (0...colors).reverse_each.to_h { |place| [shading[2 + place], place] }
+  place = places[color]
+  return color if place.nil?
+
+  level = rg_shr(shade, 16)
+  shading[2 + shading[2 + colors + (level * colors) + place]]
+end
+
+# Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v, w, shade), in
+# perspective every +spans+ pixels (none when nought), each pixel through +shading+ when lit.
+def rg_face_row(row, from, to, left, right, image, spans, shading)
   start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16)
   stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16)
   count = rg_sub(stop, start)
   return if count <= 0
 
+  if shading # Reference::Shade#held_row_end
+    from[4] = rg_clamp_wide(from[4], 0, (shading[0] << 16) - 1)
+    to[4] = rg_clamp_wide(to[4], 0, (shading[0] << 16) - 1)
+  end
   art, at, art_width, art_height = rg_picture_of(image)
-  steps = (1..3).map { |part| rg_div(rg_sub(to[part], from[part]), count) }
+  steps = (1..4).map { |part| rg_div(rg_sub(to[part], from[part]), count) }
   near_at = -1
   near = far = nil
   ([start, left].max...[stop, right].min).each do |x|
@@ -2116,17 +2134,25 @@ def rg_face_row(row, from, to, left, right, image, spans)
     across = rg_and(rg_shr(u, 16), art_width - 1)
     down = rg_and(rg_shr(v, 16), art_height - 1)
     color = art[at + (down * art_width) + across]
-    rg_set_pixel(x, row, color) unless color == RG_NOT_DRAWN
+    next if color == RG_NOT_DRAWN
+
+    color = rg_shaded_color(shading, color, rg_add(from[4], rg_mul(steps[3], along))) if shading
+    rg_set_pixel(x, row, color)
   end
 end
 
-# Reference#exec_fill_face: one face already on the screen, filled with its picture.
-def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, left, top, right, bottom, spans)
+# Reference#exec_fill_face: one face already on the screen, filled with its picture, each pixel
+# through +shading+ unless it is [0] (Native::Picture#shading_array).
+def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, left, top, right, bottom, spans,
+                   shading)
   corner_count = RG_FACE_MOST_CORNERS if corner_count > RG_FACE_MOST_CORNERS
   return if corner_count < 3
 
+  shading = nil if shading[0].zero?
   corners = Array.new(corner_count) do |k|
-    corner = Array.new(5) { |field| rg_list_get(corner_list, (k * 5) + field) }
+    corner = Array.new(6) { |field| rg_list_get(corner_list, (k * 6) + field) }
+    # Reference::Shade#shaded_corner: the light held to 0..LIGHTEST, times the levels
+    corner[5] = rg_mul(rg_clamp_wide(corner[5], 0, 0xFFFF), shading[0]) if shading
     unless spans.zero? # Reference::FaceEdges.in_perspective
       corner[2] = rg_mul_fix(corner[2], corner[4], 28)
       corner[3] = rg_mul_fix(corner[3], corner[4], 28)
@@ -2162,7 +2188,7 @@ def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, 
       from = at if from.nil? || at[0] < from[0]
       to = at if to.nil? || at[0] >= to[0]
     end
-    rg_face_row(row, from, to, left, right, image, spans) if crossing >= 2
+    rg_face_row(row, from, to, left, right, image, spans, shading) if crossing >= 2
   end
 end
 

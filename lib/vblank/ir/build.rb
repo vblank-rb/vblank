@@ -224,12 +224,18 @@ module VBlank
                                  window: window&.map { |edge| to_value_node(edge) })
       end
 
+      # A game's shading: +colors+ its colours, +levels+ for each level of light, darkest first,
+      # the place among +colors+ of what each becomes. See Nodes::Shading.
+      def shading(name, colors, levels)
+        Nodes.build(:shading, name: name, colors: colors.to_a, levels: levels.map(&:to_a))
+      end
+
       # Fill one face already on the screen: picture number +picture+ of +pictures+, its corners
       # the first +count+ fours of list +corners+, nothing drawn outside +edges+ ([left, top,
       # right, bottom]). See Nodes::FillFace.
-      def fill_face(pictures, picture, corners, count, edges, perspective: Nodes::FillFace::PERSPECTIVE_NONE)
+      def fill_face(pictures, picture, corners, count, edges, perspective: Nodes::FillFace::PERSPECTIVE_NONE, shading: nil)
         Nodes.build(:fill_face, pictures: pictures.to_a, picture: to_value_node(picture), corners: corners,
-                                count: to_value_node(count), perspective: to_value_node(perspective),
+                                count: to_value_node(count), perspective: to_value_node(perspective), shading: shading,
                                 **%i[left top right bottom].zip(edges).to_h { |side, edge| [side, to_value_node(edge)] })
       end
 

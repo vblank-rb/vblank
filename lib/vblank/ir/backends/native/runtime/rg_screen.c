@@ -1932,23 +1932,23 @@ void rg_screen_column(int32_t image, int32_t slice, int32_t x, int32_t top, int3
 }
 
 /* Reference::FaceEdge: one edge of a face, from its upper end down, as the fill walks it. The
- * numbers are x, u, v and w, each where the edge crosses its first row, then each one's step. */
-typedef struct { int32_t first_row, past_row, at[4], step[4]; } face_edge;
+ * numbers are x, u, v, w and shade, each where the edge crosses its first row, then each one's step. */
+typedef struct { int32_t first_row, past_row, at[5], step[5]; } face_edge;
 
-/* Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v, w), or 0 when it
- * crosses no row's middle. */
+/* Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v, w, shade), or 0 when
+ * it crosses no row's middle. */
 static int face_edge_of(const int32_t *top, const int32_t *bottom, face_edge *edge) {
   int32_t first_row = rg_shr(rg_add(top[1], 7), 4);
   int32_t past_row = rg_shr(rg_add(bottom[1], 7), 4);
   if (first_row >= past_row) return 0;
   int32_t along_row = rg_div(1 << 28, rg_sub(bottom[1], top[1]));
   int32_t into = rg_mul_fix(rg_sub(rg_add(rg_mul(first_row, 16), 8), top[1]), along_row, 4);
-  int32_t parts[4] = {rg_shl(rg_sub(bottom[0], top[0]), 12), rg_sub(bottom[2], top[2]), rg_sub(bottom[3], top[3]),
-                      rg_sub(bottom[4], top[4])};
-  int32_t starts[4] = {rg_shl(top[0], 12), top[2], top[3], top[4]};
+  int32_t parts[5] = {rg_shl(rg_sub(bottom[0], top[0]), 12), rg_sub(bottom[2], top[2]), rg_sub(bottom[3], top[3]),
+                      rg_sub(bottom[4], top[4]), rg_sub(bottom[5], top[5])};
+  int32_t starts[5] = {rg_shl(top[0], 12), top[2], top[3], top[4], top[5]};
   edge->first_row = first_row;
   edge->past_row = past_row;
-  for (int part = 0; part < 4; part++) {
+  for (int part = 0; part < 5; part++) {
     edge->at[part] = rg_add(starts[part], rg_mul_fix(parts[part], into, 24));
     edge->step[part] = rg_mul_fix(parts[part], along_row, 24);
   }
@@ -1981,14 +1981,52 @@ static void face_place_in_perspective(const int32_t *from, const int32_t *steps,
 
 /* Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v, w), in
  * perspective every +spans+ pixels (none when nought). */
-static void face_row(int32_t row, const int32_t *from, const int32_t *to, int32_t left, int32_t right, picture art,
-                     int32_t spans) {
+/* Reference::Shade's places: where each colour stands in a shading's list of colours, or -1 for a
+ * colour not in it. Worked out again only when the shading drawn with changes. */
+static const int32_t *shading_placed = NULL;
+static int16_t shading_places[32768];
+
+static int32_t shading_place_of(const int32_t *shading, int32_t color) {
+  int32_t colors = shading[1];
+  if (color < 0 || color >= 32768) {
+    for (int32_t place = 0; place < colors; place++)
+      if (shading[2 + place] == color) return place;
+    return -1;
+  }
+  if (shading_placed != shading) {
+    memset(shading_places, 0xFF, sizeof shading_places);
+    for (int32_t place = colors - 1; place >= 0; place--) {
+      int32_t listed = shading[2 + place];
+      if (listed >= 0 && listed < 32768) shading_places[listed] = (int16_t)place;
+    }
+    shading_placed = shading;
+  }
+  return shading_places[color];
+}
+
+/* Reference::Shade#color_at: the colour +color+ becomes at +shade+ (its level in the top sixteen
+ * bits). A colour not in the shading's list stays as it is. */
+static int32_t shaded_color(const int32_t *shading, int32_t color, int32_t shade) {
+  int32_t place = shading_place_of(shading, color);
+  if (place < 0) return color;
+  int32_t colors = shading[1];
+  int32_t level = rg_shr(shade, 16);
+  return shading[2 + shading[2 + colors + level * colors + place]];
+}
+
+static void face_row(int32_t row, int32_t *from, int32_t *to, int32_t left, int32_t right, picture art,
+                     int32_t spans, const int32_t *shading) {
   int32_t start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16);
   int32_t stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16);
   int32_t count = rg_sub(stop, start);
   if (count <= 0) return;
-  int32_t steps[3];
-  for (int part = 0; part < 3; part++) steps[part] = rg_div(rg_sub(to[part + 1], from[part + 1]), count);
+  if (shading) {
+    /* Reference::Shade#held_row_end */
+    from[4] = clamp32(from[4], 0, rg_shl(shading[0], 16) - 1);
+    to[4] = clamp32(to[4], 0, rg_shl(shading[0], 16) - 1);
+  }
+  int32_t steps[4];
+  for (int part = 0; part < 4; part++) steps[part] = rg_div(rg_sub(to[part + 1], from[part + 1]), count);
   int32_t first = start > left ? start : left;
   int32_t past = stop < right ? stop : right;
   int32_t near_at = -1, near[2], far[2];
@@ -2013,7 +2051,9 @@ static void face_row(int32_t row, const int32_t *from, const int32_t *to, int32_
     int32_t across = rg_and(rg_shr(u, 16), art.width - 1);
     int32_t down = rg_and(rg_shr(v, 16), art.height - 1);
     int32_t color = art.pixels[down * art.width + across];
-    if (color != RG_NOT_DRAWN) set_pixel(x, row, color);
+    if (color == RG_NOT_DRAWN) continue;
+    if (shading) color = shaded_color(shading, color, rg_add(from[4], rg_mul(steps[3], along)));
+    set_pixel(x, row, color);
   }
 }
 
@@ -2021,18 +2061,24 @@ static void face_row(int32_t row, const int32_t *from, const int32_t *to, int32_
 enum { FACE_MOST_CORNERS = 8 };
 
 /* Reference#exec_fill_face: one face already on the screen, filled with its picture. The corners
- * come five numbers each (x and y in sixteenths of a pixel, u and v in picture pixels with sixteen
- * fraction bits, and one over the distance with 26), and nothing outside left, top, right and
- * bottom is drawn. The picture's number is held to the ends of the list of pictures, and the count
+ * come six numbers each (x and y in sixteenths of a pixel, u and v in picture pixels with sixteen
+ * fraction bits, one over the distance with 26, and the light, 0 to 0xFFFF), and nothing outside
+ * left, top, right and bottom is drawn. A +shading+ of [0] draws the picture as it is; any other
+ * is its levels, its colours and each level's places (Native::Picture#shading_array), and every
+ * pixel is drawn in the colour its blended light's level gives. The picture's number is held to the ends of the list of pictures, and the count
  * to FACE_MOST_CORNERS. In perspective (+spans+ not nought) u and v become u and v over the
  * distance (Reference::FaceEdges.in_perspective) before the edges are walked. */
 void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t which, const rg_list *corner_list,
-                    int32_t corner_count, int32_t left, int32_t top, int32_t right, int32_t bottom, int32_t spans) {
+                    int32_t corner_count, int32_t left, int32_t top, int32_t right, int32_t bottom, int32_t spans,
+                    const int32_t *shading) {
   if (corner_count > FACE_MOST_CORNERS) corner_count = FACE_MOST_CORNERS;
   if (corner_count < 3) return;
-  int32_t corners[FACE_MOST_CORNERS][5];
+  if (shading[0] == 0) shading = NULL;
+  int32_t corners[FACE_MOST_CORNERS][6];
   for (int32_t k = 0; k < corner_count; k++) {
-    for (int32_t field = 0; field < 5; field++) corners[k][field] = rg_list_get(corner_list, k * 5 + field);
+    for (int32_t field = 0; field < 6; field++) corners[k][field] = rg_list_get(corner_list, k * 6 + field);
+    /* Reference::Shade#shaded_corner: the light held to 0..LIGHTEST, times the levels */
+    if (shading) corners[k][5] = rg_mul(clamp32(corners[k][5], 0, 0xFFFF), shading[0]);
     if (spans != 0) {
       corners[k][2] = rg_mul_fix(corners[k][2], corners[k][4], 28);
       corners[k][3] = rg_mul_fix(corners[k][3], corners[k][4], 28);
@@ -2060,20 +2106,20 @@ void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t whic
   if (past > bottom) past = bottom;
   picture art = picture_of(image);
   for (int32_t row = first; row < past; row++) {
-    int32_t from[4] = {INT32_MAX, 0, 0, 0}, to[4] = {INT32_MIN, 0, 0, 0};
+    int32_t from[5] = {INT32_MAX, 0, 0, 0, 0}, to[5] = {INT32_MIN, 0, 0, 0, 0};
     int crossing = 0;
     for (int e = 0; e < count; e++) {
       const face_edge *edge = &edges[e];
       if (row < edge->first_row || row >= edge->past_row) continue;
       int32_t rows = rg_sub(row, edge->first_row);
-      int32_t at[4];
-      for (int part = 0; part < 4; part++) at[part] = rg_add(edge->at[part], rg_mul(edge->step[part], rows));
+      int32_t at[5];
+      for (int part = 0; part < 5; part++) at[part] = rg_add(edge->at[part], rg_mul(edge->step[part], rows));
       crossing++;
       /* the leftmost is the first of the leftmost, the rightmost the last of the rightmost */
       if (at[0] < from[0]) memcpy(from, at, sizeof at);
       if (at[0] >= to[0]) memcpy(to, at, sizeof at);
     }
-    if (crossing >= 2) face_row(row, from, to, left, right, art, spans);
+    if (crossing >= 2) face_row(row, from, to, left, right, art, spans, shading);
   }
 }
 

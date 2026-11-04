@@ -151,6 +151,7 @@ module VBlank
             @reachable = statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@bends.values,
                                          *@tick_handlers.values)
             @tables = by_name(program.walk, :table)
+            @shadings = by_name(program.walk, :shading)
             @data = by_name(program.walk, :data, :bitmap)
             # A list is there, empty, from power-on wherever it is declared (the interpreter
             # gathers them before running), so its storage is the first declaration's.

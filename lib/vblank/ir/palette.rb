@@ -66,6 +66,9 @@ module VBlank
         end
       end
 
+      # Does the table have a slot for +spec+? (#index_of raises for one it does not.)
+      def holds_color?(spec) = @slots.key?(Graphics::Color.resolve(spec))
+
       # The raw 15-bit color at a slot (what a backend uploads for that entry).
       def color_at(index)
         @entries.fetch(index)
@@ -208,7 +211,31 @@ module VBlank
         end
         drawn = roots.flat_map { |root| pictures_drawn_in(root) }
         @program.walk { |node| collect_bitmap(node, values) if node.kind == :bitmap && drawn.include?(node.name) }
+        lit = roots.flat_map { |root| root.walk.select { |node| node.kind == :fill_face && node.shading } }
+        values.concat(shaded_colors(lit)) unless lit.empty?
         values
+      end
+
+      # Every colour the lit fills +fills+ can draw beside their pictures' own: each of those
+      # colours at every level of its fill's shading (Nodes::Shading). The program is walked once
+      # for all of them.
+      def shaded_colors(fills)
+        shadings = {}
+        bitmaps = {}
+        @program.walk do |node|
+          shadings[node.name] = node if node.kind == :shading
+          bitmaps[node.name] = node if node.kind == :bitmap
+        end
+        fills.flat_map do |fill|
+          shading = shadings[fill.shading]
+          next [] unless shading
+
+          places = shading.places
+          fill.pictures.filter_map { |name| bitmaps[name] }
+              .flat_map { |bitmap| bitmap.pixels.unpack("v*").reject { |pixel| pixel == bitmap.transparent } }.uniq
+              .filter_map { |pixel| places[pixel & 0x7FFF] }
+              .flat_map { |place| shading.levels.map { |level| shading.colors[level[place]] } }
+        end
       end
 
       # The pictures +root+ draws by name, on a screen that paints them.

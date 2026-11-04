@@ -46,7 +46,7 @@
       "data": 0
     },
     "cube3d": {
-      "code": 35364,
+      "code": 34632,
       "data": 0
     },
     "dive": {
@@ -104,6 +104,10 @@
     "level@genesis": {
       "code": 4542,
       "data": 2370
+    },
+    "lit_corridor": {
+      "code": 38744,
+      "data": 0
     },
     "maze": {
       "code": 3348,
@@ -230,7 +234,7 @@
       "data": 3730
     },
     "two_rooms": {
-      "code": 36958,
+      "code": 36410,
       "data": 0
     },
     "wanderers": {

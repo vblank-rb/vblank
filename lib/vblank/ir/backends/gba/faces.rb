@@ -47,8 +47,9 @@ module VBlank
           CORNER_FIELDS = %w[x y u v].freeze
 
           # ...and the fifth number of a corner, one over its distance, which only a picture in
-          # perspective reads; the fields come in the corner list in this order.
-          LISTED_FIELDS = (CORNER_FIELDS + %w[w]).freeze
+          # perspective reads, and the sixth, its light, which only a lit fill reads; the fields
+          # come in the corner list in this order.
+          LISTED_FIELDS = (CORNER_FIELDS + %w[w light]).freeze
 
           # The word corner +k+'s +field+ (one of LISTED_FIELDS) is handed over in.
           def self.corner_word(field, k) = :"_face_#{field}#{k}"
@@ -62,17 +63,21 @@ module VBlank
           PICTURE_WORDS = %i[_face_picture _face_shift _face_mask_x _face_mask_y _face_clear _face_rows_shift].freeze
 
           # What the routine keeps of each edge (see Reference::FaceEdge), and of the row it is on.
-          EDGE_FIELDS = %w[first past x u v w step_x step_u step_v step_w].freeze
+          EDGE_FIELDS = %w[first past x u v w step_x step_u step_v step_w shade step_shade].freeze
           ROW_ENDS = %i[_face_left_x _face_left_u _face_left_v _face_right_x _face_right_u _face_right_v].freeze
 
           # The routine's own working words: how far apart a row's picture is worked out in
           # perspective (nought for never), the two tables of reciprocals, and the row, the span and
-          # the stretch of it being drawn.
+          # the stretch of it being drawn; for a lit fill, its shading's table (nought when unlit)
+          # and how many levels it has, and the shade at each end of an edge and of a row, its step
+          # a pixel and the shade where a span starts.
           WORKING_WORDS = %i[_face_corners _face_direct _face_perspective _face_reciprocals _face_distances _face_row
                              _face_rows_end _face_start _face_span_count _face_step_u _face_step_v _face_step_w
                              _face_left_w _face_right_w _face_top_w _face_bottom_w _face_row_base _face_first
                              _face_past _face_along _face_far_along _face_near_u _face_near_v _face_far_u
-                             _face_far_v _face_du _face_dv _face_edge_at _face_edge_words _face_pending].freeze
+                             _face_far_v _face_du _face_dv _face_edge_at _face_edge_words _face_pending
+                             _face_shading _face_levels _face_top_shade _face_bottom_shade _face_left_shade
+                             _face_right_shade _face_step_shade _face_shade].freeze
 
           # EVERY WORD THE ROUTINE READS OR WRITES, which the lowering names before any of the game's
           # own variables (GBA#lower), so each is in reach of one instruction. A word past that reach
@@ -100,10 +105,27 @@ module VBlank
             @pictures = pictures
             @routine_iwram = nil
             @picture_tables = {}
+            @shadings = {}
+            @shading_tables = {}
+          end
+
+          # The program's shadings by name, and the tear-free screen's palette (nil without one),
+          # which a lit fill's tables are made from.
+          def prepare_shadings(program, palette:)
+            @shadings = program.walk.select { |node| node.kind == :shading }.to_h { |node| [node.name, node] }
+            @palette = palette
+            @lit = self.class.lights_faces?(program)
           end
 
           # Does this program fill a face? Then it needs the routine, and the divide it calls.
           def self.fills_faces?(program) = program.walk.any? { |node| node.kind == :fill_face }
+
+          # Does it light one (Nodes::Shading)? Then the routine has a lit copy of each of its
+          # loops, and is that much bigger; a game that lights none carries none of them.
+          def self.lights_faces?(program) = program.walk.any? { |node| node.kind == :fill_face && node.shading }
+
+          # The room the quick memory keeps for the routine, lit or not (see ROUTINE_BYTES).
+          def self.routine_bytes(lit:) = lit ? LIT_ROUTINE_BYTES : ROUTINE_BYTES
 
           # The pictures a fill reads as the game runs, which the cartridge carries whatever else
           # draws them.
@@ -128,9 +150,12 @@ module VBlank
             emit_branch(:bcond, done, cond: :lt)
             store_var(ACC, :_face_corners)
             CORNER_WORDS.each_with_index do |word, at|
+              next if node.shading.nil? && at % LISTED_FIELDS.length == LISTED_FIELDS.index("light")
+
               @lowering.value(Build.list_get(node.corners, Build.int(at)))
               store_var(ACC, word)
             end
+            emit_shading_words(node) if @lit
             node.edges.zip(EDGE_WORDS).each do |value, word|
               @lowering.value(value)
               store_var(ACC, word)
@@ -180,6 +205,7 @@ module VBlank
             emit(ASM.push(4, 5, 6, 7, 8, 9, 10, 11, 14))
             emit_skip_face_outside_edges(:"#{ROUTINE}_out")
             emit_corners_in_perspective
+            emit_corners_lit if @lit
             emit_edges
             @span_patches = []
             emit_branch(:bl, PATCH_ROUTINE)
@@ -189,22 +215,28 @@ module VBlank
             emit_span_pixels_routine
             emit_divide_by_count_routine
             emit_place_in_perspective_routine
-            emit_pixel_in_perspective_routine
+            emit_pixel_in_perspective_routine(lit: false)
+            if @lit
+              emit_pixel_in_perspective_routine(lit: true)
+              emit_shade_color_routine
+            end
             emit_patch_routine
             place_label(:"#{ROUTINE}_end")
             refuse_oversized_routine!(pos - start)
           end
 
-          # The room the quick memory keeps for the routine. A variable it names is reached in one
-          # or two instructions, and in up to four for a game whose variables run past what one
-          # instruction reaches, so this is what it comes to with every one of them at four.
-          ROUTINE_BYTES = 7_168
+          # The room the quick memory keeps for the routine, and for its lit form. Every word it
+          # names is one instruction away (Faces.words are named before any of the game's), so its
+          # size is the same in every game; each leaves a little to spare.
+          ROUTINE_BYTES = 6_144
+          LIT_ROUTINE_BYTES = 9_728
 
           def refuse_oversized_routine!(size)
-            return if size <= ROUTINE_BYTES
+            room = self.class.routine_bytes(lit: @lit)
+            return if size <= room
 
             raise LoweringError, "The routine that fills a face came to #{size} bytes, and the quick memory keeps " \
-                                 "#{ROUTINE_BYTES} for it. This is a fault in VBlank, not in the game."
+                                 "#{room} for it. This is a fault in VBlank, not in the game."
           end
 
           private
@@ -269,30 +301,122 @@ module VBlank
             [0, bmp.width.bit_length - 1, bmp.width - 1, bmp.height - 1, clear || NO_CLEAR, bmp.height.bit_length - 1]
           end
 
+          # A LIT FILL (Nodes::Shading) hands the routine its shading's table and how many levels it
+          # has; an unlit one hands it nought for the table, which is how the routine tells.
+          def emit_shading_words(node)
+            if node.shading
+              emit_load_data_address(ACC, shading_table(node.shading))
+              store_var(ACC, :_face_shading)
+              emit_number(ACC, @shadings.fetch(node.shading).levels.length)
+              store_var(ACC, :_face_levels)
+            else
+              emit_number(ACC, 0)
+              store_var(ACC, :_face_shading)
+            end
+          end
+
+          # THE SHADING AS A TABLE, made once for each shading and screen.
+          #
+          # On the tear-free screen a pixel is a palette number, so the table is one row of 256
+          # bytes for each level, darkest first: for each palette number, the number of the colour
+          # it becomes at that level. A colour the shading does not list keeps its own number. The
+          # palette holds every colour a level can give, since a lit fill's colours are counted into
+          # it (Palette#shaded_colors). Then a pixel's colour at its level is one load: the table,
+          # plus the level times 256, plus the pixel's number.
+          #
+          # On the direct screen a pixel is its colour, and a table by colour would be 64 KB. So the
+          # table is the shading's colours, which a pixel's colour is looked for among, and then
+          # for each level the colour each becomes: a word for how many colours there are, then
+          # those colours and the levels' colours, two bytes each.
+          def shading_table(name)
+            buffered = @lowering.mode == :buffered
+            @shading_tables[[name, buffered]] ||= :"__fill_face_shading_#{@shading_tables.length}".tap do |blob|
+              shading = @shadings.fetch(name)
+              @emitter.data_blobs[blob] = buffered ? palette_shading_bytes(shading) : color_shading_bytes(shading)
+            end
+          end
+
+          # A palette number whose colour the shading lists, but whose colour at a level the
+          # palette does not hold, keeps its own number: no lit picture holds that colour (the
+          # palette has every level of each colour one does), so no lit pixel ever looks it up.
+          # The colour is on the screen for something else, a clear or a line of text.
+          def palette_shading_bytes(shading)
+            places = shading.places
+            shading.levels.flat_map do |level|
+              (0...256).map do |number|
+                place = number < @palette.size ? places[@palette.color_at(number)] : nil
+                shaded = place && shading.colors[level[place]]
+                shaded && @palette.holds_color?(shaded) ? @palette.index_of(shaded) : number
+              end
+            end.pack("C*")
+          end
+
+          def color_shading_bytes(shading)
+            shaded = shading.levels.flat_map { |level| level.map { |place| shading.colors[place] } }
+            [shading.colors.length].pack("l<") + (shading.colors + shaded).pack("v*")
+          end
+
           # A PICTURE IN PERSPECTIVE walks u and v over the distance down the edges, not u and v
           # (Reference::FaceEdges.in_perspective): each corner's u and v times its w, down 28 bits.
           #
-          #   r0 how many corners, r4 a corner's w, r6 its u or v
+          # The corners are side by side in memory (see #emit_edges), so this is a loop over them.
+          #
+          #   r0 corners left, r3 a corner's words, r4 its w, r6 its u or v
           def emit_corners_in_perspective
             straight = gensym
             load_var(0, :_face_perspective)
             emit(ASM.cmp_imm(0, 0))
             emit_branch(:bcond, straight, cond: :eq)
-            load_var(0, :_face_corners)
-            MOST_CORNERS.times do |k|
-              if k >= 3
-                emit(ASM.cmp_imm(0, k))
-                emit_branch(:bcond, straight, cond: :le)
-              end
-              load_var(4, corner_word(:w, k))
+            emit_each_corner do
+              emit(ASM.ldr_offset(4, 3, corner_offset(:w)))
               %i[u v].each do |field|
-                load_var(6, corner_word(field, k))
+                emit(ASM.ldr_offset(6, 3, corner_offset(field)))
                 emit_mul_fix(6, 6, 4, 28)
-                store_var(6, corner_word(field, k))
+                emit(ASM.str_offset(6, 3, corner_offset(field)))
               end
             end
             place_label(straight)
           end
+
+          # A LIT FILL's corners, each light held to 0..LIGHTEST and made its shade, times the
+          # levels (Reference::Shade#shaded_corner), so a shade's top sixteen bits are its level.
+          #
+          #   r0 corners left, r3 a corner's words, r4 the levels, r5 the shade, r6 a corner's
+          #   light, r1 LIGHTEST
+          def emit_corners_lit
+            unlit = gensym
+            load_var(4, :_face_shading)
+            emit(ASM.cmp_imm(4, 0))
+            emit_branch(:bcond, unlit, cond: :eq)
+            load_var(4, :_face_levels)
+            emit_number(1, Nodes::FillFace::LIGHTEST)
+            emit_each_corner do
+              emit(ASM.ldr_offset(6, 3, corner_offset(:light)))
+              emit(ASM.cmp_imm(6, 0))
+              emit(ASM.mov_imm_cond(:lt, 6, 0))
+              emit(ASM.cmp_reg(6, 1))
+              emit(ASM.mov_reg_cond(:gt, 6, 1))
+              emit(ASM.mul(5, 6, 4))
+              emit(ASM.str_offset(5, 3, corner_offset(:light)))
+            end
+            place_label(unlit)
+          end
+
+          # The block's instructions once for each of the face's corners (three to MOST_CORNERS),
+          # with r3 at the corner's words and r0 counting down. The block must keep r0 and r3.
+          def emit_each_corner
+            each = gensym
+            load_var(0, :_face_corners)
+            emit_number(3, var_addr(corner_word(:x, 0)))
+            place_label(each)
+            yield
+            emit(ASM.add_imm(3, 3, CORNER_BYTES))
+            emit(ASM.subs_imm(0, 0, 1))
+            emit_branch(:bcond, each, cond: :ne)
+          end
+
+          # The byte offset of corner field +field+ from the start of a corner's words.
+          def corner_offset(field) = 4 * LISTED_FIELDS.index(field.to_s)
 
           # How many bytes one corner's words and one edge's words take, each set of words side by
           # side in the order Faces.words names them.
@@ -366,10 +490,14 @@ module VBlank
               emit(ASM.ldr_offset(4 + i, 2, 4 * i))
               emit(ASM.ldr_offset(8 + i, 3, 4 * i))
             end
-            emit(ASM.ldr_offset(1, 2, 16))
-            store_var(1, :_face_top_w)
-            emit(ASM.ldr_offset(1, 3, 16))
-            store_var(1, :_face_bottom_w)
+            ends = [%i[w _face_top_w _face_bottom_w]]
+            ends << %i[light _face_top_shade _face_bottom_shade] if @lit
+            ends.each do |field, top, bottom|
+              emit(ASM.ldr_offset(1, 2, corner_offset(field)))
+              store_var(1, top)
+              emit(ASM.ldr_offset(1, 3, corner_offset(field)))
+              store_var(1, bottom)
+            end
             emit(ASM.cmp_reg(5, 9))
             emit_branch(:bcond, level, cond: :eq)
             emit_branch(:bcond, ordered, cond: :lt)
@@ -378,10 +506,12 @@ module VBlank
               emit(ASM.mov_reg(4 + i, 8 + i))
               emit(ASM.mov_reg(8 + i, 0))
             end
-            load_var(0, :_face_top_w) # ...and the two ends' w
-            load_var(1, :_face_bottom_w)
-            store_var(1, :_face_top_w)
-            store_var(0, :_face_bottom_w)
+            ends.each do |_, top, bottom| # ...and the two ends' w and shade
+              load_var(0, top)
+              load_var(1, bottom)
+              store_var(1, top)
+              store_var(0, bottom)
+            end
             place_label(ordered)
 
             emit_row_of(0, 5) # the first row whose middle it crosses...
@@ -419,17 +549,24 @@ module VBlank
               emit_mul_fix(0, part, 9, 24)
               emit(ASM.str_offset(0, 3, edge_offset(step)))
             end
-            load_var(0, :_face_perspective) # w only matters in perspective
-            emit(ASM.cmp_imm(0, 0))
-            emit_branch(:bcond, done, cond: :eq)
-            load_var(6, :_face_top_w)
-            load_var(10, :_face_bottom_w)
-            emit(ASM.sub_reg(10, 10, 6))
-            emit_mul_fix(0, 10, 5, 24)
-            emit(ASM.add_reg(0, 6, 0))
-            emit(ASM.str_offset(0, 3, edge_offset(:w)))
-            emit_mul_fix(0, 10, 9, 24)
-            emit(ASM.str_offset(0, 3, edge_offset(:step_w)))
+            # w only matters in perspective, and the shade only to a lit fill.
+            sloped = [[:_face_perspective, :_face_top_w, :_face_bottom_w, :w, :step_w]]
+            sloped << [:_face_shading, :_face_top_shade, :_face_bottom_shade, :shade, :step_shade] if @lit
+            sloped.each do |wanted, top, bottom, at, step|
+              skip = gensym
+              load_var(0, wanted)
+              emit(ASM.cmp_imm(0, 0))
+              emit_branch(:bcond, skip, cond: :eq)
+              load_var(6, top)
+              load_var(10, bottom)
+              emit(ASM.sub_reg(10, 10, 6))
+              emit_mul_fix(0, 10, 5, 24)
+              emit(ASM.add_reg(0, 6, 0))
+              emit(ASM.str_offset(0, 3, edge_offset(at)))
+              emit_mul_fix(0, 10, 9, 24)
+              emit(ASM.str_offset(0, 3, edge_offset(step)))
+              place_label(skip)
+            end
             emit_branch(:b, done)
 
             place_label(level)
@@ -450,31 +587,31 @@ module VBlank
           # pixel either way of where the corner itself lands, so the test across leaves a pixel to
           # spare: a face it keeps may still draw nothing, and the rows find that out as before.
           #
-          #   r4 the least across, r5 the most, r6 the least down, r7 the most; r0 how many corners
+          #   r4 the least across, r5 the most, r6 the least down, r7 the most; r0 the corners
+          #   left, r3 a corner's words
           def emit_skip_face_outside_edges(out)
+            each = gensym
             load_var(0, :_face_corners)
-            load_var(4, corner_word(:x, 0))
+            emit_number(3, var_addr(corner_word(:x, 0)))
+            emit(ASM.ldr_offset(4, 3, corner_offset(:x)))
             emit(ASM.mov_reg(5, 4))
-            load_var(6, corner_word(:y, 0))
+            emit(ASM.ldr_offset(6, 3, corner_offset(:y)))
             emit(ASM.mov_reg(7, 6))
-            (1...MOST_CORNERS).each do |k|
-              past = gensym
-              if k >= 3
-                emit(ASM.cmp_imm(0, k))
-                emit_branch(:bcond, past, cond: :le)
-              end
-              load_var(1, corner_word(:x, k))
-              emit(ASM.cmp_reg(1, 4))
-              emit(ASM.mov_reg_cond(:lt, 4, 1))
-              emit(ASM.cmp_reg(1, 5))
-              emit(ASM.mov_reg_cond(:gt, 5, 1))
-              load_var(1, corner_word(:y, k))
-              emit(ASM.cmp_reg(1, 6))
-              emit(ASM.mov_reg_cond(:lt, 6, 1))
-              emit(ASM.cmp_reg(1, 7))
-              emit(ASM.mov_reg_cond(:gt, 7, 1))
-              place_label(past)
-            end
+            emit(ASM.sub_imm(0, 0, 1))
+            place_label(each)
+            emit(ASM.add_imm(3, 3, CORNER_BYTES))
+            emit(ASM.ldr_offset(1, 3, corner_offset(:x)))
+            emit(ASM.cmp_reg(1, 4))
+            emit(ASM.mov_reg_cond(:lt, 4, 1))
+            emit(ASM.cmp_reg(1, 5))
+            emit(ASM.mov_reg_cond(:gt, 5, 1))
+            emit(ASM.ldr_offset(1, 3, corner_offset(:y)))
+            emit(ASM.cmp_reg(1, 6))
+            emit(ASM.mov_reg_cond(:lt, 6, 1))
+            emit(ASM.cmp_reg(1, 7))
+            emit(ASM.mov_reg_cond(:gt, 7, 1))
+            emit(ASM.subs_imm(0, 0, 1))
+            emit_branch(:bcond, each, cond: :ne)
             [4, 5, 6, 7].each { |reg| emit_row_of(reg, reg) } # each as the pixel its middle reaches
 
             emit_edge_bound(1, :_face_left, 0, :at_least)
@@ -522,21 +659,27 @@ module VBlank
             next_row = gensym
             done = gensym
 
-            # The rows any edge crosses: from the least first row to the greatest past one.
+            # The rows any edge crosses: from the least first row to the greatest past one, over
+            # each edge's words in turn (r3), r2 counting them down.
+            each = gensym
+            skip = gensym
             emit_number(4, Int32::MAX)
             emit_number(5, Int32::MIN)
-            MOST_CORNERS.times do |k|
-              skip = gensym
-              load_var(0, edge_word(k, :first))
-              load_var(1, edge_word(k, :past))
-              emit(ASM.cmp_reg(0, 1))
-              emit_branch(:bcond, skip, cond: :ge)
-              emit(ASM.cmp_reg(0, 4))
-              emit(ASM.mov_reg_cond(:lt, 4, 0))
-              emit(ASM.cmp_reg(1, 5))
-              emit(ASM.mov_reg_cond(:gt, 5, 1))
-              place_label(skip)
-            end
+            emit_number(3, var_addr(edge_word(0, :first)))
+            emit_number(2, MOST_CORNERS)
+            place_label(each)
+            emit(ASM.ldr_offset(0, 3, edge_offset(:first)))
+            emit(ASM.ldr_offset(1, 3, edge_offset(:past)))
+            emit(ASM.cmp_reg(0, 1))
+            emit_branch(:bcond, skip, cond: :ge)
+            emit(ASM.cmp_reg(0, 4))
+            emit(ASM.mov_reg_cond(:lt, 4, 0))
+            emit(ASM.cmp_reg(1, 5))
+            emit(ASM.mov_reg_cond(:gt, 5, 1))
+            place_label(skip)
+            emit(ASM.add_imm(3, 3, EDGE_BYTES))
+            emit(ASM.subs_imm(2, 2, 1))
+            emit_branch(:bcond, each, cond: :ne)
             emit_clamp(4, :_face_top, :at_least)
             emit_clamp(4, 0, :at_least)
             emit_clamp(5, :_face_bottom, :at_most)
@@ -569,11 +712,11 @@ module VBlank
 
           # Where the row in r4 starts and ends: of the edges crossing it, the one furthest left
           # (the first such) and the one furthest right (the last such), each its x, u and v,
-          # kept in ROW_ENDS, and its w in the left-w and right-w words. Fewer than two edges
+          # kept in ROW_ENDS, and its w and shade in the left and right words. Fewer than two edges
           # crossing it, and it is skipped.
           #
           #   r6 how many cross; r7-r9 the leftmost's x, u, v; r10, r11, lr the rightmost's;
-          #   r0 the crossing's w
+          #   r0 the crossing's w, r5 its shade
           def emit_row_ends(next_row)
             emit_number(6, 0)
             emit_number(7, Int32::MAX)
@@ -592,17 +735,31 @@ module VBlank
               emit_crossing(k, 1, :x, :step_x)
               emit_crossing(k, 2, :u, :step_u)
               emit_crossing(k, 3, :v, :step_v)
-              emit_crossing(k, 0, :w, :step_w) # last: it takes the place of the rows
+              if @lit
+                # The shade in r5 and then w in r0, in place of the rows, each read through r12.
+                load_var(5, edge_word(k, :step_shade))
+                emit(ASM.mul(5, 0, 5))
+                load_var(12, edge_word(k, :shade))
+                emit(ASM.add_reg(5, 12, 5))
+                load_var(12, edge_word(k, :step_w))
+                emit(ASM.mul(0, 12, 0))
+                load_var(12, edge_word(k, :w))
+                emit(ASM.add_reg(0, 12, 0))
+              else
+                emit_crossing(k, 0, :w, :step_w) # last: it takes the place of the rows
+              end
               emit(ASM.add_imm(6, 6, 1))
               emit(ASM.cmp_reg(1, 7))
               emit_branch(:bcond, not_left, cond: :ge)
               [[7, 1], [8, 2], [9, 3]].each { |to, from| emit(ASM.mov_reg(to, from)) }
               store_var(0, :_face_left_w)
+              store_var(5, :_face_left_shade) if @lit
               place_label(not_left)
               emit(ASM.cmp_reg(1, 10))
               emit_branch(:bcond, not_right, cond: :lt)
               [[10, 1], [11, 2], [14, 3]].each { |to, from| emit(ASM.mov_reg(to, from)) }
               store_var(0, :_face_right_w)
+              store_var(5, :_face_right_shade) if @lit
               place_label(not_right)
               place_label(skip)
             end
@@ -649,6 +806,7 @@ module VBlank
             store_var(6, :_face_first)
             store_var(7, :_face_past)
             emit_row_base
+            emit_row_shade if @lit
 
             in_perspective = gensym
             load_var(0, :_face_perspective)
@@ -678,6 +836,45 @@ module VBlank
 
             place_label(in_perspective)
             emit_span_in_perspective(next_row)
+          end
+
+          # A LIT ROW's shade: each end's held to the levels there are (Reference::Shade#held_row_end),
+          # its step a pixel, and the shade at the first pixel drawn. The shade steps evenly across
+          # the row whatever the perspective, so a stretch in perspective starts from these too.
+          #
+          #   r2 the most a shade can be, r1 an end's shade
+          def emit_row_shade
+            unlit = gensym
+            load_var(0, :_face_shading)
+            emit(ASM.cmp_imm(0, 0))
+            emit_branch(:bcond, unlit, cond: :eq)
+            load_var(2, :_face_levels)
+            emit(ASM.lsl_imm(2, 2, 16))
+            emit(ASM.sub_imm(2, 2, 1))
+            %i[_face_left_shade _face_right_shade].each do |word|
+              load_var(1, word)
+              emit(ASM.cmp_imm(1, 0))
+              emit(ASM.mov_imm_cond(:lt, 1, 0))
+              emit(ASM.cmp_reg(1, 2))
+              emit(ASM.mov_reg_cond(:gt, 1, 2))
+              store_var(1, word)
+            end
+            emit_span_step(:_face_right_shade, :_face_left_shade, :_face_step_shade)
+            load_var(0, :_face_first)
+            load_var(1, :_face_start)
+            emit(ASM.sub_reg(0, 0, 1))
+            emit_shade_along(0, 2, 1)
+            place_label(unlit)
+          end
+
+          # The shade word = the row's left end's shade, a step for each pixel in +along+ (a
+          # register). +into+ and +spare+ are spare.
+          def emit_shade_along(along, into, spare)
+            load_var(spare, :_face_step_shade)
+            emit(ASM.mul(into, along, spare))
+            load_var(spare, :_face_left_shade)
+            emit(ASM.add_reg(into, spare, into))
+            store_var(into, :_face_shade)
           end
 
           # Where the row being drawn starts in the screen's memory: on the hidden page of the
@@ -788,6 +985,7 @@ module VBlank
             emit(ASM.mul(1, 3, 4))
             load_var(8, :_face_near_v)
             emit(ASM.add_reg(1, 8, 1))
+            emit_shade_along(6, 8, 7) if @lit # an unlit fill's, nothing reads
             load_var(8, :_face_start)
             emit(ASM.add_reg(6, 6, 8)) # the pixel across the screen
             emit_pixel_address(4, 6)
@@ -805,8 +1003,12 @@ module VBlank
             emit(ASM.cmp_reg(0, 1))
             emit_branch(:bcond, stretch, cond: :lt)
             emit_branch(:b, next_row)
-            emit_whole_stretches(fast, stretch)
-            emit_every_pixel_run(:"#{fast}_every_pixel", next_row)
+            emit_whole_stretches(fast, stretch, lit: false)
+            emit_every_pixel_run(:"#{fast}_every_pixel", next_row, lit: false)
+            return unless @lit
+
+            emit_whole_stretches(:"#{fast}_lit", stretch, lit: true)
+            emit_every_pixel_run(:"#{fast}_lit_every_pixel", next_row, lit: true)
           end
 
           # The words the run of whole stretches keeps: u, v and w over the distance at the
@@ -820,7 +1022,7 @@ module VBlank
 
           # On to +fast+ when the stretch about to be drawn starts a run of WHOLE STRETCHES: eight
           # pixels in perspective, all of them drawn, of a picture with no see-through pixel, on the
-          # tear-free screen. Those take a loop of their own (#emit_whole_stretches).
+          # tear-free screen. Those take a loop of their own (#emit_whole_stretches), lit or not.
           #
           #   r0 where the stretch starts, along; r2 where the run must end
           def emit_branch_to_whole_stretches(fast)
@@ -843,12 +1045,28 @@ module VBlank
             emit(ASM.add_imm(3, 3, 1)) # NO_CLEAR is -1
             emit(ASM.cmp_imm(3, 0))
             emit_branch(:bcond, not_whole, cond: :ne)
+            load_var(1, :_face_shading) if @lit
             load_var(3, :_face_perspective)
+            if @lit
+              emit(ASM.cmp_imm(1, 0))
+              emit_branch(:bcond, :"#{fast}_lit_branch", cond: :ne)
+            end
+            emit_branch_by_perspective(fast)
+            if @lit
+              emit_branch(:b, not_whole)
+              place_label(:"#{fast}_lit_branch")
+              emit_branch_by_perspective(:"#{fast}_lit")
+            end
+            place_label(not_whole)
+          end
+
+          # On to +fast+ for a stretch every eight pixels, or its every-pixel run for every pixel,
+          # by the perspective word in r3.
+          def emit_branch_by_perspective(fast)
             emit(ASM.cmp_imm(3, 1))
             emit_branch(:bcond, :"#{fast}_every_pixel", cond: :eq)
             emit(ASM.cmp_imm(3, STRETCH))
             emit_branch(:bcond, fast, cond: :eq)
-            place_label(not_whole)
           end
 
           # EVERY PIXEL IN PERSPECTIVE, the whole drawn part of the row in one loop: each pixel's
@@ -857,12 +1075,16 @@ module VBlank
           # Then on to +next_row+.
           #
           #   r4 where the pixel is in the screen's memory, r6-r9 the picture, lr and r3 a pair
-          def emit_every_pixel_run(start, next_row)
+          #
+          # +lit+, each pixel is shaded as it is worked out (PIXEL_IN_PERSPECTIVE_LIT_ROUTINE).
+          def emit_every_pixel_run(start, next_row, lit:)
             even = gensym
             pairs = gensym
             tail = gensym
+            pixel = lit ? PIXEL_IN_PERSPECTIVE_LIT_ROUTINE : PIXEL_IN_PERSPECTIVE_ROUTINE
             place_label(start)
             load_var(5, :_face_first)
+            emit_shade_along(5, 0, 1) if lit
             [[0, :_face_step_u, :_face_left_u], [1, :_face_step_v, :_face_left_v],
              [2, :_face_step_w, :_face_left_w]].each do |into, step, left|
               load_var(3, step)
@@ -879,7 +1101,7 @@ module VBlank
             emit_load_picture
             emit(ASM.tst_imm(4, 1))
             emit_branch(:bcond, even, cond: :eq)
-            emit_branch(:bl, PIXEL_IN_PERSPECTIVE_ROUTINE)
+            emit_branch(:bl, pixel)
             emit(ASM.bic_imm(5, 4, 1))
             emit(ASM.load_halfword(14, 5))
             emit(ASM.and_imm(14, 14, 0xFF))
@@ -892,9 +1114,9 @@ module VBlank
             load_var(5, :_face_run_end)
             emit(ASM.cmp_imm(5, 2))
             emit_branch(:bcond, tail, cond: :lt)
-            emit_branch(:bl, PIXEL_IN_PERSPECTIVE_ROUTINE)
+            emit_branch(:bl, pixel)
             store_var(3, :_face_pending)
-            emit_branch(:bl, PIXEL_IN_PERSPECTIVE_ROUTINE)
+            emit_branch(:bl, pixel)
             load_var(14, :_face_pending)
             emit(ASM.orr_reg_lsl(14, 14, 3, 8))
             emit(ASM.store_halfword_post(14, 4, 2))
@@ -903,7 +1125,7 @@ module VBlank
             place_label(tail)
             emit(ASM.cmp_imm(5, 0))
             emit_branch(:bcond, next_row, cond: :eq)
-            emit_branch(:bl, PIXEL_IN_PERSPECTIVE_ROUTINE)
+            emit_branch(:bl, pixel)
             emit(ASM.load_halfword(14, 4))
             emit(ASM.and_imm(14, 14, 0xFF00))
             emit(ASM.orr_reg(14, 14, 3))
@@ -912,6 +1134,7 @@ module VBlank
           end
 
           PIXEL_IN_PERSPECTIVE_ROUTINE = :"#{ROUTINE}_pixel_in_perspective".freeze
+          PIXEL_IN_PERSPECTIVE_LIT_ROUTINE = :"#{ROUTINE}_pixel_in_perspective_lit".freeze
 
           def emit_run_pixels_less(count)
             load_var(5, :_face_run_end)
@@ -922,8 +1145,10 @@ module VBlank
           # r3 = the picture's pixel at u, v and w over the distance in r0-r2, which then step a
           # pixel on (Reference#place_in_perspective, and the texel as #emit_picture_place finds it).
           # Called with its return in lr; r5 and r10-r12 are spare.
-          def emit_pixel_in_perspective_routine
-            place_label(PIXEL_IN_PERSPECTIVE_ROUTINE)
+          #
+          # The +lit+ one shades the pixel at the shade word's level and steps the shade word on.
+          def emit_pixel_in_perspective_routine(lit:)
+            place_label(lit ? PIXEL_IN_PERSPECTIVE_LIT_ROUTINE : PIXEL_IN_PERSPECTIVE_ROUTINE)
             into = 3
             emit(ASM.mov_reg(3, 2))
             emit_distance(3, 10, 11)
@@ -940,6 +1165,14 @@ module VBlank
             emit(ASM.and_reg(11, 11, 7))
             emit(ASM.orr_reg(12, 12, 11))
             emit(ASM.ldrb_reg(into, 6, 12))
+            if lit
+              load_var(5, :_face_shade)
+              emit(ASM.lsr_imm(10, 5, 16))
+              emit(ASM.orr_reg_lsl(10, into, 10, 8))
+              load_var(11, :_face_shading)
+              emit(ASM.ldrb_reg(into, 11, 10))
+              emit_shade_step_in_memory(shade: 5, step: 11) # lr is the way back
+            end
             [[0, :_face_step_u], [1, :_face_step_v], [2, :_face_step_w]].each do |over, step|
               load_var(5, step)
               emit(ASM.add_reg(over, over, 5))
@@ -959,12 +1192,16 @@ module VBlank
           #
           #   r8, r9 u and v at the stretch's start; r4 where it is in the screen's memory; r6 the
           #   picture; r7 the pixel kept back; r0-r3, r5, r10-r12 and lr the sums
-          def emit_whole_stretches(fast, general)
+          #
+          # +lit+, the shade starts at the run's first pixel and is kept in its word between
+          # stretches (see #emit_whole_stretch).
+          def emit_whole_stretches(fast, general, lit:)
             even = gensym
             odd = gensym
             done = gensym
             place_label(fast)
             store_var(2, :_face_run_end)
+            emit_shade_along(0, 3, 1) if lit
             [%i[_face_over_u _face_left_u _face_step_u _face_stretch_u],
              %i[_face_over_v _face_left_v _face_step_v _face_stretch_v],
              %i[_face_over_w _face_left_w _face_step_w _face_stretch_w]].each do |over, left, step, stretch|
@@ -996,12 +1233,12 @@ module VBlank
             emit_branch(:b, odd)
 
             place_label(even)
-            emit_whole_stretch(:even)
+            emit_whole_stretch(:even, lit: lit)
             emit_branch_to_next_stretch(even)
             emit_branch(:b, done)
 
             place_label(odd)
-            emit_whole_stretch(:odd)
+            emit_whole_stretch(:odd, lit: lit)
             emit_branch_to_next_stretch(odd)
             emit(ASM.load_halfword(14, 4)) # the kept-back pixel, with the half beside it
             emit(ASM.and_imm(14, 14, 0xFF00))
@@ -1016,7 +1253,11 @@ module VBlank
 
           # One whole stretch: its far end's u and v exactly, the steps between, and its eight
           # pixels, starting on a pair (+parity+ :even) or on a pair's right half (:odd).
-          def emit_whole_stretch(parity)
+          #
+          # +lit+, the pixels are shaded as #emit_shaded_number does: r8-r10 are free once u and v
+          # are moved into r0-r3, so they take the shade, its step and the table for the eight
+          # pixels, and the shade goes back to its word after.
+          def emit_whole_stretch(parity, lit:)
             [[0, :_face_over_u, :_face_stretch_u], [2, :_face_over_v, :_face_stretch_v],
              [3, :_face_over_w, :_face_stretch_w]].each do |into, over, stretch|
               load_var(into, over)
@@ -1041,15 +1282,21 @@ module VBlank
             load_var(5, :_face_moved_v)
             emit(ASM.mov_reg_lsl_reg(1, 9, 5))
             emit(ASM.mov_reg_lsl_reg(3, 11, 5))
+            if lit
+              load_var(8, :_face_shade)
+              load_var(9, :_face_step_shade)
+              load_var(10, :_face_shading)
+            end
             if parity == :even
-              4.times { emit_pair }
+              4.times { emit_pair(lit: lit) }
             else
-              emit_pair_pixel(14)
+              emit_pair_pixel(14, lit: lit)
               emit(ASM.orr_reg_lsl(11, 7, 14, 8))
               emit(ASM.store_halfword_post(11, 4, 2))
-              3.times { emit_pair }
-              emit_pair_pixel(7)
+              3.times { emit_pair(lit: lit) }
+              emit_pair_pixel(7, lit: lit)
             end
+            store_var(8, :_face_shade) if lit
             load_var(8, :_face_far_u)
             load_var(9, :_face_far_v)
           end
@@ -1246,16 +1493,36 @@ module VBlank
           #   r5 how many are left, r6 the picture's palette numbers, r7 and r8 the masks that
           #   make it repeat, r9 the shift to a row, r10 the see-through number, r11, r12 and lr
           #   spare
+          #
+          # A lit fill has a copy of each of its own, each pixel's palette number then looked up in
+          # the shading's table at its level, so an unlit fill pays nothing for it.
           def emit_pixels
-            one_at_a_time = gensym
             done = gensym
+            lit_pixels = gensym
+            if @lit
+              load_var(11, :_face_shading)
+              emit(ASM.cmp_imm(11, 0))
+              emit_branch(:bcond, lit_pixels, cond: :ne)
+            end
+            emit_pixel_pair_and_single_loops(done, lit: false)
+            if @lit
+              emit_branch(:b, done)
+              place_label(lit_pixels)
+              emit_pixel_pair_and_single_loops(done, lit: true)
+            end
+            place_label(done)
+          end
+
+          # The pair loop for a picture with no see-through pixel and the single-pixel loop for
+          # one with, each pixel shaded when +lit+.
+          def emit_pixel_pair_and_single_loops(done, lit:)
+            one_at_a_time = gensym
             emit(ASM.add_imm(11, 10, 1)) # NO_CLEAR is -1
             emit(ASM.cmp_imm(11, 0))
             emit_branch(:bcond, one_at_a_time, cond: :ne)
-            emit_pixel_pairs(done)
+            emit_pixel_pairs(done, lit: lit)
             place_label(one_at_a_time)
-            emit_single_pixels
-            place_label(done)
+            emit_single_pixels(lit: lit)
           end
 
           # A picture with no see-through pixel covers every pixel of the span, so two pixels side
@@ -1280,7 +1547,10 @@ module VBlank
           # shift held in a register, costs a cycle more each time, three a pixel.
           #
           #   r7 the pairs left; r8 log2 of the picture's height; r11, r12 and lr the two pixels and a row
-          def emit_pixel_pairs(done)
+          #
+          # LIT (+lit+), r8 is the shade instead, r9 its step a pixel and r10 the shading's table,
+          # and the lone pixels read the picture's shifts from memory.
+          def emit_pixel_pairs(done, lit: false)
             pairs = gensym
             even = gensym
             tail = gensym
@@ -1291,11 +1561,16 @@ module VBlank
             emit(ASM.rsb_imm(11, 8, 16)) # ...and v and its step 16 - log2 height
             emit(ASM.mov_reg_lsl_reg(1, 1, 11))
             emit(ASM.mov_reg_lsl_reg(3, 3, 11))
+            if lit
+              load_var(8, :_face_shade)
+              load_var(9, :_face_step_shade)
+              load_var(10, :_face_shading)
+            end
 
             # A span starting on the right half of a pair: that pixel on its own.
             emit(ASM.tst_imm(4, 1))
             emit_branch(:bcond, even, cond: :eq)
-            emit_lone_pixel(:high)
+            emit_lone_pixel(:high, lit: lit)
             emit(ASM.subs_imm(5, 5, 1))
             emit_branch(:bcond, done, cond: :eq)
             place_label(even)
@@ -1311,9 +1586,9 @@ module VBlank
             emit(ASM.lsr_imm(7, 7, 1))
             emit_branch(:bcond, second, cond: :eq)
             place_label(pairs)
-            emit_pair
+            emit_pair(lit: lit)
             place_label(second)
-            emit_pair
+            emit_pair(lit: lit)
             emit(ASM.subs_imm(7, 7, 1))
             emit_branch(:bcond, pairs, cond: :ne)
 
@@ -1321,21 +1596,21 @@ module VBlank
             place_label(tail)
             emit(ASM.tst_imm(5, 1))
             emit_branch(:bcond, done, cond: :eq)
-            emit_lone_pixel(:low)
+            emit_lone_pixel(:low, lit: lit)
             emit_branch(:b, done)
           end
 
           # Two pixels side by side, written as their pair, and the pair after it next.
-          def emit_pair
-            emit_pair_pixel(11)
-            emit_pair_pixel(14)
+          def emit_pair(lit: false)
+            emit_pair_pixel(11, lit: lit)
+            emit_pair_pixel(14, lit: lit)
             emit(ASM.orr_reg_lsl(11, 11, 14, 8))
             emit(ASM.store_halfword_post(11, 4, 2))
           end
 
           # One pixel of a pair into +into+, and u and v a step on. Its three shifts are written in
           # as the routine starts, so each is emitted as nought and its place noted.
-          def emit_pair_pixel(into)
+          def emit_pair_pixel(into, lit: false)
             @span_patches << [pos, :across]
             emit(ASM.add_reg_lsr(into, 6, 0, 0))
             @span_patches << [pos, :down]
@@ -1344,18 +1619,36 @@ module VBlank
             emit(ASM.ldrb_reg_lsl(into, into, 12, 0))
             emit(ASM.add_reg(0, 0, 2))
             emit(ASM.add_reg(1, 1, 3))
+            emit_shaded_number(into) if lit
+          end
+
+          # LIT: the palette number in +into+ made the one its colour becomes at the shade in r8,
+          # from the shading's table in r10 (a row of 256 a level), and the shade a step on (r9).
+          # Four instructions, one of them a load.
+          def emit_shaded_number(into)
+            emit(ASM.lsr_imm(12, 8, 16))
+            emit(ASM.orr_reg_lsl(12, into, 12, 8))
+            emit(ASM.ldrb_reg(into, 10, 12))
+            emit(ASM.add_reg(8, 8, 9))
           end
 
           # One pixel alone, the +half+ (:low or :high) of its pair, put in with what the other
-          # half holds. Its shifts are held in registers: it is once a row at most.
-          def emit_lone_pixel(half)
-            emit(ASM.rsb_imm(12, 9, 32))
-            emit(ASM.mov_reg_lsr_reg(11, 0, 12)) # across
-            emit(ASM.rsb_imm(12, 8, 32))
-            emit(ASM.mov_reg_lsr_reg(12, 1, 12)) # down
-            emit(ASM.mov_reg_lsl_reg(12, 12, 9))
+          # half holds. Its shifts are held in registers: it is once a row at most. Lit, r8 and
+          # r9 hold the shade, so the shifts are read from memory instead.
+          def emit_lone_pixel(half, lit: false)
+            width_shift, rows_shift = lit ? [14, 11] : [9, 8]
+            if lit
+              load_var(width_shift, :_face_shift)
+              load_var(rows_shift, :_face_rows_shift)
+            end
+            emit(ASM.rsb_imm(12, rows_shift, 32))
+            emit(ASM.mov_reg_lsr_reg(12, 1, 12)) # down...
+            emit(ASM.mov_reg_lsl_reg(12, 12, width_shift)) # ...as where its row starts
+            emit(ASM.rsb_imm(11, width_shift, 32))
+            emit(ASM.mov_reg_lsr_reg(11, 0, 11)) # across
             emit(ASM.add_reg(11, 11, 12))
             emit(ASM.ldrb_reg(11, 6, 11))
+            emit_shaded_number(11) if lit
             emit(ASM.bic_imm(12, 4, 1))
             emit(ASM.load_halfword(14, 12))
             if half == :high
@@ -1450,8 +1743,9 @@ module VBlank
           end
 
           # The pixels of a span one at a time: for a picture with see-through pixels, where a pixel
-          # that is not drawn leaves its half of the pair as it was.
-          def emit_single_pixels
+          # that is not drawn leaves its half of the pair as it was. Lit, every register is taken,
+          # so the shade is kept in memory and stepped there, pixel by pixel.
+          def emit_single_pixels(lit: false)
             pixel = gensym
             skip = gensym
             odd = gensym
@@ -1461,6 +1755,13 @@ module VBlank
             emit(ASM.ldrb_reg(11, 6, 11))
             emit(ASM.cmp_reg(11, 10))
             emit_branch(:bcond, skip, cond: :eq)
+            if lit
+              load_var(14, :_face_shade)
+              emit(ASM.lsr_imm(14, 14, 16))
+              emit(ASM.orr_reg_lsl(11, 11, 14, 8))
+              load_var(14, :_face_shading)
+              emit(ASM.ldrb_reg(11, 14, 11))
+            end
             emit(ASM.bic_imm(12, 4, 1))            # the pair this pixel shares
             emit(ASM.load_halfword(14, 12))
             emit(ASM.tst_imm(4, 1))
@@ -1474,6 +1775,7 @@ module VBlank
             place_label(put)
             emit(ASM.store_halfword(14, 12))
             place_label(skip)
+            emit_shade_step_in_memory if lit
             emit(ASM.add_reg(0, 0, 2))
             emit(ASM.add_reg(1, 1, 3))
             emit(ASM.add_imm(4, 4, 1))
@@ -1481,10 +1783,37 @@ module VBlank
             emit_branch(:bcond, pixel, cond: :ne)
           end
 
+          # The shade word a step on, through the registers +shade+ and +step+ (r11 and lr unless
+          # said).
+          def emit_shade_step_in_memory(shade: 11, step: 14)
+            load_var(shade, :_face_shade)
+            load_var(step, :_face_step_shade)
+            emit(ASM.add_reg(shade, shade, step))
+            store_var(shade, :_face_shade)
+          end
+
           # The pixels of a span on the direct screen: each the picture's colour, two bytes, read
           # and written whole. The registers are as #emit_pixels has them, r4 counting two bytes a
           # pixel and r6 the picture's colours.
+          #
+          # Lit, each colour drawn is looked for among the shading's (#emit_shade_color_routine)
+          # and the shade kept in memory: the slow way, for the screen no place is drawn on.
           def emit_direct_pixels
+            return emit_direct_pixel_loop(lit: false) unless @lit
+
+            unlit = gensym
+            done = gensym
+            load_var(11, :_face_shading)
+            emit(ASM.cmp_imm(11, 0))
+            emit_branch(:bcond, unlit, cond: :eq)
+            emit_direct_pixel_loop(lit: true)
+            emit_branch(:b, done)
+            place_label(unlit)
+            emit_direct_pixel_loop(lit: false)
+            place_label(done)
+          end
+
+          def emit_direct_pixel_loop(lit:)
             pixel = gensym
             skip = gensym
             place_label(pixel)
@@ -1494,13 +1823,57 @@ module VBlank
             emit(ASM.load_halfword(11, 11))
             emit(ASM.cmp_reg(11, 10))
             emit_branch(:bcond, skip, cond: :eq)
+            emit_branch(:bl, SHADE_COLOR_ROUTINE) if lit
             emit(ASM.store_halfword(11, 4))
             place_label(skip)
+            emit_shade_step_in_memory if lit
             emit(ASM.add_reg(0, 0, 2))
             emit(ASM.add_reg(1, 1, 3))
             emit(ASM.add_imm(4, 4, 2))
             emit(ASM.subs_imm(5, 5, 1))
             emit_branch(:bcond, pixel, cond: :ne)
+          end
+
+          SHADE_COLOR_ROUTINE = :"#{ROUTINE}_shade_color".freeze
+
+          # r11 = the colour in r11 at the shade word's level, on the direct screen: looked for
+          # among the shading's colours, and if it is one of them, the colour its place becomes at
+          # that level (see #shading_table); if not, left as it is. Called with its return in lr;
+          # keeps every register but r11 and r12.
+          #
+          #   r12 the shading's colours, r0 how many, r1 the place, r2 a colour, then the level, r3
+          #   the shade
+          def emit_shade_color_routine
+            look = gensym
+            found = gensym
+            done = gensym
+            place_label(SHADE_COLOR_ROUTINE)
+            emit(ASM.push(0, 1, 2, 3, 14))
+            load_var(3, :_face_shade)
+            load_var(12, :_face_shading)
+            emit(ASM.ldr_offset(0, 12, 0))
+            emit(ASM.add_imm(12, 12, 4))
+            emit_number(1, 0)
+            place_label(look)
+            emit(ASM.cmp_reg(1, 0))
+            emit_branch(:bcond, done, cond: :ge)
+            emit(ASM.add_reg(2, 1, 1))
+            emit(ASM.add_reg(2, 12, 2))
+            emit(ASM.load_halfword(2, 2))
+            emit(ASM.cmp_reg(2, 11))
+            emit_branch(:bcond, found, cond: :eq)
+            emit(ASM.add_imm(1, 1, 1))
+            emit_branch(:b, look)
+            place_label(found)
+            emit(ASM.lsr_imm(2, 3, 16))
+            emit(ASM.add_imm(2, 2, 1)) # past the colours themselves
+            emit(ASM.mul(11, 2, 0))
+            emit(ASM.add_reg(11, 11, 1))
+            emit(ASM.add_reg(11, 11, 11))
+            emit(ASM.add_reg(11, 12, 11))
+            emit(ASM.load_halfword(11, 11))
+            place_label(done)
+            emit(ASM.pop(0, 1, 2, 3, 15))
           end
         end
       end

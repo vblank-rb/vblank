@@ -60,6 +60,49 @@ class TestPlacesCartridge < Minitest::Test
     end
   end
 
+  SEE_THROUGH_OR_NOT = [false, true].freeze
+
+  # A face lit from its corners: each pixel the shading's colour for its blended light, leaning
+  # away in each perspective, with see-through pixels, and with light the game adds as it runs.
+  def test_a_lit_face_agrees_in_each_perspective
+    %i[none every_8_pixels every_pixel].each do |perspective|
+      SEE_THROUGH_OR_NOT.each do |see_through|
+        program = PlaceGames.lit_square(left: 0.1, right: 0.95, perspective: perspective, see_through: see_through,
+                                        far: 3.0)
+        assert_backends_agree(program, frames: 3, console_frames: 30, name: "LIT")
+      end
+    end
+    assert_backends_agree(PlaceGames.lit_square(left: 0.0, right: 0.3, added: 0.5), frames: 3, console_frames: 30,
+                                                                                      name: "LAMP")
+  end
+
+  # A shading may list a colour the screen shows for something else (here black, cleared to) and
+  # give it, at a level, a colour no lit picture can come to (navy). Nothing lit is ever black, so
+  # the screen never needs navy: the cartridge builds, and draws as the interpreter does.
+  def test_a_shading_listing_a_colour_only_the_clear_screen_uses_builds_and_agrees
+    assert_backends_agree(shading_listing_black, frames: 3, console_frames: 30, name: "LITBLACK")
+  end
+
+  private def shading_listing_black
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :white, width: 8, height: 8, data: [0x7FFF] * 64
+      shading :dark, colors: [0x7FFF, 0x0000, 0x5000], levels: [[1, 2, 2], [0, 1, 2]]
+      place :wall, shading: :dark do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :white, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: [0.0, 1.0, 1.0, 0.0]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        draw_place :wall, seen_by: eye, perspective: :none
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   def test_screen_spots_agree
     spots = [[-1.0, 1.0, 2.0], [1.0, -1.0, 2.0], [0.11, 0.0, 2.0], [0.0, 0.0, -1.0], [3.0, -2.5, 1.5]]
     program = PlaceGames.screen_spots(spots)
@@ -79,6 +122,8 @@ class TestPlacesCartridge < Minitest::Test
   # frame compared is a different face: every eight passes a new one.
   def test_a_face_whose_edges_and_picture_change_agrees_at_each_change
     assert_backends_agree(PlaceGames.moving_five_corners(passes: 8), frames: [6, 14, 22, 30], name: "MOVING")
+    assert_backends_agree(PlaceGames.moving_five_corners(passes: 8, lit: true), frames: [6, 14, 22, 30],
+                          name: "MOVINGLIT")
   end
 
   # A game that draws no place carries none of the machinery: no routine for filling a face in

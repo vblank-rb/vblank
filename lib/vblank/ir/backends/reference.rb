@@ -249,6 +249,7 @@ module VBlank
           @see_through = nil       # ...and which of them you can see through, and by how much
           @bg_shown = []           # the backgrounds painted onto the screen so far, in that order
           @tables = {}             # name -> { values:, signed: } (a read-only ROM table)
+          @shadings = {}           # name -> Shade (a game's shading, see Nodes::Shading)
           @timers = {}            # name -> { hz:, running:, parts: } (a hardware timer; see #accrue_timer)
           @timer_handlers = {}    # name -> on_timer node whose body runs on each overflow
           @audio = []             # observable audio: [:enabled], [:beep, ..], [:note, ..]
@@ -585,6 +586,8 @@ module VBlank
               @lists[n.name] ||= ListValue.empty_of(n)
             when :table
               @tables[n.name] = TableValues.new(values: n.values, signed: n.signed)
+            when :shading
+              @shadings[n.name] = Shade.new(n)
             when :data
               @data[n.name] = n.bytes
             when :bitmap
@@ -3285,6 +3288,8 @@ module VBlank
           bottom = [bottom, @screen.height].min
           spans = eval_value(node.perspective)
           corners = corners.map { |corner| FaceEdges.in_perspective(corner) } unless spans == Nodes::FillFace::PERSPECTIVE_NONE
+          shade = node.shading && @shadings.fetch(node.shading) { raise ProgramError, "fill_face with undeclared shading #{node.shading.inspect}" }
+          corners = corners.map { |corner| shade.shaded_corner(corner) } if shade
           edges = FaceEdges.of(corners)
           return if edges.empty?
 
@@ -3295,12 +3300,47 @@ module VBlank
             next if crossing.length < 2
 
             fill_face_row(row, crossing.min_by(&:first), crossing.reverse.max_by(&:first), [left, right],
-                          picture, pixels, spans)
+                          picture, pixels, spans, shade)
+          end
+        end
+
+        # A GAME'S SHADING, ready to look colours up in (Nodes::Shading). A corner's light (0 to
+        # FillFace::LIGHTEST) times how many levels there are is what steps across the face, and its
+        # whole part is the level a pixel is drawn at.
+        class Shade
+          def initialize(node)
+            @levels = node.levels
+            @colors = node.colors
+            @places = node.places
+          end
+
+          # The corner [x, y, u, v, w, light] with its light held to 0..LIGHTEST and made its shade:
+          # times the levels, so a shade's top sixteen bits are its level.
+          def shaded_corner(corner)
+            light = corner[5].clamp(0, Nodes::FillFace::LIGHTEST)
+            corner.dup.tap { |shaded| shaded[5] = Int32.mul(light, @levels.length) }
+          end
+
+          # The row end [x, u, v, w, shade] with its shade held to the levels there are. Stepping down
+          # an edge rounds each row's step down, so an edge whose shade falls slowly can end a
+          # little below its lower corner's; held here, every shade stepped across the row is
+          # between its ends and names a level.
+          def held_row_end(row_end)
+            row_end.dup.tap { |held| held[4] = held[4].clamp(0, (@levels.length << 16) - 1) }
+          end
+
+          # The colour +color+ becomes at the level +shade+ has reached; a colour the game's colours
+          # do not hold stays as it is.
+          def color_at(color, shade)
+            place = @places[color]
+            return color unless place
+
+            @colors[@levels[Nodes::Shading.level_of(shade)][place]]
           end
         end
 
         # One row of a face, from where the edge +from+ crosses it to where +to+ does, each
-        # [x, u, v, w] (x in pixels with sixteen fraction bits): the pixels whose middles lie
+        # [x, u, v, w, shade] (x in pixels with sixteen fraction bits): the pixels whose middles lie
         # between, each the picture's pixel at its place on the picture. +span+ is [left, right]
         # of what may be drawn.
         #
@@ -3309,14 +3349,18 @@ module VBlank
         # distance (FaceEdges.in_perspective), which do step equally; every +spans+ pixels along
         # the row, and at its end, the place is worked out from them (#place_in_perspective), and
         # between it steps equally from one to the next.
-        def fill_face_row(row, from, to, span, picture, pixels, spans)
+        #
+        # Lit with +shade+ (a Shade), each pixel's colour is looked up at its level of light, the
+        # shade stepping by one equal amount a pixel whatever the perspective.
+        def fill_face_row(row, from, to, span, picture, pixels, spans, shade = nil)
           half = 1 << 15
           start = Int32.shift_right(Int32.add(from[0], half - 1), 16)
           stop = Int32.shift_right(Int32.add(to[0], half - 1), 16)
           count = Int32.sub(stop, start)
           return if count <= 0
 
-          steps = (1..3).map { |part| Int32.div(Int32.sub(to[part], from[part]), count) }
+          from, to = [from, to].map { |row_end| shade.held_row_end(row_end) } if shade
+          steps = (1..4).map { |part| Int32.div(Int32.sub(to[part], from[part]), count) }
           places = {}
           ([start, span[0]].max...[stop, span[1]].min).each do |x|
             along = Int32.sub(x, start)
@@ -3331,6 +3375,7 @@ module VBlank
             color = pixels.getbyte(at) | (pixels.getbyte(at + 1) << 8)
             next if picture.transparent && color == picture.transparent
 
+            color = shade.color_at(color, Int32.add(from[4], Int32.mul(steps[3], along))) if shade
             @screen.set_pixel(x, row, color)
           end
         end
@@ -3369,13 +3414,16 @@ module VBlank
         #
         # +w+ is one over the distance, which a picture in perspective steps down the edge too (and
         # then +u+ and +v+ are the place over the distance; see FaceEdges.in_perspective).
-        FaceEdge = Data.define(:first_row, :past_row, :x, :u, :v, :w, :step_x, :step_u, :step_v, :step_w) do
+        # +shade+ is a lit face's light times its shading's levels, stepped down the edge the same way.
+        FaceEdge = Data.define(:first_row, :past_row, :x, :u, :v, :w, :shade,
+                               :step_x, :step_u, :step_v, :step_w, :step_shade) do
           def crosses?(row) = row >= first_row && row < past_row
 
-          # [x, u, v, w] where this edge crosses +row+.
+          # [x, u, v, w, shade] where this edge crosses +row+.
           def at(row)
             rows = Int32.sub(row, first_row)
-            [[x, step_x], [u, step_u], [v, step_v], [w, step_w]].map { |at, step| Int32.add(at, Int32.mul(step, rows)) }
+            [[x, step_x], [u, step_u], [v, step_v], [w, step_w], [shade, step_shade]]
+              .map { |at, step| Int32.add(at, Int32.mul(step, rows)) }
           end
         end
 
@@ -3400,20 +3448,20 @@ module VBlank
             along_row = Int32.div(1 << 28, Int32.sub(bottom[1], top[1]))
             into = Int32.mul_fix(Int32.sub(Int32.add(Int32.mul(first_row, 16), 8), top[1]), along_row, 4)
             across = Int32.shift_left(Int32.sub(bottom[0], top[0]), 12)
-            parts = [across, *(2..4).map { |field| Int32.sub(bottom[field], top[field]) }]
-            starts = [Int32.shift_left(top[0], 12), *top[2..4]]
-            x, u, v, w = starts.zip(parts).map { |start, part| Int32.add(start, Int32.mul_fix(part, into, 24)) }
-            step_x, step_u, step_v, step_w = parts.map { |part| Int32.mul_fix(part, along_row, 24) }
-            FaceEdge.new(first_row: first_row, past_row: past_row, x: x, u: u, v: v, w: w,
-                         step_x: step_x, step_u: step_u, step_v: step_v, step_w: step_w)
+            parts = [across, *(2..5).map { |field| Int32.sub(bottom[field], top[field]) }]
+            starts = [Int32.shift_left(top[0], 12), *top[2..5]]
+            x, u, v, w, shade = starts.zip(parts).map { |start, part| Int32.add(start, Int32.mul_fix(part, into, 24)) }
+            step_x, step_u, step_v, step_w, step_shade = parts.map { |part| Int32.mul_fix(part, along_row, 24) }
+            FaceEdge.new(first_row: first_row, past_row: past_row, x: x, u: u, v: v, w: w, shade: shade,
+                         step_x: step_x, step_u: step_u, step_v: step_v, step_w: step_w, step_shade: step_shade)
           end
 
-          # A corner [x, y, u, v, w] made ready for a picture in perspective: u and v over the
+          # A corner [x, y, u, v, w, light] made ready for a picture in perspective: u and v over the
           # distance in place of u and v, which is u and v times w (one over the distance, with 26
           # bits of fraction) taken down 28 bits, so a quarter of u over the distance.
           def in_perspective(corner)
-            x, y, u, v, w = corner
-            [x, y, Int32.mul_fix(u, w, 28), Int32.mul_fix(v, w, 28), w]
+            x, y, u, v, w, light = corner
+            [x, y, Int32.mul_fix(u, w, 28), Int32.mul_fix(v, w, 28), w, light]
           end
         end
 

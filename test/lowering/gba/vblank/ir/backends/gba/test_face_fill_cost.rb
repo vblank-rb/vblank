@@ -18,16 +18,23 @@ class TestFaceFillCost < Minitest::Test
   # from the wrong place in it shows.
   TILE = (0...64).flat_map { |down| (0...64).map { |across| ((across / 8) * 4) | (((down / 4) * 2) << 5) | (16 << 10) } }
 
+  # A shading of the tile's own colours over 32 levels, each level a colour further down the list,
+  # so lighting it adds no colour to the screen's palette.
+  TILE_COLORS = TILE.uniq
+  LEVELS = (0...32).map { |level| (0...TILE_COLORS.length).map { |place| place * level / 31 } }
+
   # A face wider and taller than the view, so every pixel of the screen is one of its pixels: two
   # wholes ahead at its left and +far+ at its right, so it leans away and perspective has work to do.
-  private def whole_screen_face(perspective, see_through: nil, far: 2.0)
+  # +lit+ lights it through the shading, a different light at each corner.
+  private def whole_screen_face(perspective, see_through: nil, far: 2.0, lit: false)
     b = Builder.new
     b.instance_eval do
       screen :bitmap, tear_free: true
       image :tile, width: 64, height: 64, data: TILE, transparent: see_through
-      place :wall do
+      shading :dark, colors: TILE_COLORS, levels: LEVELS
+      place :wall, shading: lit ? :dark : nil do
         face point(-3.0, 3.0, 2.0), point(3.0, 3.0, far), point(3.0, -3.0, far), point(-3.0, -3.0, 2.0),
-             picture: :tile, on_picture: [[0, 0], [64, 0], [64, 64], [0, 64]]
+             picture: :tile, on_picture: [[0, 0], [64, 0], [64, 64], [0, 64]], light: [0.2, 1.0, 0.6, 0.0]
       end
       eye = viewer :eye, at: [0.0, 0.0, 0.0]
       game_loop { draw_place :wall, seen_by: eye, perspective: perspective }
@@ -56,6 +63,17 @@ class TestFaceFillCost < Minitest::Test
 
   def test_a_face_leaning_away_costs_under_ninety_cycles_a_pixel_in_perspective_every_pixel
     assert_fill_under(90, whole_screen_face(:every_pixel, far: 5.0), "a stretch at a time it cost 212")
+  end
+
+  # A lit pixel is its unlit cost and one more load, from the shading's table: about ten cycles
+  # more, the table being read from the cartridge.
+  def test_a_lit_face_costs_under_twenty_seven_cycles_a_pixel_without_perspective
+    assert_fill_under(27, whole_screen_face(:none, lit: true), "unlit it costs under 17")
+  end
+
+  def test_a_lit_face_leaning_away_costs_under_forty_six_cycles_a_pixel_in_perspective_every_8_pixels
+    assert_fill_under(46, whole_screen_face(:every_8_pixels, far: 5.0, lit: true),
+                      "a stretch at a time it cost 71; unlit it costs under 30")
   end
 
   private def assert_fill_under(most, program, before)

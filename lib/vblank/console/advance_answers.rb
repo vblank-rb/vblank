@@ -41,6 +41,8 @@ module VBlank
         place: works, viewer: works, screen_spot: works,
         draw_place: works("on `screen :bitmap, tear_free: true` only. The processor turns each point and " \
                           "fills each face a pixel at a time. Each `perspective:` setting is made."),
+        shading: works("the processor finds each lit pixel's colour in a table the build makes from the " \
+                       "shading, one load a pixel. Each pixel is the colour the shading gives, exactly."),
 
         # --- fades, tints and screen effects ---
         fade: works, tint: works, fade_in: works, fade_out: works, flash_screen: works, fade_level: works,

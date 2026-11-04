@@ -755,14 +755,19 @@ module VBlank
         kind :fill_face
         category :draw
         operands pictures: :list, picture: :value, corners: :name, count: :value,
-                 left: :value, top: :value, right: :value, bottom: :value, perspective: :value
+                 left: :value, top: :value, right: :value, bottom: :value, perspective: :value, shading: :name
 
         # The most corners a face can have: four, each cut by the near limit into two.
         MOST_CORNERS = 8
 
-        # How many numbers a corner is in the list: x, y, u, v, and one over its distance (w, with
-        # 26 bits of fraction), which only a picture in perspective reads.
-        CORNER_NUMBERS = 5
+        # How many numbers a corner is in the list: x, y, u, v, one over its distance (w, with
+        # 26 bits of fraction), which only a picture in perspective reads, and its light (0 for
+        # dark to LIGHTEST, with sixteen bits of fraction), which only a fill with +shading+ reads.
+        CORNER_NUMBERS = 6
+
+        # The most light a corner can have: a hair under one whole, so the brightest level of a
+        # shading is the last one.
+        LIGHTEST = 0xFFFF
 
         # +perspective+ is how many pixels apart the place on the picture is worked out exactly
         # across a row: PERSPECTIVE_NONE for never (the picture is stretched straight between the
@@ -772,6 +777,33 @@ module VBlank
 
         # The edges nothing outside is drawn, [left, top, right, bottom].
         def edges = [left, top, right, bottom]
+      end
+
+      # A GAME'S SHADING: what each colour becomes at each level of light, from the darkest level
+      # to the brightest, as the game's own tables say. +colors+ are the game's colours (15-bit,
+      # its palette), and each of +levels+ says, for each of those colours by its place, the place
+      # of the colour it becomes at that level. A colour not among +colors+ stays as it is.
+      #
+      # A face filled with a shading (FillFace's +shading+) is lit from its corners: each corner's
+      # light, times how many levels there are, is stepped across the face like its place on the
+      # picture, and each pixel's colour is looked up at the level its light has reached.
+      class Shading
+        include Node
+        kind :shading
+        declaration!
+        category :data
+        operands name: :name, colors: :list, levels: :list
+
+        # The level a light (0 to FillFace::LIGHTEST) times the levels has reached: its whole part.
+        def self.level_of(shade) = shade >> 16
+
+        # Where each colour stands in +colors+, as a Hash of colour to place: a colour listed twice
+        # is at its first place, which every lowering and the palette agree on.
+        def places
+          places = {}
+          colors.each_with_index { |color, place| places[color] ||= place }
+          places
+        end
       end
 
       # Words at a fixed place. +picked+ is a second colour and +showing+ the test that picks

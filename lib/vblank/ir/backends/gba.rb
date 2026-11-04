@@ -905,7 +905,8 @@ module VBlank
           # there: the stack, and the divide routines this program needs.
           @top = TopOfQuickMemory.for(program, stack_room: @stack_room, divides: needs_divide_routine?(program),
                                                divides_fractions: needs_divide_fix_routine?(program),
-                                               fills_faces: Faces.fills_faces?(program))
+                                               fills_faces: Faces.fills_faces?(program),
+                                               lights_faces: Faces.lights_faces?(program))
           @memory.ceiling = @top.ceiling
           Faces.words.each { |name| var_addr(name) } if @top.fill_face_at
           variables_first.each { |name| var_addr(name) }
@@ -1016,6 +1017,7 @@ module VBlank
           @uses_save = program.walk.any? { |node| SAVE_KINDS.include?(node.kind) }
           @save.use_memory(IR::SaveLayout.memory_of(program))
           prepare_palette(program) if @modes.any_buffered?
+          @faces.prepare_shadings(program, palette: @palette)
           # The colour tables a tint walks: the tear-free screen's, and the ones the layout
           # made for the scenery and the sprites (see PaletteTint's class comment).
           @palette_tint.layout = PaletteTint::Layout.new(palette: @palette, screen: @screen, blob_codecs: @blob_codecs)

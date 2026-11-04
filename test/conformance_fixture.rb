@@ -223,15 +223,35 @@ module ConformanceFixture
       # corners are at different distances (the last number, one over the distance) and the
       # picture is in perspective, worked out every eight pixels, so a backend whose sums for
       # perspective differ draws a different face too.
-      B.list_new(:fixture_corners, 40, full_of: 0),
-      *[[1608, 1600, -65_536, -65_536, 1 << 26], [1930, 1650, 196_608, -65_536, 1 << 24],
-        [1960, 1720, 196_608, 65_536, 3 << 23], [1900, 1800, 196_608, 196_608, 1 << 25],
-        [1603, 1790, -65_536, 196_608, 1 << 27]].each_with_index.flat_map { |corner, k|
-        corner.each_with_index.map { |number, field| B.list_set(:fixture_corners, B.int((k * 5) + field), B.int(number)) }
+      # A game's shading: three levels over the pictures' colours and black, darkest first. At the
+      # lowest every colour is black, at the middle the three colours trade places, and at the top
+      # each is itself.
+      B.shading(:fixture_shading, [0x7C00, 0x03E0, 0x001F, 0x7FFF, 0x0000],
+                [[4, 4, 4, 4, 4], [2, 0, 1, 3, 4], [0, 1, 2, 3, 4]]),
+      B.list_new(:fixture_corners, 48, full_of: 0),
+      *[[1608, 1600, -65_536, -65_536, 1 << 26, 0], [1930, 1650, 196_608, -65_536, 1 << 24, 0],
+        [1960, 1720, 196_608, 65_536, 3 << 23, 0], [1900, 1800, 196_608, 196_608, 1 << 25, 0],
+        [1603, 1790, -65_536, 196_608, 1 << 27, 0]].each_with_index.flat_map { |corner, k|
+        corner.each_with_index.map { |number, field| B.list_set(:fixture_corners, B.int((k * 6) + field), B.int(number)) }
       },
       B.draw_place(:fixture_place, :fixture_viewer,
                    B.fill_face(%i[pose_b sprite], B.binop(:-, B.var_ref(:x), B.int(6)), :fixture_corners, B.int(5),
                                [B.int(0), B.int(0), B.int(115), B.int(160)], perspective: B.int(8)),
+                   near: 16_384, view_angle: 90),
+      # The same face lit, thirty pixels to the left: each corner its own light (the last number,
+      # one held past the brightest and one below the darkest), blended across the face, and each
+      # pixel the shading's colour at the level its light reached. A backend that blends or looks
+      # up the light differently draws other colours.
+      B.list_new(:fixture_lit_corners, 48, full_of: 0),
+      *[[1128, 1600, -65_536, -65_536, 1 << 26, 0], [1450, 1650, 196_608, -65_536, 1 << 24, 0x9000],
+        [1480, 1720, 196_608, 65_536, 3 << 23, 0x1_2000], [1420, 1800, 196_608, 196_608, 1 << 25, 0x5000],
+        [1123, 1790, -65_536, 196_608, 1 << 27, -0x800]].each_with_index.flat_map { |corner, k|
+        corner.each_with_index.map { |number, field| B.list_set(:fixture_lit_corners, B.int((k * 6) + field), B.int(number)) }
+      },
+      B.draw_place(:fixture_place, :fixture_viewer,
+                   B.fill_face(%i[pose_b sprite], B.int(0), :fixture_lit_corners, B.int(5),
+                               [B.int(0), B.int(0), B.int(115), B.int(160)], perspective: B.int(8),
+                                                                             shading: :fixture_shading),
                    near: 16_384, view_angle: 90),
       B.draw_text("HI", 10, 10, :white),
       # A font the program declared for itself, and a line drawn with it. Every backend has

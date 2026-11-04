@@ -44,12 +44,20 @@ module VBlank
       # Each point, [x, y, z] as fractions with sixteen bits.
       attr_reader :points
 
-      # Each face, its slot number and its corners, each [point, u, v] (u and v as fractions with
+      # Each face, its slot number and its corners, each [point, u, v, light] (each a fraction with
       # sixteen bits), four of them: a face of three gives its last corner twice.
       attr_reader :faces
 
       # The picture each slot shows to start with, in slot order.
       attr_reader :slots
+
+      # The shading the place is lit by (`place :mine, shading: :fade`), or nil.
+      attr_accessor :shading
+
+      # For a place with a shading, the light the game adds to each point as it runs, a List of
+      # fractions by point number, all nought to start with: a lamp that flickers, a light the
+      # viewer carries. A corner's light is its face's own for it and its point's here, held to 1.
+      attr_accessor :point_lights
 
       # A spot in the place: +x+ across, +y+ up and +z+ ahead, each a number. Returns the point,
       # for `face` to name.
@@ -61,14 +69,17 @@ module VBlank
 
       # A flat side joining +points+ (three or four, from `point`, in order round the face), showing
       # +picture+, its corners falling on it where +on_picture+ says ([across, down] for each
-      # point, in the same order).
-      def face(*points, picture:, on_picture:)
+      # point, in the same order). +light+ is how lit each corner is, from 0 (dark) to 1 (as
+      # bright as the shading goes), one for each point, or one for them all; a place drawn with a
+      # shading blends it across the face.
+      def face(*points, picture:, on_picture:, light: 1.0)
         refuse_wrong_point_count!(points)
         points.each { |point| refuse_unknown_point!(point) }
         refuse_unknown_picture!(picture)
         refuse_mismatched_corners!(points, on_picture)
-        corners = points.zip(on_picture).map do |point, spot|
-          [point, *spot.each_with_index.map { |number, axis| picture_number(number, %w[across down][axis]) }]
+        lights = corner_lights(points, light)
+        corners = points.zip(on_picture, lights).map do |point, spot, lit|
+          [point, *spot.each_with_index.map { |number, axis| picture_number(number, %w[across down][axis]) }, lit]
         end
         corners << corners.last if corners.length == 3
         @slots << picture unless @slots.include?(picture)
@@ -83,6 +94,19 @@ module VBlank
       def faces_table = @faces.flat_map { |slot, corners| [slot, *corners.flatten] }
 
       private
+
+      # Each corner's light as the faces table keeps it: sixteen bits of fraction, held just under
+      # one (IR::Nodes::FillFace::LIGHTEST).
+      def corner_lights(points, light)
+        lights = light.is_a?(Array) ? light : [light] * points.length
+        unless lights.length == points.length && lights.all? { |each| each.is_a?(Numeric) && each.between?(0, 1) }
+          raise ArgumentError, "place :#{@name} has a face with light: #{light.inspect}. light: is a number from 0 " \
+                               "to 1, or one such number for each of the face's #{points.length} points. To fix " \
+                               "this, give numbers like 1.0 or [1.0, 0.5, 0.5, 1.0]."
+        end
+
+        lights.map { |each| [Fraction.scale(each, Fraction::DEFAULT_BITS), IR::Nodes::FillFace::LIGHTEST].min }
+      end
 
       def point_number(number, axis)
         unless number.is_a?(Numeric) && number.abs <= FURTHEST

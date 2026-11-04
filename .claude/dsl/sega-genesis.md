@@ -40,6 +40,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `draw_column_at` — works: the same as on the Advance.
 - `place` — works: a place is data in the cartridge. To draw it is refused: see `draw_place`.
 - `viewer` — works: a viewer is variables. To draw a place from it is refused: see `draw_place`.
+- `shading` — works: a shading is data in the cartridge. To draw a place with it is refused: see `draw_place`.
 - `screen_spot` — works: the processor turns and projects the point.
 - `draw_place` — **refused**: this build does not draw a place on a Genesis yet.
 - `clear_screen` — works: the same as on the Advance.

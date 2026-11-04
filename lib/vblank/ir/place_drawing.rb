@@ -39,11 +39,15 @@ module VBlank
     # fill's sums inside a number: a face reaching past that is drawn bent.
     class PlaceDrawing
       # A place's faces table keeps, for each face, the number of its picture slot and then,
-      # for each of its four corners, the number of its point and where it falls on the
-      # picture (u, v). A face of three corners gives its third twice.
+      # for each of its four corners, the number of its point, where it falls on the picture
+      # (u, v) and its light. A face of three corners gives its third twice.
       FACE_SLOT = 0
       CORNERS = 4
-      CORNER_FIELDS = 3
+
+      # What is kept of each corner once turned: its point, where it is, its place on the
+      # picture and its light.
+      TURNED_FIELDS = %i[p x y z u v light].freeze
+      CORNER_FIELDS = 4
       FACE_STRIDE = 1 + (CORNERS * CORNER_FIELDS)
       # ...and its points table three numbers a point: x, y, z.
       POINT_STRIDE = 3
@@ -61,7 +65,7 @@ module VBlank
       VIEWER_PARTS = %i[x y z right_x right_y right_z up_x up_y up_z ahead_x ahead_y ahead_z].freeze
 
       # What the routine is told about the view before each drawing (see View).
-      VIEW_PARTS = %i[left top right bottom middle_x middle_y focal near both_sides perspective].freeze
+      VIEW_PARTS = %i[left top right bottom middle_x middle_y focal near both_sides perspective lit].freeze
 
       # The edges a face is held to, in the order a window gives them.
       CLIP_EDGES = %i[left top right bottom].freeze
@@ -69,16 +73,16 @@ module VBlank
       # WHAT THE ROUTINE IS TOLD ABOUT THE VIEW: its edges in whole pixels, its middle in
       # sixteenths of one, how far a point one whole to the side at one whole ahead lands from the
       # middle (+focal+, sixteenths), the near limit (a fraction with sixteen bits), 1 when a face
-      # is drawn from behind as well, and how far apart a row's pictures are put in perspective
-      # (Nodes::FillFace::PERSPECTIVE_SPANS).
+      # is drawn from behind as well, how far apart a row's pictures are put in perspective
+      # (Nodes::FillFace::PERSPECTIVE_SPANS), and 1 when the place is drawn lit by its shading.
       View = Data.define(*VIEW_PARTS) do
         # The view over the screen area +left+, +top+, +width+, +height+, +degrees+ across.
-        def self.over(left, top, width, height, degrees:, near:, both_sides:, perspective: :none)
+        def self.over(left, top, width, height, degrees:, near:, both_sides:, perspective: :none, lit: false)
           focal = ((width / 2.0) / Math.tan(degrees * Math::PI / 360) * SUBPIXEL).round
           new(left: left, top: top, right: left + width, bottom: top + height,
               middle_x: ((left * 2) + width) * SUBPIXEL / 2, middle_y: ((top * 2) + height) * SUBPIXEL / 2,
               focal: focal, near: near, both_sides: both_sides ? 1 : 0,
-              perspective: Nodes::FillFace::PERSPECTIVE_SPANS.fetch(perspective))
+              perspective: Nodes::FillFace::PERSPECTIVE_SPANS.fetch(perspective), lit: lit ? 1 : 0)
         end
       end
 
@@ -88,11 +92,17 @@ module VBlank
       # +place+ is the place's name, +faces+ and +points+ how many it has, and +pictures+ the
       # pictures it can show, in order: a face's slot holds how far its picture is along these
       # from the slot's own.
-      def initialize(place, faces:, points:, pictures:)
+      #
+      # +shading+ is the shading a lit drawing of the place fills its faces with (nil for a place
+      # never lit), and +point_lights+ the list of light the game adds to each point as it runs
+      # (nil for none).
+      def initialize(place, faces:, points:, pictures:, shading: nil, point_lights: nil)
         @place = place
         @faces = faces
         @points = points
         @pictures = pictures
+        @shading = shading
+        @point_lights = point_lights
       end
 
       def routine = name(:draw)
@@ -144,8 +154,8 @@ module VBlank
         VIEWER_PARTS.map { |part| viewer_var(part) } + VIEW_PARTS.map { |part| view_var(part) } +
           CLIP_EDGES.map { |edge| clip_var(edge) } +
           %i[face listed base slot picture point seen_point dx dy dz count along area each next drawing
-             at_x at_y at_z at_u at_v spot_point spot_x spot_y spot_behind].map { |part| name(part) } +
-          CORNERS.times.flat_map { |k| %i[p x y z u v].map { |field| turned_var(field, k) } }
+             at_x at_y at_z at_u at_v at_light spot_point spot_x spot_y spot_behind].map { |part| name(part) } +
+          CORNERS.times.flat_map { |k| TURNED_FIELDS.map { |field| turned_var(field, k) } }
       end
 
       # The variable counting the drawings, which marks the points each has turned (see SEEN_STRIDE).
@@ -229,6 +239,7 @@ module VBlank
          Build.list_set(corners_list, place.call(2), var(:at_u)),
          Build.list_set(corners_list, place.call(3), var(:at_v)),
          Build.if_(in_perspective, Build.list_set(corners_list, place.call(4), nearness)),
+         *(@shading ? [Build.list_set(corners_list, place.call(5), var(:at_light))] : []),
          Build.add(name(:count), 1)]
       end
 
@@ -266,7 +277,15 @@ module VBlank
                    Build.call(point_routine)),
          *%i[x y z].each_with_index.map { |field, at| Build.set(turned_var(field, k), Build.list_get(seen_list, Build.binop(:+, seen, at))) },
          Build.set(turned_var(:u, k), Build.table_get(faces_table, face_field(first + 1))),
-         Build.set(turned_var(:v, k), Build.table_get(faces_table, face_field(first + 2)))]
+         Build.set(turned_var(:v, k), Build.table_get(faces_table, face_field(first + 2))),
+         *(@shading ? [Build.set(turned_var(:light, k), corner_light(first + 3, number))] : [])]
+      end
+
+      # A corner's light: the face's own for that corner, and what the game adds to its point as
+      # it runs. The fill holds it to the lightest a corner can be.
+      def corner_light(field, number)
+        own = Build.table_get(faces_table, face_field(field))
+        @point_lights ? Build.binop(:+, own, Build.list_get(@point_lights, number)) : own
       end
 
       # The offset of the point whose place in the points table is in the point variable from the
@@ -309,10 +328,11 @@ module VBlank
                    Build.if_(in_perspective,
                              Build.list_set(corners_list, corner.call(4),
                                             Build.list_get(seen_list, Build.binop(:+, seen, SEEN_NEARNESS)))),
+                   *(@shading ? [Build.list_set(corners_list, corner.call(5), turned(:light, k))] : []),
                    Build.add(name(:count), 1)),
          Build.if_(Build.binop(:!=, in_front(k), in_front(other)),
                    Build.set(name(:along), through),
-                   *%i[x y u v].map { |field| Build.set(name(:"at_#{field}"), moved.call(field)) },
+                   *(@shading ? %i[x y u v light] : %i[x y u v]).map { |field| Build.set(name(:"at_#{field}"), moved.call(field)) },
                    Build.set(name(:at_z), Build.var_ref(view_var(:near))),
                    Build.call(corner_routine))]
       end
@@ -350,10 +370,17 @@ module VBlank
       # The fill, when the face is seen from in front or the place is drawn from both sides.
       def fill_when_seen
         edges = CLIP_EDGES.map { |edge| Build.var_ref(clip_var(edge)) }
-        fill = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges,
-                               perspective: Build.var_ref(view_var(:perspective)))
+        perspective = Build.var_ref(view_var(:perspective))
+        fill = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges, perspective: perspective)
         seen = Build.binop(:or, Build.binop(:>, var(:area), 0), Build.binop(:==, Build.var_ref(view_var(:both_sides)), 1))
-        Build.if_(seen, fill)
+        return Build.if_(seen, fill) unless @shading
+
+        # A place with a shading is drawn lit unless the drawing says not.
+        lit = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges, perspective: perspective,
+                                                                                      shading: @shading)
+        lit_or_not = Build.if_(Build.binop(:==, Build.var_ref(view_var(:lit)), 1), lit)
+        lit_or_not.else = Build.else_(fill)
+        Build.if_(seen, lit_or_not)
       end
     end
   end
