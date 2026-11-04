@@ -137,7 +137,7 @@ module VBlank
                 Array(row).each_with_index.filter_map do |tile, c|
                   next if tile.nil? || tile.negative?
 
-                  image = Assets::Image.of(@pictures.fetch(bg.tiles.fetch(tile)))
+                  image = @cache.image(@pictures.fetch(bg.tiles.fetch(tile)))
                   colors = (image.width * image.height).times.reject { |at| image.tile_see_through_at?(at) }
                                                        .map { |at| image.color_at(at) }.uniq
                   x = c * bg.tile_w

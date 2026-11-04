@@ -138,14 +138,20 @@ module VBlank
                            far_tables: false)
           board = board_for(program)
           memory = Memory.new(far_tables: far_tables)
-          carries = Runtime::Carries.of(program, board: board, screen_colors: screen_colors, sprite_colors: sprite_colors,
-                                                 sprite_tiles: sprite_tiles, background_tiles: background_tiles)
+          # What the runtime carries reads the program and these choices alone, so it is worked out
+          # once for each set of them a build tries.
+          choice = [board, screen_colors, sprite_colors, sprite_tiles, background_tiles]
+          carries = build_cache(program).fetch([:carries, *choice]) do
+            Runtime::Carries.of(program, board: board, screen_colors: screen_colors, sprite_colors: sprite_colors,
+                                         sprite_tiles: sprite_tiles, background_tiles: background_tiles,
+                                         handover: build_cache(program).handover)
+          end
           Runtime.reserve(memory, carries)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
                                                 one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?,
-                                                tile_memo: @tile_memo ||= Art::TileMemo.new)
+                                                cache: build_cache(program))
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                       small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,
@@ -209,6 +215,12 @@ module VBlank
             findings.slice!(said..)
             nil
           end
+        end
+
+        # What every try of a build of +program+ shares (BuildCache): made by the first try.
+        def build_cache(program)
+          @build_cache = nil unless @build_cache&.program.equal?(program)
+          @build_cache ||= Lowering.build_cache(program)
         end
 
         # A word that asks for a chip this cartridge does not have changes nothing, and a game much

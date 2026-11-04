@@ -132,15 +132,17 @@ module VBlank
 
           # +scene_tiles+ keeps each scene's own tiles in video memory only while it is up (Art), for a
           # game whose tiles together do not fit (Genesis#build): :backgrounds for its backgrounds'
-          # tiles alone, :sprites for its sprite pictures' too.
-          def initialize(program, memory:, scene_tiles: false)
+          # tiles alone, :sprites for its sprite pictures' too. +cache+ is what the build works out
+          # from the program once for all its tries (BuildCache).
+          def initialize(program, memory:, scene_tiles: false, cache: self.class.build_cache(program))
             @program = program
+            @cache = cache
             @memory = memory
             @scene_tiles = scene_tiles
             # What the program is before any instruction is made, worked out as the Color's and the
-            # Super Nintendo's are (LoweringPlan), and kept here under the names the rest of the
-            # lowering reads.
-            @plan = LoweringPlan.new(program, console: Console::GENESIS, error: LoweringError)
+            # Super Nintendo's are (LoweringPlan), once a build, and kept here under the names the
+            # rest of the lowering reads.
+            @plan = cache.plan
             @funcs = @plan.funcs
             @tick_handlers = @plan.tick_handlers
             @timers = @plan.timers
@@ -163,9 +165,15 @@ module VBlank
             prepare_picture
             prepare_collision
             prepare_sound
-            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES,
-                                    most_part_bytes: MOST_PART_BYTES) { |statements| bytes_of(statements) }
+            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES, most_part_bytes: MOST_PART_BYTES,
+                                    return_bytes: RETURN_BYTES, measure: method(:bytes_of),
+                                    snapshot: -> { LOWERING_STATE.snapshot(self) },
+                                    found_too_big: cache.fetch(:routines_found_too_big) { Set.new })
           end
+
+          # What a build of +program+ works out once for all its tries (BuildCache), which
+          # Genesis#build hands each try's lowering.
+          def self.build_cache(program) = BuildCache.new(program, console: Console::GENESIS, error: LoweringError)
 
           # How the program draws: :painted, :tiled (it says `screen :tiled`, or has a background or a
           # sprite) or :none.
@@ -407,75 +415,41 @@ module VBlank
           MOST_PART_BYTES = 12_000
 
           # The routine +label+ of +body+'s statements, and the parts cut off it to keep each within
-          # reach of its own branches (RoutineCuts), each a section of its own.
+          # reach of its own branches (RoutineCuts#sections), each a section of its own.
           def routines_fitting(label, body, routine:)
-            body, parts = @cuts.fit(label, body)
-            [routine_section(label, body, routine: routine), *part_sections(parts, routine)]
+            @cuts.sections(label, body) { |part, statements| routine_section(part, statements, routine: routine) }
           end
-
-          def part_sections(parts, routine) = parts.map { |part, statements| routine_section(part, statements, routine: routine) }
 
           # The statements +node+ holds, and an `if`'s other side: as cut, when they were
           # (RoutineCuts#children_of).
           def children_of(node) = @cuts.children_of(node)
 
-          # How many bytes +list+ comes to, made on its own and thrown away: everything the lowering
-          # keeps while it makes a statement — its labels, the numbers a routine keeps and the work
-          # RAM they take, the tables it names — is made on copies, and the lowering goes back to
-          # what it had. The copies, not what it had, are what is changed: the work RAM is shared
-          # with the build and the runtime, which would see a place reserved only to be measured.
+          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
+          # (LoweringState#on_copies).
           def bytes_of(list)
-            saved = instance_variables.to_h { |name| [name, instance_variable_get(name)] }
-            saved.except(*UNCHANGED_WHEN_MEASURING).each { |name, value| instance_variable_set(name, copy_for_measuring(name, value)) }
-            @asm = M68000.new("measuring", holds: ROUTINES)
-            @routine = "measuring"
-            @labels = 0
-            list.each { |node| statement(node) }
-            @asm.here
-          ensure
-            (instance_variables - saved.keys).each { |name| remove_instance_variable(name) }
-            saved.each { |name, value| instance_variable_set(name, value) }
-          end
-
-          # The objects the lowering adds to as it makes a statement, besides its own lists and tables:
-          # the work RAM it reserves and the pictures and colours it gathers. Each is copied all the way down
-          # to be measured on.
-          COPIED_WHEN_MEASURING = [Memory, PaintedArt, Art].freeze
-
-          # What the lowering only reads while it makes a statement, shared as it is: numbers, names,
-          # the program and what is worked out from it before any statement is made.
-          SHARED_WHEN_MEASURING = [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, SpriteNames,
-                                   M68000, Music, RoutineCuts::PartCall, LoweringPlan].freeze
-
-          # What the lowering keeps that making a statement never changes, shared as it is: the
-          # statements already cut into parts, which only cutting adds to.
-          UNCHANGED_WHEN_MEASURING = %i[@cuts].freeze
-
-          # A copy of the lowering's +value+ (held in +name+) that measuring can change and leave the
-          # lowering as it was. The lowering's own lists and tables are added to, never changed
-          # inside, so a copy of each is enough; a COPIED_WHEN_MEASURING object changes the lists it
-          # holds in place, so it is copied all the way down. Anything else is refused, so a new kind of
-          # thing the lowering keeps is never shared with a measurement by mistake.
-          def copy_for_measuring(name, value)
-            case value
-            when Hash, Array then value.dup
-            when *COPIED_WHEN_MEASURING then deep_copy(value)
-            when *SHARED_WHEN_MEASURING then value
-            else raise ArgumentError, "#{name} holds a #{value.class}, which measuring a routine neither copies nor shares"
+            LOWERING_STATE.on_copies(self) do
+              @asm = M68000.new("measuring", holds: ROUTINES)
+              @routine = "measuring"
+              @labels = 0
+              list.each { |node| statement(node) }
+              @asm.here
             end
           end
 
-          def deep_copy(value)
-            case value
-            when Hash then value.dup.transform_values! { |held| deep_copy(held) }
-            when Array then value.map { |held| deep_copy(held) }
-            when *COPIED_WHEN_MEASURING
-              value.dup.tap do |copy|
-                copy.instance_variables.each { |held| copy.instance_variable_set(held, deep_copy(copy.instance_variable_get(held))) }
-              end
-            else value
-            end
-          end
+          # RTS, which ends every routine section: two bytes.
+          RETURN_BYTES = 2
+
+          # What the lowering holds while it makes a statement (LoweringState). Copied all the way
+          # down: the work RAM it reserves and the pictures and colours it gathers. Shared: numbers,
+          # names, the program and what is worked out from it before any statement is made. Left
+          # alone: the statements already cut into parts, which only cutting adds to, and what the
+          # build worked out once (BuildCache).
+          LOWERING_STATE = LoweringState.new(
+            copied: [Memory, PaintedArt, Art],
+            shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, SpriteNames,
+                     M68000, Music, RoutineCuts::PartCall, LoweringPlan],
+            unchanged: %i[@cuts @cache]
+          )
 
           # --- statements ---
 
@@ -939,7 +913,7 @@ module VBlank
                 @asm.label(done)
               end
             end
-            [each_tick, *part_sections(cut, routine)]
+            [each_tick, *cut.map { |part, statements| routine_section(part, statements, routine: routine) }]
           end
 
           # --- tests: jump unless one holds ---

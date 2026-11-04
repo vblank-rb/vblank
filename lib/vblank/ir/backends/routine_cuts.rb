@@ -12,30 +12,76 @@ module VBlank
       # routine's own numbers, which are kept in work memory, so nothing is handed between them.
       #
       # How big a bank is, and so how big a routine may come to, is the console's; the lowering says
-      # it, and says how many bytes a run of statements comes to by making them and throwing them
-      # away (the block). Where to cut is the same on every console, and decided here.
+      # it. Where to cut is the same on every console, and decided here.
+      #
+      # EACH ROUTINE IS MADE ONCE. Nearly every routine fits a bank, so it is made for real straight
+      # away and its size read off the finished section. Only one that comes out too big is taken
+      # back — the lowering put back as it was before it (+snapshot+) — measured whole by making it
+      # and throwing it away (+measure+), cut, and made again as the routine and its parts. Cutting
+      # wants each statement's size, at each depth it cuts inside: a lowering that can tell what a
+      # statement would come to on its own while it measures the whole notes it (#note_size), and
+      # cutting then measures nothing again; any statement not noted is measured on its own. The
+      # lowering supplies those two, how many bytes its return instruction takes (a section holds it
+      # and a measurement does not), and, as the block, how it makes a section.
+      #
+      # A routine an earlier try of the build found too big (+found_too_big+, kept by the build in
+      # its BuildCache) is measured first instead, which is what it would come to after making it for
+      # nothing. That is only a guess at the cost: whether to cut is still decided by what it measures
+      # now, so a routine that fits this try is made whole as any other.
       class RoutineCuts
         # A call of a part cut off a routine, standing where its statements stood.
         PartCall = Data.define(:label)
 
         # +most_routine_bytes+ is the most one routine's code may come to before it is cut, and
-        # +most_part_bytes+ the most a part cut off it may; the block gives the bytes a list of
-        # statements comes to.
-        def initialize(plan:, most_routine_bytes:, most_part_bytes:, &measure)
+        # +most_part_bytes+ the most a part cut off it may. +measure+ gives the bytes a list of
+        # statements comes to, keeping nothing; +snapshot+ gives the lowering's state now, which
+        # #restore! puts back (LoweringState#snapshot); +return_bytes+ is the size of the
+        # instruction that ends every routine section. +found_too_big+ is a Set of the labels of the
+        # routines earlier tries cut, which this adds to.
+        def initialize(plan:, most_routine_bytes:, most_part_bytes:, return_bytes:, measure:, snapshot:,
+                       found_too_big: Set.new)
           @plan = plan
+          @found_too_big = found_too_big
           @most_routine_bytes = most_routine_bytes
           @most_part_bytes = most_part_bytes
+          @return_bytes = return_bytes
           @measure = measure
+          @snapshot = snapshot
           @cut = {} # a statement whose statements were cut into parts -> what stands for them
+          @sizes = {}.compare_by_identity # a statement of the routine being cut -> its bytes on its own
+        end
+
+        # The sections of the routine named +label+, holding +statements+: the routine, and after it
+        # each part cut off it to fit a bank. The block makes one section of a label and its
+        # statements. A routine that fits is one section, made once.
+        def sections(label, statements, &section)
+          return measured_sections(label, statements, &section) if @found_too_big.include?(label)
+
+          before = @snapshot.call
+          whole = yield(label, statements)
+          return [whole] if whole.size - @return_bytes <= @most_routine_bytes
+
+          before.restore!
+          @found_too_big << label
+          measured_sections(label, statements, &section)
         end
 
         # +statements+ as a routine named +label+ holds them, and the parts cut off it to fit a bank:
-        # [the routine's statements, [[a part's label, its statements], ...]]. A routine that fits is
-        # its statements as they are, with no parts.
+        # [the routine's statements, [[a part's label, its statements], ...]], measured before any
+        # of it is made. A routine that fits is its statements as they are, with no parts. For a
+        # routine the lowering wraps in code of its own (a timer's handler, run once a tick), whose
+        # size is not one section's; any other is made by #sections.
         def fit(label, statements)
+          @sizes.clear
           parts = []
           kept = @measure.call(statements) > @most_routine_bytes ? cut_list(statements, label, parts) : statements
           [kept, parts]
+        end
+
+        # The bytes +node+ comes to on its own, noted by the lowering as it measures the routine
+        # being cut, so cutting need not measure it again.
+        def note_size(node, bytes)
+          @sizes[node] = bytes
         end
 
         # The statements an `if`, a `loop` or a `repeat` holds, and an `if`'s `else`: its own, or
@@ -49,6 +95,12 @@ module VBlank
         end
 
         private
+
+        # #sections, the routine measured before it is made: cut when it is too big for a bank.
+        def measured_sections(label, statements)
+          kept, parts = fit(label, statements)
+          [yield(label, kept), *parts.map { |part, held| yield(part, held) }]
+        end
 
         def cut_list(list, base, parts)
           kept = []
@@ -64,7 +116,7 @@ module VBlank
             run_bytes = 0
           end
           list.each do |node|
-            size = @measure.call([node])
+            size = @sizes.fetch(node) { @measure.call([node]) }
             if size <= @most_part_bytes
               flush.call if run_bytes + size > @most_part_bytes
               run << node

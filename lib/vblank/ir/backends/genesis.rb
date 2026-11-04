@@ -90,7 +90,9 @@ module VBlank
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles)
-          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles)
+          @build_cache = nil unless @build_cache&.program.equal?(program)
+          @build_cache ||= Lowering.build_cache(program) # what every try of the build shares (BuildCache)
+          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, cache: @build_cache)
           begin
             game = lowering.sections
           rescue Art::TooManyTiles

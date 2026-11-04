@@ -775,7 +775,7 @@ module VBlank
           # WHAT A TILE'S PICTURE ALONE SAYS (#list_order, #drawn_places, #tile_colors,
           # #see_through_tile?): each a scan of its 64 pixels, and a build asks each of them for every
           # cell, every step of a background's colours and every try. So each answer is kept in
-          # +tile_facts+, which the lowering hands every try of one build (Lowering's +known+), by the
+          # +tile_facts+, which the lowering hands every try of one build (BuildCache), by the
           # picture it was asked of: the lowering makes each tile's picture once a build
           # (Lowering::Picture#tile_image), so the same tile is the same object. Nothing else they
           # read changes within a build: the backdrop is the game's own. Answers are frozen, since

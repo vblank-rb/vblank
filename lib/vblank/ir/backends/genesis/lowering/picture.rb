@@ -36,7 +36,7 @@ module VBlank
             PLANES = 2
 
             def prepare_picture
-              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, exact: self.class.fading?(@program),
+              @art = Art.new(backdrop: @cache.handover.game_backdrop, exact: self.class.fading?(@program),
                              beside_painting: painted?, scene_tiles: @scene_tiles)
               @objects = by_kind(:object)
               @backgrounds = @program.walk.select { |node| node.kind == :background }
@@ -88,7 +88,7 @@ module VBlank
             # own. Colour 0 is the console's one backdrop, set once for the game, so one that changes
             # as a scene comes up is not made yet.
             def refuse_backdrops_of_its_own!
-              game_backdrop = IR::SceneHandover.of(@program).game_backdrop
+              game_backdrop = @cache.handover.game_backdrop
               return unless @program.walk.any? { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
 
               refuse_unmade!("a scene that says a backdrop of its own (`screen ... backdrop:`)")

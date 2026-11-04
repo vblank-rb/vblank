@@ -145,7 +145,7 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               refuse_backdrop_following_list!
-              @stacking = @known[:stacking] ||= Stacking.picture(@program)
+              @stacking = @cache.stacking
               @objects = by_name(@program.walk, :object)
               @color_lists = by_name(@program.walk, :color_list)
               @pictures = by_name(@program.walk, :data, :bitmap)
@@ -156,7 +156,7 @@ module VBlank
                              first_cleared_to: @program.walk.find { |node| node.kind == :clear_screen }&.color,
                              backdrop: color_backdrop, piece_height: piece_height,
                              scene_pictures: (scene_pictures if @plans_scene_pictures),
-                             indexes_in_banks: @indexes_in_banks, tile_facts: (@known[:tile_facts] ||= {}))
+                             indexes_in_banks: @indexes_in_banks, tile_facts: @cache.fetch(:tile_facts) { {} })
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run says its sprites by
@@ -369,9 +369,9 @@ module VBlank
 
             # The tile pictures +bg+ shows: the ones its maps name — the maps of area number +area+ alone,
             # for a background that walks between areas — and the ones `set_tile` puts in its cells.
-            # Worked out once a declaration and area, for every attempt at the build (Lowering's +known+).
+            # Worked out once a declaration and area, for every attempt at the build (BuildCache).
             def tiles_shown(bg, area = nil)
-              (@known[:tiles_shown] ||= {})[[bg.object_id, area]] ||= begin
+              @cache.fetch(:tiles_shown) { {} }[[bg.object_id, area]] ||= begin
                 maps = bg.every_map.each_index.select { |which| area.nil? || bg.map_sets.fetch(which) == area }
                 named = maps.flat_map { |which| bg.every_map.fetch(which).flat_map { |row| Array(row) } }
                 named += tiles_set_in.fetch(bg.name, [])
@@ -381,8 +381,9 @@ module VBlank
 
             # The tiles each background's `set_tile`s put in its cells, by the background's name.
             def tiles_set_in
-              @known[:tiles_set_in] ||= @reachable.select { |node| node.kind == :set_tile }
-                                          .group_by(&:name).transform_values { |nodes| nodes.map(&:tile) }
+              @cache.fetch(:tiles_set_in) do
+                @reachable.select { |node| node.kind == :set_tile }.group_by(&:name).transform_values { |nodes| nodes.map(&:tile) }
+              end
             end
 
             # A background that walks between areas on every screen has its areas' rooms numbered past
@@ -1050,7 +1051,7 @@ module VBlank
             def painted_screen_for?(bg) = Modes::SCREEN_OF_MODE.fetch(screen_modes.mode_of(bg.scene)) == :bitmap
 
             # Which screen each scene shows (IR::Modes), worked out once a build.
-            def screen_modes = @known[:screen_modes] ||= Modes.resolve(@program)
+            def screen_modes = @cache.fetch(:screen_modes) { Modes.resolve(@program) }
 
             # Reference#stamp_background on a painted screen: each cell's tile painted where the cell
             # is, its see-through pixels leaving what is there, and nothing past the screen's edge.
@@ -1063,7 +1064,7 @@ module VBlank
                   y = r * bg.tile_h
                   next if tile.nil? || tile.negative? || x >= width || y >= height
 
-                  image = Assets::Image.of(@pictures.fetch(bg.tiles.fetch(tile)))
+                  image = @cache.image(@pictures.fetch(bg.tiles.fetch(tile)))
                   points = Hash.new { |by_color, color| by_color[color] = [] }
                   (image.width * image.height).times do |at|
                     points[image.color_at(at)] << at.divmod(image.width).reverse unless image.tile_see_through_at?(at)
@@ -1609,11 +1610,11 @@ module VBlank
             # GBC::Art#drawn_places for one drawn with other lists) has a colour of the palette for
             # each place instead, so it swaps place for place.
             #
-            # It reads the program alone, so it is worked out once a build (+known+). +swaps+ comes
+            # It reads the program alone, so it is worked out once a build (BuildCache). +swaps+ comes
             # from #swaps_for, one object for each declaration and step, so it is kept by which
             # object it is rather than hashed through every list it holds.
             def tile_colors_with(name, swaps)
-              by_swaps = @known[:tile_colors_with] ||= Hash.new { |all, held| all[held] = {} }.compare_by_identity
+              by_swaps = @cache.fetch(:tile_colors_with) { Hash.new { |all, held| all[held] = {} }.compare_by_identity }
               known = by_swaps[swaps]
               return known[name] if known.key?(name)
 
@@ -1673,13 +1674,13 @@ module VBlank
             # show it differently — as the interpreter swaps each background's colours on its own.
             #
             # Everything it reads is the program's alone, so it is worked out once a build, not once a
-            # try (+known+). Kept by which declaration it is: a node's own hash walks everything under
+            # try (BuildCache). Kept by which declaration it is: a node's own hash walks everything under
             # it. And two that are equal are one object, so GBC::Art keeps a tile by which steps it
             # was handed (Art#background_tile) without hashing them on every ask.
             def recolor_steps_of(name, bg)
               return nil if Array(bg.recolors).empty?
 
-              known = @known[:recolor_steps] ||= {}
+              known = @cache.fetch(:recolor_steps) { {} }
               key = [name, bg.object_id]
               return known[key] if known.key?(key)
 
@@ -1690,7 +1691,7 @@ module VBlank
 
             # +steps+, or the equal steps #recolor_steps_of handed out first.
             def one_of_equal_steps(steps)
-              made = @known[:recolor_steps_made] ||= {}
+              made = @cache.fetch(:recolor_steps_made) { {} }
               made[steps] ||= steps
             end
 
@@ -1700,13 +1701,13 @@ module VBlank
             # Each of +bg+'s own lists to the list it is drawn with at its step +step+, worked out
             # once a build for each declaration and step: every tile it draws asks.
             def swaps_for(bg, step)
-              (@known[:list_swaps] ||= {})[[bg.object_id, step]] ||= bg.list_swaps(step)
+              @cache.fetch(:list_swaps) { {} }[[bg.object_id, step]] ||= bg.list_swaps(step)
             end
 
             # The picture a background's tile +name+ draws (Assets::Image), made once a build: every
             # cell and every step of its colours asks.
             def tile_image(name)
-              (@known[:tile_images] ||= {})[name] ||= Assets::Image.of(@pictures.fetch(name))
+              @cache.image(@pictures.fetch(name))
             end
 
             def padded_colors(colors) = [@art.backdrop, *colors.map { |color| color & 0x7FFF }].fill(Art::BACKDROP, colors.length + 1...Art::PLACES)
@@ -2401,7 +2402,7 @@ module VBlank
 
               # The pixels read once a picture and list a build: every sprite showing it asks again.
               image = picture_named(name)
-              pixels = (@known[:sprite_pixels] ||= {})[[name, colors]] ||= sprite_pixels(image, colors)
+              pixels = @cache.fetch(:sprite_pixels) { {} }[[name, colors]] ||= sprite_pixels(image, colors)
               @art.sprite_palette(name, image, pixels, scene: scene)
             end
 
@@ -2418,7 +2419,7 @@ module VBlank
             end
 
             def picture_named(name)
-              Assets::Image.of(@pictures.fetch(name) { raise LoweringError, "a sprite shows the picture #{name.inspect}, which is not defined" })
+              @cache.image(@pictures.fetch(name) { raise LoweringError, "a sprite shows the picture #{name.inspect}, which is not defined" })
             end
 
             # Reference#pixels_overlap?: each side's picture now, and where the second stands from the

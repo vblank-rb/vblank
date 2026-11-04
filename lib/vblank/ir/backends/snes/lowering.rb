@@ -130,6 +130,10 @@ module VBlank
           # The routine the game names +name+.
           def self.routine_label(name) = "routine #{name}"
 
+          # What a build of +program+ works out once for all its tries (BuildCache), which SNES#build
+          # hands each try's lowering.
+          def self.build_cache(program) = BuildCache.new(program, console: Console::SUPER_NINTENDO, error: LoweringError)
+
           # Where each of the game's variables went, by its name, and each of its lists — [its place,
           # its capacity, the bytes a slot, its name] — once #sections has placed them; the label of
           # the routine the runtime runs at each frame boundary, or nil for a game with no timers; and
@@ -141,13 +145,15 @@ module VBlank
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own
           # background tiles (Art). +one_sprite_tile_set+ makes one set of a sprite's pictures for
           # all the lists of colours it wears (Picture#palette_in_places). +chip+ is a cartridge
-          # with a Super FX, which runs the routines marked for it (Chip). +tile_memo+ is what the
-          # build's tries have read of its background pictures already (Art::TileMemo).
+          # with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
+          # works out from the program once for all its tries (BuildCache), its background pictures'
+          # pixels among it (Art::TileMemo).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                          background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
-                         tile_memo: Art::TileMemo.new)
+                         cache: self.class.build_cache(program))
             @program = program
-            @tile_memo = tile_memo
+            @cache = cache
+            @tile_memo = cache.fetch(:tile_memo) { Art::TileMemo.new }
             @one_sprite_tile_set = one_sprite_tile_set
             @small_sprite_scenes = small_sprite_scenes
             @memory = memory
@@ -157,8 +163,8 @@ module VBlank
             @sprite_tiles = sprite_tiles
             @scene_background_tiles = background_tiles
             # What the program is before any instruction is made, worked out as the Color's is
-            # (LoweringPlan), and kept here under the names the rest of the lowering reads.
-            @plan = LoweringPlan.new(program, console: Console::SUPER_NINTENDO, error: LoweringError)
+            # (LoweringPlan), once a build, and kept here under the names the rest of the lowering reads.
+            @plan = cache.plan
             @funcs = @plan.funcs
             @tick_handlers = @plan.tick_handlers
             @timers = @plan.timers
@@ -174,8 +180,10 @@ module VBlank
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @section_routines = {}
-            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES,
-                                    most_part_bytes: MOST_PART_BYTES) { |statements| bytes_of(statements) }
+            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES, most_part_bytes: MOST_PART_BYTES,
+                                    return_bytes: RETURN_BYTES, measure: method(:bytes_of),
+                                    snapshot: -> { LOWERING_STATE.snapshot(self) },
+                                    found_too_big: cache.fetch(:routines_found_too_big) { Set.new })
             prepare_picture
             prepare_paint
             prepare_collision
@@ -448,78 +456,43 @@ module VBlank
           MOST_PART_BYTES = 12_000
 
           # The routine +label+ of +body+'s statements, and the parts cut off it to fit a bank
-          # (RoutineCuts), each a section of its own; a part is called with a long call, so it can be
-          # in any bank.
+          # (RoutineCuts#sections), each a section of its own; a part is called with a long call, so
+          # it can be in any bank.
           def routines_fitting(label, body, routine:)
-            body, parts = @cuts.fit(label, body)
-            [routine_section(label, body, routine: routine), *part_sections(parts, routine)]
+            @cuts.sections(label, body) { |part, statements| routine_section(part, statements, routine: routine) }
           end
-
-          def part_sections(parts, routine) = parts.map { |part, statements| routine_section(part, statements, routine: routine) }
 
           # The statements +node+ holds, and an `if`'s other side: as cut, when they were
           # (RoutineCuts#children_of).
           def children_of(node) = @cuts.children_of(node)
 
-          # How many bytes +list+ comes to, made on its own and thrown away: everything the lowering
-          # keeps while it makes a statement — its labels, the numbers a routine keeps and the work
-          # RAM they take, the tables it names — is made on copies, and the lowering goes back to
-          # what it had. The copies, not what it had, are what is changed: the work RAM is shared
-          # with the build and the runtime, which would see a place reserved only to be measured.
+          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
+          # (LoweringState#on_copies).
           def bytes_of(list)
-            saved = instance_variables.to_h { |name| [name, instance_variable_get(name)] }
-            saved.except(*UNCHANGED_WHEN_MEASURING).each { |name, value| instance_variable_set(name, copy_for_measuring(name, value)) }
-            @asm = W65816.new("measuring", holds: ROUTINES)
-            @routine = "measuring"
-            @labels = 0
-            list.each { |node| statement(node) }
-            @asm.here
-          ensure
-            (instance_variables - saved.keys).each { |name| remove_instance_variable(name) }
-            saved.each { |name, value| instance_variable_set(name, value) }
-          end
-
-          # The objects the lowering adds to as it makes a statement, besides its own lists and tables:
-          # the work RAM it reserves and the pictures, tiles and colours it gathers. Each is copied
-          # all the way down to be measured on.
-          COPIED_WHEN_MEASURING = [Memory, Art, PaintedArt, TextLayerArt].freeze
-
-          # What the lowering only reads while it makes a statement, shared as it is: numbers, names,
-          # the program and what is worked out from it before any statement is made.
-          SHARED_WHEN_MEASURING = [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
-                                   SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode].freeze
-
-          # What the lowering keeps that making a statement never changes, shared as it is: the
-          # statements already cut into parts, which only cutting adds to, and what the pictures'
-          # pixels come to (Art::TileMemo), true whatever a measurement places.
-          UNCHANGED_WHEN_MEASURING = %i[@cuts @tile_memo].freeze
-
-          # A copy of the lowering's +value+ (held in +name+) that measuring can change and leave the
-          # lowering as it was. The lowering's own lists and tables are added to, never changed
-          # inside, so a copy of each is enough; a COPIED_WHEN_MEASURING object changes the lists it
-          # holds in place (a palette gaining a colour), so it is copied all the way down. Anything
-          # else is refused, so a new kind of thing the lowering keeps is never shared with a
-          # measurement by mistake.
-          def copy_for_measuring(name, value)
-            case value
-            when Hash, Array then value.dup
-            when *COPIED_WHEN_MEASURING then deep_copy(value)
-            when *SHARED_WHEN_MEASURING then value
-            else raise ArgumentError, "#{name} holds a #{value.class}, which measuring a routine neither copies nor shares"
+            LOWERING_STATE.on_copies(self) do
+              @asm = W65816.new("measuring", holds: ROUTINES)
+              @routine = "measuring"
+              @labels = 0
+              list.each { |node| statement(node) }
+              @asm.here
             end
           end
 
-          def deep_copy(value)
-            case value
-            when Hash then value.dup.transform_values! { |held| deep_copy(held) }
-            when Array then value.map { |held| deep_copy(held) }
-            when *COPIED_WHEN_MEASURING
-              value.dup.tap do |copy|
-                copy.instance_variables.each { |held| copy.instance_variable_set(held, deep_copy(copy.instance_variable_get(held))) }
-              end
-            else value
-            end
-          end
+          # RTL, which ends every routine section: a byte.
+          RETURN_BYTES = 1
+
+          # What the lowering holds while it makes a statement (LoweringState). Copied all the way
+          # down: the work RAM it reserves and the pictures, tiles and colours it gathers. Shared:
+          # numbers, names, the program and what is worked out from it before any statement is made.
+          # Left alone: the statements already cut into parts, which only cutting adds to, what the
+          # build worked out once (BuildCache) and what the pictures' pixels come to (Art::TileMemo),
+          # true whatever a measurement places.
+          LOWERING_STATE = LoweringState.new(
+            copied: [Memory, Art, PaintedArt, TextLayerArt],
+            shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
+                     SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode],
+            unchanged: %i[@cuts @cache @tile_memo]
+          )
 
           # --- statements ---
 
@@ -1275,7 +1248,7 @@ module VBlank
                 @asm.label(done)
               end
             end
-            [each_tick, *part_sections(cut, routine)]
+            [each_tick, *cut.map { |part, statements| routine_section(part, statements, routine: routine) }]
           end
 
           # --- tests: jump unless one holds ---

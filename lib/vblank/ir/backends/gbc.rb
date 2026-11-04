@@ -161,9 +161,9 @@ module VBlank
         # tell will not fit.
         #
         # What a lowering works out from the program alone, and not from how this try is built, is
-        # kept from one try to the next (Lowering's +known+).
+        # kept from one try to the next (BuildCache).
         def build(program, title: "RUBYGBA")
-          @known = {}
+          @build_cache = Lowering.build_cache(program)
           @scene_pictures = false
           @tries = 0
           art = ArtSettings.new(lends: false, tile_rooms: false, room_colors: false)
@@ -359,7 +359,7 @@ module VBlank
                                            bank_background_colors: view.bank_background_colors,
                                            banked_table_bytes: view.banked_table_bytes,
                                            effects_in_banks: view.effects_in_banks,
-                                           indexes_in_banks: view.indexes_in_banks, known: @known)
+                                           indexes_in_banks: view.indexes_in_banks, cache: @build_cache)
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
                                   bar_rows: lowering.bar_rows, slides: lowering.music.slides?,

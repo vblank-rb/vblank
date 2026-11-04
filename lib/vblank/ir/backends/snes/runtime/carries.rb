@@ -41,10 +41,12 @@ module VBlank
                                 :paint_turns, :third_layer) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
-            def self.of(program, board:, screen_colors:, sprite_colors:, sprite_tiles:, background_tiles:)
+            # +handover+ is what each of its scenes hands the next (SceneHandover), worked out once.
+            def self.of(program, board:, screen_colors:, sprite_colors:, sprite_tiles:, background_tiles:,
+                        handover: IR::SceneHandover.of(program))
               picture = Lowering::Picture
               songs = Lowering::Sound.songs?(program)
-              backdrops = picture.scene_backdrops?(program)
+              backdrops = picture.scene_backdrops?(program, handover)
               new(board: board, painted: Lowering::Paint.painted?(program), saves: SaveLayout.named_by?(program),
                   sound: Lowering::Sound.sounds?(program), songs: songs, follows_level: songs && SNES::Music.follows_level?(program),
                   effects: IR::Tunes.effects(program).uniq.size, samples: Lowering::Sound.samples?(program),
@@ -53,7 +55,7 @@ module VBlank
                   swells: SNES::Music.swells_under_level?(program), slides: SNES::Music.slides?(program),
                   sides: SNES::Music.sides_under_level?(program), status_bar: picture.status_bar?(program),
                   row_held: picture.background_rows_held?(program), bends: picture.bends?(program),
-                  scene_bends: picture.scene_bends?(program), tile_runs: picture.tile_run_bytes(program),
+                  scene_bends: picture.scene_bends?(program, handover), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
                   changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) ||
                                    Lowering::Paint.inks?(program),

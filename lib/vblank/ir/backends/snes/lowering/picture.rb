@@ -65,8 +65,8 @@ module VBlank
 
             # Whether a background a scene puts up is bent, whose rows then go straight while that
             # scene is away (Runtime::Picture::LAYERS_STRAIGHT).
-            def self.scene_bends?(program)
-              always = IR::SceneHandover.of(program).always_up.scenery.map(&:name)
+            def self.scene_bends?(program, handover = IR::SceneHandover.of(program))
+              always = handover.always_up.scenery.map(&:name)
               program.walk.any? { |node| node.kind == :scroll_rows && !always.include?(node.name) }
             end
 
@@ -141,7 +141,7 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               @third_layer = Picture.status_bar_on_third_layer?(@program)
-              @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
+              @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
                              background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
                              third_layer: @third_layer, tile_memo: @tile_memo)
@@ -625,7 +625,7 @@ module VBlank
             # A `screen` other than the game's own that says a backdrop the game's does not, somewhere
             # it cannot come up by: on a painted screen, or anywhere but the top of a scene.
             def refuse_backdrops_of_its_own!
-              handover = IR::SceneHandover.of(@program)
+              handover = @cache.handover
               game_backdrop = handover.game_backdrop
               said = @program.walk.select { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
               return if said.empty? || (!painted? && said.all? { |node| handover.scene_screen?(node) })
@@ -635,10 +635,9 @@ module VBlank
 
             # Whether a scene of +program+ says a backdrop the game's does not, which colour 0 is
             # changed to as it takes over (Runtime::Tint's rt_backdrop_hold).
-            def self.scene_backdrops?(program)
+            def self.scene_backdrops?(program, handover = IR::SceneHandover.of(program))
               return false if Lowering::Paint.painted?(program)
 
-              handover = IR::SceneHandover.of(program)
               handover.scene_screens.any? { |_, screen| screen.backdrop && screen.backdrop != handover.game_backdrop }
             end
 
@@ -646,7 +645,7 @@ module VBlank
             # to its own, or the game's where it says none. It goes out with the scene's colours and
             # maps (Runtime::Picture's "Together"), through whatever fade is in force.
             def emit_scene_backdrop(arrival)
-              return unless Picture.scene_backdrops?(@program) && arrival.backdrop
+              return unless @cache.fetch(:scene_backdrops) { Picture.scene_backdrops?(@program, @cache.handover) } && arrival.backdrop
 
               runtime_call("rt_backdrop_hold", [Build.int(arrival.backdrop & 0x7FFF)])
             end
@@ -1882,7 +1881,7 @@ module VBlank
                 routine_section(label, [], routine: "placing the sprite #{name.inspect}") do
                   next emit_sprite_placing(object_named(name)) unless at
 
-                  emit_sprite_placed_at(object_named(name), at, Stacking.picture(@program).depths)
+                  emit_sprite_placed_at(object_named(name), at, @cache.stacking.depths)
                 end
               end
             end
@@ -1894,7 +1893,7 @@ module VBlank
             # that layer is. A run the game orders is walked at each depth, for those of its sprites
             # that are there, so the order holds inside each layer.
             def emit_layer_changing_sprites(node, objects)
-              depths = Stacking.picture(@program).depths
+              depths = @cache.stacking.depths
               depth_of = ->(obj, level) { depth_names(obj).find { |name| depths[name] == level } }
               objects.flat_map { |obj| Stacking.levels_of(depths, obj) }.uniq.sort.each do |level|
                 present_items(node).each do |item|

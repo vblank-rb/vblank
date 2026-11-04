@@ -165,20 +165,20 @@ module VBlank
           # +effects_in_banks+ keeps its sound effects there too (GBC::Music#effects_in_banks?), and
           # +indexes_in_banks+ the tables that say where each song, picture, screen and routine is
           # (GBC#build_in_view).
-          # +known+ holds what is worked out from +program+ alone, kept from one attempt at a build to
-          # the next (GBC#build): nothing in it depends on how this one is built.
+          # +cache+ holds what is worked out from +program+ alone, kept from one try at a build to
+          # the next (BuildCache): nothing in it depends on how this one is built.
           # +scene_pictures+ says each scene brings its own sprite pictures in (Art::TooManySpriteTiles),
           # which takes rooms: of nothing but those pictures, unless +tile_rooms+ says the backgrounds
           # need rooms too.
           def initialize(program, memory:, lends_sprite_colors: false, tile_rooms: false, room_colors: false,
-                         banked_songs: false, bank_pose_tables: false, bank_background_colors: false, known: {},
+                         banked_songs: false, bank_pose_tables: false, bank_background_colors: false,
                          scene_pictures: false, banked_table_bytes: BANKED_TABLE_BYTES, effects_in_banks: false,
-                         indexes_in_banks: false)
+                         indexes_in_banks: false, cache: self.class.build_cache(program))
             @program = program
             @effects_in_banks = effects_in_banks
             @indexes_in_banks = indexes_in_banks
             @banked_table_bytes = banked_table_bytes
-            @known = known
+            @cache = cache
             @plans_scene_pictures = scene_pictures
             @memory = memory
             @lends_sprite_colors = lends_sprite_colors
@@ -189,9 +189,9 @@ module VBlank
             @plans_background_rooms = tile_rooms # ...its background tiles among them
             @plans_room_colors = room_colors
             # What the program is before any instruction is made, worked out as the Super Nintendo's
-            # is (LoweringPlan), and kept here under the names the rest of the lowering reads. It
-            # reads the program and the console alone, so one plan serves every try of a build.
-            @plan = @known[:plan] ||= LoweringPlan.new(program, console: Console::COLOR, error: LoweringError)
+            # is (LoweringPlan), once a build, and kept here under the names the rest of the
+            # lowering reads.
+            @plan = cache.plan
             @funcs = @plan.funcs
             @tick_handlers = @plan.tick_handlers
             @timers = @plan.timers
@@ -206,8 +206,10 @@ module VBlank
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
-            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES,
-                                    most_part_bytes: MOST_PART_BYTES) { |statements| bytes_of(statements) }
+            @cuts = RoutineCuts.new(plan: @plan, most_routine_bytes: MOST_ROUTINE_BYTES, most_part_bytes: MOST_PART_BYTES,
+                                    return_bytes: RETURN_BYTES, measure: method(:bytes_of),
+                                    snapshot: -> { LOWERING_STATE.snapshot(self) },
+                                    found_too_big: cache.fetch(:routines_found_too_big) { Set.new })
             @section_routines = {} # each routine's section, by its label -> what it is to the author
             prepare_picture
             prepare_sound
@@ -219,7 +221,7 @@ module VBlank
           def sections
             refuse_unlowered_kinds!
             # Asked once a build: it reads the program and the console alone, as the plan does.
-            @known[:console_lacks_nothing] ||= @plan.refuse_what_console_lacks!.nil?
+            @cache.fetch(:console_lacks_nothing) { @plan.refuse_what_console_lacks!.nil? }
             refuse_unsupported_save_memory!
             refuse_unfit_paint_squares!
             refuse_lists_in_use_past_eight!
@@ -484,6 +486,7 @@ module VBlank
           # [:word, label] (where a label is) and [:bank, label] (the bank it is in), in order; the
           # label the data goes by is handed back.
           def routine_data_label(entries)
+            @measured.each { |measured| measured.data[entries] = true } if @measuring
             @routine_data[entries] ||= fresh("data")
           end
 
@@ -530,18 +533,38 @@ module VBlank
           MOST_PART_BYTES = 6_000
 
           # The routine +label+ of +body+'s statements, and the parts cut off it to fit a bank
-          # (RoutineCuts), each a section of its own.
+          # (RoutineCuts#sections), each a section of its own.
           def routines_fitting(label, body, routine:)
-            body, parts = @cuts.fit(label, body)
-            [routine_section(label, body, routine: routine), *part_sections(parts, routine)]
+            @cuts.sections(label, body) { |part, statements| routine_section(part, statements, routine: routine) }
           end
 
-          def part_sections(parts, routine) = parts.map { |part, statements| routine_section(part, statements, routine: routine) }
+          # RET, which ends every routine section: a byte.
+          RETURN_BYTES = 1
+
+          # WHAT THE LOWERING HOLDS WHILE IT MAKES A ROUTINE (LoweringState), which RoutineCuts puts
+          # back when a routine comes out too big for a bank. The Color measures a statement on the
+          # lowering itself rather than on copies (#bytes_of), so this is used only for that.
+          # Copied: the work memory, whose places a routine's own numbers take; and the lowering's
+          # own lists and tables, so a place it noted in work memory goes back with the place.
+          # Shared: the pictures, colours, sounds and clips it gathers (Art, Music, Clips), which a
+          # measurement adds to and keeps as well, since adding the same picture twice changes nothing.
+          # Left alone: the statements already cut into parts, and what the build worked out once.
+          LOWERING_STATE = LoweringState.new(
+            copied: [Memory],
+            shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, LoweringPlan,
+                     SM83, Art, Music, Clips, SquareColors, SpriteNames, Stacking::Picture, Set, RoutineCuts::PartCall],
+            unchanged: %i[@cuts @cache]
+          )
+
+          # What a build of +program+ works out once for all its tries (BuildCache), which GBC#build
+          # hands each try's lowering.
+          def self.build_cache(program) = BuildCache.new(program, console: Console::COLOR, error: LoweringError)
 
           # How many bytes +list+ comes to, made on its own and thrown away.
           def bytes_of(list)
             saved = [@asm, @routine, @labels, @constants, @routine_data, @locals.dup, @drawing_tables.length]
             @measuring = true
+            @measured = []
             @asm = SM83.new("measuring", home: :banked)
             @labels = 0
             @constants = {}
@@ -562,8 +585,30 @@ module VBlank
 
           def statement(node)
             return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
+            return statement_measured(node) if @measuring
 
             send(STATEMENTS.fetch(node.kind), node)
+          end
+
+          # What a statement being measured has taken so far: where its code starts, and the numbers
+          # and routine data it reads, each of which it would keep a copy of on its own.
+          MeasuredStatement = Struct.new(:from, :constants, :data)
+
+          # A STATEMENT MADE WHILE A RUN OF THEM IS MEASURED (#bytes_of), its size noted for cutting
+          # (RoutineCuts#note_size): the bytes it would come to measured on its own. That is its code,
+          # which is the same wherever it stands, and the numbers and routine data it reads, which a
+          # routine keeps once however many of its statements read them (#constant_label,
+          # #routine_data_label) but which it would keep alone. So measuring a routine too big for a
+          # bank once gives the size of every statement in it, at every depth, and cutting it
+          # measures nothing again.
+          def statement_measured(node)
+            measured = MeasuredStatement.new(@asm.here, {}, {})
+            @measured << measured
+            send(STATEMENTS.fetch(node.kind), node)
+            @cuts.note_size(node, @asm.here - measured.from + measured.constants.keys.sum { |value| Array(value).length * 4 } +
+                                  measured.data.keys.sum { |entries| entries.sum { |kind, _| ROUTINE_DATA_BYTES.fetch(kind) } })
+          ensure
+            @measured.pop
           end
 
           # The statements an `if`, a `loop` or a `repeat` holds, and an `if`'s `else`, as cut to fit
@@ -1342,7 +1387,7 @@ module VBlank
                 @asm.label(done)
               end
             end
-            [each_tick, *part_sections(cut, routine)]
+            [each_tick, *cut.map { |part, statements| routine_section(part, statements, routine: routine) }]
           end
 
           # --- tests: jump unless one holds ---
@@ -1782,6 +1827,7 @@ module VBlank
           # beside it, and the label of where.
           def constant_label(number)
             key = number.is_a?(Array) ? number.map { |part| part & 0xFFFF_FFFF } : number & 0xFFFF_FFFF
+            @measured.each { |measured| measured.constants[key] = true } if @measuring
             @constants[key] ||= fresh("number")
           end
 
