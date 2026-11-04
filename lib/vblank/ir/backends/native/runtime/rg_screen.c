@@ -1061,8 +1061,14 @@ typedef struct {
 static held_tile held_tiles[RG_HELD_TILES_ROOM];
 static int32_t held_tile_count = 0;
 
-/* Reference#put_up_background: a change still waiting was made to cells put up again now. */
-static void forget_held_tiles(void) { held_tile_count = 0; }
+/* Reference#put_up_background: a change still waiting to +background+'s name was made to cells put
+ * up again now. The changes to every other background are kept, in the order made. */
+static void forget_held_tiles(int32_t background) {
+  int32_t keeper = keeper_of(background), kept = 0;
+  for (int32_t i = 0; i < held_tile_count; i++)
+    if (keeper_of(held_tiles[i].background) != keeper) held_tiles[kept++] = held_tiles[i];
+  held_tile_count = kept;
+}
 
 /* Reference#put_up_background. A stamp only covers where it has solid pixels, so a background a
  * named layer puts BEHIND one already up would land in front of it; the ones it belongs behind
@@ -1070,7 +1076,7 @@ static void forget_held_tiles(void) { held_tile_count = 0; }
  * and a status bar from its own top,
  * rather than stamped as drawn. */
 void rg_background_put_up(int32_t background) {
-  forget_held_tiles();
+  forget_held_tiles(background);
   if (background_field(background, RG_BG_ON_ARRIVAL)) {
     forget_own_cells(background);
     boxes[keeper_of(background)].held = 0; /* its scene puts it up showing everywhere */

@@ -18,11 +18,16 @@ module VBlank
         # memory and what goes there, and the gap between frames writes each word's half-word where
         # it says. That is the same picture as copying a whole map, without copying the cells
         # nobody changed, and with no second copy of a map to keep in step when `show_map` or a
-        # scene taking over puts the map up again: a put-up simply forgets the queue. Video memory
-        # is written only in the gap, so a cell can never be read half-way through a change.
+        # scene taking over puts the map up again: a put-up forgets the changes waiting for the
+        # cells it puts back (#emit_forget_held_tiles). Video memory is written only in the gap, so
+        # a cell can never be read half-way through a change.
         #
-        # One queue serves every held background, since a word says where it goes. A change made
-        # with the queue full writes everything waiting first, so it still lands after them.
+        # One queue serves every held background, since a word says where it goes. It holds
+        # Nodes::ShowHeldTiles::MOST_CELLS changes. A change made with the queue full writes
+        # everything waiting there and then, in the middle of the pass, so it still lands after
+        # them: a pass that makes more changes than the queue holds shows the first queueful on
+        # the frame being drawn, written while the display may be drawing those rows, and only
+        # what is left of the pass waits for the gap. Every backend does the same.
         #
         # WHAT IT COSTS: a held `set_tile` is the plain one's address arithmetic, a compare and a
         # store into the queue. The gap pays six instructions a change, in a routine kept in the
@@ -52,8 +57,28 @@ module VBlank
           # The routine that writes every waiting change, the one place they are written.
           HELD_ROUTINE = Messages::MadeNames.make(:held_tiles)
 
+          # The routine that forgets the waiting changes to one stretch of video memory, keeping
+          # the rest in the order made. It takes the stretch as two words in the form a change is
+          # kept in: where it starts, shifted up, in HELD_DROP_FROM, and how long it is, shifted
+          # up, in HELD_DROP_SPAN. A change is in it when its word less the start is under the
+          # length, compared without a sign: one subtract and one compare a change.
+          HELD_DROP_ROUTINE = Messages::MadeNames.make(:held_tiles_drop)
+          HELD_DROP_FROM = 2
+          HELD_DROP_SPAN = 3
+          # ...and the registers it keeps on the stack while it works: where the next kept change
+          # goes, how many are kept, and the change less the start.
+          HELD_DROP_TO = 4
+          HELD_DROP_KEPT = 5
+          HELD_DROP_OFFSET = 6
+
+          # The whole of the places a word can name: video memory for backgrounds is 64 KB.
+          HELD_PLACES = 0x10000
+
           # Does +program+ hold any cell changes? Only then is anything here emitted or reserved.
           def self.holds?(program) = program.walk.any? { |node| node.kind == :show_held_tiles || (node.kind == :set_tile && node.held) }
+
+          # The names of the backgrounds +program+ changes held.
+          def self.held_names(program) = program.walk.filter_map { |node| node.name if node.kind == :set_tile && node.held }.uniq
 
           # Nothing waits at power-on. Work memory holds whatever it held before the console was
           # switched on, and the gap between frames before any background is put up would write it.
@@ -61,17 +86,77 @@ module VBlank
             @holds_tiles = HeldTiles.holds?(program)
             return unless @holds_tiles
 
+            @held_names = HeldTiles.held_names(program)
             emit_number(ACC, 0)
             store_var(ACC, HELD_COUNT)
           end
 
-          # A background put up forgets every change still waiting: it was made to cells that are
-          # gone now (Reference#put_up_background).
-          def emit_forget_held_tiles
+          # A BACKGROUND PUT UP FORGETS THE CHANGES WAITING FOR ITS OWN CELLS: they were made to
+          # cells it puts back as declared (Reference#put_up_background). The changes waiting for
+          # every other background are kept, so a box every screen shows, changed earlier in the
+          # pass a scene takes over in, still shows the change on the next frame.
+          #
+          # A word says only where in video memory it goes, so what is forgotten is a stretch of
+          # video memory. For a background every screen shows, that is its own map. For a scene's
+          # background it is every place but the maps of the held backgrounds every screen shows:
+          # the scenes take turns in the same video memory (ScreenLayout#place_each_scene), so a
+          # change still waiting for the scene being left would land in the arriving scene's tiles
+          # or maps. The interpreter shows nothing of such a change either, since that scene's
+          # backgrounds go up as declared when it comes back.
+          def emit_forget_held_tiles(node, bg)
             return unless @holds_tiles
 
-            emit_number(ACC, 0)
-            store_var(ACC, HELD_COUNT)
+            if node.scene
+              emit_forget_scene_held_tiles
+            elsif @held_names.include?(node.name) && bg.map_bytes
+              start = bg.screen_block * SCREENBLOCK_BYTES
+              emit_drop_held_tiles(start, start + bg.map_bytes)
+            end
+          end
+
+          # Every waiting change but those to the held backgrounds every screen shows. Nothing,
+          # in a game whose scenes change no background held.
+          def emit_forget_scene_held_tiles
+            return unless scene_held_tiles?
+
+            kept = held_everywhere_stretches
+            return emit_drop_held_tiles(0, HELD_PLACES) if kept.empty?
+
+            gaps = ([0] + kept.flatten + [HELD_PLACES]).each_slice(2)
+            gaps.each { |start, finish| emit_drop_held_tiles(start, finish) if finish > start }
+          end
+
+          # Does any scene's own background take held changes?
+          def scene_held_tiles?
+            @layout.screen.picture.scenery.any? { |each| each.scene && @held_names.include?(each.name) }
+          end
+
+          # Where the maps of the held backgrounds every screen shows sit in video memory, in order,
+          # each as its start and the place after its end.
+          def held_everywhere_stretches
+            @layout.screen.picture.scenery.filter_map do |each|
+              next if each.scene || !@held_names.include?(each.name)
+
+              bg = @layout.screen.declared_background(each)
+              next unless bg&.map_bytes
+
+              start = bg.screen_block * SCREENBLOCK_BYTES
+              [start, start + bg.map_bytes]
+            end.uniq.sort
+          end
+
+          # Forget the waiting changes to video memory from +start+ up to +finish+. The whole of
+          # it empties the queue, one store; any less is a call to HELD_DROP_ROUTINE.
+          def emit_drop_held_tiles(start, finish)
+            if start.zero? && finish >= HELD_PLACES
+              emit_number(ACC, 0)
+              return store_var(ACC, HELD_COUNT)
+            end
+
+            @held_drop_used = true
+            emit_number(HELD_DROP_FROM, start << HELD_PLACE_SHIFT)
+            emit_number(HELD_DROP_SPAN, (finish - start) << HELD_PLACE_SHIFT)
+            emit_call_cold_routine(HELD_DROP_ROUTINE)
           end
 
           # Reference#exec_show_held_tiles.
@@ -124,6 +209,7 @@ module VBlank
           # THE ROUTINE THAT WRITES EVERY WAITING CHANGE, in the order they were made, and empties
           # the queue. Emitted once, after the program's own code, if anything calls it.
           def emit_held_tiles_routine
+            emit_drop_held_tiles_routine if @held_drop_used
             return unless @held_routine_used
 
             done = gensym
@@ -149,6 +235,40 @@ module VBlank
             # Where it ends, so a profile of the finished game can name it (see
             # GBA#lowered_routine_addresses).
             place_label(:"#{HELD_ROUTINE}_end")
+          end
+
+          # THE ROUTINE THAT FORGETS THE WAITING CHANGES TO ONE STRETCH OF VIDEO MEMORY (see
+          # HELD_DROP_ROUTINE), walking the queue once and moving each change it keeps down over
+          # the ones it forgets, so the kept ones stay in the order made.
+          def emit_drop_held_tiles_routine
+            done = gensym
+            each = gensym
+            forget = gensym
+            emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
+            place_label(HELD_DROP_ROUTINE)
+            load_var(HELD_LEFT, HELD_COUNT)
+            emit(ASM.cmp_imm(HELD_LEFT, 0))
+            emit_branch(:bcond, done, cond: :eq)
+            emit(ASM.push(HELD_DROP_TO, HELD_DROP_KEPT, HELD_DROP_OFFSET))
+            emit_number(HELD_CELL, held_queue_address)
+            emit(ASM.mov_reg(HELD_DROP_TO, HELD_CELL))
+            emit_number(HELD_DROP_KEPT, 0)
+            place_label(each)
+            emit(ASM.ldr(HELD_WORD, HELD_CELL))
+            emit(ASM.add_imm(HELD_CELL, HELD_CELL, 4))
+            emit(ASM.sub_reg(HELD_DROP_OFFSET, HELD_WORD, HELD_DROP_FROM))
+            emit(ASM.cmp_reg(HELD_DROP_OFFSET, HELD_DROP_SPAN))
+            emit_branch(:bcond, forget, cond: :lo)
+            emit(ASM.str_post(HELD_WORD, HELD_DROP_TO, 4))
+            emit(ASM.add_imm(HELD_DROP_KEPT, HELD_DROP_KEPT, 1))
+            place_label(forget)
+            emit(ASM.subs_imm(HELD_LEFT, HELD_LEFT, 1))
+            emit_branch(:bcond, each, cond: :ne)
+            store_var(HELD_DROP_KEPT, HELD_COUNT)
+            emit(ASM.pop(HELD_DROP_TO, HELD_DROP_KEPT, HELD_DROP_OFFSET))
+            place_label(done)
+            emit(ASM.return)
+            place_label(:"#{HELD_DROP_ROUTINE}_end")
           end
 
           # The queue, in the console's big work memory: a word for each change it can hold.

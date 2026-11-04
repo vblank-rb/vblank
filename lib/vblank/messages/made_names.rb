@@ -148,6 +148,8 @@ module VBlank
                                     end),
         held_tiles: Kind.new(spelling: "__show_held_tiles", parts: {},
                              words: ->(_) { "writing the cells changed on backgrounds with `held: true`" }),
+        held_tiles_drop: Kind.new(spelling: "__drop_held_tiles", parts: {},
+                                  words: ->(_) { "forgetting the cell changes waiting for a background put up again" }),
         set_swap: Kind.new(spelling: "__set_swap_%{background}", parts: { background: ANY },
                            words: ->(parts) { "bringing background :#{parts[:background]} another set of tiles" }),
         shared_rooms: Kind.new(spelling: "__shared_rooms_%{number}__%{part}", parts: { number: "\\d+", part: PLAIN },

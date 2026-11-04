@@ -216,8 +216,10 @@ module VBlank
       #
       # The changes wait in one queue for the whole program, of at most +cells+ changes. A change
       # made with the queue full shows every change waiting first, there and then, and then waits
-      # itself. A background put up (as declared, by its scene or at power-on) forgets every
-      # change still waiting, since the cells they were made to are gone.
+      # itself: so past +cells+ changes in a pass, the first +cells+ show on the frame being drawn.
+      # A background put up (as declared, by its scene or at power-on) forgets the changes still
+      # waiting for it, since the cells they were made to are gone; the changes waiting for every
+      # other background are kept, in order.
       class ShowHeldTiles
         include Node
         kind :show_held_tiles

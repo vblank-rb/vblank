@@ -1111,7 +1111,10 @@ end
 # named layer puts BEHIND one already up would land in front of it; the ones it belongs behind are
 # stamped again over it. A turned background is painted through its turn at the next rebuild.
 def rg_background_put_up(background)
-  @rg_held_tiles = [] # a change still waiting was made to cells put up again now
+  # A change still waiting to this background's name was made to cells put up again now; the
+  # changes to every other background are kept, in the order made.
+  keeper = rg_keeper_of(background)
+  @rg_held_tiles.reject! { |change, _, _, _| rg_keeper_of(change) == keeper }
   if rg_background_field(background, RG_BG_ON_ARRIVAL) != 0
     rg_forget_own_cells(background)
     @rg_boxes[rg_keeper_of(background)] = nil # its scene puts it up showing everywhere

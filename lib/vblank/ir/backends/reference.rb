@@ -1573,9 +1573,11 @@ module VBlank
 
         # Stamp +node+ onto the picture, in its place in the stack.
         def put_up_background(node)
-          # A held change still waiting was made to cells this puts up again as declared, and
-          # the console forgets it here too (GBA::BackgroundDrawing#emit_background_hardware).
-          @held_tiles.clear
+          # A held change still waiting to this background was made to cells this puts up again as
+          # declared, and the console forgets it here too (GBA::HeldTiles#emit_forget_held_tiles).
+          # A change waiting to any other background is kept: a box every screen shows changed
+          # earlier in the pass that a scene takes over in still shows on the next frame.
+          @held_tiles.reject! { |change, _, _| change.name == node.name }
           if @handover.on_arrival?(node)
             @bg_maps.delete(node.name)
             # ...and a background its scene puts up shows everywhere, whatever box it had before.

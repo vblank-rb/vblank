@@ -61,6 +61,38 @@ module HeldTilesGames
     end
   end
 
+  # A held box every screen shows, as a HUD is, and two scenes with a background each, as rooms
+  # are. On pass OPEN_AT the box's cell (3, 1) turns blue and then, later in the same pass, the
+  # second scene takes over and puts its own background up. The rooms cover only the top-left
+  # two cells, so the box's cell is in view in both.
+  private def scene_change_game
+    proc do
+      screen :tiled
+      image(:wall, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:floor, "#" => :blue) { Minitest::Test::SOLID_TILE }
+      image(:grass, "#" => :green) { Minitest::Test::SOLID_TILE }
+      tiles :frame, "#" => :wall, "." => :floor
+      tiles :room, "g" => :grass
+      hud = background :hud, tiles: :frame, map: Array.new(HeldTilesGames::ROWS) { "#" * HeldTilesGames::COLS },
+                             held: true
+      scene(:first) { background :first_room, tiles: :room, map: ["gg"] }
+      scene(:second) { background :second_room, tiles: :room, map: ["gg"] }
+      frames = var :frames, 0
+      state = var :state, 0
+      game_loop do
+        frames += 1
+        if frames == HeldTilesGames::OPEN_AT
+          hud.set_tile 3, 1, "."
+          state.store! 1
+        end
+        case_var(:state) do
+          when_val 0, :first
+          when_val 1, :second
+        end
+      end
+    end
+  end
+
   # One pass that makes more changes than the queue for the boundary holds: cell (0, 0) goes blue
   # again and again, then green, and only after all of those cell (1, 0) goes blue.
   private def overflowing_game
@@ -96,6 +128,19 @@ module HeldTilesGames
     builder.instance_eval(&source)
     builder.finalize_program
     builder.program
+  end
+
+  # At every frame boundary after the first, the pass number the game holds in +counter+ and what
+  # the block reads off the picture.
+  private def boundary_pairs(source, frames: 6, counter: :frames)
+    player = game_player
+    pairs = []
+    player.each_vblank do |frame|
+      pairs << [player[counter], yield(player.screen)] if frame > 1
+    end
+    player.run(tree_of(source), frames: frames)
+    refute_empty pairs
+    pairs
   end
 end
 
@@ -186,17 +231,20 @@ class TestHeldTiles < Minitest::Test
       end
     end
   end
+end
 
-  # At every frame boundary after the first, the pass number the game holds in +counter+ and what
-  # the block reads off the picture.
-  def boundary_pairs(source, frames: 6, counter: :frames)
-    player = game_player
-    pairs = []
-    player.each_vblank do |frame|
-      pairs << [player[counter], yield(player.screen)] if frame > 1
+# A SCENE TAKING OVER FORGETS ONLY THE CHANGES WAITING FOR ITS OWN BACKGROUNDS. A box every screen
+# shows, changed earlier in the pass a scene takes over in, still shows the change on the next
+# frame. Played on each console that shows a scene's background beside a box every screen shows
+# (the Color shows one background at a time): test/console/<console>/vblank/dsl/.
+module HeldTilesSceneTests
+  include HeldTilesGames
+
+  def test_a_scene_taking_over_keeps_a_held_change_to_another_background
+    pairs = boundary_pairs(scene_change_game) { |screen| cell_color(screen, 3, 1) == VBlank::Graphics::Color.resolve(:blue) }
+    pairs.each do |frames, open|
+      assert_equal frames - framework_drawing_lag >= HeldTilesGames::OPEN_AT, open, "pass #{frames}: the cell shows open: #{open}"
     end
-    player.run(tree_of(source), frames: frames)
-    refute_empty pairs
-    pairs
+    assert(pairs.any? { |_, open| open }, "the cell opened in the end")
   end
 end

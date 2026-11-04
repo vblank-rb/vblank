@@ -32,6 +32,19 @@ class TestHeldTilesCartridge < Minitest::Test
     assert_operator torn, :>, 0, "some frame shows two sizes of the box at once"
   end
 
+  # A scene putting its own background up keeps the change waiting for the box every screen shows.
+  def test_a_scene_taking_over_keeps_a_held_change_to_another_background
+    rom = VBlank.build("HELDSCENE", console: :gba, validate: false, out: nil, err: nil, &scene_change_game)
+    verifier = assert_emulator_loads_rom(rom, frames: 1, vars: rom.var_addresses)
+    shown = Array.new(FRAMES) do
+      reading = [verifier.var(:frames), verifier.pixel_is?((3 * 8) + 4, (1 * 8) + 4, :blue)]
+      verifier.step
+      reading
+    end
+    shown.each { |frames, open| assert_equal frames - 1 >= OPEN_AT, open, "pass #{frames}: the cell shows open: #{open}" }
+    assert(shown.any? { |_, open| open }, "the cell opened in the end")
+  end
+
   # A FRAME THAT WRITES 240 CELLS STILL FITS. The writes are in the gap between frames, which is
   # about a third of the frame; asserting under a tenth of the frame leaves the gap room for the
   # sprites, scroll and maps a game writes there too.

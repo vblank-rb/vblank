@@ -89,8 +89,8 @@ module VBlank
           # whole layer every frame for free, and composites the layers by priority so
           # nearer ones sit in front.
           def emit_background_hardware(node)
-            emit_forget_held_tiles
             bg = @layout.screen.declared_background(node)
+            emit_forget_held_tiles(node, bg)
             return emit_affine_background_hardware(bg) if bg.affine
 
             # A map brought in a strip at a time is put up as its first map, filled round the
