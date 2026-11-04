@@ -67,11 +67,14 @@ def rg_live_state_crc
   Zlib.crc32(text)
 end
 
-# Every variable and list the game keeps, by name, as they stand now: { vars: { name => number },
-# lists: { name => items oldest first } }. It is what a bot reads (Bots::GameView), and it is the same
-# state the number above is made from.
+# The game's state by name: +vars+ is { name => number } and +lists+ is { name => items oldest first }. The
+# names are the game's own, which is why those two are Hashes.
+RgLiveState = Data.define(:vars, :lists)
+
+# Every variable and list the game keeps, by name, as they stand now (an RgLiveState). It is what a bot reads
+# (Bots::GameView), and it is the same state the number above is made from.
 def rg_live_state
-  @rg_state_snapshot = { vars: {}, lists: {} }
+  @rg_state_snapshot = RgLiveState.new(vars: {}, lists: {})
   rg_game_dump_state
   snapshot = @rg_state_snapshot
   @rg_state_snapshot = nil
@@ -82,7 +85,7 @@ end
 # go there.
 def rg_driver_dump_variable(name, value)
   @rg_state_text << "var #{name} #{value}\n" if @rg_state_text
-  @rg_state_snapshot[:vars][name.to_s] = value if @rg_state_snapshot
+  @rg_state_snapshot.vars[name.to_s] = value if @rg_state_snapshot
 end
 
 def rg_driver_dump_list(list)
@@ -90,7 +93,7 @@ def rg_driver_dump_list(list)
 
   items = Array.new(list.length) { |i| list.items[rg_list_slot(list, i)] }
   @rg_state_text << "list #{list.name}\t#{items.join(' ')}\n" if @rg_state_text
-  @rg_state_snapshot[:lists][list.name.to_s] = items if @rg_state_snapshot
+  @rg_state_snapshot.lists[list.name.to_s] = items if @rg_state_snapshot
 end
 
 def rg_driver_sound_logged(_line); end

@@ -30,7 +30,7 @@ module VBlank
       # The number a game variable holds, by the name the game gave it (a Symbol). The names a game has are
       # in #variable_names; a name the game does not have is a friendly error that lists them.
       def var(name)
-        vars = state.fetch(:vars)
+        vars = state.vars
         vars.fetch(name.to_s) do
           raise ArgumentError, "The game has no variable named #{name.inspect}. It has: #{vars.keys.first(30).join(', ')}" \
                                "#{' and more' if vars.size > 30}."
@@ -39,13 +39,13 @@ module VBlank
 
       # A list the game keeps, oldest first, by its name.
       def list(name)
-        lists = state.fetch(:lists)
+        lists = state.lists
         lists.fetch(name.to_s) do
           raise ArgumentError, "The game has no list named #{name.inspect}. It has: #{lists.keys.join(', ')}."
         end
       end
 
-      def variable_names = state.fetch(:vars).keys.map(&:to_sym)
+      def variable_names = state.vars.keys.map(&:to_sym)
 
       private
 

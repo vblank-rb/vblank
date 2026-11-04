@@ -49,8 +49,8 @@ module VBlank
           # that run the same game on the same buttons have the same number on the same pass.
           def state_crc = @game.rg_live_state_crc
 
-          # Every variable and list of the game by name, as they stand now: `{ vars: { "x" => 3 }, lists: { ... } }`.
-          # The keys are the game's own names, so a Hash is what answers.
+          # Every variable and list of the game by name, as they stand now: the runtime's RgLiveState, whose
+          # +vars+ (`{ "x" => 3 }`) and +lists+ are Hashes by the game's own names.
           def state = @game.rg_live_state
         end
       end
