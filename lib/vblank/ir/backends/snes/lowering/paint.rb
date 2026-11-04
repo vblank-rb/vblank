@@ -289,13 +289,14 @@ module VBlank
             # called from inside another's hands the caller's area back.
             def emit_inside(node)
               area = @memory[Runtime::Paint::AREA]
-              4.times do |i|
+              words = Runtime::Paint::AREA_WORDS
+              words.times do |i|
                 @asm.lda(@asm.abs(area + (i * 2)))
                 @asm.pha
               end
               runtime_call("rt_paint_area", %i[x y w h].map { |edge| value_node(node.public_send(edge)) })
               emit_children(node)
-              3.downto(0) do |i|
+              (words - 1).downto(0) do |i|
                 @asm.pla
                 @asm.sta(@asm.abs(area + (i * 2)))
               end

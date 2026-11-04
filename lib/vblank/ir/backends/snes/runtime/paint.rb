@@ -131,8 +131,15 @@ module VBlank
             NO_WINDOW = 0x00FF
 
             # Where painting is held to (`inside`): its left, top, right and bottom, right and bottom
-            # just past it.
+            # just past it; then AREA_PART, nought when that is the whole screen, as it nearly
+            # always is, so a painting compared with the last pass's (PaintLog) compares one word
+            # for its area and not four. Kept and given back as AREA_WORDS words.
             AREA = "rt paint area"
+            AREA_PART = 8
+            AREA_WORDS = 5
+            # AREA_PART when the area is less than the whole screen: a bit above any kind of
+            # painting, so it goes in with the kind (PaintLog).
+            PART_OF_SCREEN = 0x100
             # For each row of tiles, the leftmost and rightmost tile changed since the last blank: a
             # word each. A row with none has its leftmost past its rightmost (NONE_LEFT, 0).
             DIRTY = "rt paint dirty"
@@ -182,6 +189,10 @@ module VBlank
             # was last set in, a word.
             MOST_INKS = 64
             INK_GENERATIONS = "rt paint ink generations"
+            # How many times the whole screen has been cleared, a word that comes round: what an
+            # ink's generation counts. Not the tiles' generation, which a deferred clear (PaintLog)
+            # leaves as it was while the screen still shows the last pass.
+            CLEARS = "rt paint clears"
 
             # The direct page the routines work on.
             Scratch = Data.define(:left, :right, :top, :bottom, :area, :y, :row, :count, :chunk, :last,
@@ -210,10 +221,11 @@ module VBlank
               far.call(RUNS, MOST_RUNS * 4)
               far.call(SHOWN_IN, TILES)
               memory.reserve_far(INK_GENERATIONS, MOST_INKS * 2)
-              memory.reserve(AREA, 8)
+              memory.reserve(AREA, AREA_WORDS * 2)
               memory.reserve(DIRTY, ROWS * 4)
               memory.reserve(COLUMN_MASKS, COLUMNS * 2)
               memory.reserve(GENERATION, 2)
+              memory.reserve(CLEARS, 2)
               memory.reserve(CLEAR_PLACE, 2)
               memory.reserve(CLEAR_PLANES, 8)
               memory.reserve(MAP_CHANGED, 2)
@@ -316,7 +328,7 @@ module VBlank
               emit_no_generation_everywhere(asm, memory, "rt_paint_start")
               emit_fill_work_ram(asm, memory[SHOWN_IN], TILES, "rt_paint_no_generation")
               emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
-              [GENERATION, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END].each do |name|
+              [GENERATION, CLEARS, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END].each do |name|
                 asm.stz(asm.abs(memory[name]))
               end
               asm.lda(NOTHING_SHOWN)
@@ -413,9 +425,19 @@ module VBlank
                 asm.lda(asm.direct(from))
                 asm.sta(asm.abs(area + (i * 2)))
               end
+              asm.lda(PART_OF_SCREEN)
+              asm.sta(asm.abs(area + AREA_PART))
+              [[s.left, 0], [s.top, 0], [s.right, WIDTH], [s.bottom, HEIGHT]].each do |at, whole|
+                asm.lda(asm.direct(at))
+                asm.cmp(whole)
+                asm.bne("rt_paint_area_part")
+              end
+              asm.stz(asm.abs(area + AREA_PART))
+              asm.label("rt_paint_area_part")
               asm.rtl
 
               asm.label("rt_paint_anywhere")
+              asm.stz(asm.abs(area + AREA_PART))
               asm.stz(asm.abs(area))
               asm.stz(asm.abs(area + 2))
               asm.lda(WIDTH)
@@ -764,6 +786,8 @@ module VBlank
               # The whole screen. A colour other than the last clear's makes the clear tile again:
               # its planes, kept for making tiles ready, and its 64 bytes, for the blank to send.
               asm.label("rt_paint_clear_whole")
+              asm.inc(asm.abs(memory[CLEARS]))
+              PaintLog.emit_clear_deferred(asm, memory) if logged
               asm.lda(asm.direct(R.call(0)))
               asm.cmp(asm.abs(memory[CLEAR_PLACE]))
               asm.branch_long(:beq, "rt_paint_clear_same_colour")
@@ -778,21 +802,12 @@ module VBlank
               asm.sta(asm.abs(memory[CLEAR_CHANGED]))
               asm.jsr(asm.abs("rt_paint_seed")) if logged # a fresh tile's key, from the place in R0
               asm.label("rt_paint_clear_same_colour")
-              # The next generation; coming round, every tile put in none first.
-              asm.lda(asm.abs(memory[GENERATION]))
-              asm.inc
-              asm.cmp(NO_GENERATION)
-              asm.bcc("rt_paint_clear_generation")
-              emit_no_generation_everywhere(asm, memory, "rt_paint_clear")
-              emit_fill_work_ram(asm, memory[PaintLog::PAINTED_IN], TILES, "rt_paint_no_generation") if logged
-              asm.lda(0)
-              asm.label("rt_paint_clear_generation")
-              asm.sta(asm.abs(memory[GENERATION]))
               if logged
-                # Nothing written down is to be painted now, and the cells of the tiles this
-                # generation readied go back to the clear tile, unless painted again (PaintLog).
+                # Nothing written down is to be painted now (PaintLog).
+                asm.jsr(asm.abs("rt_paint_next_generation"))
                 PaintLog.emit_clear(asm, memory)
               else
+                emit_next_generation(asm, memory, logged)
                 # Every cell shows the clear tile, and nothing painted before is to be sent.
                 emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
                 asm.lda(1)
@@ -811,6 +826,28 @@ module VBlank
               asm.label("rt_paint_clear_rows_done")
               PaintLog.emit_no_rows(asm, memory, DIRTY) if logged
               asm.rtl
+              return unless logged
+
+              # rt_paint_next_generation (JSR): the clear made, as a clear or once deferred
+              # (PaintLog): the next generation, and the cells of the tiles the last one readied to
+              # go back to the clear tile, unless painted again.
+              asm.label("rt_paint_next_generation")
+              emit_next_generation(asm, memory, logged)
+              PaintLog.emit_next_generation(asm, memory)
+              asm.rts
+            end
+
+            # The next generation; coming round, every tile put in none first.
+            def emit_next_generation(asm, memory, logged)
+              asm.lda(asm.abs(memory[GENERATION]))
+              asm.inc
+              asm.cmp(NO_GENERATION)
+              asm.bcc("rt_paint_clear_generation")
+              emit_no_generation_everywhere(asm, memory, "rt_paint_clear")
+              emit_fill_work_ram(asm, memory[PaintLog::PAINTED_IN], TILES, "rt_paint_no_generation") if logged
+              asm.lda(0)
+              asm.label("rt_paint_clear_generation")
+              asm.sta(asm.abs(memory[GENERATION]))
             end
 
             # --- a picture's column, stretched ---
@@ -901,7 +938,7 @@ module VBlank
             # pixels), the tiles' rows between (all eight), and a tile's row at the right edge.
             def emit_fill(asm, memory, s, bank, logged)
               asm.label("rt_paint_fill")
-              emit_op_begin(asm, PaintLog::KIND_FILL, 20, "rt_paint_fill_now") if logged
+              emit_op_begin(asm, memory, PaintLog::KIND_FILL, 20, "rt_paint_fill_now") if logged
               asm.jsr(asm.abs("rt_paint_take_area"))
               [[R.call(0), R.call(2), R.call(5)], [R.call(1), R.call(3), R.call(6)]].each do |at, size, out|
                 asm.clc
@@ -1002,10 +1039,12 @@ module VBlank
               end
             end
 
-            # A painting's start, on a plain cartridge: its kind and the +bytes+ of working numbers it
-            # is known by (PaintLog::HASHED_NUMBERS), for PaintLog to hash and write down. Painting
-            # it again starts at +now+.
-            def emit_op_begin(asm, kind, bytes, now)
+            # A painting's start, on a plain cartridge: passed over if it is the last pass's (a clear
+            # deferred), else its kind and the +bytes+ of working numbers it is known by
+            # (PaintLog::HASHED_NUMBERS), for PaintLog to hash and write down. Painting it again
+            # starts at +now+.
+            def emit_op_begin(asm, memory, kind, bytes, now)
+              PaintLog.emit_same_as_last_pass(asm, memory, kind, bytes, "#{now}_last_pass")
               asm.lda(kind)
               asm.ldx(bytes)
               asm.jsr(asm.abs("rt_paint_op_begin"))
@@ -1074,11 +1113,11 @@ module VBlank
             # the same each pass in a colour that changes is then the same tiles, which are neither
             # painted nor sent again (PaintLog): only the colour list changes, with the map in the
             # pass's last blank (Tint). A second colour wanted of the ink before the next clear is
-            # painted in its own colour's picture, as is any colour when the generations come round
-            # to the one the ink was last set in.
+            # painted in its own colour's picture, as is any colour when the count of clears comes
+            # round to the one the ink was last set at.
             #
-            # INK_GENERATIONS keeps, for each ink, one more than the generation it was last set in:
-            # nought, at power-on, is none. (+temp+ is the colour wanted, +temp+ + 2 its place's byte.)
+            # INK_GENERATIONS keeps, for each ink, one more than the count of clears (CLEARS) it was
+            # last set at: nought, at power-on, is none. (+temp+ is the colour wanted, +temp+ + 2 its place's byte.)
             def emit_blit_inked(asm, memory, s)
               now = memory[Tint::COLORS_NOW]
               state = memory[Tint::STATE]
@@ -1100,7 +1139,7 @@ module VBlank
               asm.lda(asm.direct(R.call(4)))
               asm.asl
               asm.tax
-              asm.lda(asm.abs(memory[GENERATION]))
+              asm.lda(asm.abs(memory[CLEARS]))
               asm.inc
               asm.cmp(asm.long_x(memory[INK_GENERATIONS]))
               asm.beq("rt_paint_blit_inked_set")
@@ -1173,7 +1212,7 @@ module VBlank
               asm.label("rt_paint_blit")
               # A picture's number and its place: the place is held near the screen (below), where
               # its low word says it all, and the low word is all that is hashed.
-              emit_op_begin(asm, PaintLog::KIND_BLIT, 12, "rt_paint_blit_now") if logged
+              emit_op_begin(asm, memory, PaintLog::KIND_BLIT, 12, "rt_paint_blit_now") if logged
               # Near enough the screen to paint anything at all.
               [[R.call(1), WIDTH], [R.call(2), HEIGHT]].each do |at, edge|
                 asm.clc
@@ -1837,6 +1876,26 @@ module VBlank
             def emit_prepare(asm, memory, s, logged)
               dirty = memory[DIRTY]
               asm.label("rt_paint_prepare")
+              if logged
+                # A clear still deferred (PaintLog): a pass that matched the whole of the last
+                # pass's log is the screen as it is, and nothing is painted or sent; one that
+                # stopped short of it is made, and goes on as any other.
+                asm.lda(asm.abs(memory[PaintLog::DEFERRED_CLEAR]))
+                asm.beq("rt_paint_prepare_cleared")
+                asm.lda(asm.abs(memory[PaintLog::LOG_END]))
+                asm.cmp(asm.abs(memory[PaintLog::LAST_PASS_END]))
+                asm.beq("rt_paint_prepare_same")
+                asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
+                asm.bra("rt_paint_prepare_cleared")
+                asm.label("rt_paint_prepare_same")
+                asm.stz(asm.abs(memory[PaintLog::DEFERRED_CLEAR]))
+                asm.stz(asm.abs(memory[PaintLog::LOGGING]))
+                asm.stz(asm.abs(memory[RUNS_END]))
+                asm.lda(MOST_RUNS * 4)
+                asm.sta(asm.abs(memory[IN_PLACE_START]))
+                asm.rtl
+                asm.label("rt_paint_prepare_cleared")
+              end
               asm.stz(asm.abs(memory[RUNS_END]))
               asm.lda(MOST_RUNS * 4)
               asm.sta(asm.abs(memory[IN_PLACE_START]))

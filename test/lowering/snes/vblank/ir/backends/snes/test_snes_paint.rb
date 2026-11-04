@@ -534,12 +534,10 @@ class TestSNESPaint < Minitest::Test
     assert_equal Color.resolve(:blue), run.screen.pixel(2, 2)
   end
 
-  # MORE PAINTINGS THAN THE LOG HELD: the log takes what work RAM has left, so a pass of 160 small
-  # rectangles, the same every pass, writes them all down and paints none of them again. With a
-  # log of 128 the pass painted its first 128 when the log filled, and then the 32 tiles painted
-  # on both sides of that a second time, every pass: 11 frames, where painting it all every pass
-  # had taken 8.
-  def test_a_pass_of_160_paintings_paints_none_of_them_again
+  # A PASS THAT DRAWS WHAT THE LAST ONE DREW: 160 small rectangles after a clear, the same every
+  # pass, each compared with the one the last pass wrote down at its place and passed over, take
+  # one frame a pass. Writing each down and taking it into its tile's key took eight.
+  def test_a_pass_of_160_paintings_the_same_as_the_last_takes_one_frame
     program = program_of do
       screen :bitmap
       game_loop do
@@ -549,9 +547,89 @@ class TestSNESPaint < Minitest::Test
         end
       end
     end
-    run = SNES::HeadlessRun.new.run(program, frames: 5)
+    SNES::CheckedRun.new.run(program, frames: 5)
+    run = SNES::HeadlessRun.new.run(program, frames: 6)
 
-    assert_operator (3..5).map { |pass| run.frames_took(pass) }.max, :<=, 8
+    assert_equal [1] * 4, (3..6).map { |pass| run.frames_took(pass) }
+  end
+
+  # A pass that draws the last pass's paintings and then stops short, or goes on past them, or
+  # differs halfway: the clear held back while they matched is made, and what matched is taken
+  # into its tiles as if written down.
+  def test_a_pass_that_matches_the_last_one_for_a_while
+    run = checked(frames: 12) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 3, 3, 20, 6, :green
+        draw_text "AB", 9, 20, :white
+        fill_rect 40, 3, 9, 9, :red if n % 3 != 1
+        draw_rect_at 60, 3 + (n % 2), 9, 9, :blue if n % 3 == 2
+        fill_rect 5, 5, 2, 2, :yellow
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:yellow), run.screen.pixel(5, 5)
+  end
+
+  # Cleared twice in a pass, the second time to the same colour or another: what the pass draws
+  # after its last clear is what shows.
+  def test_a_pass_that_clears_twice
+    run = checked(frames: 10) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 30, 30, :red
+        clear_screen :black if n % 4 < 2
+        clear_screen :blue if n % 4 >= 2
+        fill_rect 4, 4, 10, 10, :green
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:green), run.screen.pixel(5, 5)
+  end
+
+  # A pass that paints without clearing, between passes that clear and draw the same: what it
+  # painted is not in the log the next pass compares with, so that pass is drawn again.
+  def test_a_pass_painted_at_once_between_passes_that_draw_the_same
+    run = checked(frames: 10) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        if n % 3 == 1
+          fill_rect 10, 10, 6, 6, :red
+        else
+          clear_screen :black
+          fill_rect 4, 4, 4, 4, :green
+        end
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:black), run.screen.pixel(11, 11)
+  end
+
+  # The same paintings held to an area that changes, or that is the same: a painting is the last
+  # pass's only if its area is too.
+  def test_the_same_paintings_inside_an_area_that_changes
+    run = checked(frames: 10) do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        inside(0, 0, 10, 40) { fill_rect 0, 0, 100, 8, :red } if n % 2 == 0
+        inside(0, 0, 20, 40) { fill_rect 0, 0, 100, 8, :red } if n % 2 == 1
+        inside(30, 0, 20, 40) { fill_rect 0, 10, 100, 8, :green }
+        fill_rect 0, 30, 100, 4, :white
+        n += 1
+      end
+    end
+
+    assert_equal Color.resolve(:white), run.screen.pixel(60, 31)
   end
 
   # A BLANK CARRIES WHAT THE CONSOLE CAN COPY IN IT: 165 bytes a line, from where the copying

@@ -49,6 +49,8 @@ module VBlank
           # it back (rt_paint_restore) paint what is written down first, keeping the direct page
           # (rt_paint_flush_keeping). So does a full log.
           #
+          #   rt_paint_apply_deferred_clear  a clear held back while the pass drew what the last one
+          #                       did, made once it does not (DEFERRED_CLEAR)
           #   rt_paint_op_begin   a painting starts: written down after a flush, if the log is full
           #   rt_paint_mark       its tiles take its key
           #   rt_paint_log_append it is written down
@@ -93,7 +95,7 @@ module VBlank
             LOG_END = "rt paint log end"
             LEAST_LOG_ENTRIES = 128
             MOST_LOG_ENTRIES = 512
-            ENTRY_BYTES = 40
+            ENTRY_BYTES = 44
             ENTRY_AREA = 2
             ENTRY_NUMBERS = 10
             NUMBER_BYTES = 20
@@ -103,6 +105,32 @@ module VBlank
             ENTRY_LAST = 36
             # Whether the flush at hand paints it again (rt_paint_replay).
             ENTRY_AGAIN = 38
+            # Its hash (OP_HASH), so its tiles can take it in again without working it out.
+            ENTRY_HASH = 40
+            # A PASS THAT DRAWS WHAT THE LAST ONE DREW. Most passes that clear the screen go on to
+            # paint exactly what the pass before painted, in the same order: a menu standing still,
+            # a screen of text. Writing each painting down and taking it into its tiles' keys costs
+            # far more than asking whether it is the painting the last pass wrote down at the same
+            # place in the log. So the first clear of a pass, to the colour the screen is cleared
+            # to already, is DEFERRED while the log the last pass left is whole (LAST_PASS_END: how
+            # far it goes, or NO_LAST_PASS): the screen still shows the last pass, and each painting
+            # the same as the one written down at LOG_END is passed over, LOG_END moved past it. A
+            # pass that ends having matched the whole of the last pass's log changes nothing, and
+            # nothing is painted or sent.
+            #
+            # The first painting that differs (or a pass that stops short, or anything that reads
+            # the copy) makes the clear at last (rt_paint_apply_deferred_clear): the next
+            # generation, and the paintings matched so far taken into their tiles' keys from their
+            # entries, as if each had been written down as it came. From there the pass goes on as
+            # any other.
+            #
+            # The log is whole when nothing painted it mid-pass since the clear (LOG_WHOLE: a full
+            # log, or a patch kept or put back), and it stays the screen's when nothing was
+            # painted at once after it (rt_paint_mark_now forgets it).
+            DEFERRED_CLEAR = "rt paint deferred clear"
+            LAST_PASS_END = "rt paint last pass end"
+            LOG_WHOLE = "rt paint log whole"
+            NO_LAST_PASS = 0xFFFF
             # The painting at hand: its kind, the bytes of its working numbers it is known by, and
             # its hash; the hash of a clear to the clear colour, a fresh tile's key; whether the log
             # is being painted; and how many patches have been put back, which each make a hash of
@@ -143,7 +171,8 @@ module VBlank
                 MAP_RUNS => Paint::ROWS * 4, KEPT_PAGE => 0x100 }.each do |name, bytes|
                 memory.reserve_far(name, bytes)
               end
-              [MAP_RUNS_END, MAP_RUN_BYTES, LOG_END, OP_KIND, OP_BYTES, REPLAYING, LOGGING, SENDING, RESTORES, STAMP].each do |name|
+              [MAP_RUNS_END, MAP_RUN_BYTES, LOG_END, OP_KIND, OP_BYTES, REPLAYING, LOGGING, SENDING, RESTORES, STAMP,
+               DEFERRED_CLEAR, LAST_PASS_END, LOG_WHOLE].each do |name|
                 memory.reserve(name, 2)
               end
               memory.reserve(OP_HASH, 4)
@@ -167,6 +196,9 @@ module VBlank
               asm.cpx(Paint::ROWS * 4)
               asm.bne("rt_paint_log_start_row")
               ROWS_OF.each_key { |name| emit_no_rows(asm, memory, name) }
+              asm.stz(asm.abs(memory[DEFERRED_CLEAR]))
+              asm.lda(NO_LAST_PASS)
+              asm.sta(asm.abs(memory[LAST_PASS_END]))
               asm.lda(1)
               asm.sta(asm.abs(memory[STAMP]))
               asm.stz(asm.direct(Paint::R.call(0)))
@@ -186,12 +218,43 @@ module VBlank
               asm.bne("rt_paint_log_start_key")
             end
 
-            # As the whole screen is cleared: what was written down is gone, nothing is covered, and
-            # the cells of the generation that ended are to be looked at again. X is left.
+            # As the whole screen is cleared, made now: what was written down is gone, and the log
+            # is whole from here.
             def emit_clear(asm, memory)
               asm.stz(asm.abs(memory[LOG_END]))
               asm.lda(1)
               asm.sta(asm.abs(memory[LOGGING]))
+              asm.sta(asm.abs(memory[LOG_WHOLE]))
+            end
+
+            # At the top of a clear of the whole screen to the place in R0: DEFERRED (see the top),
+            # returning (RTL), when it is to the colour the screen is cleared to already and the
+            # pass has painted nothing since the last pass's log, or since a clear deferred
+            # already. A clear to another colour is made now, and with it any deferred.
+            def emit_clear_deferred(asm, memory)
+              asm.lda(asm.direct(Paint::R.call(0)))
+              asm.cmp(asm.abs(memory[Paint::CLEAR_PLACE]))
+              asm.bne("rt_paint_clear_not_deferred_colour")
+              asm.lda(asm.abs(memory[DEFERRED_CLEAR]))
+              asm.bne("rt_paint_clear_deferred")
+              asm.lda(asm.abs(memory[LOGGING]))
+              asm.bne("rt_paint_clear_not_deferred")
+              asm.lda(asm.abs(memory[LAST_PASS_END]))
+              asm.cmp(NO_LAST_PASS)
+              asm.beq("rt_paint_clear_not_deferred")
+              asm.label("rt_paint_clear_deferred")
+              asm.lda(1)
+              asm.sta(asm.abs(memory[DEFERRED_CLEAR]))
+              emit_clear(asm, memory)
+              asm.rtl
+              asm.label("rt_paint_clear_not_deferred_colour")
+              asm.stz(asm.abs(memory[DEFERRED_CLEAR]))
+              asm.label("rt_paint_clear_not_deferred")
+            end
+
+            # In rt_paint_next_generation: the cells of the generation that ended are to be looked
+            # at again. X is left.
+            def emit_next_generation(asm, memory)
               emit_each_row(asm, memory, READIED, "rt_paint_log_clear_readied") do
                 asm.lda(asm.long_x(memory[READIED]))
                 asm.cmp(asm.long_x(memory[MAP_DIRTY]))
@@ -279,6 +342,7 @@ module VBlank
                                                         most: MOST_LOG_ENTRIES * ENTRY_BYTES, step: ENTRY_BYTES)
               emit_hash(asm, memory)
               emit_op_begin(asm, memory, log_bytes)
+              emit_apply_deferred_clear(asm, memory, s)
               emit_mark(asm, memory, s)
               emit_mark_now(asm, memory, s)
               emit_log_append(asm, memory, s)
@@ -305,11 +369,8 @@ module VBlank
               asm.sta(asm.abs(hash + 2))
               # The area: one word for the whole screen, as it nearly always is, else its four.
               area = memory[Paint::AREA]
-              [0, 0, Paint::WIDTH, Paint::HEIGHT].each_with_index do |whole, i|
-                asm.lda(asm.abs(area + (i * 2)))
-                asm.cmp(whole)
-                asm.bne("rt_paint_hash_area")
-              end
+              asm.lda(asm.abs(area + Paint::AREA_PART))
+              asm.bne("rt_paint_hash_area")
               asm.lda(WHOLE_AREA)
               emit_hash_word(asm, hash)
               asm.bra("rt_paint_hash_area_done")
@@ -393,6 +454,113 @@ module VBlank
               asm.jmp(asm.abs("rt_paint_hash"))
             end
 
+            # At the start of a painting routine (JSL) of +kind+, known by +bytes+ of working
+            # numbers, while a clear is deferred: the painting compared with the last pass's at
+            # LOG_END, word by word — its kind and whether its area is the whole screen
+            # (Paint::AREA_PART, with the kind in the entry), its working numbers (each 32 bits)
+            # and, for an area less than the screen, the area's four. The same, it is passed over:
+            # LOG_END moves past it, and the routine returns (RTL). Not the same, the clear is made
+            # and it goes on, to be written down. Written out in each routine, as a call and the
+            # setting up of one would cost a third as much again as comparing.
+            def emit_same_as_last_pass(asm, memory, kind, bytes, prefix)
+              log = memory[LOG]
+              area = memory[Paint::AREA]
+              differs = "#{prefix}_differs"
+              asm.lda(asm.abs(memory[DEFERRED_CLEAR]))
+              asm.branch_long(:beq, "#{prefix}_written")
+              asm.ldx(asm.abs(memory[LOG_END]))
+              asm.cpx(asm.abs(memory[LAST_PASS_END]))
+              asm.branch_long(:bcs, differs)
+              asm.lda(kind)
+              asm.ora(asm.abs(area + Paint::AREA_PART))
+              asm.cmp(asm.long_x(log))
+              asm.branch_long(:bne, differs)
+              (bytes / 2).times do |i|
+                asm.lda(asm.direct(i * 2))
+                asm.cmp(asm.long_x(log, ENTRY_NUMBERS + (i * 2)))
+                asm.branch_long(:bne, differs)
+              end
+              asm.lda(asm.abs(area + Paint::AREA_PART))
+              asm.beq("#{prefix}_same")
+              4.times do |i|
+                asm.lda(asm.abs(area + (i * 2)))
+                asm.cmp(asm.long_x(log, ENTRY_AREA + (i * 2)))
+                asm.branch_long(:bne, differs)
+              end
+              asm.label("#{prefix}_same")
+              asm.txa
+              asm.clc
+              asm.adc(ENTRY_BYTES)
+              asm.sta(asm.abs(memory[LOG_END]))
+              asm.rtl
+              asm.label(differs)
+              asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
+              asm.label("#{prefix}_written")
+            end
+
+            # rt_paint_apply_deferred_clear (JSR): the clear deferred made now (see the top): the
+            # next generation, and each painting matched so far, LOG_END's worth of the log, taken
+            # into its tiles' keys from its entry. Uses the direct page's scratch.
+            # rt_paint_apply_deferred_clear_keeping (JSR): the same, if a clear is deferred, the
+            # direct page and OP_HASH kept round it, for a routine that has its numbers there.
+            def emit_apply_deferred_clear(asm, memory, s)
+              log = memory[LOG]
+              hash = memory[OP_HASH]
+              kept = memory[KEPT_PAGE]
+              asm.label("rt_paint_apply_deferred_clear_keeping")
+              asm.lda(asm.abs(memory[DEFERRED_CLEAR]))
+              asm.bne("rt_paint_apply_deferred_clear_kept")
+              asm.rts
+              asm.label("rt_paint_apply_deferred_clear_kept")
+              2.times do |half|
+                asm.lda(asm.abs(hash + (half * 2)))
+                asm.pha
+              end
+              asm.phb
+              asm.lda(0xFF)
+              asm.ldx(0)
+              asm.ldy(kept & 0xFFFF)
+              asm.mvn(kept >> 16, 0x00)
+              asm.plb
+              asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
+              asm.phb
+              asm.lda(0xFF)
+              asm.ldx(kept & 0xFFFF)
+              asm.ldy(0)
+              asm.mvn(0x00, kept >> 16)
+              asm.plb
+              1.downto(0) do |half|
+                asm.pla
+                asm.sta(asm.abs(hash + (half * 2)))
+              end
+              asm.rts
+
+              asm.label("rt_paint_apply_deferred_clear")
+              asm.stz(asm.abs(memory[DEFERRED_CLEAR]))
+              asm.jsr(asm.abs("rt_paint_next_generation"))
+              asm.ldx(0)
+              asm.label("rt_paint_apply_deferred_clear_entry")
+              asm.cpx(asm.abs(memory[LOG_END]))
+              asm.bcs("rt_paint_apply_deferred_clear_done")
+              asm.phx
+              2.times do |half|
+                asm.lda(asm.long_x(log, ENTRY_HASH + (half * 2)))
+                asm.sta(asm.abs(hash + (half * 2)))
+              end
+              [[ENTRY_TOP, s.mark_row], [ENTRY_BOTTOM, s.temp], [ENTRY_FIRST, s.chunk], [ENTRY_LAST, s.last]].each do |at, to|
+                asm.lda(asm.long_x(log, at))
+                asm.sta(asm.direct(to))
+              end
+              asm.jsr(asm.abs("rt_paint_mark_rows"))
+              asm.pla
+              asm.clc
+              asm.adc(ENTRY_BYTES)
+              asm.tax
+              asm.bra("rt_paint_apply_deferred_clear_entry")
+              asm.label("rt_paint_apply_deferred_clear_done")
+              asm.rts
+            end
+
             # rt_paint_mark (JSR): rows of pixels +top+ up to +bottom+, tiles +chunk+ to +last+
             # across, covered: each row said changed (Paint::DIRTY), each tile of an older
             # generation put in this one with the clear colour's key, and OP_HASH taken into every
@@ -409,6 +577,15 @@ module VBlank
               generations = s.right_planes
               fresh = s.left_planes
               asm.label("rt_paint_mark")
+              asm.lda(asm.direct(s.bottom))
+              asm.dec
+              3.times { asm.lsr }
+              asm.sta(asm.direct(s.temp))
+              asm.lda(asm.direct(s.top))
+              3.times { asm.lsr }
+              asm.sta(asm.direct(s.mark_row))
+              # rt_paint_mark_rows (JSR): the same, the rows of tiles known: +mark_row+ to +temp+.
+              asm.label("rt_paint_mark_rows")
               emit_pointer(asm, generations, memory[Paint::GENERATIONS])
               # A tile new to the generation: the clear colour's key, with this painting taken in
               # unless it paints nothing (OP_HASH nought: +shift+ says which).
@@ -425,13 +602,6 @@ module VBlank
               emit_key_taking_in(asm, hash, asm.abs(memory[SEED]), asm.abs(memory[SEED] + 2),
                                  asm.direct(fresh), asm.direct(fresh + 2), s.left_planes + 4)
               asm.label("rt_paint_mark_fresh_known")
-              asm.lda(asm.direct(s.bottom))
-              asm.dec
-              3.times { asm.lsr }
-              asm.sta(asm.direct(s.temp))
-              asm.lda(asm.direct(s.top))
-              3.times { asm.lsr }
-              asm.sta(asm.direct(s.mark_row))
               [Paint::DIRTY, READIED, MAP_DIRTY].each { |name| emit_widen_rows(asm, memory, name, s, "rt_paint_mark") }
               asm.lda(asm.direct(s.mark_row))
               asm.label("rt_paint_mark_row")
@@ -515,18 +685,24 @@ module VBlank
               keys_copy = memory[KEYS_COPY]
               hash = memory[OP_HASH]
               generation = asm.abs(memory[Paint::GENERATION])
+              # Both read the copy, so a clear deferred is made first.
               asm.label("rt_paint_mark_any")
               asm.lda(asm.abs(memory[LOGGING]))
               asm.beq("rt_paint_mark_now")
+              asm.jsr(asm.abs("rt_paint_apply_deferred_clear_keeping"))
               asm.jmp(asm.abs("rt_paint_mark"))
               asm.label("rt_paint_flush_logged")
               asm.lda(asm.abs(memory[LOGGING]))
               asm.beq("rt_paint_flush_logged_none")
+              asm.jsr(asm.abs("rt_paint_apply_deferred_clear_keeping"))
               asm.jmp(asm.abs("rt_paint_flush_keeping"))
               asm.label("rt_paint_flush_logged_none")
               asm.rts
 
               asm.label("rt_paint_mark_now")
+              # Painted at once, the screen is no longer what the last pass's log says.
+              asm.lda(NO_LAST_PASS)
+              asm.sta(asm.abs(memory[LAST_PASS_END]))
               asm.lda(asm.abs(hash))
               asm.ora(asm.abs(hash + 2))
               asm.sta(asm.direct(s.mask))
@@ -679,6 +855,7 @@ module VBlank
               asm.label("rt_paint_log_append")
               asm.ldx(asm.abs(memory[LOG_END]))
               asm.lda(asm.abs(memory[OP_KIND]))
+              asm.ora(asm.abs(memory[Paint::AREA] + Paint::AREA_PART)) # as the next pass compares it
               asm.sta(asm.long_x(log))
               4.times do |i|
                 asm.lda(asm.abs(memory[Paint::AREA] + (i * 2)))
@@ -706,6 +883,10 @@ module VBlank
               asm.sta(asm.long_x(log, ENTRY_FIRST))
               asm.lda(asm.direct(s.last))
               asm.sta(asm.long_x(log, ENTRY_LAST))
+              2.times do |half|
+                asm.lda(asm.abs(memory[OP_HASH] + (half * 2)))
+                asm.sta(asm.long_x(log, ENTRY_HASH + (half * 2)))
+              end
               asm.txa
               asm.clc
               asm.adc(ENTRY_BYTES)
@@ -728,6 +909,7 @@ module VBlank
               # With nothing written down nothing is painted, and the flush itself changes only
               # these of the direct page, which are kept on the stack instead: far quicker.
               own = [s.pointer, s.pointer + 2, s.tile, s.last, s.count, s.row] + Array.new(4) { |i| s.planes + (i * 2) }
+              asm.stz(asm.abs(memory[LOG_WHOLE])) # painted mid-pass: the log is no longer the pass's
               asm.lda(asm.abs(memory[LOG_END]))
               asm.bne("rt_paint_flush_keeping_page")
               own.each { |at| asm.pei(asm.direct(at)) }
@@ -880,6 +1062,13 @@ module VBlank
               # (Paint's rt_paint_prepare does that for a pass painted at once); the rows said
               # unchanged after.
               asm.label("rt_paint_flush_sending")
+              # The log the next pass compares with: this one, if it is whole.
+              asm.lda(NO_LAST_PASS)
+              asm.ldx(asm.abs(memory[LOG_WHOLE]))
+              asm.beq("rt_paint_flush_sending_last_pass")
+              asm.lda(asm.abs(memory[LOG_END]))
+              asm.label("rt_paint_flush_sending_last_pass")
+              asm.sta(asm.abs(memory[LAST_PASS_END]))
               asm.lda(1)
               asm.sta(asm.abs(memory[SENDING]))
               asm.jsr(asm.abs("rt_paint_flush"))
@@ -1074,6 +1263,7 @@ module VBlank
               end
               asm.phx
               asm.lda(asm.long_x(log))
+              asm.and_a(0x00FF) # the kind, without whether its area was the screen's
               asm.cmp(KIND_FILL)
               asm.bne("rt_paint_replay_blit")
               asm.jsl(asm.long("rt_paint_fill_now"))
