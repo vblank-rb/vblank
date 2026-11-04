@@ -44,7 +44,8 @@ module VBlank
         accept_waiting
         @peers.each { |peer| carry_to_room(peer) }
         @peers.each { |peer| carry_from_room(peer) }
-        @peers.reject! { |peer| peer.channel.closed? && peer.connection.closed? }
+        gone, @peers = @peers.partition { |peer| peer.channel.closed? && peer.connection.closed? }
+        gone.each { |peer| peer.channel.close } # the machine has gone, so this end closes too
       end
 
       # Sleeps until a socket has something for the room, then pumps. A line a channel has already read

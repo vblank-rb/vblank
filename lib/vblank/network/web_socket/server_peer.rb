@@ -67,7 +67,7 @@ module VBlank
         def close
           write(Framing.encode(:close, Framing.close_payload(CLOSE_NORMAL))) unless @ended
           @ended = true
-          @io.close unless @io.closed?
+          SocketEnd.close(@io)
         end
 
         private
@@ -94,7 +94,7 @@ module VBlank
         def fail_connection
           write(Framing.encode(:close, Framing.close_payload(CLOSE_PROTOCOL_ERROR)))
           @ended = true
-          @io.close unless @io.closed?
+          SocketEnd.close(@io)
         end
 
         def collect(messages)

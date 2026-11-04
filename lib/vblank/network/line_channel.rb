@@ -71,9 +71,10 @@ module VBlank
         end
       end
 
+      # Ends the line without losing what was sent on it last (SocketEnd).
       def close
         @ended = true
-        @io.close unless @io.closed?
+        SocketEnd.close(@io)
       end
 
       private

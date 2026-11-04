@@ -67,7 +67,8 @@ module VBlank
           close_slow_greetings
           @peers.each { |peer| carry_to_relay(peer) }
           @peers.each { |peer| carry_from_relay(peer) }
-          @peers.reject! { |peer| peer.socket.ended? && peer.connection.closed? }
+          gone, @peers = @peers.partition { |peer| peer.socket.ended? && peer.connection.closed? }
+          gone.each { |peer| peer.socket.close } # the client has gone, so this end closes too
         end
         @greetings.each { |greeting| greeting.io.close }
         @peers.each { |peer| peer.socket.close }
