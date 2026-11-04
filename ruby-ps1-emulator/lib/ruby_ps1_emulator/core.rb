@@ -127,12 +127,22 @@ module RubyPS1Emulator
     # as the chip's own reading does.
     def colors
       state = gpu_state
-      x = state.fetch(:display_x)
-      y = state.fetch(:display_y)
-      words = vram.unpack("v*")
+      colors_at(state.fetch(:display_x), state.fetch(:display_y), width, height)
+    end
+
+    # The +width+ × +height+ pixels of video RAM whose top left is (+left+, +top+), row by row, each the
+    # 15 bits the chip shows (its top bit, the mask bit, dropped). Only those rows are read, in place: a
+    # row that runs past video RAM's right edge goes round to its left, and one past the bottom to the
+    # top, as the chip's own reading does.
+    def colors_at(left, top, width, height)
+      video = live(VIDEO_RAM, VRAM_WIDTH * VRAM_HEIGHT * 2)
+      left %= VRAM_WIDTH
+      before_edge = [width, VRAM_WIDTH - left].min
       Array.new(height) do |row|
-        line = ((y + row) % VRAM_HEIGHT) * VRAM_WIDTH
-        Array.new(width) { |column| words[line + ((x + column) % VRAM_WIDTH)] & 0x7FFF }
+        line = ((top + row) % VRAM_HEIGHT) * VRAM_WIDTH * 2
+        bytes = video[line + (left * 2), before_edge * 2]
+        bytes += video[line, (width - before_edge) * 2] if width > before_edge
+        bytes.unpack("v*").map { |color| color & 0x7FFF }
       end.flatten
     end
 

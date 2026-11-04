@@ -112,12 +112,34 @@ module VBlank
         FileUtils.mkdir_p(into)
         wanted = shown.to_set
         running = opener.call
+        first_size = nil
         (1..shown.max).each do |frame|
           running.step(1, keys: IR::Buttons.mask(@keys.call(frame)))
-          running.screenshot(picture_path(into, frame)) if wanted.include?(frame)
+          next unless wanted.include?(frame)
+
+          running.screenshot(picture_path(into, frame))
+          size = picture_size(picture_path(into, frame))
+          first_size ||= [frame, size]
+          refuse_size_change!(into, first_size, frame, size)
         end
       ensure
         running.close if running.respond_to?(:close)
+      end
+
+      # A PNG's width and height, from its header.
+      def picture_size(path) = File.binread(path, 8, 16).unpack("N2")
+
+      # A film's pictures of one side are one size. A program that sets its screen to another size as
+      # it plays (a PlayStation program can) cannot be filmed across the change.
+      def refuse_size_change!(into, first_size, frame, size)
+        first_frame, first = first_size
+        return if size == first
+
+        side = @sides.keys[File.basename(into).to_i]
+        raise ArgumentError, "The picture of the side \"#{side}\" is #{first.join('×')} on frame #{first_frame} and " \
+                             "#{size.join('×')} on frame #{frame}. The game changed the size of its screen, and a film " \
+                             "shows one size. To fix this, film the frames before the change and the frames after it " \
+                             "as two films."
       end
 
       def picture_path(dir, frame) = File.join(dir, format("%05d.png", frame))

@@ -133,13 +133,7 @@ module VBlank
 
           # The screen's page whose top line is +top+, read from video RAM: the picture's size from the
           # chip's display mode, at the left edge, the top bit of each pixel dropped as the chip shows it.
-          def read_page_colors(top)
-            vram = @core.vram
-            row_bytes = Console::PS1Hardware::VRAM_WIDTH * 2
-            Array.new(@core.height) do |row|
-              vram.byteslice((top + row) * row_bytes, @core.width * 2).unpack("v*").map { |color| color & 0x7FFF }
-            end.flatten
-          end
+          def read_page_colors(top) = @core.colors_at(0, top, @core.width, @core.height)
 
           # The picture's check, worked out once for a picture shown frame after frame.
           def picture_check_of(shown)

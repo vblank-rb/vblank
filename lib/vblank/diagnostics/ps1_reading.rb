@@ -6,9 +6,10 @@ module VBlank
     # keeping things answers — the same questions an Advance reader answers its own way (AdvanceReading).
     #
     # A PlayStation program plays in Beetle PSX (ruby-ps1-emulator), not in libmgba, and the one reader
-    # (Verifier) is written over libmgba's core, so it cannot play one yet: a PlayStation program is read
-    # back by the lowering's own run (IR::Backends::PS1::HeadlessRun), which plays it in Beetle PSX and
-    # compares it with the interpreter. Each question here says so.
+    # (Verifier) plays it there through PS1Probe: its picture, its memory by address, and buttons held,
+    # which is what a film asks. What the reader would need the build's record of the runtime for — the
+    # passes the game finished, whose each sprite is — it cannot answer yet; the lowering's own run
+    # (IR::Backends::PS1::HeadlessRun) reads those, and each question here says so.
     module PS1Reading
       # Lists of 256 colours, kept in video RAM (nothing is drawn with one yet).
       PALETTE = Verifier::PaletteLayout.new(half: 0, group: 256)
@@ -25,7 +26,7 @@ module VBlank
       def watch_passes! = nil
 
       def refuse_ps1_reader!(question)
-        raise ArgumentError, "A PlayStation program cannot be read back by the Verifier yet, so it cannot say " \
+        raise ArgumentError, "The Verifier cannot read this back from a PlayStation program yet, so it cannot say " \
                              "#{question}. Play it with VBlank::IR::Backends::PS1::HeadlessRun instead."
       end
     end

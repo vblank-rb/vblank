@@ -862,9 +862,7 @@ module VBlank
         @tempfile.flush
         write_save_memory if @save
         @probe = kit.open_probe(@tempfile.path, save_dir: @save_dir)
-        # The picture is the size the console draws, which the emulator knows from the cartridge.
-        @width = @probe.width
-        @height = @probe.height
+        read_picture_size
         @probe.clock_at(@clock, set: @clock_set) if @clock
         @rendered = true
         watch_passes! # the console's own; before any frame runs, or the first passes go uncounted
@@ -895,6 +893,16 @@ module VBlank
         # Kept so that it cannot be changed: it is handed out as `picture`, and the emulator's
         # own reader holds the same string.
         @pixels = @probe.frame_buffer.freeze
+        read_picture_size
+      end
+
+      # THE PICTURE IS THE SIZE THE CONSOLE DRAWS, which the emulator knows: from the cartridge on the
+      # Advance and the Color, and from the mode the program set its graphics chip to on the
+      # PlayStation, which the program chooses as it starts (and could change). So it is read again
+      # with each picture.
+      def read_picture_size
+        @width = @probe.width
+        @height = @probe.height
       end
 
       # +count+ frames as the steps they are played in, none longer than the sound kept in memory.

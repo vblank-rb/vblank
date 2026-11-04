@@ -10,6 +10,7 @@ class TestCore < Minitest::Test
   RED = 0x001F # 15 bits: red in the low five
   MARKER = 0x1234_5678
   MARKER_AT = 0x8010_0000
+  VRAM_WIDTH = RubyPS1Emulator::Core::VRAM_WIDTH
 
   # Resets the graphics chip, shows a 320 × 240 picture from the top left of video RAM, and fills it
   # red with GP0 02h (a fill: colour, top left, size), then stores a word and loops.
@@ -44,6 +45,16 @@ class TestCore < Minitest::Test
     played(red_screen, 120) do |core|
       assert_equal [320, 240], [core.width, core.height]
       assert_equal [RED], core.colors.uniq
+    end
+  end
+
+  # A part of video RAM read in place: the red the program filled, and what lies past it, which a
+  # read running past the right edge finds at the left.
+  def test_a_part_of_video_ram_is_read_where_it_is
+    played(red_screen, 120) do |core|
+      assert_equal [RED] * 6, core.colors_at(318, 0, 2, 3)
+      assert_equal [0] * 4, core.colors_at(320, 0, 4, 1), "nothing was drawn past the picture"
+      assert_equal [0, 0, RED, RED], core.colors_at(VRAM_WIDTH - 2, 0, 4, 1), "a row goes round to the left"
     end
   end
 

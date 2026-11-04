@@ -298,6 +298,7 @@ module VBlank
       def cartridge = Cartridge::PS1EXE
       def reading = Diagnostics::PS1Reading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_ps1(path, save_dir: save_dir)
+      def open_probe(path, save_dir:) = Diagnostics::PS1Probe.new(path, save_dir: save_dir)
       def save_file_extension = ".srm"
     end
 
