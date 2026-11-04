@@ -13,7 +13,7 @@
 
 const rg_driver *rg_active_driver;
 
-#define ONE_PLAYERS_BUTTONS 0xFFFu
+#define ONE_PLAYERS_BUTTONS 0x1FFFu /* thirteen, as IR::Buttons::NAMES has: the Genesis's C is the last */
 
 /* EACH PLAYER'S BUTTONS, a number each, the first player's first (IR::Buttons.masks), a bit a
  * button. The lists are as long as the most players any build reads; only the first +connected+

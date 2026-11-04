@@ -7,7 +7,7 @@
 # console: a console with fewer has a build that refuses the ones it lacks before there is a game
 # to play, so nothing here needs to know which console it is. Each connected player's buttons are
 # a number of their own, in a list, the first player's first (IR::Buttons.masks).
-RG_ONE_PLAYERS_BUTTONS = 0xFFF
+RG_ONE_PLAYERS_BUTTONS = 0x1FFF # thirteen, as IR::Buttons::NAMES has: the Genesis's C is the last
 RG_MAX_TIMERS = 32
 RG_SECONDS_A_DAY = 86400
 RG_UNDATED_FIRST_DAY = 10957 # 1 January 2000, in days from the start of 1970
