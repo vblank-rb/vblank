@@ -127,9 +127,25 @@ class TestSNESPooledWalkersCost < Minitest::Test
     rom.profile(out: StringIO.new, settle: 10, frames: 20).fewest_lines_spare
   end
 
-  # Of the frame's 262 lines, the walkers and the cells leave well over a third.
+  # Of the frame's 262 lines, the walkers and the cells leave close to half. A field read in the
+  # pool's own walk tests no index, and a sprite's numbers go to the routine placing it without the
+  # stack.
   def test_three_pooled_walkers_beside_tile_work_leave_room
-    assert_operator lines_spare(self.class.game(walkers: true)), :>=, 100
+    assert_operator lines_spare(self.class.game(walkers: true)), :>=, 122
+  end
+
+  # The walkers cost the frame less than a quarter of it, over the same game without them.
+  def test_three_pooled_walkers_cost_under_a_quarter_of_the_frame
+    without = lines_spare(self.class.game(walkers: false))
+    with = lines_spare(self.class.game(walkers: true))
+
+    assert_operator without - with, :<, 66
+  end
+
+  # The walk's field reads without the index test, and the sprites placed from the order the pool
+  # keeps, move and draw as the interpreter's do on every pass.
+  def test_the_walkers_are_the_interpreters_on_every_pass
+    game_player.run(self.class.game(walkers: true).program(console: :snes), frames: 40)
   end
 
   # The console's sprite table has 128 rows. Putting them all away every pass, for one sprite

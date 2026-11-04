@@ -3,7 +3,8 @@
 require "test_helper"
 
 # THE WAYS A SUPER NINTENDO CARTRIDGE WORKS A SUM OUT IN PLACE when one of its numbers is written in
-# the program — a product by a written number (Lowering#emit_product_by_written_number), a shift
+# the program — a product by a written number (Lowering#emit_product_by_written_number) or by a
+# comparison (#emit_product_by_comparison), a shift
 # right read from where the number is kept (#emit_shift_right_from_place), two shifts right taken as
 # one, a byte or half slot of a list said equal to a written number (#compare_narrow_slot), a repeat
 # of a written count, and how many a list holds — give what the interpreter gives for every number,
@@ -61,6 +62,11 @@ class TestSNESWrittenNumberPaths < Minitest::Test
           :"truth#{i}_#{j}"
         end
       end
+      TestSNESWrittenNumberPaths::COMPARED.each_index do |j|
+        var :"gated#{j}", 0
+        var :"gated_left#{j}", 0
+        var :"gated_slot#{j}", 0
+      end
       game_loop do
         n.store!(edges[at])
         TestSNESWrittenNumberPaths::FACTORS.each_with_index { |factor, i| products[i].store!(n * factor) }
@@ -89,6 +95,14 @@ class TestSNESWrittenNumberPaths < Minitest::Test
           compared = ir.binop(comparison, ir.var_ref(:n), ir.int(bound))
           record(ir.set(truth, ir.int(0)))
           record(ir.if_(ir.binop(op, compared, ir.int(said)), ir.set(truth, ir.int(1))))
+        end
+        # A product by a comparison (Lowering#emit_product_by_comparison), the comparison on
+        # either side; and one by a list's item, which could stop the game and so is multiplied.
+        TestSNESWrittenNumberPaths::COMPARED.each_with_index do |(comparison, bound), j|
+          compared = -> { ir.binop(comparison, ir.var_ref(:n), ir.int(bound)) }
+          record(ir.set(:"gated#{j}", ir.binop(:*, ir.var_ref(:n), compared.call)))
+          record(ir.set(:"gated_left#{j}", ir.binop(:*, compared.call, ir.binop(:+, ir.var_ref(:n), ir.int(7)))))
+          record(ir.set(:"gated_slot#{j}", ir.binop(:*, compared.call, ir.list_get(:words, ir.int(1)))))
         end
         at.increase!(1)
       end

@@ -777,6 +777,26 @@ module VBlank
         %i[at ahead last].map { |part| part_name("walk#{@walks}_#{part}") }
       end
 
+      # THE VARIABLES A POOL'S OWN WALKS HOLD A SLOT IN: the slot a walk is on (#walk_vars), the
+      # one a routine of the pool runs for (#record_current_slot), and the one the copy for its
+      # sprites is on (#stacking_nodes). Each is written only from the pool's chain once the walk
+      # has seen that it holds a slot and not NONE, or put back from a copy of itself, and starts
+      # at nought. So whenever one is read it is a slot below the pool's capacity, and a lowering
+      # can read the pool's own lists there without testing the index first.
+      SLOT_PARTS = /\A(?:current|stacking_at|walk\d+_at)\z/
+
+      # The name of the pool whose slot +var+ always holds (see SLOT_PARTS), or nil.
+      def self.walked_by(var)
+        kind, parts = Messages::MadeNames.read(var)
+        parts[:pool] if kind == :pool_part && SLOT_PARTS.match?(parts[:part])
+      end
+
+      # The name of the pool +list+ belongs to, a field's list or one of the pool's own, or nil.
+      def self.owner_of_list(list)
+        kind, parts = Messages::MadeNames.read(list)
+        parts[:pool] if %i[pool_field pool_part].include?(kind)
+      end
+
       # WHICH INSTANCE A ROUTINE OF THIS POOL IS RUNNING FOR, written at the top of every live
       # pass of a walk. A routine is built once and called from wherever, so the one thing it
       # cannot be handed in its own code is which instance — this variable is how the walk tells

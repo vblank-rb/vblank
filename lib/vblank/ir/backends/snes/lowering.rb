@@ -853,7 +853,7 @@ module VBlank
             return list_call("rt_list_get", node, node.index) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
-            emit_slot_into_x(place, width, index_halves(node.index))
+            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_pool_list?(node.name, node.index))
             emit_read_slot_at_x(place + Runtime::Lists::HEADER, width)
           end
 
@@ -866,17 +866,18 @@ module VBlank
             place, _capacity, width = list_placed(node)
             halves = operand_halves(node.value)
             index = operand_halves(node.index)
+            checked = !index_inside_pool_list?(node.name, node.index)
             if halves
-              emit_slot_into_x(place, width, index_halves(node.index))
+              emit_slot_into_x(place, width, index_halves(node.index), checked: checked)
             elsif index
               value(node.value)
-              emit_slot_into_x(place, width, index)
+              emit_slot_into_x(place, width, index, checked: checked)
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             else
               push_value(node.index)
               value(node.value)
               pull_into(R1)
-              emit_slot_into_x(place, width, [@asm.direct(R1), @asm.direct(R1 + 2)])
+              emit_slot_into_x(place, width, [@asm.direct(R1), @asm.direct(R1 + 2)], checked: checked)
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             end
             emit_write_slot_at_x(place + Runtime::Lists::HEADER, width, halves)
@@ -900,10 +901,50 @@ module VBlank
             @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
           end
 
+          # A POOL KNOWS ITS SLOTS ARE IN ITS LISTS. A field of the thing a walk is on, read or
+          # written in `pool.each` or in a routine of the pool, is a list of the pool's own at a
+          # variable the pool keeps a slot in (DSL::Pool::SLOT_PARTS); a pool's sprite reads its
+          # place in the order, a number written in the program below the pool's capacity. Each
+          # list of a pool's own is made full when the game starts, its capacity the pool's. So
+          # the test that the index is inside the list, five instructions on every field, can
+          # never fail there and is left out. Every other list read or write keeps it: a list that
+          # is not a pool's, one ever made longer or shorter, or another pool's slot.
+          def index_inside_pool_list?(list, index)
+            capacity = full_length_lists[list]
+            pool = DSL::Pool.owner_of_list(list)
+            return false unless capacity && pool
+
+            number = folded(index)
+            return number.between?(0, capacity - 1) if number
+
+            var = variable_named(index)
+            !var.nil? && DSL::Pool.walked_by(var) == pool
+          end
+
+          # The lists made full of one number and never made longer or shorter after, so each holds
+          # its capacity for good, by name, with that capacity (the least, if made twice).
+          def full_length_lists
+            @full_length_lists ||= begin
+              resized = @reachable.filter_map do |node|
+                node.name if %i[list_push list_drop list_fill list_copy].include?(node.kind) ||
+                             (node.kind == :list_new && !node.full_of)
+              end
+              made = @reachable.select { |node| node.kind == :list_new && node.full_of && !resized.include?(node.name) }
+              made.group_by(&:name).transform_values { |nodes| nodes.map(&:capacity).min }
+            end
+          end
+
           # X at how far into its slots the item the number in +index+ (its two halves) names is. An
           # index outside the list is handed to the runtime, in R0 or R1, which stops the game in the
-          # interpreter's words and never returns.
-          def emit_slot_into_x(place, width, index)
+          # interpreter's words and never returns. Without +checked+, the index is known to be inside
+          # (#index_inside_pool_list?).
+          def emit_slot_into_x(place, width, index, checked: true)
+            unless checked
+              @asm.lda(index[0])
+              (width - 1).bit_length.times { @asm.asl }
+              return @asm.tax
+            end
+
             inside = fresh("inside_the_list")
             out = fresh("outside_the_list")
             @asm.lda(index[1])
@@ -1330,7 +1371,7 @@ module VBlank
 
           def compare_narrow_slot(op, slot, number)
             place, _capacity, width = list_placed(slot)
-            emit_slot_into_x(place, width, index_halves(slot.index))
+            emit_slot_into_x(place, width, index_halves(slot.index), checked: !index_inside_pool_list?(slot.name, slot.index))
             @asm.lda(@asm.long_x(place + Runtime::Lists::HEADER))
             @asm.and_a(0x00FF) if width == 1
             @asm.cmp(number & (width == 1 ? 0xFF : 0xFFFF))
@@ -1369,6 +1410,7 @@ module VBlank
             return value_of_comparison(node) if COMPARISONS.include?(node.op)
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
             return if node.op == :* && emit_product_by_written_number(node)
+            return if node.op == :* && emit_product_by_comparison(node)
             return if node.op == :% && emit_remainder_by_power_of_two(node)
             return if node.op == :/ && emit_quotient_by_power_of_two(node)
             return if SHIFTS_IN_PLACE.key?(node.op) && emit_shift_by_written_count(node)
@@ -1818,6 +1860,32 @@ module VBlank
             false
           end
 
+          # A PRODUCT BY A COMPARISON is the other number while the comparison holds and nought while
+          # it does not, since a comparison is 1 or 0. That is how a sprite declared in a scene, or
+          # under an `if`, is shown only while its scene is up or its test holds: its shown flag
+          # times `state == 3`, worked out for every such sprite in every pass. So the comparison
+          # jumps on its own flags to making R0 nought when it does not hold, and to the other number
+          # when it does, and rt_mul32 is not called. The interpreter works the other number out either way, so it is
+          # skipped only where working it out changes nothing (Unchanging). True when it was done so.
+          def emit_product_by_comparison(node)
+            [[node.lhs, node.rhs], [node.rhs, node.lhs]].each do |test, other|
+              next unless test.is_a?(Node) && test.kind == :binop && COMPARISONS.include?(test.op)
+              next unless other.is_a?(Symbol) || (other.is_a?(Node) && Unchanging.value?(other) { |part| folded(part) })
+
+              nought = fresh("product_nought")
+              done = fresh("product_done")
+              jump_unless(test, nought)
+              value(other)
+              @asm.bra(done)
+              @asm.label(nought)
+              @asm.stz(@asm.direct(R0))
+              @asm.stz(@asm.direct(R0 + 2))
+              @asm.label(done)
+              return true
+            end
+            false
+          end
+
           # R0 times +number+, a byte, by the console's multiplier: it takes a byte in WRMPYA and a
           # byte in WRMPYB, and eight cycles after WRMPYB is written the 16-bit product is at RDMPYL.
           # WRMPYA keeps its byte, so it is written once, and each of R0's four bytes is multiplied in
@@ -1932,7 +2000,7 @@ module VBlank
             place, _capacity, width = list_placed(node)
             return unless width == 4
 
-            emit_slot_into_x(place, width, index_halves(node.index))
+            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_pool_list?(node.name, node.index))
             ->(along) { @asm.long_x(place + Runtime::Lists::HEADER + along) }
           end
 
@@ -2028,10 +2096,29 @@ module VBlank
           # A runtime routine taking +args+ in R0, R1, R2... Each that needs working out is worked out
           # in order and pushed, then they are pulled into their working numbers, the last first; then
           # the ones that are only a number or a variable are put in theirs.
+          #
+          # WHEN EACH IS ONLY READ INTO R0 — a list's item at an index already somewhere, or where a
+          # label is — none of them can touch another's working number, so each is read and moved
+          # straight into its own: four instructions, where the stack took two pushes and two pulls
+          # with a store after each. A pool's sprite is placed every pass with three such reads.
+          # They are still read in order, so the one a game stops at is the interpreter's; a label's
+          # place, which can never stop the game, is the one left to the end when it goes in R0.
           def runtime_call(name, args)
             worked = args.each_index.reject { |i| operand_halves(args[i]) }
-            worked.each { |i| push_value(args[i]) }
-            worked.reverse_each { |i| pull_into(Memory.register(i)) }
+            if (order = order_read_alone(args, worked))
+              order.each do |i|
+                value(args[i])
+                next if i.zero?
+
+                2.times do |half|
+                  @asm.lda(@asm.direct(R0 + (2 * half)))
+                  @asm.sta(@asm.direct(Memory.register(i) + (2 * half)))
+                end
+              end
+            else
+              worked.each { |i| push_value(args[i]) }
+              worked.reverse_each { |i| pull_into(Memory.register(i)) }
+            end
             args.each_with_index do |arg, i|
               next if worked.include?(i)
 
@@ -2046,6 +2133,28 @@ module VBlank
               end
             end
             call_routine(name)
+          end
+
+          # The order to read +worked+ (indexes into +args+) in when each is only read into R0
+          # (#runtime_call), R0's own last; or nil when one is not, or when R0's own could stop
+          # the game and so cannot be moved behind the others. One alone can be anything: nothing
+          # else worked out is waiting in a working number for it to overwrite.
+          def order_read_alone(args, worked)
+            return worked if worked.size == 1
+            return unless worked.size > 1 && worked.all? { |i| read_alone_into_r0?(args[i]) }
+            return worked unless worked.first.zero?
+            return unless args[0].is_a?(LongAddress)
+
+            worked.drop(1) + [0]
+          end
+
+          # Whether working +node+ out writes no working number but R0: where a label is, or an
+          # item of a list nothing takes from the front, at an index that is a variable or a number.
+          def read_alone_into_r0?(node)
+            return true if node.is_a?(LongAddress)
+
+            node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name) &&
+              !operand_halves(node.index).nil?
           end
         end
       end
