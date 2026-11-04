@@ -41,7 +41,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 - `pixelate 8`; over time `pixelate_out` / `pixelate_in`; `pixelate_size`.
 - `spotlight at:, radius:, dark:` → a light (tiled, one per game); `iris_out` / `iris_in` / `iris_shut?`.
 - `pulse sprite, to: 1.3`; `shake_screen intensity:, frames:`.
-- `keep_showing :name do … end` — a picture painted only when it changes, right on a two-page screen.
+- `keep_showing :name do … end` — paint only on a change, right on a two-page screen.
 - `grid :name, cols:, rows:, cell:, over:` → `Grid`.
 
 ## Images & sprites — `.claude/dsl/sprites.md`
@@ -110,7 +110,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Input — `.claude/dsl/input.md`
 
 - `held(:left)`, `pressed(:start)` (`:any`); low-level `if_held`, `if_pressed`. Buttons `a b select start right left up down r l`, and `x y` on the Super Nintendo.
-- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `most_players` → most this build seats; `drawing_for_local_player { |me| … }` → draw what only this player sees; `players_connected` → how many are connected now.
+- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `most_players` → most this build seats; `drawing_for_local_player { |me| … }` → draw what only this player sees; `players_connected` → how many are connected now. `vblank run --host` / `--join ADDRESS`: a match.
 - `rumble frames: 12, pattern: "##..##.."` — shake the hands, on a cartridge with a motor (the Color's).
 
 ## Menus — `.claude/dsl/menus.md`
@@ -169,7 +169,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Effects a game writes — `.claude/dsl/effects.md`
 
-- `uses MyPack` — a module of verbs written in the game's own verbs.
+- `uses MyPack` — a module of the game's own verbs.
 
 ## Escape hatch — `.claude/dsl/escape-hatch.md`
 

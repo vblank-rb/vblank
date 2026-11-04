@@ -17,6 +17,9 @@ module VBlank
     # times sound arrived after the speaker had run out (a gap a person would hear), and
     # #most_waiting the most there ever was waiting. Without one, #sound_waiting is nil.
     #
+    # +buttons+ is a Hash from a picture's number to the buttons held on it, or a list of buttons held on every
+    # picture. +on_notice+ is called with each line the match says (#notice).
+    #
     # +pauses+ maps a picture's number to the seconds the player pauses for after it is shown, and
     # +fast_forward+ holds the numbers of the passes (1, 2, 3, …) fast forward is held through, at
     # +fast_forward_speed+.
@@ -25,12 +28,13 @@ module VBlank
 
       # +sounds+ is each frame's samples, in the order they were handed over, and +sound_rate+ the
       # samples a second they were made at.
-      attr_reader :pictures, :sounds, :sound_rate, :now, :gaps, :most_waiting
+      attr_reader :pictures, :sounds, :sound_rate, :now, :gaps, :most_waiting, :notices
 
       def initialize(frames:, buttons: {}, pass_seconds: 0, speaker: false, pauses: {}, fast_forward: [],
-                     fast_forward_speed: 4)
+                     fast_forward_speed: 4, on_notice: nil)
         @frames = frames
         @buttons = buttons
+        @on_notice = on_notice
         @pauses = pauses
         @fast_forward = fast_forward
         @fast_forward_speed = fast_forward_speed
@@ -38,6 +42,7 @@ module VBlank
         @pass_seconds = pass_seconds.respond_to?(:call) ? pass_seconds : ->(_pass) { pass_seconds }
         @speaker = speaker
         @pictures = []
+        @notices = []
         @sounds = []
         @sound_rate = nil # until the first frame's sound says it
         @now = 0r
@@ -71,7 +76,13 @@ module VBlank
         @speaker_done_at ? [@speaker_done_at - @now, 0r].max : 0r
       end
 
-      def held_buttons(frame) = @buttons.fetch(frame, [])
+      def held_buttons(frame) = @buttons.is_a?(Hash) ? @buttons.fetch(frame, []) : @buttons
+
+      # A line about the match, kept in the order it came.
+      def notice(words)
+        @notices << words
+        @on_notice&.call(words)
+      end
 
       def stop? = @pictures.size >= @frames
 

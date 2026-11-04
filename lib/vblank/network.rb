@@ -19,3 +19,6 @@ require_relative "network/simulated_network" # a network in this process, for a 
 require_relative "network/relay_transport" # a room on a relay, as a lockstep's transport
 require_relative "network/stand_in_relay" # a relay in Ruby, for the tests
 require_relative "network/in_process_line" # ...and a link to it that lives in this process
+require_relative "network/line_channel" # text a line at a time over a socket, which is how machines reach each other
+require_relative "network/direct_room" # the host of a direct connection, which is a relay for the machines that connect
+require_relative "network/direct_play" # ...and what `vblank run --host` and `--join` do with them

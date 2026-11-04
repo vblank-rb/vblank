@@ -231,6 +231,23 @@ class TestLockstep < Minitest::Test
     assert_same_pictures([host, friend])
   end
 
+  # The room is the relay's, and a machine that has joined it hears every message of the room, the
+  # match's start too, though the host has not let it in.
+  def test_a_machine_that_asks_to_join_after_the_match_has_started_is_refused_and_does_not_play
+    net = Network::SimulatedNetwork.new
+    host = copy_for(net, players: 2)
+    friend = copy_for(net)
+    late = copy_for(net)
+
+    outcomes = play(net, [host, friend, late])
+
+    assert_nil outcomes[0].error
+    assert_nil outcomes[1].error
+    assert_includes %i[started full], outcomes[2].error.reason
+    assert_empty late.device.pictures
+    assert_same_pictures([host, friend])
+  end
+
   def test_a_copy_built_for_another_console_is_refused_and_told_which
     net = Network::SimulatedNetwork.new
     host = copy_for(net, players: 2)
@@ -255,6 +272,7 @@ class TestLockstep < Minitest::Test
     assert_equal 1, left.first.size
     assert_equal left.first, left.last
     assert_equal 3, left.first.first.player
+    copies.first(2).each { |copy| assert_equal ["Player 3 left the match."], copy.device.notices }
     assert_same_pictures(copies.first(2))
     assert_equal PASSES, copies.first.device.pictures.size
   end

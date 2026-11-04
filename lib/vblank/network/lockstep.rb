@@ -53,7 +53,15 @@ module VBlank
       # Something that happened to the match, on a pass: +kind+ is :left, a player who was in the
       # match and has gone, or :refused, a machine the host did not let in. +pass+ is the first pass
       # the event is seen on, which is the same pass on every machine.
-      Event = Data.define(:pass, :kind, :player)
+      Event = Data.define(:pass, :kind, :player) do
+        # The event as a line for a person to read, on the screen.
+        def words
+          case kind
+          when :left then "Player #{player} left the match."
+          when :refused then "A machine tried to join, and the host did not let it in."
+          end
+        end
+      end
 
       attr_reader :player, :settings, :events
 
@@ -89,10 +97,14 @@ module VBlank
       def host? = @player == HOST_PLAYER
 
       # The handshake. Returns when the match has started, with the settings every machine now shares;
-      # raises Refused on a machine the host would not let in.
+      # raises Refused on a machine the host would not let in. Asking again does nothing, so a window can
+      # wait for the players before it opens and the session can ask as it starts.
       def begin_match
+        return self if @begun
+
         host? ? gather_players : ask_to_join
         prepare_passes
+        @begun = true
         self
       end
 
@@ -195,8 +207,7 @@ module VBlank
         message = envelope.message
         case message
         when Join then admit_or_refuse(envelope.from, message) if host?
-        when Welcome then @settings = Settings.new(seed: message.seed, input_delay: message.input_delay,
-                                                   checkpoint_every: message.checkpoint_every, players: message.players)
+        when Welcome then adopt_settings(message) if message.to == @player
         when Refuse then @refusal = message if message.to == @player
         when Joined then @roster |= [message.player]
         when Start then start_with(message.players)
@@ -206,7 +217,17 @@ module VBlank
         end
       end
 
+      def adopt_settings(welcome)
+        @settings = Settings.new(seed: welcome.seed, input_delay: welcome.input_delay,
+                                 checkpoint_every: welcome.checkpoint_every, players: welcome.players)
+      end
+
+      # The match begins for the players in +players+. A machine that is in the room and not among them
+      # (it asked to join too late, and the host has not yet told it so) does not begin: the host's
+      # refusal is on its way, and is what ends its wait.
       def start_with(players)
+        return unless players.include?(@player)
+
         @roster = players.dup
         @started = true
       end

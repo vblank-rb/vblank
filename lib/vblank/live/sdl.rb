@@ -284,6 +284,10 @@ module VBlank
         @sdl.SDL_GetAudioStreamQueued(@speaker) / MOMENT_BYTES / @speaker_rate.to_f
       end
 
+      # A line about the match (a player left) goes in the window's title, after the game's own, where it is
+      # seen without anything drawn over the picture.
+      def notice(words) = @sdl.SDL_SetWindowTitle(@window, "#{@title} - #{words}")
+
       # The window was closed, or Escape is down, as SDL last heard it (#show reads what SDL has
       # heard, and Session shows each picture before it asks).
       def stop? = @closed || @sdl.SDL_GetKeyboardState(nil)[ESCAPE] != 0
@@ -396,6 +400,7 @@ module VBlank
           extern "const char* SDL_GetError()"
           extern "void* SDL_CreateWindow(const char*, int, int, unsigned long long)"
           extern "void SDL_DestroyWindow(void*)"
+          extern "char SDL_SetWindowTitle(void*, const char*)"
           extern "char SDL_SetWindowSize(void*, int, int)"
           extern "char SDL_GetWindowSize(void*, void*, void*)"
           extern "char SDL_SetWindowFullscreen(void*, char)"

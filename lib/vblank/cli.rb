@@ -161,7 +161,7 @@ module VBlank
         switch, value = word.split("=", 2)
         switch = switch.tr("_", "-")
         option = options[switch] or refuse_unknown_option!(args, word, switch, options.keys)
-        if value || option.boolean? || option.type == :array
+        if value || option.boolean? || option.type == :array || option.lazy_default
           checked << word
           next
         end
@@ -646,6 +646,7 @@ module VBlank
     help_page "run", <<~TEXT
       Usage: vblank run GAME_FILE [options]
              vblank run GAME_FILE --tape PATH | --script PATH [options]
+             vblank run GAME_FILE --host [PORT] | --join ADDRESS [options]
 
       Build the game in GAME_FILE as Ruby, and play it on this computer. Ruby
       runs the game, with YJIT, the part of Ruby that makes it run faster.
@@ -663,6 +664,16 @@ module VBlank
 
       The command does not play a cartridge. To play a tape on a console, write
       it for an emulator with --write-mgba-script or --write-bk2.
+
+      With --host or --join, you play a match with other people, each on their own
+      computer. Every computer runs the whole game, and they send each other only
+      what each player presses. One computer hosts: it waits for the players, and
+      prints the addresses that the others can join. The others join one of them.
+      All the computers must run the same game file, built for the same console,
+      so that the game is the same on every computer. The match sends buttons for
+      each pass of the game, not pictures, so it needs little from the network. If
+      one computer is slow, every computer waits for it, and the game does not
+      change. A game with no `players:` for a computer cannot be hosted.
 
       With --browser, serve the game as a web page instead, and print its address.
       Open it in a browser to play. Change the game file and reload the page: the
@@ -723,6 +734,9 @@ module VBlank
                                                  a tape, as fast as it can go
         vblank run game.rb --script walk.rb --on native
                                                  the game built as C
+        vblank run game.rb --host                host a match of two players
+        vblank run game.rb --join 192.168.1.5:7777
+                                                 join the match at that address
 
       A script is a Ruby file that says what to press:
 
@@ -787,6 +801,25 @@ module VBlank
                                  run the game. Default: ruby.
         #{SET}
 
+      In a match with other computers:
+        --host [PORT]            Host a match, and listen on PORT. Default: 7777.
+                                 0 lets this computer choose. The command
+                                 prints the addresses that the others can join.
+        --join ADDRESS           Join the match at ADDRESS, written HOST:PORT.
+                                 Without :PORT, the port is 7777.
+        --players N              With --host, how many players the match has,
+                                 you included. The match starts when they have
+                                 all joined. Default: 2.
+        --input-delay PASSES     With --host, how many passes a press waits
+                                 before the game uses it, the same on every
+                                 computer. A higher number hides a slower network
+                                 and makes the buttons feel later. Default: 2.
+        --no-window              In a match, play with no window. Needs
+                                 --pictures. This computer's player holds the
+                                 buttons that --keys names, and nothing else.
+        --keys BUTTON ...        With --no-window in a match, the buttons to hold
+                                 for the whole play.
+
       With nobody at the controls:
         #{PRESSES.gsub("\n", "\n  ")}
         --window, --no-window    Show the play in a window, or not. Default: a
@@ -842,9 +875,15 @@ module VBlank
     option :write_tape, banner: "PATH"
     option :write_mgba_script, banner: "PATH"
     option :write_bk2, banner: "PATH"
+    option :keys, type: :array, banner: "BUTTON", default: []
+    option :host, banner: "PORT", lazy_default: VBlank::Network::DirectPlay::DEFAULT_PORT.to_s
+    option :join, banner: "ADDRESS"
+    option :players, type: :numeric, banner: "N"
+    option :input_delay, type: :numeric, banner: "PASSES"
     option :set, type: :array, banner: "NAME=VALUE", default: []
     def run_game(game_file)
       refuse_mismatched_play_options!
+      refuse_mismatched_match_options!
       return serve_in_browser(game_file) if options[:browser]
 
       refuse_cartridge_file!(game_file)
@@ -861,7 +900,8 @@ module VBlank
       game = load_game(game_file)
       program = program_to_run(game)
       require_relative "live"
-      rate = play_in_window(game, program, live_session(game, program))
+      network = network_to_play(game_file, game, program)
+      rate = play_in_window(game, program, live_session(game, program, network), network)
       # The game moves on one frame for each picture, so the pictures a second are its speed. A
       # game that stopped itself before its first picture has no speed to say.
       if rate.passes.positive?
@@ -987,8 +1027,8 @@ module VBlank
 
     # The game built as Ruby, ready to play: a game that needs something the Ruby runtime cannot do
     # yet is refused here, before a window opens.
-    def live_session(game, program)
-      VBlank::Live::Session.new(program, uncapped: options[:uncapped], stop_after_passes: options[:pictures])
+    def live_session(game, program, network = nil)
+      VBlank::Live::Session.new(program, uncapped: options[:uncapped], stop_after_passes: options[:pictures], network: network)
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game.title} in a window yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Build a cartridge, or use vblank preview."
@@ -1030,7 +1070,7 @@ module VBlank
         raise Thor::Error, "#{word} goes with --tape or --script, which hold the buttons. With neither, a person " \
                            "plays. Add --tape or --script, or remove #{word}."
       end
-      if options[:window] == false
+      if options[:window] == false && !(options[:host] || options[:join])
         raise Thor::Error, "With no --tape and no --script, a person plays the game, and a person needs a window. " \
                            "Remove --no-window, or give --tape or --script."
       end
@@ -1157,7 +1197,9 @@ module VBlank
     # +session+ played in a window until the player stops it, or --pictures are shown; the window
     # is closed however the play ends. Something the game does that its rules refuse (a push onto a
     # full list) is said in words.
-    def play_in_window(game, program, session)
+    def play_in_window(game, program, session, network = nil)
+      return play_match_without_window(session, network) if network && options[:window] == false
+
       console = program.described_console
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
                                      height: console.screen_height, menu: game.menu?,
@@ -1167,12 +1209,101 @@ module VBlank
       say "Playing #{game.title} for the #{console.title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
           "#{'Press F1 or ` for the menu. ' if game.menu?}Press P to pause. Hold Tab to play fast. Press Escape to stop."
       recording = VBlank::Live::Recording.new(window, frame_seconds: console.frame_seconds) if options[:record_sound]
-      session.play(recording || window)
+      session.play(recording || window).tap { say_match_summary(network) if network }
     rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
+      raise Thor::Error, e.message
+    rescue *MATCH_FAILURES => e
       raise Thor::Error, e.message
     ensure
       window&.close
       write_recorded_sound(recording) if recording # a play that went wrong is the one most worth hearing
+    end
+
+    # What stops a match, each already in plain words.
+    MATCH_FAILURES = [VBlank::Network::Refused, VBlank::Network::Desync, VBlank::Network::ConnectionLost,
+                      VBlank::Network::ConnectionFailed].freeze
+
+    # The match this command is to play (--host or --join), not yet begun: the host has opened its port and
+    # said where it can be found, or the joining computer has connected. Nil when it is not a match.
+    def network_to_play(game_file, game, program)
+      return nil unless options[:host] || options[:join]
+
+      print = VBlank::Network::Fingerprint.of(program, title: game.title)
+      lockstep = options[:host] ? open_match_as_host(game_file, program, print) : connect_to_match_host(print)
+      say "Waiting for the other players. Press Ctrl-C to give up." if options[:host]
+      lockstep.begin_match
+      say "The match has begun. You are player #{lockstep.player}."
+      lockstep
+    rescue ArgumentError, *MATCH_FAILURES => e
+      raise Thor::Error, e.message
+    rescue Interrupt
+      raise Thor::Error, "You stopped the wait, so no match was played."
+    end
+
+    def open_match_as_host(game_file, program, print)
+      players = options[:players] || 2
+      most = program.most_players
+      if most && players > most
+        raise Thor::Error, "--players #{players} is more than this game takes. The game takes at most #{most}. " \
+                           "To fix this, give --players #{most} or fewer."
+      end
+      lockstep, port = VBlank::Network::DirectPlay.host(port: Integer(options[:host], 10), players: players,
+                                                        input_delay: options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES,
+                                                        fingerprint: print)
+      say "Hosting a match for #{players} players on port #{port}. The others can join with one of:"
+      VBlank::Network::DirectPlay.addresses_for(port).each { |address| say "  vblank run #{game_file} --join #{address}" }
+      lockstep
+    end
+
+    def connect_to_match_host(print)
+      address = VBlank::Network::DirectPlay::Address.parse(options[:join])
+      say "Joining the match at #{address}."
+      VBlank::Network::DirectPlay.join(address, fingerprint: print)
+    end
+
+    def refuse_mismatched_match_options!
+      hosting_or_joining = options[:host] || options[:join]
+      raise Thor::Error, "--host and --join do not go together. A computer hosts a match or joins one. Take one out." if options[:host] && options[:join]
+      unless options[:host]
+        word = { players: "--players", input_delay: "--input-delay" }.find { |name, _word| options[name] }&.last
+        raise Thor::Error, "#{word} is for the computer that hosts. Add --host, or take #{word} out." if word
+      end
+      unless hosting_or_joining
+        raise Thor::Error, "--keys is for a match with no window. Add --host or --join, or take --keys out." if options[:keys]&.any?
+
+        return
+      end
+      word = %i[tape script on].find { |name| options[name] }
+      raise Thor::Error, "--#{word} does nothing in a match: a person plays. Take --#{word} out." if word
+      refuse_unusable_match_address!
+      return unless options[:window] == false && !options[:pictures]
+
+      raise Thor::Error, "--no-window in a match needs --pictures, how many pictures to play. Add --pictures N."
+    end
+
+    # A port to host on, or an address to join, that cannot be used, said before the game is built.
+    def refuse_unusable_match_address!
+      if options[:host] && !options[:host].match?(/\A\d+\z/) || options[:host].to_i > 65_535
+        raise Thor::Error, "#{options[:host].inspect} is not a port. A port is a number from 0 to 65535, for example --host 7777."
+      end
+      VBlank::Network::DirectPlay::Address.parse(options[:join]) if options[:join]
+    rescue ArgumentError => e
+      raise Thor::Error, e.message
+    end
+
+    # The match played with no window: this computer's player holds what --keys says, and every notice
+    # about the match is said as it comes.
+    def play_match_without_window(session, network)
+      keys = options[:keys].map(&:to_sym)
+      device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words })
+      session.play(device).tap { say_match_summary(network) }
+    rescue *MATCH_FAILURES => e
+      raise Thor::Error, e.message
+    end
+
+    def say_match_summary(network)
+      network.events.each { |event| say event.words } if options[:window] != false
+      say "The match is over. The computers agreed on every checkpoint."
     end
 
     def write_recorded_sound(recording)

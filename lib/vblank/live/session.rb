@@ -25,6 +25,8 @@ module VBlank
     #                                the player paused; otherwise returns true once they carry on or
     #                                stop, with what was waiting for the speaker thrown away
     #   stop?                        asked once a pass, after the pause
+    #   notice(words)                a line for the person about the match (a player left), said
+    #                                where the device can, in a match over a network only
     #   now                          the time, in seconds, from any start that does not move back
     #   wait_until(seconds)          returns at that time, or at once if it has gone; the next pass starts then
     #
@@ -64,6 +66,7 @@ module VBlank
         @stop_after_passes = stop_after_passes
         @frame_seconds = @game.frame_seconds
         @pass_buttons = IR::Buttons::PassButtons.new # each connected player's buttons, a pass at a time
+        @events_announced = 0 # how many of the match's events the device has been told
       end
 
       # Plays once, on +device+, until it says stop or the game ends, and gives back how fast it
@@ -122,10 +125,20 @@ module VBlank
         held = @device.held_buttons(@passes)
         return @pass_buttons.masks(held) unless @network
 
-        @network.exchange(pass: @passes, local_mask: IR::Buttons.player_mask(Array(held), 1), game: @game)
+        masks = @network.exchange(pass: @passes, local_mask: IR::Buttons.player_mask(Array(held), 1), game: @game)
+        announce_new_events
+        masks
       end
 
       private
+
+      # What happened in the match since the device was last told (a player left), said in a line a
+      # person reads: the device shows it where it can (the window's title), and keeps it where it cannot.
+      def announce_new_events
+        events = @network.events
+        events.drop(@events_announced).each { |event| @device.notice(event.words) }
+        @events_announced = events.length
+      end
 
       # A GAME THAT STOPPED ITSELF — it halted, or came to its end — leaves its last picture on the
       # screen, as the console does: the picture is shown a frame at a time, the window still read
