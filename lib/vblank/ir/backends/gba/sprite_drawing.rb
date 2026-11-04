@@ -99,6 +99,10 @@ module VBlank
           # these tiles.
           def emit_boot_objects
             clear_object_table
+            @layout.border&.emit_put_up # the border round a smaller screen, in the table's first rows
+            # A game in a border with no sprites of its own has nothing more to send.
+            return if @layout.screen.obj_palette_blob.nil?
+
             # The table has just been wiped, so the sprites nobody moves are gone from it too
             # and have to be written again. This runs on a change of screen as well as at
             # boot, which is the case that would otherwise leave a title screen blank.
@@ -495,8 +499,14 @@ module VBlank
 
           # The bigger table for +rows+ rows, or nil when they fit in the console's own. +alloc+
           # claims roomy memory, given how much and what for.
-          def self.plan_held_table(rows, alloc:)
-            return nil if rows <= MAX_SPRITES
+          #
+          # +moved+ says every sprite stands somewhere else on the console's screen than the game put
+          # it, a smaller screen shown in the middle of this one (BorderSprites): then every game has
+          # the copy, however few rows it needs, since copying is where each place is moved, and
+          # the console's table is written by nothing else.
+          def self.plan_held_table(rows, alloc:, moved: false)
+            return nil if rows.zero?
+            return nil if rows <= MAX_SPRITES && !moved
 
             HeldTable.new(rows: rows, copy: alloc.call(rows * 8, "where more sprites than the console draws are kept"),
                           came_from: alloc.call(MAX_SPRITES * 2, "which sprite each row of the console's table is"))
@@ -520,6 +530,10 @@ module VBlank
           def emit_call_held_table_copy
             @call_cold_routine.call(HELD_TABLE_ROUTINE) if @layout.held_sprites
           end
+
+          # The first row of the console's table the game's sprites are copied to: the first, or the
+          # first after the border's (BorderSprites::BORDER_ROWS).
+          def first_game_row = OAM_START + (@layout.border ? BorderSprites::BORDER_ROWS * 8 : 0)
 
           # THE COPY INTO THE CONSOLE'S TABLE. Each row of the copy is looked at in turn, and one
           # that is not hidden has its first three halves copied to the next row of the console's,
@@ -547,9 +561,10 @@ module VBlank
             emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
             place_label(HELD_TABLE_ROUTINE)
             emit(ASM.push(4, 5, 6, 7, 8, 14))
+            border = @layout.border
             emit_number(TMP, held.copy)
             emit_number(SPARE, held.copy + (held.rows * 8))
-            emit_number(HIGH, OAM_START)
+            emit_number(HIGH, first_game_row)
             emit_number(4, held.came_from)
             emit(ASM.load_immediate(5, 0))
             emit(ASM.load_immediate(6, 0))
@@ -561,9 +576,12 @@ module VBlank
             emit_branch(:bcond, passed, cond: :eq)
             emit(ASM.cmp_reg(HIGH, 8))
             emit_branch(:bcond, full, cond: :hs)
+            # In a border, each place is moved to where the game's screen is (BorderSprites).
+            border&.emit_row_moved_by_corner(7)
             emit(ASM.store_halfword(ACC, HIGH))
             [2, 4].each do |half|
               emit(ASM.load_halfword_offset(ACC, TMP, half))
+              border.emit_column_moved_by_corner(7) if border && half == 2
               emit(ASM.store_halfword_offset(ACC, HIGH, half))
             end
             emit(ASM.store_halfword(5, 4))

@@ -84,7 +84,11 @@ module PongGBC
   NORMAL       = "NORMAL" # ...and its two rows
   HARD         = "HARD"
 
-  GAME = VBlank.game("PONG", consoles: %i[gbc]) do
+  # The game is the Color's, laid out for its 160×144 screen. Naming the Advance too, with the
+  # Color's screen (`color_screen`), builds the same game for an Advance as well: it shows the
+  # Color's picture at its own size in the middle of the Advance's screen, with a border round it,
+  # the way an Advance plays a Color cartridge. Nothing below changes for it.
+  GAME = VBlank.game("PONG", consoles: %i[gbc gba], variants: { gba: :color_screen }) do
     screen :bitmap
     enable_sound
 

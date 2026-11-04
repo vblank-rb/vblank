@@ -107,6 +107,13 @@ module VBlank
     # one: runtime/rg_bios_boot.c). Where it is false the game starts at once, as it always does
     # without the BIOS.
     #
+    # +whole_screen_size+ is [width, height] of the console's own screen where the game's screen is
+    # smaller and is shown in the middle of it at its own size, with a border round it (a Game Boy
+    # Color's 160×144 on the Advance's 240×160: Console::AdvanceKit::COLOR_SCREEN). The screen size
+    # above is then the game's, which is what a game laid out for that screen reads and what the
+    # interpreter plays; how the border is drawn is the console's lowering's own business. nil for
+    # every console as it is, whose game's screen is the whole screen.
+    #
     # +holds_background_above_row+ says a background can be kept to the rows above a row (`above_row:`),
     # and +glides_recordings+ that a recorded note can carry on at a new pitch (`glides: true`).
     #
@@ -124,8 +131,19 @@ module VBlank
                               :recording_voice_hz, :lowest_square_hz,
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
-                              :extension) do
+                              :whole_screen_size, :extension) do
       def screen_size = [screen_width, screen_height]
+
+      # Whether the game's screen is shown in a border, inside a bigger screen (#whole_screen_size).
+      def bordered? = !whole_screen_size.nil?
+
+      # Where the game's screen starts inside the whole screen, [left, top] in pixels: the middle.
+      # [0, 0] for a console showing the game's screen whole.
+      def border_corner
+        return [0, 0] unless bordered?
+
+        [(whole_screen_size[0] - screen_width) / 2, (whole_screen_size[1] - screen_height) / 2]
+      end
 
       # How much of the work memory is free for a game's own variables and lists.
       def free_work_memory_bytes = work_memory_bytes - work_memory_kept_bytes
@@ -198,7 +216,7 @@ module VBlank
                               # Its rumble cartridges are not made here yet: nothing is felt.
                               rumbles: false,
                               # The logo and its chime, played from the player's own BIOS.
-                              plays_bios_start_up: true, extension: ".gba")
+                              plays_bios_start_up: true, whole_screen_size: nil, extension: ".gba")
 
     # The Game Boy Color: a smaller screen, eight buttons, forty sprites and ten on a row, one
     # background, nothing that turns, lists of four colours, and a clock that counts days. What
@@ -242,7 +260,7 @@ module VBlank
                             # A cartridge with a motor, for a game that rumbles (Runtime::Rumble).
                             rumbles: true,
                             # Its own start-up is not played: the game starts at once.
-                            plays_bios_start_up: false, extension: ".gbc")
+                            plays_bios_start_up: false, whole_screen_size: nil, extension: ".gbc")
 
     # The Super Nintendo: a wider and taller screen than the Advance's, twelve buttons (a game reads
     # the ten the Advance has), 128 sprites and 34 pieces of them on a row, backgrounds of tiles,
@@ -295,7 +313,8 @@ module VBlank
                                      # a pass places them in it before its wait, as the Color's does.
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
-                                     rumbles: false, plays_bios_start_up: false, extension: ".sfc")
+                                     rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                                     extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
     # Select and no shoulder buttons), 80 sprites and 20 of them on a row, two backgrounds of
@@ -345,7 +364,8 @@ module VBlank
                               # pass places them in it before its wait, as the Super Nintendo's does.
                               sprites_placed_before_wait: true,
                               # No cartridge with a motor is made for it.
-                              rumbles: false, plays_bios_start_up: false, extension: ".gen")
+                              rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                              extension: ".gen")
 
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 

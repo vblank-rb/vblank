@@ -154,6 +154,42 @@ module VBlank
 
     # The Game Boy Advance's.
     class AdvanceKit < Kit
+      # A GAME LAID OUT FOR THE GAME BOY COLOR'S SCREEN, ON THE ADVANCE.
+      #
+      # A game written for the Color's 160×144 can be built for the Advance's 240×160 without a
+      # second copy of it: `consoles: %i[gbc gba], variants: { gba: :color_screen }`. The Advance
+      # shows the game's picture at its own size in the middle of the screen, with a border round
+      # it in the 40 columns either side and the 8 rows above and below. That is what an Advance
+      # does with a Color cartridge, and no whole-number scale fits 160×144 into 240×160.
+      #
+      # WHY A VARIANT, AND NOT A NEW SETTING. A variant is already "this console, with some of what
+      # a game can tell about it changed" (Console::Variant): here the screen is the Color's size,
+      # so `screen_width` and `screen_height` answer 160 and 144 in the Advance's build, the checks
+      # lay the game out against that, and the interpreter plays it on a 160×144 screen. The build
+      # reads `whole_screen_size` and draws the border. `vblank build --variant`, `game.program(
+      # console:, variant:)` and the rest already carry a variant to every build, so nothing new is
+      # plumbed through them. A game that names no variant builds the same bytes as before.
+      #
+      # What else changes: the border is drawn with the console's own sprites, so the game has
+      # that many fewer (BORDER_SPRITES); a background held to a box is refused, since the box and
+      # the border would both need the display's windows; and the desktop build plays no start-up,
+      # whose logo is drawn for the whole 240×160.
+      BORDER_SPRITES = 32
+
+      COLOR_SCREEN = Ractor.make_shareable(
+        Variant.new(name: :color_screen, title: "a Game Boy Color's screen in a border",
+                    changes: { screen_width: COLOR.screen_width, screen_height: COLOR.screen_height,
+                               sprites: ADVANCE.sprites - BORDER_SPRITES, background_box: nil,
+                               plays_bios_start_up: false, whole_screen_size: ADVANCE.screen_size.freeze },
+                    build: {},
+                    note: "a game laid out for the Game Boy Color's 160×144 screen, shown at its own size " \
+                          "in the middle of the Advance's, with a border round it")
+      )
+
+      ADVANCE_VARIANTS = Ractor.make_shareable({ color_screen: COLOR_SCREEN })
+
+      def variants = ADVANCE_VARIANTS
+
       def answers = AdvanceAnswers
       def answers_page = answers.reference
       def builder = Cartridge::AdvanceBuild

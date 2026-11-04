@@ -20,8 +20,17 @@ module VBlank
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
         screen: works, setting: works, built_for_computer?: works("false on a cartridge."),
-        screen_width: works("240 on a Game Boy Advance."),
-        screen_height: works("160 on a Game Boy Advance."),
+        screen_width: works("240 on a Game Boy Advance. 160 on a game built with " \
+                            "`variants: { gba: :color_screen }`, which is laid out for a Game Boy Color."),
+        screen_height: works("160 on a Game Boy Advance. 144 with `variants: { gba: :color_screen }`."),
+        border: works("with `variants: { gba: :color_screen }`, the build shows the game's 160×144 screen at " \
+                      "its own size in the middle of the screen, and the border fills the 40 columns at each " \
+                      "side and the 8 rows above and below. Without `border`, the build draws a border of its " \
+                      "own. A fade or a tint does not change the border. That build does not make a status " \
+                      "bar, a light, a fade held to a rectangle or under a layer, a background bent row by " \
+                      "row or one that turns, `pixelate`, `hide_sprites` or `read_scanline` yet, and refuses " \
+                      "each. It gives the game 32 fewer sprites, which draw the border. Without the variant, " \
+                      "`border` does nothing."),
         wait_vblank: works, halt: works, debug_halt: works,
         game_loop: works, once_a_frame: works, frames_since_power_on: works, each_pass: works,
         every: works, after: works, repeat: works, timer: works,

@@ -51,8 +51,8 @@ module VBlank
             write_reg16(REG_BG2PB, 0)
             write_reg16(REG_BG2PC, 0)
             write_reg16(REG_BG2PD, FIXED_ONE)
-            emit_camera_axis(node.x, REG_BG2X)
-            emit_camera_axis(node.y, REG_BG2Y)
+            emit_camera_axis(node.x, REG_BG2X, :x)
+            emit_camera_axis(node.y, REG_BG2Y, :y)
           end
 
           CAMERA_NEEDS_BITMAP =
@@ -60,9 +60,12 @@ module VBlank
             "`shake_screen` needs `screen :bitmap`. To move a tiled background, use " \
             "`scroll_by` or `scroll_to` on the background."
 
-          def emit_camera_axis(value, reg)
+          # A game's screen in a border starts at its corner, so the corner is taken off too (see
+          # BorderSprites).
+          def emit_camera_axis(value, reg, way)
             @lowering.value(value)                   # r0 = the offset in whole pixels
             emit(ASM.lsl_imm(ACC, ACC, 8))      # ...into the 8-fraction-bit format
+            @layout.border&.emit_corner_off_reference(way)
             store_word_acc(reg)
           end
 

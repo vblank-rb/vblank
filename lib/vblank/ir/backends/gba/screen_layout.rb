@@ -393,7 +393,11 @@ module VBlank
               check_stack_depth_fits!
               prepare_backgrounds(program)
             end
-            @sprites_over_picture = IR::SpritesOverPicture.any?(program)
+            # A game in a border keeps its sprites' pictures where a painted screen's do, as one with
+            # a sprite over a painted screen does: the border's sprites are on every screen, painted
+            # ones too, and their pictures sit at the end of that half (see BorderSprites).
+            @border_tiles = program.described_console.bordered? ? BorderSprites.tiles_for(program.described_console) : 0
+            @sprites_over_picture = IR::SpritesOverPicture.any?(program) || @border_tiles.positive?
             prepare_objects(program) if program.walk.any? { |node| node.kind == :object }
             @backdrop_colors = place_backdrop_colors
           end
@@ -1315,7 +1319,10 @@ module VBlank
           def first_sprite_tile = sprites_over_picture? ? SPRITE_TILES_UNDER_PICTURE : 0
 
           # How many bytes of sprite pictures fit, at the most.
-          def sprite_memory_capacity = sprites_over_picture? ? SPRITE_MEMORY_BESIDE_PICTURE : OBJ_TILE_CAPACITY
+          # A border's pictures take the end of it (see BorderSprites).
+          def sprite_memory_capacity
+            (sprites_over_picture? ? SPRITE_MEMORY_BESIDE_PICTURE : OBJ_TILE_CAPACITY) - (@border_tiles * 32)
+          end
 
           # What the words for sprite memory that is full add for a game with sprites over a
           # painted screen: why it is half.
@@ -2382,6 +2389,7 @@ module VBlank
             # the colours) is the same walk whichever it is.
             tables = @obj_banks.transform_values(&:entries)
             units = tables.values.map(&:size).max
+            refuse_sprite_colors_over_border!(units)
             tables.transform_values! { |colors| colors + ([0] * (units - colors.size)) }
             @obj_palette_blob = :__obj_palette
             @obj_palette_units = units
@@ -2391,6 +2399,20 @@ module VBlank
               keep_unpacked!(blob)
               record_scene_send(scene, obj_palette: blob)
             end
+          end
+
+          # A GAME IN A BORDER LEAVES THE LAST GROUP OF SPRITE COLOURS TO THE BORDER (see
+          # BorderSprites). A game laid out for the Color has at most eight lists of three colours for
+          # its sprites, so its table never comes near; one that does would put its colours where the
+          # border's are, and is told so rather than drawn in the border's colours.
+          def refuse_sprite_colors_over_border!(units)
+            return unless @border_tiles.positive?
+            return if units <= BorderSprites::COLOR_GROUP * PaletteBanks::BANK_SIZE
+
+            raise VBlank::BuildError,
+                  "The game's sprites use #{units} places of the console's #{PaletteBanks::CAPACITY} sprite colors. " \
+                  "The border round the screen uses the last #{PaletteBanks::BANK_SIZE}. To fix this, use fewer " \
+                  "colors in the sprites, or give fewer sprites colors of their own."
           end
 
           # The table every scene shows, then each scene's own going on from it; returns the

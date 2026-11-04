@@ -226,7 +226,21 @@ module VBlank
         Diagnostics::Emulator.load!
         rom = console_kit(program).builder.cartridge_for(program, title: name)
         reader = Diagnostics::Verifier.new(rom, frames: console_frames, keys: IR::Buttons.mask(keys), count_passes: true)
-        [reader.frame_gba, reader.passes]
+        [game_screen_of(program, reader.frame_gba), reader.passes]
+      end
+
+      # The part of the console's +picture+ that is the game's own screen. A game shown in a border
+      # (Console::Description#bordered?, a Game Boy Color's screen on the Advance) is played by the
+      # interpreter on a screen of its own size, so the cartridge's is compared in the middle, where
+      # the game's screen is; the border is the cartridge's own, checked by tests of its own. Any
+      # other game's screen is the whole picture.
+      def game_screen_of(program, picture)
+        console = program.described_console
+        return picture unless console.bordered?
+
+        left, top = console.border_corner
+        across = console.whole_screen_size[0]
+        (0...console.screen_height).flat_map { |y| picture[((top + y) * across) + left, console.screen_width] }
       end
 
       # The interpreter's picture and the game as C's (or as JavaScript's) after +frames+ frames,

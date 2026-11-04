@@ -45,6 +45,33 @@ class TestGameConsoles < Minitest::Test
     assert_match(/consoles: %i\[gba gbc\]/, error.message)
   end
 
+  COLOR_ONLY = VBlank.game("COLOR", consoles: %i[gbc]) { var :x, 1 }
+
+  # A GAME LAID OUT FOR THE COLOR, ON THE ADVANCE (Console::AdvanceKit::COLOR_SCREEN): it keeps
+  # the Color's screen, and the Advance shows that screen in a border.
+  COLOR_ON_ADVANCE = VBlank.game("FRAMED", consoles: %i[gbc gba], variants: { gba: :color_screen }) do
+    var :wide, screen_width
+    var :tall, screen_height
+    game_loop { wait_vblank }
+  end
+
+  def test_a_game_for_the_color_alone_is_told_how_to_keep_its_screen_on_the_advance
+    error = assert_raises(ArgumentError) { COLOR_ONLY.program(console: :gba) }
+
+    assert_match(/written for the Game Boy Color, not the Game Boy Advance/, error.message)
+    assert_match(/variants: \{ gba: :color_screen \}/, error.message)
+  end
+
+  def test_a_color_game_built_for_the_advance_keeps_the_colors_screen
+    program = COLOR_ON_ADVANCE.program(console: :gba)
+    run = interpreted(program)
+
+    assert_equal [160, 144], [run[:wide], run[:tall]]
+    assert_equal [160, 144], [run.screen.width, run.screen.height], "the interpreter plays it on the Color's screen"
+    assert_equal [240, 160], program.described_console.whole_screen_size
+    assert_equal [40, 8], program.described_console.border_corner
+  end
+
   # Nothing is taken to be for the Advance: a game that names no console is refused where it is
   # named, saying what to write.
   def test_a_game_that_names_no_console_is_refused_saying_what_to_write

@@ -57,6 +57,7 @@ require_relative "gba/roomy"         # which collections go in the other, roomie
 require_relative "gba/tile_vram"     # where the scenery's pictures and maps go, so they cannot collide
 require_relative "gba/background_tiles" # ...and what those pictures are, each stored once
 require_relative "gba/palette_banks" # sixteen colours to a picture, and the picture stored half the size
+require_relative "gba/border_sprites" # a smaller screen shown in the middle of this one, with a border round it
 require_relative "gba/palette_tint"
 require_relative "gba/layer_blend"
 require_relative "gba/bios_compress"
@@ -934,6 +935,10 @@ module VBlank
           @raster.prepare_row_bends(program, layers: @screen.hardware_layers, scene_entry: scene_entry,
                                              scene_scenery: @screen.picture.scenery.select { |bg| @screen.handover.on_arrival?(bg) })
           @has_objects = program.walk.any? { |node| node.kind == :object }
+          # A game laid out for a smaller screen, shown in the middle of this one with a border of
+          # sprites round it (see BorderSprites); nil for a game on the whole screen.
+          @border = BorderSprites.for(program, emitter: @emit, primitives: @primitives, uploads: @uploads)
+          @emit.data_blobs.merge!(@border.blobs) if @border
           @layer_blend.prepare_layer_blend(program) # ...and which layer, if any, you can see through
           @layer_blend.amount_routines.each_key do |name|
             @functions.define_generated_func(name) { @layer_blend.emit_amounts_routine(name) }
@@ -966,7 +971,7 @@ module VBlank
           # More rows than the console's table holds are kept in a bigger copy of it, in the roomy
           # memory: it is written and read once a row a frame (see SpriteDrawing::HeldTable).
           @held_sprites = SpriteDrawing.plan_held_table(@screen.sprite_table_rows,
-                                                        alloc: method(:alloc_sprite_record!))
+                                                        alloc: method(:alloc_sprite_record!), moved: !@border.nil?)
           # A byte a pose for each pool whose poses are sent as they are first shown, saying
           # which are in sprite memory (see PoseSends). In the roomy memory: it is read once a
           # thing, where the quick memory is worth more to the code a frame runs.
@@ -1000,12 +1005,12 @@ module VBlank
           layout = Drawing::Layout.new(
             screen: @screen, bitmaps: @bitmaps, palette: @palette, indexed_bitmaps: @indexed_bitmaps,
             blob_codecs: @blob_codecs, blob_raw_bytes: @blob_raw_bytes,
-            modes: @modes, fading: @fading, tiled: @tiled, has_objects: @has_objects,
+            modes: @modes, fading: @fading, tiled: @tiled, has_objects: @has_objects || !@border.nil?,
             scene_blend: @scene_blend || {}, movement: @movement || IR::Movement::EVERYTHING_MOVES,
             scene_sprites: @scene_sprites || [], gated_sprites: @gated_sprites || [],
             waits_for_frames: @uses_vblank,
             draw_runs: @draw_runs, pose_sent_bytes: @pose_sent_bytes, room_tables: @room_tables,
-            late_pages: IR::LatePages.of(program), held_sprites: @held_sprites,
+            late_pages: IR::LatePages.of(program), held_sprites: @held_sprites, border: @border,
           )
           @drawing.layout = layout
           @buffered.layout = layout
@@ -1058,7 +1063,7 @@ module VBlank
           # only paid on the actual switch.
           unless @modes.switched_per_scene?
             @background_drawing.emit_boot_backgrounds if @tiled && !@screen.backgrounds.empty? # shared BG palette + tiles
-            @sprite_drawing.emit_boot_objects if @has_objects # sprite tiles/colors + clear the sprite table
+            @sprite_drawing.emit_boot_objects if @has_objects || @border # sprite tiles/colors + clear the sprite table
             @drawing.emit_clear_used_scene_markers # no scene's scenery or sprite pictures are up yet
             @layer_blend.emit_boot_layer_blend if @layer_blend.see_through? # ...and which layer you can see through
           end
@@ -1068,6 +1073,7 @@ module VBlank
           # overwrite.
           emit_boot_row_bends if @raster.row_bend_tables?
           @effects.emit_whole_screen_window # a game that holds a fade to a rectangle starts with none
+          @border&.emit_at_power_on # ...and a game in a border has its window, and its painted screen's corner
           emit_tint_state_init if @palette_tint.moves_color_table? # the tables start as they were drawn
           @lowering.in_mode(@modes.default_mode) do
             @drawing.emit_default_screen(program) # a game with no `screen` line is on a bitmap one

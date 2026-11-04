@@ -145,6 +145,10 @@
       "code": 43944,
       "data": 0
     },
+    "pong_gbc": {
+      "code": 41788,
+      "data": 0
+    },
     "pong_gbc@gbc": {
       "code": 13582,
       "data": 28000

@@ -48,6 +48,9 @@ module VBlank
         built_for_computer?: works("false on a cartridge."),
         screen_width: works("160 on a Game Boy Color."),
         screen_height: works("144 on a Game Boy Color."),
+        border: works("it does nothing on a Game Boy Color, which shows the game's screen whole. The same " \
+                      "game built for the Advance with `variants: { gba: :color_screen }` shows the border " \
+                      "round its screen."),
         wait_vblank: works("in a game loop, the sprites and scroll of a pass show on the frame after the wait. " \
                            "If a game writes the wait in a scene or an `if`, they show a frame later than that."),
         halt: works,

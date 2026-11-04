@@ -99,6 +99,43 @@ module VBlank
         end
       end
 
+      # THE BORDER ROUND THE GAME'S SCREEN, on a console that shows the game's screen in the middle
+      # of a bigger one: a game laid out for the Game Boy Color, built for the Advance with
+      # `variants: { gba: :color_screen }` (Console::AdvanceKit::COLOR_SCREEN). It takes what `image`
+      # takes, without a name, since a game has one border:
+      #
+      #   border from: "border.png"                     # a picture of the whole 240×160 screen
+      #   border "#" => :blue, "." => :cyan do          # ...or a pattern, repeated across it
+      #     <<~ART
+      #       #.
+      #       .#
+      #     ART
+      #   end
+      #
+      # The middle of the picture is never seen: the game's screen is drawn there. A game that says
+      # nothing gets VBlank's own border (Graphics::Border.default). A build that shows the game's
+      # screen whole (the Color's own, or any other console's) draws no border and keeps nothing of
+      # this, so the game builds the same bytes there as without it. What a border can hold is
+      # checked on every build, so a game hears about a wrong one wherever it is built
+      # (Graphics::Border.refuse_unusable!).
+      def border(opts = {}, &block)
+        if @border_said
+          raise ArgumentError, "The game says `border` twice. A game has one border. To fix this, remove one " \
+                               "of the two."
+        end
+
+        @border_said = true
+        node = read_picture_aside { image(:__border, opts, &block) }
+        whole = @console.whole_screen_size
+        Graphics::Border.refuse_unusable!(width: node.width, height: node.height, pixels: node.pixels,
+                                          transparent: node.transparent, whole: whole)
+        return nil unless whole
+
+        @program.border = node.pixels
+        @program.border_size = [node.width, node.height]
+        nil
+      end
+
       # Draw a bitmap (defined with `image`) at a position, which may be a variable
       # (a moving object) or a constant. Keep it on-screen — off-screen parts aren't
       # clipped at run time yet.
@@ -296,6 +333,16 @@ module VBlank
               "the list by name, for example `image ..., colors: #{named.first}`."
       end
 
+      # The picture `image` makes in the block, read and handed back rather than declared: a
+      # border is not a picture the game draws, so it is no picture of the game's.
+      def read_picture_aside
+        @reading_picture_aside = true
+        yield
+        @picture_read_aside
+      ensure
+        @reading_picture_aside = false
+      end
+
       # A LIST THAT HOLDS ONE COLOUR TWICE, SWAPPED ONTO ART THAT RECORDED NO PLACES.
       #
       # Swapping colours goes by place: a pixel at place 1 shows the other list's colour at
@@ -386,6 +433,8 @@ module VBlank
       # it: its shape, so a sprite can size itself from its art, and its pixels, so
       # `mirror` can turn it round.
       def record_picture(node)
+        return @picture_read_aside = node if @reading_picture_aside
+
         record(node)
         @pictures[node.name] = IR::Assets::Image.of(node)
         @images[node.name] = [node.width, node.height]
@@ -752,6 +801,8 @@ module VBlank
       # image). A blank image (nothing but transparent) also falls back to the whole
       # image, so its collision box is never empty.
       def record_visible_bounds(name:, width:, height:, cells:, transparent:)
+        return if @reading_picture_aside
+
         if transparent.nil?
           @image_bounds[name] = [0, 0, width, height]
           return

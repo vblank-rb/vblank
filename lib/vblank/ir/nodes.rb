@@ -1118,12 +1118,19 @@ module VBlank
       # +players+ is [fewest, most]: how many players the game said it takes on this build
       # (Cartridge::Players), or nil where it said nothing. +for_computer+ is true for a build that
       # plays on a computer, whose controllers are not the console's (#described_build).
+      #
+      # +border+ is the picture the game gave for the border round its screen, two bytes a pixel as
+      # a picture keeps them, and +border_size+ its [width, height] (Builder::Images#border). Both
+      # are nil where the game gave none, or where the console shows the game's screen whole and no
+      # border is drawn (Console::Description#bordered?). A border is a picture of the whole screen
+      # around the game's, not something the game does, so it is not a statement and every backend
+      # that draws no border has nothing to do with it.
       class Program
         include Node
         kind :program
         category :root
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list, players: :list,
-                 for_computer: :flag
+                 for_computer: :flag, border: :text, border_size: :list
 
         # The most players the game said it takes on this build, or nil where it said nothing.
         def most_players = players&.last

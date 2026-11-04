@@ -264,7 +264,24 @@ module VBlank
                              "not the #{described.title}. A #{described.title} has a #{described.screen_width}×" \
                              "#{described.screen_height} screen. To build it for one, lay the game out from " \
                              "`screen_width` and `screen_height` rather than numbers for one screen, and say " \
-                             "`consoles: %i[#{(@consoles + [console]).join(' ')}]` where the game is named."
+                             "`consoles: %i[#{(@consoles + [console]).join(' ')}]` where the game is named." \
+                             "#{border_fix_words(console)}"
+      end
+
+      # The second fix for a game asked for a console whose screen is bigger than its own: a variant
+      # of that console that shows a screen of the game's size in a border (Console::AdvanceKit::
+      # COLOR_SCREEN), named in the words a game writes. Empty where the console has none.
+      def border_fix_words(console)
+        Console.for(console).variants.each_value do |variant|
+          next unless variant.changes[:whole_screen_size]
+
+          screen = variant.changes.values_at(:screen_width, :screen_height)
+          home = @consoles.find { |name| Console.described(name).screen_size == screen } or next
+          return " Or, to keep the #{Console.described(home).title}'s #{screen.join('×')} screen and show it in a " \
+                 "border on the #{Console.described(console).title}, say `consoles: %i[#{(@consoles + [console]).join(' ')}], " \
+                 "variants: { #{console}: :#{variant.name} }`."
+        end
+        ""
       end
 
       # Is +path+ the very script Ruby was told to run? Compared as full paths so a

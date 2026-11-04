@@ -363,7 +363,9 @@ module VBlank
                                  Default: the first one the game names.
         --variant NAME           The chip on the cartridge, such as superfx
                                  for a Super Nintendo cartridge with a Super
-                                 FX 2, or none. Default: what the game names
+                                 FX 2; color_screen for a Game Boy Color game
+                                 shown in a border on the Advance; or none.
+                                 Default: what the game names
                                  in variants:. A game for more than one
                                  console needs --console too.
         #{SET}

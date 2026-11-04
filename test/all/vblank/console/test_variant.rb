@@ -27,7 +27,21 @@ class TestVariant < Minitest::Test
     error = assert_raises(ArgumentError) { VBlank::Console.described(:snes, variant: :cx4) }
     assert_includes error.message, ":superfx"
 
-    error = assert_raises(ArgumentError) { VBlank::Console.described(:gba, variant: :superfx) }
+    error = assert_raises(ArgumentError) { VBlank::Console.described(:gbc, variant: :superfx) }
     assert_includes error.message, "no variants"
+  end
+
+  # The Advance's `color_screen` is the Advance with the Color's screen (Console::AdvanceKit::
+  # COLOR_SCREEN): a game laid out for the Color, shown in a border.
+  def test_the_color_screen_is_the_advance_with_the_colors_screen_in_a_border
+    plain = VBlank::Console.described(:gba)
+    framed = VBlank::Console.described(:gba, variant: :color_screen)
+
+    assert_equal VBlank::Console::COLOR.screen_size, framed.screen_size
+    assert_equal plain.screen_size, framed.whole_screen_size
+    assert framed.bordered?
+    refute plain.bordered?
+    assert_equal plain.buttons, framed.buttons
+    assert_equal plain.sprites - VBlank::Console::AdvanceKit::BORDER_SPRITES, framed.sprites
   end
 end

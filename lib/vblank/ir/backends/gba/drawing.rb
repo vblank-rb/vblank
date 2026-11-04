@@ -88,8 +88,10 @@ module VBlank
           Layout = Data.define(:screen, :bitmaps, :palette, :indexed_bitmaps, :blob_codecs, :blob_raw_bytes,
                                 :modes, :fading, :tiled, :has_objects, :scene_blend, :movement,
                                 :scene_sprites, :gated_sprites, :waits_for_frames, :draw_runs, :pose_sent_bytes,
-                                :room_tables, :late_pages, :held_sprites) do
-            def initialize(held_sprites: nil, **rest) = super
+                                :room_tables, :late_pages, :held_sprites, :border) do
+            # +border+ is the border round a smaller screen shown in the middle of the Advance's
+            # (BorderSprites), or nil for a game shown on the whole screen.
+            def initialize(held_sprites: nil, border: nil, **rest) = super
             # The backgrounds that turn AND sit on the tiled screen — the ones that decide
             # which way the console arranges that screen's layers. A background that turns
             # on `screen :rotozoom` is on a screen of its own, up at a different moment, so
@@ -336,7 +338,11 @@ module VBlank
           # settings, and those are written whole each time the screen changes kind, so every
           # one of them carries it — the bitmap screens' too, where the picture is the console's
           # third layer and the window cuts the effect on it like any other.
-          def display_window_bits = @layout.fading.rectangle_fades? ? WIN0_ENABLE : 0
+          #
+          # A game shown in a border has the first window on every screen too: it is the game's
+          # screen, the only place the blend reaches (see BorderSprites). The checks refuse a fade
+          # held to a rectangle in such a game, so the two never both want it.
+          def display_window_bits = (@layout.fading.rectangle_fades? || @layout.border) ? WIN0_ENABLE : 0
 
           # The layers a program that says nothing about scenes uses — every one its
           # backgrounds landed on, and the first layer for a program with none, so a tiled

@@ -109,12 +109,14 @@ module VBlank
                                             (bg.screen_block << 8) | bg.size)
             # Start unscrolled. A bent one's sideways place is its table's on every line, so its
             # rows are put back to the corner there instead.
+            # In a border the corner is the game's screen's, so the layer is scrolled by it (see
+            # BorderSprites).
             if @raster.bent_from_table?(node.name)
               @raster.emit_bend_put_up(node.name)
             else
-              write_reg16(BG_HOFS_REGS[bg.bg], 0)
+              write_reg16(BG_HOFS_REGS[bg.bg], unscrolled(:x))
             end
-            write_reg16(BG_VOFS_REGS[bg.bg], 0)
+            write_reg16(BG_VOFS_REGS[bg.bg], unscrolled(:y))
             # ...and a status bar starts at the row it was declared with, until the gap after
             # this pass places it where the game says (Reference#bar_top_shown).
             emit_bar_registers(bg, top: node.bar_top) if node.bar?
@@ -1312,13 +1314,20 @@ module VBlank
             # A bending layer's sideways position is settled row by row instead, and every
             # one of those rows already has this scroll in it (see Raster). Writing it here
             # too would only undo the top row's bend until the display asked for the next.
+            border = @layout.border
             unless @raster.row_bends.key?(node.name)
               @lowering.value(node.x)        # r0 = scroll x (pixels)
+              border&.emit_corner_off_scroll(:x) # ...less the corner of a game's screen in a border
               store_halfword_acc(BG_HOFS_REGS[bg_num])
             end
             @lowering.value(node.y)          # r0 = scroll y
+            border&.emit_corner_off_scroll(:y)
             store_halfword_acc(BG_VOFS_REGS[bg_num])
           end
+
+          # What a layer's scroll register says for the map's corner at the screen's: nought, or in a
+          # border, the corner taken off.
+          def unscrolled(way) = @layout.border ? @layout.border.scroll_value(0, way) : 0
 
           # BRING A BIG MAP'S VIEW ALONG, for the scroll write of +node+ — but for a background a
           # scene puts up as it takes over, only once it has. The write is gated on the variable

@@ -13,6 +13,12 @@ module VBlank
     # (Console::Description, the numbers the builder and the checks read), and a note for the
     # console's build saying what to put on the cartridge.
     #
+    # A variant can also be a way of showing a game rather than a chip: the Advance's
+    # `color_screen` is the Advance with the Game Boy Color's screen, for a game laid out for the
+    # Color, which the Advance shows in the middle of its own screen with a border round it
+    # (Console::AdvanceKit::COLOR_SCREEN). It is the same thing to the builder and the checks: the
+    # console's description with some of what a game can tell about it changed.
+    #
     # Each console's kit says which variants it has (Kit#variants); most have none. Asking for one
     # a console does not have is refused, naming the ones it does. A build that names none gets the
     # console as it is.
