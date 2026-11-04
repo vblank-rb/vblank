@@ -30,6 +30,29 @@ module ManyTiles
     (0...count).each_slice(ACROSS).map { |row| row + ([nil] * (ACROSS - row.length)) }
   end
 
+  # The squares across and down a picture of #declare_sprite_pictures, a hundred tiles in all.
+  PICTURE_SQUARES = 10
+
+  # Declare in +builder+ +pictures+ sprite pictures of PICTURE_SQUARES × PICTURE_SQUARES tiles each,
+  # named +prefix+ and a number, every tile +color+ on black in the pattern #declare gives tile
+  # +from+ and on: no two tiles alike across pictures declared from places that do not overlap.
+  # Hands back their names, for a sprite's `frames:`.
+  def declare_sprite_pictures(builder, prefix, pictures, color, from: 0)
+    across = PICTURE_SQUARES * 8
+    Array.new(pictures) do |which|
+      first = from + (which * PICTURE_SQUARES * PICTURE_SQUARES)
+      art = (0...across).map do |y|
+        (0...across).map do |x|
+          bits = first + ((y / 8) * PICTURE_SQUARES) + (x / 8)
+          bits[((y % 8) * 8) + (x % 8)] == 1 ? "#" : "."
+        end.join
+      end.join("\n")
+      name = :"#{prefix}_#{which}"
+      builder.image(name, "#" => color, "." => :black) { art }
+      name
+    end
+  end
+
   # Declare in +builder+ a tile for each of +lists+ — four colours each, place 0 see-through — drawn
   # by place in all four of its list's places (QUARTERS), for the tests of what a console does when
   # a game draws from more lists of colours than it holds at once. The lists and images are named

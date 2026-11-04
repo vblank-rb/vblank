@@ -201,36 +201,114 @@ module VBlank
                                    "build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
             end
 
-            # The sprite picture +name+, made into pieces (Art#sprite_picture).
+            # The sprite picture +name+, made into pieces (Art#sprite_picture) from the tiles of the scene that
+            # alone shows it, in a game whose sprite pictures take turns (+scene_tiles+ of :sprites).
             def make_sprite_picture(name)
               image = Assets::Image.of(picture_named(name))
-              if (list = followed_list_of(name))
-                @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
-              elsif recolored?(name)
-                @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
-              else
-                @art.sprite_picture(name, image)
+              @art.with_tiles_of(tiles_scene_of_picture(name)) do
+                if (list = followed_list_of(name))
+                  @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
+                elsif recolored?(name)
+                  @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+                else
+                  @art.sprite_picture(name, image)
+                end
               end
             end
 
             # THE ART OF A GAME WHOSE SCENES EACH KEEP THEIR OWN TILES (Art's +scene_tiles+): what every
             # screen shows made first, so its tiles are numbered before any scene takes its copy, then each
-            # scene's own backgrounds. A tile a `set_tile` can put on a background is made here too, though
-            # no map shows it, so it is numbered with its background's tiles rather than after a scene's.
+            # scene's own. A tile a `set_tile` can put on a background is made here too, though no map shows
+            # it, so it is numbered with its background's tiles rather than after a scene's.
             #
-            # EVERY SPRITE PICTURE IS ONE EVERY SCREEN SHOWS here, a scene's own included, and stays in
-            # video memory for the whole game. The frame a scene takes over on can want a sprite of the
-            # scene that went beside the map of the one that came: a dispatch inside an `if` places the
-            # pass's sprites for the scene up as the pass started (IR::Frames.loop_in_console_order),
-            # while the arriving scene's map is up already. Kept in the room the scenes take turns
-            # with, that sprite would be drawn from whatever the arriving scene put there. A scene's
-            # sprite pictures are few tiles beside its backgrounds, so keeping them all costs little.
+            # WHERE THE SPRITE PICTURES GO. Built with :backgrounds, every sprite picture is one every
+            # screen shows, a scene's own included, and stays in video memory for the whole game. The
+            # frame a scene takes over on can want a sprite of the scene that went beside the map of the
+            # one that came: a dispatch inside an `if` places the pass's sprites for the scene up as the
+            # pass started (IR::Frames.loop_in_console_order), while the arriving scene's map is up
+            # already. Kept in the room the scenes take turns with, that sprite would be drawn from
+            # whatever the arriving scene put there. Built with :sprites, for a game whose sprite
+            # pictures do not all fit beside a scene's backgrounds, a scene's own take turns too, and
+            # the one way of writing the loop that shows such a frame is refused
+            # (#refuse_hand_over_inside_test!).
             def make_art_by_scene(poses)
+              refuse_hand_over_inside_test! if @scene_tiles == :sprites
+              shared_poses, own_poses = poses.partition { |name| tiles_scene_of_picture(name).nil? }
               shared_backgrounds, own_backgrounds = @backgrounds.partition { |bg| tiles_scene_of(bg).nil? }
-              poses.each { |name| make_sprite_picture(name) }
+              shared_poses.each { |name| make_sprite_picture(name) }
               shared_backgrounds.each { |bg| make_background_art(bg) }
+              own_poses.each { |name| make_sprite_picture(name) }
               own_backgrounds.each { |bg| make_background_art(bg) }
               @objects.each_value { |obj| recolor_palettes(obj) }
+            end
+
+            # A SCENE PICKED INSIDE A TEST, after the game changed the variable that picks it in the same
+            # pass: the frame of that pass shows the scene that was up as the pass started, with its
+            # sprites (IR::Frames.loop_in_console_order), while the scene picked has put its own tiles
+            # where those sprites' tiles were. A scene picked at the top of the loop is shown with the
+            # number it was picked by, and a variable changed after the pick takes effect on the next
+            # pass, so either is right.
+            def refuse_hand_over_inside_test!
+              @program.walk.select { |node| node.kind == :loop }.each do |loop_node|
+                loop_node.children.reject { |node| Frames.scene_dispatch?(node) }.flat_map { |node| Frames.dispatches_inside(node) }.each do |dispatch|
+                  change = statements_run_before(loop_node, dispatch).find { |node| LightScenes.written_var(node) == dispatch.var && node.kind != :case }
+                  next unless change
+
+                  raise LoweringError, hand_over_inside_test_message(dispatch, change)
+                end
+              end
+            end
+
+            def hand_over_inside_test_message(dispatch, change)
+              name = dispatch.var
+              "The scenes of this game share one area of video memory for their sprite pictures. " \
+                "The game changes `#{name}`#{line_words(change)}. Then, in the same pass, it uses `#{name}` " \
+                "to pick a scene inside an `if`#{line_words(dispatch)}. On that pass, the sprites of the " \
+                "last scene show with the wrong pictures. To fix this, move `case_var(:#{name})` to the top " \
+                "of the game loop, outside the `if`. Or change `#{name}` after the `case_var`."
+            end
+
+            # " at file.rb:12" for the line that wrote +node+, or the nearest line around it that the
+            # build knows; nothing where it knows none.
+            def line_words(node)
+              node = node.parent while node.source.nil? && node.parent
+              node.source ? " at #{node.source}" : ""
+            end
+
+            # Every statement a pass of +loop_node+ runs before it reaches +target+, in the order it runs
+            # them, with the bodies of the routines they call (not the scenes, which only the pick runs).
+            def statements_run_before(loop_node, target)
+              ran = []
+              collect_statements_before(loop_node.children, target, ran)
+              ran
+            end
+
+            # Adds to +ran+ what +nodes+ run, in turn, until +target+; true once it is reached.
+            def collect_statements_before(nodes, target, ran)
+              nodes.each do |node|
+                return true if node.equal?(target)
+
+                if node.walk.any? { |inner| inner.equal?(target) }
+                  return true if collect_statements_before(node.children, target, ran)
+
+                  next
+                end
+                node.walk.each { |inner| ran << inner }
+                ran.concat(statements_of_routines_called(node))
+              end
+              false
+            end
+
+            # Every statement of the routines +node+ calls, and of those they call, scenes left out.
+            def statements_of_routines_called(node, seen = Set.new)
+              routines = @routines_by_name ||= @program.walk.select { |func| func.kind == :func }.to_h { |func| [func.name, func] }
+              node.walk.flat_map do |inner|
+                names = inner.kind == :call_one_of ? inner.targets : [(inner.target if inner.kind == :call)]
+                names.compact.reject { |name| Modes.scene_func?(name) || !seen.add?(name) }.flat_map do |name|
+                  routine = routines[name]
+                  routine ? routine.walk.to_a + statements_of_routines_called(routine, seen) : []
+                end
+              end
             end
 
             # Every map of +bg+ as a grid, and every cell a `set_tile` can change it to.
@@ -247,18 +325,31 @@ module VBlank
             # declared in, which puts it up as it takes over; nil for scenery every screen shows.
             def tiles_scene_of(bg) = @scene_tiles ? scene_owning_background(bg) : nil
 
+            # The same for the sprite picture +name+ (LoweringPlan#scene_showing_picture), when sprite
+            # pictures take turns too.
+            def tiles_scene_of_picture(name) = @scene_tiles == :sprites ? scene_owning_picture(name) : nil
+
             def scene_owning_background(bg) = (bg.scene if @handover.on_arrival?(bg) && @scenes.key?(bg.scene))
 
-            # WHETHER SOME BACKGROUND BELONGS TO ONE SCENE, so that bringing each scene's tiles in as it
-            # takes over can leave room (Genesis#build); sprite pictures stay in for the whole game
-            # (#make_art_by_scene). Only in a game of one dispatch: a second variable picking scenes can
-            # have one of its scenes up beside one of the first's, and the two would want their own tiles
-            # in the same room at once.
-            public def art_of_one_scene?
-              return false unless tiled? && @program.walk.count { |node| node.kind == :case } == 1
-
-              @backgrounds.any? { |bg| scene_owning_background(bg) }
+            def scene_owning_picture(name)
+              scene = @plan.scene_showing_picture(name)
+              scene if @scenes.key?(scene)
             end
+
+            # WHETHER SOME ART BELONGS TO ONE SCENE, so that bringing each scene's tiles in as it takes over
+            # can leave room (Genesis#build). Only in a game of one dispatch: a second variable picking
+            # scenes can have one of its scenes up beside one of the first's, and the two would want their
+            # own tiles in the same room at once.
+            public def art_of_one_scene?
+              one_dispatch? && (@backgrounds.any? { |bg| scene_owning_background(bg) } || sprites_of_one_scene?)
+            end
+
+            # Whether some sprite picture belongs to one scene, so that its taking turns can leave room.
+            public def sprites_of_one_scene?
+              one_dispatch? && @objects.values.flat_map(&:poses).any? { |name| scene_owning_picture(name) }
+            end
+
+            def one_dispatch? = tiled? && @program.walk.count { |node| node.kind == :case } == 1
 
             # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
             # places are the list's (Art#ordered_palette), and the picture cut into places of its own list, so

@@ -128,7 +128,8 @@ module VBlank
           attr_reader :variables, :lists, :frame_begins, :section_routines
 
           # +scene_tiles+ keeps each scene's own tiles in video memory only while it is up (Art), for a
-          # game whose tiles together do not fit (Genesis#build).
+          # game whose tiles together do not fit (Genesis#build): :backgrounds for its backgrounds'
+          # tiles alone, :sprites for its sprite pictures' too.
           def initialize(program, memory:, scene_tiles: false)
             @program = program
             @memory = memory

@@ -71,6 +71,54 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
     b.program
   end
 
+  # Pictures each scene's own sprite steps through, a hundred tiles each (ManyTiles#declare_sprite_pictures):
+  # 800 tiles a scene, so the sprite pictures alone are more than video memory holds together.
+  HEAVY_PICTURES = 8
+
+  # Two scenes whose own SPRITE pictures do not fit together, and fit one scene at a time, so each
+  # scene's sprite pictures come in as it takes over. The options are #two_scenes's. Built by the
+  # Genesis lowering's own tests too, for the way of writing the loop it refuses.
+  def self.sprite_heavy_scenes(dispatched_inside_test: false, handed_over_by_scene: false)
+    switch = SWITCH_AT
+    pictures = HEAVY_PICTURES
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      first = ManyTiles.declare_sprite_pictures(self, :one_pose, pictures, :red)
+      second = ManyTiles.declare_sprite_pictures(self, :two_pose, pictures, :green, from: pictures * 100)
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:one) do
+        sprite :one_walker, at: [16, 16], frames: first, rate: 1
+        state = 1 if tick == switch if handed_over_by_scene
+      end
+      scene(:two) do
+        sprite :two_walker, at: [16, 16], frames: second, rate: 1
+        state = 0 if tick == switch * 3 if handed_over_by_scene
+      end
+      dispatch = lambda do
+        case_var(:state) do
+          when_val 0, :one
+          when_val 1, :two
+        end
+      end
+      game_loop do
+        tick += 1
+        unless handed_over_by_scene
+          state = 1 if tick == switch
+          state = 0 if tick == switch * 3
+        end
+        if dispatched_inside_test
+          dispatch.call if tick >= 0
+        else
+          dispatch.call
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   private def shown(color) = VBlank::Testing.shown(color)
 
   # The checked run holds every pass to the interpreter's picture, so a wrong tile in either scene
@@ -119,6 +167,20 @@ class TestSceneTilesOnTheGenesis < Minitest::Test
 
     assert_equal shown(:yellow), game_player.run(program, frames: SWITCH_AT).screen.pixel(x, y), "the leaving scene's sprite"
     game_player.run(program, frames: SWITCH_AT * 5)
+  end
+
+  # SPRITE PICTURES THAT DO NOT FIT TOGETHER take turns as the scenes do, picked at the top of the
+  # loop: checked on every pass, each scene's sprite is drawn from its own pictures.
+  def test_scenes_whose_sprite_pictures_do_not_fit_together_show_their_own
+    game_player.run(self.class.sprite_heavy_scenes, frames: SWITCH_AT * 5)
+    pass
+  end
+
+  # Picked inside an `if`, with the variable changed only by the scenes themselves: the scene up as
+  # each pass starts is the one the pass shows.
+  def test_sprite_pictures_taking_turns_with_a_dispatch_inside_a_test_changed_by_its_scenes
+    game_player.run(self.class.sprite_heavy_scenes(dispatched_inside_test: true, handed_over_by_scene: true), frames: SWITCH_AT * 5)
+    pass
   end
 
   def test_each_scenes_sprite_is_drawn_from_its_own_tiles

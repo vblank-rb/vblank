@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "many_tiles"
+require "console/genesis/vblank/builder/test_scene_tiles_on_the_genesis"
 
 # A scene's own backgrounds on a Genesis: they go up on the two planes as the scene takes over, in front of the
 # ones every screen shows, and come down as the next scene takes over (IR::SceneHandover). Each test plays the
@@ -132,6 +133,23 @@ class TestGenesisScenery < Minitest::Test
     end
 
     assert_match(/The scene :huge and the pictures that every scene shows/, error.message)
+  end
+
+  # Each scene's sprite pictures take turns, and the game changes the variable that picks the scene
+  # and then picks it inside an `if`: that pass would show the last scene's sprite in the new scene's
+  # pictures, so the build is refused saying where, and how to write it.
+  def test_sprite_pictures_taking_turns_refuse_a_scene_picked_inside_a_test_after_a_change
+    program = TestSceneTilesOnTheGenesis.sprite_heavy_scenes(dispatched_inside_test: true)
+    error = assert_raises(Genesis::LoweringError) { Genesis.new.build(program) }
+
+    assert_match(/changes `state`/, error.message)
+    assert_match(/inside an `if`/, error.message)
+    assert_match(/move `case_var\(:state\)` to the top of the game loop/, error.message)
+  end
+
+  # Picked at the top of the loop, the same scenes build.
+  def test_sprite_pictures_taking_turns_build_with_a_scene_picked_at_the_top_of_the_loop
+    assert Genesis.new.build(TestSceneTilesOnTheGenesis.sprite_heavy_scenes)
   end
 
   def test_more_changed_tiles_in_a_pass_than_the_queue_holds_stops_the_game_in_words

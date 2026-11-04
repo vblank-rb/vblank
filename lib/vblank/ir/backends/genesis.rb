@@ -68,6 +68,12 @@ module VBlank
         # each scene's own tiles in video memory only while it is up (+scene_tiles+, Art), so what has
         # to fit is one scene's with what every screen shows. A game that fits has no need of that
         # and is not built with it: it stays the bytes it was.
+        #
+        # +scene_tiles+ is :backgrounds first, every sprite picture staying in video memory for the
+        # whole game, since then no frame can draw a sprite from another scene's tiles
+        # (Lowering::Picture#make_art_by_scene). A game whose sprite pictures do not fit beside its
+        # biggest scene's backgrounds is built once more with :sprites too, each scene's sprite
+        # pictures taking turns with its backgrounds.
         def build(program, title: "VBLANK", scene_tiles: false)
           memory = Memory.new
           picture = Lowering.picture_of(program)
@@ -88,9 +94,10 @@ module VBlank
           begin
             game = lowering.sections
           rescue Art::TooManyTiles
-            raise if scene_tiles || !lowering.art_of_one_scene?
+            later = scene_tiles_after(scene_tiles, lowering)
+            raise unless later
 
-            return build(program, title: title, scene_tiles: true)
+            return build(program, title: title, scene_tiles: later)
           end
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
@@ -114,6 +121,15 @@ module VBlank
         end
 
         private
+
+        # The +scene_tiles+ to build with after a build with +tried+ ran out of tiles (#build), or nil
+        # when nothing is left to try.
+        def scene_tiles_after(tried, lowering)
+          case tried
+          when false then :backgrounds if lowering.art_of_one_scene?
+          when :backgrounds then :sprites if lowering.sprites_of_one_scene?
+          end
+        end
 
         # How many bytes of the cartridge are code and how many are data: the sections that hold the
         # game's tables and pictures (Lowering::DATA and Lowering::ART) are data, and the rest code.
