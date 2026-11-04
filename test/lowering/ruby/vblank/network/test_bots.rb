@@ -36,17 +36,17 @@ class TestBots < Minitest::Test
     relay = Network::StandInRelay.new
     scheduler = Network::Scheduler.new(movement: -> { relay.pending? })
     code = []
-    print = Network::Fingerprint.of(program, title: "WANDERERS")
+    fingerprint = Network::Fingerprint.of(program, title: "WANDERERS")
     copies = devices.each_with_index.map do |device, index|
       line = Network::InProcessLine.new(relay.connect, scheduler)
       lambda do
         lockstep = if index.zero?
                      transport = Network::RelayTransport.make_room(line)
                      code << transport.code
-                     Network::Lockstep.host(transport: transport, fingerprint: print, players: devices.size, seed: 0, input_delay: 2,
+                     Network::Lockstep.host(transport: transport, fingerprint: fingerprint, players: devices.size, seed: 0, input_delay: 2,
                                             checkpoint_every: 4)
                    else
-                     Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, code.first), fingerprint: print)
+                     Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, code.first), fingerprint: fingerprint)
                    end
         Session.new(program, network: lockstep).play(device)
         lockstep

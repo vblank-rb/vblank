@@ -1326,10 +1326,10 @@ module VBlank
     def network_to_play(game_file, game, program)
       return nil unless options[:host] || options[:join]
 
-      print = VBlank::Network::Fingerprint.of(program, title: game.title)
-      lockstep = if options[:relay] then meet_on_relay(game_file, program, print)
-                 elsif options[:host] then open_match_as_host(game_file, program, print)
-                 else connect_to_match_host(print)
+      fingerprint = VBlank::Network::Fingerprint.of(program, title: game.title)
+      lockstep = if options[:relay] then meet_on_relay(game_file, program, fingerprint)
+                 elsif options[:host] then open_match_as_host(game_file, program, fingerprint)
+                 else connect_to_match_host(fingerprint)
                  end
       say "Waiting for the other players. Press Ctrl-C to give up." if options[:host]
       lockstep.begin_match
@@ -1352,31 +1352,31 @@ module VBlank
     end
 
     # A match through the relay: --host makes a room and says its code, --join CODE joins one.
-    def meet_on_relay(game_file, program, print)
+    def meet_on_relay(game_file, program, fingerprint)
       url = VBlank::Network::RelayPlay.url_from(options[:relay])
       input_delay = options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES
-      return VBlank::Network::RelayPlay.join(url, options[:join], fingerprint: print).tap { say "Joined the room #{options[:join]}." } unless options[:host]
+      return VBlank::Network::RelayPlay.join(url, options[:join], fingerprint: fingerprint).tap { say "Joined the room #{options[:join]}." } unless options[:host]
 
-      lockstep, code = VBlank::Network::RelayPlay.host(url, players: players_in_match(program), input_delay: input_delay, fingerprint: print)
+      lockstep, code = VBlank::Network::RelayPlay.host(url, players: players_in_match(program), input_delay: input_delay, fingerprint: fingerprint)
       say "Made the room #{code} on the relay. The others can join with:"
       say "  vblank run #{game_file} --relay --join #{code}"
       lockstep
     end
 
-    def open_match_as_host(game_file, program, print)
+    def open_match_as_host(game_file, program, fingerprint)
       players = players_in_match(program)
       lockstep, port = VBlank::Network::DirectPlay.host(port: Integer(options[:host], 10), players: players,
                                                         input_delay: options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES,
-                                                        fingerprint: print)
+                                                        fingerprint: fingerprint)
       say "Hosting a match for #{players} players on port #{port}. The others can join with one of:"
       VBlank::Network::DirectPlay.addresses_for(port).each { |address| say "  vblank run #{game_file} --join #{address}" }
       lockstep
     end
 
-    def connect_to_match_host(print)
+    def connect_to_match_host(fingerprint)
       address = VBlank::Network::DirectPlay::Address.parse(options[:join])
       say "Joining the match at #{address}."
-      VBlank::Network::DirectPlay.join(address, fingerprint: print)
+      VBlank::Network::DirectPlay.join(address, fingerprint: fingerprint)
     end
 
     def refuse_mismatched_match_options!

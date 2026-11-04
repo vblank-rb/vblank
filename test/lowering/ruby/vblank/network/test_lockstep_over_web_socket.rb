@@ -34,15 +34,15 @@ class TestLockstepOverWebSocket < Minitest::Test
   # +players+ is how many the match holds. Gives back its device and its lockstep.
   private def machine(url, code_box, index, players:, passes: PASSES, game: program)
     line = Network::WebSocket::Client.connect(url)
-    print = Network::Fingerprint.of(game, title: "WANDERERS")
+    fingerprint = Network::Fingerprint.of(game, title: "WANDERERS")
     lockstep = if index.zero?
                  transport = Network::RelayTransport.make_room(line)
                  (players - 1).times { code_box << transport.code } # one for each machine that joins
-                 Network::Lockstep.host(transport: transport, fingerprint: print, players: players, seed: 5, input_delay: 2,
+                 Network::Lockstep.host(transport: transport, fingerprint: fingerprint, players: players, seed: 5, input_delay: 2,
                                         checkpoint_every: 4)
                else
                  code = code_box.pop(timeout: 30) or raise "no room code"
-                 Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, code), fingerprint: print)
+                 Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, code), fingerprint: fingerprint)
                end
     device = Headless.new(frames: passes, buttons: (2..passes).to_h { |pass| [pass, [WALKS.fetch(index)]] })
     Session.new(game, network: lockstep).play(device)

@@ -25,7 +25,7 @@ class TestDirectConnection < Minitest::Test
 
   private def program = @program ||= Wanderers::GAME.checked_program(err: nil, console: :gba, settings: { you_line: false })
 
-  private def print(game = program) = Network::Fingerprint.of(game, title: "WANDERERS")
+  private def fingerprint_of(game = program) = Network::Fingerprint.of(game, title: "WANDERERS")
 
   private def device_for(player, passes: PASSES)
     Headless.new(frames: passes, buttons: (2..passes).to_h { |pass| [pass, [WALKS.fetch(player - 1)]] })
@@ -35,14 +35,14 @@ class TestDirectConnection < Minitest::Test
   # Each gives back its device and its lockstep.
   private def host_machine(room, players:, passes: PASSES)
     transport = Network::RelayTransport.make_room(room.host_line)
-    lockstep = Network::Lockstep.host(transport: transport, fingerprint: print, players: players, seed: 9, input_delay: 2,
+    lockstep = Network::Lockstep.host(transport: transport, fingerprint: fingerprint_of, players: players, seed: 9, input_delay: 2,
                                       checkpoint_every: 4)
     machine(lockstep, 1, passes)
   end
 
   private def client_machine(socket, player, passes: PASSES, game: program)
     transport = Network::RelayTransport.join_room(Network::LineChannel.new(socket), Network::DirectRoom::CODE)
-    lockstep = Network::Lockstep.join(transport: transport, fingerprint: print(game))
+    lockstep = Network::Lockstep.join(transport: transport, fingerprint: fingerprint_of(game))
     machine(lockstep, player, passes, game: game)
   end
 

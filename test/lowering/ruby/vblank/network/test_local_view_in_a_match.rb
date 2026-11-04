@@ -24,12 +24,12 @@ class TestLocalViewInAMatch < Minitest::Test
     net = Network::SimulatedNetwork.new
     copies = Array.new(count) do
       endpoint = net.connect
-      print = Network::Fingerprint.of(program, title: "VIEW")
+      fingerprint = Network::Fingerprint.of(program, title: "VIEW")
       lockstep = if endpoint.id == 1
-                   Network::Lockstep.host(transport: endpoint, fingerprint: print, players: count, seed: 5,
+                   Network::Lockstep.host(transport: endpoint, fingerprint: fingerprint, players: count, seed: 5,
                                           input_delay: 1, checkpoint_every: 1)
                  else
-                   Network::Lockstep.join(transport: endpoint, fingerprint: print)
+                   Network::Lockstep.join(transport: endpoint, fingerprint: fingerprint)
                  end
       device = Headless.new(frames: PASSES, buttons: (2..PASSES).to_h { |pass| [pass, [:right]] })
       [Session.new(program, network: lockstep), device]

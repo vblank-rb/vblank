@@ -219,8 +219,8 @@ module VBlank
         # built as Ruby, as C or as JavaScript of one game carries one number. The runtime takes its
         # constant (RG_FINGERPRINT) to a match (rg_lockstep.js).
         def fingerprint_text(program)
-          print = Network::Fingerprint.of(program, title: "")
-          "const RG_FINGERPRINT = { console: #{print.console.to_json}, digest: #{print.digest.to_json} };\n"
+          fingerprint = Network::Fingerprint.of(program, title: "")
+          "const RG_FINGERPRINT = { console: #{fingerprint.console.to_json}, digest: #{fingerprint.digest.to_json} };\n"
         end
 
         # +parts+ inside a function of their own, in strict mode, so nothing they declare leaks

@@ -42,14 +42,14 @@ class TestLobbyChat < Minitest::Test
   # One copy of a match through the relay: it makes the room (the first) or joins it. +says+ is what its player types, by pass.
   private def copy(relay, scheduler, box, walk, says: {}, host: false, players: 2)
     line = Network::InProcessLine.new(relay.connect, scheduler)
-    print = Network::Fingerprint.of(program, title: "WANDERERS")
+    fingerprint = Network::Fingerprint.of(program, title: "WANDERERS")
     lambda do
       lockstep = if host
                    transport = Network::RelayTransport.make_room(line)
                    box.concat([transport.code] * 8)
-                   Network::Lockstep.host(transport: transport, fingerprint: print, players: players, seed: 0, input_delay: 2, checkpoint_every: 1)
+                   Network::Lockstep.host(transport: transport, fingerprint: fingerprint, players: players, seed: 0, input_delay: 2, checkpoint_every: 1)
                  else
-                   Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, box.first), fingerprint: print)
+                   Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, box.first), fingerprint: fingerprint)
                  end
       device = TalkingDevice.new(says: says, frames: PASSES, buttons: (2..PASSES).to_h { |pass| [pass, [walk]] })
       device.lockstep = lockstep

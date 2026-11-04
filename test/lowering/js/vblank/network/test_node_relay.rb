@@ -37,15 +37,15 @@ class TestNodeRelay < Minitest::Test
   # A Ruby build that makes or joins a room through the same relay.
   private def ruby_copy(relay, scheduler, box, walk, host: nil)
     line = line_for(relay, scheduler)
-    print = Network::Fingerprint.of(program, title: "WANDERERS")
+    fingerprint = Network::Fingerprint.of(program, title: "WANDERERS")
     lambda do
       if host
         transport = Network::RelayTransport.make_room(line)
         box.concat([transport.code] * 8)
-        lockstep = Network::Lockstep.host(transport: transport, fingerprint: print, players: host[:players], seed: host[:seed],
+        lockstep = Network::Lockstep.host(transport: transport, fingerprint: fingerprint, players: host[:players], seed: host[:seed],
                                           input_delay: host[:input_delay], checkpoint_every: host[:checkpoint_every])
       else
-        lockstep = Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, box.first), fingerprint: print)
+        lockstep = Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, box.first), fingerprint: fingerprint)
       end
       device = Headless.new(frames: PASSES, buttons: (2..PASSES).to_h { |pass| [pass, [walk]] })
       Session.new(program, network: lockstep).play(device)

@@ -21,15 +21,15 @@ class TestLockstepOverRelay < Minitest::Test
   # One copy: it makes the room (the first) or joins the code the first one wrote down.
   private def copy(relay, scheduler, room_code, walks:, game: program, title: "WANDERERS")
     line = Network::InProcessLine.new(relay.connect, scheduler)
-    print = Network::Fingerprint.of(game, title: title)
+    fingerprint = Network::Fingerprint.of(game, title: title)
     lambda do
       if room_code.empty?
         transport = Network::RelayTransport.make_room(line)
         room_code << transport.code
-        lockstep = Network::Lockstep.host(transport: transport, fingerprint: print, players: 2, seed: 11, input_delay: 2)
+        lockstep = Network::Lockstep.host(transport: transport, fingerprint: fingerprint, players: 2, seed: 11, input_delay: 2)
       else
         transport = Network::RelayTransport.join_room(line, room_code.first)
-        lockstep = Network::Lockstep.join(transport: transport, fingerprint: print)
+        lockstep = Network::Lockstep.join(transport: transport, fingerprint: fingerprint)
       end
       device = Headless.new(frames: PASSES, buttons: (2..PASSES).to_h { |pass| [pass, [walks]] })
       Session.new(game, network: lockstep).play(device)

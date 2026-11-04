@@ -57,15 +57,15 @@ class TestWhatDiffersBetweenMachines < Minitest::Test
   # Two machines of one match; the second is given +pass_seconds+ for each pass, so its window is slow.
   private def match(game, second_speed: 0, buttons: {})
     program = game.checked_program(err: nil, console: :gba)
-    print = Network::Fingerprint.of(program, title: "TEST")
+    fingerprint = Network::Fingerprint.of(program, title: "TEST")
     net = Network::SimulatedNetwork.new
     copies = Array.new(2) do |index|
       endpoint = net.connect
       lockstep = if index.zero?
-                   Network::Lockstep.host(transport: endpoint, fingerprint: print, players: 2, seed: 3, input_delay: 1,
+                   Network::Lockstep.host(transport: endpoint, fingerprint: fingerprint, players: 2, seed: 3, input_delay: 1,
                                           checkpoint_every: 1)
                  else
-                   Network::Lockstep.join(transport: endpoint, fingerprint: print)
+                   Network::Lockstep.join(transport: endpoint, fingerprint: fingerprint)
                  end
       speed = index.zero? ? 0 : second_speed
       [Session.new(program, network: lockstep), Headless.new(frames: PASSES, buttons: buttons, pass_seconds: speed)]
