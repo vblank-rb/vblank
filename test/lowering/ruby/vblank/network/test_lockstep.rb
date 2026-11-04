@@ -149,7 +149,7 @@ class TestLockstep < Minitest::Test
     net, copies = match_of(2)
     net.hold(from: 2, to: 1)
 
-    error = assert_raises(Network::SimulatedNetwork::Stalled) { play(net, copies) }
+    error = assert_raises(Network::Scheduler::Stalled) { play(net, copies) }
 
     assert_match(/Held back: 2 to 1/, error.message)
   end

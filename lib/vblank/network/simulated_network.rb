@@ -12,11 +12,11 @@ module VBlank
     #                                          message it had already sent
     #   net.at_round(10) { net.release(...) }  do any of these on a round of the test's choosing
     #
-    # TIME IS ROUNDS. #play runs each copy of the game in a Fiber and takes them round by round,
-    # in the order they were given. A copy runs until it must wait for a message (see
-    # Endpoint#wait_for_message), and the next copy then runs. A delay of three rounds means three
-    # trips round all the copies, which is how a delay is felt by a game that waits on it. That keeps
-    # the whole run in order, whatever the machine running the test does.
+    # TIME IS ROUNDS. #play runs each copy of the game in a Fiber and takes them round by round, in the
+    # order they were given (see Scheduler). A copy runs until it must wait for a message (see
+    # Endpoint#wait_for_message), and the next copy then runs. A delay of three rounds means three trips
+    # round all the copies, which is how a delay is felt by a game that waits on it. That keeps the whole
+    # run in order, whatever the machine running the test does.
     #
     # THE ROOM NEVER READS A MESSAGE. It stamps who sent it and hands it on, as a relay does, and it
     # tells every machine when another has dropped.
@@ -24,13 +24,6 @@ module VBlank
       # A message on its way: +due+ is the round it can first be received on, +sequence+ puts all the
       # messages of the network in the order they were sent.
       Pending = Data.define(:sequence, :from, :to, :due, :message)
-
-      # What a copy came to: the value it returned, or the error that stopped it.
-      Outcome = Data.define(:value, :error)
-
-      # Raised when every copy is waiting and no message is on its way, so a test that would
-      # otherwise wait forever says why instead.
-      class Stalled < StandardError; end
 
       attr_reader :round
 
@@ -42,7 +35,11 @@ module VBlank
         @delays = Hash.new(0) # [from, to] => rounds
         @held = Set.new
         @scheduled = [] # [round, action]
-        @fibers = {} # Fiber => the copy's number, for the copies being played
+        @scheduler = Scheduler.new(movement: -> { movement_possible? }, stalled_words: -> { held_words },
+                                   before_round: lambda { |round|
+                                     @round = round
+                                     run_scheduled
+                                   })
       end
 
       # A machine's end of its link to the room. Its number is the next one, from 1, and is the
@@ -73,22 +70,9 @@ module VBlank
       # Runs +action+ at the start of round +number+.
       def at_round(number, &action) = @scheduled << [number, action]
 
-      # Plays +copies+, each something callable, round by round until every one has finished or
-      # failed. Gives back an Outcome for each, in order. A copy's error ends only that copy.
-      def play(copies)
-        fibers = copies.map { |copy| Fiber.new { copy.call } }
-        fibers.each_with_index { |fiber, index| @fibers[fiber] = index }
-        outcomes = Array.new(copies.size)
-        until outcomes.all?
-          @round += 1
-          run_scheduled
-          finished_any = run_round(fibers, outcomes)
-          refuse_stall(outcomes) unless finished_any || outcomes.all? || movement_possible?
-        end
-        outcomes
-      ensure
-        @fibers.clear
-      end
+      # Plays +copies+, each something callable, round by round until every one has finished or failed.
+      # Gives back a Scheduler::Outcome for each, in order. A copy's error ends only that copy.
+      def play(copies) = @scheduler.play(copies)
 
       # --- for an Endpoint ---
 
@@ -102,7 +86,10 @@ module VBlank
         Envelope.new(from: chosen.from, message: chosen.message)
       end
 
-      def inside_play? = @fibers.key?(Fiber.current)
+      def inside_play? = @scheduler.inside?
+
+      # Gives the other copies their turn: called by a copy that waits for a message.
+      def wait_for_turn = @scheduler.wait
 
       def message_ready_for?(to) = ready_messages_for(to).any?
 
@@ -132,25 +119,6 @@ module VBlank
         due.each { |_round, action| action.call }
       end
 
-      # One trip round every copy still going. Returns whether any finished or failed in it.
-      def run_round(fibers, outcomes)
-        finished = false
-        fibers.each_with_index do |fiber, index|
-          next if outcomes[index]
-
-          begin
-            value = fiber.resume
-            next if fiber.alive?
-
-            outcomes[index] = Outcome.new(value: value, error: nil)
-          rescue StandardError => error
-            outcomes[index] = Outcome.new(value: nil, error: error)
-          end
-          finished = true
-        end
-        finished
-      end
-
       # Whether the next round can differ from this one: a message that can be received, now or on
       # a later round, or something the test scheduled.
       def movement_possible?
@@ -159,12 +127,9 @@ module VBlank
         @links.any? { |link, pending| pending.any? && !@held.include?(link) }
       end
 
-      def refuse_stall(outcomes)
-        waiting = outcomes.each_index.select { |index| outcomes[index].nil? }.map { |index| index + 1 }
+      def held_words
         held = @held.map { |from, to| "#{from} to #{to}" }
-        raise Stalled, "Every copy is waiting and no message is on its way. Waiting: copies #{waiting.join(', ')}." \
-                       "#{" Held back: #{held.join(', ')}." unless held.empty?} " \
-                       "To fix this, release a held link, or make the copy that sends the message play."
+        "Held back: #{held.join(', ')}." unless held.empty?
       end
 
       # THE END OF ONE MACHINE'S LINK TO THE ROOM, which is what a Lockstep gives its messages to.
@@ -190,10 +155,10 @@ module VBlank
         def wait_for_message
           until @closed || @network.message_ready_for?(@id)
             unless @network.inside_play?
-              raise Stalled, "This machine waits for a message and no other copy is playing to send one. " \
+              raise Scheduler::Stalled, "This machine waits for a message and no other copy is playing to send one. " \
                              "To fix this, play every copy with SimulatedNetwork#play."
             end
-            Fiber.yield
+            @network.wait_for_turn
           end
         end
 

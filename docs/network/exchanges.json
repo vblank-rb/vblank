@@ -1,0 +1,115 @@
+{
+  "about": "Example exchanges between machines and a relay, in the network format version 1 (see protocol.md). Every implementation tests itself against this file: the stand-in relay in Ruby, and the real relay when it exists. Each exchange is a list of steps. In a step one client sends a message (sends), sends raw text (sends_text), or goes away (closes). Then 'gets' lists every message the relay hands to any client because of it, in order, each with the client that receives it. A message in 'gets' matches when every field it names has that value; fields it does not name are ignored (for example the words of an error). A value that starts with $ names a thing the relay chooses, such as a room code: the first time it is met it is learned, and after that it must be the same.",
+  "format": 1,
+  "exchanges": [
+    {
+      "name": "a machine makes a room and is told the code",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] }
+      ]
+    },
+    {
+      "name": "a machine joins a room by its code",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] }
+      ]
+    },
+    {
+      "name": "a message goes to the other machines of the room, with who sent it, and not back to the sender",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "third", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "third", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 3, "members": [1, 2] } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join", "game": "WANDERERS", "console": "gba", "digest": "ab12" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "join", "from": 2, "game": "WANDERERS", "console": "gba", "digest": "ab12" } },
+                    { "client": "third", "message": { "v": 1, "type": "join", "from": 2, "game": "WANDERERS", "console": "gba", "digest": "ab12" } } ] },
+        { "client": "host", "sends": { "v": 1, "type": "buttons", "pass": 4, "mask": 16 },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "buttons", "from": 1, "pass": 4, "mask": 16 } },
+                    { "client": "third", "message": { "v": 1, "type": "buttons", "from": 1, "pass": 4, "mask": 16 } } ] }
+      ]
+    },
+    {
+      "name": "a message cannot say it is from somebody else",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "checkpoint", "from": 1, "pass": 8, "crc": 305419896 },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "checkpoint", "from": 2, "pass": 8, "crc": 305419896 } } ] }
+      ]
+    },
+    {
+      "name": "a machine that goes away is told to the others, after what it had sent",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "buttons", "pass": 5, "mask": 1 },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "buttons", "from": 2, "pass": 5, "mask": 1 } } ] },
+        { "client": "guest", "closes": true,
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "left", "from": 2 } } ] }
+      ]
+    },
+    {
+      "name": "the numbers of the room are not used again for a machine that comes later",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "guest", "closes": true,
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "left", "from": 2 } } ] },
+        { "client": "later", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "later", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 3, "members": [1] } } ] }
+      ]
+    },
+    {
+      "name": "a code that is no room",
+      "steps": [
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "NOPE" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "error", "reason": "no_such_room" } } ] }
+      ]
+    },
+    {
+      "name": "a machine that sends before it is in a room",
+      "steps": [
+        { "client": "guest", "sends": { "v": 1, "type": "buttons", "pass": 4, "mask": 0 },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "error", "reason": "not_in_a_room" } } ] }
+      ]
+    },
+    {
+      "name": "a machine in a room cannot make or join another",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "error", "reason": "already_in_a_room" } } ] }
+      ]
+    },
+    {
+      "name": "a message of a newer version is refused with the versions the relay knows",
+      "steps": [
+        { "client": "host", "sends": { "v": 2, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "error", "reason": "version", "supported": [1] } } ] }
+      ]
+    },
+    {
+      "name": "text that is not a message",
+      "steps": [
+        { "client": "host", "sends_text": "this is not a message",
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "error", "reason": "bad_message" } } ] },
+        { "client": "host", "sends_text": "[1, 2]",
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "error", "reason": "bad_message" } } ] }
+      ]
+    }
+  ]
+}
