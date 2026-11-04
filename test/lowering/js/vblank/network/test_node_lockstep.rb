@@ -30,12 +30,12 @@ class TestNodeLockstep < Minitest::Test
   # A Ruby copy as the second machine of the match, walking the way +buttons+ says.
   private def ruby_copy(net, walk, host: nil)
     endpoint = net.connect
-    print = Network::Fingerprint.of(program, title: "WANDERERS")
+    fingerprint = Network::Fingerprint.of(program, title: "WANDERERS")
     lockstep = if host
-                 Network::Lockstep.host(transport: endpoint, fingerprint: print, players: host[:players], seed: host[:seed],
+                 Network::Lockstep.host(transport: endpoint, fingerprint: fingerprint, players: host[:players], seed: host[:seed],
                                         input_delay: host[:input_delay], checkpoint_every: host[:checkpoint_every])
                else
-                 Network::Lockstep.join(transport: endpoint, fingerprint: print)
+                 Network::Lockstep.join(transport: endpoint, fingerprint: fingerprint)
                end
     device = Headless.new(frames: PASSES, buttons: (2..PASSES).to_h { |pass| [pass, [walk]] })
     session = Session.new(program, network: lockstep)
@@ -126,6 +126,21 @@ class TestNodeLockstep < Minitest::Test
       refute played.success, text
       assert_match words, played.error
     end
+  end
+
+  # A node copy that leaves says so to the room, as Lockstep#leave does, and the others go on without it.
+  def test_a_node_copy_that_leaves_is_seen_leaving_and_the_others_go_on
+    net = Network::SimulatedNetwork.new
+    copies = [node(net, hold: RIGHT, host: settings(3)), node(net, hold: LEFT),
+              NodeCopy.copy(program, endpoint: net.connect, passes: PASSES, hold: RIGHT, leave_at: 10)]
+
+    first, second, = net.play(copies).map { |outcome| outcome.error ? raise(outcome.error) : outcome.value }
+
+    assert first.success, first.error
+    assert_equal PASSES - 1, first.states.size
+    assert_equal first.states, second.states
+    assert_equal [3], first.events.select { |_pass, kind, _player| kind == :left }.map(&:last)
+    assert_equal first.events, second.events
   end
 
   def test_a_player_who_goes_is_seen_leaving_on_the_same_pass_by_a_node_copy

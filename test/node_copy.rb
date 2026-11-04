@@ -14,6 +14,7 @@ require "open3"
 #   node -> test   net?            "I need a message to go on": the test answers with
 #   test -> node   net-in JSON     each message that has come (with who sent it), then
 #   test -> node   net-end         ...no more for now; or net-closed first, when the link is gone
+#   node -> test   net-leave       the copy leaves the match: the test closes its end of the link
 #   node -> test   pass N CRC PIC  pass N ended: the CRC of the game's state, and of the picture
 #   node -> test   event N KIND P  something that happened on pass N (a player left)
 #   node -> test   fingerprint CONSOLE DIGEST
@@ -32,9 +33,9 @@ module NodeCopy
 
   # A callable for Network::Scheduler#play that plays the copy: +program+ built as JavaScript, as player
   # +endpoint.id+, to host (+host:+ with the match's settings) or to join. +passes+ is how many to play and
-  # +hold+ the buttons the copy's player holds from pass 2.
-  def self.copy(program, endpoint:, passes:, hold: 0, host: nil, title: "WANDERERS", says: nil)
-    -> { play(program, endpoint, passes, hold, host, title, says: says) }
+  # +hold+ the buttons the copy's player holds from pass 2. With +leave_at+ the copy leaves the match on that pass.
+  def self.copy(program, endpoint:, passes:, hold: 0, host: nil, title: "WANDERERS", says: nil, leave_at: nil)
+    -> { play(program, endpoint, passes, hold, host, title, says: says, leave_at: leave_at) }
   end
 
   # A callable that plays the copy through a relay: it makes a room (when +host+ gives the match's settings),
@@ -46,12 +47,13 @@ module NodeCopy
     end
   end
 
-  def self.play(program, carrier, passes, hold, host, title, relay: nil, code_box: nil, says: nil)
+  def self.play(program, carrier, passes, hold, host, title, relay: nil, code_box: nil, says: nil, leave_at: nil)
     script = VBlank::IR::Backends::JS.new.build_headless(program)
     role = host ? ["--match-host", *host.values_at(:seed, :input_delay, :checkpoint_every, :players).map(&:to_s)] : ["--match-join"]
     you = relay ? [] : ["--you", carrier.id.to_s]
     chat = says ? ["--chat-at", says.first.to_s, says.last] : []
-    command = ["node", script, passes.to_s, *role, *you, *relay.to_a, "--title", title, "--hold", hold.to_s, *chat]
+    leave = leave_at ? ["--leave-at", leave_at.to_s] : []
+    command = ["node", script, passes.to_s, *role, *you, *relay.to_a, "--title", title, "--hold", hold.to_s, *chat, *leave]
     Open3.popen3(*command) do |stdin, stdout, stderr, waiter|
       reader = Thread.new { stderr.read }
       result = converse(stdin, stdout, carrier, code_box)
@@ -66,6 +68,7 @@ module NodeCopy
       case line
       when /\Anet-out (.*)/ then carrier.send_message(Wire.decode(Regexp.last_match(1)).message)
       when /\Anet\?/ then answer(stdin, carrier)
+      when /\A(net|relay)-leave/ then carrier.close
       when /\Arelay-out (.*)/ then carrier.send_text(Regexp.last_match(1))
       when /\Arelay\?/ then answer_from_line(stdin, carrier)
       when /\Aroom (\w+)/ then found[:room] = Regexp.last_match(1) and code_box&.concat([found[:room]] * 8) # one for each machine that may join
