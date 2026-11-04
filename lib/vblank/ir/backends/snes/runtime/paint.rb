@@ -202,7 +202,7 @@ module VBlank
             Scratch = Data.define(:left, :right, :top, :bottom, :area, :y, :row, :count, :chunk, :last,
                                   :shift, :mask, :not_mask, :planes, :left_planes, :right_planes,
                                   :pointer, :height, :across, :first_x, :temp, :column, :tile, :mark_row,
-                                  :mark_count) do
+                                  :mark_count, :run) do
               def area_left = area
               def area_top = area + 2
               def area_right = area + 4
@@ -252,7 +252,7 @@ module VBlank
                           right_planes: memory.scratch(10), pointer: memory.scratch(4), height: memory.scratch(2),
                           across: memory.scratch(2), first_x: memory.scratch(2), temp: memory.scratch(4),
                           column: memory.scratch(2), tile: memory.scratch(2), mark_row: memory.scratch(2),
-                          mark_count: memory.scratch(2))
+                          mark_count: memory.scratch(2), run: memory.scratch(2))
             end
 
             # +chip+ for a cartridge with a Super FX: see ChipPaint, which says what changes there.
@@ -1255,6 +1255,20 @@ module VBlank
               asm.sta(asm.direct(s.across))
               asm.lda(asm.long_x("paint pictures", 6))
               asm.sta(asm.direct(s.height))
+              # Which of each row's runs of columns: the one for the place across modulo eight, where
+              # the picture's table of runs says it starts in a row (SNES::PaintedArt#run_starts,
+              # sixteen bytes a picture), in +run+.
+              asm.lda(asm.direct(R.call(0)))
+              4.times { asm.asl }
+              asm.sta(asm.direct(s.run))
+              asm.lda(asm.direct(R.call(1)))
+              asm.and_a(7)
+              asm.asl
+              asm.clc
+              asm.adc(asm.direct(s.run))
+              asm.tax
+              asm.lda(asm.long_x("paint picture runs"))
+              asm.sta(asm.direct(s.run))
               asm.jsr(asm.abs("rt_paint_take_area"))
               # The rows painted: the picture's, inside the area.
               asm.lda(asm.direct(R.call(2)))
@@ -1314,29 +1328,6 @@ module VBlank
               return ChipBlit.emit_console(asm, memory, s) if chip
 
               emit_mark_or_log(asm, memory, logged, "rt_paint_blit_paint")
-              # Which of each row's eight runs of columns: the one for the place across modulo eight,
-              # the columns × ten bytes on for each (SNES::PaintedArt), in +shift+.
-              asm.lda(asm.direct(s.across))
-              asm.asl
-              asm.sta(asm.direct(s.shift))
-              asm.asl
-              asm.asl
-              asm.clc
-              asm.adc(asm.direct(s.shift))
-              asm.sta(asm.direct(s.shift)) # a run's bytes
-              asm.lda(asm.direct(R.call(1)))
-              asm.and_a(7)
-              asm.tax
-              asm.lda(0)
-              asm.label("rt_paint_blit_run")
-              asm.cpx(0)
-              asm.beq("rt_paint_blit_run_found")
-              asm.clc
-              asm.adc(asm.direct(s.shift))
-              asm.dex
-              asm.bra("rt_paint_blit_run")
-              asm.label("rt_paint_blit_run_found")
-              asm.sta(asm.direct(s.shift))
               [[s.area_left, s.left], [s.area_right, s.right]].each do |from, to|
                 asm.lda(asm.direct(from))
                 asm.sta(asm.direct(to))
@@ -1366,7 +1357,7 @@ module VBlank
               asm.tay
               asm.lda(asm.ind_long_y(s.pointer))
               asm.clc
-              asm.adc(asm.direct(s.shift)) # a row is in one bank, so this never carries
+              asm.adc(asm.direct(s.run)) # a row is in one bank, so this never carries
               asm.sta(asm.direct(s.temp))
               asm.iny
               asm.iny
@@ -1500,7 +1491,7 @@ module VBlank
               asm.ldy(asm.direct(s.first_x))
               asm.lda(asm.ind_long_y(s.pointer))
               asm.clc
-              asm.adc(asm.direct(s.shift)) # a row is in one bank, so this never carries
+              asm.adc(asm.direct(s.run)) # a row is in one bank, so this never carries
               asm.sta(asm.direct(s.temp))
               asm.iny
               asm.iny

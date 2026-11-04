@@ -12,8 +12,8 @@ module VBlank
           # paints the picture's rows into them, as Paint's rows and ChipFill's tiles are painted.
           #
           # THE PICTURE IS IN THE CARTRIDGE, where SNES::PaintedArt keeps it: a table of where each
-          # of its rows is (four bytes a row, its address and bank), and each row its eight runs,
-          # one for each place across modulo eight, of a COLUMN of ten bytes for each tile across:
+          # of its rows is (four bytes a row, its address and bank), and each row its runs, one for
+          # each place across modulo eight it can be painted at, of a COLUMN of ten bytes for each tile across:
           # the mask of the pixels it draws in both bytes of a word, then its four pairs of planes,
           # each pair a word: ready to write into a tile's row. The chip reads
           # the cartridge a byte at a time: R14 says where, ROMB which bank, and GETB takes the byte
@@ -32,8 +32,8 @@ module VBlank
 
             # The block (ChipPaint::BLIT), as offsets from its start. What the console writes: where
             # the picture's table of rows is (its address, then its bank), how many tiles across a
-            # row of it reaches, its place across (only the place modulo eight is read) and down,
-            # its first tile across counted from the screen's left (less than nought when it starts
+            # row of it reaches, where in a row the run for its place across modulo eight starts
+            # (Paint's +run+, read from SNES::PaintedArt#run_starts), its place down, its first tile across counted from the screen's left (less than nought when it starts
             # off the screen), the first and last tile painted, the top and bottom rows painted
             # (bottom just past), the area's left and right, the generation and the clear colour's
             # planes. What the chip keeps for itself: where the first tile's column starts in a row
@@ -41,7 +41,7 @@ module VBlank
             # first and last tiles' masks, the row a band starts on and the row past its end, where
             # its first row starts in the picture, its first tile's number, the row being painted,
             # where it starts in the picture, and where the first tile's row is in the picture.
-            OFFSETS = %i[rows rows_bank across x y first_x first_tile last_tile top bottom
+            OFFSETS = %i[rows rows_bank across run y first_x first_tile last_tile top bottom
                          area_left area_right generation clear0 clear1 clear2 clear3
                          first_column left_mask right_mask band_top band_end row_start tile_row
                          row row_at].each_with_index.to_h { |what, i| [what, i * 2] }.freeze
@@ -60,7 +60,7 @@ module VBlank
             # copy of the painted screen brought up to date.
             def emit_console(asm, memory, s)
               r = Paint::R
-              [[:rows, s.pointer], [:rows_bank, s.pointer + 2], [:across, s.across], [:x, r.call(1)], [:y, r.call(2)],
+              [[:rows, s.pointer], [:rows_bank, s.pointer + 2], [:across, s.across], [:run, s.run], [:y, r.call(2)],
                [:first_x, s.first_x], [:first_tile, s.chunk], [:last_tile, s.last], [:top, s.top], [:bottom, s.bottom],
                [:area_left, s.area_left], [:area_right, s.area_right]].each do |what, from|
                 asm.lda(asm.direct(from))
@@ -170,7 +170,7 @@ module VBlank
             # read stays in the bank it started in. That holds because the Linker places a section
             # whole in one bank, a picture's table of rows is in one section (Lowering::Paint's
             # "paint tables"), and Lowering::Paint#picture_row_sections starts a new section rather
-            # than split a row, so each row, all eight of its runs, is in one bank too. Paint's own
+            # than split a row, so each row, every run of it, is in one bank too. Paint's own
             # rt_paint_blit relies on the same.
             def emit_row(gsu)
               gsu.label("chip blit row")
@@ -272,23 +272,8 @@ module VBlank
               gsu.label(SETUP)
               gsu.ibt(0, 0)
               gsu.sm(ChipFill::READIED_COUNT, 0)
-              # A run's bytes, the tiles across × ten, once for each place across modulo eight...
-              gsu.lm(1, block_place(:across))
-              gsu.from(1).to(2).add(1)
-              gsu.from(2).to(1).add(2)
-              gsu.with(1).add(1)
-              gsu.with(1).add(2)
-              gsu.ibt(2, 0)
-              gsu.lm(0, block_place(:x))
-              gsu.from(0).to(12).and_(gsu.imm(7))
-              gsu.beq("chip blit run found")
-              gsu.nop
-              gsu.iwt(13, "chip blit run")
-              gsu.label("chip blit run")
-              gsu.with(2).add(1)
-              gsu.loop
-              gsu.nop
-              gsu.label("chip blit run found")
+              # Where the run for the place across starts in a row, which the console looked up...
+              gsu.lm(2, block_place(:run))
               # ...and ten bytes for each tile between the picture's first and the first painted.
               gsu.lm(0, block_place(:first_tile))
               gsu.lm(1, block_place(:first_x))

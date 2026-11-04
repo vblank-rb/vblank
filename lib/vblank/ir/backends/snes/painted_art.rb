@@ -22,8 +22,14 @@ module VBlank
         # a tile of the console's keeps its pixels. So Runtime::Paint reads each 16-bit word ready to
         # write into a tile's row: the mask, then each pair of planes. A picture painted at a place
         # across that is not a multiple of eight falls across one tile more than its width, its
-        # pixels shifted along; each row is kept for all eight places across modulo eight, one after
-        # the other, so the painting never shifts anything.
+        # pixels shifted along; each row is kept already shifted for each place across modulo eight
+        # it can be painted at, one RUN after the other, so the painting never shifts anything.
+        #
+        # THE RUNS KEPT. Eight runs a row is eight times the picture, so a picture keeps only the
+        # runs for the places the game can paint it at (#paint_at, worked out by
+        # Lowering::Paint.shifts_reachable): text written at one place keeps one run, a picture
+        # whose place is worked out as the game runs keeps all eight. Each picture has a table of
+        # where in a row each place's run starts (#run_starts), which the painting reads.
         class PaintedArt
           COLORS = 256
           BLACK = 0
@@ -37,10 +43,11 @@ module VBlank
           class TooMuch < LoweringError; end
 
           # One picture as Runtime::Paint reads it: its number, its size, how many tiles across a row
-          # of it reaches (its bytes across, and one for a place off the tile edges), and its rows,
-          # each SHIFTS runs of that many columns.
-          Picture = Data.define(:number, :width, :height, :across, :rows) do
-            def row_bytes = SHIFTS * across * COLUMN_BYTES
+          # of it reaches (its bytes across, and one for a place off the tile edges), and the place
+          # in the colour list of each pixel it draws ({[x, y] => place}).
+          Picture = Data.define(:number, :width, :height, :across, :places) do
+            # The bytes of one run of a row: a column for each tile across.
+            def run_bytes = across * COLUMN_BYTES
           end
 
           attr_reader :pictures
@@ -50,6 +57,33 @@ module VBlank
             @places = { BLACK => 0 }
             @pictures = []
             @numbered = {}
+            @shifts = {} # a picture's number -> the places across modulo eight it is painted at
+          end
+
+          # Says that picture +number+ is painted at the places across modulo eight +shifts+.
+          def paint_at(number, shifts)
+            @shifts[number] = (@shifts.fetch(number, []) | shifts).sort
+          end
+
+          # The places across modulo eight +picture+ keeps a run for: every one when nothing said
+          # where it is painted, which is always right, only bigger.
+          def shifts_kept(picture) = @shifts.fetch(picture.number, (0...SHIFTS).to_a)
+
+          # Where each place across modulo eight's run starts in a row of +picture+, in bytes from the
+          # row's start: eight words. A place the picture is never painted at reads its first run.
+          def run_starts(picture)
+            kept = shifts_kept(picture)
+            Array.new(SHIFTS) { |shift| (kept.index(shift) || 0) * picture.run_bytes }
+          end
+
+          # +picture+'s rows, top to bottom, each its kept runs in order.
+          def rows(picture)
+            kept = shifts_kept(picture)
+            Array.new(picture.height) do |y|
+              kept.map do |shift|
+                (0...picture.across).map { |column| column_bytes(picture, y, (column * 8) - shift) }.join
+              end.join
+            end
           end
 
           # The place of +color+ (15-bit) in the colour list, added there the first time.
@@ -118,27 +152,28 @@ module VBlank
 
           private
 
+          # The picture with its colours' places, given out now, top row first and left to right, so
+          # the colour list is in the order the pictures are made whenever their rows are.
           def make_picture(number, width, height, drawn)
-            across = ((width + 7) / 8) + 1
-            rows = Array.new(height) do |y|
-              (0...SHIFTS).map do |shift|
-                (0...across).map { |column| column_bytes(drawn, width, y, (column * 8) - shift) }.join
-              end.join
+            places = {}
+            height.times do |y|
+              width.times do |x|
+                color = drawn[[x, y]]
+                places[[x, y]] = color.is_a?(Ink) ? color.place : place_of(color) unless color.nil?
+              end
             end
-            Picture.new(number: number, width: width, height: height, across: across, rows: rows)
+            Picture.new(number: number, width: width, height: height, across: ((width + 7) / 8) + 1, places: places)
           end
 
-          # The column of a picture's row +y+ whose eight pixels start at its pixel +left+ (which may
+          # The column of +picture+'s row +y+ whose eight pixels start at its pixel +left+ (which may
           # be off its left or right edge): the mask twice, then planes 0 to 7.
-          def column_bytes(drawn, width, y, left)
+          def column_bytes(picture, y, left)
             planes = Array.new(ROWS_A_ROW, 0)
             8.times do |bit|
-              x = left + bit
-              color = drawn[[x, y]] if x.between?(0, width - 1)
-              next if color.nil?
+              place = picture.places[[left + bit, y]]
+              next if place.nil?
 
               planes[0] |= 0x80 >> bit
-              place = color.is_a?(Ink) ? color.place : place_of(color)
               8.times { |plane| planes[plane + 1] |= 0x80 >> bit if place[plane] == 1 }
             end
             [planes[0], *planes].pack("C*")

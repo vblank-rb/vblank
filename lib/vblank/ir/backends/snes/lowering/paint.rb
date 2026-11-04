@@ -121,6 +121,47 @@ module VBlank
               TextLayerArt.pixels_at(node.text, node.fonts.get(node.font), x, y)
             end
 
+            # The places across modulo eight, 0 to 7, a picture painted at +x+ can be painted at: the
+            # runs of its rows SNES::PaintedArt must keep. A number written in the game is one place.
+            # A sum, difference or product, or the bits of two numbers, is worked out from its two
+            # sides' places, since a number's lowest three bits follow from theirs alone; so
+            # `column * 8` is place 0 and `column * 8 + 3` place 3, wherever the column is. A shift
+            # left by a written count is a product. Anything else, a variable most of all, can be
+            # at any of the eight.
+            def self.shifts_reachable(x) = shifts_of(x).to_a.sort
+
+            ALL_SHIFTS = (0...PaintedArt::SHIFTS).to_a.freeze
+            # The operators whose lowest three bits are those of the same operator on the two sides'.
+            LOW_BITS_KEPT = { :+ => :+, :- => :-, :* => :*, :& => :&, :| => :|, :^ => :^ }.freeze
+
+            def self.shifts_of(operand)
+              constant = constant_of(operand)
+              return [constant & 7] if constant
+              return ALL_SHIFTS unless operand.is_a?(IR::Node)
+
+              case operand.kind
+              when :neg then shifts_of(operand.operand).map { |shift| -shift & 7 }.uniq
+              when :bit_not then shifts_of(operand.operand).map { |shift| ~shift & 7 }.uniq
+              when :binop then binop_shifts(operand)
+              else ALL_SHIFTS
+              end
+            end
+
+            def self.binop_shifts(node)
+              left = shifts_of(node.lhs)
+              if node.op == :<<
+                count = constant_of(node.rhs)
+                return ALL_SHIFTS unless count
+                return [0] unless count.between?(0, 31)
+
+                return left.map { |shift| (shift << count) & 7 }.uniq
+              end
+              op = LOW_BITS_KEPT[node.op]
+              return ALL_SHIFTS unless op
+
+              left.product(shifts_of(node.rhs)).map { |a, b| a.public_send(op, b) & 7 }.uniq
+            end
+
             # +operand+'s number when it is one known now.
             def self.constant_of(operand)
               return operand if operand.is_a?(Integer)
@@ -195,6 +236,10 @@ module VBlank
                 tables.data_bytes(0)
                 tables.data_words(picture.across, picture.height)
               end
+              # Each picture's eight words: where in a row the run for each place across modulo
+              # eight starts (PaintedArt#run_starts).
+              tables.label("paint picture runs")
+              @painted_art.pictures.each { |picture| tables.data_words(*@painted_art.run_starts(picture)) }
               tables.label("paint picture lists")
               @picture_lists.each_index do |number|
                 tables.data_longs("paint picture list #{number}")
@@ -320,7 +365,7 @@ module VBlank
               asm = nil
               bytes = 0
               @painted_art.pictures.each do |picture|
-                picture.rows.each_with_index do |row, number|
+                @painted_art.rows(picture).each_with_index do |row, number|
                   if asm.nil? || bytes + row.bytesize > ROWS_A_SECTION
                     sections << asm.section if asm
                     asm = W65816.new("paint rows #{sections.length}", holds: Picture::ART)
@@ -376,12 +421,13 @@ module VBlank
 
             # Reference#exec_blit.
             def emit_blit(node)
-              runtime_call("rt_paint_blit", [Build.int(picture_number(node.name)), value_node(node.x), value_node(node.y)])
+              number = keep_runs_for(picture_number(node.name), node.x)
+              runtime_call("rt_paint_blit", [Build.int(number), value_node(node.x), value_node(node.y)])
             end
 
             # Reference#exec_blit_pose: one of the poses, by the number the game works out.
             def emit_blit_pose(node)
-              list = picture_list(node.poses.map { |name| picture_number(name) })
+              list = picture_list(node.poses.map { |name| keep_runs_for(picture_number(name), node.x) })
               runtime_call("rt_paint_blit_one_of", [Build.int(list), node.index, value_node(node.x), value_node(node.y)])
             end
 
@@ -397,7 +443,9 @@ module VBlank
             # list changes, as the console's own games change the colour of their text. Where the
             # ink cannot stand for the colour (see the runtime) the picture in the colour is painted.
             def emit_draw_text(node)
-              shown = text_picture(node.text, node.font, node.fonts, node.color)
+              # Every picture here is painted at +x+, the one on the layer too when it is painted
+              # instead (Runtime::TextLayer).
+              shown = keep_runs_for(text_picture(node.text, node.font, node.fonts, node.color), node.x)
               unless node.picked
                 layered = layer_text(node, shown)
                 if layered
@@ -407,7 +455,7 @@ module VBlank
                 return runtime_call("rt_paint_blit", [Build.int(shown), value_node(node.x), value_node(node.y)])
               end
 
-              picked = text_picture(node.text, node.font, node.fonts, node.picked)
+              picked = keep_runs_for(text_picture(node.text, node.font, node.fonts, node.picked), node.x)
               showing = Build.binop(:!=, value_node(node.showing), Build.int(0))
               number = text_ink(node)
               unless number
@@ -415,7 +463,7 @@ module VBlank
                                                              value_node(node.x), value_node(node.y)])
               end
 
-              inked = text_picture(node.text, node.font, node.fonts, @inks.fetch(number).ink)
+              inked = keep_runs_for(text_picture(node.text, node.font, node.fonts, @inks.fetch(number).ink), node.x)
               runtime_call("rt_paint_blit_inked", [Build.int(picture_list([shown, picked, inked])), showing,
                                                    value_node(node.x), value_node(node.y), Build.int(number)])
             end
@@ -454,7 +502,7 @@ module VBlank
 
             # Reference#exec_draw_digit: one of the ten digits' pictures; a number outside 0 to 9 none.
             def emit_draw_digit(node)
-              digits = (0..9).map { |digit| text_picture(digit.to_s, node.font, node.fonts, node.color) }
+              digits = (0..9).map { |digit| keep_runs_for(text_picture(digit.to_s, node.font, node.fonts, node.color), node.x) }
               runtime_call("rt_paint_blit_one_of", [Build.int(picture_list(digits)), node.value,
                                                     value_node(node.x), value_node(node.y)])
             end
@@ -482,6 +530,13 @@ module VBlank
               end
               runtime_call(routine, [Build.int(place), value_node(node.x), value_node(node.y), Build.int(width),
                                      Build.int(height)])
+            end
+
+            # Picture +number+, kept with a run of its rows for each place across modulo eight +x+ can
+            # give it (Paint.shifts_reachable); returns +number+.
+            def keep_runs_for(number, x)
+              @painted_art.paint_at(number, Paint.shifts_reachable(x))
+              number
             end
 
             # The number of the picture +name+ declares, made into SNES::PaintedArt's form.

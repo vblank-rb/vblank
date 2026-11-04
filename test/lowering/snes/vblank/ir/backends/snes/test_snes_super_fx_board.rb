@@ -21,8 +21,8 @@ class TestSNESSuperFXBoard < Minitest::Test
   # cartridges records new digests here, in the same commit.
   PLAIN_DIGESTS = {
     Tiles => "fb28094dd5c3b7063e3a8c8366c2b3ffb46524d5bf4e6c8d789ccafdb05cb459",
-    BufferedBounce => "0506ef3e9603a6102b4a4993b41be792bb12b7f4a1d5ab96e5e24369b4997ccc",
-    Sparks => "40b6ca86b53919dfd94b3cedada6c218b25056edefb37bf92d71439f0449e09d"
+    BufferedBounce => "b2ffb10f0bc00c9604c31ac20e3e812157510efa9e1ab9a7579e8254e7db3d6d",
+    Sparks => "db1440d0f3181c890998dc67c4892659280d8d54928b0135ca9f8d737d9936a2"
   }.freeze
 
   def test_a_plain_cartridge_is_byte_for_byte_what_it_was
