@@ -9,7 +9,7 @@ module VBlank
     # its own).
     #
     # It is one loop that looks at every socket in turn, so it needs no locks, and a client that is slow only
-    # makes itself wait. It speaks `ws://`; the real relay will be `wss://`, and what a client does about TLS is
+    # makes itself wait: nothing in the loop reads in a way that waits, the handshake included. It speaks `ws://`; the real relay will be `wss://`, and what a client does about TLS is
     # tested apart from this.
     class StandInRelayServer
       attr_reader :port, :relay
@@ -41,29 +41,65 @@ module VBlank
         @stop_writer.close
       end
 
+      # The longest a connection may take to send its whole handshake before it is closed.
+      HANDSHAKE_SECONDS = 10
+
       private
 
       Peer = Data.define(:socket, :connection)
 
+      # A connection whose handshake has not all come yet: its socket, the bytes so far, and when it connected.
+      Greeting = Struct.new(:io, :bytes, :since)
+
+      # A CLIENT THAT SAYS NOTHING MAKES NOBODY WAIT. A handshake is read a piece at a time as it comes, in the one
+      # loop that serves every socket, never with a read that waits; one that has not all come in HANDSHAKE_SECONDS
+      # is closed.
       def serve
+        @greetings = []
         loop do
-          readable, = IO.select([@listener, @stop_reader, *@peers.map { |peer| peer.socket.io }])
+          readable, = IO.select([@listener, @stop_reader, *@greetings.map(&:io), *@peers.map { |peer| peer.socket.io }],
+                                nil, nil, @greetings.empty? ? nil : 1)
+          readable ||= []
           break if readable.include?(@stop_reader)
 
-          accept_one if readable.include?(@listener)
+          accept_waiting if readable.include?(@listener)
+          @greetings.dup.each { |greeting| read_greeting(greeting) if readable.include?(greeting.io) }
+          close_slow_greetings
           @peers.each { |peer| carry_to_relay(peer) }
           @peers.each { |peer| carry_from_relay(peer) }
           @peers.reject! { |peer| peer.socket.ended? && peer.connection.closed? }
         end
+        @greetings.each { |greeting| greeting.io.close }
         @peers.each { |peer| peer.socket.close }
       end
 
-      def accept_one
-        io = @listener.accept
-        @peers << Peer.new(socket: WebSocket::ServerPeer.accept(io), connection: @relay.connect)
-      rescue WebSocket::HandshakeFailed, EOFError, Errno::ECONNRESET
-        io&.close
+      def accept_waiting
+        loop { @greetings << Greeting.new(@listener.accept_nonblock, "".b, now) }
+      rescue IO::WaitReadable
+        nil
       end
+
+      # Reads what a connection has sent of its handshake, and answers it once it has all come.
+      def read_greeting(greeting)
+        greeting.bytes << greeting.io.read_nonblock(1024)
+        head, rest = WebSocket::Handshake.split_head(greeting.bytes)
+        return unless head
+
+        @greetings.delete(greeting)
+        @peers << Peer.new(socket: WebSocket::ServerPeer.answer(greeting.io, head, rest), connection: @relay.connect)
+      rescue IO::WaitReadable
+        nil
+      rescue WebSocket::HandshakeFailed, EOFError, Errno::ECONNRESET, Errno::EPIPE, IOError
+        @greetings.delete(greeting)
+        greeting.io.close unless greeting.io.closed?
+      end
+
+      def close_slow_greetings
+        slow, @greetings = @greetings.partition { |greeting| now - greeting.since > HANDSHAKE_SECONDS }
+        slow.each { |greeting| greeting.io.close }
+      end
+
+      def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       def carry_to_relay(peer)
         peer.socket.read_messages.each { |text| peer.connection.send_text(text) }

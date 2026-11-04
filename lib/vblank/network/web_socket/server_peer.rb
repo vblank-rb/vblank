@@ -15,6 +15,13 @@ module VBlank
         # Raises HandshakeFailed when what came is not a WebSocket request.
         def self.accept(io)
           head, rest = Handshake.read_head(io)
+          answer(io, head, rest)
+        end
+
+        # Answers the request +head+ a client sent on +io+, which a caller has read already, and gives back the
+        # peer; +rest+ is what came after the head. A server that serves many sockets reads each head without
+        # waiting (StandInRelayServer) and answers it here.
+        def self.answer(io, head, rest)
           request, headers = Handshake.parse(head)
           key = headers["sec-websocket-key"]
           unless request.start_with?("GET ") && headers["upgrade"].to_s.casecmp?("websocket") && key

@@ -40,12 +40,23 @@ module VBlank
         # after it, which are the start of the first frames.
         def read_head(io)
           buffer = "".b
-          until (at = buffer.index("\r\n\r\n"))
-            chunk = io.readpartial(1024) # raises EOFError when the other end goes
-            buffer << chunk
-            raise HandshakeFailed, "The other end sent a very long answer where the handshake was to be." if buffer.bytesize > 16_384
+          until (found = split_head(buffer))
+            buffer << io.readpartial(1024) # raises EOFError when the other end goes
           end
-          [buffer.byteslice(0, at), buffer.byteslice(at + 4, buffer.bytesize - at - 4)]
+          found
+        end
+
+        # The most an HTTP head may be before the other end is taken for one that does not speak WebSocket.
+        MOST_HEAD_BYTES = 16_384
+
+        # +bytes+ cut at the blank line that ends an HTTP head: the head and the bytes after it, or nil when the
+        # head has not all come. Raises HandshakeFailed when it is longer than a head may be.
+        def split_head(bytes)
+          at = bytes.index("\r\n\r\n")
+          return [bytes.byteslice(0, at), bytes.byteslice(at + 4, bytes.bytesize - at - 4)] if at
+          raise HandshakeFailed, "The other end sent a very long answer where the handshake was to be." if bytes.bytesize > MOST_HEAD_BYTES
+
+          nil
         end
 
         # Checks the server's answer to a request with +key+; raises HandshakeFailed in plain words.

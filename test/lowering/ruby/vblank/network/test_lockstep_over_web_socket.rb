@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "socket"
+require "timeout"
 require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
@@ -86,6 +88,22 @@ class TestLockstepOverWebSocket < Minitest::Test
       left = results.first(2).map { |_device, lockstep| lockstep.events.select { |event| event.kind == :left } }
       assert_equal left.first, left.last
       assert_equal [results.last.last.player], left.first.map(&:player)
+    end
+  end
+
+  # A connection that never sends its handshake does not stop the relay answering the next one.
+  def test_a_silent_connection_does_not_keep_the_relay_from_the_others
+    with_relay do |server|
+      silent = TCPSocket.new("127.0.0.1", server.port)
+      half = TCPSocket.new("127.0.0.1", server.port)
+      half.write("GET / HTTP/1.1\r\nHost: x\r\n")
+
+      transport = Timeout.timeout(10) { Network::RelayTransport.make_room(Network::WebSocket::Client.connect(server.url)) }
+
+      assert_equal 1, transport.id
+    ensure
+      silent&.close
+      half&.close
     end
   end
 
