@@ -317,6 +317,16 @@ class TestLockstep < Minitest::Test
     assert_equal 7, friend.lockstep.seed
   end
 
+  def test_a_host_whose_link_closes_while_it_waits_for_players_stops_in_words
+    net = Network::SimulatedNetwork.new
+    host = copy_for(net, players: 2)
+    net.at_round(3) { net.disconnect(1) }
+
+    outcomes = play(net, [host])
+
+    assert_kind_of Network::ConnectionLost, outcomes.first.error
+  end
+
   # A game that is not wanderers, for the same console.
   private def other_game
     VBlank.game("OTHER", consoles: %i[gba], players: 4) { game_loop { pixel 2, 2, :red } }.checked_program(err: nil, console: :gba)

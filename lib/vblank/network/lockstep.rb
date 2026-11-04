@@ -164,6 +164,7 @@ module VBlank
         until @roster.size >= @settings.players
           receive_pending_messages
           break if @roster.size >= @settings.players
+          raise ConnectionLost if @transport.closed? # a closed link ends the wait rather than spinning on it
 
           @transport.wait_for_message
         end
