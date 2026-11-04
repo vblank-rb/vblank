@@ -339,3 +339,6 @@ int32_t rg_players_connected(void) { return connected; }
 
 /* Which player the person at this machine is: the first, until a match says otherwise. */
 int32_t rg_local_player(void) { return 1; }
+
+/* The match's shared seed: nought, since the desktop build plays no match yet. */
+int32_t rg_match_seed(void) { return 0; }
