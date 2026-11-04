@@ -136,6 +136,46 @@ class TestWebSocket < Minitest::Test
     assert_nil client.receive_text
   end
 
+  # Each piece is small enough, and together they are more than a message may be: the connection is closed rather
+  # than the memory filled.
+  def test_a_message_sent_in_pieces_bigger_than_the_most_it_reads_closes_the_client
+    piece = "x" * ((WebSocket::MOST_PAYLOAD_BYTES / 2) + 1)
+    client, = connected do |peer|
+      peer.io.write(Framing.encode(:text, piece, fin: false))
+      peer.io.write(Framing.encode(:continuation, piece, fin: false))
+    rescue Errno::EPIPE, Errno::ECONNRESET, IOError
+      nil # the client closed as it should
+    end
+
+    Timeout.timeout(FUSE_SECONDS) { sleep 0.01 until client.closed? }
+
+    assert_predicate client, :closed?
+    assert_nil client.receive_text
+  end
+
+  def test_a_message_sent_in_pieces_bigger_than_the_most_it_reads_closes_the_server_peer
+    ours, theirs = UNIXSocket.pair
+    server = Thread.new { WebSocket::ServerPeer.accept(theirs) }
+    WebSocket::Client.new(ours, host: "relay.test").handshake
+    peer = server.value
+    piece = "x" * ((WebSocket::MOST_PAYLOAD_BYTES / 2) + 1)
+    writer = Thread.new do
+      [[:text, false], [:continuation, false]].each { |kind, fin| ours.write(Framing.encode(kind, piece, mask_key: "abcd", fin: fin)) }
+    rescue Errno::EPIPE, Errno::ECONNRESET, IOError
+      nil
+    end
+
+    Timeout.timeout(FUSE_SECONDS) do
+      until peer.ended?
+        IO.select([peer.io], nil, nil, 0.05)
+        peer.read_messages
+      end
+    end
+    writer.join
+
+    assert_predicate peer.io, :closed?
+  end
+
   def test_a_close_from_the_server_ends_the_connection_after_the_messages_before_it
     client, = connected do |peer|
       peer.send_text("last words")

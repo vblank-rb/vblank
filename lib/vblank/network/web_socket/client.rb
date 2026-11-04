@@ -128,21 +128,29 @@ module VBlank
           @ended = true
         end
 
-        # Everything the socket holds now, taken apart into frames and acted on. The end is noticed here.
+        # Everything the socket holds now, taken apart into frames and acted on. The end is noticed here, and a
+        # relay that breaks the protocol (a frame or a message too big to keep, among others) ends the connection.
         def read_what_has_arrived
           return if @ended && @io.closed?
 
+          gone = read_and_act
+          act_on_frames
+          @ended = true if gone
+        rescue ProtocolError
+          fail_connection
+        end
+
+        # Reads and acts on what has come, until there is nothing more for now. Gives back true when the other end
+        # has gone. A ProtocolError is left to the caller.
+        def read_and_act
           loop do
             @reader.feed(@io.read_nonblock(4096))
             act_on_frames
           end
         rescue IO::WaitReadable, OpenSSL::SSL::SSLErrorWaitReadable
-          act_on_frames
+          false
         rescue EOFError, Errno::ECONNRESET, IOError
-          act_on_frames
-          @ended = true
-        rescue ProtocolError
-          fail_connection
+          true
         end
 
         def act_on_frames
@@ -165,6 +173,7 @@ module VBlank
           else
             raise ProtocolError, "A message was continued that was not begun." unless @pieces
 
+            Framing.refuse_message_too_big!(@pieces, frame.payload)
             @pieces << frame.payload
           end
           return unless frame.fin

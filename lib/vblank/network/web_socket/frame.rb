@@ -62,6 +62,15 @@ module VBlank
           end
         end
 
+        # Raises ProtocolError when +more+ added to the message so far, +pieces+, makes it bigger than this reads.
+        # A frame is held to MOST_PAYLOAD_BYTES on its own; this holds a message sent in many frames to it too.
+        def refuse_message_too_big!(pieces, more)
+          total = pieces.bytesize + more.bytesize
+          return if total <= MOST_PAYLOAD_BYTES
+
+          raise ProtocolError, "A message of more than #{MOST_PAYLOAD_BYTES} bytes, sent in pieces, is more than this reads."
+        end
+
         # The close message's bytes: a code and the words for it.
         def close_payload(code, words = "") = [code].pack("n") + words.b
       end

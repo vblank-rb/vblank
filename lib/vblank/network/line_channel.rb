@@ -17,6 +17,11 @@ module VBlank
     class LineChannel
       READ_BYTES = 4096
 
+      # The longest line this keeps while it waits for the line's end. A match's messages are a few dozen bytes;
+      # a peer that sends more than this and no end of line is not speaking the format, and would otherwise fill
+      # the memory, so the line is closed.
+      MOST_LINE_BYTES = 1 << 16
+
       attr_reader :io
 
       def initialize(io)
@@ -73,13 +78,18 @@ module VBlank
 
       private
 
-      # Everything the socket holds now, split into lines. The end of the socket is noticed here.
+      # Everything the socket holds now, split into lines. The end of the socket is noticed here, and so is a line
+      # too long to keep, which closes it: the whole lines before it can still be read.
       def read_what_has_arrived
         return if @ended || @io.closed?
 
         loop do
           @buffer << @io.read_nonblock(READ_BYTES)
           @lines.concat(@buffer.slice!(0, @buffer.rindex("\n") + 1).split("\n")) if @buffer.include?("\n")
+          next unless @buffer.bytesize > MOST_LINE_BYTES
+
+          @buffer.clear
+          return close
         end
       rescue IO::WaitReadable
         nil

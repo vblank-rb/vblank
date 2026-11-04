@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "socket"
+require "timeout"
 require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
@@ -92,7 +93,8 @@ class TestDirectConnection < Minitest::Test
     left = [results[0], results[1]].map { |_device, lockstep| lockstep.events.select { |event| event.kind == :left } }
     assert_equal 1, left.first.size
     assert_equal left.first, left.last
-    assert_equal 3, left.first.first.player
+    # The room numbers the machines in the order they ask to join, which the threads race for.
+    assert_equal results[2].last.player, left.first.first.player
     assert_equal checks(results[0].first), checks(results[1].first)
     assert_equal PASSES, results[0].first.pictures.size
   end
@@ -193,6 +195,29 @@ class TestDirectConnection < Minitest::Test
     channel.wait_for_text(5)
 
     assert_equal "half a line", channel.receive_text
+  end
+
+  def test_a_line_longer_than_the_most_it_keeps_closes_the_channel_after_the_lines_before_it
+    ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs)
+    writer = Thread.new do
+      ours.write("whole\n")
+      ours.write("x" * (Network::LineChannel::MOST_LINE_BYTES * 2))
+    rescue Errno::EPIPE, Errno::ECONNRESET, IOError
+      nil
+    end
+
+    Timeout.timeout(30) do
+      until theirs.closed?
+        channel.pending? # reads what has come
+        IO.select([theirs], nil, nil, 0.05) unless theirs.closed?
+      end
+    end
+    writer.join
+
+    assert_equal "whole", channel.receive_text
+    assert_predicate channel, :closed?
+    assert_predicate channel.io, :closed?
   end
 
   def test_what_a_machine_sent_before_it_went_is_read_before_the_line_is_closed

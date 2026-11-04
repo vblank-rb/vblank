@@ -38,23 +38,18 @@ module VBlank
 
         # The text messages that have arrived since the last call, in order. A ping is answered, and a close is
         # answered and ends the peer.
+        # A client that breaks the protocol (a frame or a message too big to keep, among others) is told so and its
+        # connection closed.
         def read_messages
           messages = []
           return messages if @ended
 
-          begin
-            loop do
-              @reader.feed(@io.read_nonblock(4096))
-              collect(messages)
-            end
-          rescue IO::WaitReadable
-            collect(messages)
-          rescue EOFError, Errno::ECONNRESET, IOError
-            collect(messages)
-            @ended = true
-          rescue ProtocolError
-            @ended = true
-          end
+          gone = read_and_collect(messages)
+          collect(messages)
+          @ended = true if gone
+          messages
+        rescue ProtocolError
+          fail_connection
           messages
         end
 
@@ -76,11 +71,30 @@ module VBlank
           @ended = true
         end
 
+        # Reads and collects what has come, until there is nothing more for now. Gives back true when the client has
+        # gone. A ProtocolError is left to the caller.
+        def read_and_collect(messages)
+          loop do
+            @reader.feed(@io.read_nonblock(4096))
+            collect(messages)
+          end
+        rescue IO::WaitReadable
+          false
+        rescue EOFError, Errno::ECONNRESET, IOError
+          true
+        end
+
+        def fail_connection
+          write(Framing.encode(:close, Framing.close_payload(CLOSE_PROTOCOL_ERROR)))
+          @ended = true
+          @io.close unless @io.closed?
+        end
+
         def collect(messages)
           while (frame = @reader.next_frame)
             case frame.opcode
             when :text then @pieces = frame.payload.dup
-            when :continuation then @pieces&.<<(frame.payload)
+            when :continuation then keep_piece(frame.payload)
             when :ping then write(Framing.encode(:pong, frame.payload))
             when :close then answer_close(frame)
             end
@@ -89,6 +103,14 @@ module VBlank
             messages << @pieces.force_encoding(Encoding::UTF_8)
             @pieces = nil
           end
+        end
+
+        # A piece of a message begun before, kept unless it makes the message too big.
+        def keep_piece(payload)
+          return unless @pieces
+
+          Framing.refuse_message_too_big!(@pieces, payload)
+          @pieces << payload
         end
 
         def answer_close(frame)
