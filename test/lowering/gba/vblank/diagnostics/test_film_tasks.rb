@@ -56,6 +56,74 @@ class TestFilmTasks < Minitest::Test
     assert_equal [3 * 160, (3 * 144) + STRIP], video_size(film)
   end
 
+  # `LOWERING=ruby` films the game built as Ruby: a side whose game the task can reach. A side the
+  # film file names with a lowering of its own keeps it.
+  def test_rake_film_plays_the_lowering_named_on_the_command_line
+    rom = dot_game(:gba)
+    film_file("walk", "parts 1..2\nside(\"interpreted\", lowering: \"interpreter\") do\n  " \
+                      "VBlank.build(\"FILMED\", console: :gba, out: nil, err: nil) { game_loop { clear_screen :red } }\nend\n")
+    tasks(sides: { "ours" => -> { rom } })
+
+    with_name("walk") { with_env("LOWERING", "ruby") { capture_io { Rake::Task["film"].invoke } } }
+
+    assert_equal [2 * 2 * 240, (2 * 160) + STRIP], video_size(File.join(scratch, "out", "walk.mp4"))
+  end
+
+  # The lowering reaches the Rakefile's sides: a cartridge file has no game to play another way.
+  def test_the_command_lines_lowering_reaches_the_rakefiles_sides
+    path = File.join(scratch, "dot.gba")
+    dot_game(:gba).write(path)
+    film_file("walk", "parts 1..2\n")
+    tasks(sides: { "file" => path })
+
+    error = assert_raises(ArgumentError) do
+      with_name("walk") { with_env("LOWERING", "ruby") { Rake::Task["film"].invoke } }
+    end
+    assert_match(/only in the emulator/, error.message)
+  end
+
+  # `rake film LOWERING= CONSOLE=`, empty, says nothing: the Rakefile's still hold.
+  def test_an_empty_setting_on_the_command_line_keeps_the_rakefiles
+    path = File.join(scratch, "dot.gba")
+    dot_game(:gba).write(path)
+    film_file("walk", "parts 1..2\n")
+    rakefile = tasks(sides: { "file" => path })
+    rakefile.lowering = "ruby"
+    rakefile.console = :gbc
+
+    error = assert_raises(ArgumentError) do
+      with_name("walk") { with_env("CONSOLE", "") { Rake::Task["film"].invoke } }
+    end
+    assert_match(/console: :gbc/, error.message, "the Rakefile's console")
+
+    rakefile.console = nil
+    Rake::Task["film"].reenable
+    error = assert_raises(ArgumentError) do
+      with_name("walk") { with_env("LOWERING", "") { Rake::Task["film"].invoke } }
+    end
+    assert_match(/only in the emulator/, error.message, "the Rakefile's lowering")
+  end
+
+  def test_an_unknown_lowering_on_the_command_line_is_refused_before_any_side_opens
+    film_file("walk", "parts 1..2\nside(\"ours\") { raise \"opened\" }\n")
+    tasks
+
+    error = assert_raises(ArgumentError) do
+      with_name("walk") { with_env("LOWERING", "gameboy") { Rake::Task["film"].invoke } }
+    end
+    assert_match(/"gameboy"/, error.message)
+  end
+
+  def test_an_unknown_console_on_the_command_line_is_refused_before_any_side_opens
+    film_file("walk", "parts 1..2\nside(\"ours\") { raise \"opened\" }\n")
+    tasks
+
+    error = assert_raises(ArgumentError) do
+      with_name("walk") { with_env("CONSOLE", "xbox") { Rake::Task["film"].invoke } }
+    end
+    assert_match(/"xbox"/, error.message)
+  end
+
   def test_without_a_name_the_films_there_are_are_listed
     film_file("walk", "parts 1..2\n")
     film_file("door", "parts 1..2\n")
@@ -103,12 +171,14 @@ class TestFilmTasks < Minitest::Test
     File.write(File.join(scratch, "films", "#{name}.rb"), text)
   end
 
-  private def with_name(name)
-    before = ENV.fetch("NAME", nil)
-    ENV["NAME"] = name
+  private def with_name(name, &) = with_env("NAME", name, &)
+
+  private def with_env(key, value)
+    before = ENV.fetch(key, nil)
+    ENV[key] = value
     yield
   ensure
-    ENV["NAME"] = before
+    ENV[key] = before
   end
 
   # A square that walks right while the right button is down.

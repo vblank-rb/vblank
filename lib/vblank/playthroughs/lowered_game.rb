@@ -83,6 +83,15 @@ module VBlank
       def screen_height = @console.screen_height
       def frame_gba = @run.screen.shown
 
+      # The picture on screen written as a PNG at +path+, which is handed back, as the emulator's reader
+      # writes one (Diagnostics::Verifier#screenshot): a film is made of these.
+      def screenshot(path)
+        Graphics::PNG.write(path, width: screen_width, height: screen_height, pixels: frame_gba)
+      end
+
+      # The run stopped, as a film closes a side whose frames it has taken.
+      def close = finish
+
       # The sound of the frames just played, the two speakers' samples a moment at a time, and how
       # many moments a second that is; nothing and nil where nobody is listening or the way has none.
       def last_frame_samples = @speaker ? @run.last_frame_samples : []

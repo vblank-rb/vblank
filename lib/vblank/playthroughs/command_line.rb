@@ -26,6 +26,24 @@ module VBlank
       WAYS = { "ruby" => "ruby", "js" => "web", "native" => "native", LoweredGame::LOGIC => LoweredGame::LOGIC,
                "interpreter" => "interpreter" }.freeze
 
+      # THE WAYS A GAME CAN BE SHOWN, as a film shows it: the cartridge in its console's emulator, the
+      # first and the one meant when none is said, then every word of WAYS but logic, which plays the
+      # game's rules alone and has no picture.
+      SHOWN_WAYS = [LoweredGame::EMULATOR, *(WAYS.keys - [LoweredGame::LOGIC])].freeze
+
+      # The way of LoweredGame that +word+ (a word of SHOWN_WAYS, or nil) names, or nil for the
+      # cartridge in its emulator. A word that is not one of them is refused, saying the ones there are.
+      def self.shown_way_named(word)
+        word = word&.to_s
+        return nil if word.nil? || word == LoweredGame::EMULATOR
+        return WAYS.fetch(word) if SHOWN_WAYS.include?(word)
+
+        no_picture = word == LoweredGame::LOGIC ? " It plays the rules of the game alone, and it shows no picture." : ""
+        raise ArgumentError, "A game cannot be shown on #{word.inspect}.#{no_picture} The ways to show a game are " \
+                             "#{SHOWN_WAYS[0...-1].join(', ')} and #{SHOWN_WAYS.last}. To show the cartridge in its " \
+                             "emulator, give #{LoweredGame::EMULATOR.inspect} or give no way."
+      end
+
       def initialize(options, out:, build:)
         @options = options
         @out = out

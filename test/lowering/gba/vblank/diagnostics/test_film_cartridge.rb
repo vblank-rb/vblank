@@ -80,7 +80,59 @@ class TestFilmCartridge < Minitest::Test
     assert_match(/from power-on/, error.message)
   end
 
+  # A game to build, with no console said, is built for the first console it names, as before.
+  def test_a_game_is_built_for_its_first_console_unless_the_side_says
+    shown = picture_after(FilmCartridge.open(game_file), 6, "built")
+    expected = picture_after(VBlank::Diagnostics::Verifier.new(game, frames: 0), 6, "expected")
+
+    assert_equal File.binread(expected), File.binread(shown)
+  end
+
+  # The cartridge and the game played as a lowering, filmed side by side, show the same pass on every
+  # frame: a sprite the framework draws for the game (a frame behind what the game says) and a square
+  # the game paints itself, with right held on some frames.
+  def test_the_cartridge_and_a_lowering_show_the_same_frame
+    [game, painted_game].each do |built|
+      %w[interpreter ruby].each do |lowering|
+        cartridge = FilmCartridge.open(built)
+        lowered = FilmCartridge.open(built, lowering: lowering)
+        (1..12).each do |frame|
+          keys = frame.between?(4, 8) ? RIGHT : 0
+          shown = [cartridge, lowered].map do |side|
+            File.binread(side.step(1, keys: keys).screenshot(File.join(scratch, "side.png")))
+          end
+          assert_equal shown.first, shown.last, "#{built.header_title} on #{lowering}, frame #{frame}"
+        end
+      ensure
+        cartridge&.close
+        lowered&.close
+      end
+    end
+  end
+
   private def scratch = @scratch ||= Dir.mktmpdir("film-cartridge-test")
+
+  # A square the game paints itself, walking right while right is down.
+  private def painted_game
+    VBlank.build("PAINTED", console: :gba, out: StringIO.new, err: StringIO.new) do
+      x = var :x, 16
+      game_loop do
+        x += 1 if held(:right)
+        clear_screen :blue
+        draw_rect_at x, 16, 8, 8, :red
+      end
+    end
+  end
+
+  # The square game as a game file names it, to be built by the side.
+  private def game_file
+    VBlank.game("FILMED", consoles: %i[gba]) do
+      screen :tiled
+      image(:dot, "#" => :red) { "########\n" * 8 }
+      dot = sprite :dot, at: [16, 24]
+      game_loop { dot.x += 1 if held(:right) }
+    end
+  end
 
   # A square that walks right while the right button is down.
   private def game

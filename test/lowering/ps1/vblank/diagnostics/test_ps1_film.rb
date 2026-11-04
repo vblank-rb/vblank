@@ -41,6 +41,39 @@ class TestPS1Film < Minitest::Test
     side&.close
   end
 
+  # The picture is the size the program set its graphics chip to: a program made by hand that shows a
+  # screen 256 across is filmed 256 across, not cut to 320 or read past.
+  def test_a_program_in_another_display_mode_is_filmed_at_its_own_size
+    path = File.join(scratch, "narrow.exe")
+    File.binwrite(path, narrow_program)
+    side = FilmCartridge.open(path)
+    side.step(3)
+
+    assert_equal [256, 240], png_size(side.screenshot(File.join(scratch, "narrow.png")))
+  ensure
+    side&.close
+  end
+
+  # The cartridge and the game played as a lowering, filmed side by side, show the same pass on every
+  # frame from the program's first picture, with right held on some frames.
+  def test_the_program_and_a_lowering_show_the_same_frame
+    %w[interpreter ruby].each do |lowering|
+      program = FilmCartridge.open(game)
+      lowered = FilmCartridge.open(game, lowering: lowering)
+      (1..12).each do |frame|
+        keys = frame.between?(4, 8) ? RIGHT : 0
+        shown = [program, lowered].map do |side|
+          File.binread(side.step(1, keys: keys).screenshot(File.join(scratch, "side.png")))
+        end
+        # Frame 1 is the console's own start, before the program's first picture.
+        assert_equal shown.first, shown.last, "on #{lowering}, frame #{frame}" if frame > 1
+      end
+    ensure
+      program&.close
+      lowered&.close
+    end
+  end
+
   # A side opened from the program's file plays the same picture as one opened from the built program.
   def test_a_side_from_the_programs_file_shows_what_the_built_program_shows
     path = File.join(scratch, "walk.exe")
@@ -82,7 +115,87 @@ class TestPS1Film < Minitest::Test
     assert_equal [2 * 2 * 320, (2 * 240) + STRIP], video_size(film)
   end
 
+  # A side that is a game to build is built for the console the side names: a game for the Advance and
+  # the PlayStation, filmed at the PlayStation's size.
+  def test_a_game_is_built_for_the_console_the_side_names
+    side = FilmCartridge.open(two_console_game, console: :ps1)
+    side.step(2)
+
+    assert_equal [320, 240], png_size(side.screenshot(File.join(scratch, "ps1.png")))
+  ensure
+    side&.close
+  end
+
+  # `rake film CONSOLE=ps1` builds the Rakefile's game for the PlayStation.
+  def test_rake_film_builds_the_game_for_the_console_named_on_the_command_line
+    game = two_console_game
+    FileUtils.mkdir_p(File.join(scratch, "films"))
+    File.write(File.join(scratch, "films", "walk.rb"), "parts 1..2\n")
+    tasks = VBlank::Diagnostics::FilmTasks.new do |t|
+      t.films = File.join(scratch, "films")
+      t.out = File.join(scratch, "out")
+      t.sides = { "ours" => game }
+    end
+
+    with_env("CONSOLE" => "ps1", "NAME" => "walk") { capture_io { Rake::Task["film"].invoke } }
+    film = File.join(scratch, "out", "walk.mp4")
+
+    assert_equal [2 * 320, (2 * 240) + STRIP], video_size(film)
+  end
+
+  # A finished program opens in its own console's emulator: a side that names another console is
+  # refused, saying what the file is.
+  def test_a_program_file_named_as_another_console_is_refused
+    path = File.join(scratch, "walk.exe")
+    game.write(path)
+
+    error = assert_raises(ArgumentError) { FilmCartridge.open(path, console: :gba) }
+    assert_match(/PlayStation/, error.message)
+    assert_match(/console: :ps1/, error.message)
+  end
+
   private def scratch = @scratch ||= Dir.mktmpdir("ps1-film-test")
+
+  # A PS-X EXE made by hand (psx-spx, "CDROM File Formats" and the CPU and GPU chapters): it sets the
+  # graphics chip to show 256 × 240, turns the display on, and loops. t0 holds the ports' page, t1 the
+  # command on its way to GP1.
+  private def narrow_program
+    load_at = 0x8001_0000
+    gp1 = ->(command) { [0x3C09_0000 | (command >> 16), 0x3529_0000 | (command & 0xFFFF), 0xAD09_1814] }
+    words = [0x3C08_1F80] + # LUI t0, 1F80h
+            gp1.call(0x0800_0000) + # display mode: 256 across, 240 down
+            gp1.call(0x0300_0000) # display on
+    loop_at = load_at + (words.size * 4)
+    words += [0x0800_0000 | ((loop_at >> 2) & 0x3FF_FFFF), 0] # J to itself, NOP
+    code = words.pack("V*")
+    code += "\0".b * ((-code.bytesize) % 0x800)
+    header = "\0".b * 0x800
+    header[0, 8] = "PS-X EXE"
+    header[0x10, 4] = [load_at].pack("V")
+    header[0x18, 8] = [load_at, code.bytesize].pack("V2")
+    header[0x30, 4] = [0x801F_FFF0].pack("V")
+    header + code
+  end
+
+  # The square game written once for two consoles, as a game file names them.
+  private def two_console_game
+    VBlank.game("FILMED", consoles: %i[gba ps1]) do
+      x = var :x, 16
+      game_loop do
+        x += 1 if held(:right)
+        clear_screen :blue
+        draw_rect_at x, 16, 8, 8, :red
+      end
+    end
+  end
+
+  private def with_env(pairs)
+    before = pairs.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+    pairs.each { |key, value| ENV[key] = value }
+    yield
+  ensure
+    before.each { |key, value| ENV[key] = value }
+  end
 
   private def game
     @game ||= VBlank.build("FILMED", console: :ps1, out: StringIO.new, err: StringIO.new) do

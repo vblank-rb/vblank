@@ -23,8 +23,12 @@ module VBlank
     #   start_from tape: "walk.tape"    every side plays a tape's presses first (from power-on)
     #   start_from state: { "ours" => "ours.ss1", "retail" => "retail.ss1" }
     #                                   each side starts from a state an emulator saved of it
-    #   side "old", "builds/old.gba"    a side of this film's own: a cartridge's path, a built one, or
-    #   side("ours") { ... }            a block answering either, or a running cartridge (see Film)
+    #   side "old", "builds/old.gba"    a side of this film's own: a cartridge's path, a built one, a
+    #   side("ours") { ... }            game to build, or a block answering any of them, or a running
+    #                                   cartridge (see Film)
+    #   side "ps1", GAME, console: :ps1, lowering: "ruby"
+    #                                   ...built for that console, played that way (FilmCartridge);
+    #                                   unsaid, the Rakefile's or the command line's
     #   scale 3                         each picture at three times the console's size (two if unsaid)
     #
     # A frame number counts from where the side starts: from power-on, after the tape, or after the
@@ -36,11 +40,11 @@ module VBlank
     #   film sides: { "ours" => -> { ... } }, parts: [1..110], keys: ->(frame) { ... }
     class FilmScript
       # What a film file said, once read: made into an MP4 by #make.
-      Plan = Data.define(:parts, :holds, :keys, :sides, :tape, :states, :scale) do
+      Plan = Data.define(:parts, :holds, :keys, :sides, :tape, :states, :scale, :console, :lowering) do
         # Write the film to +path+, handed back. +search_path+ is where ImageMagick and ffmpeg are
         # looked for (see Film.make).
         def make(path, search_path: ENV.fetch("PATH", ""))
-          openers = sides.to_h { |label, cartridge| [label, -> { open_side(label, cartridge) }] }
+          openers = sides.to_h { |label, side| [label, -> { open_side(label, side) }] }
           Film.make(path, sides: openers, parts: parts, keys: method(:buttons_on), scale: scale, search_path: search_path)
         end
 
@@ -52,12 +56,17 @@ module VBlank
 
         private
 
-        # A side's cartridge, opened at the moment before the film's first frame. A block or lambda
-        # is called first; what it gives back that is already running is filmed as it stands.
-        def open_side(label, cartridge)
-          cartridge = cartridge.call if cartridge.respond_to?(:call)
+        # A side's game, opened at the moment before the film's first frame. A block or lambda
+        # is called first; what it gives back that is already running is filmed as it stands. The
+        # console and lowering are the side's own where the film file said them, else the film's.
+        def open_side(label, side)
+          side = Side.new(game: side, console: nil, lowering: nil) unless side.is_a?(Side)
+          cartridge = side.game.respond_to?(:call) ? side.game.call : side.game
           state = states.is_a?(Hash) ? states[label] : states
-          return FilmCartridge.open(cartridge, tape: tape, state: state) unless running?(cartridge)
+          unless running?(cartridge)
+            return FilmCartridge.open(cartridge, tape: tape, state: state, console: side.console || console,
+                                                 lowering: side.lowering || lowering)
+          end
           return cartridge unless tape || state
 
           raise ArgumentError, "The side \"#{label}\" is already running, so it cannot start from a tape or a saved " \
@@ -69,15 +78,22 @@ module VBlank
       # Buttons down on a range of frames.
       Hold = Data.define(:buttons, :frames)
 
+      # A side the film file names, with the console and lowering it says (nil where it says none).
+      Side = Data.define(:game, :console, :lowering)
+
       # The film in the file at +path+, with +sides+ (label to cartridge) the ones its Rakefile names.
-      def self.read(path, sides: {})
-        script = new(path, sides: sides)
+      # +console+ and +lowering+ are what every side is opened with unless it says its own (see
+      # FilmCartridge); a name that is no console's or no lowering's is refused before any side opens.
+      def self.read(path, sides: {}, console: nil, lowering: nil)
+        script = new(path, sides: sides, console: console, lowering: lowering)
         script.instance_eval(File.read(path), path.to_s, 1)
         script.plan
       end
 
-      def initialize(path, sides:)
+      def initialize(path, sides:, console: nil, lowering: nil)
         @path = path.to_s
+        @console = console_named(console)
+        @lowering = lowering_named(lowering)
         @sides = sides.transform_keys(&:to_s)
         @parts = nil
         @holds = []
@@ -109,9 +125,10 @@ module VBlank
         @states = state.is_a?(Hash) ? state.transform_keys(&:to_s) : state
       end
 
-      def side(label, cartridge = nil, &block)
+      def side(label, cartridge = nil, console: nil, lowering: nil, &block)
         refuse_bad_side!(label, cartridge, block)
-        @sides[label.to_s] = cartridge || block
+        @sides[label.to_s] = Side.new(game: cartridge || block, console: console_named(console),
+                                      lowering: lowering_named(lowering))
       end
 
       def scale(times)
@@ -134,10 +151,22 @@ module VBlank
                                "{ \"ours\" => \"game.gba\" }`, or in the film with `side \"ours\", \"game.gba\"`."
         end
 
-        Plan.new(parts: @parts, holds: @holds, keys: @keys, sides: @sides, tape: @tape, states: @states, scale: @scale)
+        Plan.new(parts: @parts, holds: @holds, keys: @keys, sides: @sides, tape: @tape, states: @states, scale: @scale,
+                 console: @console, lowering: @lowering)
       end
 
       private
+
+      # A console's name as its Symbol, or nil for none; one no console has is refused here, before any
+      # side opens, by the list of consoles (Console.named).
+      def console_named(console) = console && Console.named(console)
+
+      # A way to show a game, as given, or nil for none; one that is not a way is refused here by the
+      # list of ways (Playthroughs::CommandLine.shown_way_named).
+      def lowering_named(lowering)
+        Playthroughs::CommandLine.shown_way_named(lowering)
+        lowering&.to_s
+      end
 
       def refuse_bad_hold!(buttons, frames)
         return if frames.is_a?(Range) && frames.begin.is_a?(Integer) && frames.begin >= 1 && (buttons.is_a?(Symbol) || buttons.is_a?(Array))
