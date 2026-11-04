@@ -84,7 +84,10 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
 **How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`
 and `div_fix`), and only the fill of a face, of three to eight corners, is written by hand for each
-(`Reference#exec_fill_face` is the rule every one follows). So the interpreter and every build draw the same pixels. **What it
+(`Reference#exec_fill_face` is the rule every one follows). So the interpreter and every build draw the same pixels.
+Each point is turned and put on the screen once a drawing, however many faces share it, and on the
+Advance a face wholly outside the screen or the window is passed over before it is filled, so a
+game that draws a room through a doorway's window pays little for the faces the window hides. **What it
 costs on the Advance**: the fill takes about 15 of the console's cycles a pixel for a picture with
 no see-through pixel (two pixels worked out together and written as one pair), and about 37 for one
 with see-through pixels (each pixel reads its pair back first), so a face covering the whole screen

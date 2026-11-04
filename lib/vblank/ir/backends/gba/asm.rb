@@ -20,6 +20,7 @@ module VBlank
           COND_NE = 0x1  # not equal (Z=0)
           COND_HS = 0x2  # unsigned higher or same (C=1)
           COND_LO = 0x3  # unsigned lower (C=0)
+          COND_HI = 0x8  # unsigned higher (C=1 and Z=0)
           COND_LS = 0x9  # unsigned lower or same (C=0 or Z=1)
           COND_GE = 0xA  # signed greater or equal (N=V)
           COND_LT = 0xB  # signed less than (N!=V)
@@ -29,7 +30,7 @@ module VBlank
 
           COND_BY_NAME = {
             eq: COND_EQ, ne: COND_NE,
-            hs: COND_HS, lo: COND_LO, ls: COND_LS,
+            hs: COND_HS, lo: COND_LO, hi: COND_HI, ls: COND_LS,
             ge: COND_GE, lt: COND_LT,
             gt: COND_GT, le: COND_LE,
             al: COND_AL,
@@ -320,6 +321,17 @@ module VBlank
           # The three registers rd_lo, rd_hi and rm must all be different — the chip gives
           # no useful answer otherwise, so it's checked here rather than left to produce a
           # ROM that misbehaves.
+          # UMULL rd_lo, rd_hi, rm, rs — the whole 64-bit product of two numbers taken as having
+          # no sign, its halves in two registers. The top half of a number times a reciprocal
+          # scaled by 2**32 is the number divided.
+          def umull(rd_lo, rd_hi, rm, rs)
+            if [rd_lo, rd_hi, rm].uniq.length < 3
+              raise ArgumentError, "UMULL needs three different registers for rd_lo, rd_hi and rm"
+            end
+
+            [0xE0800090 | (rd_hi << 16) | (rd_lo << 12) | (rs << 8) | rm].pack("V")
+          end
+
           def smull(rd_lo, rd_hi, rm, rs)
             if [rd_lo, rd_hi, rm].uniq.length < 3
               raise ArgumentError, "SMULL needs three different registers for rd_lo, rd_hi and rm"

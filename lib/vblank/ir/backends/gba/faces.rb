@@ -116,6 +116,8 @@ module VBlank
             emit_picture_entry(node)
             emit_number(ACC, @lowering.mode == :buffered ? 0 : 1)
             store_var(ACC, :_face_direct)
+            emit_load_data_address(ACC, reciprocal_table)
+            store_var(ACC, :_face_reciprocals)
             @divide.emit_call_routine_at(@routine_iwram)
             place_label(done)
           end
@@ -150,10 +152,12 @@ module VBlank
             place_label(ROUTINE)
             start = pos
             emit(ASM.push(4, 5, 6, 7, 8, 9, 10, 11, 14))
+            emit_skip_face_outside_edges(:"#{ROUTINE}_out")
             MOST_CORNERS.times { |k| emit_edge(k) }
             @span_patches = []
             emit_branch(:bl, PATCH_ROUTINE)
             emit_rows
+            place_label(:"#{ROUTINE}_out")
             emit(ASM.pop(4, 5, 6, 7, 8, 9, 10, 11, 15))
             emit_patch_routine
             place_label(:"#{ROUTINE}_end")
@@ -196,6 +200,13 @@ module VBlank
               emit(ASM.ldr_offset(ACC, SPARE, i * 4))
               store_var(ACC, word)
             end
+          end
+
+          # The table of reciprocals the span step reads (see #emit_span_step), made once.
+          def reciprocal_table
+            blob = :__fill_face_reciprocals
+            @emitter.data_blobs[blob] ||= self.class.reciprocal_words.pack("L<*")
+            blob
           end
 
           # The table of +pictures+ for the screen being drawn, one entry each, made once for each
@@ -281,6 +292,66 @@ module VBlank
             store_var(0, edge_word(k, :first))
             store_var(0, edge_word(k, :past))
             place_label(done)
+          end
+
+          # A FACE WHOLLY PAST ONE EDGE OF WHAT MAY BE DRAWN draws nothing, and is left at once,
+          # before its edges are worked out: a division each. A face beside the view, or behind a
+          # doorway's window, is most of the faces of a place seen from inside.
+          #
+          # Its rows are the ones whose middles its corners' heights span, so a face whose lowest
+          # corner's row is above the top, or whose highest is at or below the bottom, has none.
+          # Across, where a row starts and ends is worked out along an edge, and can come out a
+          # pixel either way of where the corner itself lands, so the test across leaves a pixel to
+          # spare: a face it keeps may still draw nothing, and the rows find that out as before.
+          #
+          #   r4 the least across, r5 the most, r6 the least down, r7 the most; r0 how many corners
+          def emit_skip_face_outside_edges(out)
+            load_var(0, :_face_corners)
+            load_var(4, corner_word(:x, 0))
+            emit(ASM.mov_reg(5, 4))
+            load_var(6, corner_word(:y, 0))
+            emit(ASM.mov_reg(7, 6))
+            (1...MOST_CORNERS).each do |k|
+              past = gensym
+              if k >= 3
+                emit(ASM.cmp_imm(0, k))
+                emit_branch(:bcond, past, cond: :le)
+              end
+              load_var(1, corner_word(:x, k))
+              emit(ASM.cmp_reg(1, 4))
+              emit(ASM.mov_reg_cond(:lt, 4, 1))
+              emit(ASM.cmp_reg(1, 5))
+              emit(ASM.mov_reg_cond(:gt, 5, 1))
+              load_var(1, corner_word(:y, k))
+              emit(ASM.cmp_reg(1, 6))
+              emit(ASM.mov_reg_cond(:lt, 6, 1))
+              emit(ASM.cmp_reg(1, 7))
+              emit(ASM.mov_reg_cond(:gt, 7, 1))
+              place_label(past)
+            end
+            [4, 5, 6, 7].each { |reg| emit_row_of(reg, reg) } # each as the pixel its middle reaches
+
+            emit_edge_bound(1, :_face_left, 0, :at_least)
+            emit(ASM.cmp_reg(5, 1))
+            emit_branch(:bcond, out, cond: :lt)
+            emit_edge_bound(1, :_face_right, SCREEN_WIDTH, :at_most)
+            emit(ASM.cmp_reg(4, 1))
+            emit_branch(:bcond, out, cond: :gt)
+            emit_edge_bound(1, :_face_top, 0, :at_least)
+            emit(ASM.cmp_reg(7, 1))
+            emit_branch(:bcond, out, cond: :le)
+            emit_edge_bound(1, :_face_bottom, SCREEN_HEIGHT, :at_most)
+            emit(ASM.cmp_reg(6, 1))
+            emit_branch(:bcond, out, cond: :ge)
+          end
+
+          # +reg+ = the edge in word +edge+, held to at least or at most +screen+ (r0 is spare, so
+          # the corner count is read again where it is needed).
+          def emit_edge_bound(reg, edge, screen, way)
+            load_var(reg, edge)
+            emit_number(0, screen)
+            emit(ASM.cmp_reg(reg, 0))
+            emit(ASM.mov_reg_cond(way == :at_least ? :lt : :gt, reg, 0))
           end
 
           # r8-r11 = the corner after +k+: corner k + 1, or the first when +k+ is the last (r0 still
@@ -487,15 +558,54 @@ module VBlank
             load_var(10, :_face_clear)
           end
 
-          # +step+ = (+right+ - +left+) divided by the row's count, by the shared divide routine.
+          # +step+ = (+right+ - +left+) divided by the row's count, truncated toward nought as
+          # Int32.div does.
+          #
+          # A ROW IS SELDOM WIDE, so most counts are under RECIPROCALS, and for those the divide is
+          # a multiply: the number's size times 2**32 / count rounded up, top half kept. Rounding up
+          # makes that the true quotient or one more (the excess is the number times under one
+          # 2**32th of the count, so under one), and one more is seen by multiplying back. A count
+          # of one is the number itself; a wider row takes the shared divide routine.
+          #
+          #   r0 the count, r1 the number, r2 its size, r3 the reciprocal, r4 and r5 the product
           def emit_span_step(right, left, step)
+            routine = gensym
+            done = gensym
             load_var(1, right)
             load_var(2, left)
             emit(ASM.sub_reg(1, 1, 2))
             load_var(0, :_face_span_count)
+            emit(ASM.cmp_imm(0, 1))
+            emit(ASM.mov_reg_cond(:eq, 0, 1))
+            emit_branch(:bcond, done, cond: :eq)
+            emit(ASM.cmp_imm(0, RECIPROCALS))
+            emit_branch(:bcond, routine, cond: :ge)
+            load_var(3, :_face_reciprocals)
+            emit(ASM.ldr_reg_lsl(3, 3, 0, 2))
+            emit(ASM.mov_reg(2, 1))
+            emit(ASM.cmp_imm(1, 0))
+            emit(ASM.rsb_imm_cond(:lt, 2, 1, 0))
+            emit(ASM.umull(4, 5, 2, 3))
+            emit(ASM.mul(4, 5, 0))
+            emit(ASM.cmp_reg(4, 2))
+            emit(ASM.sub_imm_cond(:hi, 5, 5, 1))
+            emit(ASM.cmp_imm(1, 0))
+            emit(ASM.rsb_imm_cond(:lt, 5, 5, 0))
+            emit(ASM.mov_reg(0, 5))
+            emit_branch(:b, done)
+            place_label(routine)
             emit_call_divide_routine
+            place_label(done)
             store_var(0, step)
           end
+
+          # How many counts the table of reciprocals covers (see #emit_span_step): wider than the
+          # screen, so only a row reaching well past its edges takes the divide routine.
+          RECIPROCALS = 512
+
+          # The table: for each count from two up, 2**32 divided by it, rounded up. The first two
+          # entries are never read.
+          def self.reciprocal_words = [0, 0] + (2...RECIPROCALS).map { |count| -(-(1 << 32) / count) }
 
           # +into+ = which pixel of the picture is at u (r0), v (r1): the row, from the top bits of v
           # held to the picture's height and moved up a row's width, and the pixel along it. r12 is

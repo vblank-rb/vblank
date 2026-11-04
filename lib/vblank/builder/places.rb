@@ -100,7 +100,7 @@ module VBlank
         view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides)
         drawn =faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
         record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view),
-                                *place_clip(drawing, view, window_nodes), *drawn,
+                                *place_clip(drawing, view, window_nodes), Build.add(drawing.drawing_var, 1), *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
                                 both_sides: both_sides == true, faces: faces&.name, window: window_nodes))
       end
@@ -250,6 +250,9 @@ module VBlank
         list(IR::PlaceDrawing.name_of(shape.name, :slots), capacity: shape.slots.length, full_of: 0)
         list(IR::PlaceDrawing.name_of(shape.name, :corners),
              capacity: IR::Nodes::FillFace::MOST_CORNERS * IR::Nodes::FillFace::CORNER_NUMBERS, full_of: 0)
+        list(IR::PlaceDrawing.name_of(shape.name, :seen), capacity: shape.points.length * IR::PlaceDrawing::SEEN_STRIDE,
+                                                          full_of: 0)
+        list(IR::PlaceDrawing.name_of(shape.name, :stamps), capacity: shape.points.length, full_of: 0)
       end
 
       # The drawing of +shape+, its variables declared the first time the game draws it or asks
@@ -266,6 +269,7 @@ module VBlank
       def place_draw_routines(drawing)
         declare_place_routine(drawing.routine, drawing.statements)
         declare_place_routine(drawing.face_routine, drawing.face_statements)
+        declare_place_routine(drawing.point_routine, drawing.point_statements)
         declare_place_routine(drawing.corner_routine, drawing.corner_statements)
       end
 

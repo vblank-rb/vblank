@@ -96,11 +96,30 @@ module VBlank
       def routine = name(:draw)
       def face_routine = name(:face_drawing)
       def corner_routine = name(:corner)
+      def point_routine = name(:point_turning)
       def spot_routine = name(:spot)
       def points_table = name(:points)
       def faces_table = name(:faces)
       def slots_list = name(:slots)
       def corners_list = name(:corners)
+      def seen_list = name(:seen)
+      def stamps_list = name(:stamps)
+
+      # WHAT A DRAWING KEEPS OF EACH POINT IT HAS MET, so that the faces sharing a point turn it
+      # once between them, not once each. A point of a closed shape is a corner of three faces or
+      # more, and turning it is most of what a face costs before it is filled.
+      #
+      # The seen list keeps, for each point, SEEN_STRIDE numbers: where it is to the viewer's right,
+      # above and ahead, and where it lands on the screen across and down (written only when it is
+      # in front of the near limit, the only time anything reads them). The stamps list keeps, for
+      # each point, the number of the drawing that last turned it: every drawing counts one on
+      # (the drawing variable), so a point whose stamp is not the drawing's own is turned afresh.
+      # Both start full of nought and the count starts at one, so nothing is read before it is
+      # written; the count is not part of the game's state that `start_over` puts back, and the
+      # lists are, which only ever makes a stamp stale.
+      SEEN_STRIDE = 5
+      SEEN_ACROSS = 3
+      SEEN_DOWN = 4
 
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
@@ -120,10 +139,13 @@ module VBlank
       def variables
         VIEWER_PARTS.map { |part| viewer_var(part) } + VIEW_PARTS.map { |part| view_var(part) } +
           CLIP_EDGES.map { |edge| clip_var(edge) } +
-          %i[face listed base slot picture point dx dy dz count along area each next
+          %i[face listed base slot picture point seen_point dx dy dz count along area each next drawing
              at_x at_y at_z at_u at_v spot_point spot_x spot_y spot_behind].map { |part| name(part) } +
-          CORNERS.times.flat_map { |k| %i[x y z u v].map { |field| turned_var(field, k) } }
+          CORNERS.times.flat_map { |k| %i[p x y z u v].map { |field| turned_var(field, k) } }
       end
+
+      # The variable counting the drawings, which marks the points each has turned (see SEEN_STRIDE).
+      def drawing_var = name(:drawing)
 
       # The drawing routine's statements: every face, in the order the place declares them.
       def statements
@@ -173,6 +195,24 @@ module VBlank
                    Build.set(spot_answer_var(:behind), 0))]
       end
 
+      # The point routine: the point whose number is in the seen-point variable turned to the
+      # viewer, put on the screen when it is in front of the near limit, both kept in the seen list,
+      # and the point stamped as seen by this drawing (see SEEN_STRIDE).
+      def point_statements
+        number = var(:seen_point)
+        seen = Build.binop(:*, number, SEEN_STRIDE)
+        [Build.set(name(:point), Build.binop(:*, number, POINT_STRIDE)),
+         *offsets_from_viewer,
+         Build.set(name(:at_x), along(:right)),
+         Build.set(name(:at_y), along(:up)),
+         Build.set(name(:at_z), along(:ahead)),
+         *%i[at_x at_y at_z].each_with_index.map { |part, at| Build.list_set(seen_list, Build.binop(:+, seen, at), var(part)) },
+         Build.if_(Build.binop(:>=, var(:at_z), Build.var_ref(view_var(:near))),
+                   Build.list_set(seen_list, Build.binop(:+, seen, SEEN_ACROSS), landed(:+, :at_x, :middle_x)),
+                   Build.list_set(seen_list, Build.binop(:+, seen, SEEN_DOWN), landed(:-, :at_y, :middle_y))),
+         Build.list_set(stamps_list, number, var(:drawing))]
+      end
+
       # The corner routine: the corner in at_x, at_y, at_z (turned, at_z at or past the near
       # limit), at_u and at_v put on the screen and added to the corner list.
       def corner_statements
@@ -199,15 +239,18 @@ module VBlank
       def face_field(offset) = Build.binop(:+, var(:base), offset)
 
       # Corner +k+ of the face being drawn, turned to the viewer, with where it falls on the
-      # picture.
+      # picture. Its point is turned (and put on the screen, when it is in front of the near limit)
+      # only the first time this drawing meets it; every face after that sharing the point reads
+      # what the first worked out (see SEEN_STRIDE).
       def turned_corner(k)
         first = 1 + (k * CORNER_FIELDS)
-        point = Build.binop(:*, Build.table_get(faces_table, face_field(first)), POINT_STRIDE)
-        [Build.set(name(:point), point),
-         *offsets_from_viewer,
-         Build.set(turned_var(:x, k), along(:right)),
-         Build.set(turned_var(:y, k), along(:up)),
-         Build.set(turned_var(:z, k), along(:ahead)),
+        number = turned(:p, k)
+        seen = Build.binop(:*, number, SEEN_STRIDE)
+        [Build.set(turned_var(:p, k), Build.table_get(faces_table, face_field(first))),
+         Build.if_(Build.binop(:!=, Build.list_get(stamps_list, number), var(:drawing)),
+                   Build.set(name(:seen_point), number),
+                   Build.call(point_routine)),
+         *%i[x y z].each_with_index.map { |field, at| Build.set(turned_var(field, k), Build.list_get(seen_list, Build.binop(:+, seen, at))) },
          Build.set(turned_var(:u, k), Build.table_get(faces_table, face_field(first + 1))),
          Build.set(turned_var(:v, k), Build.table_get(faces_table, face_field(first + 2)))]
       end
@@ -242,8 +285,14 @@ module VBlank
           Build.binop(:+, turned(field, k),
                       Build.mul_fix(Build.binop(:-, turned(field, other), turned(field, k)), var(:along), 16))
         end
-        [Build.if_(in_front(k), *%i[x y z u v].map { |field| Build.set(name(:"at_#{field}"), turned(field, k)) },
-                   Build.call(corner_routine)),
+        seen = Build.binop(:*, turned(:p, k), SEEN_STRIDE)
+        corner = ->(offset) { Build.binop(:+, Build.binop(:*, var(:count), Nodes::FillFace::CORNER_NUMBERS), offset) }
+        [Build.if_(in_front(k),
+                   Build.list_set(corners_list, corner.call(0), Build.list_get(seen_list, Build.binop(:+, seen, SEEN_ACROSS))),
+                   Build.list_set(corners_list, corner.call(1), Build.list_get(seen_list, Build.binop(:+, seen, SEEN_DOWN))),
+                   Build.list_set(corners_list, corner.call(2), turned(:u, k)),
+                   Build.list_set(corners_list, corner.call(3), turned(:v, k)),
+                   Build.add(name(:count), 1)),
          Build.if_(Build.binop(:!=, in_front(k), in_front(other)),
                    Build.set(name(:along), through),
                    *%i[x y u v].map { |field| Build.set(name(:"at_#{field}"), moved.call(field)) },
