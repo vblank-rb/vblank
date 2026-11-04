@@ -78,7 +78,7 @@ module VBlank
         # The runtime every program carries, in the order it is put together: the game's
         # arithmetic first, then everything that keeps the game's state. A driver follows it:
         # rg_headless.js for node, or rg_page.js inside createGame for a browser.
-        RUNTIME = %w[rg_int32.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_mix.js rg_save.js rg_lockstep.js].freeze
+        RUNTIME = %w[rg_int32.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_mix.js rg_save.js rg_lockstep.js rg_relay.js].freeze
 
         # The first line of everything the backend writes.
         WRITTEN_BY = "// Written by VBlank's JavaScript backend. Do not edit; build the game again.\n"
