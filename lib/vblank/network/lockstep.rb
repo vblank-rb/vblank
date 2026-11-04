@@ -137,6 +137,10 @@ module VBlank
         @transport.send_message(Chat.new(text: line)) unless line.empty?
       end
 
+      # The state numbers this machine sent at its checkpoints, by pass: { pass => crc }. Two matches played on the
+      # same buttons have the same numbers, which is how a test shows something (chat) never reached the game.
+      def state_crcs = @checkpoints.filter_map { |pass, crcs| [pass, crcs[@player]] if crcs.key?(@player) }.to_h
+
       # Tells the room this machine is going. The others see it as a player leaving.
       def leave = @transport.close
 

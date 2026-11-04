@@ -103,6 +103,9 @@ class TestLobbyChat < Minitest::Test
 
     (chatty + silent).each { |outcome| assert_nil outcome.error, outcome.error.inspect }
     assert_equal checks(silent.first.value.first), checks(chatty.first.value.first), "the same match with and without chat"
+    with_chat, without = [chatty, silent].map { |outcomes| outcomes.first.value.last.state_crcs }
+    assert_equal (1...PASSES).to_a, without.keys, "a state number on every pass"
+    assert_equal without, with_chat, "the same state on every pass with and without chat"
   end
 
   def test_what_a_player_types_is_kept_to_a_line_of_plain_text
