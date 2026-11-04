@@ -40,13 +40,17 @@ module VBlank
         transport = RelayTransport.make_room(DirectRoom.new(listener: listener).host_line)
         lockstep = Lockstep.host(transport: transport, fingerprint: fingerprint, players: players, seed: seed,
                                  input_delay: input_delay)
-        [lockstep, listener.addr[1]]
+        hosting = [lockstep, listener.addr[1]]
+        listener = nil # the room keeps it now
+        hosting
       rescue Errno::EADDRINUSE
         raise ConnectionFailed, "Port #{port} is in use already. To fix this, host on another port, for example " \
                                 "--host #{port + 1}."
       rescue Errno::EACCES
         raise ConnectionFailed, "This computer does not let VBlank listen on port #{port}. To fix this, host on a port " \
                                 "above 1024."
+      ensure
+        listener&.close # a host that failed to start listens on nothing
       end
 
       # Connects to the host at +address+ and joins its match, which has not started: give the lockstep back
@@ -54,7 +58,9 @@ module VBlank
       def join(address, fingerprint:)
         socket = TCPSocket.new(address.host, address.port)
         transport = RelayTransport.join_room(LineChannel.new(socket), DirectRoom::CODE)
-        Lockstep.join(transport: transport, fingerprint: fingerprint)
+        lockstep = Lockstep.join(transport: transport, fingerprint: fingerprint)
+        socket = nil # the lockstep keeps it now
+        lockstep
       rescue Errno::ECONNREFUSED
         raise ConnectionFailed, "Nobody is hosting at #{address}. To fix this, check the address, and make sure the " \
                                 "host has started with --host."
@@ -62,6 +68,8 @@ module VBlank
         raise ConnectionFailed, "This computer cannot find #{address.host}. To fix this, check the address."
       rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ETIMEDOUT
         raise ConnectionFailed, "This computer cannot reach #{address}. To fix this, check the address and the network."
+      ensure
+        socket&.close # a host that refused the room, or went, leaves no socket open
       end
 
       # The addresses another machine on this network can reach this one at, for a host to say. The

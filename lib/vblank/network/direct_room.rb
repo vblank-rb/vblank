@@ -58,8 +58,12 @@ module VBlank
 
       # Ends the match for everybody: the sockets are closed, and the machines on them see the end.
       def close
-        @peers.each { |peer| peer.channel.close }
-        @listener&.close
+        @peers.each do |peer|
+          peer.channel.close
+          peer.connection.close
+        end
+        @peers.clear
+        @listener&.close unless @listener&.closed?
       end
 
       private

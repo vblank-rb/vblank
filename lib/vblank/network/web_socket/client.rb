@@ -26,9 +26,13 @@ module VBlank
 
           port = uri.port || (uri.scheme == "wss" ? 443 : 80)
           io = open_socket(uri, port, ssl_context)
-          new(io, host: uri.host, path: uri.request_uri.then { |path| path.empty? ? "/" : path }, address: url).tap(&:handshake)
+          client = new(io, host: uri.host, path: uri.request_uri.then { |path| path.empty? ? "/" : path }, address: url).tap(&:handshake)
+          io = nil # the client keeps it now
+          client
         rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, SocketError, OpenSSL::SSL::SSLError => e
           raise HandshakeFailed, connection_words(url, e)
+        ensure
+          io&.close # a handshake that failed, however it failed, leaves no socket open
         end
 
         def self.open_socket(uri, port, ssl_context)
@@ -42,6 +46,9 @@ module VBlank
           secure.connect
           secure.post_connection_check(uri.host)
           secure
+        rescue StandardError
+          tcp&.close # a certificate that did not pass leaves no socket open
+          raise
         end
 
         def self.connection_words(url, error)

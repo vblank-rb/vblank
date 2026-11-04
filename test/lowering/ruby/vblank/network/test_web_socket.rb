@@ -240,6 +240,26 @@ class TestWebSocket < Minitest::Test
     assert_match(/not as a WebSocket does/, error.message)
   end
 
+  def test_a_handshake_that_fails_leaves_no_socket_open
+    server = TCPServer.new("127.0.0.1", 0)
+    closed = Thread.new do
+      socket = server.accept
+      socket.readpartial(1024)
+      socket.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+      Timeout.timeout(FUSE_SECONDS) { socket.read } && true
+    rescue Timeout::Error
+      false
+    ensure
+      socket&.close
+    end
+
+    assert_raises(WebSocket::HandshakeFailed) { WebSocket::Client.connect("ws://127.0.0.1:#{server.addr[1]}/") }
+
+    assert closed.value, "the client closed its socket"
+  ensure
+    server&.close
+  end
+
   def test_an_address_that_is_not_a_relay_address_is_said_in_plain_words
     ["http://relay.test/", "relay.test", ""].each do |url|
       error = assert_raises(WebSocket::HandshakeFailed, url.inspect) { WebSocket::Client.connect(url) }
