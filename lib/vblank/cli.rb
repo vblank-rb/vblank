@@ -807,6 +807,11 @@ module VBlank
                                  prints the addresses that the others can join.
         --join ADDRESS           Join the match at ADDRESS, written HOST:PORT.
                                  Without :PORT, the port is 7777.
+        --relay [URL]            Meet through a relay, so nobody opens a port.
+                                 With --host, make a room and print its code.
+                                 With --join CODE, join that room. URL is the
+                                 relay's address, ws:// or wss://. Default: the
+                                 VBLANK_RELAY_URL variable.
         --players N              With --host, how many players the match has,
                                  you included. The match starts when they have
                                  all joined. Default: 2.
@@ -878,6 +883,7 @@ module VBlank
     option :keys, type: :array, banner: "BUTTON", default: []
     option :host, banner: "PORT", lazy_default: VBlank::Network::DirectPlay::DEFAULT_PORT.to_s
     option :join, banner: "ADDRESS"
+    option :relay, banner: "URL", lazy_default: ""
     option :players, type: :numeric, banner: "N"
     option :input_delay, type: :numeric, banner: "PASSES"
     option :set, type: :array, banner: "NAME=VALUE", default: []
@@ -1221,7 +1227,8 @@ module VBlank
 
     # What stops a match, each already in plain words.
     MATCH_FAILURES = [VBlank::Network::Refused, VBlank::Network::Desync, VBlank::Network::ConnectionLost,
-                      VBlank::Network::ConnectionFailed].freeze
+                      VBlank::Network::ConnectionFailed, VBlank::Network::VersionMismatch, VBlank::Network::RoomRefused,
+                      VBlank::Network::BadMessage].freeze
 
     # The match this command is to play (--host or --join), not yet begun: the host has opened its port and
     # said where it can be found, or the joining computer has connected. Nil when it is not a match.
@@ -1229,7 +1236,10 @@ module VBlank
       return nil unless options[:host] || options[:join]
 
       print = VBlank::Network::Fingerprint.of(program, title: game.title)
-      lockstep = options[:host] ? open_match_as_host(game_file, program, print) : connect_to_match_host(print)
+      lockstep = if options[:relay] then meet_on_relay(game_file, program, print)
+                 elsif options[:host] then open_match_as_host(game_file, program, print)
+                 else connect_to_match_host(print)
+                 end
       say "Waiting for the other players. Press Ctrl-C to give up." if options[:host]
       lockstep.begin_match
       say "The match has begun. You are player #{lockstep.player}."
@@ -1240,13 +1250,30 @@ module VBlank
       raise Thor::Error, "You stopped the wait, so no match was played."
     end
 
-    def open_match_as_host(game_file, program, print)
+    def players_in_match(program)
       players = options[:players] || 2
       most = program.most_players
       if most && players > most
         raise Thor::Error, "--players #{players} is more than this game takes. The game takes at most #{most}. " \
                            "To fix this, give --players #{most} or fewer."
       end
+      players
+    end
+
+    # A match through the relay: --host makes a room and says its code, --join CODE joins one.
+    def meet_on_relay(game_file, program, print)
+      url = VBlank::Network::RelayPlay.url_from(options[:relay])
+      input_delay = options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES
+      return VBlank::Network::RelayPlay.join(url, options[:join], fingerprint: print).tap { say "Joined the room #{options[:join]}." } unless options[:host]
+
+      lockstep, code = VBlank::Network::RelayPlay.host(url, players: players_in_match(program), input_delay: input_delay, fingerprint: print)
+      say "Made the room #{code} on the relay. The others can join with:"
+      say "  vblank run #{game_file} --relay --join #{code}"
+      lockstep
+    end
+
+    def open_match_as_host(game_file, program, print)
+      players = players_in_match(program)
       lockstep, port = VBlank::Network::DirectPlay.host(port: Integer(options[:host], 10), players: players,
                                                         input_delay: options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES,
                                                         fingerprint: print)
@@ -1263,6 +1290,9 @@ module VBlank
 
     def refuse_mismatched_match_options!
       hosting_or_joining = options[:host] || options[:join]
+      if options[:relay] && !hosting_or_joining
+        raise Thor::Error, "--relay is for a match through a relay. Add --host to make a room, or --join CODE to join one."
+      end
       raise Thor::Error, "--host and --join do not go together. A computer hosts a match or joins one. Take one out." if options[:host] && options[:join]
       unless options[:host]
         word = { players: "--players", input_delay: "--input-delay" }.find { |name, _word| options[name] }&.last
@@ -1283,10 +1313,10 @@ module VBlank
 
     # A port to host on, or an address to join, that cannot be used, said before the game is built.
     def refuse_unusable_match_address!
-      if options[:host] && !options[:host].match?(/\A\d+\z/) || options[:host].to_i > 65_535
+      if !options[:relay] && options[:host] && !options[:host].match?(/\A\d+\z/) || options[:host].to_i > 65_535
         raise Thor::Error, "#{options[:host].inspect} is not a port. A port is a number from 0 to 65535, for example --host 7777."
       end
-      VBlank::Network::DirectPlay::Address.parse(options[:join]) if options[:join]
+      VBlank::Network::DirectPlay::Address.parse(options[:join]) if options[:join] && !options[:relay]
     rescue ArgumentError => e
       raise Thor::Error, e.message
     end

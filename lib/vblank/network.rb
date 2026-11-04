@@ -22,3 +22,6 @@ require_relative "network/in_process_line" # ...and a link to it that lives in t
 require_relative "network/line_channel" # text a line at a time over a socket, which is how machines reach each other
 require_relative "network/direct_room" # the host of a direct connection, which is a relay for the machines that connect
 require_relative "network/direct_play" # ...and what `vblank run --host` and `--join` do with them
+require_relative "network/web_socket" # a WebSocket client in pure Ruby, which is how a machine reaches a relay
+require_relative "network/stand_in_relay_server" # ...and the stand-in relay with a WebSocket face, for the tests
+require_relative "network/relay_play" # ...and what `vblank run --relay` does with them
