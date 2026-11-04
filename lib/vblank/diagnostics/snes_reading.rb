@@ -27,6 +27,14 @@ module VBlank
         clock_bytes: 0
       )
 
+      # A Super FX cartridge that saves has 128K of the chip's RAM, and bsnes keeps all of it in
+      # the file: the chip's working 64K, then the save (Cartridge::SNESROM::SUPER_FX).
+      SUPER_FX_SAVE_FILE = Verifier::SaveFileLayout.new(whole: SAVE_FILE.whole, clock_bytes: 0,
+                                                        memory_at: Cartridge::SNESROM::SUPER_FX.save_offset)
+
+      # The layout of the save file of the cartridge whose bytes are +bytes+, read from its header.
+      def self.save_file_of(bytes) = Cartridge::SNESROM.save_offset_of(bytes).zero? ? SAVE_FILE : SUPER_FX_SAVE_FILE
+
       # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them (Reference#sprites),
       # from the list the runtime keeps of what it placed, which the checked run compares with the
       # interpreter after every pass. See ColorReading#sprites.

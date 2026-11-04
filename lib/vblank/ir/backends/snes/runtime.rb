@@ -97,7 +97,7 @@ module VBlank
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, Collide.scratch(memory))
             Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
-            Saving.emit(asm, memory, Saving.scratch(memory)) if c.saves
+            Saving.emit(asm, memory, Saving.scratch(memory), bank: c.board.save_bank) if c.saves
             emit_sound_routines(asm, memory, c, lowered)
             emit_start(asm, chip: c.chip?, sound: c.sound)
             emit_frame_begins(asm, lowering.frame_begins)

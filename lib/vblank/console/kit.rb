@@ -93,6 +93,10 @@ module VBlank
       def open_core(path, save_dir:) = Diagnostics::Emulator.open(path, save_dir: save_dir)
       def save_file_extension = ".sav"
 
+      # Where the save memory is in that file for +cartridge+ (a Verifier::SaveFileLayout): the
+      # reading's SAVE_FILE, unless one kind of the console's boards keeps it elsewhere.
+      def save_file_of(_cartridge) = reading::SAVE_FILE
+
       # A running cartridge as the one reader asks of one (Diagnostics::Verifier), opened on a
       # cartridge file, and what that file is called.
       def open_probe(path, save_dir:) = Diagnostics::Emulator.probe(path, save_dir: save_dir)
@@ -239,6 +243,7 @@ module VBlank
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_snes(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::SNESProbe.new(path, save_dir: save_dir)
       def save_file_extension = ".srm"
+      def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
       def variants = SNES_VARIANTS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze

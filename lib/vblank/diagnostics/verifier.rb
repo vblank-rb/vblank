@@ -58,13 +58,23 @@ module VBlank
       # memory, +clock_bytes+ of it. The save memory is a whole number of +whole+-byte pieces, so
       # what is over is the clock's, and that alone says whether the cartridge had one. Each
       # console's part of the reader says its own.
-      SaveFileLayout = Data.define(:whole, :clock_bytes) do
+      #
+      # A cartridge whose save memory is only part of the RAM the emulator keeps, past RAM of a
+      # chip's own (a Super FX board's), has it +memory_at+ bytes into the file, +whole+ bytes of
+      # it, and nought for every byte before it when the file is written for a run.
+      SaveFileLayout = Data.define(:whole, :clock_bytes, :memory_at) do
+        def initialize(whole:, clock_bytes:, memory_at: 0) = super
+
         # The save memory in +file+ (the bytes of the emulator's file), without the clock's bytes.
         def memory_in(file)
+          return file.byteslice(memory_at, whole) if memory_at.positive?
           return file unless file.bytesize % whole == clock_bytes
 
           file.byteslice(0, file.bytesize - clock_bytes)
         end
+
+        # The emulator's file holding +memory+ (the bytes of the save memory), for a run to start from.
+        def file_of(memory) = memory_at.zero? ? memory : ("\0".b * memory_at) + memory
       end
 
       # @param rom [VBlank::Cartridge::ROM, VBlank::Cartridge::GBCROM] a finished cartridge
@@ -408,7 +418,7 @@ module VBlank
       # many there are is the console's (SaveFileLayout). A cartridge with a clock and no save
       # chip has only the clock's bytes there, and hands back nil too.
       def save_image
-        memory = save_bytes&.then { |bytes| @reading::SAVE_FILE.memory_in(bytes) }
+        memory = save_bytes&.then { |bytes| kit.save_file_of(@rom).memory_in(bytes) }
         return nil if memory.nil? || memory.empty?
 
         IR::SaveImage.from_sav(memory, from: "The bytes of this cartridge's save memory")
@@ -804,7 +814,7 @@ module VBlank
       def write_save_memory
         program = @rom.source_program
         @save.use_memory!(IR::SaveLayout.memory_of(program)) if program
-        File.binwrite(save_path, @save.to_sav)
+        File.binwrite(save_path, kit.save_file_of(@rom).file_of(@save.to_sav))
       end
 
       def save_path = File.join(@save_dir, "#{File.basename(@tempfile.path, '.*')}#{kit.save_file_extension}")

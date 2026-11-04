@@ -243,6 +243,10 @@ module VBlank
       GSU_OWNS_RAM = 0x08
       # Where the console sees the chip's RAM: bank $70.
       GSU_RAM_BANK = 0x70
+      # A board with 128K of the chip's RAM has a second bank of it, which the console sees at $71
+      # (bsnes's GSU-RAM board maps $70-$71 to it). The chip reaches it only when told to (RAMBR,
+      # $303C), which nothing here tells it, so it is where a Super FX cartridge keeps its save.
+      GSU_SAVE_BANK = 0x71
     end
   end
 end

@@ -30,7 +30,8 @@ module VBlank
     #     where it does on a plain cartridge; only nothing asks for the faster speed.
     #   - the cartridge type is $14, "ROM, a Super FX and its RAM" ($15 when a battery keeps that
     #     RAM): the high four bits $1 say Super FX, which is how bsnes picks the board.
-    #   - the extended header says how much RAM the chip has: 64K, seen by the console at $70:0000.
+    #   - the extended header says how much RAM the chip has: 64K, seen by the console at $70:0000,
+    #     or 128K for a game that saves, the second 64K at $71:0000 (SUPER_FX says why).
     #   - the ROM is at most 2 megabytes, banks $00-$3F, which is all the chip can read.
     #
     # Real Super FX games (Star Fox, Yoshi's Island, Doom) carry the same map mode and type.
@@ -43,13 +44,37 @@ module VBlank
       SMALLEST = 0x8000
 
       # A kind of cartridge board: its +name+, the +map_mode+ its header says, whether the console
-      # may read it at the faster speed (+fast+), the most 32K banks it holds, and how much RAM a
-      # chip on it has of its own (+chip_ram_bytes+, nought for none).
-      Board = Data.define(:name, :map_mode, :fast, :most_banks, :chip_ram_bytes)
+      # may read it at the faster speed (+fast+), the most 32K banks it holds, how much RAM a chip
+      # on it has of its own (+chip_ram_bytes+, nought for none), and the bank the console sees a
+      # save in (+save_bank+).
+      Board = Data.define(:name, :map_mode, :fast, :most_banks, :chip_ram_bytes, :save_bank) do
+        # How far into the cartridge's RAM the save starts: nought on a plain board, whose RAM is
+        # all the save; on a chip's board, past the bank or banks the chip works in.
+        def save_offset = (save_bank - SRAM_BANK) << 16
 
-      PLAIN = Board.new(name: :plain, map_mode: LOROM_FAST, fast: true, most_banks: 128, chip_ram_bytes: 0)
+        # How much RAM a chip on the board has, as the extended header says it: its own, and with
+        # a save (+save_bytes+ not nought) the bank the save is kept in as well.
+        def chip_ram_bytes_with(save_bytes)
+          return chip_ram_bytes if save_bytes.zero?
+
+          size = chip_ram_bytes
+          size *= 2 while size < save_offset + save_bytes
+          size
+        end
+      end
+
+      PLAIN = Board.new(name: :plain, map_mode: LOROM_FAST, fast: true, most_banks: 128, chip_ram_bytes: 0,
+                        save_bank: SRAM_BANK)
+      # THE SAVE ON A SUPER FX BOARD. The chip's 64K at $70 is all spoken for (Runtime::ChipPaint):
+      # the painted screen's 56K, the tiles' generations, the list of tiles the chip readied, the
+      # blocks a rectangle and a picture are handed over in, and the chip's numbers in what is
+      # left. A save of 32K does not fit beside them. So a game that saves gets a board with 128K
+      # of the chip's RAM, and its save is the first 32K of the second bank, $71:0000-$71:7FFF
+      # (GSU_SAVE_BANK), which the chip never reaches; the rest of that bank is spare. bsnes keeps
+      # all 128K as the cartridge's save file, the save 64K into it (Diagnostics::SNESReading).
+      # A game that does not save keeps the 64K board, byte for byte as before.
       SUPER_FX = Board.new(name: :super_fx, map_mode: LOROM_SLOW, fast: false, most_banks: 64,
-                           chip_ram_bytes: 0x10000)
+                           chip_ram_bytes: 0x10000, save_bank: GSU_SAVE_BANK)
       BOARDS = { plain: PLAIN, super_fx: SUPER_FX }.freeze
 
       # The native vectors, and the emulation ones, by the name the lowering gives them.
@@ -69,6 +94,20 @@ module VBlank
       def self.size_byte(bytes) = Math.log2(bytes / 1024).to_i
       def self.bytes_of_size_byte(byte) = 1024 << byte
 
+      # How far into the cartridge's RAM, and so into the emulator's save file, the save starts,
+      # read from a cartridge's header: SUPER_FX's save offset on a Super FX board whose extended
+      # header says more RAM than the chip works in (one VBlank built for a game that saves), and
+      # nought on any other, a Super FX game of the day included.
+      def self.save_offset_of(bytes)
+        place = header_place_of(bytes)
+        return 0 unless place
+        return 0 unless (bytes.getbyte(CARTRIDGE_TYPE_AT + place.shift) >> 4) == (SUPER_FX_RAM >> 4)
+        return 0 unless bytes.getbyte(MAKER_AT + place.shift) == EXTENDED_HEADER
+
+        chip_ram = bytes_of_size_byte(bytes.getbyte(EXPANSION_RAM_AT + place.shift) & 0x0F)
+        chip_ram > SUPER_FX.chip_ram_bytes ? SUPER_FX.save_offset : 0
+      end
+
       # +banks+ is the linked cartridge, its first 32K first. +vectors+ names where each vector
       # points, by VECTORS's names; one not named points where reset does.
       # +save_bytes+ is how much battery-backed RAM it has, a power of two from 2K, or nought.
@@ -85,7 +124,7 @@ module VBlank
 
         @bytes = padded(banks.join.b)
         write_header(title, save_bytes)
-        write_extended_header unless board.chip_ram_bytes.zero?
+        write_extended_header(save_bytes) unless board.chip_ram_bytes.zero?
         write_vectors(vectors)
         write_checksum
       end
@@ -190,12 +229,13 @@ module VBlank
       end
 
       # A maker code of "00" (none) and a game code of four spaces (none), so the cartridge
-      # claims no real game's code, then the chip's RAM size; the rest of the 16 bytes nought.
-      def write_extended_header
+      # claims no real game's code, then the chip's RAM size, its save's bank counted in; the rest
+      # of the 16 bytes nought.
+      def write_extended_header(save_bytes)
         @bytes[MAKER_CODE_AT, 16] = "\0".b * 16
         @bytes[MAKER_CODE_AT, 2] = "00"
         @bytes[GAME_CODE_AT, 4] = "    "
-        @bytes.setbyte(EXPANSION_RAM_AT, kilobyte_power(@board.chip_ram_bytes))
+        @bytes.setbyte(EXPANSION_RAM_AT, kilobyte_power(@board.chip_ram_bytes_with(save_bytes)))
       end
 
       def kilobyte_power(bytes) = SNESROM.size_byte(bytes)

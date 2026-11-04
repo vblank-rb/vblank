@@ -203,16 +203,96 @@ class TestSNESSaves < Minitest::Test
     assert_match(/32K of battery-backed RAM/, error.message)
   end
 
-  # A Super FX cartridge's RAM is the chip's, and the painted screen takes most of it: a save there
-  # is refused until the build keeps one beside it.
-  def test_a_save_on_a_super_fx_cartridge_is_refused_in_plain_words
-    game = VBlank.game("FXSAVE", consoles: %i[gba snes], variants: { snes: :superfx }) do
-      best = save_var :best, 5
-      game_loop { best += 1 }
+  # SAVING ON A SUPER FX CARTRIDGE, while the chip paints the screen every pass: the chip's RAM at
+  # $70 holds the painted screen, and the save is in a bank of its own past it
+  # (Cartridge::SNESROM::SUPER_FX). A rectangle the chip paints moves with the saved number, so a
+  # save landing in the picture, or the picture in the save, shows on the pass it happens.
+  FX_COUNTING = VBlank.game("FX COUNT", consoles: %i[gba snes], variants: { snes: :superfx }) do
+    screen :bitmap
+    best = save_var :best, 5
+    game_loop do
+      clear_screen :black
+      draw_rect_at (best & 63) + 10, 40, 20, 20, :green
+      fill_rect 0, 0, 240, 8, :white
+      best += 2
     end
+  end
 
-    error = assert_raises(SNES::LoweringError) { SNES.new.build(game.program(console: :snes)) }
+  # A record saved, the game started over (`reset`, which leaves save memory alone), and the
+  # record loaded back, with the chip painting throughout.
+  FX_RECORDS = VBlank.game("FX RECORDS", consoles: %i[gba snes], variants: { snes: :superfx }) do
+    screen :bitmap
+    score = 1
+    after_reset = 0
+    loaded = 0
+    files = save_data(:files) { keep score }
+    game_loop do
+      clear_screen :blue
+      draw_rect_at score, 30, 12, 12, :yellow
+      score += 3
+      files[0].save if score == 10
+      if score == 16
+        files.reset
+        after_reset = score
+        files[0].load
+        loaded = score
+      end
+    end
+  end
 
-    assert_match(/chip on its cartridge/, error.message)
+  private def fx_counting = FX_COUNTING.program(console: :snes, variant: :superfx)
+
+  def test_a_save_var_comes_back_after_the_power_goes_off_on_a_super_fx_cartridge
+    store = SaveImage.new
+    SNES::CheckedRun.new(save: store).run(fx_counting, frames: 3)
+
+    again = SNES::CheckedRun.new(save: store).run(fx_counting, frames: 2)
+
+    assert_equal 15, again[:best], "three passes took it to 11, and two more from there"
+    assert_equal 15, store.word(VBlank::IR::SaveLayout.save_var_at(0))
+  end
+
+  def test_a_save_the_interpreter_made_starts_a_super_fx_cartridge
+    store = SaveImage.new
+    Reference.new(save: store).run(fx_counting, frames: 3)
+
+    assert_equal 13, SNES::HeadlessRun.new(save: store).run(fx_counting, frames: 1)[:best]
+  end
+
+  def test_a_record_reset_and_loaded_on_a_super_fx_cartridge_is_the_interpreters
+    run = SNES::CheckedRun.new(save: SaveImage.new).run(FX_RECORDS.program(console: :snes, variant: :superfx), frames: 8)
+
+    assert_equal [1, 10], [run[:after_reset], run[:loaded]]
+  end
+
+  # The header asks for 128K of the chip's RAM kept by a battery, and bsnes gives the cartridge
+  # that: the GSU board, with a save file of all 128K, the save 64K into it and the painted
+  # screen still in the first 64K. A Super FX game that does not save keeps its 64K.
+  def test_bsnes_keeps_a_super_fx_save_in_the_second_bank_of_the_chips_ram
+    rom = SNES.new.build(fx_counting)
+    board, ram = with_core(rom) { |core| [core.board, core.save_ram] }
+
+    assert_equal [VBlank::Console::SNESHardware::SUPER_FX_RAM_BATTERY, 7],
+                 [rom.bytes.getbyte(0x7FD6), rom.bytes.getbyte(VBlank::Console::SNESHardware::EXPANSION_RAM_AT)]
+    assert_equal "GSU-RAM", board
+    assert_equal 0x20000, ram.bytesize
+    saved = VBlank::Diagnostics::SNESReading.save_file_of(rom.bytes).memory_in(ram)
+    assert_equal 0x8000, saved.bytesize
+    best = saved.byteslice(VBlank::IR::SaveLayout.save_var_at(0), 4).unpack1("V")
+    assert_predicate best, :odd?, "counted up from 5 by twos"
+    assert_operator best, :>, 5
+    assert ram.byteslice(0, 0x10000).bytes.any?(&:positive?), "the painted screen is in the first 64K"
+  end
+
+  def test_a_super_fx_game_that_does_not_save_keeps_64k_of_the_chips_ram
+    game = VBlank.game("FX NO SAVE", consoles: %i[gba snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      game_loop { clear_screen :black }
+    end
+    rom = SNES.new.build(game.program(console: :snes, variant: :superfx))
+
+    assert_equal [VBlank::Console::SNESHardware::SUPER_FX_RAM, 6],
+                 [rom.bytes.getbyte(0x7FD6), rom.bytes.getbyte(VBlank::Console::SNESHardware::EXPANSION_RAM_AT)]
+    assert_same VBlank::Diagnostics::SNESReading::SAVE_FILE, VBlank::Diagnostics::SNESReading.save_file_of(rom.bytes)
   end
 end

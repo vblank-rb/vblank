@@ -22,8 +22,8 @@ module VBlank
 
             # A Super Nintendo cartridge saves in 32K of battery-backed RAM (Runtime::Saving). A game
             # that names flash or an EEPROM lays its save memory out for that chip — its blocks, and
-            # its save_vars kept in a record — which this RAM does not have. (Which board can keep a
-            # save at all is the build's to say: SNES#refuse_save_on_chip_board!.)
+            # its save_vars kept in a record — which this RAM does not have. Every board keeps one:
+            # where it is on a Super FX board is Cartridge::SNESROM::SUPER_FX's to say.
             def refuse_unsupported_save_memory!
               return unless SaveLayout.named_by?(@program)
 

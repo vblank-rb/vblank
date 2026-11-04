@@ -237,29 +237,26 @@ module VBlank
       # +save+ is a SaveImage for a cartridge with battery-backed save memory, or nil for one
       # without. Its bytes go in as the .sav file the emulator keeps that memory in, and what the
       # play left there comes back into the same image once the core is shut — the emulator writes
-      # the file as it shuts — so one image handed to two plays is a power cycle.
+      # the file as it shuts — so one image handed to two plays is a power cycle. Where the save
+      # memory is in that file (after a chip's own RAM, before a clock's state) is the kit's to say
+      # (Console::Kit#save_file_of).
       def with_cartridge(rom, file_name:, save: nil)
         kit = Console.for(rom.console)
         Dir.mktmpdir("vblank-play") do |dir|
           path = File.join(dir, file_name)
           sav = path.sub(/\.\w+\z/, "") + kit.save_file_extension
           rom.write(path)
-          File.binwrite(sav, save.to_sav) if save
+          layout = kit.save_file_of(rom)
+          File.binwrite(sav, layout.file_of(save.to_sav)) if save
           core = kit.open_core(path, save_dir: dir)
           begin
             yield core
           ensure
             core.destroy
-            save.replace_with_sav(save_memory_in(rom, File.binread(sav)), from: "The cartridge's save memory") if save && File.size?(sav)
+            save.replace_with_sav(layout.memory_in(File.binread(sav)), from: "The cartridge's save memory") if save && File.size?(sav)
           end
         end
       end
-
-      # A CARTRIDGE WITH A CLOCK CHIP has the emulator write the chip's own state after the save
-      # memory in its file, and how many bytes that is is the console's: its part of the reader says
-      # where the save memory ends (Console::Kit#reading).
-      def save_memory_in(rom, file) = Console.for(rom.console).reading::SAVE_FILE.memory_in(file)
-      private_class_method :save_memory_in
 
       # Open a high-level probe on a ROM file path — the API that runs frames, reads
       # memory, and measures how many of a frame's scanlines the CPU burns. The analyzer

@@ -16,6 +16,13 @@ module VBlank
           # from power-on. Every routine reads it through a pointer on the direct page that holds
           # $70:0000, with the place in Y — the long indirect address [pointer],Y.
           #
+          # ON A SUPER FX CARTRIDGE bank $70 is the chip's working RAM, and the save is the first 32K
+          # of a second bank, $71 (Cartridge::SNESROM::SUPER_FX says why), so the pointer holds
+          # $71:0000 there; the routines are otherwise the same. The console's processor must not
+          # touch the chip's RAM while the chip runs (Chip), and these routines never do: they are
+          # called only from the game's own code, which waits in Chip's rt_chip_run until the chip
+          # has stopped, and the vertical blank's interrupt, which does go on meanwhile, never saves.
+          #
           # rt_save_read(at, width) and rt_save_write(at, value, width) take one, two or four bytes,
           # lowest first; rt_save_sum(at, length) is SaveLayout.checksum's two 16-bit sums;
           # rt_save_erase does nothing, battery-backed RAM needing no wiping before it is written. A
@@ -35,13 +42,14 @@ module VBlank
 
             def scratch(memory) = Scratch.new(pointer: memory.scratch(4), left: memory.scratch(2), fault: memory.scratch(2))
 
-            def emit(asm, memory, s)
+            # +bank+ is the bank the console sees the save in (Cartridge::SNESROM::Board#save_bank).
+            def emit(asm, memory, s, bank:)
               emit_read(asm, s)
               emit_write(asm, s)
               emit_sum(asm, s)
               asm.label("rt_save_erase")
               asm.rtl
-              emit_point_or_stop(asm, memory, s)
+              emit_point_or_stop(asm, memory, s, bank)
             end
 
             # rt_save_read: R0 = the +width+ (R1) bytes at +at+ (R0), lowest first, the rest nought.
@@ -119,11 +127,11 @@ module VBlank
             # rt_save_point_or_stop (JSR): +at+ in R0 and a count of bytes in the working number X
             # names, both 32 bits; A the fault to stop with when they do not fit. They fit, as
             # SaveImage has it, when +at+ is nought or more and +at+ + count is no more than the 32K.
-            # Then the pointer holds $70:0000 and Y is +at+. Otherwise the game stops, the place and
-            # the size as the fault's two numbers. A count below nought (only a sum's length can be)
+            # Then the pointer holds the save's start, +bank+:0000, and Y is +at+. Otherwise the game
+            # stops, the place and the size as the fault's two numbers. A count below nought (only a sum's length can be)
             # fits wherever it ends up no further than the 32K, even from a place far past it, and
             # reads no bytes, so Y need not hold all of such a place.
-            def emit_point_or_stop(asm, memory, s)
+            def emit_point_or_stop(asm, memory, s, bank)
               asm.label("rt_save_point_or_stop")
               asm.sta(asm.direct(s.fault))
               asm.lda(asm.direct(R0 + 2))
@@ -141,7 +149,7 @@ module VBlank
               asm.bcs("rt_save_outside")
               asm.label("rt_save_inside")
               asm.stz(asm.direct(s.pointer))
-              asm.lda(Console::SNESHardware::SRAM_BANK)
+              asm.lda(bank)
               asm.sta(asm.direct(s.pointer + 2))
               asm.ldy(asm.direct(R0))
               asm.rts

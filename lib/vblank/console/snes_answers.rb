@@ -170,9 +170,9 @@ module VBlank
         # --- numbers and logic ---
         var: works("a variable is the same 32-bit whole number as on the Advance."),
         save_var: works("kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip " \
-                        "cannot keep a save yet."),
+                        "keeps it too, in RAM of its own beside the chip's."),
         save_data: works("kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip " \
-                         "cannot keep a save yet."),
+                         "keeps it too, in RAM of its own beside the chip's."),
         part: works, start_over: works,
         clock: refused("a Super Nintendo cartridge built here has no clock chip. Ask the player for the time " \
                        "on a screen of the game's own, if the game needs it."),
