@@ -63,7 +63,12 @@ module VBlank
         def findings = (@findings ||= [])
 
         # +program+ as a cartridge (Cartridge::GenesisROM), carrying its Places.
-        def build(program, title: "VBLANK")
+        #
+        # A game whose pictures need more tiles than video memory holds at once is built again with
+        # each scene's own tiles in video memory only while it is up (+scene_tiles+, Art), so what has
+        # to fit is one scene's with what every screen shows. A game that fits has no need of that
+        # and is not built with it: it stays the bytes it was.
+        def build(program, title: "VBLANK", scene_tiles: false)
           memory = Memory.new
           picture = Lowering.picture_of(program)
           colors = Lowering.changing_colors?(program)
@@ -78,9 +83,15 @@ module VBlank
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
-                                  sides: Music.sides_under_level?(program), samples: samples)
-          lowering = Lowering.new(program, memory: memory)
-          game = lowering.sections
+                                  sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles)
+          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles)
+          begin
+            game = lowering.sections
+          rescue Art::TooManyTiles
+            raise if scene_tiles || !lowering.art_of_one_scene?
+
+            return build(program, title: title, scene_tiles: true)
+          end
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
                                              columns: lowering.plane_size.first, collision: lowering.collides?, fractions: lowering.fractions?,
@@ -91,6 +102,7 @@ module VBlank
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
+                                             scene_tiles: scene_tiles,
                                              direct_slot_sizes: lowering.direct_slot_sizes)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,

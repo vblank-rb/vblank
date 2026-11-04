@@ -37,7 +37,7 @@ module VBlank
 
             def prepare_picture
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, exact: self.class.fading?(@program),
-                             beside_painting: painted?)
+                             beside_painting: painted?, scene_tiles: @scene_tiles)
               @objects = by_kind(:object)
               @backgrounds = @program.walk.select { |node| node.kind == :background }
               @sprite_names = SpriteNames.new(@program)
@@ -187,16 +187,9 @@ module VBlank
               return unless places_sprites?
 
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
-              poses.each do |name|
-                image = Assets::Image.of(picture_named(name))
-                if (list = followed_list_of(name))
-                  @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
-                elsif recolored?(name)
-                  @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
-                else
-                  @art.sprite_picture(name, image)
-                end
-              end
+              return make_art_by_scene(poses) if @scene_tiles
+
+              poses.each { |name| make_sprite_picture(name) }
               @objects.each_value { |obj| recolor_palettes(obj) }
               @backgrounds.each { |bg| bg.every_map.each_index { |which| grid_of(bg, which) } }
             rescue Art::TooManyLists
@@ -206,6 +199,70 @@ module VBlank
                                    "many sets of colours, draw the sprites and the background with one list, and change " \
                                    "what it holds with `recolor`: that list keeps one of the four, whatever the sets. Or " \
                                    "build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
+            end
+
+            # The sprite picture +name+, made into pieces (Art#sprite_picture) from the tiles of the scene that
+            # alone shows it, in a game of +scene_tiles+.
+            def make_sprite_picture(name)
+              image = Assets::Image.of(picture_named(name))
+              @art.with_tiles_of(tiles_scene_of_picture(name)) do
+                if (list = followed_list_of(name))
+                  @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
+                elsif recolored?(name)
+                  @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+                else
+                  @art.sprite_picture(name, image)
+                end
+              end
+            end
+
+            # THE ART OF A GAME WHOSE SCENES EACH KEEP THEIR OWN TILES (Art's +scene_tiles+): what every
+            # screen shows made first, so its tiles are numbered before any scene takes its copy, then each
+            # scene's own. A tile a `set_tile` can put on a background is made here too, though no map shows
+            # it, so it is numbered with its background's tiles rather than after a scene's.
+            def make_art_by_scene(poses)
+              shared_poses, own_poses = poses.partition { |name| tiles_scene_of_picture(name).nil? }
+              shared_backgrounds, own_backgrounds = @backgrounds.partition { |bg| tiles_scene_of(bg).nil? }
+              shared_poses.each { |name| make_sprite_picture(name) }
+              shared_backgrounds.each { |bg| make_background_art(bg) }
+              own_poses.each { |name| make_sprite_picture(name) }
+              own_backgrounds.each { |bg| make_background_art(bg) }
+              @objects.each_value { |obj| recolor_palettes(obj) }
+            end
+
+            # Every map of +bg+ as a grid, and every cell a `set_tile` can change it to.
+            def make_background_art(bg)
+              bg.every_map.each_index { |which| grid_of(bg, which) }
+              @program.walk.each do |node|
+                next unless node.kind == :set_tile && node.name == bg.name && node.tile && node.tile < bg.tiles.length
+
+                cell_of(bg, node.tile)
+              end
+            end
+
+            # THE SCENE WHOSE OWN TILES +bg+ IS DRAWN FROM, in a game of +scene_tiles+: the scene it is
+            # declared in, which puts it up as it takes over; nil for scenery every screen shows.
+            def tiles_scene_of(bg) = @scene_tiles ? scene_owning_background(bg) : nil
+
+            # The same for the sprite picture +name+ (LoweringPlan#scene_showing_picture).
+            def tiles_scene_of_picture(name) = @scene_tiles ? scene_owning_picture(name) : nil
+
+            def scene_owning_background(bg) = (bg.scene if @handover.on_arrival?(bg) && @scenes.key?(bg.scene))
+
+            def scene_owning_picture(name)
+              scene = @plan.scene_showing_picture(name)
+              scene if @scenes.key?(scene)
+            end
+
+            # WHETHER SOME ART BELONGS TO ONE SCENE, so that bringing each scene's tiles in as it takes over
+            # can leave room (Genesis#build). Only in a game of one dispatch: a second variable picking
+            # scenes can have one of its scenes up beside one of the first's, and the two would want their
+            # own tiles in the same room at once.
+            public def art_of_one_scene?
+              return false unless tiled? && @program.walk.count { |node| node.kind == :case } == 1
+
+              @backgrounds.any? { |bg| scene_owning_background(bg) } ||
+                @objects.values.flat_map(&:poses).any? { |name| scene_owning_picture(name) }
             end
 
             # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose
@@ -390,7 +447,8 @@ module VBlank
                 data.label(recolor_table_label(lines))
                 data.data_words(lines.length, *lines.map { |line| line << Art::PALETTE_SHIFT })
               end
-              [data.section, *tile_section]
+              scenes = scene_tile_sections(data)
+              [data.section, *tile_section, *scenes]
             end
 
             # The game's own colours for the runtime to move (Runtime::Tint): the 64 places of the colour memory
@@ -433,7 +491,9 @@ module VBlank
 
               @cells_made[[bg.object_id, tile]] ||= begin
                 image = Assets::Image.of(picture_named(bg.tiles.fetch(tile)))
-                bg.recolors.empty? ? @art.background_cell(image) : @art.background_cell(image, palette: recolored_palette(bg, image))
+                @art.with_tiles_of(tiles_scene_of(bg)) do
+                  bg.recolors.empty? ? @art.background_cell(image) : @art.background_cell(image, palette: recolored_palette(bg, image))
+                end
               end
             end
 
@@ -605,7 +665,10 @@ module VBlank
             # +before+ is the number of the scene up until now, -1 at power-on, when the planes are empty already and
             # an empty map's copy would only run the blank out for the sprites.
             def emit_scene_arrival(scene, before)
-              return if painted? || @scene_layers.zero?
+              return if painted?
+
+              emit_scene_tiles(scene)
+              return if @scene_layers.zero?
 
               arrival = @handover.arrival(scene)
               arrival.map_choices.each { |var| store_number(var, 0) }
@@ -619,6 +682,38 @@ module VBlank
                 runtime_call("rt_background_put_up", [Build.int(plane), Build.int(empty_grid.number), Build.int(1)])
               end
               @asm.label(first)
+            end
+
+            # A SCENE TAKING OVER, in a game of +scene_tiles+: its own tiles go into video memory over the last
+            # scene's, in the blank at the end of this pass (Runtime::Tiles' rt_scene_tiles). The pass is its
+            # own with `loads_first:`, and shared with the scene's first pass of game without.
+            def emit_scene_tiles(scene)
+              return unless @scene_tiles
+
+              runtime_call("rt_scene_tiles", [LabelAddress.new(scene_tiles_table_label(scene))])
+            end
+
+            def scene_tiles_table_label(scene) = "art scene tiles table #{scene}"
+            def scene_tiles_label(scene) = "art scene tiles #{scene}"
+
+            # For each scene, the table rt_scene_tiles reads, written once every tile is made: where its own
+            # tiles are on the cartridge (nought for a scene with none), how many long words they are, and
+            # where in video memory they go; and the tiles themselves, a section each.
+            def scene_tile_sections(data)
+              return [] unless @scene_tiles
+
+              at = @art.first_scene_tile * Art::TILE_BYTES
+              @scenes.keys.filter_map do |scene|
+                bytes = @art.scene_tile_data(scene)
+                data.label(scene_tiles_table_label(scene))
+                data.data_longs(bytes.empty? ? 0 : scene_tiles_label(scene), bytes.bytesize / 4, at)
+                next if bytes.empty?
+
+                asm = M68000.new(scene_tiles_label(scene), holds: ART)
+                asm.label(scene_tiles_label(scene))
+                asm.data_bytes(bytes.bytes)
+                asm.section
+              end
             end
 
             # A grid of nothing, put up on a plane to take down what was there.

@@ -221,13 +221,13 @@ module VBlank
               end
             end
 
-            # The one scene whose sprites alone show the picture +name+; nil where every screen keeps
-            # it. Not a picture painted from a list, whose palette has its colours in its places and
-            # whose tiles the game fills.
+            # The one scene whose sprites alone show the picture +name+ (LoweringPlan#scene_showing_picture);
+            # nil where every screen keeps it. Not a picture painted from a list, whose palette has its
+            # colours in its places and whose tiles the game fills.
             def scene_of_picture(name)
               return nil unless @tile_runs.none? { |run| run.picture == name }
 
-              one_scene_of(@objects.values.select { |obj| obj.poses.include?(name) })
+              @plan.scene_showing_picture(name)
             end
 
             def colors_scene_of_picture(name) = @sprite_colors ? scene_of_picture(name) : nil

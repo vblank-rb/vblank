@@ -66,9 +66,21 @@ module VBlank
             # How far past the screen's corner the chip counts a sprite's place from.
             SPRITE_ORIGIN = 128
 
+            # In a game whose scenes each keep their own tiles (Art's +scene_tiles+): the table of the
+            # arriving scene's tiles, still to be copied in the blank, or nought (rt_scene_tiles); and 1
+            # while the screen is switched off for the copy.
+            SCENE_TILES = "rt scene tiles"
+            SCREEN_OFF_FOR_TILES = "rt screen off for tiles"
+
+            # A scene's table of its own tiles (Lowering::Picture#scene_tile_sections): where they are on
+            # the cartridge, how many long words, and where in video memory they go, a long each.
+            SCENE_TILES_COUNT = 4
+            SCENE_TILES_TO = 8
+
             module_function
 
-            def reserve(memory)
+            # +scene_tiles+ for a game whose scenes each bring their own tiles in as they take over.
+            def reserve(memory, scene_tiles: false)
               memory.reserve(SCROLL, 8)
               memory.reserve(PENDING, 8)
               memory.reserve(CELL_COUNT, 2)
@@ -76,16 +88,69 @@ module VBlank
               memory.reserve(SPRITE_COUNT, 2)
               memory.reserve(SPRITES, MOST_SPRITES * SPRITE_BYTES)
               memory.reserve(DRAWN, 2 + (MOST_SPRITES * DRAWN_BYTES))
+              return unless scene_tiles
+
+              memory.reserve(SCENE_TILES, 4)
+              memory.reserve(SCREEN_OFF_FOR_TILES, 2)
             end
 
             # +columns+ is how many cells across the planes are (32 or 64).
             # +colors+ for a game that changes its colours as it runs (Tint).
-            def emit(asm, memory, columns:, colors: false)
+            # +scene_tiles+ for a game whose scenes each bring their own tiles in (#emit_scene_tiles).
+            def emit(asm, memory, columns:, colors: false, scene_tiles: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, colors: colors)
               emit_maps(asm, memory, at, columns)
               emit_sprites(asm, memory, at)
-              emit_upload(asm, memory, at, columns, colors: colors)
+              emit_scene_tiles(asm, at) if scene_tiles
+              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles)
+            end
+
+            # A SCENE'S OWN TILES, brought in as it takes over. rt_scene_tiles(table) notes the table of
+            # the arriving scene's tiles (D0), and the blank at the end of the pass copies them
+            # (rt_scene_tiles_copied) over the last scene's, into the room past the tiles every screen shows.
+            #
+            # A scene's tiles are far more than the blank has time for: the blank is 38 lines, and the
+            # video chip takes a few hundred tiles in that time even when it copies by itself. So the
+            # screen is SWITCHED OFF for the copy, as the console's own games switch it off to load a
+            # screen's art. With it off the video chip takes writes on any line, and the lines it draws
+            # meanwhile show only the backdrop, never the new map over half-copied tiles or the old
+            # scene's tiles under the new map. The maps, the cells and the sprites of the pass go in
+            # after the tiles while it is still off, and it comes back on in the next blank
+            # (#emit_upload), so the first frame drawn shows the whole of the new scene at once. The pass
+            # takes the frames the copy took, which the frame count says, as a slow pass's does.
+            #
+            # A scene that takes over before the screen first comes on finds it off already, and its tiles
+            # go in with everything else copied then (Frame's rt_show_pass).
+            def emit_scene_tiles(asm, at)
+              h = Console::GenesisHardware
+              asm.label("rt_scene_tiles")
+              asm.move(:l, asm.d(0), at.call(SCENE_TILES))
+              asm.rts
+
+              asm.label("rt_scene_tiles_copied")
+              asm.move(:l, at.call(SCENE_TILES), asm.d(0))
+              asm.branch(:eq, "rt_scene_tiles_copied_done")
+              asm.clr(:l, at.call(SCENE_TILES))
+              asm.movea(:l, asm.d(0), asm.a(2))
+              asm.tst(:l, asm.disp(2, SCENE_TILES_COUNT))
+              asm.branch(:eq, "rt_scene_tiles_copied_done") # a scene with no tiles of its own
+              asm.tst(:w, at.call(Frame::DISPLAY_ON))
+              asm.branch(:eq, "rt_scene_tiles_copy")
+              asm.move(:w, asm.imm(h::VDP_REGISTER | (h::REG_MODE2 << 8) | h::MODE2_SCREEN_OFF | h::MODE2_VBLANK_INTERRUPT | h::MODE2_DMA),
+                       asm.abs_l(h::VDP_CONTROL))
+              asm.move(:w, asm.imm(1), at.call(SCREEN_OFF_FOR_TILES))
+              asm.label("rt_scene_tiles_copy")
+              asm.move(:l, asm.disp(2, SCENE_TILES_TO), asm.d(0))
+              asm.jsr(asm.abs_l("rt_vram_write_at"))
+              asm.movea(:l, asm.ind(2), asm.a(0))
+              asm.move(:l, asm.disp(2, SCENE_TILES_COUNT), asm.d(1))
+              asm.subq(:l, 1, asm.d(1))
+              asm.label("rt_scene_tiles_copy_long")
+              asm.move(:l, asm.post(0), asm.abs_l(h::VDP_DATA))
+              asm.dbra(asm.d(1), "rt_scene_tiles_copy_long")
+              asm.label("rt_scene_tiles_copied_done")
+              asm.rts
             end
 
             # rt_picture_start: the colours into the colour memory and the tiles into video RAM, with the
@@ -350,15 +415,31 @@ module VBlank
             # are copied onto their planes, the cells changed after them written, then the sprite table
             # and the scroll. The colours are first, being the shortest, since a map's copy can run past the end of the
             # blank and what is written after it is on the screen a frame late.
-            def emit_upload(asm, memory, at, columns, colors: false)
+            #
+            # In a game whose scenes each bring their own tiles in, an arriving scene's go first, with the
+            # screen switched off (#emit_scene_tiles), and the screen comes back on in the blank after
+            # everything else is in.
+            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
+              asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
               [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
               emit_cells_written(asm, memory, at)
               emit_sprite_table_written(asm, memory, at)
               emit_scroll_written(asm, memory)
+              emit_screen_back_on(asm, at) if scene_tiles
               asm.rts
+            end
+
+            # The screen, switched off for a scene's tiles, on again in the next blank.
+            def emit_screen_back_on(asm, at)
+              asm.tst(:w, at.call(SCREEN_OFF_FOR_TILES))
+              asm.branch(:eq, "rt_upload_screen_was_on")
+              asm.clr(:w, at.call(SCREEN_OFF_FOR_TILES))
+              asm.jsr(asm.abs_l("rt_sleep_until_vblank"))
+              asm.jsr(asm.abs_l("rt_screen_on"))
+              asm.label("rt_upload_screen_was_on")
             end
 
             # The grid noted for plane +plane+, if any, copied row by row onto it: each row is

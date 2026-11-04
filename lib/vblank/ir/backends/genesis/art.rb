@@ -58,6 +58,10 @@ module VBlank
           # Raised for art the console cannot hold.
           class TooMuch < LoweringError; end
 
+          # Raised when the pictures need more tiles than video memory holds at once: in a game whose
+          # scenes each keep their own, the tiles of one scene with those every screen shows.
+          class TooManyTiles < TooMuch; end
+
           # Raised when the lists of colours the sprites are drawn with need more palettes than there are: the
           # build keeps a palette for each list for good, which a build that lent them while a sprite wore
           # them would not.
@@ -81,9 +85,21 @@ module VBlank
           # +beside_painting+ is for the sprites of a painted screen (`sprite ..., over_picture: true`). The
           # painted picture keeps the first palette and most of video RAM to itself (Runtime::Paint), so the
           # sprites have the other three palettes and the tiles between the picture's and the scroll table.
-          def initialize(backdrop: nil, exact: false, beside_painting: false)
+          #
+          # EACH SCREEN'S TILES (+scene_tiles+). Video memory holds MOST_TILES tiles at once, and nothing
+          # says they stay the same ones: the console's own games load a screen's art as the screen
+          # starts. So in a game whose tiles together do not fit (Genesis#build), the tiles every screen
+          # shows are numbered first, from 1, and go in at power-on and stay. Each scene then starts
+          # from a copy of that list and adds its own after it (#with_tiles_of), so every scene's own
+          # tiles are numbered from the same place, the first past the shared ones, and share one room
+          # of video memory that the arriving scene fills (#scene_tile_data). What has to fit is one
+          # scene's tiles with the shared ones, never two scenes'.
+          def initialize(backdrop: nil, exact: false, beside_painting: false, scene_tiles: false)
             @exact = exact
             @beside_painting = beside_painting
+            @scene_tiles = scene_tiles
+            @scene_stores = {} # a scene => its copy of [@tiles, @tile_numbers, @tile_runs] (#with_tiles_of)
+            @tiles_scene = nil # the scene whose copy is being added to, or nil
             @most_tiles = beside_painting ? Runtime::Paint.most_sprite_tiles : MOST_TILES
             @backdrop_color = (backdrop || BACKDROP) & 0x7FFF
             @backdrop = Console::GenesisHardware.color_word(@backdrop_color)
@@ -244,11 +260,47 @@ module VBlank
           # How many places of each palette hold a colour, for the runtime to write again when they change.
           def colors_used = @palettes.map { |list| list ? list.length : 0 }
 
-          # The tiles' pixels, tile 1 first (tile 0, the blank one, is in video RAM already).
+          # The tiles' pixels, tile 1 first (tile 0, the blank one, is in video RAM already): in a game of
+          # +scene_tiles+, the ones every screen shows.
           def tile_data = @tiles.drop(1).join
 
           # How many tiles the art has, the blank one not counted.
           def tile_count = @tiles.length - 1
+
+          # --- each screen's tiles ---
+
+          # The block, with the tiles it makes kept in +scene+'s copy of the list, taken the first time
+          # it is asked for. For nil, or in a game not built that way, in the list every screen shows.
+          # Every tile every screen shows has to be made before the first copy is taken, or it would be
+          # numbered where a scene's own tiles are (#scene_tile_data checks).
+          def with_tiles_of(scene)
+            return yield unless @scene_tiles && scene
+
+            shared = [@tiles, @tile_numbers, @tile_runs]
+            @tiles, @tile_numbers, @tile_runs = (@scene_stores[scene] ||= shared.map(&:dup))
+            @tiles_scene = scene
+            begin
+              yield
+            ensure
+              @tiles_scene = nil
+              @tiles, @tile_numbers, @tile_runs = shared
+            end
+          end
+
+          # The number of the first tile of every scene's own: the first past the ones every screen shows.
+          def first_scene_tile = @tiles.length
+
+          # The pixels of +scene+'s own tiles, from #first_scene_tile on, which go into video memory as it
+          # takes over; empty for a scene with none of its own.
+          def scene_tile_data(scene)
+            own, = @scene_stores[scene]
+            return "".b unless own
+            unless own.first(@tiles.length) == @tiles
+              raise LoweringError, "a tile every screen shows was made after the scene #{scene.inspect} took its copy"
+            end
+
+            own.drop(@tiles.length).join
+          end
 
           private
 
@@ -310,8 +362,13 @@ module VBlank
                              "Genesis has room for (#{@most_tiles}). The painted screen uses most of the video memory. " \
                              "To fix this, use fewer or smaller sprite pictures."
             end
-            raise TooMuch, "The pictures use more different 8×8 squares of picture than a Genesis has room for " \
-                           "(#{MOST_TILES}). To fix this, use fewer different pictures."
+            if @tiles_scene
+              raise TooManyTiles, "The scene :#{Modes.strip_scene_prefix(@tiles_scene)} and the pictures that every scene shows use more " \
+                                  "different 8×8 squares of picture than a Genesis has room for (#{MOST_TILES}). To fix " \
+                                  "this, use fewer different pictures in that scene."
+            end
+            raise TooManyTiles, "The pictures use more different 8×8 squares of picture than a Genesis has room for " \
+                                "(#{MOST_TILES}). To fix this, use fewer different pictures."
           end
 
           # What a refusal says of the lists of colours the pictures have, beside a painted screen.

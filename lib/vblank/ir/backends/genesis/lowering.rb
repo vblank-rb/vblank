@@ -127,9 +127,12 @@ module VBlank
           # each routine's section, by its label, beside what that routine is to the author.
           attr_reader :variables, :lists, :frame_begins, :section_routines
 
-          def initialize(program, memory:)
+          # +scene_tiles+ keeps each scene's own tiles in video memory only while it is up (Art), for a
+          # game whose tiles together do not fit (Genesis#build).
+          def initialize(program, memory:, scene_tiles: false)
             @program = program
             @memory = memory
+            @scene_tiles = scene_tiles
             # What the program is before any instruction is made, worked out as the Color's and the
             # Super Nintendo's are (LoweringPlan), and kept here under the names the rest of the
             # lowering reads.
@@ -709,7 +712,7 @@ module VBlank
 
           # The note of the scene running now, set to +number+.
           def emit_scene_number(number)
-            return store_number(@scene, number) if painted? || @scene_layers.zero?
+            return store_number(@scene, number) if painted? || (@scene_layers.zero? && !@scene_tiles)
 
             before = keep_local(:scene_before)
             statement(Build.set(before, Build.var_ref(@scene)))

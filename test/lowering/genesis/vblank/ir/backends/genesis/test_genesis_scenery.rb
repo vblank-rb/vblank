@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "many_tiles"
 
 # A scene's own backgrounds on a Genesis: they go up on the two planes as the scene takes over, in front of the
 # ones every screen shows, and come down as the next scene takes over (IR::SceneHandover). Each test plays the
@@ -101,6 +102,36 @@ class TestGenesisScenery < Minitest::Test
     end
 
     assert_match(/a backdrop of its own/, error.message)
+  end
+
+  # Each scene's own tiles are counted with those every screen shows, and one scene with more than
+  # video memory holds is refused naming it, though the other scene is small.
+  def test_one_scene_with_more_tiles_than_video_memory_holds_is_refused_naming_it
+    error = assert_raises(Genesis::Art::TooManyTiles) do
+      Genesis.new.build(program_of do
+        screen :tiled
+        # Two backgrounds of half each, since one map of them all is taller than a plane.
+        half = (Genesis::Art::MOST_TILES / 2) + 6
+        near = ManyTiles.declare(self, :near_set, half, :red)
+        far = ManyTiles.declare(self, :far_set, half, :blue, from: half)
+        small = ManyTiles.declare(self, :small_set, 10, :green, from: half * 2)
+        small += Array.new(near.length - small.length) { [nil] * ManyTiles::ACROSS } # every map one size
+        scene(:huge) do
+          background :far, tiles: :far_set, map: far
+          background :near, tiles: :near_set, map: near
+        end
+        scene(:tiny) { background :tiny, tiles: :small_set, map: small }
+        state = var :state, 0
+        game_loop do
+          case_var(:state) do
+            when_val 0, :huge
+            when_val 1, :tiny
+          end
+        end
+      end)
+    end
+
+    assert_match(/The scene :huge and the pictures that every scene shows/, error.message)
   end
 
   def test_more_changed_tiles_in_a_pass_than_the_queue_holds_stops_the_game_in_words

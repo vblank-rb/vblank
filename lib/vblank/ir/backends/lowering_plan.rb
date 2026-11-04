@@ -130,6 +130,17 @@ module VBlank
         # A routine of the game's, as the author names it: a scene as one.
         def routine_said(name) = @scenes.key?(name) ? "scene #{name.inspect}" : name.to_s
 
+        # THE ONE SCENE WHOSE SPRITES ALONE SHOW THE PICTURE +name+, or nil where sprites of two
+        # scenes show it, or one declared in no scene. A sprite declared in a scene shows only while
+        # that scene is up, so a picture only one scene's sprites show is wanted in video memory only
+        # then, and a console short of room keeps it there only then (SNES::Art's scene tiles,
+        # Genesis::Art's).
+        def scene_showing_picture(name)
+          @objects_by_name ||= @program.walk.select { |node| node.kind == :object }.to_h { |node| [node.name, node] }
+          scenes = @objects_by_name.values.select { |obj| obj.poses.include?(name) }.map(&:scene).uniq
+          scenes.first if scenes.one?
+        end
+
         # The tables a run reads, by an entry or by copying a run of them into a list.
         def tables_read
           @tables_read ||= begin
