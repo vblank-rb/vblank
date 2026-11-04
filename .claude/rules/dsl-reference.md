@@ -162,15 +162,19 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## The Game Boy Color — `.claude/dsl/game-boy-color.md`
 
-- `consoles: %i[gba gbc]`, `vblank build --console gbc` — the game on a Color too; what every verb does there.
+- `consoles: %i[gba gbc]`, `--console gbc` — each verb on the Color.
 
 ## The Super Nintendo — `.claude/dsl/super-nintendo.md`
 
-- `consoles: %i[gba snes]`, `vblank build --console snes` — the game on a Super Nintendo too; what every verb does there.
+- `consoles: %i[gba snes]`, `--console snes` — each verb on the Super Nintendo.
 
 ## The Sega Genesis — `.claude/dsl/sega-genesis.md`
 
-- `consoles: %i[gba genesis]`, `vblank build --console genesis` — the game on a Sega Genesis too; what every verb does there.
+- `consoles: %i[gba genesis]`, `--console genesis` — each verb on the Genesis.
+
+## The PlayStation — `.claude/dsl/playstation.md`
+
+- `consoles: %i[gba ps1]`, `--console ps1` — each verb on the PlayStation.
 
 ## Effects a game writes — `.claude/dsl/effects.md`
 

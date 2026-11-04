@@ -30,7 +30,7 @@ class TestCartridgeHeadlessRun < Minitest::Test
       error = assert_raises(VBlank::IR::Backends::RunComparison::CannotAnswer) { run.new.peak_voices }
 
       assert_match(/peak_voices/, error.message)
-      assert_match(/skip_on_(gbc|snes|genesis)/, error.message)
+      assert_match(/skip_on_(gbc|snes|genesis|ps1)/, error.message)
     end
   end
 

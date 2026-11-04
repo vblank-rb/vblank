@@ -31,6 +31,7 @@ class TestTowerExample < Minitest::Test
 
   # The player, holding each leg's key for its passes in turn, then nothing for +extra+ passes.
   private def played(legs, extra = 4)
+    skip_unless_written_for Tower::GAME
     keys = legs.flat_map { |key, passes| [key] * passes }
     player = game_player
     frame = 0

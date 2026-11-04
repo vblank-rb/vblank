@@ -139,6 +139,7 @@ VBlank::Testing::Lowering::NAMES.each { |lowering| task "test:lowering:#{lowerin
 task "test:lowering:gba" => :clear_coverage
 task "test:lowering:snes" => :compile_snes_core
 task "test:lowering:genesis" => :compile_genesis_core
+task "test:lowering:ps1" => :compile_ps1_core
 
 namespace :release do
   # Not one of the test tasks and not run by CI: it needs Docker and takes minutes, and it asks of

@@ -376,6 +376,55 @@ module VBlank
                               rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
                               extension: ".gen")
 
+    # The PlayStation: a 320×240 screen, a pad whose buttons a game names by the shared names (Cross is
+    # :a, Circle :b, Triangle :x, Square :y, L1 and R1 :l and :r), pictures drawn by a graphics chip with no
+    # limit of sprites on a row, colours of fifteen bits and lists of 256 of them. What each verb does on it
+    # is Console::PS1Answers's to say.
+    PLAYSTATION = Description.new(name: :ps1, title: "PlayStation", screen_width: 320, screen_height: 240,
+                                  buttons: %i[a b select start right left up down r l x y].freeze,
+                                  # Two ports for pads (the build reads the first alone for now).
+                                  controllers: 2,
+                                  # A background is a picture the graphics chip draws, so it can be held to
+                                  # a box (the chip's drawing area) that nothing else uses.
+                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: false,
+                                  # The graphics chip draws every sprite each frame as a textured rectangle,
+                                  # so the number is the framework's, not the hardware's.
+                                  sprites: 128, sprite_places: 512,
+                                  # Nothing limits a row: the chip draws whatever it is sent.
+                                  # The chip draws a turned or resized sprite as a textured quad.
+                                  sprites_a_row: nil, sprite_pieces_drawn_a_line: nil, turning_sprites: true,
+                                  sprite_sizes: nil, tile_planes: nil,
+                                  # ...and a turned background the same way, beside the others, as the Advance shows it.
+                                  backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
+                                  bar_is_a_background: false,
+                                  # Video RAM can be written while a frame is drawn.
+                                  changes_cells_while_drawing: true,
+                                  # The chip mixes by halves and sums, never by sixteen steps, so a fade is
+                                  # walked colour by colour.
+                                  blends: false, fades_by_brightness: false, mixes_by_half: true, list_colors: 256,
+                                  color_bits: 5,
+                                  # A tear-free painted screen is two pictures in video RAM, one drawn
+                                  # while the other is shown.
+                                  painted_pages: 2, clock_keeps_date: false,
+                                  # The processor's clock, and the cycles of it one NTSC frame takes, as
+                                  # measured in Beetle PSX (the sound chip makes a pair of samples every 768
+                                  # cycles: test_ps1_boot.rb).
+                                  cycles_a_second: 33_868_800, cycles_a_frame: 566_122,
+                                  # The sound chip's 24 voices each read a recording of their own. The
+                                  # framework plays 16 at once, the most the desktop builds' mixer holds.
+                                  samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,
+                                  recordings_at_once: 16, mixes_recordings: true,
+                                  recording_voice_hz: 44_100, lowest_square_hz: nil, voice_output_hz: 44_100,
+                                  # Lists and pools go in the region the build keeps the game's numbers in
+                                  # (Backends::PS1::Memory): 480K, less the runtime's own.
+                                  largest_memory_bytes: 480 * 1024,
+                                  work_memory_bytes: 480 * 1024, work_memory_kept_bytes: 4096,
+                                  roomier_memory_bytes: 0, variables_go_far: false,
+                                  # A pass's drawing is sent to the graphics chip as its wait ends.
+                                  sprites_placed_before_wait: true,
+                                  rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                                  extension: ".exe")
+
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 
     # The consoles a game says it is for, as a frozen list of names: one name or a list of them.

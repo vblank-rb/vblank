@@ -475,8 +475,9 @@ module VBlank
                                                   each frame of a tape by itself
 
       Options:
-        --console NAME           #{CONSOLE_CHOICES}: which console's cartridge
-                                 to run. A game for several consoles needs it.
+        --console NAME           #{CONSOLE_CHOICES}:
+                                 which console's cartridge to run. A game for
+                                 several consoles needs it.
         --keys BUTTON ...        Hold these buttons for the whole run. The
                                  buttons are:
                                  #{BUTTONS}
@@ -631,9 +632,9 @@ module VBlank
       give it to anybody.
 
       Options:
-        --console NAME           #{CONSOLE_CHOICES}: which console to play the
-                                 game as. Default: the first console in
-                                 consoles:.
+        --console NAME           #{CONSOLE_CHOICES}:
+                                 which console to play the game as. Default:
+                                 the first console in consoles:.
         --port N                 The port to serve the page on. Default: 8000.
         --template FILE          Make the page from FILE, an .html.erb file with
                                  <%= game %> in it.
@@ -774,9 +775,9 @@ module VBlank
       shows fewer pictures than the game has frames.
 
       Options:
-        --console NAME           #{CONSOLE_CHOICES}: which console to play the
-                                 game as. Default: the first console in
-                                 consoles:.
+        --console NAME           #{CONSOLE_CHOICES}:
+                                 which console to play the game as. Default:
+                                 the first console in consoles:.
         --scale N                The window is N times the size of the screen.
                                  Default: the size in the settings file, which
                                  is 3 until you change it. You can change the
@@ -971,8 +972,9 @@ module VBlank
                                  BOT_FILE.
         --tape-player N          With a tape, the player whose presses the bot presses.
                                  Default: 1.
-        --console NAME           #{CONSOLE_CHOICES}: which console to play the
-                                 game as. Default: the first console in consoles:.
+        --console NAME           #{CONSOLE_CHOICES}:
+                                 which console to play the game as. Default:
+                                 the first console in consoles:.
         --host [PORT]            Host a match, and listen on PORT. See vblank run.
         --join ADDRESS           Join the match at ADDRESS, or with --relay, the room
                                  with this code.

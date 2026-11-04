@@ -289,8 +289,21 @@ module VBlank
       def sprite_piece_sizes = [[8, 8]].freeze
     end
 
+    # The PlayStation's. Its programs play in Beetle PSX, through ruby-ps1-emulator. A program is a PS-X
+    # EXE, and a game's saves will go on a memory card (the lowering does not make saves yet).
+    class PS1Kit < CheckedKit
+      def answers = PS1Answers
+      def answers_page = answers.reference(not_yet: IR::Backends::PS1::Lowering::NOT_LOWERED_YET)
+      def lowering = IR::Backends::PS1
+      def cartridge = Cartridge::PS1EXE
+      def reading = Diagnostics::PS1Reading
+      def open_core(path, save_dir:) = Diagnostics::Emulator.open_ps1(path, save_dir: save_dir)
+      def save_file_extension = ".srm"
+    end
+
     KITS =Ractor.make_shareable({ gba: AdvanceKit.new(ADVANCE), gbc: ColorKit.new(COLOR),
-                                   snes: SNESKit.new(SUPER_NINTENDO), genesis: GenesisKit.new(GENESIS) })
+                                   snes: SNESKit.new(SUPER_NINTENDO), genesis: GenesisKit.new(GENESIS),
+                                   ps1: PS1Kit.new(PLAYSTATION) })
 
     # What a game can tell about each console, by name.
     DESCRIPTIONS = Ractor.make_shareable(KITS.transform_values(&:description))

@@ -21,4 +21,5 @@ require_relative "console/advance_answers" # ...the Game Boy Advance's: every ve
 require_relative "console/color_answers" # ...and the Game Boy Color's: works or refused
 require_relative "console/snes_answers" # ...and the Super Nintendo's: works or refused
 require_relative "console/genesis_answers" # ...and the Sega Genesis's: works or refused
+require_relative "console/ps1_answers" # ...and the PlayStation's: works or refused
 require_relative "console/kit" # ...and which parts of the library serve each console

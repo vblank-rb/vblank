@@ -23,7 +23,7 @@ class TestGame < Minitest::Test
   end
 
   def test_program_runs_on_the_interpreter
-    g = VBlank.game("FILL", consoles: %i[gba gbc snes genesis], code: "BFIL", maker: "01") do
+    g = VBlank.game("FILL", consoles: %i[gba gbc snes genesis ps1], code: "BFIL", maker: "01") do
       screen :bitmap
       clear_screen :red
       halt
@@ -38,7 +38,7 @@ class TestGame < Minitest::Test
   # program.
   def test_a_local_variable_is_captured_by_the_block
     fill = :green
-    g = VBlank.game("LOCAL", consoles: %i[gba gbc snes genesis], code: "BLOC", maker: "01") do
+    g = VBlank.game("LOCAL", consoles: %i[gba gbc snes genesis ps1], code: "BLOC", maker: "01") do
       screen :bitmap
       clear_screen fill
       halt
@@ -144,7 +144,7 @@ class TestGame < Minitest::Test
   # The program a game played as Ruby runs (`vblank run`): checked as a build checks it, with no
   # cartridge made.
   def test_checked_program_is_the_game_without_a_cartridge
-    g = VBlank.game("CHECKED", consoles: %i[gba gbc snes genesis]) do
+    g = VBlank.game("CHECKED", consoles: %i[gba gbc snes genesis ps1]) do
       screen :bitmap
       clear_screen :red
       halt

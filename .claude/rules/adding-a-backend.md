@@ -19,7 +19,7 @@ guardrails) and either runs it or writes it out as something else that runs. It 
 IR does not say: the IR is target-neutral, and a backend never reaches back into the DSL or the
 builder.
 
-There are eight today:
+There are nine today:
 
 - `Backends::Reference` runs the tree in Ruby. **It is the answer key**: what a program means is
   what Reference does with it. It is named for that role, not for its language, and it is never
@@ -34,6 +34,8 @@ There are eight today:
   (ruby-snes-emulator) to check it.
 - `Backends::Genesis` lowers the tree to 68000 code and a Sega Genesis cartridge, played in Genesis Plus GX
   (ruby-genesis-emulator) to check it.
+- `Backends::PS1` lowers the tree to R3000 (MIPS) code and a PlayStation program (a PS-X EXE), played in
+  Beetle PSX (ruby-ps1-emulator) to check it.
 
 ## A second console
 
@@ -258,7 +260,7 @@ Each of these is what Reference does; check the line before relying on it.
 
 ## Joining the test runs
 
-`rake test:all` plays the suite once for each lowering; a new one is an eighth run.
+`rake test:all` plays the suite once for each lowering; a new one is a ninth run.
 `VBlank::Testing` (lib/vblank/testing/) is where that is decided, and it is the same code a
 game's own suite uses:
 
@@ -281,8 +283,8 @@ game's own suite uses:
   (on a checked run they compare the lowered game instead of the cartridge), and the process
   runner `Testing::TestTask` starts such a run with. A test skips on one run with
   `skip_on_lowering(:name, why)` (`skip_on_native`, `skip_on_js`, `skip_on_ruby`, `skip_on_gbc`
-  `skip_on_snes` and `skip_on_genesis`
-  are its six), and the lowering's test folder goes in `TestSuites::LOWERING_FOLDERS`.
+  `skip_on_snes`, `skip_on_genesis` and `skip_on_ps1`
+  are its seven), and the lowering's test folder goes in `TestSuites::LOWERING_FOLDERS`.
 - **`Testing::Pictures` plays the cartridge of the program's console**, which that console's
   kit builds (`builder.cartridge_for`) and the one reader reads back, so a new console's programs
   are compared pixel for pixel once its kit names them.

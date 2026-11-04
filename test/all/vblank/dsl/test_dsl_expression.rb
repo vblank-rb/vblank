@@ -80,6 +80,32 @@ class TestDSLExpression < Minitest::Test
     end
   end
 
+  # `&` and `|` (both and either) work out both of their sides, even when the first settles the answer: a
+  # second side that reads past the end of a list stops the game though the first side is false (or,
+  # for `|`, true). On a checked run the interpreter stops first, so each lowering holds its own build
+  # to this in its own folder (test_ps1_checked_run.rb on the PlayStation).
+  def test_both_sides_of_and_and_or_are_worked_out_whatever_the_first_says
+    games = [
+      proc do
+        items = list :items, capacity: 4
+        items.push 7
+        hits = 0
+        game_loop { hits += 1 if (hits > 100) & (items[3] > 0) }
+      end,
+      proc do
+        items = list :items, capacity: 4
+        items.push 7
+        hits = 0
+        game_loop { hits += 1 if (hits < 100) | (items[3] > 0) }
+      end
+    ]
+    games.each do |game|
+      error = assert_raises(VBlank::IR::ProgramError) { interpret(frames: 3, &game) }
+
+      assert_match(/index 3 is out of range/, error.message)
+    end
+  end
+
   def test_arithmetic_feeds_a_comparison
     draw = lambda do |y_start|
       interpret do
