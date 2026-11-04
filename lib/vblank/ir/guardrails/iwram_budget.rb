@@ -18,6 +18,12 @@ module VBlank
         # memory would be neither quick nor near. Nor can a sprite's save-under buffer,
         # which the copying engine streams to and from every frame.
         #
+        # That is the Advance's rule, not every console's. The Super Nintendo reaches any byte
+        # of its work RAM with a long address, a byte and a cycle dearer than a near one, so
+        # its lowering keeps the variables a game names most in the first 8K and lets the rest
+        # go further on (Console::Description#variables_go_far). There a variable can move as
+        # a list can, and only the whole is counted.
+        #
         # So this checks two things, and both are real ceilings rather than budgets anybody
         # chose. What must be in the quick memory has to fit in it. And everything the
         # program declares, together, has to fit in the two memories added up. Past either
@@ -54,7 +60,7 @@ module VBlank
 
           def detect(program)
             console = program.described_console
-            users = contributors(program)
+            users = contributors(program, console)
             pinned = users.reject { |user| user[:movable] }.sum { |user| user[:bytes] }
             total = users.sum { |user| user[:bytes] }
             if console.roomier_memory? && pinned > console.free_work_memory_bytes
@@ -83,13 +89,13 @@ module VBlank
           # Everything the program reserves IWRAM for, each as { label:, bytes:, node: },
           # largest first — so the message can name the total and point at the biggest
           # users, and the finding can send the author to the biggest one's line.
-          def contributors(program)
+          def contributors(program, console)
             items = list_and_pool_items(program)
 
             var_count = variable_names(program).size
             if var_count.positive?
               items << { label: pluralize(var_count, "variable"), bytes: var_count * WORD,
-                         node: nil, movable: false }
+                         node: nil, movable: console.variables_go_far }
             end
 
             buffers = backing_bytes(program)
@@ -202,9 +208,11 @@ module VBlank
               "holds the call stack and the framework's own state."
           end
 
-          # Where the variables share the one memory with everything else, fewer of them makes room
-          # too. (Where there is a roomier memory, too many variables has a message of its own.)
-          def variables_advice(console) = console.roomier_memory? ? "" : " Or use fewer variables."
+          # Where the variables share a memory with everything else, fewer of them makes room too.
+          # (Where they are kept apart in the quick memory, too many has a message of its own.)
+          def variables_advice(console)
+            console.roomier_memory? && !console.variables_go_far ? "" : " Or use fewer variables."
+          end
 
           # A save_data record has no capacity of its own: its buffers are as big as what it
           # keeps, so the fix for one among the biggest users is to keep less.

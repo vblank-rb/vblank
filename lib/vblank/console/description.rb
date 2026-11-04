@@ -86,8 +86,9 @@ module VBlank
     # How much a game can keep, which the build checks count against (Checks::IwramBudget):
     # +work_memory_bytes+ is the memory every variable lives in, +work_memory_kept_bytes+ how much
     # of it the build keeps for itself (the stack, the copy of the sprite table), and
-    # +roomier_memory_bytes+ the memory beside it that only lists and pools can move to, 0 where
-    # there is none.
+    # +roomier_memory_bytes+ the memory beside it that lists and pools can move to, 0 where there is
+    # none. +variables_go_far+ says the variables can move there too, when the work memory cannot
+    # hold them all: where false, every variable must fit the work memory.
     #
     # +sprites_placed_before_wait+ says where a game loop's pass places the frame's sprites and
     # scroll (IR::Frames.loop_in_console_order). A console that writes them straight into its display
@@ -130,7 +131,7 @@ module VBlank
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
                               :recording_voice_hz, :lowest_square_hz,
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
-                              :roomier_memory_bytes, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
+                              :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension) do
       def screen_size = [screen_width, screen_height]
 
@@ -210,6 +211,8 @@ module VBlank
                               # The 32K quick memory, 4K of it the stack and the framework's own.
                               work_memory_bytes: 32 * 1024, work_memory_kept_bytes: 4 * 1024,
                               roomier_memory_bytes: 256 * 1024,
+                              # A variable is reached by its distance from the quick memory's start.
+                              variables_go_far: false,
                               # The sprite table and the scroll are written straight into the
                               # console in the gap after the wait, and show on the frame after it.
                               sprites_placed_before_wait: false,
@@ -253,7 +256,7 @@ module VBlank
                             # lowering's tests hold this to (test_gbc_memory.rb).
                             largest_memory_bytes: 8 * 1024,
                             work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 2048,
-                            roomier_memory_bytes: 0,
+                            roomier_memory_bytes: 0, variables_go_far: false,
                             # The sprite table and the scroll are sent from a copy as the wait
                             # ends, so a pass's are placed before it to show on the frame after.
                             sprites_placed_before_wait: true,
@@ -305,10 +308,12 @@ module VBlank
                                      # 64K of it to one.
                                      largest_memory_bytes: 64 * 1024,
                                      # The first 8K of work RAM is in view from the cartridge's code, so
-                                     # every variable is there; the stack and the runtime's own state
-                                     # take some of it first (see Backends::SNES::Memory).
+                                     # the variables go there first; the stack and the runtime's own
+                                     # state take some of it before them. The variables the game names
+                                     # least go past it when it is full, each reached by its whole
+                                     # address (see Backends::SNES::Memory).
                                      work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 2048,
-                                     roomier_memory_bytes: 120 * 1024,
+                                     roomier_memory_bytes: 120 * 1024, variables_go_far: true,
                                      # The wait sends the sprite table and the scroll from a copy, so
                                      # a pass places them in it before its wait, as the Color's does.
                                      sprites_placed_before_wait: true,
@@ -359,7 +364,7 @@ module VBlank
                               # screen's copy of the picture take some of it first (see
                               # Backends::Genesis::Memory).
                               work_memory_bytes: 64 * 1024, work_memory_kept_bytes: 4096,
-                              roomier_memory_bytes: 0,
+                              roomier_memory_bytes: 0, variables_go_far: false,
                               # The wait sends the sprite table and the scroll from a copy, so a
                               # pass places them in it before its wait, as the Super Nintendo's does.
                               sprites_placed_before_wait: true,

@@ -191,6 +191,34 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_match(/fewer variables/, message)
   end
 
+  # THE SUPER NINTENDO'S VARIABLES CAN MOVE: what its first 8K cannot hold goes further on in
+  # work RAM, reached by a whole address. So 2,000 variables, twice what that 8K holds, are not
+  # refused there, while the same many past the Advance's quick memory still are.
+  private def many_variables(count, console)
+    program(screen(:tiled), *Array.new(count) { |i| set(:"v#{i}", int(0)) }, loop_(wait_vblank, halt),
+            console: console)
+  end
+
+  def test_a_super_nintendo_program_with_variables_past_its_first_8k_is_not_flagged
+    assert_empty findings_for(many_variables(2000, :snes))
+  end
+
+  def test_an_advance_program_with_variables_past_its_quick_memory_is_still_flagged
+    findings = findings_for(many_variables((QUICK_FREE / Budget::WORD) + 512, :gba))
+
+    assert_equal 1, findings.size
+    assert_match(/cannot/, findings.first.message)
+  end
+
+  def test_a_super_nintendo_program_past_all_its_work_ram_is_told_to_use_fewer_variables
+    snes = VBlank::Console::SUPER_NINTENDO
+    count = ((snes.free_work_memory_bytes + snes.roomier_memory_bytes) / Budget::WORD) + 64
+    message = findings_for(many_variables(count, :snes)).first.message
+
+    assert_match(/both are full/, message)
+    assert_match(/fewer variables/, message)
+  end
+
   def test_running_out_of_memory_names_the_variables_with_no_var_line
     err = StringIO.new
     assert_raises(VBlank::ROMError) do
