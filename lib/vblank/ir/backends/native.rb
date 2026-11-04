@@ -6,6 +6,7 @@ require "tmpdir"
 require_relative "native/zig"
 require_relative "native/names"
 require_relative "native/console_numbers"
+require_relative "native/cartridge_start"
 require_relative "native/c"
 require_relative "native/printer"
 require_relative "native/drawn_sprites"
@@ -59,22 +60,30 @@ module VBlank
         # left out. The program is then built as that console: the runtime's screen is its size
         # (ConsoleNumbers), and the program does what the game does on it.
         def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent)
+          checked_cartridge(game, console: console, settings: settings, err: err, progress: progress).source_program
+        end
+
+        # The cartridge #checked_program takes its program from.
+        def checked_cartridge(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent)
           game.build_rom(profile: false, out: nil, err: err, settings: settings, progress: progress,
-                         console: console || game.consoles.first, for_computer: true).source_program
+                         console: console || game.consoles.first, for_computer: true)
         end
 
         # The runtime's C files each kind of build compiles beside the game's. The desktop build
         # carries the windowless runtime too, so the program a player runs can be driven by a
         # test with --headless. It also carries the window's own settings (rg_window.c, plain C
         # with no SDL, tested on its own), the menu over the picture (rg_window_menu.c and its
-        # letters, rg_menu_font.c, with what the menu holds written out by MenuData), and the
-        # windows of keys and of the game's variables (rg_menu.cpp, Dear ImGui), which
+        # letters, rg_menu_font.c, with what the menu holds written out by MenuData), the emulator
+        # the console's own start-up runs in where the player has the BIOS (rg_bios_boot.c, with the
+        # start of the game's cartridge beside it, CartridgeStart), and the windows of keys and of
+        # the game's variables (rg_menu.cpp, Dear ImGui), which
         # build/build.zig compiles itself since it is C++ and wants flags of its own: a desktop
         # build always has them, and the builds a test makes of the game do not come through here
         # at all.
         SHARED_RUNTIME = %w[rg_headless.c rg_mix.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c].freeze
         HEADLESS_RUNTIME = (["rg_headless_main.c"] + SHARED_RUNTIME).freeze
-        DESKTOP_RUNTIME = (%w[rg_sdl.c rg_window.c rg_window_menu.c rg_menu_font.c] + [MenuData::FILE] + SHARED_RUNTIME).freeze
+        DESKTOP_RUNTIME = (%w[rg_sdl.c rg_window.c rg_window_menu.c rg_menu_font.c rg_bios_boot.c] + [MenuData::FILE] +
+                           SHARED_RUNTIME).freeze
 
         # The program written out as C, as one file's text. A program from a game should come
         # through #checked_program first. +title+ is the game's name, for the window.
@@ -113,13 +122,17 @@ module VBlank
           end
           refuse_unknown_target!(target)
 
-          program = checked_program(game, console: console, settings: settings, err: err)
+          cartridge = checked_cartridge(game, console: console, settings: settings, err: err)
+          program = cartridge.source_program
           source = lower(program, title: game.title)
           Dir.mktmpdir("vblank-native") do |dir|
             src = File.join(dir, "src")
             FileUtils.mkdir_p(src)
             File.write(File.join(src, "game.c"), source)
             File.write(File.join(src, ConsoleNumbers::FILE), ConsoleNumbers.header(program.described_console))
+            if program.described_console.plays_bios_start_up
+              File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
+            end
             File.write(File.join(src, MenuData::FILE), MenuData.source(menu: game.menu?))
             Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
             exe = Zig.build_with_sdl(src, ["game.c", *DESKTOP_RUNTIME], name: "game", prefix: File.join(dir, "out"),

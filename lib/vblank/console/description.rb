@@ -102,6 +102,11 @@ module VBlank
     # +rumbles+ says a game's `rumble` is felt: the cartridge carries a motor the game turns on and
     # off. Where it is not, the verb does nothing, since a game plays the same without it.
     #
+    # +plays_bios_start_up+ says a desktop build plays the console's own start-up before the game
+    # (its logo and chime, run from the player's own copy of the console's BIOS, where the player has
+    # one: runtime/rg_bios_boot.c). Where it is false the game starts at once, as it always does
+    # without the BIOS.
+    #
     # +holds_background_above_row+ says a background can be kept to the rows above a row (`above_row:`),
     # and +glides_recordings+ that a recorded note can carry on at a new pitch (`glides: true`).
     #
@@ -118,7 +123,8 @@ module VBlank
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
                               :recording_voice_hz, :lowest_square_hz,
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
-                              :roomier_memory_bytes, :sprites_placed_before_wait, :rumbles, :extension) do
+                              :roomier_memory_bytes, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
+                              :extension) do
       def screen_size = [screen_width, screen_height]
 
       # How much of the work memory is free for a game's own variables and lists.
@@ -190,7 +196,9 @@ module VBlank
                               # console in the gap after the wait, and show on the frame after it.
                               sprites_placed_before_wait: false,
                               # Its rumble cartridges are not made here yet: nothing is felt.
-                              rumbles: false, extension: ".gba")
+                              rumbles: false,
+                              # The logo and its chime, played from the player's own BIOS.
+                              plays_bios_start_up: true, extension: ".gba")
 
     # The Game Boy Color: a smaller screen, eight buttons, forty sprites and ten on a row, one
     # background, nothing that turns, lists of four colours, and a clock that counts days. What
@@ -232,7 +240,9 @@ module VBlank
                             # ends, so a pass's are placed before it to show on the frame after.
                             sprites_placed_before_wait: true,
                             # A cartridge with a motor, for a game that rumbles (Runtime::Rumble).
-                            rumbles: true, extension: ".gbc")
+                            rumbles: true,
+                            # Its own start-up is not played: the game starts at once.
+                            plays_bios_start_up: false, extension: ".gbc")
 
     # The Super Nintendo: a wider and taller screen than the Advance's, twelve buttons (a game reads
     # the ten the Advance has), 128 sprites and 34 pieces of them on a row, backgrounds of tiles,
@@ -285,7 +295,7 @@ module VBlank
                                      # a pass places them in it before its wait, as the Color's does.
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
-                                     rumbles: false, extension: ".sfc")
+                                     rumbles: false, plays_bios_start_up: false, extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
     # Select and no shoulder buttons), 80 sprites and 20 of them on a row, two backgrounds of
@@ -335,7 +345,7 @@ module VBlank
                               # pass places them in it before its wait, as the Super Nintendo's does.
                               sprites_placed_before_wait: true,
                               # No cartridge with a motor is made for it.
-                              rumbles: false, extension: ".gen")
+                              rumbles: false, plays_bios_start_up: false, extension: ".gen")
 
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 

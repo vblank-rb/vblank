@@ -64,4 +64,12 @@
 #define RG_CLOCK_KEEPS_DATE 1
 #endif
 
+/* Whether the window plays the console's own start-up before the game, from the player's BIOS where
+ * the player has one (rg_bios_boot.h; Console::Description#plays_bios_start_up). The desktop build of
+ * such a console writes the start of the game's cartridge beside game.c for the BIOS to read
+ * (rg_cartridge_start.h). */
+#ifndef RG_CONSOLE_PLAYS_BIOS_START_UP
+#define RG_CONSOLE_PLAYS_BIOS_START_UP 0
+#endif
+
 #endif
