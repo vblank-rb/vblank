@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# The friendly errors of `place`, `viewer` and `draw_place`, said while the game is built. What a
+# The friendly errors of `place`, `viewer`, `draw_place` and `screen_spot`, said while the game is built. What a
 # place draws is in test/console/gba/vblank/builder/test_places_on_the_advance.rb.
 class TestPlaces < Minitest::Test
   private def build(tear_free: true, picture: "##\n##\n", &block)
@@ -96,15 +96,58 @@ class TestPlaces < Minitest::Test
     assert_match(/-8191 to 8191/, message)
   end
 
-  def test_a_setting_not_made_yet_is_refused
+  def test_faces_that_are_not_a_list_are_refused
     shape = square
     message = refusal do
       place(:room, &shape)
       eye = viewer :eye, at: [0.0, 0.0, 0.0]
-      game_loop { draw_place :room, seen_by: eye, window: [0, 0, 240, 160] }
+      game_loop { draw_place :room, seen_by: eye, faces: [0] }
     end
 
-    assert_match(/window:.*does not make that setting yet/, message)
+    assert_match(/faces: needs a list/, message)
+  end
+
+  def test_a_window_that_is_not_four_edges_is_refused
+    shape = square
+    message = refusal do
+      place(:room, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop { draw_place :room, seen_by: eye, window: [0, 0, 240] }
+    end
+
+    assert_match(/window: needs four/, message)
+  end
+
+  def test_a_window_edge_that_is_a_fraction_is_refused
+    shape = square
+    message = refusal do
+      place(:room, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      edge = var :edge, 1.5
+      game_loop { draw_place :room, seen_by: eye, window: [edge, 0, 240, 160] }
+    end
+
+    assert_match(/whole number/, message)
+  end
+
+  def test_a_screen_spot_of_a_place_that_was_never_declared_is_refused
+    message = refusal do
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      screen_spot :nowhere, 0, seen_by: eye
+    end
+
+    assert_match(/no place :nowhere/, message)
+  end
+
+  def test_a_screen_spot_of_a_point_the_place_does_not_have_is_refused
+    shape = square
+    message = refusal do
+      place(:room, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      screen_spot :room, 4, seen_by: eye
+    end
+
+    assert_match(/has no point 4/, message)
   end
 
   def test_a_place_that_was_never_declared_is_refused

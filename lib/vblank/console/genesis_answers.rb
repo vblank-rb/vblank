@@ -64,6 +64,7 @@ module VBlank
         draw_column_at: works,
         place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
         viewer: works("a viewer is variables. To draw a place from it is refused: see `draw_place`."),
+        screen_spot: works("the processor turns and projects the point."),
         draw_place: refused("this build does not draw a place on a Genesis yet."),
         clear_screen: works,
         inside: works,

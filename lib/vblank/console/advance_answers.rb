@@ -38,11 +38,10 @@ module VBlank
         # --- drawing on a painted screen ---
         pixel: works, fill_rect: works, dma_fill_rect: works, draw_rect_at: works, draw_column_at: works,
         clear_screen: works, inside: works, grid: works, camera: works, keep_showing: works,
-        place: works, viewer: works,
+        place: works, viewer: works, screen_spot: works,
         draw_place: works("on `screen :bitmap, tear_free: true` only. The processor turns each point and " \
                           "fills each face a pixel at a time. A picture is stretched straight between the " \
-                          "corners of its face (`perspective: :none`). `faces:` and `window:` are refused: " \
-                          "this build does not make them yet."),
+                          "corners of its face (`perspective: :none`)."),
 
         # --- fades, tints and screen effects ---
         fade: works, tint: works, fade_in: works, fade_out: works, flash_screen: works, fade_level: works,

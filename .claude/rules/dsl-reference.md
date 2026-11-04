@@ -73,7 +73,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Places — `.claude/dsl/places.md`
 
-- `place :cube do point …; face … end`, `viewer :eye, at:`, `draw_place :cube, seen_by: eye` — flat faces in 3D.
+- `place :cube do … end`, `viewer :eye, at:`, `draw_place :cube, seen_by: eye`, `screen_spot` — 3D faces.
 
 ## Collision — `.claude/dsl/collision.md`
 

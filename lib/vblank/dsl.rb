@@ -37,6 +37,7 @@ VBlank.require_game_file "dsl/hardware_sprite"
 require_relative "dsl/mark" # a picture over a sprite, with no place of its own
 require_relative "dsl/place" # a place made of flat faces, to be seen from a viewer
 require_relative "dsl/viewer" # ...and the spot it is seen from, and which way that faces
+require_relative "dsl/screen_spot" # ...and where one of its points lands on the screen
 require_relative "dsl/timer"
 require_relative "dsl/clock" # the date and time, as the cartridge's clock keeps them
 VBlank.require_game_file "dsl/pass_job" # a step an effect takes once a pass, started and stopped by the game

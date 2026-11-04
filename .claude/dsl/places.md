@@ -53,10 +53,33 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   limit, in wholes, more than 0 and not more than 16), `view_angle: 90` (degrees across, 10 to 170),
   `both_sides: true` (draw a face from behind as well), and `perspective: :none` (a picture stretched
   straight between the corners of its face; `:every_8_pixels` and `:every_pixel` are refused as not
-  made yet). `faces:` (which faces, in which order) and `window:` (edges the game works out as it runs)
-  are refused as not made yet. **Needs `screen :bitmap, tear_free: true`** (a friendly error on any
+  made yet). **Needs `screen :bitmap, tear_free: true`** (a friendly error on any
   other screen): a place is drawn over a whole frame, and on one page the player would see it drawn. It
   draws over what is there and clears nothing.
+
+  **Drawing only what the game can see.** A place of many rooms is too much to draw whole, and which
+  rooms show, in what order, and how far the look goes is the game's to decide (the old first-person
+  games walked from the player's room through each doorway it could see). Two settings and one verb
+  let it:
+  - `faces: list` — draw only the faces whose numbers (what `face` gives back) a `list` holds, in its
+    order, a later one over an earlier. Its length is read as the drawing starts; a number that is not a
+    face of the place is passed over. A list that is not a list, or holds fractions, is a friendly error.
+  - `window: [left, top, right, bottom]` — hold the faces to a rectangle the game works out as it runs:
+    whole numbers or variables, the right and bottom just past the last pixel, as `inside` counts. It is
+    held inside the view; the projection does not move. Anything but four whole numbers is a friendly
+    error.
+  - `corner = screen_spot :rooms, point, seen_by: eye` → `ScreenSpot` — where point `point` (a number
+    `point` gave, or a whole-number value) lands, worked out as the game runs exactly as a face's corner
+    is: `corner.x`, `corner.y` (the first pixel whose middle is at or past it; off the screen when the
+    point is), and `corner.behind?`, true when the point is behind the viewer or nearer than the near
+    limit (then `x` and `y` are 0). It takes `near:` and `view_angle:` as `draw_place` does, and the same
+    `inside` area, so give it the same. Write it inside `game_loop`: each line keeps its answers in
+    variables of its own, worked out each time the line runs. A point the place does not have is a
+    friendly error. It works on every console (only sums).
+
+  A game of rooms draws each room with its own call, far rooms first: the box round a doorway's
+  `screen_spot`s is the window of the room beyond (any corner behind: the whole screen; all behind: not
+  seen). Worked example: `examples/two_rooms.rb`.
 
 **How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`
@@ -69,4 +92,5 @@ time. `rom.profile`
 names the fill "filling the faces of a place with their pictures".
 
 **Each console**: the Advance draws a place (its page says how). The Game Boy Color, the Super
-Nintendo and the Sega Genesis refuse `draw_place` in plain words (see their pages).
+Nintendo and the Sega Genesis refuse `draw_place` in plain words (see their pages); `screen_spot` works
+on all four.

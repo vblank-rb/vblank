@@ -6,8 +6,9 @@ module VBlank
     # it is seen from (`viewer`), and the verb that draws it as that spot sees it (`draw_place`).
     # A concern of {Builder}, mixed in so these stay flat DSL verbs.
     #
-    # The work of drawing is statements every target runs (IR::PlaceDrawing), held in two routines
-    # made once for each place the game draws, the first time it draws it.
+    # The work of drawing is statements every target runs (IR::PlaceDrawing), held in routines made
+    # once for each place the game draws, the first time it draws it. Where one point lands
+    # (`screen_spot`) is one more routine, made only for a game that asks.
     module Places
       # How near a point may be before a face is cut there, by default: a quarter of a whole.
       NEAR = 0.25
@@ -74,29 +75,113 @@ module VBlank
       # @param near [Numeric] how near a point may be, in wholes
       # @param view_angle [Integer] how wide the view is, in degrees across
       # @param both_sides [Boolean] draw a face seen from behind too
-      # @param faces [Object] which faces to draw (not made yet)
-      # @param window [Object] edges the game works out as it runs (not made yet)
+      # A GAME THAT KNOWS WHAT IT CAN SEE draws only that. +faces+ is a list of face numbers (what
+      # `face` gives back) the game fills as it runs, drawn in its order, a later face over an
+      # earlier one; and +window+ is the rectangle they are held to, four numbers the game works
+      # out (left, top, right, bottom, the right and bottom just past the last pixel drawn). A game
+      # made of rooms finds the rooms seen through each doorway with `screen_spot`, and draws each
+      # with its own faces and window, far rooms first.
+      #
+      # @param faces [DSL::List] which faces to draw, in order; all of them when not given
+      # @param window [Array] four numbers or Values: the edges faces are held to as the game runs
       def draw_place(name, seen_by:, perspective: :none, near: NEAR, view_angle: VIEW_ANGLE, both_sides: false,
                      faces: nil, window: nil)
-        shape = (@places || {})[name] or
-          raise ArgumentError, "draw_place needs a place. There is no place :#{name}. To fix this, declare it " \
-                               "with `place :#{name} do ... end` first."
+        shape = known_place(name, "draw_place")
         refuse_unknown_viewer!(name, seen_by)
         refuse_perspective_not_made!(perspective)
-        refuse_setting_not_made!(:faces, faces)
-        refuse_setting_not_made!(:window, window)
+        refuse_bad_faces!(name, faces)
+        window_nodes = window && window_edges(name, window)
         refuse_bad_near!(near)
         refuse_bad_view_angle!(view_angle)
         refuse_place_on_plain_screen!(name)
 
         drawing = place_drawing(shape)
+        place_draw_routines(drawing)
         view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides)
-        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view), Build.call(drawing.routine),
+        drawn =faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
+        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view),
+                                *place_clip(drawing, view, window_nodes), *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
-                                both_sides: both_sides == true))
+                                both_sides: both_sides == true, faces: faces&.name, window: window_nodes))
+      end
+
+      # Where point +point+ of place +name+ lands on the screen as +seen_by+ sees it, worked out
+      # as the game runs exactly as `draw_place` works out a face's corner, with the same +near+
+      # and +view_angle+ (and the same `inside` area). A game uses it to find the rectangle a
+      # doorway covers, to draw the room beyond it held to that (`draw_place ..., window:`).
+      #
+      #   corner = screen_spot :rooms, door_top_left, seen_by: eye
+      #   left = corner.x if corner.x < left
+      #
+      # Each `screen_spot` line keeps its answers in variables of its own.
+      #
+      # @param point [Integer, DSL::Value] a point's number, what `point` gave back
+      # @return [DSL::ScreenSpot]
+      def screen_spot(name, point, seen_by:, near: NEAR, view_angle: VIEW_ANGLE)
+        shape = known_place(name, "screen_spot")
+        refuse_unknown_viewer!(name, seen_by)
+        refuse_unknown_spot_point!(shape, point)
+        refuse_bad_near!(near)
+        refuse_bad_view_angle!(view_angle)
+
+        drawing = place_drawing(shape)
+        place_spot_routine(drawing)
+        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, false)
+        @screen_spots = (@screen_spots || 0) + 1
+        answers = DSL::ScreenSpot::ANSWERS.to_h do |part|
+          variable = IR::PlaceDrawing.name_of(name, :"spot#{@screen_spots}_#{part}")
+          ensure_var(variable)
+          [part, variable]
+        end
+        record(Build.set(drawing.spot_point_var, DSL::Value.node_for(point)))
+        place_handover(drawing, seen_by, view).each { |statement| record(statement) }
+        record(Build.call(drawing.spot_routine))
+        answers.each { |part, variable| record(Build.copy(variable, drawing.spot_answer_var(part))) }
+        DSL::ScreenSpot.new(answers.transform_values { |variable| value_handle_for(variable) })
       end
 
       private
+
+      def known_place(name, verb)
+        (@places || {})[name] or
+          raise ArgumentError, "#{verb} needs a place. There is no place :#{name}. To fix this, declare it " \
+                               "with `place :#{name} do ... end` first."
+      end
+
+      def refuse_bad_faces!(name, faces)
+        return if faces.nil? || (faces.is_a?(DSL::List) && faces.fraction_bits.nil?)
+
+        raise ArgumentError, "draw_place :#{name} was given faces: #{faces.inspect}. faces: needs a list of face " \
+                             "numbers. To fix this, make one with `list :seen, capacity: 64`, put in the numbers " \
+                             "that `face` gives, and give faces: that list."
+      end
+
+      # The window's four edges as values, refused unless they are four whole numbers.
+      def window_edges(name, window)
+        unless window.is_a?(Array) && window.length == 4
+          raise ArgumentError, "draw_place :#{name} was given window: #{window.inspect}. window: needs four numbers: " \
+                               "left, top, right and bottom. To fix this, give `window: [left, top, right, bottom]`."
+        end
+
+        window.map do |edge|
+          whole = edge.is_a?(Integer) || (edge.is_a?(DSL::Value) && !edge.fraction?)
+          unless whole
+            raise ArgumentError, "draw_place :#{name} was given a window edge #{edge.inspect}. Each edge of a window " \
+                                 "is a whole number of pixels. To fix this, give a whole number, or a variable " \
+                                 "that holds one."
+          end
+
+          DSL::Value.node_for(edge)
+        end
+      end
+
+      def refuse_unknown_spot_point!(shape, point)
+        return if point.is_a?(DSL::Value) && !point.fraction?
+        return if point.is_a?(Integer) && point.between?(0, shape.points.length - 1)
+
+        raise ArgumentError, "screen_spot :#{shape.name} was given the point #{point.inspect}. The place has no " \
+                             "point #{point.inspect}. To fix this, give a number that `point` gave in this place."
+      end
 
       # A place's and a viewer's own variables are named after it, then two underscores, so its
       # name cannot hold two underscores in a row or end in one (Messages::MadeNames::POOL_NAME).
@@ -130,13 +215,6 @@ module VBlank
 
         raise ArgumentError, "draw_place was given perspective: #{perspective.inspect}. This build does not make " \
                              "that setting yet. To fix this, use perspective: :none."
-      end
-
-      def refuse_setting_not_made!(setting, given)
-        return if given.nil?
-
-        raise ArgumentError, "draw_place was given #{setting}:. This build does not make that setting yet. To fix " \
-                             "this, remove #{setting}:."
       end
 
       def refuse_bad_near!(near)
@@ -174,17 +252,48 @@ module VBlank
              capacity: IR::Nodes::FillFace::MOST_CORNERS * IR::Nodes::FillFace::CORNER_NUMBERS, full_of: 0)
       end
 
-      # The drawing of +shape+, its routines declared the first time the game draws it.
+      # The drawing of +shape+, its variables declared the first time the game draws it or asks
+      # where one of its points lands.
       def place_drawing(shape)
-        drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, pictures: shape.slots)
-        @places_drawn ||= {}
-        return drawing if @places_drawn.key?(shape.name)
-
-        @places_drawn[shape.name] = true
-        drawing.variables.each { |variable| ensure_var(variable) }
-        declare_func(drawing.routine) { drawing.statements.each { |statement| record(statement) } }
-        declare_func(drawing.corner_routine) { drawing.corner_statements.each { |statement| record(statement) } }
+        drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, points: shape.points.length,
+                                                   pictures: shape.slots)
+        @place_variables ||= {}
+        @place_variables[shape.name] ||= drawing.variables.each { |variable| ensure_var(variable) }
         drawing
+      end
+
+      # The routines that draw the place, declared the first time the game draws it.
+      def place_draw_routines(drawing)
+        declare_place_routine(drawing.routine, drawing.statements)
+        declare_place_routine(drawing.face_routine, drawing.face_statements)
+        declare_place_routine(drawing.corner_routine, drawing.corner_statements)
+      end
+
+      # The routine that works out where one point lands, declared the first time a game asks, so
+      # a game that never asks carries none of it, and a game that only asks carries nothing that
+      # draws.
+      def place_spot_routine(drawing) = declare_place_routine(drawing.spot_routine, drawing.spot_statements)
+
+      def declare_place_routine(name, statements)
+        @place_routines ||= {}
+        return if @place_routines.key?(name)
+
+        @place_routines[name] = true
+        declare_func(name) { statements.each { |statement| record(statement) } }
+      end
+
+      # The rectangle faces are held to: the view's own, or the game's window held inside it.
+      def place_clip(drawing, view, window)
+        view_edges = [view.left, view.top, view.right, view.bottom]
+        IR::PlaceDrawing::CLIP_EDGES.each_with_index.map do |edge, k|
+          held = if window
+                   low, high = k.even? ? [view.left, view.right] : [view.top, view.bottom]
+                   Build.clamped(window[k], low, high)
+                 else
+                   Build.int(view_edges[k])
+                 end
+          Build.set(drawing.clip_var(edge), held)
+        end
       end
 
       # The view the place is drawn into: the `inside` area drawing is held to, or the screen.

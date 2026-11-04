@@ -104,6 +104,70 @@ module PlaceGames
     builder.program
   end
 
+  # Two squares two wholes ahead, the big one (face 0, the tile) covering x 60 to 179 and y 20 to
+  # 139 and the small one (face 1, stripes) in its middle, x 90 to 149 and y 50 to 109. The game
+  # draws the face numbers in +order+, from a list it fills, so a later face is drawn over an
+  # earlier one. +window+, if given, is the rectangle they are held to, worked out as the game
+  # runs: the numbers are put in variables on every pass.
+  def self.listed_faces(order, window: nil)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      image(:stripes, "r" => :red, "w" => :white) { "rw\nrw\n" }
+      place :pair do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+        face point(-0.5, 0.5, 2.0), point(0.5, 0.5, 2.0), point(0.5, -0.5, 2.0), point(-0.5, -0.5, 2.0),
+             picture: :stripes, on_picture: [[0, 0], [2, 0], [2, 2], [0, 2]]
+      end
+      drawn = list :drawn, capacity: 4
+      order.each { |number| drawn.push number }
+      edges = %i[left top right bottom].map { |edge| var(edge, 0) }
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        if window
+          edges.zip(window).each { |edge, number| edge.store!(number) }
+          draw_place :pair, seen_by: eye, faces: drawn, window: edges
+        else
+          draw_place :pair, seen_by: eye, faces: drawn
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # The points +spots+ ([x, y, z] each) of a place, each asked where it lands on the screen of a
+  # viewer at the middle facing ahead, the answers kept in variables x0, y0 and behind0 onwards.
+  def self.screen_spots(spots)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      numbers = []
+      place :marks do
+        numbers.concat(spots.map { |x, y, z| point(x, y, z) })
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8]]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      answers = numbers.each_with_index.map { |_, k| [var(:"x#{k}", -1), var(:"y#{k}", -1), var(:"behind#{k}", -1)] }
+      game_loop do
+        numbers.zip(answers).each do |number, (x, y, behind)|
+          spot = screen_spot(:marks, number, seen_by: eye)
+          x.store!(spot.x)
+          y.store!(spot.y)
+          behind.store!(0)
+          behind.store!(1) if spot.behind?
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # Two faces, a square and a triangle, side by side, each with a picture of its own.
   # +starting_over+ declares them in a part the game puts back as declared on every pass, so
   # what each face shows is what the place declared, however it got there.
@@ -231,6 +295,45 @@ class TestPlacesOnTheAdvance < Minitest::Test
     assert_equal tile(0, 0), screen.pixel(30, 50)
     assert_equal shown(:red), screen.pixel(150, 105), "the triangle's left edge is red"
     assert_equal BLACK, screen.pixel(209, 51), "above the triangle's slope"
+  end
+
+  def test_listed_faces_are_drawn_in_the_order_the_list_gives
+    small_last = game_player.run(PlaceGames.listed_faces([0, 1]), frames: 2).screen
+    small_first = game_player.run(PlaceGames.listed_faces([1, 0]), frames: 2).screen
+
+    assert_includes [shown(:red), shown(:white)], small_last.pixel(120, 80), "the small square, drawn last, is on top"
+    assert_equal tile(3, 3), small_first.pixel(119, 79), "the big square, drawn last, covers the small one"
+  end
+
+  def test_a_face_left_out_of_the_list_is_not_drawn
+    screen = game_player.run(PlaceGames.listed_faces([1]), frames: 2).screen
+
+    assert_equal BLACK, screen.pixel(60, 20), "the big square is not in the list"
+    refute_equal BLACK, screen.pixel(120, 80)
+  end
+
+  def test_a_number_that_is_not_a_face_is_passed_over
+    screen = game_player.run(PlaceGames.listed_faces([7, -1, 0]), frames: 2).screen
+
+    assert_equal tile(0, 0), screen.pixel(60, 20)
+  end
+
+  # Right and bottom are just past the last pixel drawn, as `inside` counts them.
+  def test_faces_are_held_to_a_window_the_game_works_out
+    screen = game_player.run(PlaceGames.listed_faces([0], window: [100, 40, 140, 120]), frames: 2).screen
+
+    refute_equal BLACK, screen.pixel(100, 40)
+    refute_equal BLACK, screen.pixel(139, 119)
+    [[99, 79], [140, 79], [120, 39], [120, 120]].each do |x, y|
+      assert_equal BLACK, screen.pixel(x, y), "(#{x}, #{y}) is outside the window"
+    end
+  end
+
+  def test_a_window_reaching_past_the_screen_is_held_to_it
+    screen = game_player.run(PlaceGames.listed_faces([0], window: [-50, -50, 400, 400]), frames: 2).screen
+
+    assert_equal tile(0, 0), screen.pixel(60, 20)
+    assert_equal tile(7, 7), screen.pixel(179, 139)
   end
 
   # A place whose part the game puts back as declared shows each face's own picture afterwards.

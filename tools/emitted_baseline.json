@@ -46,7 +46,7 @@
       "data": 0
     },
     "cube3d": {
-      "code": 25772,
+      "code": 25812,
       "data": 0
     },
     "dive": {
@@ -228,6 +228,10 @@
     "tower@genesis": {
       "code": 7392,
       "data": 3730
+    },
+    "two_rooms": {
+      "code": 27290,
+      "data": 0
     },
     "wanderers": {
       "code": 2320,

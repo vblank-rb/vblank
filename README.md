@@ -105,6 +105,7 @@ Every file in [`examples/`](examples/) is a complete game or demo that teaches o
 - [`shmup.rb`](examples/shmup.rb) — a game split across files, with a play, game-over and restart flow.
 - [`raycaster.rb`](examples/raycaster.rb) — a first-person maze, drawn the Wolfenstein way.
 - [`cube3d.rb`](examples/cube3d.rb) — a textured crate in 3D, flown round with the buttons.
+- [`two_rooms.rb`](examples/two_rooms.rb) — two rooms in 3D, the far one drawn only through the doorway.
 
 ## Using it in a game
 

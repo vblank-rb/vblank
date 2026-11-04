@@ -39,6 +39,27 @@ class TestPlacesCartridge < Minitest::Test
                                                                                     name: "BOTH")
   end
 
+  def test_listed_faces_held_to_a_window_agree
+    assert_backends_agree(PlaceGames.listed_faces([1, 0]), frames: 3, console_frames: 30, name: "LISTED")
+    assert_backends_agree(PlaceGames.listed_faces([0, 7, 1], window: [100, 40, 140, 120]), frames: 3,
+                                                                                          console_frames: 30, name: "WINDOW")
+  end
+
+  def test_screen_spots_agree
+    spots = [[-1.0, 1.0, 2.0], [1.0, -1.0, 2.0], [0.11, 0.0, 2.0], [0.0, 0.0, -1.0], [3.0, -2.5, 1.5]]
+    program = PlaceGames.screen_spots(spots)
+    rom = assemble_rom(program)
+    played = Reference.new.run(program, frames: 3)
+
+    cartridge = assert_emulator_loads_rom(rom, frames: 30, vars: rom.var_addresses)
+
+    5.times do |k|
+      %i[x y behind].each do |part|
+        assert_equal played[:"#{part}#{k}"], cartridge.var(:"#{part}#{k}"), "#{part}#{k}"
+      end
+    end
+  end
+
   # The edges nothing outside is drawn and the picture are worked out as the game runs, so each
   # frame compared is a different face: every eight passes a new one.
   def test_a_face_whose_edges_and_picture_change_agrees_at_each_change
