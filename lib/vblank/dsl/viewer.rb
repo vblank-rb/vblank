@@ -66,6 +66,8 @@ module VBlank
       end
 
       def self.dot(one, other) = one.zip(other).sum { |a, b| a * b }
+
+      private_class_method :refuse_bad_spot!, :refuse_bad_arrows!, :refuse_bad_facing!, :dot
     end
   end
 end

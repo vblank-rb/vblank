@@ -80,7 +80,31 @@ class TestPlaces < Minitest::Test
       game_loop { draw_place :room, seen_by: eye, perspective: :every_8_pixels }
     end
 
-    assert_match(/does not make that yet/, message)
+    assert_match(/does not make that setting yet/, message)
+  end
+
+  def test_a_point_further_than_a_place_reaches_is_refused
+    message = refusal do
+      place :room do
+        a = point(9000.0, 0.0, 2.0)
+        b = point(1.0, 0.0, 2.0)
+        c = point(1.0, 1.0, 2.0)
+        face a, b, c, picture: :wall, on_picture: [[0, 0], [2, 0], [2, 2]]
+      end
+    end
+
+    assert_match(/-8191 to 8191/, message)
+  end
+
+  def test_a_setting_not_made_yet_is_refused
+    shape = square
+    message = refusal do
+      place(:room, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop { draw_place :room, seen_by: eye, window: [0, 0, 240, 160] }
+    end
+
+    assert_match(/window:.*does not make that setting yet/, message)
   end
 
   def test_a_place_that_was_never_declared_is_refused

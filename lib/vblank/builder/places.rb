@@ -6,13 +6,13 @@ module VBlank
     # it is seen from (`viewer`), and the verb that draws it as that spot sees it (`draw_place`).
     # A concern of {Builder}, mixed in so these stay flat DSL verbs.
     #
-    # The work of drawing is statements every target runs (IR::PlaceDrawing), held in a routine
+    # The work of drawing is statements every target runs (IR::PlaceDrawing), held in two routines
     # made once for each place the game draws, the first time it draws it.
     module Places
-      # How near a corner may be before its face is left out: a quarter of a whole.
+      # How near a point may be before a face is cut there, by default: a quarter of a whole.
       NEAR = 0.25
 
-      # How wide an angle the view shows, in degrees across.
+      # How wide an angle the view shows, in degrees across, by default.
       VIEW_ANGLE = 90
 
       # The settings `perspective:` takes, and the ones this build makes.
@@ -33,6 +33,7 @@ module VBlank
       # @return [DSL::Place]
       def place(name, &block)
         raise ArgumentError, "place :#{name} needs a block that declares its points and faces." unless block
+
         refuse_unfit_name!("place", name)
         if (@places ||= {}).key?(name)
           raise ArgumentError, "There is already a place :#{name}. To fix this, give each place its own name."
@@ -63,22 +64,35 @@ module VBlank
       end
 
       # Draw place +name+ as +seen_by+ sees it, on the screen or inside the area an `inside` holds
-      # drawing to. Faces nearer than the near limit are left out.
+      # drawing to. A face is cut where it comes nearer than +near+ wholes to the viewer, and one
+      # seen from behind is not drawn unless +both_sides+.
       #
       # @param name [Symbol] the place
       # @param seen_by [DSL::Viewer] the viewer
       # @param perspective [Symbol] how a picture is laid across a face that leans away
-      def draw_place(name, seen_by:, perspective: :none)
+      # @param near [Numeric] how near a point may be, in wholes
+      # @param view_angle [Integer] how wide the view is, in degrees across
+      # @param both_sides [Boolean] draw a face seen from behind too
+      # @param faces [Object] which faces to draw (not made yet)
+      # @param window [Object] edges the game works out as it runs (not made yet)
+      def draw_place(name, seen_by:, perspective: :none, near: NEAR, view_angle: VIEW_ANGLE, both_sides: false,
+                     faces: nil, window: nil)
         shape = (@places || {})[name] or
           raise ArgumentError, "draw_place needs a place. There is no place :#{name}. To fix this, declare it " \
                                "with `place :#{name} do ... end` first."
         refuse_unknown_viewer!(name, seen_by)
         refuse_perspective_not_made!(perspective)
+        refuse_setting_not_made!(:faces, faces)
+        refuse_setting_not_made!(:window, window)
+        refuse_bad_near!(near)
+        refuse_bad_view_angle!(view_angle)
         refuse_place_on_plain_screen!(name)
 
         drawing = place_drawing(shape)
-        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by), Build.call(drawing.routine),
-                                perspective: perspective))
+        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides)
+        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view), Build.call(drawing.routine),
+                                perspective: perspective, near: view.near, view_angle: view_angle,
+                                both_sides: both_sides == true))
       end
 
       private
@@ -108,59 +122,82 @@ module VBlank
 
       def refuse_perspective_not_made!(perspective)
         unless PERSPECTIVES.include?(perspective)
-          raise ArgumentError, "draw_place was given perspective: #{perspective.inspect}. It takes " \
-                               "#{PERSPECTIVES.map(&:inspect).join(', ')}."
+          raise ArgumentError, "draw_place was given perspective: #{perspective.inspect}. The settings are " \
+                               "#{PERSPECTIVES.map(&:inspect).join(', ')}. To fix this, use one of them."
         end
         return if PERSPECTIVES_MADE.include?(perspective)
 
         raise ArgumentError, "draw_place was given perspective: #{perspective.inspect}. This build does not make " \
-                             "that yet. To fix this, use perspective: :none."
+                             "that setting yet. To fix this, use perspective: :none."
+      end
+
+      def refuse_setting_not_made!(setting, given)
+        return if given.nil?
+
+        raise ArgumentError, "draw_place was given #{setting}:. This build does not make that setting yet. To fix " \
+                             "this, remove #{setting}:."
+      end
+
+      def refuse_bad_near!(near)
+        return if near.is_a?(Numeric) && near.positive? && near <= 16
+
+        raise ArgumentError, "draw_place was given near: #{near.inspect}. The near limit is a distance more than 0 " \
+                             "and not more than 16. To fix this, give a number like 0.25."
+      end
+
+      def refuse_bad_view_angle!(degrees)
+        return if degrees.is_a?(Integer) && degrees.between?(10, 170)
+
+        raise ArgumentError, "draw_place was given view_angle: #{degrees.inspect}. The view angle is a whole " \
+                             "number of degrees from 10 to 170. To fix this, give a number like 90."
       end
 
       def refuse_place_on_plain_screen!(name)
         return if @screen_mode == :bitmap && @tear_free
 
         raise ArgumentError, "draw_place :#{name} is on a screen that is not `screen :bitmap, tear_free: true`. A " \
-                             "place is drawn over a whole frame. On any other screen the player sees it drawn, or " \
-                             "it cannot be drawn. To fix this, write `screen :bitmap, tear_free: true` first."
+                             "place is drawn over a whole frame. On a screen with one page the player sees each " \
+                             "frame drawn. To fix this, write `screen :bitmap, tear_free: true` first."
       end
 
       # The place's points and faces as tables, and the slots its faces show their pictures
-      # through as a list, each slot showing its own picture to start with. The slots are set
-      # where the place is written, after the list is made, which for a place declared before
-      # the game loop is once, as the game starts.
+      # through as a list. A slot holds how far along the place's pictures its picture is from
+      # the slot's own, so a list full of nought shows each slot its own picture: that is what
+      # the list is declared holding, wherever the place is declared and whatever puts the
+      # game's state back as declared (`start_over`).
       def declare_place_data(shape)
         table(IR::PlaceDrawing.name_of(shape.name, :points), shape.points_table, width: :word, signed: true)
         table(IR::PlaceDrawing.name_of(shape.name, :faces), shape.faces_table, width: :word, signed: true)
-        slots = IR::PlaceDrawing.name_of(shape.name, :slots)
-        list(slots, capacity: shape.slots.length, full_of: 0)
-        shape.slots.each_index { |slot| record(Build.list_set(slots, Build.int(slot), Build.int(slot))) unless slot.zero? }
+        list(IR::PlaceDrawing.name_of(shape.name, :slots), capacity: shape.slots.length, full_of: 0)
+        list(IR::PlaceDrawing.name_of(shape.name, :corners),
+             capacity: IR::Nodes::FillFace::MOST_CORNERS * IR::Nodes::FillFace::CORNER_NUMBERS, full_of: 0)
       end
 
-      # The drawing of +shape+, its routine declared the first time the game draws it.
+      # The drawing of +shape+, its routines declared the first time the game draws it.
       def place_drawing(shape)
-        drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, pictures: shape.slots,
-                                                   near: DSL::Fraction.scale(NEAR, DSL::Fraction::DEFAULT_BITS))
+        drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, pictures: shape.slots)
         @places_drawn ||= {}
         return drawing if @places_drawn.key?(shape.name)
 
         @places_drawn[shape.name] = true
         drawing.variables.each { |variable| ensure_var(variable) }
         declare_func(drawing.routine) { drawing.statements.each { |statement| record(statement) } }
+        declare_func(drawing.corner_routine) { drawing.corner_statements.each { |statement| record(statement) } }
         drawing
       end
 
-      # What the routine is told before it draws: where the viewer is and which way it faces, and
-      # the view's edges, its middle and how wide it sees.
-      def place_handover(drawing, seen_by)
+      # The view the place is drawn into: the `inside` area drawing is held to, or the screen.
+      def place_view(near, view_angle, both_sides)
         left, top, width, height = @inside_area || [0, 0, screen_width, screen_height]
-        focal = ((width / 2.0) / Math.tan(VIEW_ANGLE * Math::PI / 360) * IR::PlaceDrawing::SUBPIXEL).round
-        view = { left: left, top: top, right: left + width, bottom: top + height,
-                 middle_x: ((left * 2) + width) * IR::PlaceDrawing::SUBPIXEL / 2,
-                 middle_y: ((top * 2) + height) * IR::PlaceDrawing::SUBPIXEL / 2, focal: focal }
+        IR::PlaceDrawing::View.over(left, top, width, height, degrees: view_angle, near: near, both_sides: both_sides)
+      end
+
+      # What the routine is told before it draws: where the viewer is and which way it faces, and
+      # the view.
+      def place_handover(drawing, seen_by, view)
         seen_by.variables.zip(IR::PlaceDrawing::VIEWER_PARTS).map do |variable, part|
           Build.copy(drawing.viewer_var(part), variable)
-        end + view.map { |part, number| Build.set(drawing.view_var(part), Build.int(number)) }
+        end + view.to_h.map { |part, number| Build.set(drawing.view_var(part), Build.int(number)) }
       end
     end
   end

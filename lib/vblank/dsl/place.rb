@@ -22,9 +22,10 @@ module VBlank
     # is kept in a picture SLOT the face names (by default the picture's own name), so a later
     # change can swap the picture a slot shows while the game runs.
     class Place
-      # The most a point's number can be either way: a fraction keeps sixteen bits below the
-      # point and the rest above it, with room to take two points apart.
-      FURTHEST = 16_383
+      # The most a point's number can be either way, and the viewer's: half of what a fraction
+      # holds, so a point is never further from the viewer than a fraction holds, along any
+      # arrow (see IR::PlaceDrawing, "WHY NOTHING OVERFLOWS").
+      FURTHEST = IR::PlaceDrawing::FURTHEST
 
       # The most a corner can fall past the picture's corner, in picture pixels, either way.
       FURTHEST_ON_PICTURE = 8_191

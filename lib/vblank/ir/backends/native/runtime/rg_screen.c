@@ -1975,21 +1975,30 @@ static void face_row(int32_t row, const int32_t *from, const int32_t *to, int32_
   }
 }
 
+/* The most corners a face has (Nodes::FillFace::MOST_CORNERS). */
+enum { FACE_MOST_CORNERS = 8 };
+
 /* Reference#exec_fill_face: one face already on the screen, filled with its picture. The corners
  * come four numbers each (x and y in sixteenths of a pixel, u and v in picture pixels with sixteen
- * fraction bits), and nothing outside left, top, right and bottom is drawn. */
-void rg_screen_face(int32_t image, int32_t x0, int32_t y0, int32_t u0, int32_t v0, int32_t x1, int32_t y1, int32_t u1,
-                    int32_t v1, int32_t x2, int32_t y2, int32_t u2, int32_t v2, int32_t x3, int32_t y3, int32_t u3,
-                    int32_t v3, int32_t left, int32_t top, int32_t right, int32_t bottom) {
-  const int32_t corners[4][4] = {{x0, y0, u0, v0}, {x1, y1, u1, v1}, {x2, y2, u2, v2}, {x3, y3, u3, v3}};
+ * fraction bits), and nothing outside left, top, right and bottom is drawn. The picture's number is
+ * held to the ends of the list of pictures, and the count to FACE_MOST_CORNERS. */
+void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t which, const rg_list *corner_list,
+                    int32_t corner_count, int32_t left, int32_t top, int32_t right, int32_t bottom) {
+  if (corner_count > FACE_MOST_CORNERS) corner_count = FACE_MOST_CORNERS;
+  if (corner_count < 3) return;
+  int32_t corners[FACE_MOST_CORNERS][4];
+  for (int32_t k = 0; k < corner_count; k++) {
+    for (int32_t field = 0; field < 4; field++) corners[k][field] = rg_list_get(corner_list, k * 4 + field);
+  }
+  int32_t image = pictures[clamp32(which, 0, picture_count - 1)];
   if (left < 0) left = 0;
   if (top < 0) top = 0;
   if (right > RG_SCREEN_WIDTH) right = RG_SCREEN_WIDTH;
   if (bottom > RG_SCREEN_HEIGHT) bottom = RG_SCREEN_HEIGHT;
-  face_edge edges[4];
+  face_edge edges[FACE_MOST_CORNERS];
   int count = 0;
-  for (int k = 0; k < 4; k++) {
-    const int32_t *a = corners[k], *b = corners[(k + 1) % 4];
+  for (int32_t k = 0; k < corner_count; k++) {
+    const int32_t *a = corners[k], *b = corners[(k + 1) % corner_count];
     if (a[1] == b[1]) continue;
     if (a[1] < b[1] ? face_edge_of(a, b, &edges[count]) : face_edge_of(b, a, &edges[count])) count++;
   }

@@ -68,6 +68,7 @@ module VBlank
         draw_rect_at: :painted,
         draw_column_at: :painted,
         fill_face: :painted,
+        draw_place: :painted,
         clear_screen: :painted,
         blit: :painted,
         draw_text: :painted,

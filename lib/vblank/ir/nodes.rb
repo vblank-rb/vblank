@@ -719,21 +719,34 @@ module VBlank
       # +viewer+ instead and leaves the children alone — that is why this is a kind of its own
       # and not a bare call.
       #
-      # +perspective+ is how a picture is laid across a face that leans away: :none stretches it
-      # straight between the corners.
+      # What it is told, each a fact a hardware target needs as much as the statements do:
+      #
+      #   +perspective+  how a picture is laid across a face that leans away; :none stretches it
+      #                  straight between the corners
+      #   +near+         how near a point may be, a fraction with sixteen bits; a face reaching
+      #                  nearer is cut there
+      #   +view_angle+   how wide the view is, in degrees across
+      #   +both_sides+   whether a face is drawn from behind as well as from in front
+      #   +faces+        a list of the faces to draw, in order, or nil for all of them in the
+      #                  order the place declares them
+      #   +window+       four values, the left, top, right and bottom the view is held to as the
+      #                  game runs, or nil for the area drawing is held to
       class DrawPlace
         include Node
         kind :draw_place
-        category :control
-        operands place: :name, viewer: :name, perspective: :option
+        category :draw
+        operands place: :name, viewer: :name, perspective: :option, near: :int, view_angle: :int,
+                 both_sides: :flag, faces: :name, window: :list
       end
 
-      # ONE FACE ALREADY ON THE SCREEN, filled with a picture. Four corners, each where it lands on
-      # the screen (+x+, +y+, in sixteenths of a pixel) and where it falls on the picture (+u+
-      # across, +v+ down, in picture pixels with sixteen fraction bits). A face of three corners
-      # gives its last corner twice. The picture repeats past its edges like wallpaper. Nothing
-      # outside +left+, +top+, +right+ and +bottom+ (whole pixels, the right and bottom ones not
-      # drawn) is touched, and those can be worked out as the game runs.
+      # ONE FACE ALREADY ON THE SCREEN, filled with a picture. Its corners are the first +count+
+      # fours of list +corners+ (3 to 8 of them, in order round the face): where each lands on the
+      # screen (x, y, in sixteenths of a pixel) and where it falls on the picture (u across, v
+      # down, in picture pixels with sixteen fraction bits). The picture is number +picture+ of
+      # +pictures+, held to the ends of that list, and repeats past its edges like wallpaper.
+      # Nothing outside +left+, +top+, +right+ and +bottom+ (whole pixels, the right and bottom
+      # ones not drawn) is touched. Every number but the list of pictures can be worked out as the
+      # game runs.
       #
       # How the corners become pixels is written down once, in Reference#exec_fill_face, and
       # every target lands every pixel where that says.
@@ -741,15 +754,14 @@ module VBlank
         include Node
         kind :fill_face
         category :draw
-        operands picture: :name,
-                 x0: :value, y0: :value, u0: :value, v0: :value,
-                 x1: :value, y1: :value, u1: :value, v1: :value,
-                 x2: :value, y2: :value, u2: :value, v2: :value,
-                 x3: :value, y3: :value, u3: :value, v3: :value,
+        operands pictures: :list, picture: :value, corners: :name, count: :value,
                  left: :value, top: :value, right: :value, bottom: :value
 
-        # The corners in order, each [x, y, u, v].
-        def corners = [[x0, y0, u0, v0], [x1, y1, u1, v1], [x2, y2, u2, v2], [x3, y3, u3, v3]]
+        # The most corners a face can have: four, each cut by the near limit into two.
+        MOST_CORNERS = 8
+
+        # How many numbers a corner is in the list: x, y, u, v.
+        CORNER_NUMBERS = 4
 
         # The edges nothing outside is drawn, [left, top, right, bottom].
         def edges = [left, top, right, bottom]

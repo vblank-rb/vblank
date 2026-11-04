@@ -213,19 +213,22 @@ module ConformanceFixture
       B.inside(80, 30, 8, 4,
                B.draw_column_at(:sprite, B.int(1), B.int(82), B.int(28), B.int(12)),
                B.dma_fill_rect(78, 28, 12, 8, :white)),
-      # A place drawn as a viewer sees it: here the statements under it are one face filled with
-      # a picture, as a place's routine fills one. The corners are in sixteenths of a pixel and
-      # lean, so every row starts and ends somewhere new, and they fall from -1 to 3 on a picture
-      # two pixels wide, so the picture repeats both ways. A backend that stepped an edge or the
-      # picture wrongly, or wrapped a place below nought the wrong way, draws a different face.
+      # A place drawn as a viewer sees it: here the statements under it are one face of FIVE
+      # corners filled with a picture, as a place's routine fills a face the near limit cut. The
+      # corners are in sixteenths of a pixel and lean, so every row starts and ends somewhere new,
+      # and they fall from -1 to 3 on a picture two pixels wide, so the picture repeats both ways.
+      # The picture is the second of two, picked by a number worked out as it runs, and the right
+      # edge cuts the face. A backend that stepped an edge or the picture wrongly, wrapped a place
+      # below nought the wrong way, or read the wrong picture or corner draws a different face.
+      B.list_new(:fixture_corners, 32, full_of: 0),
+      *[[1608, 1600, -65_536, -65_536], [1930, 1650, 196_608, -65_536], [1960, 1720, 196_608, 65_536],
+        [1900, 1800, 196_608, 196_608], [1603, 1790, -65_536, 196_608]].each_with_index.flat_map { |corner, k|
+        corner.each_with_index.map { |number, field| B.list_set(:fixture_corners, B.int((k * 4) + field), B.int(number)) }
+      },
       B.draw_place(:fixture_place, :fixture_viewer,
-                   B.fill_face(:sprite,
-                               [[B.int(1608), B.int(1600), B.int(-65_536), B.int(-65_536)],
-                                [B.int(1930), B.int(1650), B.int(196_608), B.int(-65_536)],
-                                [B.int(1900), B.int(1800), B.int(196_608), B.int(196_608)],
-                                [B.mul_fix(B.var_ref(:x), B.int(229), 0), B.int(1790), B.int(-65_536),
-                                 B.int(196_608)]],
-                               [B.int(0), B.int(0), B.int(115), B.int(160)])),
+                   B.fill_face(%i[pose_b sprite], B.binop(:-, B.var_ref(:x), B.int(6)), :fixture_corners, B.int(5),
+                               [B.int(0), B.int(0), B.int(115), B.int(160)]),
+                   near: 16_384, view_angle: 90),
       B.draw_text("HI", 10, 10, :white),
       # A font the program declared for itself, and a line drawn with it. Every backend has
       # to find a font the program owns, not only the two that ship.

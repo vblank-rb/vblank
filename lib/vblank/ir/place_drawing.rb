@@ -3,44 +3,50 @@
 module VBlank
   module IR
     # HOW A PLACE MADE OF FLAT FACES IS DRAWN, written once as statements every target runs
-    # (see Nodes::DrawPlace). A place is points in space and faces that join four of them, and
-    # drawing it as a viewer sees it is three sums for each corner of each face:
+    # (see Nodes::DrawPlace). A place is points in space and faces that join three or four of
+    # them, and drawing it as a viewer sees it is, for each face:
     #
-    #   - TURN the point to the viewer. Take the viewer's spot away from the point, and measure
-    #     what is left along the viewer's three arrows (right, up and ahead). That gives how far
-    #     the point is to the viewer's right, above them and in front of them.
-    #   - PROJECT it onto the screen. A point twice as far ahead looks half as far from the
-    #     middle of the view, so how far right it lands is how far right it is divided by how
+    #   - TURN each corner's point to the viewer. Take the viewer's spot away from the point, and
+    #     measure what is left along the viewer's three arrows (right, up and ahead). That gives
+    #     how far the point is to the viewer's right, above them and in front of them.
+    #   - CUT the face at the near limit. A corner nearer than that is left out, and where an
+    #     edge crosses the limit a new corner is made on it, so a face beside the viewer is drawn
+    #     as far as the limit rather than not at all. A face of four corners comes out with up to
+    #     five (eight at most, which is the corner list's room).
+    #   - PROJECT each corner onto the screen. A point twice as far ahead looks half as far from
+    #     the middle of the view, so how far right it lands is how far right it is divided by how
     #     far ahead it is, made bigger by how wide an angle the view shows.
-    #   - FILL the face between its four corners with its picture (Nodes::FillFace).
+    #   - SKIP the face when it is seen from behind (unless the place is drawn from both sides):
+    #     its corners then go round the other way on the screen.
+    #   - FILL it with its picture (Nodes::FillFace).
     #
     # WHY THESE ARE STATEMENTS AND NOT A ROUTINE OF EACH TARGET'S OWN. Every target that works
-    # the sums out itself runs these same statements, so every one of them turns and projects
-    # each point to the same bits, and only the fill is written again for each. Every number is a
-    # fraction with sixteen bits, as a game's fractions are, and every product and quotient goes
-    # through Int32.mul_fix and Int32.div_fix, where the rounding is settled.
+    # the sums out itself runs these same statements, so every one of them turns, cuts and
+    # projects each point to the same bits, and only the fill is written again for each. Every
+    # number is a fraction with sixteen bits, as a game's fractions are, and every product and
+    # quotient goes through Int32.mul_fix and Int32.div_fix, where the rounding is settled.
     #
-    # A FACE THAT REACHES NEARER THAN THE NEAR LIMIT IS NOT DRAWN AT ALL. Cutting it at the limit
-    # makes a face of five corners from one of four, and that is not made yet; until it is, a
-    # face beside or behind the viewer is left out whole.
-    #
-    # WHERE A POINT CAN LAND. A point a little in front of the viewer and far to one side lands
-    # far off the screen, and the fill's sums would overflow on it, so where a corner lands is
-    # held to LANDING_LIMIT pixels either side of the screen's corner. A face that reaches past
-    # that is drawn bent; a face beside the viewer reaches that far only when it is nearer than
-    # the near limit, and is not drawn anyway.
+    # WHY NOTHING OVERFLOWS. A point and the viewer each stay within FURTHEST of the middle of
+    # the place, so a point is at most twice that from the viewer along each of the three
+    # arrows, and how far it is along any one arrow is never more than its whole distance,
+    # under the most a fraction holds. A corner can still land far off the screen, so where one
+    # lands is held to LANDING_LIMIT pixels either side of the screen's corner, which keeps the
+    # fill's sums inside a number: a face reaching past that is drawn bent.
     class PlaceDrawing
       # A place's faces table keeps, for each face, the number of its picture slot and then,
       # for each of its four corners, the number of its point and where it falls on the
-      # picture (u, v).
+      # picture (u, v). A face of three corners gives its third twice.
       FACE_SLOT = 0
+      CORNERS = 4
       CORNER_FIELDS = 3
-      FACE_STRIDE = 1 + (4 * CORNER_FIELDS)
+      FACE_STRIDE = 1 + (CORNERS * CORNER_FIELDS)
       # ...and its points table three numbers a point: x, y, z.
       POINT_STRIDE = 3
 
-      # One whole: a fraction keeps sixteen bits below the point.
-      ONE = 1 << 16
+      # How far a point or the viewer may be from the middle of the place, either way, along
+      # each of the three arrows (see WHY NOTHING OVERFLOWS).
+      FURTHEST = 8_191
+
       # How much finer than a pixel a corner's place on the screen is kept: sixteenths.
       SUBPIXEL = 16
       LANDING_LIMIT = 2048 * SUBPIXEL
@@ -48,27 +54,41 @@ module VBlank
       # The viewer's twelve numbers, in the order a viewer keeps them: its spot, then its right,
       # up and ahead arrows.
       VIEWER_PARTS = %i[x y z right_x right_y right_z up_x up_y up_z ahead_x ahead_y ahead_z].freeze
-      # What the routine is told about the view before each drawing: its edges and its middle,
-      # and how far a point one whole to the side at one whole ahead lands from the middle.
-      VIEW_PARTS = %i[left top right bottom middle_x middle_y focal].freeze
 
-      # The name of +part+ of place +place+ (a table, a list, a variable or the routine).
+      # What the routine is told about the view before each drawing (see View).
+      VIEW_PARTS = %i[left top right bottom middle_x middle_y focal near both_sides].freeze
+
+      # WHAT THE ROUTINE IS TOLD ABOUT THE VIEW: its edges in whole pixels, its middle in
+      # sixteenths of one, how far a point one whole to the side at one whole ahead lands from the
+      # middle (+focal+, sixteenths), the near limit (a fraction with sixteen bits), and 1 when
+      # a face is drawn from behind as well.
+      View = Data.define(*VIEW_PARTS) do
+        # The view over the screen area +left+, +top+, +width+, +height+, +degrees+ across.
+        def self.over(left, top, width, height, degrees:, near:, both_sides:)
+          focal = ((width / 2.0) / Math.tan(degrees * Math::PI / 360) * SUBPIXEL).round
+          new(left: left, top: top, right: left + width, bottom: top + height,
+              middle_x: ((left * 2) + width) * SUBPIXEL / 2, middle_y: ((top * 2) + height) * SUBPIXEL / 2,
+              focal: focal, near: near, both_sides: both_sides ? 1 : 0)
+        end
+      end
+
+      # The name of +part+ of place +place+ (a table, a list, a variable or a routine).
       def self.name_of(place, part) = Messages::MadeNames.make(:place_part, place: place, part: part)
 
-      # +place+ is the place's name, +faces+ how many it has, +pictures+ the pictures its slots
-      # can show (a slot holds a number counting into these), and +near+ how near a corner may
-      # be, as a fraction with sixteen bits.
-      def initialize(place, faces:, pictures:, near:)
+      # +place+ is the place's name, +faces+ how many it has, and +pictures+ the pictures it can
+      # show, in order: a face's slot holds how far its picture is along these from the slot's own.
+      def initialize(place, faces:, pictures:)
         @place = place
         @faces = faces
         @pictures = pictures
-        @near = near
       end
 
       def routine = name(:draw)
+      def corner_routine = name(:corner)
       def points_table = name(:points)
       def faces_table = name(:faces)
       def slots_list = name(:slots)
+      def corners_list = name(:corners)
 
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
@@ -76,82 +96,132 @@ module VBlank
       # The variable the routine reads the view's +part+ from.
       def view_var(part) = name(:"view_#{part}")
 
-      # Every variable the routine keeps its work in, the viewer's and the view's included.
+      # Every variable the routines keep their work in, the viewer's and the view's included.
       def variables
         VIEWER_PARTS.map { |part| viewer_var(part) } + VIEW_PARTS.map { |part| view_var(part) } +
-          %i[face base picture seen point dx dy dz ahead across down].map { |part| name(part) } +
-          4.times.flat_map { |k| %i[x y u v].map { |field| corner_var(field, k) } }
+          %i[face base slot picture point dx dy dz count along area each next
+             at_x at_y at_z at_u at_v].map { |part| name(part) } +
+          CORNERS.times.flat_map { |k| %i[x y z u v].map { |field| turned_var(field, k) } }
       end
 
-      # The routine's statements: every face, in the order the place declares them.
+      # The drawing routine's statements: every face, in the order the place declares them.
       def statements
         [Build.repeat(@faces, name(:face),
-                      Build.set(name(:base), Build.binop(:*, Build.var_ref(name(:face)), FACE_STRIDE)),
-                      Build.set(name(:picture),
-                                Build.list_get(slots_list, Build.table_get(faces_table, face_field(FACE_SLOT)))),
-                      Build.set(name(:seen), 1),
-                      *4.times.flat_map { |k| corner_statements(k) },
-                      Build.if_(Build.binop(:==, Build.var_ref(name(:seen)), 1), *fills))]
+                      Build.set(name(:base), Build.binop(:*, var(:face), FACE_STRIDE)),
+                      Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
+                      Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
+                      *CORNERS.times.flat_map { |k| turned_corner(k) },
+                      Build.set(name(:count), 0),
+                      *CORNERS.times.flat_map { |k| cut_edge(k) },
+                      Build.if_(Build.binop(:>=, var(:count), 3), *front_test, fill_when_seen))]
+      end
+
+      # The corner routine: the corner in at_x, at_y, at_z (turned, at_z at or past the near
+      # limit), at_u and at_v put on the screen and added to the corner list.
+      def corner_statements
+        at = var(:count)
+        place = ->(offset) { Build.binop(:+, Build.binop(:*, at, Nodes::FillFace::CORNER_NUMBERS), offset) }
+        [Build.list_set(corners_list, place.call(0), landed(:+, :at_x, :middle_x)),
+         Build.list_set(corners_list, place.call(1), landed(:-, :at_y, :middle_y)),
+         Build.list_set(corners_list, place.call(2), var(:at_u)),
+         Build.list_set(corners_list, place.call(3), var(:at_v)),
+         Build.add(name(:count), 1)]
       end
 
       private
 
       def name(part) = self.class.name_of(@place, part)
 
-      def corner_var(field, k) = name(:"#{field}#{k}")
+      def var(part) = Build.var_ref(name(part))
+
+      def turned_var(field, k) = name(:"#{field}#{k}")
+
+      def turned(field, k) = Build.var_ref(turned_var(field, k))
 
       # The faces table's entry +offset+ along the face being drawn.
-      def face_field(offset) = Build.binop(:+, Build.var_ref(name(:base)), offset)
+      def face_field(offset) = Build.binop(:+, var(:base), offset)
 
-      # Corner +k+ of the face being drawn: where it falls on the picture, and where it lands on
-      # the screen — or the face marked unseen, when the corner is nearer than the near limit.
-      def corner_statements(k)
+      # Corner +k+ of the face being drawn, turned to the viewer, with where it falls on the
+      # picture.
+      def turned_corner(k)
         first = 1 + (k * CORNER_FIELDS)
         point = Build.binop(:*, Build.table_get(faces_table, face_field(first)), POINT_STRIDE)
-        turned = Build.if_(Build.binop(:<, Build.var_ref(name(:ahead)), @near), Build.set(name(:seen), 0))
-        turned.else = Build.else_(*projection(k))
         [Build.set(name(:point), point),
          *%i[dx dy dz].each_with_index.map do |part, axis|
-           at = Build.binop(:+, Build.var_ref(name(:point)), axis)
+           at = Build.binop(:+, var(:point), axis)
            Build.set(name(part), Build.binop(:-, Build.table_get(points_table, at), Build.var_ref(viewer_var(VIEWER_PARTS[axis]))))
          end,
-         Build.set(name(:ahead), along(:ahead)),
-         turned,
-         Build.set(corner_var(:u, k), Build.table_get(faces_table, face_field(first + 1))),
-         Build.set(corner_var(:v, k), Build.table_get(faces_table, face_field(first + 2)))]
+         Build.set(turned_var(:x, k), along(:right)),
+         Build.set(turned_var(:y, k), along(:up)),
+         Build.set(turned_var(:z, k), along(:ahead)),
+         Build.set(turned_var(:u, k), Build.table_get(faces_table, face_field(first + 1))),
+         Build.set(turned_var(:v, k), Build.table_get(faces_table, face_field(first + 2)))]
       end
 
-      # How far the point the corner names is along one of the viewer's arrows: the point's
-      # offset from the viewer measured along the arrow, three products added.
+      # How far the point a corner names is along one of the viewer's arrows: its offset from the
+      # viewer measured along the arrow, three products added.
       def along(arrow)
         %i[x y z].map do |axis|
-          Build.mul_fix(Build.var_ref(name(:"d#{axis}")), Build.var_ref(viewer_var(:"#{arrow}_#{axis}")), 16)
+          Build.mul_fix(var(:"d#{axis}"), Build.var_ref(viewer_var(:"#{arrow}_#{axis}")), 16)
         end.reduce { |sum, product| Build.binop(:+, sum, product) }
       end
 
-      # Where corner +k+ lands on the screen, in sixteenths of a pixel: across from the middle
-      # by how far right it is over how far ahead, and down from it by how far up (the screen's
-      # rows count downward).
-      def projection(k)
-        [Build.set(name(:across), along(:right)),
-         Build.set(name(:down), along(:up)),
-         Build.set(corner_var(:x, k), landed(:+, :across, :middle_x)),
-         Build.set(corner_var(:y, k), landed(:-, :down, :middle_y))]
+      def in_front(k) = Build.binop(:>=, turned(:z, k), Build.var_ref(view_var(:near)))
+
+      # The edge from corner +k+ to the next, cut at the near limit: corner +k+ itself when it is
+      # in front of the limit, and then, when the edge crosses the limit, the corner where it
+      # does, worked out along the edge by how far through it the limit is.
+      def cut_edge(k)
+        other = (k + 1) % CORNERS
+        through = Build.div_fix(Build.binop(:-, Build.var_ref(view_var(:near)), turned(:z, k)),
+                                Build.binop(:-, turned(:z, other), turned(:z, k)), 16)
+        moved = lambda do |field|
+          Build.binop(:+, turned(field, k),
+                      Build.mul_fix(Build.binop(:-, turned(field, other), turned(field, k)), var(:along), 16))
+        end
+        [Build.if_(in_front(k), *%i[x y z u v].map { |field| Build.set(name(:"at_#{field}"), turned(field, k)) },
+                   Build.call(corner_routine)),
+         Build.if_(Build.binop(:!=, in_front(k), in_front(other)),
+                   Build.set(name(:along), through),
+                   *%i[x y u v].map { |field| Build.set(name(:"at_#{field}"), moved.call(field)) },
+                   Build.set(name(:at_z), Build.var_ref(view_var(:near))),
+                   Build.call(corner_routine))]
       end
 
+      # Where a corner lands on the screen, in sixteenths of a pixel: across from the middle by
+      # how far right it is over how far ahead, and down from it by how far up (the screen's rows
+      # count downward).
       def landed(op, offset, middle)
-        ratio = Build.div_fix(Build.var_ref(name(offset)), Build.var_ref(name(:ahead)), 16)
+        ratio = Build.div_fix(var(offset), var(:at_z), 16)
         spot = Build.binop(op, Build.var_ref(view_var(middle)), Build.mul_fix(ratio, Build.var_ref(view_var(:focal)), 16))
         Build.clamped(spot, -LANDING_LIMIT, LANDING_LIMIT)
       end
 
-      # The fill, once for each picture the face can show: the one its slot holds now.
-      def fills
-        corners = 4.times.map { |k| %i[x y u v].map { |field| Build.var_ref(corner_var(field, k)) } }
+      # Twice the area the corners on the screen go round, measured from the first corner: more
+      # than nothing when they go round clockwise, as a face seen from in front does. Each
+      # product is taken down eight bits, so it stays inside a number for any corner the
+      # projection lets through.
+      def front_test
+        corner = ->(index, axis) { Build.list_get(corners_list, Build.binop(:+, Build.binop(:*, index, 4), axis)) }
+        from_first = ->(index, axis) { Build.binop(:-, corner.call(index, axis), corner.call(0, axis)) }
+        each = var(:each)
+        following = var(:next)
+        [Build.set(name(:area), 0),
+         Build.repeat(var(:count), name(:each),
+                      Build.set(name(:next), Build.binop(:+, each, 1)),
+                      Build.if_(Build.binop(:==, following, var(:count)), Build.set(name(:next), 0)),
+                      Build.set(name(:area),
+                                Build.binop(:+, var(:area),
+                                            Build.binop(:-, Build.mul_fix(from_first.call(each, 0), from_first.call(following, 1), 8),
+                                                        Build.mul_fix(from_first.call(following, 0), from_first.call(each, 1), 8)))))]
+      end
+
+      # The fill, when the face is seen from in front or the place is drawn from both sides.
+      def fill_when_seen
         edges = %i[left top right bottom].map { |part| Build.var_ref(view_var(part)) }
-        @pictures.each_with_index.map do |picture, number|
-          Build.if_(Build.binop(:==, Build.var_ref(name(:picture)), number), Build.fill_face(picture, corners, edges))
-        end
+        fill = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges)
+        seen = Build.binop(:or, Build.binop(:>, var(:area), 0), Build.binop(:==, Build.var_ref(view_var(:both_sides)), 1))
+        Build.if_(seen, fill)
       end
     end
   end

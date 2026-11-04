@@ -3250,7 +3250,7 @@ module VBlank
         # specification: every target lands every pixel where this says, so every step is a sum
         # IR::Int32 does, and nothing else rounds. (Nodes::FillFace says what the numbers are.)
         #
-        # Walk DOWN THE SCREEN, a row at a time, and ask each of the face's four edges whether it
+        # Walk DOWN THE SCREEN, a row at a time, and ask each of the face's edges whether it
         # crosses the middle of that row. Two of them do, for a face that is not bent; the one
         # further left is where the row's pixels start and the other is where they stop. Along each
         # edge, where it crosses a row and where on the picture that is are worked out once at its
@@ -3260,12 +3260,24 @@ module VBlank
         # WHICH ROWS AND PIXELS: a pixel is filled when its middle is inside the face, counting the
         # top and left edges in and the bottom and right ones out, so two faces sharing an edge
         # neither leave a gap nor fill a pixel twice.
+        #
+        # WHICH PICTURE, WHICH CORNERS: the picture's number is held to the ends of the list of
+        # pictures, and a count past MOST_CORNERS is held to it; a count under three draws nothing.
         def exec_fill_face(node)
-          picture = @bitmaps.fetch(node.picture) do
-            raise ProgramError, "fill_face of undefined image #{node.picture.inspect}"
+          name = node.pictures[eval_value(node.picture).clamp(0, node.pictures.length - 1)]
+          picture = @bitmaps.fetch(name) { raise ProgramError, "fill_face of undefined image #{name.inspect}" }
+          pixels = @data.fetch(name)
+          count = [eval_value(node.count), Nodes::FillFace::MOST_CORNERS].min
+          return if count < 3
+
+          list = list_for(node.corners)
+          corners = Array.new(count) do |k|
+            Array.new(Nodes::FillFace::CORNER_NUMBERS) do |field|
+              at = (k * Nodes::FillFace::CORNER_NUMBERS) + field
+              check_list_index!(list, node.corners, at)
+              list.get(at)
+            end
           end
-          pixels = @data.fetch(node.picture)
-          corners = node.corners.map { |corner| corner.map { |value| eval_value(value) } }
           left, top, right, bottom = node.edges.map { |value| eval_value(value) }
           left = [left, 0].max
           top = [top, 0].max

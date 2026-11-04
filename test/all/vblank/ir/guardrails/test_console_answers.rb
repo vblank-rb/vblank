@@ -155,7 +155,7 @@ class TestConsoleAnswers < Minitest::Test
   private def findings(game, console) = CHECK.detect(game.program(console: console))
 
   def test_a_place_is_refused_naming_what_each_console_lacks
-    { gbc: /no multiply instruction/, snes: /Super FX chip/, genesis: /16-bit numbers/ }.each do |console, words|
+    { gbc: /no multiply instruction/, snes: /Super FX chip/, genesis: /does not draw a place on a Genesis yet/ }.each do |console, words|
       found = findings(PLACE, console)
 
       assert_equal [:error], found.map(&:severity).uniq, console

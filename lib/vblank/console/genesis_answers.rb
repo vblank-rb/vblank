@@ -64,8 +64,7 @@ module VBlank
         draw_column_at: works,
         place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
         viewer: works("a viewer is variables. To draw a place from it is refused: see `draw_place`."),
-        draw_place: refused("a Genesis has no chip that turns points or fills faces, and its processor " \
-                            "multiplies only 16-bit numbers. This build does not draw a place on a Genesis."),
+        draw_place: refused("this build does not draw a place on a Genesis yet."),
         clear_screen: works,
         inside: works,
         grid: works,

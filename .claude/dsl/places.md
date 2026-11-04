@@ -15,35 +15,41 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   for each point, in the picture's own pixels and in the same order. **The picture repeats past its
   edges like wallpaper**, so a corner can fall at 200 on a picture 64 pixels wide, or at -70, and the
   picture's width and height must each be 1, 2, 4, 8, 16, 32, 64, 128 or 256 pixels (a friendly error
-  otherwise). A point's numbers go from -16383 to 16383, with fractions; a corner from -8191 to 8191
-  picture pixels. The place is written into the cartridge as it is declared and does not change shape
-  as the game runs. **Each face shows its picture through a slot** (by default the picture's own name),
-  kept in a list the game will be able to re-point as it runs, for walls whose picture changes; nothing
-  re-points one yet. Friendly errors: no block, no faces, a face of other than three or four points, a
-  point the place does not have, a picture that is not declared, `on_picture:` that does not give one
-  spot for each point, a number out of range, and a second place of the same name.
+  otherwise). A point's numbers go from -8191 to 8191, with fractions, and so do the viewer's: half of
+  what a fraction holds, so no point is ever too far from the viewer to measure. A corner falls from
+  -8191 to 8191 picture pixels. The place is written into the cartridge as it is declared and does not
+  change shape as the game runs. **Each face shows its picture through a slot** (one for each picture
+  the place names), kept in a list the game will be able to re-point as it runs, for walls whose picture
+  changes; nothing re-points one yet. The list is declared showing each slot its own picture, so a place
+  declared in a scene or a `part` the game starts over shows the same. Friendly errors: no block, no
+  faces, a face of other than three or four points, a point the place does not have, a picture that is
+  not declared, `on_picture:` that does not give one spot for each point, a number out of range, a name
+  with two underscores in a row or one at its end, and a second place of the same name.
 - `viewer :eye, at: [x, y, z], facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] }` →
   `DSL::Viewer` — the spot a place is seen from, and which way it faces. `facing:` is three arrows,
   each three numbers of length one and square to the other two (a friendly error otherwise); left out,
   the viewer faces along the place's own arrows. A viewer is twelve variables, so it can be moved and
   turned later; this build sets it where it is declared and nothing moves it yet.
-- `draw_place :cube, seen_by: eye, perspective: :none` — draw the place as the viewer sees it, 90
-  degrees across the screen, or across the `inside` area it is drawn in. Each point is turned to the
-  viewer, put on the screen, and each face filled with its picture, a later face over an earlier one.
-  **A face with a corner nearer than a quarter of a whole to the viewer is left out whole** (cutting it
-  at that distance is not made yet), and a face is drawn from both sides. `perspective: :none` stretches
-  a picture straight between the corners of its face; `:every_8_pixels` and `:every_pixel` are refused
-  as not made yet. **Needs `screen :bitmap, tear_free: true`** (a friendly error on any other screen):
-  a place is drawn over a whole frame, and on one page the player would see it drawn. It draws over what
-  is there and clears nothing.
+- `draw_place :cube, seen_by: eye` — draw the place as the viewer sees it, across the screen or the
+  `inside` area it is drawn in. Each point is turned to the viewer, put on the screen, and each face
+  filled with its picture, a later face over an earlier one. **A face that reaches nearer than the near
+  limit is cut there**, so a wall beside the viewer is drawn up to the limit. **A face is seen from its
+  front only**: the side from which its points go round clockwise. Settings: `near: 0.25` (the near
+  limit, in wholes, more than 0 and not more than 16), `view_angle: 90` (degrees across, 10 to 170),
+  `both_sides: true` (draw a face from behind as well), and `perspective: :none` (a picture stretched
+  straight between the corners of its face; `:every_8_pixels` and `:every_pixel` are refused as not
+  made yet). `faces:` (which faces, in which order) and `window:` (edges the game works out as it runs)
+  are refused as not made yet. **Needs `screen :bitmap, tear_free: true`** (a friendly error on any
+  other screen): a place is drawn over a whole frame, and on one page the player would see it drawn. It
+  draws over what is there and clears nothing.
 
-**How it is drawn**, the same on every lowering: the turn and the projection are statements the
-lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix` and
-`div_fix`), and only the fill of a face is written by hand for each (`Reference#exec_fill_face` is
-the rule every one follows). So the interpreter and every build draw the same pixels. **What it
+**How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
+the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`
+and `div_fix`), and only the fill of a face, of three to eight corners, is written by hand for each
+(`Reference#exec_fill_face` is the rule every one follows). So the interpreter and every build draw the same pixels. **What it
 costs on the Advance**: the fill takes about 36 of the console's cycles a pixel, so a face covering
-the whole screen runs at 12 pictures a second and one 120 pixels square at 30. `rom.profile`
+the whole screen runs at 10 pictures a second. `rom.profile`
 names the fill "filling the faces of a place with their pictures".
 
 **Each console**: the Advance draws a place (its page says how). The Game Boy Color, the Super
-Nintendo and the Sega Genesis refuse `draw_place` in plain words naming what they lack (see their pages).
+Nintendo and the Sega Genesis refuse `draw_place` in plain words (see their pages).

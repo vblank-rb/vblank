@@ -217,18 +217,20 @@ module VBlank
 
       # Draw place +place+ as viewer +viewer+ sees it; +body+ is the work of doing so on a
       # target that works it out itself (see Nodes::DrawPlace).
-      def draw_place(place, viewer, *body, perspective: :none)
-        Nodes.build(:draw_place, children: body, place: place, viewer: viewer, perspective: perspective)
+      def draw_place(place, viewer, *body, near:, view_angle:, perspective: :none, both_sides: false, faces: nil,
+                     window: nil)
+        Nodes.build(:draw_place, children: body, place: place, viewer: viewer, perspective: perspective, near: near,
+                                 view_angle: view_angle, both_sides: both_sides, faces: faces,
+                                 window: window&.map { |edge| to_value_node(edge) })
       end
 
-      # Fill one face already on the screen with picture +picture+. +corners+ is four
-      # [x, y, u, v], +edges+ is [left, top, right, bottom] (see Nodes::FillFace).
-      def fill_face(picture, corners, edges)
-        fields = corners.each_with_index.flat_map do |(x, y, u, v), k|
-          [[:"x#{k}", x], [:"y#{k}", y], [:"u#{k}", u], [:"v#{k}", v]]
-        end
-        fields += %i[left top right bottom].zip(edges)
-        Nodes.build(:fill_face, picture: picture, **fields.to_h { |name, value| [name, to_value_node(value)] })
+      # Fill one face already on the screen: picture number +picture+ of +pictures+, its corners
+      # the first +count+ fours of list +corners+, nothing drawn outside +edges+ ([left, top,
+      # right, bottom]). See Nodes::FillFace.
+      def fill_face(pictures, picture, corners, count, edges)
+        Nodes.build(:fill_face, pictures: pictures.to_a, picture: to_value_node(picture), corners: corners,
+                                count: to_value_node(count),
+                                **%i[left top right bottom].zip(edges).to_h { |side, edge| [side, to_value_node(edge)] })
       end
 
       # Fill a rectangle at a fixed position and size — same picture as

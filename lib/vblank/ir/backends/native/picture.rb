@@ -657,10 +657,13 @@ module VBlank
           # viewer and the view and call it.
           def lower_draw_place(node) = body_of(node)
 
-          # Reference#exec_fill_face: the corners in order, then the edges nothing outside is drawn.
+          # Reference#exec_fill_face: the pictures it picks from and which, the list of corners and
+          # how many, then the edges nothing outside is drawn.
           def lower_fill_face(node)
-            [eval_call("rg_screen_face", C::Int.new(image_number(node.picture)),
-                       *(node.corners.flatten + node.edges).map { |operand| value(operand) })]
+            pictures = drawing_array("pictures", "int32_t", node.pictures.map { |name| image_number(name) })
+            [eval_call("rg_screen_face", pictures, C::Int.new(node.pictures.length), value(node.picture),
+                       C::AddressOf.new(list(node.corners)), value(node.count),
+                       *node.edges.map { |operand| value(operand) })]
           end
 
           def lower_save_region(node) = [patch_statement("rg_patch_save", node)]
