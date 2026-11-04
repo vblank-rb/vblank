@@ -201,8 +201,13 @@ module VBlank
               asm.ldx(asm.abs(memory[PaintLog::LOG_END]))
               asm.cpx(asm.abs(memory[PaintLog::LAST_PASS_END]))
               asm.bcs("rt_paint_layer_text_differs")
+              # On the layer, or taken off it: both written down with the whole screen for their
+              # area, as a text held to part of it is painted (a blit's entry). So this text matches
+              # one only when it too is for the whole screen: AREA_PART taken in with the kind, as
+              # PaintLog#emit_same_as_last_pass takes it, makes any other area differ.
               asm.lda(asm.long_x(log))
-              asm.ora(1) # on the layer, or taken off it, both with the whole screen for their area
+              asm.ora(1)
+              asm.ora(asm.abs(area + Paint::AREA_PART))
               asm.cmp(PaintLog::KIND_DEMOTED)
               asm.bne("rt_paint_layer_text_differs")
               asm.lda(asm.direct(Paint::R.call(0)))

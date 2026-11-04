@@ -107,18 +107,41 @@ class TestTextUnderPaintings < Minitest::Test
     refute any_in?(shown, WHITE, 22, 16, 30, 7), "nothing past the area's edge"
   end
 
+  # The same text on every pass, held to a narrower area after the first: a console that passes
+  # over a text the last pass drew too must see that its area changed.
+  def test_text_in_an_area_that_narrows_is_held_to_it
+    shown = screen_after(4) do
+      screen :bitmap
+      func(:words) { draw_text "PRESS START", 16, 100, :white }
+      n = 0
+      game_loop do
+        clear_screen :black
+        if n == 0
+          call :words
+        else
+          inside(0, 0, 40, screen_height) { call :words }
+        end
+        n += 1
+      end
+    end
+
+    assert any_in?(shown, WHITE, 16, 100, 24, 7)
+    refute any_in?(shown, WHITE, 40, 100, 60, 7), "nothing past the narrowed area's edge"
+  end
+
+  # Six words a row, so every one is on the smallest screen a run plays as (160 by 144).
   def test_many_words_at_once
     shown = screen_after(3) do
       screen :bitmap
       game_loop do
         clear_screen :black
-        40.times { |i| draw_text "AB", 8 + ((i % 8) * 24), 8 + ((i / 8) * 16), :white }
+        40.times { |i| draw_text "AB", 8 + ((i % 6) * 24), 8 + ((i / 6) * 16), :white }
         fill_rect 0, 0, 240, 4, :red
       end
     end
 
     40.times do |i|
-      assert any_in?(shown, WHITE, 8 + ((i % 8) * 24), 8 + ((i / 8) * 16), 11, 7), "word #{i} shows"
+      assert any_in?(shown, WHITE, 8 + ((i % 6) * 24), 8 + ((i / 6) * 16), 11, 7), "word #{i} shows"
     end
   end
 

@@ -21,7 +21,8 @@ class TestPicturesTakingTurns < Minitest::Test
     b.program
   end
 
-  # The pixel at (+x+, +y+) after each of +frames+.
+  # The pixel at (+x+, +y+) after each of +frames+. Each place read is on the smallest screen a
+  # run plays as (the Game Boy Color's, 160 by 144), so the right picture is read at x 140.
   private def pixels(frames, x, y, &game)
     built = program(&game)
     frames.map { |count| game_player.run(built, frames: count).screen.pixel(x, y) }
@@ -47,7 +48,7 @@ class TestPicturesTakingTurns < Minitest::Test
   # The second picture is a new colour from the sixth pass on: the screen shows that colour, not
   # the picture it showed two passes before.
   def test_the_second_picture_changing
-    right = pixels([8, 9, 10, 11], 200, 20) do
+    right = pixels([8, 9, 10, 11], 140, 20) do
       screen :bitmap
       n = 0
       game_loop do
@@ -123,7 +124,7 @@ class TestPicturesTakingTurns < Minitest::Test
   # edge crosses. (The fourth pass paints the left picture again, so the fifth's, the right, is
   # the one painted two pictures before, on black.)
   def test_a_picture_painted_again_after_the_clear_colour_changes
-    below = pixels([5, 6, 7, 8], 200, 102) do
+    below = pixels([5, 6, 7, 8], 140, 102) do
       screen :bitmap
       n = 0
       game_loop do
