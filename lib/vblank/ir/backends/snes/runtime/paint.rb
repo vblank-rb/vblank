@@ -216,7 +216,8 @@ module VBlank
             # On a cartridge with a Super FX (+chip+) the copy is the chip's RAM, so work RAM keeps
             # none, and what the painted screen keeps beside it goes with the rest of work RAM's far
             # places; on a plain one it goes in the last bank, after the copy.
-            def reserve(memory, chip: false, text_layer: false)
+            # +turns+ keeps room for a second picture to swap with (PaintTurns).
+            def reserve(memory, chip: false, text_layer: false, turns: false)
               memory.reserve_last_bank("rt paint copy", COPY_BYTES) unless chip
               far = chip ? memory.method(:reserve_far) : memory.method(:reserve_last_bank)
               chip ? memory.name_place(GENERATIONS, ChipPaint::GENERATIONS) : far.call(GENERATIONS, TILES)
@@ -238,7 +239,7 @@ module VBlank
               memory.reserve(IN_PLACE_START, 2)
               memory.reserve(SHOWN_GENERATION, 2)
               memory.reserve(CAMERA, CAMERA_BYTES)
-              PaintLog.reserve(memory) unless chip
+              PaintLog.reserve(memory, turns: turns) unless chip
               TextLayer.reserve(memory) if text_layer && !chip
             end
 
@@ -1908,7 +1909,7 @@ module VBlank
                 asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
                 asm.bra("rt_paint_prepare_cleared")
                 asm.label("rt_paint_prepare_same")
-                emit_turn_taken(asm, memory) if PaintTurns.kept?(memory)
+                emit_show_other_picture_or_clear(asm, memory) if PaintTurns.kept?(memory)
                 asm.stz(asm.abs(memory[PaintLog::DEFERRED_CLEAR]))
                 asm.stz(asm.abs(memory[PaintLog::LOGGING]))
                 asm.stz(asm.abs(memory[RUNS_END]))
@@ -2055,7 +2056,7 @@ module VBlank
             # with: when that was the other picture's (PaintTurns), it takes its turn if it can,
             # and is otherwise made as any other pass, from rt_paint_prepare_cleared. A pass that
             # matched the last pass's goes on past.
-            def emit_turn_taken(asm, memory)
+            def emit_show_other_picture_or_clear(asm, memory)
               t = PaintTurns
               asm.lda(asm.abs(memory[t::MATCHING_OTHER]))
               asm.beq("rt_paint_prepare_last_pass")

@@ -81,7 +81,10 @@ module VBlank
 
             module_function
 
-            def reserve(memory)
+            # The words every log reads, taking turns or not: where this pass's half starts and how
+            # far it may write (one half, the whole log, for a screen that does not take turns), and
+            # the rest of what rt_paint_start sets.
+            def reserve_log_halves(memory)
               [LOG_BASE, OTHER_BASE, OTHER_END, LOG_LIMIT, OTHER_VALID, MATCHING_OTHER, OTHER_GENERATION,
                OTHER_CLEAR, MAP_DIFFERS_FIRST, MAP_DIFFERS_LAST, OTHER_MAP_PENDING, NEWEST_GENERATION, PREFIX,
                AT_END, SHARED_COUNT].each do |name|
@@ -89,10 +92,19 @@ module VBlank
               end
               memory.reserve(OTHER_READIED_ROWS, 4)
               memory.reserve(SHARED_KEY, 4)
+            end
+
+            # The other picture's map, rows and shared tiles, for a screen that can take turns
+            # (Lowering::Paint.takes_turns? says which can).
+            def reserve(memory)
               memory.reserve_far(OTHER_MAP, Paint::MAP_BYTES)
               memory.reserve_far(OTHER_READIED, Paint::ROWS * 4)
               memory.reserve_far(SHARED, MOST_SHARED * SHARED_ENTRY_BYTES)
             end
+
+            # Whether #reserve kept the other picture's room: the screen takes turns when the log has
+            # room for two halves too.
+            def room_reserved?(memory) = memory.reserved?(OTHER_MAP)
 
             # Said once the log is reserved (PaintLog.emit), when it is big enough for two halves of
             # PaintLog::LEAST_LOG_ENTRIES each: the screen takes turns. A log smaller than that is one
@@ -115,7 +127,7 @@ module VBlank
               [OTHER_VALID, MATCHING_OTHER, OTHER_MAP_PENDING, NEWEST_GENERATION, MAP_DIFFERS_LAST].each { |name| asm.stz(asm.abs(memory[name])) }
               asm.lda(Paint::ROWS)
               asm.sta(asm.abs(memory[MAP_DIFFERS_FIRST]))
-              Paint.emit_fill_work_ram(asm, memory[OTHER_MAP], Paint::MAP_BYTES, "rt_paint_clear_cell")
+              Paint.emit_fill_work_ram(asm, memory[OTHER_MAP], Paint::MAP_BYTES, "rt_paint_clear_cell") if room_reserved?(memory)
             end
 
             # The log's halves as rt_paint_log_halves: each one's bytes, and how far a pass writes in

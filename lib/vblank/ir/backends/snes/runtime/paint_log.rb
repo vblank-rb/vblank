@@ -169,7 +169,8 @@ module VBlank
 
             module_function
 
-            def reserve(memory)
+            # +turns+ keeps room for a second picture to swap with (PaintTurns).
+            def reserve(memory, turns: false)
               tiles = Paint::TILES
               { KEYS_NOW => tiles * 4, KEYS_COPY => tiles * 4, KEYS_SHOWN => tiles * 4, PAINTED_IN => tiles, REPAINT => tiles,
                 UNSENT => tiles, READIED => Paint::ROWS * 4, MAP_DIRTY => Paint::ROWS * 4,
@@ -183,7 +184,8 @@ module VBlank
               memory.reserve(OP_HASH, 4)
               memory.reserve(SEED, 4)
               ROWS_OF.each_value { |name| memory.reserve(name, 4) }
-              PaintTurns.reserve(memory)
+              PaintTurns.reserve_log_halves(memory)
+              PaintTurns.reserve(memory) if turns
             end
 
             # At power-on (Paint's rt_paint_start, the area the whole screen): no tile painted in any
@@ -349,10 +351,11 @@ module VBlank
             def emit(asm, memory, s, bank)
               log_bytes = memory.reserve_far_up_to(LOG, least: LEAST_LOG_ENTRIES * ENTRY_BYTES,
                                                         most: MOST_LOG_ENTRIES * ENTRY_BYTES, step: ENTRY_BYTES)
-              # Two halves when it has room for them (PaintTurns), and a pass writes in one; with a
-              # text layer, each keeps room for an entry for each text a painting takes off it.
+              # Two halves when the screen can take turns and the log has room for them (PaintTurns),
+              # and a pass writes in one; with a text layer, each keeps room for an entry for each
+              # text a painting takes off it.
               half = log_bytes
-              if log_bytes >= 2 * LEAST_LOG_ENTRIES * ENTRY_BYTES
+              if PaintTurns.room_reserved?(memory) && log_bytes >= 2 * LEAST_LOG_ENTRIES * ENTRY_BYTES
                 half = log_bytes / 2 / ENTRY_BYTES * ENTRY_BYTES
                 PaintTurns.take_turns(memory)
               end
@@ -516,14 +519,14 @@ module VBlank
               asm.sta(asm.abs(memory[LOG_END]))
               asm.rtl
               asm.label(differs)
-              emit_other_retried(asm, memory, "#{prefix}_compare")
+              emit_retry_against_other_picture(asm, memory, "#{prefix}_compare")
               asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
               asm.label("#{prefix}_written")
             end
 
             # Where a deferred pass's painting differs from the last pass's: compared again at
             # +compare+ with the other picture's, if the pass can be (PaintTurns' rt_paint_try_other).
-            def emit_other_retried(asm, memory, compare)
+            def emit_retry_against_other_picture(asm, memory, compare)
               return unless PaintTurns.kept?(memory)
 
               asm.jsr(asm.abs("rt_paint_try_other"))

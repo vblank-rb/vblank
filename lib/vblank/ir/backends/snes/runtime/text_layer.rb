@@ -219,7 +219,7 @@ module VBlank
               asm.sta(asm.abs(memory[PaintLog::LOG_END]))
               asm.rtl
               asm.label("rt_paint_layer_text_differs")
-              PaintLog.emit_other_retried(asm, memory, "rt_paint_layer_text_compare")
+              PaintLog.emit_retry_against_other_picture(asm, memory, "rt_paint_layer_text_compare")
               asm.jsr(asm.abs("rt_paint_apply_deferred_clear"))
               asm.label("rt_paint_layer_text_written")
               asm.lda(asm.abs(memory[PaintLog::LOGGING]))
@@ -583,7 +583,7 @@ module VBlank
 
             # On to +stays+ unless the text at hand's tiles and RECT's (a painting's rows and columns
             # of tiles) share a row and a column.
-            def emit_unless_rect_shared(asm, memory, stays)
+            def emit_branch_if_text_misses_rect(asm, memory, stays)
               rect = memory[RECT]
               text = memory[TEXT]
               [[rect + 2, text + T_TOP], [text + T_BOTTOM, rect], [rect + 6, text + T_FIRST], [text + T_LAST, rect + 4]].each do |high, low|
@@ -634,7 +634,7 @@ module VBlank
               asm.ldx(asm.abs(memory[LISTED]))
               asm.lda(asm.abs_x(memory[PLACED]))
               asm.jsr(asm.abs("rt_paint_layer_find"))
-              emit_unless_rect_shared(asm, memory, "rt_paint_layer_check_stays")
+              emit_branch_if_text_misses_rect(asm, memory, "rt_paint_layer_check_stays")
               asm.jsr(asm.abs("rt_paint_layer_demote")) # off the list, so the next is at the same place
               asm.brl("rt_paint_layer_check_text")
               asm.label("rt_paint_layer_check_stays")
@@ -787,7 +787,7 @@ module VBlank
               asm.ldx(asm.abs(memory[LISTED]))
               asm.lda(asm.abs_x(memory[PLACED]))
               asm.jsr(asm.abs("rt_paint_layer_find"))
-              emit_unless_rect_shared(asm, memory, "rt_paint_layer_check_now_stays")
+              emit_branch_if_text_misses_rect(asm, memory, "rt_paint_layer_check_now_stays")
               asm.jsr(asm.abs("rt_paint_layer_remove"))
               text = memory[TEXT]
               [T_PICTURE, T_X, T_Y].each_with_index do |from, i|

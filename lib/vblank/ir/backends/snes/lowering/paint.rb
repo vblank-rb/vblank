@@ -67,6 +67,48 @@ module VBlank
                 program.walk.any? { |node| node.kind == :draw_text && layer_pixels(node) }
             end
 
+            # Whether +program+'s painted screen can take turns between two pictures
+            # (Runtime::PaintTurns). Keeping the other picture costs a game the room of a second map
+            # and half its log, so a pass of more paintings than the half holds is painted partway
+            # and can no longer be passed over as the same as the last. That is only worth paying
+            # for a screen that can paint something other than it did on the pass before:
+            #
+            # - it clears the whole screen again as it runs (a clear outside the program's setting
+            #   up), since only a pass that clears is compared with a picture shown before; and
+            # - a painting can come out differently from one pass to the next: one under a test, a
+            #   repeat, a routine or a scene (which may be called on some passes and not others), or
+            #   one whose numbers or colour are worked out as the game runs.
+            #
+            # A screen that paints the same paintings at the same places on every pass matches the
+            # last pass whole and never needs the other picture, and one that never clears again
+            # never compares a pass with one; either keeps the whole log.
+            def self.takes_turns?(program)
+              paintings = program.walk.select { |node| PAINTING.include?(node.kind) }
+              paintings.any? { |node| node.kind == :clear_screen && node.parent&.kind != :program } &&
+                paintings.any? { |node| !painted_alike_each_pass?(node) }
+            end
+
+            # The statements a painting can sit inside and still be painted the same way each time the
+            # game's loop comes round: the program, the loop itself, and an area (whose edges are
+            # known when the game is built).
+            ALIKE_EACH_PASS_INSIDE = %i[program loop inside].freeze
+
+            # Whether +node+, a painting, is painted the same on every pass that reaches it: every
+            # number it is given known now, its colour not picked as the game runs, and nothing around
+            # it that can skip it or repeat it.
+            def self.painted_alike_each_pass?(node)
+              return false if node.respond_to?(:picked) && node.picked
+              return false unless node.walk.all? { |part| part.equal?(node) || part.kind == :int }
+
+              around = node.parent
+              while around
+                return false unless ALIKE_EACH_PASS_INSIDE.include?(around.kind)
+
+                around = around.parent
+              end
+              true
+            end
+
             # The screen's pixels a `draw_text` writes, when it can go on the text layer: in one colour,
             # at a place known now, all of it on the screen. nil for any other.
             def self.layer_pixels(node)
