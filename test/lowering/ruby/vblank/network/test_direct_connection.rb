@@ -127,6 +127,40 @@ class TestDirectConnection < Minitest::Test
     server&.close
   end
 
+  def test_a_machine_that_asks_a_direct_host_for_a_room_of_its_own_is_told_no_and_the_room_goes_on
+    room = Network::DirectRoom.new
+    Network::RelayTransport.make_room(room.host_line)
+    ours, theirs = UNIXSocket.pair
+    room.add_client(ours)
+    stranger = Network::LineChannel.new(theirs)
+    stranger.send_text('{"v":1,"type":"make_room"}')
+    room.pump
+    stranger.wait_for_text(5)
+
+    assert_equal "no_more_rooms", JSON.parse(stranger.receive_text).fetch("reason")
+    stranger.send_text(%({"v":1,"type":"join_room","code":"#{Network::DirectRoom::CODE}"}))
+    room.pump
+    stranger.wait_for_text(5)
+    assert_equal "room_joined", JSON.parse(stranger.receive_text).fetch("type")
+  end
+
+  def test_a_machine_cannot_say_that_it_or_another_has_left
+    room = Network::DirectRoom.new
+    host = Network::RelayTransport.make_room(room.host_line)
+    ours, theirs = UNIXSocket.pair
+    room.add_client(ours)
+    guest = Network::LineChannel.new(theirs)
+    guest.send_text(%({"v":1,"type":"join_room","code":"#{Network::DirectRoom::CODE}"}))
+    guest.send_text('{"v":1,"type":"left"}')
+    room.pump
+    guest.wait_for_text(5)
+    guest.receive_text
+
+    assert_nil host.receive_message
+    guest.wait_for_text(5)
+    assert_equal "bad_message", JSON.parse(guest.receive_text).fetch("reason")
+  end
+
   def test_a_line_of_text_arrives_whole_whatever_pieces_it_comes_in
     ours, theirs = UNIXSocket.pair
     channel = Network::LineChannel.new(theirs)

@@ -90,6 +90,11 @@ The reasons in an `error` are:
 - `room_full`: the room has 16 machines.
 - `not_in_a_room`: the machine sent a match message before it made or joined a room.
 - `already_in_a_room`: the machine asked for a room when it is in one.
+- `no_more_rooms`: the relay makes no more rooms. The host of a direct connection has one room, its own, and
+  says this to a machine that asks it for another.
+
+A machine that sends a message only the room sends (`room_made`, `room_joined`, `rooms`, `error`, `left`) gets
+`bad_message`, and the message goes to nobody.
 
 `words` is a sentence for a person. A machine can show it, or write its own sentence for the reason.
 The numbers in a room are never used again for another machine.

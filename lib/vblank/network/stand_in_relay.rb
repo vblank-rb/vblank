@@ -26,8 +26,9 @@ module VBlank
       CODE_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
       CODE_LENGTH = 4
 
-      # The messages only the relay sends, which a machine may not send to it.
-      RELAY_ONLY_TYPES = %w[room_made room_joined rooms error].freeze
+      # The messages only the relay sends, which a machine may not send to it. +left+ is the room's word for a
+      # machine that has gone, so a machine that sent it could say another had gone.
+      RELAY_ONLY_TYPES = %w[room_made room_joined rooms error left].freeze
 
       # The versions of the format it knows.
       SUPPORTED_VERSIONS = [1].freeze
@@ -125,7 +126,8 @@ module VBlank
       def make_room(connection, message)
         return reply_error(connection, :already_in_a_room, "You are in a room already. A machine is in one room at a time.") if connection.room
 
-        room = Room.new(@codes.next, {}, 0)
+        code = next_code or return reply_error(connection, :no_more_rooms, "This relay makes no more rooms. To fix this, join a room with its code.")
+        room = Room.new(code, {}, 0)
         list_as_public(room, message) if message["public"] == true
         @rooms[room.code] = room
         number = admit(room, connection)
@@ -188,6 +190,14 @@ module VBlank
         words = "This relay speaks version #{SUPPORTED_VERSIONS.join(', ')} of the network format, and the message is version #{version}. " \
                 "To fix this, use a game and a relay of the same version."
         connection.deliver(JSON.generate({ "v" => 1, "type" => "error", "reason" => "version", "words" => words, "supported" => SUPPORTED_VERSIONS }))
+      end
+
+      # The code for the next room, or nil when the codes given have run out. A direct host is given one code, its
+      # own room's, so a machine that joined it and asks for a room of its own is told no rather than ending the room.
+      def next_code
+        @codes.next
+      rescue StopIteration
+        nil
       end
 
       def counting_codes
