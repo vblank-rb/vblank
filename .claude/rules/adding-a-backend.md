@@ -163,8 +163,16 @@ what a program says — which art is worked out in Ruby, which kinds are not low
 said once, and the two lowerings can only differ in how a runtime does a thing, which the checked
 run finds.
 
-A new lowering for a machine that can run a runtime of that shape should start there too, and
+A new lowering for a computer that can run a runtime of that shape should start there too, and
 only write a lowering of its own when the tree cannot say what its machine needs.
+
+**A new console's lowering is written fresh, its own code generator in Ruby.** This is the
+operator's standing rule (2026-11-04, decided for the PlayStation; the Nintendo 64 will be the
+same). Never retarget the native C lowering at a console through a cross-compiler, and never bend
+one lowering to serve two consoles: a build for a console needs nothing outside Ruby, and every
+routine it emits is ours to profile and change. Code two lowerings share is found and factored out
+afterwards, from lowerings that exist, the way `LoweringPlan`, `BuildCache` and `RoutineCuts` were.
+A design pass for a console does not offer the C route as an option.
 
 A new backend is named for the platform it targets (`JS`, not `Canvas` or `V8`), lives in
 `lib/vblank/ir/backends/<name>.rb` beside a folder of the same name, and is required from
