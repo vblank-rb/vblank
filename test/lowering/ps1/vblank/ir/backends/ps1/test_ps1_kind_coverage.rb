@@ -32,6 +32,15 @@ class TestPS1KindCoverage < Minitest::Test
     assert_empty not_yet - portable_kinds
   end
 
+  # The page names the verbs that wait on each part the lowering does not make yet, and each is a verb
+  # the answers table answers.
+  def test_the_page_names_verbs_for_every_part_not_made_yet
+    verbs = VBlank::Console::PS1Answers::VERBS_NOT_MADE_YET
+
+    assert_equal Lowering::NOT_LOWERED_YET.keys.sort, verbs.keys.sort
+    assert_empty verbs.values.flatten - VBlank::Console::PS1Answers::ANSWERS.keys
+  end
+
   def test_no_kind_is_listed_twice
     assert_equal not_yet.uniq, not_yet
   end

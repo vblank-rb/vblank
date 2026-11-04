@@ -17,7 +17,9 @@ module VBlank
             STATEMENTS = Ractor.make_shareable({
                                                  screen: :emit_screen, clear_screen: :emit_clear_screen,
                                                  fill_rect: :emit_fill_rect, dma_fill_rect: :emit_fill_rect,
-                                                 draw_rect_at: :emit_fill_rect, pixel: :emit_pixel, inside: :emit_inside
+                                                 draw_rect_at: :emit_fill_rect, pixel: :emit_pixel, inside: :emit_inside,
+                                                 blit: :emit_blit, blit_pose: :emit_blit_pose,
+                                                 draw_text: :emit_draw_text, draw_digit: :emit_draw_digit
                                                })
 
             # The PS1::PaintedArt the game draws with.

@@ -173,12 +173,13 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 ## Not made yet
 
 An answer above is what the PlayStation does with a verb. The build for it is still growing,
-and a game that reaches one of these steps is refused, naming the step, until it is made:
+and a game that reaches one of these steps is refused, naming the step, until it is made.
+`var` waits on its part only when it holds a number with a fraction (a Float).
 
-- the painted (bitmap) screen: `draw_column_at`, `blit`, `blit_pose`, `draw_text`, `draw_digit`, `save_region`, `restore_region`, `camera`
-- fades, lights and screen effects: `fade`, `tint`, `pixelate`, `shade_outside`
-- places drawn in 3D: `draw_place`, `fill_face`
-- sprites and tiled backgrounds: `background`, `scroll_background`, `set_tile`, `show_map`, `present_objects`, `color_list_holds`, `background_colors`, `hide_sprites`, `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`, `pixels_overlap`
-- sound: `enable_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
-- save memory: `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`
-- numbers with a fraction: `mul_fix`, `div_fix`
+- the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`, `sprite`; the steps `draw_column_at`, `save_region`, `restore_region`, `camera`
+- fades, lights and screen effects: the verbs `fade`, `tint`, `fade_in`, `fade_out`, `flash_screen`, `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `fade`, `tint`, `pixelate`, `shade_outside`
+- places drawn in 3D: the verbs `draw_place`; the steps `draw_place`, `fill_face`
+- sprites and tiled backgrounds: the verbs `sprite`, `tiles`, `background`, `status_bar`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `draw_in_order`, `hide_sprites`, `picture_groups`, `colors`, `recolor`, `color_walk`; the steps `background`, `scroll_background`, `set_tile`, `show_map`, `present_objects`, `color_list_holds`, `background_colors`, `hide_sprites`, `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`, `pixels_overlap`
+- sound: the verbs `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `enable_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
+- save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`
+- numbers with a fraction: the verbs `var`; the steps `mul_fix`, `div_fix`

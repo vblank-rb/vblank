@@ -236,14 +236,37 @@ module VBlank
         MARKDOWN
       end
 
-      # What the page says of the steps the PlayStation's build does not make yet.
+      # THE VERBS WHOSE STEPS THE BUILD DOES NOT MAKE YET, by the part of the build they wait on — the
+      # parts of Backends::PS1::Lowering::NOT_LOWERED_YET, and the other parts it refuses by name
+      # (Lowering#refuse_unmade_parts!). A verb is here when a game that says it reaches a step of the
+      # part; test_ps1_kind_coverage.rb holds the parts to the lowering's.
+      VERBS_NOT_MADE_YET = Ractor.make_shareable({
+        "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen sprite],
+        "fades, lights and screen effects" => %i[fade tint fade_in fade_out flash_screen pixelate pixelate_in
+                                                 pixelate_out spotlight iris_in iris_out],
+        "places drawn in 3D" => %i[draw_place],
+        "sprites and tiled backgrounds" => %i[sprite tiles background status_bar canvas tile_pictures sprite_tiles
+                                              layers layer draw_in_order hide_sprites picture_groups colors recolor
+                                              color_walk],
+        "sound" => %i[enable_sound define_sound beep noise wave stop_wave song play_song stop_music hold_music
+                      release_music music_volume fade_music_in fade_music_out songs sound_effects sample instrument],
+        "save memory" => %i[save_var save_data saves_keep_everything],
+        "numbers with a fraction" => %i[var]
+      })
+
+      # What the page says of the steps the PlayStation's build does not make yet: for each part, the
+      # verbs that wait on it and the steps it names in a refusal.
       def self.not_yet_words(not_yet)
         return "The build for the PlayStation makes every kind of step that the answers above do not refuse." if
           not_yet.empty?
 
         "An answer above is what the PlayStation does with a verb. The build for it is still growing,\n" \
-          "and a game that reaches one of these steps is refused, naming the step, until it is made:\n\n" +
-          not_yet.map { |part, kinds| "- #{part}: #{kinds.map { |kind| "`#{kind}`" }.join(', ')}" }.join("\n")
+          "and a game that reaches one of these steps is refused, naming the step, until it is made.\n" \
+          "`var` waits on its part only when it holds a number with a fraction (a Float).\n\n" +
+          not_yet.map do |part, kinds|
+            verbs = VERBS_NOT_MADE_YET.fetch(part, []).map { |verb| "`#{verb}`" }.join(", ")
+            "- #{part}: the verbs #{verbs}; the steps #{kinds.map { |kind| "`#{kind}`" }.join(', ')}"
+          end.join("\n")
       end
     end
   end

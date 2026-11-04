@@ -73,8 +73,7 @@ module VBlank
           # the PlayStation does it; test_ps1_kind_coverage.rb holds the list and the tables above to every
           # kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
-                                                    "the painted (bitmap) screen" => %i[draw_column_at blit blit_pose draw_text draw_digit
-                                                                                        save_region restore_region camera],
+                                                    "the painted (bitmap) screen" => %i[draw_column_at save_region restore_region camera],
                                                     "fades, lights and screen effects" => %i[fade tint pixelate shade_outside],
                                                     "places drawn in 3D" => %i[draw_place fill_face],
                                                     "sprites and tiled backgrounds" => %i[background scroll_background set_tile show_map

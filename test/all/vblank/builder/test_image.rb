@@ -133,6 +133,28 @@ class TestImage < Minitest::Test
     assert_equal 0, fb.pixel(99, 50)
   end
 
+  # A place near the edge of the numbers a game holds is far off the screen, and nothing lands there,
+  # however far the picture reaches: a console that adds the picture's width to it must not come round
+  # to the other side.
+  def test_a_picture_at_the_edge_of_the_numbers_draws_nothing
+    prog = build do
+      screen :bitmap
+      image :band, width: 200, height: 2, data: Array.new(400, :red)
+      far_right = var :far_right, 0x7FFF_FFF0
+      far_left = var :far_left, -0x8000_0000
+      game_loop do
+        clear_screen :blue
+        blit :band, far_right, 10
+        blit :band, 10, far_right
+        blit :band, far_left, 20
+        blit :band, 20, far_left
+      end
+    end
+    shown = game_player.run(prog, frames: 3).screen
+
+    assert_equal [Color.resolve(:blue)], (0...shown.height).flat_map { |y| (0...shown.width).map { |x| shown.pixel(x, y) } }.uniq
+  end
+
   def test_blit_lets_the_background_show_through_transparent_pixels
     fb = screen_after do
       screen :bitmap
