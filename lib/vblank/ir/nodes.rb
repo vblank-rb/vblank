@@ -1169,6 +1169,10 @@ module VBlank
         # The most players the game said it takes on this build, or nil where it said nothing.
         def most_players = players&.last
 
+        # Whether the game said it takes more than one player, which is what a match of several machines
+        # needs. A build carries what a match needs (its seed routine, the runtime that plays one) only then.
+        def several_players? = most_players.to_i > 1
+
         # What the console this program was built for can do, as the build reads it: on a computer
         # its controllers are as many players as any build reads (IR::Buttons::MOST_PLAYERS), since
         # a computer has no ports to count; everything else is the console's.

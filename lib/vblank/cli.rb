@@ -1326,6 +1326,7 @@ module VBlank
     def network_to_play(game_file, game, program)
       return nil unless options[:host] || options[:join]
 
+      refuse_match_for_one_player!(game, program)
       fingerprint = VBlank::Network::Fingerprint.of(program, title: game.title)
       lockstep = if options[:relay] then meet_on_relay(game_file, program, fingerprint)
                  elsif options[:host] then open_match_as_host(game_file, program, fingerprint)
@@ -1339,6 +1340,15 @@ module VBlank
       raise Thor::Error, e.message
     rescue Interrupt
       raise Thor::Error, "You stopped the wait, so no match was played."
+    end
+
+    # A match is for a game that takes more than one player. A game for one player is built without what a match
+    # needs (Program#several_players?).
+    def refuse_match_for_one_player!(game, program)
+      return if program.several_players?
+
+      raise Thor::Error, "#{game.title} is a game for one player, so it cannot play in a match. To fix this, say on " \
+                         "VBlank.game how many players it takes, for example players: 1..2."
     end
 
     def players_in_match(program)

@@ -70,11 +70,19 @@ class TestLocalViewInAMatch < Minitest::Test
   def test_a_game_that_keeps_the_player_number_in_a_variable_would_desync
     keeps = Build.program(Build.set(:mine, 0),
                           Build.loop_(Build.wait_vblank, Build.set(:mine, Build.local_player)),
-                          console: :gba, for_computer: true)
+                          console: :gba, players: [1, 2], for_computer: true)
     net, copies = machines(2, keeps)
 
     outcomes = play(net, copies)
 
     assert_kind_of Network::Desync, outcomes.first.error
+  end
+
+  def test_a_game_for_one_player_is_refused_a_match_in_plain_words
+    alone = Build.program(Build.loop_(Build.wait_vblank), console: :gba, for_computer: true)
+
+    error = assert_raises(ArgumentError) { machines(2, alone) }
+
+    assert_match(/for one player, so it cannot play in a match/, error.message)
   end
 end

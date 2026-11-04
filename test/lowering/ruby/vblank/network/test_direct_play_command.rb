@@ -106,6 +106,16 @@ class TestDirectPlayCommand < Minitest::Test
     assert_match(/This match is for the Game Boy Advance, and your game is built for the Game Boy Color/, refused)
   end
 
+  # A game that names no second player is built without what a match needs, so it is not played in one.
+  def test_a_game_for_one_player_is_refused_a_match_in_plain_words
+    out, status = Open3.capture2e(RUBY, BIN, "run", VBlank.root.join("examples/breakout.rb").to_s, "--host", "0", "--no-window",
+                                  "--pictures", "5")
+
+    refute_predicate status, :success?
+    assert_match(/is a game for one player, so it cannot play in a match/, out)
+    refute_match(/\.rb:\d+:in/, out, "no backtrace")
+  end
+
   def test_options_that_do_not_belong_together_are_refused_before_anything_is_built
     {
       ["--host", "--join", "127.0.0.1"] => /--host and --join do not go together/,

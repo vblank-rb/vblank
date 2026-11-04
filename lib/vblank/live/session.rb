@@ -63,6 +63,7 @@ module VBlank
       # place of a program, is a game built as Ruby already (IR::Backends::Ruby::LiveGame), which is
       # how a game written out as one Ruby file (Ruby#script) plays with no builder to hand.
       def initialize(program = nil, game: nil, uncapped: false, stop_after_passes: nil, network: nil)
+        refuse_match_for_one_player!(program) if network && program
         @game = game || IR::Backends::Ruby.new.live_game(program)
         @network = network
         @uncapped = uncapped
@@ -135,6 +136,14 @@ module VBlank
       end
 
       private
+
+      # A game for one player is built without what a match needs (IR::Program#several_players?), so it plays in none.
+      def refuse_match_for_one_player!(program)
+        return if program.several_players?
+
+        raise ArgumentError, "This game is for one player, so it cannot play in a match. To fix this, say on " \
+                             "VBlank.game how many players it takes, for example players: 1..2."
+      end
 
       # A device with nobody at the controls (a bot) reads the game it plays: it is told which game, and how
       # the match is set up, before the first pass.

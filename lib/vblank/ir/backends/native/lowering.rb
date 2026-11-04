@@ -201,7 +201,7 @@ module VBlank
              *routine_table_declarations,
              *routines, *answers, main,
              C::Function.new(name: @names.own("dump_state"), body: dump_state, exported: true),
-             C::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)]
+             *(@program.several_players? ? [C::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)] : [])]
           end
 
           # The game's name as a C string. A character outside plain ASCII is written as '?', since
@@ -232,7 +232,8 @@ module VBlank
           # The routine a match played by several machines calls once, after the game has set itself up, to add the
           # match's shared seed (rg_match_seed, nought when the game is played alone) to the game's random
           # numbers: what makes the colours `rand` picks differ from one match to the next and agree within one.
-          # A game that never draws one has an empty routine.
+          # A game that never draws one has an empty routine, and a game for one player has none at all, so it
+          # builds as it did before matches were played.
           def mix_seed
             stream = Builder::Randomness::RNG_STATE
             return [] unless variable_names.include?(stream)

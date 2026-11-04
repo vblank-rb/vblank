@@ -78,7 +78,12 @@ module VBlank
         # The runtime every program carries, in the order it is put together: the game's
         # arithmetic first, then everything that keeps the game's state. A driver follows it:
         # rg_headless.js for node, or rg_page.js inside createGame for a browser.
-        RUNTIME = %w[rg_int32.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_mix.js rg_save.js rg_lockstep.js rg_relay.js].freeze
+        RUNTIME = %w[rg_int32.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_mix.js rg_save.js].freeze
+
+        # What only a game for several players carries: the session of a match and the relay's room
+        # (Program#several_players?), with the fingerprint a match tells it by. A game for one player is
+        # built without them, as it was before matches were played.
+        MATCH_RUNTIME = %w[rg_lockstep.js rg_relay.js].freeze
 
         # The first line of everything the backend writes.
         WRITTEN_BY = "// Written by VBlank's JavaScript backend. Do not edit; build the game again.\n"
@@ -126,7 +131,7 @@ module VBlank
         def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true)
           text, data_file = Lowering.new(program, title: title).text_and_data_file(data: data)
           [["function createGame(host) {\n", console_text(program.described_console), fingerprint_text(program), MenuData.source(menu: menu),
-            *runtime_text(RUNTIME + ["rg_page_menu.js", "rg_page.js"]), text, "return page_create(host || {});\n}\n"].join, data_file]
+            *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), text, "return page_create(host || {});\n}\n"].join, data_file]
         end
 
         # The program built to run with no window (runtime/rg_headless.js), and the path to it,
@@ -135,7 +140,7 @@ module VBlank
         # it is not made through createGame.
         def build_headless(program)
           write_program(WRITTEN_BY + in_own_function(console_text(program.described_console), fingerprint_text(program),
-                                                     *runtime_text(RUNTIME + ["rg_headless.js"]), lower(program),
+                                                     *runtime_text(runtime_for(program) + ["rg_headless.js"]), lower(program),
                                                      "rg_driver_start();\n"))
         end
 
@@ -214,11 +219,16 @@ module VBlank
           end.join
         end
 
+        # The runtime +program+ carries: the match's too when it is for several players.
+        def runtime_for(program) = program.several_players? ? RUNTIME + MATCH_RUNTIME : RUNTIME
+
         # WHICH GAME THIS IS, as a match tells it from another (Network::Fingerprint): the console it is built for
         # and the digest of its program, worked out here from the program as the build made it so that a copy
         # built as Ruby, as C or as JavaScript of one game carries one number. The runtime takes its
         # constant (RG_FINGERPRINT) to a match (rg_lockstep.js).
         def fingerprint_text(program)
+          return "" unless program.several_players?
+
           fingerprint = Network::Fingerprint.of(program, title: "")
           "const RG_FINGERPRINT = { console: #{fingerprint.console.to_json}, digest: #{fingerprint.digest.to_json} };\n"
         end
