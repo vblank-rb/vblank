@@ -193,10 +193,14 @@ module VBlank
           # colours and lent list are in a bank of the cartridge rather than the part always in view
           # (#index_section), and each scene's record of its own lists beside the code that hands
           # it over (#lent_scene_record).
+          #
+          # +tile_facts+ keeps what each tile's picture alone says, for every try of one build
+          # (#tile_fact).
           def initialize(square_colors: nil, lends: false, grouped: {}, room_colors: false, first_cleared_to: nil,
                          backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil,
-                         indexes_in_banks: false)
+                         indexes_in_banks: false, tile_facts: {})
             @indexes_in_banks = indexes_in_banks
+            @tile_facts = tile_facts # what each tile's picture alone says (#tile_fact)
             @piece_height = piece_height
             @scene_pictures = scene_pictures
             @scene_tiles = Hash.new { |all, scene| all[scene] = [] } # a scene -> its own tiles, 16 bytes each
@@ -225,7 +229,11 @@ module VBlank
             @background_tile_numbers = {}
             @background_palettes = []
             @black_held = false # the first palette is black alone, until one that can be first comes
-            @background_tile_of = {} # [room, picture name, its recolour steps] -> [tile number, palette number]
+            # Its recolour steps -> [room, picture name] -> [tile number, palette number]. The steps are
+            # kept by which object they are, not by what they hold, since hashing them walks every
+            # colour of every step: the lowering hands over one object for steps that are equal
+            # (Lowering::Picture#recolor_steps_of), so the two are the same.
+            @background_tile_of = Hash.new { |by_steps, steps| by_steps[steps] = {} }.compare_by_identity
             @run_tile_numbers = {} # a painted tile's name -> its tile number
             @run_tile_of = {} # [a painted tile's name, the room it is in] -> [tile number, palette number]
             @grids = []               # 2048 bytes each: the cells' tiles, then their attributes
@@ -710,7 +718,7 @@ module VBlank
           # the palette of a tile drawn with other lists can be the first, whatever its first colour
           # (#background_palette_number). Others keep to black first, as they always have.
           def background_tile(name, image, room: nil, recolor_steps: nil, empty_cells_shown: true)
-            @background_tile_of[[room&.id, name, recolor_steps]] ||= begin
+            @background_tile_of[recolor_steps][[room&.id, name]] ||= begin
               unless image.width == 8 && image.height == 8
                 raise LoweringError, "the tile #{name.inspect} is #{image.width}×#{image.height}; the Game Boy Color " \
                                      "build makes 8×8 tiles only so far."
@@ -748,8 +756,10 @@ module VBlank
           def drawn_places(image)
             return nil unless image.places && image.colors
 
-            drawn = (0...64).reject { |i| image.tile_see_through_at?(i) }.map { |i| image.place_at(i) }.uniq.sort
-            drawn if drawn.length <= (see_through_tile?(image) ? OWN_COLORS : PLACES)
+            tile_fact(:drawn_places, image) do
+              drawn = (0...64).reject { |i| image.tile_see_through_at?(i) }.map { |i| image.place_at(i) }.uniq.sort
+              drawn if drawn.length <= (see_through_tile?(image) ? OWN_COLORS : PLACES)
+            end
           end
 
           # The four colours a tile drawn by its places +placed+ (#drawn_places) shows when each
@@ -760,7 +770,22 @@ module VBlank
             padded(see_through_tile?(image) ? [@backdrop, *shown] : shown)
           end
 
-          def see_through_tile?(image) = (0...64).any? { |i| image.tile_see_through_at?(i) }
+          def see_through_tile?(image) = tile_fact(:see_through, image) { (0...64).any? { |i| image.tile_see_through_at?(i) } }
+
+          # WHAT A TILE'S PICTURE ALONE SAYS (#list_order, #drawn_places, #tile_colors,
+          # #see_through_tile?): each a scan of its 64 pixels, and a build asks each of them for every
+          # cell, every step of a background's colours and every try. So each answer is kept in
+          # +tile_facts+, which the lowering hands every try of one build (Lowering's +known+), by the
+          # picture it was asked of: the lowering makes each tile's picture once a build
+          # (Lowering::Picture#tile_image), so the same tile is the same object. Nothing else they
+          # read changes within a build: the backdrop is the game's own. Answers are frozen, since
+          # every try is handed the same one.
+          def tile_fact(question, image)
+            known = @tile_facts[question] ||= {}.compare_by_identity
+            return known[image] if known.key?(image)
+
+            known[image] = yield.freeze
+          end
 
           # The tile number and palette number of a tile drawn by the places it draws (#drawn_places):
           # each pixel is its place's position in the palette (#placed_colors). Another list drawn
@@ -791,11 +816,13 @@ module VBlank
           def list_order(image)
             list = image.colors
             return nil unless image.places && list && list.length.between?(2, PLACES + 1)
-            return nil if (0...64).any? { |i| image.tile_see_through_at?(i) }
+            return nil if see_through_tile?(image)
 
-            places = (1...list.length).to_a
-            backdrop = places.find { |place| (list[place] & 0x7FFF) == @backdrop }
-            backdrop ? [backdrop, *(places - [backdrop])] : places
+            tile_fact(:list_order, image) do
+              places = (1...list.length).to_a
+              backdrop = places.find { |place| (list[place] & 0x7FFF) == @backdrop }
+              backdrop ? [backdrop, *(places - [backdrop])] : places
+            end
           end
 
           # The tile number and palette number of a tile drawn from its list (#list_order): each
@@ -918,7 +945,9 @@ module VBlank
           # The colours a background tile draws, in the order its palette holds them after the
           # backdrop: the order it first draws each.
           def tile_colors(image)
-            (0...64).reject { |i| image.tile_see_through_at?(i) }.map { |i| image.color_at(i) & 0x7FFF }.uniq
+            tile_fact(:tile_colors, image) do
+              (0...64).reject { |i| image.tile_see_through_at?(i) }.map { |i| image.color_at(i) & 0x7FFF }.uniq
+            end
           end
 
           # A TILE THE GAME PAINTS from a list (Nodes::TileRun): a tile number of its own, never

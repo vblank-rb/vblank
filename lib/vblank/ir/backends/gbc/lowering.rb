@@ -189,8 +189,9 @@ module VBlank
             @plans_background_rooms = tile_rooms # ...its background tiles among them
             @plans_room_colors = room_colors
             # What the program is before any instruction is made, worked out as the Super Nintendo's
-            # is (LoweringPlan), and kept here under the names the rest of the lowering reads.
-            @plan = LoweringPlan.new(program, console: Console::COLOR, error: LoweringError)
+            # is (LoweringPlan), and kept here under the names the rest of the lowering reads. It
+            # reads the program and the console alone, so one plan serves every try of a build.
+            @plan = @known[:plan] ||= LoweringPlan.new(program, console: Console::COLOR, error: LoweringError)
             @funcs = @plan.funcs
             @tick_handlers = @plan.tick_handlers
             @timers = @plan.timers
@@ -217,7 +218,8 @@ module VBlank
           # the program itself.
           def sections
             refuse_unlowered_kinds!
-            @plan.refuse_what_console_lacks!
+            # Asked once a build: it reads the program and the console alone, as the plan does.
+            @known[:console_lacks_nothing] ||= @plan.refuse_what_console_lacks!.nil?
             refuse_unsupported_save_memory!
             refuse_unfit_paint_squares!
             refuse_lists_in_use_past_eight!

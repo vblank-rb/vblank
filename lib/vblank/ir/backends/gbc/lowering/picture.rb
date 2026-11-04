@@ -109,7 +109,7 @@ module VBlank
             # first colour, which the see-through pixels of the tiles drawn from it show, and an
             # empty cell shows the first palette's. So the backdrop is built into every palette, and
             # a `screen` that says another (#refuse_backdrops_of_its_own!) is refused.
-            def color_backdrop = IR::SceneHandover.of(@program).game_backdrop
+            def color_backdrop = @handover.game_backdrop
 
             # How tall the console draws every sprite piece: 16 where the game named the Color's 8×16
             # (`sprite_piece_size: { gbc: [8, 16] }`), 8 otherwise (Art#initialize).
@@ -118,11 +118,10 @@ module VBlank
             # A `screen` other than the game's own that says a backdrop the game's does not: a scene's
             # would have every palette written again as it takes over. Named by its scene.
             def refuse_backdrops_of_its_own!
-              handover = IR::SceneHandover.of(@program)
               @program.walk.each do |node|
-                next unless node.kind == :screen && node.backdrop && node.backdrop != handover.game_backdrop
+                next unless node.kind == :screen && node.backdrop && node.backdrop != @handover.game_backdrop
 
-                scene = handover.scene_of_screen(node)
+                scene = @handover.scene_of_screen(node)
                 where = scene ? "the scene #{Modes.strip_scene_prefix(scene).to_sym.inspect}" : "a `screen` in a routine"
                 raise LoweringError, "#{where} says a backdrop of its own. A Game Boy Color keeps the backdrop in " \
                                      "each of its colour lists, so a game shows one backdrop on the Color. To fix " \
@@ -135,7 +134,7 @@ module VBlank
             # the blank. This build keeps that colour in every palette it makes and in every table that
             # changes a palette as the game runs, and does not write it on its own yet.
             def refuse_backdrop_following_list!
-              return unless IR::SceneHandover.of(@program).backdrop_follows_list?
+              return unless @handover.backdrop_follows_list?
 
               raise NotMadeYet.new("The backdrop of this game takes its color from a list (`screen ... backdrop:` names " \
                                    "a list). The Game Boy Color build does not make this yet. To fix this, give backdrop: " \
@@ -146,7 +145,7 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               refuse_backdrop_following_list!
-              @stacking = Stacking.picture(@program)
+              @stacking = @known[:stacking] ||= Stacking.picture(@program)
               @objects = by_name(@program.walk, :object)
               @color_lists = by_name(@program.walk, :color_list)
               @pictures = by_name(@program.walk, :data, :bitmap)
@@ -157,7 +156,7 @@ module VBlank
                              first_cleared_to: @program.walk.find { |node| node.kind == :clear_screen }&.color,
                              backdrop: color_backdrop, piece_height: piece_height,
                              scene_pictures: (scene_pictures if @plans_scene_pictures),
-                             indexes_in_banks: @indexes_in_banks)
+                             indexes_in_banks: @indexes_in_banks, tile_facts: (@known[:tile_facts] ||= {}))
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
               @drawn_sprites = SpriteNames.new(@program) # the numbers a run says its sprites by
@@ -1609,7 +1608,19 @@ module VBlank
             # each of its own shows. A tile drawn by place from its list (GBC::Art#list_order, and
             # GBC::Art#drawn_places for one drawn with other lists) has a colour of the palette for
             # each place instead, so it swaps place for place.
+            #
+            # It reads the program alone, so it is worked out once a build (+known+). +swaps+ comes
+            # from #swaps_for, one object for each declaration and step, so it is kept by which
+            # object it is rather than hashed through every list it holds.
             def tile_colors_with(name, swaps)
+              by_swaps = @known[:tile_colors_with] ||= Hash.new { |all, held| all[held] = {} }.compare_by_identity
+              known = by_swaps[swaps]
+              return known[name] if known.key?(name)
+
+              known[name] = tile_colors_made_with(name, swaps).freeze
+            end
+
+            def tile_colors_made_with(name, swaps)
               run = run_painting(name)
               if run
                 swapped = swaps && swaps[run.list_drawn_from]
@@ -1618,7 +1629,7 @@ module VBlank
                 return solid_run?(run) ? shown.map { |color| color & 0x7FFF } : padded_colors(shown)
               end
 
-              image = Assets::Image.of(@pictures.fetch(name))
+              image = tile_image(name)
               swapped = swaps && swaps[image.list_drawn_from]
               order = @art.list_order(image)
               if order
@@ -1660,24 +1671,43 @@ module VBlank
             # Nil for a background never drawn with other colours, and for a tile none of its lists
             # changes, so a tile it shows beside one that is has a palette apart only where the two
             # show it differently — as the interpreter swaps each background's colours on its own.
+            #
+            # Everything it reads is the program's alone, so it is worked out once a build, not once a
+            # try (+known+). Kept by which declaration it is: a node's own hash walks everything under
+            # it. And two that are equal are one object, so GBC::Art keeps a tile by which steps it
+            # was handed (Art#background_tile) without hashing them on every ask.
             def recolor_steps_of(name, bg)
               return nil if Array(bg.recolors).empty?
 
-              # Kept by which declaration it is: a node's own hash walks everything under it.
-              @recolor_steps ||= {}
+              known = @known[:recolor_steps] ||= {}
               key = [name, bg.object_id]
-              return @recolor_steps[key] if @recolor_steps.key?(key)
+              return known[key] if known.key?(key)
 
               own = tile_colors_with(name, nil)
               steps = bg.recolors.each_index.map { |step| tile_colors_with(name, swaps_for(bg, step)) }
-              @recolor_steps[key] = steps.all?(own) ? nil : [bg.name, steps]
+              known[key] = steps.all?(own) ? nil : one_of_equal_steps([bg.name, steps])
+            end
+
+            # +steps+, or the equal steps #recolor_steps_of handed out first.
+            def one_of_equal_steps(steps)
+              made = @known[:recolor_steps_made] ||= {}
+              made[steps] ||= steps
             end
 
             # The backgrounds drawn with other lists of colours.
             def recolored_scenery = @recolored_scenery ||= tiled_scenery.reject { |bg| Array(bg.recolors).empty? }
 
-            # Each of +bg+'s own lists to the list it is drawn with at its step +step+.
-            def swaps_for(bg, step) = bg.list_swaps(step)
+            # Each of +bg+'s own lists to the list it is drawn with at its step +step+, worked out
+            # once a build for each declaration and step: every tile it draws asks.
+            def swaps_for(bg, step)
+              (@known[:list_swaps] ||= {})[[bg.object_id, step]] ||= bg.list_swaps(step)
+            end
+
+            # The picture a background's tile +name+ draws (Assets::Image), made once a build: every
+            # cell and every step of its colours asks.
+            def tile_image(name)
+              (@known[:tile_images] ||= {})[name] ||= Assets::Image.of(@pictures.fetch(name))
+            end
 
             def padded_colors(colors) = [@art.backdrop, *colors.map { |color| color & 0x7FFF }].fill(Art::BACKDROP, colors.length + 1...Art::PLACES)
 
