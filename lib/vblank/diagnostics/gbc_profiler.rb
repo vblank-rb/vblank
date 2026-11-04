@@ -12,6 +12,9 @@ module VBlank
     # back by routine without a label being read. Asleep, waiting for the screen, is counted apart: it is the part of
     # each frame the game did not need. How many passes of the game loop the frames held is the
     # runtime's own count, so the frame rate is the one the game really played at.
+    #
+    # With a tape (`rom.profile(tape:, frames:)`), each frame is read by itself instead
+    # (TapeProfile): this profiler is the meter that plays and measures one frame of it.
     class GBCProfiler
       SETTLE = 20
       FRAMES = 60
@@ -19,23 +22,37 @@ module VBlank
       # The console draws this many frames a second.
       FRAME_RATE = 59.73
 
-      # One routine and its share of every cycle measured, from 0 to 1.
-      Spent = Data.define(:routine, :share)
+      # A frame is this many lines of the picture: 144 drawn, and ten of the blank after them.
+      LINES_A_FRAME = 154
+
+      FILE_NAME = "game.gbc"
+
+      # One routine and its share of every cycle measured, from 0 to 1: the same as the other
+      # consoles' profiles say it.
+      Spent = TimeByRoutine::Spent
 
       # What a run came to: the frames measured, how many passes of the game loop they held, the
       # frame rate that is, how much of the time the game was asleep, and the routines by share,
       # the game's and the runtime's apart. +lists_missed+ is how many times a sprite found none
       # of the console's eight lists of sprite colours free, in a game whose sprites wear more
       # lists than eight (GBC::Art#lends?), and was drawn in another list's colours; nil for a
-      # game that lends none.
-      Result = Data.define(:frames, :passes, :fps, :idle_share, :game, :runtime, :lists_missed) do
-        def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h))
+      # game that lends none. +measured_frames+ are the frames the time was read over, counted
+      # from 1 at power-on as a tape counts them.
+      Result = Data.define(:frames, :passes, :fps, :idle_share, :game, :runtime, :lists_missed, :measured_frames) do
+        def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h),
+                               measured_frames: [measured_frames.begin, measured_frames.end])
       end
 
       # +rom+ is a GBCROM built with its record (GBC::Places). +keys+ are held from power-on.
       def self.run(rom, frames: FRAMES, settle: SETTLE, keys: [])
         Emulator.load!
         new(rom).measure(frames: frames, settle: settle, keys: keys)
+      end
+
+      # +tape+ played on +rom+ from power-on, and each of +frames+ read by itself (TapeProfile).
+      def self.run_tape(rom, tape:, frames:)
+        Emulator.load!
+        TapeProfile.play(rom, tape: tape, frames: frames, meter: new(rom))
       end
 
       def initialize(rom)
@@ -46,21 +63,44 @@ module VBlank
       end
 
       def measure(frames:, settle:, keys:)
-        Emulator.with_cartridge(@rom, file_name: "game.gbc") do |core|
+        Emulator.with_cartridge(@rom, file_name: FILE_NAME) do |core|
           core.set_keys(IR::Buttons.mask(keys))
           settle.times { core.run_frame }
           before = passes(core)
           missed_before = lists_missed(core)
           counted = core.profile_gb(frames)
           missed = missed_before && (lists_missed(core) - missed_before)
-          result_of(counted, frames, passes(core) - before, missed)
+          result_of(counted, frames, passes(core) - before, missed, (settle + 1)..(settle + frames))
         end
+      end
+
+      # WHAT TapeProfile ASKS OF THE CONSOLE IT PLAYS A TAPE ON (see TapeProfile.play): the file
+      # name, the buttons put down, the runtime's two words, and one frame played and measured.
+      def file_name = FILE_NAME
+
+      def hold(core, buttons) = core.set_keys(IR::Buttons.mask(buttons))
+
+      def words(core) = [passes(core), core.bus_read32(@places.runtime.fetch(IR::Backends::GBC::Runtime::Frame::SHOWN))]
+
+      # One frame, played an instruction at a time when it is +measured+ (Core#profile_gb), else
+      # all at once. Its lines to spare are its share asleep of the frame's lines.
+      def play_frame(core, measured:)
+        unless measured
+          core.run_frame
+          return nil
+        end
+        asleep, total, game, runtime = cycles_by_routine(core.profile_gb(1))
+        kept = TapeProfile::ROUTINES_KEPT
+        TapeProfile::FrameCost.new(lines_spare: (asleep * LINES_A_FRAME / total).floor, awake_share: 1 - (asleep / total),
+                                   game: by_share(game, total).first(kept), runtime: by_share(runtime, total).first(kept))
       end
 
       # The report, for a person.
       def self.render(result, out: $stdout)
         out.puts "Game Boy Color: #{result.passes} passes of the game loop in #{result.frames} frames " \
                  "(#{format('%.1f', result.fps)} a second), asleep #{percent(result.idle_share)} of the time."
+        out.puts "The time was measured over frames #{result.measured_frames.begin} to #{result.measured_frames.end} " \
+                 "from power-on. A tape's frames are counted the same way: `rom.profile(tape:, frames:)` reads each one."
         if result.lists_missed&.positive?
           times = result.lists_missed == 1 ? "1 time" : "#{result.lists_missed} times"
           out.puts "", "A sprite found none of the console's eight lists of colours free #{times}. Each time, the " \
@@ -93,7 +133,16 @@ module VBlank
       # charges a sleep to the instruction that went to sleep, so their cycles are the sleep.
       SLEEPS = %w[rt_sleep_until_vblank_halt rt_stopped].freeze
 
-      def result_of(counted, frames, passes, missed)
+      def result_of(counted, frames, passes, missed, measured_frames)
+        asleep, total, game, runtime = cycles_by_routine(counted)
+        Result.new(frames: frames, passes: passes, fps: passes * FRAME_RATE / frames,
+                   idle_share: asleep / total, game: by_share(game, total), runtime: by_share(runtime, total),
+                   lists_missed: missed, measured_frames: measured_frames)
+      end
+
+      # What Core#profile_gb +counted+ comes to: the cycles asleep, all the cycles, and the cycles
+      # of the game's routines and of the runtime's, each by routine.
+      def cycles_by_routine(counted)
         total = counted[:total].to_f
         spent = counted[:spent].dup
         sleeps = SLEEPS.filter_map { |label| @places.code[label] }.map { |place| counted_key(place) }
@@ -104,9 +153,7 @@ module VBlank
           routine = @places.routine_at(key >> 16, key & 0xFFFF)
           routine ? game[routine] += cycles : runtime[runtime_part_at(key)] += cycles
         end
-        Result.new(frames: frames, passes: passes, fps: passes * FRAME_RATE / frames,
-                   idle_share: asleep / total, game: by_share(game, total), runtime: by_share(runtime, total),
-                   lists_missed: missed)
+        [asleep, total, game, runtime]
       end
 
       def by_share(cycles_by_routine, total)

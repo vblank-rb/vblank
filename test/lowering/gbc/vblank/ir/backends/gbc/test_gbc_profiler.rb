@@ -81,7 +81,7 @@ class TestGBCProfiler < Minitest::Test
   def test_a_scene_to_measure_is_refused_in_plain_words
     error = assert_raises(ArgumentError) { profiled(scene: :title) }
 
-    assert_match(/cannot be told a scene/, error.message)
+    assert_match(/cannot measure one scene/, error.message)
   end
 
   # NINE THINGS IN NINE LISTS OF COLOURS ON THE SCREEN AT ONCE: the Color lends its eight lists

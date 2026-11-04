@@ -21,7 +21,7 @@ module VBlank
         return if press.empty?
 
         raise ArgumentError, "A #{console} profile cannot press a button as the measuring starts yet. To fix this, leave " \
-                             "out --press, and hold the button with --keys."
+                             "out --press. To press a button on a given frame, give a tape of presses (--tape)."
       end
 
       # +code+ is a build's labels and their addresses, and +line+ how much of the emulator's count a

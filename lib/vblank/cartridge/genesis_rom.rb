@@ -88,11 +88,7 @@ module VBlank
       # read by itself (Diagnostics::TapeProfile).
       def profile(format: :human, out: $stdout, frames: Diagnostics::GenesisProfiler::FRAMES,
                   settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
-        if scene || from
-          raise ArgumentError, "a Genesis profile measures the game as it plays from power-on, and cannot be " \
-                               "told a #{scene ? 'scene' : 'saved moment'} yet. To fix this, leave out " \
-                               "#{scene ? '--scene' : '--from'}, and use --keys and --settle to reach the moment."
-        end
+        Diagnostics::TapeProfile.refuse_scene!(scene, from, "Genesis")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Genesis")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::GenesisProfiler, tape: tape, frames: frames, keys: keys,

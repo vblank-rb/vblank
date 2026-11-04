@@ -211,12 +211,12 @@ class TestSNESProfile < Minitest::Test
     error = assert_raises(ArgumentError) { rom_of(LIGHT).profile(out: StringIO.new, press: [:a]) }
 
     assert_match(/--press/, error.message)
-    assert_match(/--keys/, error.message)
+    assert_match(/--tape/, error.message)
   end
 
   def test_a_scene_to_measure_is_refused_in_plain_words
     error = assert_raises(ArgumentError) { rom_of(LIGHT).profile(out: StringIO.new, scene: :title) }
 
-    assert_match(/cannot be told a scene/, error.message)
+    assert_match(/cannot measure one scene/, error.message)
   end
 end

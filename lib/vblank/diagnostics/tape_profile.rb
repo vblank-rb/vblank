@@ -2,8 +2,9 @@
 
 module VBlank
   module Diagnostics
-    # WHERE EACH FRAME WENT WHILE A TAPE PLAYED, for a console whose emulator counts time by address
-    # (TimeByRoutine: the Super Nintendo and the Genesis).
+    # WHERE EACH FRAME WENT WHILE A TAPE PLAYED, on the Game Boy Color, the Super Nintendo and the
+    # Genesis. Each console's profiler says how one frame is played and measured on its emulator (a
+    # meter: see .play); the tape, the frames, the readings and the report are the same for all.
     #
     # `rom.profile` measures a game standing still, or holding the same buttons the whole time, and
     # adds every frame it measured into one report. The frame worth looking at is usually one a
@@ -35,12 +36,19 @@ module VBlank
       # How many of a frame's routines a reading keeps, the game's and the runtime's each.
       ROUTINES_KEPT = 3
 
+      # What a console's meter measured of one frame: the +lines_spare+ the game waited through, the
+      # +awake_share+ of the frame's time it did not (0 to 1), and its busiest routines, the game's
+      # and the runtime's (TimeByRoutine::Spent), by share of the frame's time.
+      FrameCost = Data.define(:lines_spare, :awake_share, :game, :runtime)
+
       # One frame: its number, counted from 1 at power-on as a tape counts them; the +buttons+ the
-      # tape held on it; the +lines_spare+ the game waited through; how many passes of the game loop
-      # ended in it; +picture_held_by+, nil when a new picture went up, else :pass, :gap or
-      # :setting_up (the game has not reached its loop yet); and its routines by share of the
-      # frame's time, the game's and the runtime's (TimeByRoutine::Spent).
-      FrameReading = Data.define(:frame, :buttons, :lines_spare, :passes_ended, :picture_held_by, :game, :runtime) do
+      # tape held on it; the +lines_spare+ the game waited through and the +awake_share+ of the
+      # frame it did not; how many passes of the game loop ended in it; +picture_held_by+, nil when
+      # a new picture went up, else :pass, :gap or :setting_up (the game has not reached its loop
+      # yet); and its routines by share of the frame's time, the game's and the runtime's
+      # (TimeByRoutine::Spent).
+      FrameReading = Data.define(:frame, :buttons, :lines_spare, :awake_share, :passes_ended, :picture_held_by,
+                                 :game, :runtime) do
         def new_picture? = picture_held_by.nil?
         def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h))
       end
@@ -53,7 +61,48 @@ module VBlank
         # The frames whose picture stood still.
         def held = readings.reject(&:new_picture?)
 
+        # The frame the game was awake for the most of: the first of them, if several tie.
+        def busiest = readings.max_by { |reading| [reading.awake_share, -reading.frame] }
+
         def to_h = { frames: readings.map(&:to_h) }
+      end
+
+      # THE METER OF A CONSOLE WHOSE EMULATOR ADDS UP TIME BY ADDRESS (Core#take_processor_time on
+      # the Super Nintendo and the Genesis), read as TimeByRoutine reads it. +shown_at+ and
+      # +passes_at+ are where its runtime keeps Frame::SHOWN and Frame::PASSES in work memory.
+      class ProcessorTimeMeter
+        attr_reader :file_name
+
+        def initialize(time:, file_name:, shown_at:, passes_at:)
+          @time = time
+          @file_name = file_name
+          @shown_at = shown_at
+          @passes_at = passes_at
+          @counting = false
+        end
+
+        def hold(core, buttons)
+          first, second = IR::Buttons.by_controller(buttons)
+          core.set_buttons(first)
+          core.set_buttons(second, port: 1) unless second.empty?
+        end
+
+        # The passes ended, and the pass whose picture is up.
+        def words(core) = [core.wram_read32(@passes_at), core.wram_read32(@shown_at)]
+
+        # One frame played: what it cost when +measured+, else nil.
+        def play_frame(core, measured:)
+          unless measured
+            core.run_frame
+            return nil
+          end
+          core.take_processor_time unless @counting # the first ask starts the count
+          @counting = true
+          core.run_frame
+          report = @time.report([core.take_processor_time])
+          FrameCost.new(lines_spare: report.fewest_lines_spare, awake_share: 1 - report.idle_share,
+                        game: report.game.first(ROUTINES_KEPT), runtime: report.runtime.first(ROUTINES_KEPT))
+        end
       end
 
       # What `rom.profile(tape:, frames:)` does on a console whose +profiler+ answers run_tape: the
@@ -72,18 +121,26 @@ module VBlank
       # emulator, and +shown_at+ and +passes_at+ where its runtime keeps Frame::SHOWN and
       # Frame::PASSES.
       def self.run(rom, tape:, frames:, time:, file_name:, shown_at:, passes_at:)
+        meter = ProcessorTimeMeter.new(time: time, file_name: file_name, shown_at: shown_at, passes_at: passes_at)
+        play(rom, tape: tape, frames: frames, meter: meter)
+      end
+
+      # Plays +tape+ on +rom+ from power-on and reads each of +frames+, a range counted from 1, with
+      # the console's +meter+. A meter answers four things: +file_name+, what the cartridge is
+      # written as for its emulator; hold(core, buttons), to put the buttons down for the next
+      # frame; words(core), the runtime's Frame::PASSES and Frame::SHOWN as they stand; and
+      # play_frame(core, measured:), which plays one frame and answers its FrameCost when it is
+      # measured, nil when not.
+      def self.play(rom, tape:, frames:, meter:)
         held_on = buttons_by_frame(tape, frames.end)
-        Emulator.with_cartridge(rom, file_name: file_name) do |core|
-          word = ->(address) { core.wram_read32(address) }
-          before = [word.call(passes_at), word.call(shown_at)]
+        Emulator.with_cartridge(rom, file_name: meter.file_name) do |core|
+          before = meter.words(core)
           readings = (1..frames.end).filter_map do |number|
             buttons = held_on[number - 1] || []
-            hold(core, buttons)
-            core.take_processor_time if number == frames.begin # the first ask starts the count
-            core.run_frame
-            spent = core.take_processor_time if number >= frames.begin
-            now = [word.call(passes_at), word.call(shown_at)]
-            reading = (read_frame(time, number, buttons, spent, before, now) if spent)
+            meter.hold(core, buttons)
+            cost = meter.play_frame(core, measured: number >= frames.begin)
+            now = meter.words(core)
+            reading = (read_frame(number, buttons, cost, before, now) if cost)
             before = now
             reading
           end
@@ -91,13 +148,12 @@ module VBlank
         end
       end
 
-      # What frame +number+ came to: +spent+ is what the emulator counted in it, and +before+ and +now+
+      # What frame +number+ came to: +cost+ is what the meter measured in it, and +before+ and +now+
       # the passes ended and the pass shown at its start and at its end.
-      def self.read_frame(time, number, buttons, spent, before, now)
-        report = time.report([spent])
-        FrameReading.new(frame: number, buttons: buttons, lines_spare: report.fewest_lines_spare,
+      def self.read_frame(number, buttons, cost, before, now)
+        FrameReading.new(frame: number, buttons: buttons, lines_spare: cost.lines_spare, awake_share: cost.awake_share,
                          passes_ended: now.first - before.first, picture_held_by: picture_held_by(before, now),
-                         game: report.game.first(ROUTINES_KEPT), runtime: report.runtime.first(ROUTINES_KEPT))
+                         game: cost.game, runtime: cost.runtime)
       end
 
       # nil when a new picture went up in the frame, or when the game has stopped and its last
@@ -109,12 +165,6 @@ module VBlank
         return :setting_up if passes_before.zero?
 
         passes_before > shown ? :gap : :pass
-      end
-
-      def self.hold(core, buttons)
-        first, second = IR::Buttons.by_controller(buttons)
-        core.set_buttons(first)
-        core.set_buttons(second, port: 1) unless second.empty?
       end
 
       # The buttons the tape holds on each frame up to +last+, from frame 1; past its end, none.
@@ -152,12 +202,35 @@ module VBlank
                              "this, remove settle:, and name the frames with frames:."
       end
 
+      # The frames a person typed (`--frames`, `FRAMES=`): a number of frames, "60", or a range of
+      # a tape's frames, "590..610".
+      def self.frames_from_text(text)
+        case text.to_s
+        when /\A\d+\z/ then Integer(text, 10)
+        when /\A(\d+)\.\.(\d+)\z/ then Integer(::Regexp.last_match(1), 10)..Integer(::Regexp.last_match(2), 10)
+        else
+          raise ArgumentError, "#{text.inspect} is not a number of frames. Give a number, such as 60. With a tape, " \
+                               "give a range of frames, such as 590..610."
+        end
+      end
+
+      # A console whose profile plays a tape reaches a moment by the tape's presses, and cannot be
+      # told a scene or a saved moment.
+      def self.refuse_scene!(scene, from, console)
+        return unless scene || from
+
+        cannot = scene ? "It cannot measure one scene yet." : "It cannot start from a saved moment yet."
+        raise ArgumentError, "A #{console} profile measures the game from power-on. #{cannot} To fix this, leave out " \
+                             "#{scene ? '--scene' : '--from'}. To reach a moment, give a tape of presses (--tape) " \
+                             "and the frames to read (--frames 300..310)."
+      end
+
       # Only a console whose profile reads each frame by itself can play a tape.
       def self.refuse_tape!(tape, console)
         return if tape.nil?
 
-        raise ArgumentError, "A #{console} profile cannot play a tape yet. A Super Nintendo or a Genesis profile can. " \
-                             "To fix this, remove tape:, and hold buttons with keys:."
+        raise ArgumentError, "A #{console} profile cannot play a tape yet. A Game Boy Color, Super Nintendo or Genesis " \
+                             "profile can. To fix this, remove tape:. To hold buttons, use keys:."
       end
 
       # The readings, for a person: a line for each frame, and under it its busiest routines.
@@ -165,13 +238,18 @@ module VBlank
         held = result.held
         first = result.readings.first.frame
         last = result.readings.last.frame
+        busiest = result.busiest
         out.puts "Frames #{first} to #{last} of the tape: #{held.size} of #{result.readings.size} showed no new picture."
+        out.puts "The busiest frame was #{busiest.frame}: the game was awake for #{percent(busiest.awake_share)} of it."
         result.readings.each { |reading| render_frame(reading, out) }
       end
 
+      def self.percent(share) = format("%.1f%%", share * 100)
+
       def self.render_frame(reading, out)
         holding = reading.buttons.empty? ? "nothing held" : "holding #{reading.buttons.map(&:to_s).join(' + ').upcase}"
-        out.puts "", "Frame #{reading.frame} (#{holding}): #{reading.lines_spare} lines to spare. #{picture_words(reading)}"
+        out.puts "", "Frame #{reading.frame} (#{holding}): #{reading.lines_spare} lines to spare, awake " \
+                     "#{percent(reading.awake_share)}. #{picture_words(reading)}"
         { "yours" => reading.game, "runtime" => reading.runtime }.each do |whose, spent|
           next if spent.empty?
 

@@ -468,6 +468,8 @@ module VBlank
         vblank profile game.rb --scene level      in the scene named :level
         vblank profile game.rb --from boss.ss1    from an emulator save state
         vblank profile game.rb --console gbc      its Game Boy Color cartridge
+        vblank profile game.rb --tape t.tape --frames 590..610
+                                                  each frame of a tape by itself
 
       Options:
         --console NAME           #{CONSOLE_CHOICES}: which console's cartridge
@@ -481,7 +483,14 @@ module VBlank
         --from PATH              Start from an emulator save state, made by
                                  playing to that moment once. The state must come
                                  from this same build of the game.
+        --tape PATH              Play the presses of this tape from power-on, and
+                                 report each frame of --frames by itself: its
+                                 lines to spare, how much of it the game was
+                                 awake, and its busiest routines. On the Game
+                                 Boy Color, the Super Nintendo and the Genesis.
         --frames N               Measure this many frames. Default: #{VBlank::Diagnostics::Profiler::FRAMES}.
+                                 With --tape, a range of the tape's frames,
+                                 counted from 1: --frames 590..610.
         --settle N               Run this many frames first, so the game is past
                                  its start. With --scene, the frames the scene
                                  runs first. 0 from power-on measures the start.
@@ -492,8 +501,9 @@ module VBlank
     TEXT
     option :format, banner: "NAME", default: "human"
     option :console, banner: "NAME", enum: CONSOLES
-    option :frames, type: :numeric, banner: "N", default: VBlank::Diagnostics::Profiler::FRAMES
-    option :settle, type: :numeric, banner: "N", default: VBlank::Diagnostics::Profiler::SETTLE
+    option :frames, banner: "N", default: VBlank::Diagnostics::Profiler::FRAMES.to_s
+    option :settle, type: :numeric, banner: "N"
+    option :tape, banner: "PATH"
     option :keys, type: :array, banner: "BUTTON", default: []
     option :press, type: :array, banner: "BUTTON", default: []
     option :scene, banner: "NAME"
@@ -502,12 +512,15 @@ module VBlank
     def profile(game_file)
       format = { "human" => :human, "json" => :json }[options[:format]] or
         raise Thor::Error, "#{options[:format].inspect} is not a profile format. The formats are: human, json."
+      measuring = { frames: VBlank::Diagnostics::TapeProfile.frames_from_text(options[:frames]), scene: options[:scene], from: options[:from], keys: held_buttons || [],
+                    press: buttons_named(options[:press]) }
+      # Each console's profile has its own settling when none is said, and a tape says its own start.
+      measuring[:settle] = options[:settle] if options[:settle]
+      measuring[:tape] = VBlank::Playthroughs::Tape.read(options[:tape]) if options[:tape]
       game = load_game(game_file)
       # Built the same way `build` builds it — measured placement included — so this reports on
       # the cartridge somebody would actually ship, not a differently-placed one.
-      game.build_rom(settings: given_settings, console: console_to_run(game, "profile"))
-          .profile(format: format, frames: options[:frames], settle: options[:settle], scene: options[:scene],
-                   from: options[:from], keys: held_buttons || [], press: buttons_named(options[:press]))
+      game.build_rom(settings: given_settings, console: console_to_run(game, "profile")).profile(format: format, **measuring)
     rescue ArgumentError, VBlank::BuildError => e
       raise Thor::Error, e.message
     end

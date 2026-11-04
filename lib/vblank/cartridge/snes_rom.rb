@@ -142,11 +142,7 @@ module VBlank
       # read by itself (Diagnostics::TapeProfile).
       def profile(format: :human, out: $stdout, frames: Diagnostics::SNESProfiler::FRAMES,
                   settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
-        if scene || from
-          raise ArgumentError, "a Super Nintendo profile measures the game as it plays from power-on, and cannot be " \
-                               "told a #{scene ? 'scene' : 'saved moment'} yet. To fix this, leave out " \
-                               "#{scene ? '--scene' : '--from'}, and use --keys and --settle to reach the moment."
-        end
+        Diagnostics::TapeProfile.refuse_scene!(scene, from, "Super Nintendo")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Super Nintendo")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::SNESProfiler, tape: tape, frames: frames, keys: keys,

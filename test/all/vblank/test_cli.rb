@@ -360,6 +360,43 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A game for the Color whose count jumps on the pass after A goes down.
+  TAPED = <<~RUBY
+    VBlank.game("TAPED", consoles: %i[gbc]) do
+      total = 0
+      func(:spin) { repeat(200) { total += 3 } }
+      game_loop { call :spin if pressed(:a) }
+    end
+  RUBY
+
+  # A down on frame 30 alone.
+  TAPED_PRESSES = <<~TAPE
+    vblank tape 1
+    recorded on: TAPED 0x00000000
+    starts from: power-on
+
+    29 -
+    1 a
+    10 -
+  TAPE
+
+  def test_profile_tape_reads_each_frame_of_the_tape_by_itself
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "taped.rb"), TAPED)
+      File.write(File.join(dir, "a.tape"), TAPED_PRESSES)
+      out, status = cli("profile", "taped.rb", "--tape", "a.tape", "--frames", "29..32", dir: dir)
+
+      assert status.success?, out
+      assert_match(/Frame 30 \(holding A\): \d+ lines to spare, awake/, out)
+      assert_match(/The busiest frame was 3\d/, out)
+      assert_match(/yours: .*spin/, out)
+
+      bad, bad_status = cli("profile", "taped.rb", "--tape", "a.tape", "--frames", "29-32", dir: dir)
+      refute bad_status.success?, bad
+      assert_match(/range of frames, such as 590\.\.610/, bad)
+    end
+  end
+
   # `build --format=ir` emits the game's IR as a standalone Ruby class instead of a
   # cartridge.
   def test_format_ir_prints_a_standalone_class_and_builds_no_cartridge

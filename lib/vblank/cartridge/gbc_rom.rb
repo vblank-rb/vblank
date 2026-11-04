@@ -104,19 +104,22 @@ module VBlank
 
       # WHERE ITS FRAMES WENT: the cartridge run in the emulator (Diagnostics::GBCProfiler), reported
       # for a person or as JSON. +keys+ are held from power-on, and +settle+ frames run before the
-      # +frames+ measured. The Advance's profile can be told a scene or a saved moment to measure;
-      # the Color's cannot yet, and says so.
+      # +frames+ measured.
+      #
+      # With a +tape+, the tape is played from power-on and +frames+ is a range of its frames, each
+      # read by itself (Diagnostics::TapeProfile). That is how a moment past a menu is reached: the
+      # Advance's profile can be told a scene or a saved moment to measure, and the Color's cannot.
       def profile(format: :human, out: $stdout, frames: Diagnostics::GBCProfiler::FRAMES,
-                  settle: Diagnostics::GBCProfiler::SETTLE, keys: [], scene: nil, from: nil, press: [], tape: nil)
-        Diagnostics::TapeProfile.refuse_tape!(tape, "Game Boy Color")
-        if scene || from
-          raise ArgumentError, "a Game Boy Color profile measures the game as it plays from power-on, and cannot be " \
-                               "told a #{scene ? 'scene' : 'saved moment'} yet. To fix this, leave out " \
-                               "#{scene ? '--scene' : '--from'}, and use --keys and --settle to reach the moment."
-        end
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
+        Diagnostics::TapeProfile.refuse_scene!(scene, from, "Game Boy Color")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Game Boy Color")
+        if tape
+          return Diagnostics::TapeProfile.profile(self, Diagnostics::GBCProfiler, tape: tape, frames: frames, keys: keys,
+                                                                                  settle: settle, format: format, out: out)
+        end
 
-        result = Diagnostics::GBCProfiler.run(self, frames: frames, settle: settle, keys: keys)
+        result = Diagnostics::GBCProfiler.run(self, frames: frames, settle: settle || Diagnostics::GBCProfiler::SETTLE,
+                                                    keys: keys)
         case format
         when :human
           Diagnostics::HiddenVariables.render(self, IR::Printer.for(out))
