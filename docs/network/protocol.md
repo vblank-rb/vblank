@@ -49,6 +49,7 @@ machines that have the same digest run the same game.
 |---|---|---|
 | `buttons` | `pass`, `mask` | The buttons the sender's player holds on pass `pass`, one bit for each button (a, b, select, start, right, left, up, down, r, l, x, y, c). It is sent `input_delay` passes before that pass is played. |
 | `checkpoint` | `pass`, `crc` | The CRC-32 of the whole game state of the sender after pass `pass`. A machine that sees two different numbers for one pass stops the match and names the pass. |
+| `chat` | `text` | A line of chat from the sender, for the others of the room to read: before the match, while others join, or during it. It is not a button and not state, so no checkpoint covers it and the game never sees it. A machine shows it as "Player N: text", N from `from`: no name goes over the network. A line is plain text of at most 200 characters; a machine turns control characters into spaces and cuts a longer line, and does the same to a line that comes. |
 | `left` | none | Said by the room, never by a machine. The sender (in `from`) has gone. The room passes on every message the sender sent before it says this. So every machine knows the same last pass of that player. |
 
 Pass 1 is the pass in which the game sets itself up. It reads no buttons. Pass 2 is the first pass
@@ -104,5 +105,5 @@ update. A newer game that talks to an older relay gets an `error` with the reaso
 
 ## Chat and the game
 
-Chat messages, when there are some, never reach the game. They are not buttons, and no state hash
-covers them.
+Chat messages never reach the game. They are not buttons, and no state hash covers them. A match with chat in
+it ends in the same state as the same match without.

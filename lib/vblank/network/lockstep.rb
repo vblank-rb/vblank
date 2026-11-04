@@ -46,6 +46,10 @@ module VBlank
       DEFAULT_INPUT_DELAY_PASSES = 2
       DEFAULT_PASSES_BETWEEN_CHECKPOINTS = 8
 
+      # The longest a line of chat is, in characters. A longer one is cut: a line is for a screen, and a room is
+      # not for a stranger to fill with a book.
+      MOST_CHAT_CHARACTERS = 200
+
       # What the host decides for every machine: the seed of the game's random numbers, the input
       # delay and checkpoint spacing in passes, and how many players the match holds.
       Settings = Data.define(:seed, :input_delay, :checkpoint_every, :players)
@@ -63,7 +67,7 @@ module VBlank
         end
       end
 
-      attr_reader :player, :settings, :events
+      attr_reader :player, :settings, :events, :chat_lines
 
       # The machine that makes the match: it is player 1, and decides every setting.
       def self.host(transport:, fingerprint:, players:, seed:, input_delay: DEFAULT_INPUT_DELAY_PASSES,
@@ -83,6 +87,7 @@ module VBlank
         @roster = [@player] # the players in the match, in the order they joined
         @started = false
         @events = []
+        @chat_lines = [] # what the others have said, as ChatLine, in the order it came
         @played = [] # the buttons of each pass played, one list of numbers a pass, for the tape
         @inputs = Hash.new { |hash, player| hash[player] = {} } # player => { pass => buttons }
         @last_pass_heard = {} # player => the latest pass whose buttons that player has sent
@@ -122,6 +127,14 @@ module VBlank
         record_departures_on(coming)
         @played << masks
         masks
+      end
+
+      # Says a line of chat to the others of the room, now or any time: before the match, while others join, or
+      # during it. It goes in the network's own message, never into the game. Control characters become spaces and a
+      # long line is cut, so what arrives is one line of plain text; an empty line says nothing.
+      def send_chat(text)
+        line = plain_line(text)
+        @transport.send_message(Chat.new(text: line)) unless line.empty?
       end
 
       # Tells the room this machine is going. The others see it as a player leaving.
@@ -213,6 +226,7 @@ module VBlank
         when Start then start_with(message.players)
         when Buttons then store_buttons(envelope.from, message)
         when Checkpoint then store_checkpoint(envelope.from, message)
+        when Chat then @chat_lines << ChatLine.new(player: envelope.from, text: plain_line(message.text))
         when Left then record_departure(envelope.from)
         end
       end
@@ -325,6 +339,10 @@ module VBlank
         agreed = @checkpoints.select { |earlier, crcs| earlier < pass && crcs.size > 1 && crcs.values.uniq.one? }
         agreed.keys.max || 0
       end
+
+      # +text+ as one line of plain text: control characters (a new line, an escape) are spaces, and it is at most
+      # MOST_CHAT_CHARACTERS long. What arrives is cleaned too, since a machine cannot be trusted to have done it.
+      def plain_line(text) = text.to_s.gsub(/[[:cntrl:]]/, " ").strip[0, MOST_CHAT_CHARACTERS]
 
       # --- the tape ---
 

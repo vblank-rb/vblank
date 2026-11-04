@@ -113,6 +113,20 @@ module VBlank
       wire_type "checkpoint"
     end
 
+    # A line of chat from a player, for the others of the room to read. It is not a button and not state: the
+    # game never sees it, and no checkpoint covers it, so it can never make machines disagree. The sender is
+    # only the number the room stamps on it.
+    Chat = Data.define(:text) do
+      include Wirable
+      wire_type "chat"
+    end
+
+    # A line of chat as a machine shows it: who said it (a player number, since no name goes over the network) and
+    # the text.
+    ChatLine = Data.define(:player, :text) do
+      def words = "Player #{player}: #{text}"
+    end
+
     # Said by the room, never by a machine: the machine in +from+ has gone. Every message that machine
     # sent has been handed on before this, in order, so every other machine knows the same last pass of
     # its buttons, and the player leaves on the same pass everywhere.

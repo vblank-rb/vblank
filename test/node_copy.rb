@@ -17,6 +17,7 @@ require "open3"
 #   node -> test   pass N CRC PIC  pass N ended: the CRC of the game's state, and of the picture
 #   node -> test   event N KIND P  something that happened on pass N (a player left)
 #   node -> test   fingerprint CONSOLE DIGEST
+#   node -> test   chat FROM TEXT  a line of chat that came from another player
 #
 # A copy that meets the others through a RELAY (relay_copy) is carried the same way, but what it says to the
 # relay is text for a line: `relay-out TEXT`, `relay?` and `relay-in TEXT` / `relay-end` / `relay-closed`, and it
@@ -27,13 +28,13 @@ module NodeCopy
 
   # What a copy came to: each pass's state CRC and picture CRC (as numbers and hex), the events it saw, the
   # fingerprint it carries, what it said on its error stream, and whether it ended well.
-  Played = Data.define(:states, :pictures, :events, :fingerprint, :room, :error, :success)
+  Played = Data.define(:states, :pictures, :events, :fingerprint, :room, :chats, :error, :success)
 
   # A callable for Network::Scheduler#play that plays the copy: +program+ built as JavaScript, as player
   # +endpoint.id+, to host (+host:+ with the match's settings) or to join. +passes+ is how many to play and
   # +hold+ the buttons the copy's player holds from pass 2.
-  def self.copy(program, endpoint:, passes:, hold: 0, host: nil, title: "WANDERERS")
-    -> { play(program, endpoint, passes, hold, host, title) }
+  def self.copy(program, endpoint:, passes:, hold: 0, host: nil, title: "WANDERERS", says: nil)
+    -> { play(program, endpoint, passes, hold, host, title, says: says) }
   end
 
   # A callable that plays the copy through a relay: it makes a room (when +host+ gives the match's settings),
@@ -45,11 +46,12 @@ module NodeCopy
     end
   end
 
-  def self.play(program, carrier, passes, hold, host, title, relay: nil, code_box: nil)
+  def self.play(program, carrier, passes, hold, host, title, relay: nil, code_box: nil, says: nil)
     script = VBlank::IR::Backends::JS.new.build_headless(program)
     role = host ? ["--match-host", *host.values_at(:seed, :input_delay, :checkpoint_every, :players).map(&:to_s)] : ["--match-join"]
     you = relay ? [] : ["--you", carrier.id.to_s]
-    command = ["node", script, passes.to_s, *role, *you, *relay.to_a, "--title", title, "--hold", hold.to_s]
+    chat = says ? ["--chat-at", says.first.to_s, says.last] : []
+    command = ["node", script, passes.to_s, *role, *you, *relay.to_a, "--title", title, "--hold", hold.to_s, *chat]
     Open3.popen3(*command) do |stdin, stdout, stderr, waiter|
       reader = Thread.new { stderr.read }
       result = converse(stdin, stdout, carrier, code_box)
@@ -59,7 +61,7 @@ module NodeCopy
   end
 
   def self.converse(stdin, stdout, carrier, code_box = nil)
-    found = { states: [], pictures: [], events: [], fingerprint: nil, room: nil }
+    found = { states: [], pictures: [], events: [], fingerprint: nil, room: nil, chats: [] }
     while (line = stdout.gets)
       case line
       when /\Anet-out (.*)/ then carrier.send_message(Wire.decode(Regexp.last_match(1)).message)
@@ -69,6 +71,7 @@ module NodeCopy
       when /\Aroom (\w+)/ then found[:room] = Regexp.last_match(1) and code_box&.concat([found[:room]] * 8) # one for each machine that may join
       when /\Apass (\d+) (\d+) (\h+)/ then found[:states] << Regexp.last_match(2).to_i and found[:pictures] << Regexp.last_match(3).to_i(16)
       when /\Aevent (\d+) (\w+) (\d+)/ then found[:events] << [Regexp.last_match(1).to_i, Regexp.last_match(2).to_sym, Regexp.last_match(3).to_i]
+      when /\Achat (\d+) (.*)/ then found[:chats] << [Regexp.last_match(1).to_i, Regexp.last_match(2)]
       when /\Afingerprint (\w+) (\h+)/ then found[:fingerprint] = [Regexp.last_match(1), Regexp.last_match(2)]
       end
     end

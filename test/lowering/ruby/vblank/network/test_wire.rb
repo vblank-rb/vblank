@@ -18,6 +18,7 @@ class TestWire < Minitest::Test
     Network::Start.new(players: [1, 2, 4]),
     Network::Buttons.new(pass: 12, mask: 16),
     Network::Checkpoint.new(pass: 8, crc: 3_054_198_966),
+    Network::Chat.new(text: "good game"),
     Network::Left.new
   ].freeze
 

@@ -111,6 +111,17 @@
       ]
     },
     {
+      "name": "a line of chat goes to the others of the room with who said it, and not back",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "chat", "text": "anyone here?" },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "chat", "from": 2, "text": "anyone here?" } } ] }
+      ]
+    },
+    {
       "name": "a code that is no room",
       "steps": [
         { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "NOPE" },
