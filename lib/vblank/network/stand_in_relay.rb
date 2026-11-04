@@ -31,7 +31,7 @@ module VBlank
       RELAY_ONLY_TYPES = %w[room_made room_joined rooms error left].freeze
 
       # The versions of the format it knows.
-      SUPPORTED_VERSIONS = [1].freeze
+      SUPPORTED_VERSIONS = [Wire::WIRE_VERSION].freeze
 
       # A room: its +code+ and the machines in it by their numbers (a number is never used twice), and, for a room
       # that asked to be listed, what to list: the game's +digest+, a +name+ and how many +seats+.
@@ -111,7 +111,7 @@ module VBlank
         room = connection.room or return
         room.members.delete(connection.number)
         @rooms.delete(room.code) if room.members.empty?
-        say_to(room, except: nil, message: { "v" => 1, "type" => "left", "from" => connection.number })
+        say_to(room, except: nil, text: Wire.encode(Left.new, from: connection.number))
       end
 
       private
@@ -131,7 +131,7 @@ module VBlank
         list_as_public(room, message) if message["public"] == true
         @rooms[room.code] = room
         number = admit(room, connection)
-        connection.deliver(JSON.generate({ "v" => 1, "type" => "room_made", "code" => room.code, "you" => number }))
+        connection.deliver(Wire.encode(RelayRoomMade.new(code: room.code, you: number)))
       end
 
       def join_room(connection, code)
@@ -143,7 +143,7 @@ module VBlank
 
         others = room.members.keys
         number = admit(room, connection)
-        connection.deliver(JSON.generate({ "v" => 1, "type" => "room_joined", "code" => room.code, "you" => number, "members" => others }))
+        connection.deliver(Wire.encode(RelayRoomJoined.new(code: room.code, you: number, members: others)))
       end
 
       # The room is to be listed: it keeps the game, a name that tells nobody who made it, and its seats.
@@ -158,8 +158,8 @@ module VBlank
       # that has filled, or emptied (it is gone then), is not listed.
       def list_rooms(connection, digest)
         open = @rooms.values.select { |room| room.digest && room.digest == digest.to_s && room.members.size < room.seats }
-        rooms = open.map { |room| { "code" => room.code, "name" => room.name, "members" => room.members.size, "seats" => room.seats } }
-        connection.deliver(JSON.generate({ "v" => 1, "type" => "rooms", "rooms" => rooms }))
+        rooms = open.map { |room| PublicRoom.new(code: room.code, name: room.name, members: room.members.size, seats: room.seats) }
+        connection.deliver(Wire.encode(RelayRooms.new(rooms: rooms)))
       end
 
       def admit(room, connection)
@@ -173,23 +173,22 @@ module VBlank
       def hand_on(connection, message)
         room = connection.room or return reply_error(connection, :not_in_a_room, "Make a room or join one before you send this.")
 
-        say_to(room, except: connection.number, message: message.merge("from" => connection.number))
+        say_to(room, except: connection.number, text: JSON.generate(message.merge("from" => connection.number)))
       end
 
-      # +message+ to every machine of +room+ but the one numbered +except+.
-      def say_to(room, except:, message:)
-        text = JSON.generate(message)
+      # +text+ to every machine of +room+ but the one numbered +except+.
+      def say_to(room, except:, text:)
         room.members.each { |number, member| member.deliver(text) unless number == except }
       end
 
       def reply_error(connection, reason, words)
-        connection.deliver(JSON.generate({ "v" => 1, "type" => "error", "reason" => reason.to_s, "words" => words }))
+        connection.deliver(Wire.encode(RelayError.new(reason: reason, words: words, supported: nil)))
       end
 
       def reply_unknown_version(connection, version)
         words = "This relay speaks version #{SUPPORTED_VERSIONS.join(', ')} of the network format, and the message is version #{version}. " \
                 "To fix this, use a game and a relay of the same version."
-        connection.deliver(JSON.generate({ "v" => 1, "type" => "error", "reason" => "version", "words" => words, "supported" => SUPPORTED_VERSIONS }))
+        connection.deliver(Wire.encode(RelayError.new(reason: :version, words: words, supported: SUPPORTED_VERSIONS)))
       end
 
       # The code for the next room, or nil when the codes given have run out. A direct host is given one code, its
