@@ -60,6 +60,15 @@ class TestIRGuardrailEmptyTiled < Minitest::Test
     assert_empty report.findings
   end
 
+  # No false positive: a screen that says a backdrop shows that colour wherever nothing is
+  # drawn, so with no background and no sprite it is a screen of one colour, not a black one.
+  def test_a_tiled_screen_with_a_backdrop_is_left_alone
+    report = validator.run(program(screen(:tiled, backdrop: 0x7FFF), wait_vblank, halt), autofix: false)
+
+    assert report.ok?
+    assert_empty report.findings
+  end
+
   # No false positive: `draw_text` on a tiled screen becomes sprite glyphs, so a
   # text-only HUD really does show something. Built through the DSL because that
   # mapping is the builder's job.

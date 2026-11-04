@@ -32,7 +32,7 @@ module VBlank
 
           def detect(program)
             return [] unless only_tiled?(program)
-            return [] if paints?(program)
+            return [] if paints?(program) || backdrop?(program)
 
             verb = bitmap_verb(program)
             # Blame the `screen :tiled` line either way: it's the one line to change
@@ -86,6 +86,13 @@ module VBlank
 
           def paints?(program)
             TiledDisplay.paints?(program)
+          end
+
+          # True when a screen says its backdrop, the colour shown wherever nothing is drawn. Such a
+          # screen with no background and no sprite shows that colour, which the author chose: a
+          # title card of one colour, or a colour a fade walks. It is not the silent black screen.
+          def backdrop?(program)
+            program.each.any? { |node| node.kind == :screen && !node.backdrop.nil? }
           end
 
           # The verb the developer typed for the first bitmap-only draw, or nil if
