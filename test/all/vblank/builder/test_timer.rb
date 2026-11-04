@@ -205,6 +205,41 @@ class TestTimer < Minitest::Test
     assert_equal 10, game_player.run(handler_in_uncalled_routine_program, frames: 10)[:hits]
   end
 
+  # A HANDLER CAN CALL THE ROUTINE IT INTERRUPTED. The handler runs at the frame boundary, which here is
+  # inside :step's own wait, so :step runs again while the first call is still going: the first call's
+  # first item writes 0, then the tick's call writes 5, 6 and 7 (it waits for nothing), so the first
+  # frame ends on 567. A cartridge keeps a routine's own numbers (its loop's count) at fixed places,
+  # and a call like this one shares them.
+  def test_a_handler_can_call_the_routine_whose_wait_it_runs_in
+    b = Builder.new
+    b.instance_eval do
+      seen = 0
+      depth = 0
+      beat = timer :beat, per_second: 60
+      func(:step) do
+        repeat(3) do |i|
+          seen = (seen * 10) + i + (depth * 5)
+          wait_vblank if depth.zero?
+        end
+      end
+      beat.on_tick do
+        depth += 1
+        call :step
+        depth -= 1
+      end
+      game_loop do
+        seen = 0
+        call :step
+      end
+    end
+    b.finalize_program
+    seen = {}
+    run = game_player
+    run.each_vblank { |frame| seen[frame] = run[:seen] }.run(b.program, frames: 3)
+
+    assert_equal 567, seen.fetch(1)
+  end
+
   # A HANDLER CAN DRAW. On a painted screen it draws what the game's own lines draw, a number
   # here; on a tear-free one what it draws goes on the page being drawn, so the loop's next
   # clear takes it away before that page is shown and the screen stays blue. (A Color keeps one
