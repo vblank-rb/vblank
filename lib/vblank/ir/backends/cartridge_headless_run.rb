@@ -29,6 +29,8 @@ module VBlank
       #   power_on                what is done before the first frame, past the buttons held
       #   read_fault              what the runtime kept of a fault: [code, list's place, first, second]
       #   picture_now(camera)     the emulator's picture, as a Picture
+      #   read_picture_drawn, picture_of_pass
+      #                           for a console whose picture is read as the game waits (optional)
       #   record_moment, finish_after_halt
       #                           the moment of a pass, and the end of a game that halted
       #
@@ -198,11 +200,11 @@ module VBlank
             waited += 1
             refuse_stuck_game! if waited > LONGEST_PASS_FRAMES
             if pending && shown_pass == pending.first && moment_ready?(pending.first, frames)
-              pass, variables, lists, @sprites, sounds, camera = pending
+              pass, variables, lists, @sprites, sounds, camera, drawn = pending
               pending = nil
-              return record_moment(:end, variables, lists, picture_now(camera), sounds) if pass > frames
+              return record_moment(:end, variables, lists, picture_of_pass(camera, drawn), sounds) if pass > frames
 
-              record_moment(pass, variables, lists, picture_now(camera), sounds)
+              record_moment(pass, variables, lists, picture_of_pass(camera, drawn), sounds)
             end
             case state
             when runtime::Frame::HALTED then return finish_after_halt
@@ -210,8 +212,8 @@ module VBlank
             end
             next unless pending.nil? && waiting? && passes > @moments.size
 
-            pending = [passes, read_variables, read_lists, read_sprites, read_sounds, read_camera]
-            return end_before_first_picture(*pending.drop(1)) if ends_before_first_picture?(frames)
+            pending = [passes, read_variables, read_lists, read_sprites, read_sounds, read_camera, read_picture_drawn]
+            return end_before_first_picture(*pending[1..5]) if ends_before_first_picture?(frames)
 
             note_frames_took(passes - 1) if passes > 1
             mark_last_pass_taken if passes == frames
@@ -236,6 +238,16 @@ module VBlank
         # put the view: none and nowhere, for a console's run that reads neither then.
         def read_sounds = 0
         def read_camera = nil
+
+        # THE PICTURE A PASS DREW, read as the game was found waiting at the pass's end, for a console
+        # whose program draws straight into the picture shown, where by the time the pass is on the
+        # screen the next pass may have drawn over it. Nil for a console whose picture is read once the
+        # pass is shown (#picture_now).
+        def read_picture_drawn = nil
+
+        # The picture of a pass, once it is on the screen: +camera+ and +drawn+ as they were read while
+        # the game waited (#read_camera, #read_picture_drawn).
+        def picture_of_pass(camera, _drawn) = picture_now(camera)
 
         # THE BUTTONS ARE DECIDED A SCREEN FRAME AT A TIME, numbered as the runtime counts the
         # frames it draws, since the runtime reads them in the screen's interrupt on every one —

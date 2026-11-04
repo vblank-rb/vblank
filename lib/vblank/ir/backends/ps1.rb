@@ -17,6 +17,8 @@ require_relative "ps1/r3000"
 require_relative "ps1/linker"
 require_relative "ps1/memory"
 require_relative "ps1/runtime"
+require_relative "ps1/painted_art"
+require_relative "ps1/lowering/paint"
 require_relative "ps1/lowering"
 require_relative "ps1/headless_run"
 require_relative "ps1/checked_run"
@@ -35,7 +37,8 @@ module VBlank
       # Beetle PSX through ruby-ps1-emulator, which `rake compile_ps1_core` builds.
       #
       # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
-      # picture that stays black. Everything a game draws or plays is refused by name until it is made
+      # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint).
+      # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
       class PS1
         # WHERE A RUNNING PROGRAM KEEPS WHAT A READER WANTS, which nothing in its bytes says: every variable

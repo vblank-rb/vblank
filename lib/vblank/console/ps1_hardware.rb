@@ -79,6 +79,15 @@ module VBlank
       GP1_HORIZONTAL_RANGE = 0x06 << 24 # x1 | x2 << 12, in the chip's dot clock
       GP1_VERTICAL_RANGE = 0x07 << 24 # y1 | y2 << 10, in lines
       GP1_DISPLAY_MODE = 0x08 << 24
+      GP1_DMA_DIRECTION = 0x04 << 24 # 0 off, 2 the DMA controller hands words to GP0
+      DMA_TO_GP0 = 2
+
+      # --- DMA ---
+      # DPCR: channel 2's enable bit (bit 3 of its nibble).
+      DPCR_GPU_ON = 1 << 11
+      # CHCR: from RAM, a block each time the device asks (sync mode 1), and start (bit 24).
+      DMA2_FROM_RAM_BY_BLOCKS = 0x0100_0201
+      DMA_BUSY = 1 << 24
       # 320 pixels across, 240 lines, NTSC, 15-bit colour, not interlaced.
       DISPLAY_MODE_320_BY_240 = 0x01
       # Where the 320 visible pixels sit on an NTSC line (eight of the chip's clocks a pixel), and the
@@ -95,6 +104,24 @@ module VBlank
 
       # GP0 commands.
       GP0_FILL = 0x02 << 24 # colour, then y << 16 | x, then height << 16 | width
+      # A flat rectangle of any size, in the colour in the command's low 24 bits: then y << 16 | x, then
+      # height << 16 | width. It is held to the drawing area, and a rectangle is never dithered.
+      GP0_RECTANGLE = 0x60 << 24
+      # A rectangle of any size textured from the page the draw mode names, each texel copied as it is
+      # (raw: no colour mixed in) and none see-through by halves: then y << 16 | x, then the colour table
+      # << 16 | v << 8 | u, then height << 16 | width. A texel of 0000h is not drawn.
+      GP0_TEXTURED_RECTANGLE = 0x65 << 24
+      # A copy from the processor into video RAM: then y << 16 | x, then height << 16 | width, then the
+      # pixels two to a word, the left one in the low half.
+      GP0_COPY_TO_VRAM = 0xA0 << 24
+      # The draw mode's texture page: its left edge in 64s of pixels (bits 0-3) and its top in 256s
+      # (bit 4); TEXTURE_15_BIT reads it as colours of 15 bits, one a pixel; DRAW_ON_SHOWN_PICTURE lets a
+      # command draw where the picture shown is, which a screen of one page always does.
+      TEXTURE_15_BIT = 2 << 7
+      DRAW_ON_SHOWN_PICTURE = 1 << 10
+      # A texel's top bit. With it set a black texel (0000h, which the chip never draws) is drawn black;
+      # the picture shown is read with the top bit dropped, as the chip shows it.
+      TEXEL_DRAWN = 0x8000
       GP0_DRAW_MODE = 0xE1 << 24
       GP0_DRAWING_AREA_TOP_LEFT = 0xE3 << 24 # x | y << 10
       GP0_DRAWING_AREA_BOTTOM_RIGHT = 0xE4 << 24

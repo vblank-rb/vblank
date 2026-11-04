@@ -5,6 +5,7 @@ require_relative "runtime/int32"
 require_relative "runtime/frame"
 require_relative "runtime/pads"
 require_relative "runtime/lists"
+require_relative "runtime/paint"
 
 module VBlank
   module IR
@@ -12,7 +13,7 @@ module VBlank
       class PS1
         # THE RUNTIME every PlayStation program carries: from power-on to the game's first line (Boot),
         # the arithmetic too long to write in place (Int32), the frame, the interrupt and the pads
-        # (Frame, Pads), and the lists (Lists).
+        # (Frame, Pads), the lists (Lists), and the painted screen (Paint).
         #
         # HOW ITS ROUTINES ARE CALLED. With JAL, from anywhere in the program, and they return with
         # `jr ra`. Their numbers are in ARGUMENTS (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
@@ -28,6 +29,7 @@ module VBlank
           # The runtime's own places in RAM, asked for before the game's.
           def reserve(memory)
             Frame.reserve(memory)
+            Paint.reserve(memory)
           end
 
           # The runtime's sections: the entry point, then everything else. +main+ is the label of the
@@ -41,6 +43,7 @@ module VBlank
             Frame.emit(asm, memory)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory, direct_slot_sizes: direct_slot_sizes)
+            Paint.emit(asm, memory)
             emit_start(asm)
             emit_frame_begins(asm, frame_begins)
             [asm.section]
@@ -52,7 +55,7 @@ module VBlank
 
           # What a game needs before its first line: its variables that do not start at nought (the
           # table "game_starts": each place, then its number, a word each, and a place of nought after
-          # the last), and its lists' headers.
+          # the last), its lists' headers, its pictures in video RAM, and the whole screen to draw on.
           def emit_start(asm)
             asm.label("rt_start")
             asm.addiu(:sp, :sp, -4)
@@ -66,6 +69,8 @@ module VBlank
             asm.b("rt_start_next") { asm.addiu(:t0, :t0, 8) }
             asm.label("rt_start_lists")
             asm.jal("rt_lists_start")
+            asm.jal("rt_paint_upload")
+            asm.jal("rt_paint_start")
             asm.lw(:ra, 0, :sp)
             asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
           end

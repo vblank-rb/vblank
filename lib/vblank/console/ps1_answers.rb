@@ -29,6 +29,9 @@ module VBlank
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
         screen: works("`screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. " \
+                      "The game's screen is the PlayStation's whole picture, 320 × 240, so a game laid out from " \
+                      "`screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen " \
+                      "bits in each pixel, the same colours as on the Advance. " \
                       "`tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` " \
                       "works too: the chip draws the turned background as a textured shape."),
         setting: works,

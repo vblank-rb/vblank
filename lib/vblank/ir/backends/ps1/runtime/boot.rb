@@ -57,6 +57,13 @@ module VBlank
             # rt_gp0_word: the word in a0 sent to the graphics chip's drawing port, once the chip says it
             # can take a command word (GPUSTAT bit 26). A fill keeps the chip busy for a while, and a word
             # sent while it is busy would be lost.
+            #
+            # A COMMAND OF SEVERAL WORDS is sent whole: its first word through rt_gp0_word, and the rest
+            # stored to GP0 straight after, through t1, which rt_gp0_word leaves holding the ports' base.
+            # The chip says it has no room for a command's last word until it holds the whole command
+            # (Beetle PSX measured: a textured rectangle, and a copy into video RAM, asked for between
+            # their words, waited for ever). Its queue holds sixteen words, and it says it has room only
+            # once it has taken every whole command it was sent, so any command fits.
             def emit_gp0_word(asm, h)
               asm.label("rt_gp0_word")
               asm.lui(:t1, h::IO >> 16)
@@ -103,7 +110,7 @@ module VBlank
             end
 
             # The graphics chip reset, told to show 320 × 240 from the top left of video RAM, with the
-            # picture off, and every pixel of video RAM black: four fills of 512 × 256 (a fill is at most
+            # picture off, drawing allowed anywhere, and every pixel of video RAM black: four fills of 512 × 256 (a fill is at most
             # 1023 across and 511 down). The picture comes on at the end of the first pass (Frame).
             def emit_graphics_chip(asm, h)
               gp1 = ->(value) { emit_port_word(asm, h::GP1, value) }
@@ -118,8 +125,15 @@ module VBlank
               gp1.call(h::GP1_VERTICAL_RANGE | h::VERTICAL_FIRST | (h::VERTICAL_LAST << 10))
               gp1.call(h::GP1_DISPLAY_START)
               gp0.call(h::GP0_DRAWING_AREA_TOP_LEFT)
-              gp0.call(h::GP0_DRAWING_AREA_BOTTOM_RIGHT | (h::SCREEN_WIDTH - 1) | ((h::SCREEN_HEIGHT - 1) << 10))
+              # The chip may draw anywhere in video RAM: the processor keeps every drawing inside the screen,
+              # and a tear-free screen's second page is below the first (Runtime::Paint).
+              gp0.call(h::GP0_DRAWING_AREA_BOTTOM_RIGHT | (h::VRAM_WIDTH - 1) | ((h::VRAM_HEIGHT - 1) << 10))
               gp0.call(h::GP0_DRAWING_OFFSET)
+              # The draw mode, once, before anything is drawn: drawing where the picture shown is allowed.
+              # A screen of one page always draws where it is shown, and the chip's reset leaves that bit
+              # clear; Beetle PSX draws there either way, and a console's chip may not. A picture's own
+              # draw mode (Runtime::Paint#emit_blit) sets the bit again with its texture page.
+              gp0.call(h::GP0_DRAW_MODE | h::DRAW_ON_SHOWN_PICTURE)
               [[0, 0], [512, 0], [0, 256], [512, 256]].each do |x, y|
                 gp0.call(h::GP0_FILL)
                 gp0.call((y << 16) | x)

@@ -15,7 +15,7 @@ verb has one of two answers there, decided once in `Console::PS1Answers`:
 This file is `Console::PS1Answers.reference` written out (`ruby tools/console_answers.rb`), and
 a test fails when the two differ. The Advance's answers are in `.claude/dsl/game-boy-advance.md`.
 
-- `screen` — works: `screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. `tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` works too: the chip draws the turned background as a textured shape.
+- `screen` — works: `screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. The game's screen is the PlayStation's whole picture, 320 × 240, so a game laid out from `screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen bits in each pixel, the same colours as on the Advance. `tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` works too: the chip draws the turned background as a textured shape.
 - `setting` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a PlayStation.
 - `screen_width` — works: 320 on a PlayStation.
@@ -175,7 +175,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 An answer above is what the PlayStation does with a verb. The build for it is still growing,
 and a game that reaches one of these steps is refused, naming the step, until it is made:
 
-- the painted (bitmap) screen: `clear_screen`, `fill_rect`, `dma_fill_rect`, `draw_rect_at`, `draw_column_at`, `pixel`, `inside`, `blit`, `blit_pose`, `draw_text`, `draw_digit`, `save_region`, `restore_region`, `camera`
+- the painted (bitmap) screen: `draw_column_at`, `blit`, `blit_pose`, `draw_text`, `draw_digit`, `save_region`, `restore_region`, `camera`
 - fades, lights and screen effects: `fade`, `tint`, `pixelate`, `shade_outside`
 - places drawn in 3D: `draw_place`, `fill_face`
 - sprites and tiled backgrounds: `background`, `scroll_background`, `set_tile`, `show_map`, `present_objects`, `color_list_holds`, `background_colors`, `hide_sprites`, `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`, `pixels_overlap`

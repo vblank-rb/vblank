@@ -53,11 +53,9 @@ module VBlank
                                                # works nothing out again
                                                show_light_now: :emit_nothing,
                                                # the build reads a digital pad, which has no motor: nothing is felt
-                                               rumble: :emit_nothing,
-                                               # a screen with nothing drawn on it is the black the runtime clears
-                                               # video RAM to, whichever kind of screen it is
-                                               screen: :emit_nothing
-                                             }.merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))
+                                               rumble: :emit_nothing
+                                             }.merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] },
+                                                     Paint::STATEMENTS))
 
           VALUES = Ractor.make_shareable({
                                            int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
@@ -75,9 +73,8 @@ module VBlank
           # the PlayStation does it; test_ps1_kind_coverage.rb holds the list and the tables above to every
           # kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
-                                                    "the painted (bitmap) screen" => %i[clear_screen fill_rect dma_fill_rect draw_rect_at
-                                                                                        draw_column_at pixel inside blit blit_pose draw_text
-                                                                                        draw_digit save_region restore_region camera],
+                                                    "the painted (bitmap) screen" => %i[draw_column_at blit blit_pose draw_text draw_digit
+                                                                                        save_region restore_region camera],
                                                     "fades, lights and screen effects" => %i[fade tint pixelate shade_outside],
                                                     "places drawn in 3D" => %i[draw_place fill_face],
                                                     "sprites and tiled backgrounds" => %i[background scroll_background set_tile show_map
@@ -101,9 +98,11 @@ module VBlank
 
           # The parts a game can need that the build does not make yet and that are no kind of step of
           # their own, so NOT_LOWERED_YET cannot name them (#refuse_unmade_parts!): a backdrop of a colour
-          # (the build shows black where nothing is drawn), and the second pad (the build reads the first).
+          # (the build shows black where nothing is drawn), the second pad (the build reads the first), and
+          # a game that paints and also shows a screen drawn from tiles.
           BACKDROP_COLOUR = "a backdrop colour"
           SECOND_PAD = "the second pad"
+          TILED_SCREEN = "sprites and tiled backgrounds"
 
           # The runtime's routines for a binop worked out by a call.
           CALLED_SUMS = Ractor.make_shareable({ :/ => "rt_div32", :% => "rt_mod32", :<< => "rt_shl32", :>> => "rt_shr32" })
@@ -137,9 +136,12 @@ module VBlank
           # routine the runtime runs at each frame boundary, or nil for a game with no timers.
           attr_reader :variables, :lists, :frame_begins
 
+          include Paint
+
           def initialize(program, memory:, cache: BuildCache.for(PS1, program))
             @program = program
             @memory = memory
+            @cache = cache
             @plan = cache.plan
             @funcs = @plan.funcs
             @tick_handlers = @plan.tick_handlers
@@ -186,7 +188,8 @@ module VBlank
             end
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
-            [data_section, *table_sections, *routines, *timers, main]
+            # The pictures are known once every routine is made, so their tables come last.
+            [data_section, *table_sections, *routines, *timers, main, *paint_sections]
           end
 
           private
@@ -194,14 +197,26 @@ module VBlank
           # A backdrop of a colour (`screen ..., backdrop:`, or a list of colours the backdrop follows), and
           # the second pad (`players:` more than 1, or `player: 2` and on), refused as not made yet.
           def refuse_unmade_parts!
+            # A painted screen's backdrop is black whatever its `screen` says (SceneHandover#backdrop_of),
+            # so only a screen drawn from tiles shows one.
             backdrop = @program.walk.any? do |node|
-              (node.kind == :screen && !node.backdrop.to_i.zero?) || (node.kind == :color_list && node.backdrop_place)
+              (tiles_screen?(node) && !node.backdrop.to_i.zero?) || (node.kind == :color_list && node.backdrop_place)
             end
             refuse_unmade!(BACKDROP_COLOUR, "shows a backdrop colour where nothing is drawn") if backdrop
+            # Handing over between a painted screen and one drawn from tiles wipes the picture
+            # (SceneHandover.crossing?), which is made with the screens drawn from tiles.
+            if @program.walk.any? { |node| tiles_screen?(node) } &&
+               @program.walk.any? { |node| node.kind != :screen && Paint::STATEMENTS.key?(node.kind) }
+              refuse_unmade!(TILED_SCREEN, "paints a picture and also shows a screen drawn from tiles")
+            end
             second_pad = @program.most_players.to_i > 1 || @program.walk.any? do |node|
               %i[held pressed].include?(node.kind) && node.player.is_a?(Integer) && node.player > 1
             end
             refuse_unmade!(SECOND_PAD, "reads the second pad") if second_pad
+          end
+
+          def tiles_screen?(node)
+            node.kind == :screen && SceneHandover::DISPLAYS.key?(node.mode) && SceneHandover.tiles?(node.mode)
           end
 
           def refuse_unmade!(part, what)

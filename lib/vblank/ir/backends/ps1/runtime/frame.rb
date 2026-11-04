@@ -153,7 +153,12 @@ module VBlank
               asm.addiu(:t0, :t0, 1)
               asm.sw(:t0, at.call(PASSES), :gp)
               asm.jal("rt_frame_begins_unless_last")
+              # The page this pass drew, kept where a reader finds it while the game waits: the pages
+              # may trade places before the game stops waiting.
+              asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
+              asm.sw(:t0, at.call(Paint::PASS_PAGE_Y), :gp)
               asm.li(:t0, 1)
+              asm.sw(:t0, at.call(Paint::FLIP_OWED), :gp) # the page this pass drew is shown
               asm.sw(:t0, at.call(WAITING), :gp)
               asm.jal("rt_show_pass")
               asm.lw(:t0, at.call(HOLD), :gp)
@@ -197,6 +202,10 @@ module VBlank
               asm.label("rt_show_pass_on")
               asm.jal("rt_sleep_until_vblank")
               asm.label("rt_show_pass_shown")
+              # A tear-free screen's pages trade places in the blank, before SHOWN says the pass is up.
+              asm.jal("rt_paint_flip")
+              asm.lw(:t0, at.call(Paint::SHOWN_PAGE_Y), :gp)
+              asm.sw(:t0, at.call(Paint::PASS_SHOWN_PAGE_Y), :gp)
               asm.lw(:t0, at.call(PASSES), :gp)
               asm.sw(:t0, at.call(SHOWN), :gp)
               asm.lw(:ra, 0, :sp)
