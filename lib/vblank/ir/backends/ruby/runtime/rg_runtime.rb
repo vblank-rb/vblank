@@ -100,6 +100,10 @@ end
 # How many players are connected now: one for each number in the driver's list.
 def rg_players_connected = @rg_held.length
 
+# The seed a match shared by several machines gives the game's random numbers, which the game
+# adds to its own stream once it has set itself up (rg_game_mix_seed). Nought when it plays alone.
+def rg_match_seed = @rg_match_seed || 0
+
 # --- frames ---
 
 # The frame the game drew has ended, whoever is driving and whether or not the run stops here.

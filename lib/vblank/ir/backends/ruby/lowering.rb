@@ -35,6 +35,18 @@ module VBlank
 
           private
 
+          # The game's whole top level, and one routine more than the native lowering writes:
+          # rg_game_mix_seed, which a match played by several machines calls once to add the
+          # match's shared seed (rg_match_seed) to the game's random numbers. A game that never draws
+          # one has an empty routine.
+          def top_level = [*super, mix_seed_routine]
+
+          def mix_seed_routine
+            stream = Builder::Randomness::RNG_STATE
+            body = variable_names.include?(stream) ? [assign(stream, call("rg_add", variable(stream), call("rg_match_seed")))] : []
+            Native::C::Function.new(name: @names.own("mix_seed"), body: body, exported: true)
+          end
+
           def build_name = "the Ruby build"
 
           # WHAT THE RUNTIME CANNOT DO YET, found before the game is played rather than part way

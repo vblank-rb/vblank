@@ -57,8 +57,9 @@ module VBlank
       # +stop_after_passes+ is how many passes to play at most, whatever the device says. +game+, in
       # place of a program, is a game built as Ruby already (IR::Backends::Ruby::LiveGame), which is
       # how a game written out as one Ruby file (Ruby#script) plays with no builder to hand.
-      def initialize(program = nil, game: nil, uncapped: false, stop_after_passes: nil)
+      def initialize(program = nil, game: nil, uncapped: false, stop_after_passes: nil, network: nil)
         @game = game || IR::Backends::Ruby.new.live_game(program)
+        @network = network
         @uncapped = uncapped
         @stop_after_passes = stop_after_passes
         @frame_seconds = @game.frame_seconds
@@ -70,11 +71,14 @@ module VBlank
       # the play with IR::ProgramError, in the words the interpreter would use.
       def play(device)
         begin_play(device)
-        stopped_on = @game.play(self)
+        @network&.begin_match
+        stopped_on = @game.play(self, match_seed: @network&.seed)
         rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
                         stopped_itself: !stopped_on.nil?)
         keep_showing(stopped_on) if stopped_on
         rate
+      ensure
+        @network&.leave
       end
 
       # Ready to play on +device+. #play does this itself; a game that is stepped from outside, as a
@@ -115,7 +119,10 @@ module VBlank
         leave_pause_out_of_pacing
         return nil if @device.stop? || @passes == @stop_after_passes
 
-        @pass_buttons.masks(@device.held_buttons(@passes))
+        held = @device.held_buttons(@passes)
+        return @pass_buttons.masks(held) unless @network
+
+        @network.exchange(pass: @passes, local_mask: IR::Buttons.player_mask(Array(held), 1), game: @game)
       end
 
       private

@@ -49,6 +49,7 @@ require_relative "vblank/builder" # ...and the verbs that hand them back
 require_relative "vblank/effects" # the verb/effect pack registry, and the packs that ship on by default
 require_relative "vblank/diagnostics" # reading a built or running cartridge back
 require_relative "vblank/playthroughs" # ...and playing one with nobody at the controls, or two side by side
+require_relative "vblank/network" # more than one machine playing one match: what they say, and how they keep in step
 require_relative "vblank/pager" # a long report shown a screen at a time
 
 module VBlank

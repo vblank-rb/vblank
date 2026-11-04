@@ -34,11 +34,19 @@ module VBlank
           # Plays until +player+ says stop, or the game halts or ends, and gives back the picture a
           # game that stopped itself stopped on (nil when the player stopped it). A game that does
           # something the interpreter refuses stops with IR::ProgramError, in the same words.
-          def play(player)
-            @game.rg_live_main(player)
+          #
+          # +match_seed+ is the seed a match shared by several machines gives the game's random
+          # numbers (Network::Lockstep), mixed in once the game has set itself up; nil for a game
+          # played alone.
+          def play(player, match_seed: nil)
+            @game.rg_live_main(player, match_seed)
           rescue @game.class::RgFault => e
             raise IR::ProgramError, e.message
           end
+          # A short number (a CRC-32) standing for the whole of the game's state as it is now: every
+          # variable and list it keeps, written out the way the windowless run prints them. Machines
+          # that run the same game on the same buttons have the same number on the same pass.
+          def state_crc = @game.rg_live_state_crc
         end
       end
     end
