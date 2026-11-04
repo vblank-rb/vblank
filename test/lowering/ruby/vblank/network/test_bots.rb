@@ -44,7 +44,7 @@ class TestBots < Minitest::Test
                      transport = Network::RelayTransport.make_room(line)
                      code << transport.code
                      Network::Lockstep.host(transport: transport, fingerprint: fingerprint, players: devices.size, seed: 0, input_delay: 2,
-                                            checkpoint_every: 4)
+                                            checkpoint_every: 1) # the machines compare their states on every pass
                    else
                      Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, code.first), fingerprint: fingerprint)
                    end

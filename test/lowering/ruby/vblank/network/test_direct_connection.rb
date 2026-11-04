@@ -36,7 +36,7 @@ class TestDirectConnection < Minitest::Test
   private def host_machine(room, players:, passes: PASSES)
     transport = Network::RelayTransport.make_room(room.host_line)
     lockstep = Network::Lockstep.host(transport: transport, fingerprint: fingerprint_of, players: players, seed: 9, input_delay: 2,
-                                      checkpoint_every: 4)
+                                      checkpoint_every: 1) # the machines compare their states on every pass
     machine(lockstep, 1, passes)
   end
 

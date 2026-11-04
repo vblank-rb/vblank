@@ -39,7 +39,7 @@ class TestLockstepOverWebSocket < Minitest::Test
                  transport = Network::RelayTransport.make_room(line)
                  (players - 1).times { code_box << transport.code } # one for each machine that joins
                  Network::Lockstep.host(transport: transport, fingerprint: fingerprint, players: players, seed: 5, input_delay: 2,
-                                        checkpoint_every: 4)
+                                        checkpoint_every: 1) # the machines compare their states on every pass
                else
                  code = code_box.pop(timeout: 30) or raise "no room code"
                  Network::Lockstep.join(transport: Network::RelayTransport.join_room(line, code), fingerprint: fingerprint)
