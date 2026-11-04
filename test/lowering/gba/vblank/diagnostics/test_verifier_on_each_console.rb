@@ -9,15 +9,18 @@ require "stringio"
 # an Advance cartridge and a Color one, and a question only one console's cartridges answer is
 # refused by name on the other's.
 class TestVerifierOnEachConsole < Minitest::Test
+  # bsnes is opened through Fiddle, whose library handles Ruby refuses outside the main Ractor.
+  runs_on_the_main_ractor!
+
   def setup
     require_emulator!
   end
 
-  # The reader plays cartridges in libmgba, which has the two Game Boys and not the Super
-  # Nintendo or the Genesis: a Super Nintendo cartridge is read back by SNES::HeadlessRun, in bsnes, and
-  # a Genesis one by Genesis::HeadlessRun, in Genesis Plus GX, until the reader can sit on those cores too.
+  # The reader plays the two Game Boys' cartridges in libmgba and the Super Nintendo's in bsnes
+  # (SNESProbe); a Genesis cartridge is read back by Genesis::HeadlessRun, in Genesis Plus GX, until
+  # the reader can sit on that core too.
   def test_one_reader_reads_sprites_and_pixels_off_every_consoles_cartridge
-    VBlank::Console.kits.reject { |kit| %i[snes genesis].include?(kit.name) }.each do |kit|
+    VBlank::Console.kits.reject { |kit| kit.name == :genesis }.each do |kit|
       reader = VBlank::Diagnostics::Verifier.new(dot_game(kit.name), frames: 10)
 
       assert_equal kit.description.screen_size, [reader.screen_width, reader.screen_height], kit.title
