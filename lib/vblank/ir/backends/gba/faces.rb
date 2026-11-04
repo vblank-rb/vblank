@@ -24,8 +24,10 @@ module VBlank
         #     for across and for down), each pixel read from the picture.
         #
         # THE TEAR-FREE SCREEN TAKES TWO PIXELS AT A TIME. There a pixel is one byte, and video
-        # memory refuses a lone byte, so each pixel reads its pair, puts its own half in and
-        # writes the pair back.
+        # memory refuses a lone byte. So a picture with no see-through pixel is drawn a pair at a
+        # time, both worked out and the pair written whole (#emit_pixel_pairs); only a pixel left
+        # over at either end of a row, and every pixel of a picture with see-through pixels, reads
+        # its pair, puts its own half in and writes the pair back.
         #
         # THE DIRECT SCREEN IS FILLED TOO, two bytes of colour a pixel. A game draws a place only
         # on the tear-free screen (Builder#draw_place), but a program can hold a fill without a
@@ -53,7 +55,7 @@ module VBlank
           # picture holds, when it has none), and 1 when it is on the direct screen.
           CORNER_WORDS = MOST_CORNERS.times.flat_map { |k| CORNER_FIELDS.map { |field| corner_word(field, k) } }.freeze
           EDGE_WORDS = %i[_face_left _face_top _face_right _face_bottom].freeze
-          PICTURE_WORDS = %i[_face_picture _face_shift _face_mask_x _face_mask_y _face_clear].freeze
+          PICTURE_WORDS = %i[_face_picture _face_shift _face_mask_x _face_mask_y _face_clear _face_rows_shift].freeze
 
           # What the routine keeps of each edge (see Reference::FaceEdge), and of the row it is on.
           EDGE_FIELDS = %w[first past x u v step_x step_u step_v].freeze
@@ -149,8 +151,11 @@ module VBlank
             start = pos
             emit(ASM.push(4, 5, 6, 7, 8, 9, 10, 11, 14))
             MOST_CORNERS.times { |k| emit_edge(k) }
+            @span_patches = []
+            emit_branch(:bl, PATCH_ROUTINE)
             emit_rows
             emit(ASM.pop(4, 5, 6, 7, 8, 9, 10, 11, 15))
+            emit_patch_routine
             place_label(:"#{ROUTINE}_end")
             refuse_oversized_routine!(pos - start)
           end
@@ -205,11 +210,14 @@ module VBlank
             end
           end
 
-          # A picture's entry, its first word filled in once the cartridge is laid out.
+          # A picture's entry, its first word filled in once the cartridge is laid out. A picture
+          # that names a see-through colour but has no pixel of it is drawn as one with none, which
+          # is the quicker way (see #emit_pixel_pairs).
           def picture_entry(name, buffered)
             bmp, indexed_clear = @pictures.call(name)
             clear = buffered ? indexed_clear : bmp.transparent
-            [0, bmp.width.bit_length - 1, bmp.width - 1, bmp.height - 1, clear || NO_CLEAR]
+            clear = nil unless bmp.transparent && bmp.pixels.unpack("v*").include?(bmp.transparent)
+            [0, bmp.width.bit_length - 1, bmp.width - 1, bmp.height - 1, clear || NO_CLEAR, bmp.height.bit_length - 1]
           end
 
           # Edge +k+, from corner +k+ to the next (the first, after the last), its numbers kept in
@@ -501,13 +509,178 @@ module VBlank
             emit(ASM.orr_reg(into, into, 12))
           end
 
-          # The pixels of a span on the tear-free screen.
+          # The pixels of a span on the tear-free screen: two at a time when the picture has no
+          # see-through pixel, one at a time when it has.
           #
           #   r0 u, r1 v, r2 the step across, r3 the step down, r4 the pixel's byte on the page,
           #   r5 how many are left, r6 the picture's palette numbers, r7 and r8 the masks that
           #   make it repeat, r9 the shift to a row, r10 the see-through number, r11, r12 and lr
           #   spare
           def emit_pixels
+            one_at_a_time = gensym
+            done = gensym
+            emit(ASM.add_imm(11, 10, 1)) # NO_CLEAR is -1
+            emit(ASM.cmp_imm(11, 0))
+            emit_branch(:bcond, one_at_a_time, cond: :ne)
+            emit_pixel_pairs(done)
+            place_label(one_at_a_time)
+            emit_single_pixels
+            place_label(done)
+          end
+
+          # A picture with no see-through pixel covers every pixel of the span, so two pixels side
+          # by side are worked out together and written as one pair. Video memory takes nothing
+          # smaller than a pair, so a pixel written alone has to read its pair, put its half in and
+          # write it back: three trips to video memory for every pixel, against one for two.
+          #
+          # WHERE ON THE PICTURE, IN FEWER STEPS. The picture repeats, so of u only its whole part
+          # held to the picture's width matters ((u >> 16) & (width - 1)), and that is bits 16 up to
+          # 16 + log2(width) of u. Moved up to the top of the word (u << (16 - log2 width)) they are
+          # the word's top bits: one shift down reads them, held to the width for nothing, because
+          # whatever was above them has fallen off the top. Adding the step moved up the same way
+          # keeps them exactly the bits adding the plain step would have made. So is v. A pixel is
+          # then two instructions and a load: add the pixel across to the picture's start, take the
+          # row from v, and load from the start plus the row moved up a row's width.
+          #
+          # THOSE SHIFTS ARE THE PICTURE'S, AND THIS CODE RUNS IN WORK MEMORY. An instruction's shift
+          # is a number inside it, and the picture is only known as the game runs, so before the
+          # rows the routine writes the picture's three shifts into the loop's own instructions
+          # (#emit_patch_routine). That is what the routine being copied into the quick memory
+          # allows: the cartridge cannot be written, and the quick memory can. The other way, a
+          # shift held in a register, costs a cycle more each time, three a pixel.
+          #
+          #   r7 the pairs left; r8 log2 of the picture's height; r11, r12 and lr the two pixels and a row
+          def emit_pixel_pairs(done)
+            pairs = gensym
+            even = gensym
+            tail = gensym
+            load_var(8, :_face_rows_shift)
+            emit(ASM.rsb_imm(11, 9, 16)) # u and its step moved up 16 - log2 width...
+            emit(ASM.mov_reg_lsl_reg(0, 0, 11))
+            emit(ASM.mov_reg_lsl_reg(2, 2, 11))
+            emit(ASM.rsb_imm(11, 8, 16)) # ...and v and its step 16 - log2 height
+            emit(ASM.mov_reg_lsl_reg(1, 1, 11))
+            emit(ASM.mov_reg_lsl_reg(3, 3, 11))
+
+            # A span starting on the right half of a pair: that pixel on its own.
+            emit(ASM.tst_imm(4, 1))
+            emit_branch(:bcond, even, cond: :eq)
+            emit_lone_pixel(:high)
+            emit(ASM.subs_imm(5, 5, 1))
+            emit_branch(:bcond, done, cond: :eq)
+            place_label(even)
+
+            # The pairs, two to a turn of the loop, so the loop's own count and jump are paid once
+            # for four pixels. An odd number of pairs starts at the second of the two.
+            second = gensym
+            emit(ASM.lsr_imm(7, 5, 1)) # how many pairs
+            emit(ASM.cmp_imm(7, 0))
+            emit_branch(:bcond, tail, cond: :eq)
+            emit(ASM.add_imm(7, 7, 1))
+            emit(ASM.tst_imm(7, 1)) # an odd number of pairs leaves (pairs + 1) even
+            emit(ASM.lsr_imm(7, 7, 1))
+            emit_branch(:bcond, second, cond: :eq)
+            place_label(pairs)
+            emit_pair
+            place_label(second)
+            emit_pair
+            emit(ASM.subs_imm(7, 7, 1))
+            emit_branch(:bcond, pairs, cond: :ne)
+
+            # A span ending on the left half of a pair: that pixel on its own.
+            place_label(tail)
+            emit(ASM.tst_imm(5, 1))
+            emit_branch(:bcond, done, cond: :eq)
+            emit_lone_pixel(:low)
+            emit_branch(:b, done)
+          end
+
+          # Two pixels side by side, written as their pair, and the pair after it next.
+          def emit_pair
+            emit_pair_pixel(11)
+            emit_pair_pixel(14)
+            emit(ASM.orr_reg_lsl(11, 11, 14, 8))
+            emit(ASM.store_halfword_post(11, 4, 2))
+          end
+
+          # One pixel of a pair into +into+, and u and v a step on. Its three shifts are written in
+          # as the routine starts, so each is emitted as nought and its place noted.
+          def emit_pair_pixel(into)
+            @span_patches << [pos, :across]
+            emit(ASM.add_reg_lsr(into, 6, 0, 0))
+            @span_patches << [pos, :down]
+            emit(ASM.lsr_imm(12, 1, 32))
+            @span_patches << [pos, :row]
+            emit(ASM.ldrb_reg_lsl(into, into, 12, 0))
+            emit(ASM.add_reg(0, 0, 2))
+            emit(ASM.add_reg(1, 1, 3))
+          end
+
+          # One pixel alone, the +half+ (:low or :high) of its pair, put in with what the other
+          # half holds. Its shifts are held in registers: it is once a row at most.
+          def emit_lone_pixel(half)
+            emit(ASM.rsb_imm(12, 9, 32))
+            emit(ASM.mov_reg_lsr_reg(11, 0, 12)) # across
+            emit(ASM.rsb_imm(12, 8, 32))
+            emit(ASM.mov_reg_lsr_reg(12, 1, 12)) # down
+            emit(ASM.mov_reg_lsl_reg(12, 12, 9))
+            emit(ASM.add_reg(11, 11, 12))
+            emit(ASM.ldrb_reg(11, 6, 11))
+            emit(ASM.bic_imm(12, 4, 1))
+            emit(ASM.load_halfword(14, 12))
+            if half == :high
+              emit(ASM.and_imm(14, 14, 0xFF))
+              emit(ASM.orr_reg_lsl(14, 14, 11, 8))
+            else
+              emit(ASM.and_imm(14, 14, 0xFF00))
+              emit(ASM.orr_reg(14, 14, 11))
+            end
+            emit(ASM.store_halfword(14, 12))
+            emit(ASM.add_reg(0, 0, 2))
+            emit(ASM.add_reg(1, 1, 3))
+            emit(ASM.add_imm(4, 4, 1))
+          end
+
+          PATCH_ROUTINE = :"#{ROUTINE}_patch".freeze
+
+          # Where a shift sits in an instruction: five bits from bit 7.
+          SHIFT_FIELD = 0x1F << 7
+
+          # WRITE THE PICTURE'S SHIFTS INTO THE PAIR LOOP (see #emit_pixel_pairs), called once a face
+          # before its rows. Across, the pixel is the top log2(width) bits of u, a shift down of
+          # 32 - log2 width (32 written as nought); down, the same of v; and a row starts the row's
+          # number moved up log2 width. Each instruction's address is found from where this one
+          # runs, since the routine runs where it was copied, not where the cartridge holds it.
+          #
+          #   r0 the across field, r1 the down field, r2 the row field, r3 an instruction's address,
+          #   r4 the instruction
+          def emit_patch_routine
+            place_label(PATCH_ROUTINE)
+            load_var(2, :_face_shift)
+            load_var(1, :_face_rows_shift)
+            emit(ASM.rsb_imm(0, 2, 32))
+            emit(ASM.and_imm(0, 0, 31))
+            emit(ASM.lsl_imm(0, 0, 7))
+            emit(ASM.rsb_imm(1, 1, 32))
+            emit(ASM.and_imm(1, 1, 31))
+            emit(ASM.lsl_imm(1, 1, 7))
+            emit(ASM.lsl_imm(2, 2, 7))
+            fields = { across: 0, down: 1, row: 2 }
+            @span_patches.each do |site, kind|
+              back = pos + 8 - site
+              emit(ASM.sub_imm(3, 15, back & ~0xFF))
+              emit(ASM.sub_imm(3, 3, back & 0xFF))
+              emit(ASM.ldr(4, 3))
+              emit(ASM.bic_imm(4, 4, SHIFT_FIELD))
+              emit(ASM.orr_reg(4, 4, fields.fetch(kind)))
+              emit(ASM.str(4, 3))
+            end
+            emit(ASM.bx(14))
+          end
+
+          # The pixels of a span one at a time: for a picture with see-through pixels, where a pixel
+          # that is not drawn leaves its half of the pair as it was.
+          def emit_single_pixels
             pixel = gensym
             skip = gensym
             odd = gensym

@@ -15,13 +15,18 @@ class TestTwoRoomsExampleCartridge < Minitest::Test
     assert_backends_agree(TwoRooms.program, frames: 3, console_frames: 20, name: "TWOROOMS")
   end
 
-  # Each pass compared is its own run, with the buttons held from power-on (see
-  # test/lowering/gba/examples/test_cube3d_example_cartridge.rb for why the frame is given): the
-  # viewer nearing the doorway, standing in it, through it, and turning.
+  # Each pass compared is its own run, with the buttons held from power-on: the viewer nearing the
+  # doorway, standing in it, through it, and turning. The comparison counts the cartridge's passes
+  # and plays the interpreter as many.
+  #
+  # THE CARTRIDGE TAKES FOUR FRAMES OR MORE A PASS here, more where the far room shows through more
+  # of the screen, and a frame a pass ends on is read between two pictures. So each frame read is
+  # one measured to fall inside a pass (by trying every frame from power-on with the same buttons
+  # held), and the interpreter plays as many passes as the cartridge counted by then.
   def test_a_flight_through_the_doorway_agrees_pass_by_pass
-    [[%i[a], [10, 36, 41, 50]], [%i[left], [20, 45]], [%i[right a], [30]]].each do |keys, passes|
-      passes.each do |pass|
-        assert_backends_agree(TwoRooms.program, frames: pass, console_frames: (2 * pass) + 4, keys: keys,
+    [[%i[a], [41, 120, 135, 150, 162]], [%i[left], [21, 72]]].each do |keys, console_frames|
+      console_frames.each do |frame|
+        assert_backends_agree(TwoRooms.program, frames: frame, console_frames: frame, keys: keys,
                                                 name: "TWOROOMSFLY")
       end
     end

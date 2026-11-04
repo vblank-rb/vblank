@@ -396,6 +396,14 @@ module VBlank
             [0xE7D00000 | (rn << 16) | (rd << 12) | (shift << 7) | 0x20 | rm].pack("V")
           end
 
+          # LDRB rd, [rn, rm, LSL #shift] — load the unsigned byte (rm << shift) bytes along from
+          # +rn+: a row number scaled up to where its row starts, read in the same instruction.
+          def ldrb_reg_lsl(rd, rn, rm, shift)
+            raise ArgumentError, "shift must be 0-31" unless (0..31).cover?(shift)
+
+            [0xE7D00000 | (rn << 16) | (rd << 12) | (shift << 7) | rm].pack("V")
+          end
+
           # LDRB rd, [rn, #offset] — load an unsigned byte (0..255) with immediate
           # offset. The B (bit 22) is what makes it a byte load instead of a word.
           def ldrb_offset(rd, rn, offset)

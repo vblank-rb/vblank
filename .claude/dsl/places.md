@@ -85,10 +85,11 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`
 and `div_fix`), and only the fill of a face, of three to eight corners, is written by hand for each
 (`Reference#exec_fill_face` is the rule every one follows). So the interpreter and every build draw the same pixels. **What it
-costs on the Advance**: the fill takes about 36 of the console's cycles a pixel, so a face covering
-the whole screen runs at 10 pictures a second. `examples/cube3d.rb`, the crate's near side covering
-a third of the screen across, runs at 30 with 44% of each frame spare, and the fill is 79% of the
-time. `rom.profile`
+costs on the Advance**: the fill takes about 15 of the console's cycles a pixel for a picture with
+no see-through pixel (two pixels worked out together and written as one pair), and about 37 for one
+with see-through pixels (each pixel reads its pair back first), so a face covering the whole screen
+runs at 20 pictures a second, or 10. `examples/cube3d.rb` runs at 60 with 37% of each frame spare,
+and `examples/two_rooms.rb`, its walls covering the screen, at 15. `rom.profile`
 names the fill "filling the faces of a place with their pictures".
 
 **Each console**: the Advance draws a place (its page says how). The Game Boy Color, the Super

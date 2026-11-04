@@ -45,6 +45,15 @@ class TestPlacesCartridge < Minitest::Test
                                                                                           console_frames: 30, name: "WINDOW")
   end
 
+  # A row starting on the right half of a pair and ending on the left half of one: the pixels
+  # written alone, beside the ones written in pairs.
+  def test_rows_starting_and_ending_halfway_through_a_pair_agree
+    [[101, 40, 139, 120], [101, 40, 140, 120], [100, 40, 139, 120], [101, 40, 104, 120], [101, 40, 102, 120]]
+      .each do |window|
+        assert_backends_agree(PlaceGames.listed_faces([0], window: window), frames: 3, console_frames: 30, name: "ODD")
+      end
+  end
+
   def test_screen_spots_agree
     spots = [[-1.0, 1.0, 2.0], [1.0, -1.0, 2.0], [0.11, 0.0, 2.0], [0.0, 0.0, -1.0], [3.0, -2.5, 1.5]]
     program = PlaceGames.screen_spots(spots)
