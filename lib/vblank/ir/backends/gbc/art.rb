@@ -1411,7 +1411,20 @@ module VBlank
             bytes = encode(places)
             @sprite_tile_numbers[bytes] = @sprite_tiles.length
             @sprite_tiles.concat(bytes.each_slice(16).to_a)
+            refuse_sprite_tiles_past_most!
             [@sprite_tile_numbers[bytes], 0]
+          end
+
+          # THE TILES EVERY SCREEN KEEPS PAST WHAT THE CONSOLE HOLDS, said the moment they pass it
+          # rather than once the whole game is lowered (#refuse_too_many_tiles!): they only grow, so
+          # the build stops this try there and tries again with each scene bringing its own pictures
+          # in (GBC#build), without making the rest of a try that cannot fit. The words are the
+          # build's own, never the author's: a game whose scenes bring their pictures in is told
+          # in #refuse_too_many_tiles!.
+          def refuse_sprite_tiles_past_most!
+            return if scene_pictures? || @sprite_tiles.length <= MOST_SPRITE_TILES
+
+            raise TooManySpriteTiles, "this game's sprites need more than #{MOST_SPRITE_TILES} tiles of 8×8"
           end
 
           # The tile a piece of picture +name+ is drawn from: its group's, its scene's own, or one

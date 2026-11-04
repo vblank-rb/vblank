@@ -47,10 +47,19 @@ module VBlank
 
           # ...the part always in view too full, which a game can mend by keeping its songs' notes in
           # the banks, and then its sprites' tables of poses in each list (GBC#build).
-          class TooBigForView < TooBig; end
+          # +needed+ is how many bytes the part came to, for the build to tell which of its next tries
+          # cannot fit either (GBC#build_in_view).
+          class TooBigForView < TooBig
+            attr_reader :needed
+
+            def initialize(message = nil, needed: nil)
+              super(message)
+              @needed = needed
+            end
+          end
 
           # ...and too full with the framework's own code alone, which a game can mend only where
-          # that code grows with the game: its sound effects (GBC#build_cartridge).
+          # that code grows with the game: its sound effects (GBC#build_in_view).
           class FrameworkFillsView < Error; end
 
           # Where each section went: its bank and the address of its first byte.
@@ -144,10 +153,11 @@ module VBlank
             own = needed - placed.select { |p| p.section.holds }.sum { |p| p.section.size }
             raise FrameworkFillsView, "the part of the cartridge always in view is #{needed} bytes, over #{BANK_SIZE}" if own > BANK_SIZE
 
-            raise TooBigForView, "#{DOES_NOT_FIT} The part of the cartridge that is always in view holds #{BANK_SIZE} " \
-                                 "bytes. The game needs #{needed} bytes there. Of those, " \
-                                 "#{Sections.taken_words(placed.map(&:section))}, and the framework's own code takes " \
-                                 "the rest. To fix this, #{Sections.biggest(placed.map(&:section)).fix}."
+            raise TooBigForView.new("#{DOES_NOT_FIT} The part of the cartridge that is always in view holds " \
+                                    "#{BANK_SIZE} bytes. The game needs #{needed} bytes there. Of those, " \
+                                    "#{Sections.taken_words(placed.map(&:section))}, and the framework's own code " \
+                                    "takes the rest. To fix this, #{Sections.biggest(placed.map(&:section)).fix}.",
+                                    needed: needed)
           end
 
           # One section bigger than a bank, which no placing can mend: the game's, when it is one of

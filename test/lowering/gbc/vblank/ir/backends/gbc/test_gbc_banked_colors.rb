@@ -6,7 +6,7 @@ require "test_helper"
 # each of its palettes holds there, for every screen that says `draw_with`. Screens of
 # eight palettes stepped through forty lists come to more than the part of a
 # Color cartridge always in view holds beside the game's code. Such a game is built with those
-# tables in the cartridge's banks (GBC#build_cartridge), read with their bank put in view, and
+# tables in the cartridge's banks (GBC#build_in_view), read with their bank put in view, and
 # plays as it does on the interpreter.
 class TestGBCBankedColors < Minitest::Test
   TILES = 8
@@ -49,6 +49,18 @@ class TestGBCBankedColors < Minitest::Test
     built = VBlank::IR::Backends::GBC.new.build(many_fades, title: "FADES").built
 
     assert built.code.key?("rt_background_colors_far"), "the tables are read with their bank put in view"
+  end
+
+  # The build skips the steps it can tell will not fit, never one that would: this game fits once
+  # its colour tables are in the banks, so the indexes that say where each screen's tiles are stay
+  # in view. It is lowered once to find each screen needs its own colours, once to measure the part
+  # in view, and once to build, without trying its sprites' pose tables in the banks between.
+  def test_the_build_stops_at_the_first_step_that_fits
+    gbc = VBlank::IR::Backends::GBC.new
+    built = gbc.build(many_fades, title: "FADES").built
+
+    assert_equal 0, built.code.fetch("art_rooms").bank, "where each screen's tiles are, in view"
+    assert_operator gbc.tries, :<=, 3
   end
 
   def test_a_screen_whose_colour_tables_do_not_fit_in_view_still_builds_and_plays

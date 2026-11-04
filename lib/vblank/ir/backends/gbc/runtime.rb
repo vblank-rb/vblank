@@ -92,7 +92,7 @@ module VBlank
           # of halves or takes one from the front (Lists#emit_queue_routines). +sprites_over_picture+
           # says its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
           # sprite layer is on there. +indexes_in_banks+ says the tables of where its pictures, its
-          # screens' tiles and colours and its maps are kept are in a bank (GBC#build_with_indexes_in_banks).
+          # screens' tiles and colours and its maps are kept are in a bank (GBC#build_in_view).
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
                        count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A COLOR GAME THAT KEEPS ADDING SCREENS AND SONGS (GBC#build_cartridge, indexes_in_banks). The part
+# A COLOR GAME THAT KEEPS ADDING SCREENS AND SONGS (GBC#build_in_view, indexes_in_banks). The part
 # of a Color cartridge always in view holds 16384 bytes, the framework's own code among them. A game
 # that fits there no other way keeps in the banks, too, the small tables that say where each thing
 # is: each song's entry, where each sprite picture's pieces and outline are, each screen's tiles and
@@ -107,6 +107,18 @@ class TestGBCIndexesInBanks < Minitest::Test
     assert_operator code.fetch("music_songs").bank, :>, 0, "the songs' entries in a bank"
     assert_operator code.fetch("art_pictures").bank, :>, 0, "where each picture is, in a bank"
     assert_operator code.fetch("art_rooms").bank, :>, 0, "each screen's tiles and colours, in a bank"
+  end
+
+  # Each try at a build is a whole lowering, and this game is past the part always in view by
+  # enough that every step short of the last would fail. It is lowered once for each thing it is
+  # found to need (each screen's own colours, its sprites borrowing the lists, its sound effects in
+  # the banks), once more to measure the part in view, and once to build: none of the steps between,
+  # which that measure shows cannot fit.
+  def test_a_game_past_the_part_always_in_view_skips_the_tries_that_cannot_fit
+    gbc = GBC.new
+    gbc.build(many_screens)
+
+    assert_operator gbc.tries, :<=, 5
   end
 
   def test_a_game_past_the_part_always_in_view_plays_as_the_interpreter_plays_it

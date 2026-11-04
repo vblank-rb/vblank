@@ -316,7 +316,7 @@ module VBlank
             # art_lent_palettes; one below is the scene up's own, read from the bank its table is in.
             #
             # +kept_in_bank+ says the lists every scene keeps, and their families, are in a bank of
-            # their own as well (GBC#build_with_indexes_in_banks), read as a scene's own are.
+            # their own as well (GBC#build_in_view), read as a scene's own are.
             def emit_lend_colors(asm, memory, drawn_palettes, families: false, first_kept: nil, kept_in_bank: false)
               lent = memory[LENT]
               sprite_colors = drawn_palettes + 64
@@ -626,7 +626,7 @@ module VBlank
             end
 
             # rt_background_colors_far: the same, for a table kept in a bank of the cartridge (C), in a
-            # game too big for the part always in view (GBC#build_cartridge): the bank is put in view
+            # game too big for the part always in view (GBC#build_in_view): the bank is put in view
             # while it is read, and the game's put back after.
             def emit_background_colors_far(asm)
               asm.label("rt_background_colors_far")
@@ -1751,7 +1751,7 @@ module VBlank
             # so they reach the console in the same blank as the tiles, already faded as the rest.
             #
             # With +in_bank+ the tables of every room's tiles and colours are in one bank of the
-            # cartridge rather than the part always in view (GBC#build_with_indexes_in_banks): each
+            # cartridge rather than the part always in view (GBC#build_in_view): each
             # reading of them puts that bank in view, and the game's back after.
             def emit_rooms(asm, memory, colors: false, in_bank: false)
               h = Console::GBCHardware
@@ -1891,7 +1891,7 @@ module VBlank
             end
 
             # The table of where each grid is (art_grids) put in view, where it is kept in a bank
-            # (+in_bank+, GBC#build_with_indexes_in_banks): the reader takes its three bytes and puts
+            # (+in_bank+, GBC#build_in_view): the reader takes its three bytes and puts
             # the game's bank back (rt_bank_back), since it returns to the game's code, which is in a
             # bank of its own. Keeps HL.
             def emit_grids_bank_in_view(asm, in_bank)
@@ -2396,7 +2396,7 @@ module VBlank
             # picture, where its data is and the bank of the cartridge it is in (GBC::Art). With the
             # picture's number in HL, this leaves DE where its data is, that bank in view, and the
             # bank's number in A. With +in_bank+ the table itself is in a bank of the cartridge
-            # (GBC#build_with_indexes_in_banks), which is put in view first, and noted, since the
+            # (GBC#build_in_view), which is put in view first, and noted, since the
             # picture's own bank is noted after it the same way.
             def emit_banked_entry(asm, table, in_bank: false)
               asm.load(:d, :h)

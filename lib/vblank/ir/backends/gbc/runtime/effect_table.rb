@@ -9,7 +9,7 @@ module VBlank
           #
           # Runtime::Effects writes each effect's routines out for it, which is quick to play and
           # takes the better part of a kilobyte of the part of the cartridge always in view for
-          # each effect. A game that does not fit that way (GBC#build_cartridge) keeps every effect's
+          # each effect. A game that does not fit that way (GBC#build_in_view) keeps every effect's
           # notes and a row describing it in the banks, as the cartridges of the console's own games
           # keep theirs, and these routines read the row with its bank in view. In view stay these
           # routines, the same however many effects there are, and six bytes an effect.

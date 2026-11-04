@@ -1529,7 +1529,7 @@ module VBlank
             end
 
             # In a game too big for the part of the cartridge always in view, the tables are kept in
-            # its banks (GBC#build_cartridge), each table's bank in C beside its place in HL, and
+            # its banks (GBC#build_in_view), each table's bank in C beside its place in HL, and
             # rt_background_colors_far puts that bank in view to read it.
             def emit_background_colors_for_declaration(bg, which)
               refuse_walking_recolor!(bg)

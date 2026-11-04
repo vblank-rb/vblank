@@ -164,7 +164,7 @@ module VBlank
           # +banked_table_bytes+ is how big one of the game's tables has to be to go to a bank (#banked_tables).
           # +effects_in_banks+ keeps its sound effects there too (GBC::Music#effects_in_banks?), and
           # +indexes_in_banks+ the tables that say where each song, picture, screen and routine is
-          # (GBC#build_with_indexes_in_banks).
+          # (GBC#build_in_view).
           # +known+ holds what is worked out from +program+ alone, kept from one attempt at a build to
           # the next (GBC#build): nothing in it depends on how this one is built.
           # +scene_pictures+ says each scene brings its own sprite pictures in (Art::TooManySpriteTiles),
@@ -260,6 +260,10 @@ module VBlank
             columns = column_sections
             [data_section, *banked_table_sections, *routines, *timers, *main, *clock_sections, *columns]
           end
+
+          # The names of the tables a list is filled from, which stay in view however big they are
+          # (#banked_tables).
+          def tables_copied_to_lists = @reachable.filter_map { |node| node.table if node.kind == :list_copy }
 
           # DOES THE GAME COUNT THE FRAMES ITS SCREEN IS OFF FOR, from power-on to its first frame
           # (Runtime::Frame#emit_dark_start)? A game that reads `frames_since_power_on` and waits for
@@ -398,7 +402,7 @@ module VBlank
           # The names of the tables kept in banks of their own.
           def banked_tables
             @banked_tables ||= begin
-              copied = @reachable.filter_map { |node| node.table if node.kind == :list_copy }
+              copied = tables_copied_to_lists
               tables_read.filter_map do |table|
                 next if copied.include?(table.name)
 
@@ -470,7 +474,7 @@ module VBlank
           end
 
           # DATA KEPT BESIDE THE CODE THAT READS IT, in a game whose indexes are in banks
-          # (GBC#build_with_indexes_in_banks): a list of routines a call picks from, a scene's record
+          # (GBC#build_in_view): a list of routines a call picks from, a scene's record
           # of its own sprite lists. The routine's code runs in its own bank, which is in view while
           # it runs and while the runtime routines it calls read what it hands them, so data in the
           # same section is read with no bank put in view, and takes nothing of the part always in

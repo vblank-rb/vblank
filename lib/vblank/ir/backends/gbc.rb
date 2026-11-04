@@ -115,70 +115,251 @@ module VBlank
         # and what it is to the author (Lowering#section_routines).
         GameRoutine = Data.define(:bank, :addresses, :routine)
 
-        # +program+ as a cartridge (Cartridge::GBCROM), carrying its Places.
-        # A game whose sprites wear more lists of colours than the console holds is built again
-        # with the lists borrowing them as it runs (Art::TooManySpriteLists), and one whose sprites
-        # wear more lists than a byte numbers with each scene numbering its own (Art::TooManyLentLists).
-        # A game whose backgrounds need more tiles than the console holds at once is built again with
-        # each screen bringing its own tiles in (Art::TooManyBackgroundTiles), and one whose
-        # backgrounds draw from more lists of colours than it holds at once with each screen bringing
-        # its own colours in as well (Art::TooManyBackgroundLists). And one whose part of the
-        # cartridge always in view is too full is built again with its songs' notes kept in the
-        # banks (Linker::TooBigForView, GBC::Music#sections), and then, if it is still too full, with
-        # its sprites' tables of poses in each list kept there as well (Lowering::Picture), and last
-        # with the indexes that say where each thing is kept there too (#build_with_indexes_in_banks).
-        #
-        # What a lowering works out from the program alone, and not from how this attempt is built,
-        # is kept from one attempt to the next (Lowering's +known+).
-        #
-        # A game whose sprite pictures between them need more tiles than the console holds is built
-        # again with each scene bringing its own pictures in, as its own tiles (Art::TooManySpriteTiles).
-        # What the build found to say about what it decided (Cartridge::LoweredBuild): nothing yet.
-        def findings = []
+        # How one try at a build keeps the art (#build): whether its sprites' lists of colours borrow
+        # the console's eight as it runs (false, true, or :by_scene with each scene numbering its own),
+        # and whether each screen brings its own background tiles in, and its own colours too.
+        ArtSettings = Data.define(:lends, :tile_rooms, :room_colors)
 
+        # What one try at a build keeps in the cartridge's banks rather than the part always in view
+        # (#build_in_view): its songs' notes, its sprites' tables of poses, its backgrounds' tables of
+        # colours, every table of its own at least +banked_table_bytes+ long, its sound effects, and
+        # the indexes that say where each thing is. Each is Lowering's setting of the same name.
+        ViewSettings = Data.define(:banked_songs, :bank_pose_tables, :bank_background_colors, :banked_table_bytes,
+                                   :effects_in_banks, :indexes_in_banks) do
+          # Everything in view that can be: a game that fits so builds the bytes it always has.
+          def self.first = new(false, false, false, Lowering::BANKED_TABLE_BYTES, false, false)
+        end
+
+        # One try's lowering before it is linked: the lowering, the work memory it placed things in,
+        # and every section of the cartridge.
+        Lowered = Data.define(:lowering, :memory, :sections)
+
+        # +program+ as a cartridge (Cartridge::GBCROM), carrying its Places.
+        #
+        # A BUILD IS A SERIES OF TRIES, each a whole lowering, until one fits. The first keeps
+        # everything the simple way. A try stops at the first thing that does not fit, which says
+        # what the next try changes:
+        #
+        # - sprites that wear more lists of colours than the console holds: the lists borrow them as
+        #   it runs (Art::TooManySpriteLists), and with more than a byte numbers, each scene numbers
+        #   its own (Art::TooManyLentLists);
+        # - backgrounds that need more tiles than the console holds at once: each screen brings its
+        #   own tiles in (Art::TooManyBackgroundTiles), and with more lists of colours than it holds,
+        #   its own colours as well (Art::TooManyBackgroundLists);
+        # - sprite pictures that between them need more tiles than the console holds: each scene
+        #   brings its own pictures in (Art::TooManySpriteTiles);
+        # - a part of the cartridge always in view too full: more of the game kept in the banks
+        #   (#build_in_view).
+        #
+        # Each of those is a fact about the game, not about the try that found it: lending the
+        # sprites' lists does not change how many tiles the backgrounds need, nor the other way
+        # round. So a later try keeps what every earlier try found it needs, and never finds it
+        # again. Lists of colours and sprite tiles are refused the moment their count passes what the
+        # console holds, part way through a lowering (Art#added_palette_number,
+        # Art#refuse_sprite_tiles_past_most!), so a try that cannot fit stops early. The part in view
+        # is only known once everything is made, which is why #build_in_view skips the tries it can
+        # tell will not fit.
+        #
+        # What a lowering works out from the program alone, and not from how this try is built, is
+        # kept from one try to the next (Lowering's +known+).
         def build(program, title: "RUBYGBA")
           @known = {}
           @scene_pictures = false
-          build_in_rooms_if_needed(program, title)
-        rescue Art::TooManySpriteTiles
-          @scene_pictures = true
-          build_in_rooms_if_needed(program, title)
-        end
+          @tries = 0
+          art = ArtSettings.new(lends: false, tile_rooms: false, room_colors: false)
+          loop do
+            return build_in_view(program, title, art)
+          rescue Art::TooManySpriteTiles
+            raise if @scene_pictures
 
-        private
+            @scene_pictures = true
+          rescue Art::TooManyBackgroundTiles
+            raise if art.tile_rooms
 
-        def build_in_rooms_if_needed(program, title)
-          build_with_rooms_if_needed(program, title)
-        rescue Art::TooManyBackgroundLists
-          build_lending_if_needed(program, title, tile_rooms: true, room_colors: true)
-        end
+            art = art.with(tile_rooms: true)
+          rescue Art::TooManyBackgroundLists
+            raise if art.room_colors
 
-        def build_with_rooms_if_needed(program, title)
-          build_lending_if_needed(program, title, tile_rooms: false)
-        rescue Art::TooManyBackgroundTiles
-          build_lending_if_needed(program, title, tile_rooms: true)
-        end
+            art = art.with(tile_rooms: true, room_colors: true)
+          rescue Art::TooManySpriteLists
+            raise if art.lends
 
-        def build_lending_if_needed(program, title, tile_rooms:, room_colors: false)
-          build_cartridge(program, title, lends: false, tile_rooms: tile_rooms, room_colors: room_colors)
-        rescue Art::TooManySpriteLists
-          begin
-            build_cartridge(program, title, lends: true, tile_rooms: tile_rooms, room_colors: room_colors)
+            art = art.with(lends: true)
           rescue Art::TooManyLentLists
-            build_cartridge(program, title, lends: :by_scene, tile_rooms: tile_rooms, room_colors: room_colors)
+            raise if art.lends == :by_scene
+
+            art = art.with(lends: :by_scene)
           end
         end
 
-        def build_cartridge(program, title, lends:, tile_rooms:, room_colors:, banked_songs: false, bank_pose_tables: false,
-                            bank_background_colors: false, banked_table_bytes: Lowering::BANKED_TABLE_BYTES,
-                            effects_in_banks: false, indexes_in_banks: false)
+        # How many times the last #build lowered the game: one for a game that fits as it first tries.
+        attr_reader :tries
+
+        # What the build found to say about what it decided (Cartridge::LoweredBuild): nothing yet.
+        def findings = []
+
+        private
+
+        # THE PART OF THE CARTRIDGE ALWAYS IN VIEW is 16384 bytes, and a game that does not fit there
+        # is built again keeping more of itself in the banks, in this order (#roomier_view): its
+        # songs' notes (GBC::Music#sections); its sprites' tables of poses in each list
+        # (Lowering::Picture); the tables of what its backgrounds' palettes show at each step of a
+        # fade; and its own tables, the smaller ones last, since those are the ones a game reads
+        # most. All of that failing, it starts again with its sound effects kept in the banks, which
+        # make the most room and play a little slower, and a game that fits without them keeps its
+        # bytes. And that failing too, with everything in the banks at once and the indexes besides.
+        # A game whose framework code alone fills the part, which only its sound effects can grow,
+        # goes straight to keeping them in the banks.
+        #
+        # Each step costs the game a little speed, so the build takes the first that fits. But a try
+        # is a whole lowering, and only once all of it is made is the part in view known; a game
+        # past it by a long way would make every try in turn to find the last. So the try that did
+        # not fit is measured: its part in view, and how much of it each later step would move to
+        # the banks (#bytes_moved_by). A step that would move too little to fit is skipped untried.
+        def build_in_view(program, title, art)
+          view = ViewSettings.first
+          loop do
+            lowered = lower(program, art, view)
+            begin
+              linked = Linker.new(lowered.sections, fixed_from: Console::GBCHardware::HEADER_END,
+                                                    clock: lowered.lowering.clock?).link
+            rescue Linker::FrameworkFillsView
+              music = lowered.lowering.music
+              raise if view.effects_in_banks || music.effects.empty?
+
+              # Nothing else here shrinks the framework's own code, so go straight to what does.
+              view = ViewSettings.first.with(effects_in_banks: true)
+              next
+            rescue Linker::TooBigForView => e
+              view = roomier_view(view, lowered, e.needed) || raise
+              next
+            end
+            return cartridge(program, title, lowered, linked)
+          end
+        end
+
+        # The next try that can fit after +view+ did not: the next step (#next_view), past every step
+        # that +lowered+'s part in view, +needed+ bytes, shows cannot fit. Nil for none left.
+        def roomier_view(view, lowered, needed)
+          music = lowered.lowering.music
+          spans = in_view_spans(lowered.sections)
+          following = next_view(view, songs: music.any?, effects: music.effects.any?)
+          while following && needed - bytes_moved_by(view, following, spans, lowered.lowering) > Linker::BANK_SIZE
+            following = next_view(following, songs: music.any?, effects: music.effects.any?)
+          end
+          following
+        end
+
+        # The step after +view+ (#build_in_view), nil after the last: for a game with +songs+ and
+        # sound +effects+.
+        #
+        # THE LAST WAY TO FIT THE PART ALWAYS IN VIEW: everything kept in the banks that the build
+        # can keep there — its songs' notes, its sound effects, its sprites' pose tables, its fades'
+        # colour tables and every table of its own but the smallest — and the INDEXES as well, the
+        # small tables that say where each of those things is. Each is a few bytes, but a few bytes
+        # for every song, every sprite picture, every screen and every routine a call picks from
+        # add up, so a game that keeps adding songs and screens fills the part always in view with
+        # them long after the things themselves went to the banks. Kept there, a song or a screen
+        # more costs nothing in view that grows with it. Each index is read with its bank put in
+        # view (Runtime::Music copies a song's entry out as it starts; Runtime::Picture reads where a
+        # picture, a screen's tiles or its colours are), or sits in the bank of the code that reads
+        # it (Lowering#routine_data_label). A game whose sprites borrow the eight lists has each
+        # scene number its own, so a screen's lists are kept with it in a bank as well (#lower).
+        def next_view(view, songs:, effects:)
+          smaller = Lowering::SMALLER_BANKED_TABLE_BYTES.find { |bytes| bytes < view.banked_table_bytes }
+          if view.bank_background_colors && !smaller
+            return ViewSettings.first.with(effects_in_banks: true) if effects && !view.effects_in_banks
+            return nil if view.indexes_in_banks
+
+            return ViewSettings.new(banked_songs: songs, bank_pose_tables: true, bank_background_colors: true,
+                                    banked_table_bytes: Lowering::SMALLER_BANKED_TABLE_BYTES.min,
+                                    effects_in_banks: view.effects_in_banks, indexes_in_banks: true)
+          end
+
+          moves_songs = songs && !view.banked_songs
+          view.with(banked_songs: view.banked_songs || moves_songs, bank_pose_tables: view.bank_pose_tables || !moves_songs,
+                    bank_background_colors: view.bank_pose_tables,
+                    banked_table_bytes: view.bank_background_colors ? smaller : view.banked_table_bytes)
+        end
+
+        # AT MOST HOW MANY BYTES +later+ MOVES OUT OF VIEW that +view+ kept there, read off the try
+        # that +spans+ measured (#in_view_spans) and +lowering+ made. Moving a thing to the banks
+        # never shrinks the rest of what is in view: what stays to say where it went, and the code
+        # that puts its bank in view, is the same size or bigger. So a try's part in view, less these bytes, is the least
+        # the later one's can be. A later step that changes how the sound effects or the indexes are
+        # kept is not measured here (Infinity): those move things this try's parts do not name, and
+        # the build makes that try rather than guess.
+        def bytes_moved_by(view, later, spans, lowering)
+          return Float::INFINITY if later.effects_in_banks != view.effects_in_banks
+          return Float::INFINITY if later.indexes_in_banks != view.indexes_in_banks
+
+          moved = 0
+          if later.banked_songs && !view.banked_songs
+            # Each part's entry keeps the bank its notes went to: a byte more in view.
+            moved += spans.sum(SONG_NOTES) - spans.count(SONG_PARTS)
+          end
+          moved += spans.sum(POSE_TABLES) if later.bank_pose_tables && !view.bank_pose_tables
+          moved += spans.sum(BACKGROUND_COLORS) if later.bank_background_colors && !view.bank_background_colors
+          if later.banked_table_bytes < view.banked_table_bytes
+            # A table in the banks keeps where each of its parts is in view, three bytes at least.
+            # One a list is filled from stays in view.
+            copied = lowering.tables_copied_to_lists.map { |name| "table #{name}" }
+            tables = spans.select(GAME_TABLES) do |bytes, label|
+              bytes >= later.banked_table_bytes && !copied.include?(label)
+            end
+            moved += tables.sum { |bytes| bytes - 3 }
+          end
+          moved
+        end
+
+        # The labels in the part always in view of what each step moves to the banks: a song's list
+        # of notes (Music#emit_song), a sprite's tables of poses (Lowering::Picture#pose_tables and
+        # #posed_sprite_block), a background's table of colours
+        # (Picture#emit_background_colors_for_declaration), and one of the game's tables
+        # (Lowering#data_section).
+        SONG_NOTES = /\Amusic_notes_/
+        SONG_PARTS = /\Amusic_notes_\d+_\d+_first\z/
+        POSE_TABLES = /\A(?:pose_pictures|pose_attributes|pose_lent_palettes|posed_sprite) \d+\z/
+        BACKGROUND_COLORS = /\Abackground_colors \d+\z/
+        GAME_TABLES = /\Atable (?!.* parts\z)/ # and not where the parts of one already in the banks are
+
+        # Every label in the part always in view, with how many bytes run from it to the next label
+        # after it: what it labels. Labels at one place each count what follows them all, so a sum of
+        # these is never less than what the labels hold.
+        InViewSpans = Data.define(:bytes_by_label) do
+          # The bytes of each label +pattern+ matches that +keep+ (given them and the label) keeps.
+          def select(pattern, &keep)
+            keep ||= proc { true }
+            bytes_by_label.filter_map { |label, bytes| bytes if label.match?(pattern) && keep.call(bytes, label) }
+          end
+
+          def sum(pattern) = select(pattern).sum
+          def count(pattern) = select(pattern).length
+        end
+
+        def in_view_spans(sections)
+          in_view = sections.reject { |section| %i[banked aligned16].include?(section.home) || section.home.is_a?(String) }
+          spans = in_view.flat_map do |section|
+            starts = (section.labels.values + [section.size]).uniq.sort
+            section.labels.map { |label, at| [label, (starts.find { |start| start > at } || at) - at] }
+          end
+          InViewSpans.new(bytes_by_label: spans)
+        end
+
+        # One try lowered with +art+ and +view+, every section of the cartridge made.
+        def lower(program, art, view)
+          @tries += 1
           memory = Memory.new
-          lowering = Lowering.new(program, memory: memory, lends_sprite_colors: lends, tile_rooms: tile_rooms,
-                                           scene_pictures: @scene_pictures,
-                                           room_colors: room_colors, banked_songs: banked_songs, bank_pose_tables: bank_pose_tables,
-                                           bank_background_colors: bank_background_colors, banked_table_bytes: banked_table_bytes,
-                                           effects_in_banks: effects_in_banks, indexes_in_banks: indexes_in_banks,
-                                           known: @known)
+          # The last step of #build_in_view keeps each scene's record of its lists with its code in a
+          # bank, so the lists the sprites borrow are numbered by scene.
+          lends = view.indexes_in_banks && art.lends == true ? :by_scene : art.lends
+          lowering = Lowering.new(program, memory: memory, lends_sprite_colors: lends, tile_rooms: art.tile_rooms,
+                                           scene_pictures: @scene_pictures, room_colors: art.room_colors,
+                                           banked_songs: view.banked_songs, bank_pose_tables: view.bank_pose_tables,
+                                           bank_background_colors: view.bank_background_colors,
+                                           banked_table_bytes: view.banked_table_bytes,
+                                           effects_in_banks: view.effects_in_banks,
+                                           indexes_in_banks: view.indexes_in_banks, known: @known)
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
                                   bar_rows: lowering.bar_rows, slides: lowering.music.slides?,
@@ -201,56 +382,23 @@ module VBlank
                                              big_maps: lowering.big_map_places, together: lowering.groups_up_together?,
                                              bar_rows: lowering.bar_rows, bar_maps: lowering.bar_shows_maps?, clips: clips,
                                              count_at: (lowering.variables[Frames::COUNT] if lowering.counts_dark_frames?),
-                                             banked_colors: bank_background_colors && !lowering.drawn_palettes.nil?,
+                                             banked_colors: view.bank_background_colors && !lowering.drawn_palettes.nil?,
                                              byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?,
                                              half_queues: lowering.keeps_half_queues?,
                                              sprites_over_picture: IR::SpritesOverPicture.any?(program),
-                                             indexes_in_banks: indexes_in_banks)
+                                             indexes_in_banks: view.indexes_in_banks)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
-          begin
-            linked = Linker.new(runtime + game + data, fixed_from: Console::GBCHardware::HEADER_END,
-                                                       clock: lowering.clock?).link
-          rescue Linker::FrameworkFillsView
-            raise if effects_in_banks || lowering.music.effects.empty?
+          Lowered.new(lowering: lowering, memory: memory, sections: runtime + game + data)
+        end
 
-            # Nothing else here shrinks the framework's own code, so go straight to what does.
-            return build_cartridge(program, title, lends: lends, tile_rooms: tile_rooms, room_colors: room_colors,
-                                                   effects_in_banks: true)
-          rescue Linker::TooBigForView
-            # Its songs' notes into the banks first, then its sprites' pose tables too, then the
-            # tables of what its backgrounds' palettes show at each step of a fade, and last its
-            # own smaller tables, which are the ones a game reads most. All of that failing, it
-            # starts again with its sound effects kept in the banks, which make the most room and
-            # play a little slower, and a game that fits without them keeps its bytes. And that
-            # failing too, with everything in the banks at once and the indexes besides
-            # (#build_with_indexes_in_banks).
-            smaller = Lowering::SMALLER_BANKED_TABLE_BYTES.find { |bytes| bytes < banked_table_bytes }
-            if bank_background_colors && !smaller
-              if effects_in_banks || lowering.music.effects.empty?
-                raise if indexes_in_banks
-
-                return build_with_indexes_in_banks(program, title, lends: lends, tile_rooms: tile_rooms,
-                                                                   room_colors: room_colors,
-                                                                   songs: lowering.music.any?,
-                                                                   effects_in_banks: effects_in_banks)
-              end
-
-              return build_cartridge(program, title, lends: lends, tile_rooms: tile_rooms, room_colors: room_colors,
-                                                     effects_in_banks: true)
-            end
-
-            songs = lowering.music.any? && !banked_songs
-            return build_cartridge(program, title, lends: lends, tile_rooms: tile_rooms, room_colors: room_colors,
-                                                   banked_songs: banked_songs || songs, bank_pose_tables: bank_pose_tables || !songs,
-                                                   bank_background_colors: bank_pose_tables,
-                                                   banked_table_bytes: bank_background_colors ? smaller : banked_table_bytes,
-                                                   effects_in_banks: effects_in_banks, indexes_in_banks: indexes_in_banks)
-          end
+        # The cartridge of +lowered+, placed as +linked+ says.
+        def cartridge(program, title, lowered, linked)
+          lowering = lowered.lowering
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
             GameRoutine.new(bank: placed.bank, addresses: placed.address...(placed.address + placed.section.size), routine: routine)
           end
-          built = Places.new(variables: lowering.variables, lists: lowering.lists, runtime: runtime_places(memory),
+          built = Places.new(variables: lowering.variables, lists: lowering.lists, runtime: runtime_places(lowered.memory),
                              source_program: program, code: linked.places, routines: routines,
                              sound_tables: lowering.sound_tables, notes: lowering.music.notes,
                              music_follows_level: !lowering.music_level.nil?,
@@ -260,26 +408,6 @@ module VBlank
           save_bytes = SaveLayout.named_by?(program) ? Runtime::Saving::SIZE : 0
           Cartridge::GBCROM.new(linked.banks, title: title, save_bytes: save_bytes, clock: lowering.clock?,
                                               rumble: lowering.rumbles?, built: built)
-        end
-
-        # THE LAST WAY TO FIT THE PART ALWAYS IN VIEW: everything kept in the banks that the build
-        # can keep there — its songs' notes, its sound effects, its sprites' pose tables, its fades'
-        # colour tables and every table of its own but the smallest — and the INDEXES as well, the
-        # small tables that say where each of those things is. Each is a few bytes, but a few bytes
-        # for every song, every sprite picture, every screen and every routine a call picks from
-        # add up, so a game that keeps adding songs and screens fills the part always in view with
-        # them long after the things themselves went to the banks. Kept there, a song or a screen
-        # more costs nothing in view that grows with it. Each index is read with its bank put in
-        # view (Runtime::Music copies a song's entry out as it starts; Runtime::Picture reads where a
-        # picture, a screen's tiles or its colours are), or sits in the bank of the code that reads
-        # it (Lowering#routine_data_label). A game whose sprites borrow the eight lists has each
-        # scene number its own, so a screen's lists are kept with it in a bank as well.
-        def build_with_indexes_in_banks(program, title, lends:, tile_rooms:, room_colors:, songs:, effects_in_banks:)
-          build_cartridge(program, title, lends: lends == true ? :by_scene : lends, tile_rooms: tile_rooms,
-                                          room_colors: room_colors, banked_songs: songs, bank_pose_tables: true,
-                                          bank_background_colors: true,
-                                          banked_table_bytes: Lowering::SMALLER_BANKED_TABLE_BYTES.min,
-                                          effects_in_banks: effects_in_banks, indexes_in_banks: true)
         end
 
         # Where the runtime keeps how the run stands (Runtime::Frame's names and the rest).
