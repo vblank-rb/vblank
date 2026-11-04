@@ -51,6 +51,8 @@ class TestMadeNames < Minitest::Test
     sprite_tiles_source: { picture: :great_ball },
     draw_order: { number: 1, part: :sort },
     start_over: { part: :play },
+    held_tiles: {},
+    held_tiles_drop: {},
   }.freeze
 
   def test_every_kind_of_name_is_in_the_samples
