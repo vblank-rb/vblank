@@ -46,6 +46,11 @@ gem "ruby-snes-emulator", path: "ruby-snes-emulator"
 # use, which is one more reason it is here for testing and not in the gemspec.
 gem "ruby-genesis-emulator", path: "ruby-genesis-emulator"
 
+# THE PLAYSTATION'S EMULATOR, the same way: Beetle PSX, driven through Fiddle, whose core
+# `rake compile_core` in ruby-ps1-emulator/ builds (see its Rakefile). It is GPL-2.0, and only plays
+# the programs VBlank builds, to check them.
+gem "ruby-ps1-emulator", path: "ruby-ps1-emulator"
+
 # Reaches SDL3 for a game played live in a window (VBlank::Live::SDL). It comes with Ruby, and
 # under bundler a gem the Gemfile does not name cannot be loaded, so a game that plays live names
 # it in its own Gemfile too. Not in the gemspec: building a cartridge never needs it.

@@ -220,6 +220,39 @@ module VBlank
         RubyGenesisEmulator::Core.new(rom_path, save_dir: save_dir)
       end
 
+      # THE PLAYSTATION'S EMULATOR is a gem of its own too, ruby-ps1-emulator: Beetle PSX, built as a
+      # libretro core with a patch that hands over the console's memories, driven through Fiddle. It is
+      # loaded the same way, the gem first and this repository's checkout second, and when it is
+      # missing it says how to get it.
+      def load_ps1!
+        return true if ps1_loaded?
+
+        require "ruby_ps1_emulator"
+        true
+      rescue LoadError
+        lib = VBlank.root.join("ruby-ps1-emulator", "lib").to_s
+        unless File.directory?(lib)
+          raise LoadError, "An emulator is required to run a PlayStation program, and ruby-ps1-emulator will " \
+                           "not load. To fix this, add it to the git block that names vblank in your Gemfile: " \
+                           "widen its glob to \"{,ruby-gba-emulator/,ruby-ps1-emulator/}*.gemspec\" and add " \
+                           "`gem \"ruby-ps1-emulator\"` inside it. Then run `rake compile_core` in " \
+                           "ruby-ps1-emulator/ to build the Beetle PSX core it plays programs in."
+        end
+
+        $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+        require "ruby_ps1_emulator"
+        true
+      end
+
+      def ps1_loaded? = !defined?(::RubyPS1Emulator::Core).nil?
+
+      # A PlayStation on a PS-X EXE (see RubyPS1Emulator::Core). +save_dir+ is where the core is told to
+      # keep its files.
+      def open_ps1(exe_path, save_dir: nil)
+        load_ps1!
+        RubyPS1Emulator::Core.new(exe_path, save_dir: save_dir)
+      end
+
       # Open an emulator core on a ROM file path.
       #
       # +save_dir+ says where the cartridge's battery-backed save memory is kept. The core

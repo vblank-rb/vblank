@@ -1,0 +1,121 @@
+--- a/libretro.c
++++ b/libretro.c
+@@ -1382,6 +1382,8 @@
+ }
+ #endif
+ 
++/* VBlank probe: true when no BIOS file was found and OpenBIOS is in use. */
++static bool vblank_probe_openbios = false;
+ static uint32_t TextMem_Start;
+ /* TextMem is a dynamic byte buffer that grows as PSX EXEs are
+  * loaded; keeps PIOMem text segments contiguous from a base
+@@ -3508,6 +3510,7 @@
+       psx_bios_is_scph5903 = false;
+       memset(BIOSROM->data8, 0, BIOS_SIZE);
+       memcpy(BIOSROM->data8, openbios, sizeof(openbios));
++      vblank_probe_openbios = true;
+    }
+ 
+    i = 0;
+@@ -3610,7 +3613,21 @@
+    memcpy(&TextMem[TextStart - TextMem_Start], data + 0x800, TextSize);
+ 
+    /* BIOS patch */
+-   MASMEM_WriteU32(BIOSROM, 0x6990, (3 << 26) | ((0xBF001000 >> 2) & ((1 << 26) - 1)));
++   if (vblank_probe_openbios)
++   {
++      /* VBlank probe: OpenBIOS never reaches the place in Sony's BIOS
++       * (6990h) where Mednafen hooks in the EXE loader below, so the
++       * console starts the loader at power-on instead: LUI at, BF00h;
++       * ORI at, at, 1000h; JR at; NOP at the reset vector. The program
++       * starts on the first frame with the BIOS never run, which is
++       * all a program that makes no BIOS calls needs. */
++      MASMEM_WriteU32(BIOSROM, 0x0, 0x3C01BF00);
++      MASMEM_WriteU32(BIOSROM, 0x4, 0x34211000);
++      MASMEM_WriteU32(BIOSROM, 0x8, 0x00200008);
++      MASMEM_WriteU32(BIOSROM, 0xC, 0x00000000);
++   }
++   else
++      MASMEM_WriteU32(BIOSROM, 0x6990, (3 << 26) | ((0xBF001000 >> 2) & ((1 << 26) - 1)));
+ 
+    po = &PIOMem->data8[0x0800];
+ 
+@@ -7640,6 +7657,48 @@
+    return okay;
+ }
+ 
++/* VBlank probe: the console's memories beyond main RAM, for a test reading
++ * back what a program did. VRAM as the GPU keeps it (1024x512 halfwords at
++ * the 1x internal resolution), the GPU's display and drawing settings, the
++ * scratchpad, and the CPU's registers. */
++#define VBLANK_PROBE_VRAM      0x8001
++#define VBLANK_PROBE_GPU       0x8002
++#define VBLANK_PROBE_SCRATCH   0x8003
++#define VBLANK_PROBE_CPU       0x8004
++extern PS_GPU GPU;
++static uint32_t vblank_probe_gpu[16];
++static uint32_t vblank_probe_cpu[35];
++
++static void *vblank_probe_gpu_state(void)
++{
++   vblank_probe_gpu[0]  = GPU.DisplayMode;
++   vblank_probe_gpu[1]  = GPU.DisplayOff;
++   vblank_probe_gpu[2]  = GPU.DisplayFB_XStart;
++   vblank_probe_gpu[3]  = GPU.DisplayFB_YStart;
++   vblank_probe_gpu[4]  = GPU.HorizStart;
++   vblank_probe_gpu[5]  = GPU.HorizEnd;
++   vblank_probe_gpu[6]  = GPU.VertStart;
++   vblank_probe_gpu[7]  = GPU.VertEnd;
++   vblank_probe_gpu[8]  = (uint32_t)GPU.ClipX0;
++   vblank_probe_gpu[9]  = (uint32_t)GPU.ClipY0;
++   vblank_probe_gpu[10] = (uint32_t)GPU.ClipX1;
++   vblank_probe_gpu[11] = (uint32_t)GPU.ClipY1;
++   vblank_probe_gpu[12] = (uint32_t)GPU.OffsX;
++   vblank_probe_gpu[13] = (uint32_t)GPU.OffsY;
++   vblank_probe_gpu[14] = GPU.upscale_shift;
++   vblank_probe_gpu[15] = GPU.scanline;
++   return vblank_probe_gpu;
++}
++
++static void *vblank_probe_cpu_state(void)
++{
++   if (!PSX_CPU)
++      return NULL;
++   memcpy(vblank_probe_cpu, PSX_CPU->GPR_full, 34 * sizeof(uint32_t));
++   vblank_probe_cpu[34] = PSX_CPU->BACKED_PC;
++   return vblank_probe_cpu;
++}
++
+ void *retro_get_memory_data(unsigned type)
+ {
+    /* This callback may be invoked before retro_load_game or after
+@@ -7647,6 +7706,14 @@
+     * libretro spec; the frontend must cope with that. */
+    switch (type)
+    {
++      case VBLANK_PROBE_VRAM:
++         return GPU.vram;
++      case VBLANK_PROBE_GPU:
++         return vblank_probe_gpu_state();
++      case VBLANK_PROBE_SCRATCH:
++         return ScratchRAM ? ScratchRAM->data8 : NULL;
++      case VBLANK_PROBE_CPU:
++         return vblank_probe_cpu_state();
+       case RETRO_MEMORY_SYSTEM_RAM:
+          return MainRAM ? MainRAM->data8 : NULL;
+       case RETRO_MEMORY_SAVE_RAM:
+@@ -7666,6 +7733,14 @@
+ {
+    switch (type)
+    {
++      case VBLANK_PROBE_VRAM:
++         return GPU.vram ? (size_t)(1024 * 512 * 2) << (2 * GPU.upscale_shift) : 0;
++      case VBLANK_PROBE_GPU:
++         return sizeof(vblank_probe_gpu);
++      case VBLANK_PROBE_SCRATCH:
++         return ScratchRAM ? 1024 : 0;
++      case VBLANK_PROBE_CPU:
++         return PSX_CPU ? sizeof(vblank_probe_cpu) : 0;
+       case RETRO_MEMORY_SYSTEM_RAM:
+          return 0x200000;
+       case RETRO_MEMORY_SAVE_RAM:
