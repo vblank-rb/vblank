@@ -185,7 +185,8 @@ class TestWebSocket < Minitest::Test
 
     refute client.closed?, "a message is still to be read"
     assert_equal "last words", client.receive_text
-    assert client.closed?
+    # The close comes after the message, and may not have come yet.
+    Timeout.timeout(FUSE_SECONDS) { sleep 0.01 until client.closed? }
   end
 
   def test_closing_tells_the_server_and_sends_nothing_more
