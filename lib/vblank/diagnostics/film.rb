@@ -43,10 +43,11 @@ module VBlank
       PART_END_HOLD_SECONDS = 0.8
       SHORTEST_FILM_SECONDS = 3
 
-      # Each picture is shown at twice the console's size: at its own size a frame is a postage
-      # stamp on a computer's screen. Doubling also keeps the width and height even, which the
-      # MP4's way of keeping colour needs.
-      PICTURE_SCALE_PERCENT = 200
+      # Each picture is shown at twice the console's size unless +scale:+ says otherwise: at its
+      # own size a frame is a postage stamp on a computer's screen. The MP4's way of keeping colour
+      # needs an even width and height, which every console's screen has, and so has any whole
+      # number of times it.
+      PICTURE_SCALE = 2
 
       # The strip above the pictures: how tall, its colour, and the size of its writing.
       LABEL_STRIP_HEIGHT = 28
@@ -74,16 +75,19 @@ module VBlank
 
       # Make the film and write it to +path+, which is handed back. +search_path+ is where the
       # programs are looked for, the folders of a PATH; left out, it is this process's.
-      def self.make(path, sides:, parts:, keys: ->(_frame) {}, search_path: ENV.fetch("PATH", ""))
-        new(sides: sides, parts: parts, keys: keys, search_path: search_path).write(path)
+      # +scale+ is how many times the console's size each picture is shown at.
+      def self.make(path, sides:, parts:, keys: ->(_frame) {}, scale: PICTURE_SCALE, search_path: ENV.fetch("PATH", ""))
+        new(sides: sides, parts: parts, keys: keys, scale: scale, search_path: search_path).write(path)
       end
 
-      def initialize(sides:, parts:, keys:, search_path:)
+      def initialize(sides:, parts:, keys:, scale:, search_path:)
         refuse_bad_sides!(sides)
         refuse_bad_parts!(parts)
+        refuse_bad_scale!(scale)
         @sides = sides.transform_keys(&:to_s)
         @parts = parts
         @keys = keys
+        @scale = scale
         @commands = find_commands!([IMAGEMAGICK, FFMPEG], search_path)
       end
 
@@ -124,7 +128,7 @@ module VBlank
       def compose_frame(dir, frame)
         out = File.join(dir, format("film_%05d.png", frame))
         labelled = @sides.keys.each_with_index.flat_map do |label, side|
-          ["(", picture_path(File.join(dir, side.to_s), frame), "-scale", "#{PICTURE_SCALE_PERCENT}%",
+          ["(", picture_path(File.join(dir, side.to_s), frame), "-scale", "#{@scale * 100}%",
            "-background", LABEL_STRIP_COLOR, "-gravity", "north", "-splice", "0x#{LABEL_STRIP_HEIGHT}",
            "+gravity", "-annotate", LABEL_BASELINE, literal_text(label), ")"]
         end
@@ -202,6 +206,13 @@ module VBlank
         raise ArgumentError, "`sides:` was #{sides.inspect}. Give a Hash of one side or more. Each key is the " \
                              "label of the side, and each value is a lambda that opens the cartridge: " \
                              "`sides: { \"ours\" => -> { Verifier.new(rom, frames: 0) } }`."
+      end
+
+      def refuse_bad_scale!(scale)
+        return if scale.is_a?(Integer) && scale.positive?
+
+        raise ArgumentError, "`scale:` was #{scale.inspect}. Give a whole number, 1 or more: `scale: 3` shows each " \
+                             "picture at three times the size of the console's screen."
       end
 
       def refuse_bad_parts!(parts)

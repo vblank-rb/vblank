@@ -89,10 +89,14 @@ module VBlank
       # moving on a console frame each frame, the emulator's own and never the computer's (see
       # RubyGBAEmulator::Probe#clock_at); left out, the cartridge has none, as on most emulators.
       # +clock_set: false+ makes it a chip whose battery ran out.
+      # +save_dir:+ is the folder the emulator keeps the cartridge's save memory in. Left out, it
+      # is the one every reader in this process shares (SAVE_DIR); a Film gives each cartridge
+      # it opens a folder of its own, so a cartridge never finds a save another run left.
       def initialize(rom, frames: 2, keys: nil, vars: nil, count_passes: false, save: nil, sound: RecordedSound.new,
-                     clock: nil, clock_set: true)
+                     clock: nil, clock_set: true, save_dir: self.class.save_dir)
         refuse_sound_not_recorded_sound!(sound)
         @rom = rom
+        @save_dir = save_dir
         @save = save
         @clock = clock
         @clock_set = clock_set
@@ -305,6 +309,23 @@ module VBlank
         @probe.close if @probe.respond_to?(:close) && !@probe.closed?
         @tempfile&.close!
         nil
+      end
+
+      # PUT THE CONSOLE BACK AS A SAVED STATE LEFT IT, the file +path+ an emulator wrote of this
+      # same cartridge, and carry on from there: the next frame played is the one after the state
+      # was saved. It is how a moment far into a game is reached without playing up to it. The
+      # picture read is the last frame played until #step plays one from the state.
+      #
+      # @return [self]
+      def load_state(path)
+        ensure_rendered!
+        unless @probe.respond_to?(:load_state)
+          raise ArgumentError, "A #{Console.for(@rom.console).title} cartridge cannot start from a saved state here. " \
+                               "Start it from power-on, or from a tape."
+        end
+
+        @probe.load_state(path.to_s)
+        self
       end
 
       # Check if the entire screen is black (nothing rendered).
@@ -786,7 +807,7 @@ module VBlank
         File.binwrite(save_path, @save.to_sav)
       end
 
-      def save_path = File.join(self.class.save_dir, "#{File.basename(@tempfile.path, '.*')}#{kit.save_file_extension}")
+      def save_path = File.join(@save_dir, "#{File.basename(@tempfile.path, '.*')}#{kit.save_file_extension}")
 
       # What says how this cartridge's console is played.
       def kit = Console.for(@rom.console)
@@ -821,7 +842,7 @@ module VBlank
         @rom.write(@tempfile.path)
         @tempfile.flush
         write_save_memory if @save
-        @probe = kit.open_probe(@tempfile.path, save_dir: self.class.save_dir)
+        @probe = kit.open_probe(@tempfile.path, save_dir: @save_dir)
         # The picture is the size the console draws, which the emulator knows from the cartridge.
         @width = @probe.width
         @height = @probe.height

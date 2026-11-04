@@ -14,6 +14,9 @@ require_relative "diagnostics/emulator" # the one seam to the emulator backend; 
 require_relative "diagnostics/recorded_sound" # the sound of a run, the older part of it in a scratch file
 require_relative "diagnostics/verifier" # ...and reading real pixels and real sound back through it
 require_relative "diagnostics/film" # ...and a film of one running, or of two side by side, as an MP4
+require_relative "diagnostics/film_cartridge" # ...one side of it, brought to its first frame with a save folder of its own
+require_relative "diagnostics/film_script" # ...and a film written as a small file. Its rake task, film_tasks.rb, is a
+# Rakefile's and is not required here: a Rakefile requires it alone, and it loads the library when it runs.
 require_relative "diagnostics/sound_recording" # what a game sounds like on the cartridge, the desktop build or as Ruby
 require_relative "diagnostics/counted_passes" # ...the passes of a console whose runtime counts them
 require_relative "diagnostics/snes_memory" # ...its memory, work RAM and the Super FX chip's, by address
