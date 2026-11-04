@@ -43,7 +43,7 @@ These work as their group files say:
 `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`, `sub`, `sub_var`,
 `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`, `negate_abs!`,
 `clamp`, `clamp!`, `approach`, `approach!`, `list`, `if_eq`, `if_ne`, `if_gt`, `if_lt`, `if_ge`,
-`if_le`, `if_gte`, `if_lte`, `func`, `call`, `scene`, `case_var`, `seed`, `randomize`, `roll`,
-`rand`, `chance`, `random_numbers`, `enable_sound`, `define_sound`, `beep`, `noise`, `wave`,
-`stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`,
-`fade_music_in`, `fade_music_out`, `sound_effects`, `sample`, `instrument`.
+`if_le`, `if_gte`, `if_lte`, `func`, `call`, `scene`, `case_var`, `most_players`, `seed`,
+`randomize`, `roll`, `rand`, `chance`, `random_numbers`, `enable_sound`, `define_sound`, `beep`,
+`noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`,
+`music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`, `instrument`.

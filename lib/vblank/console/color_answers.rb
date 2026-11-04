@@ -241,6 +241,7 @@ module VBlank
         pressed: works("see `held`."),
         if_held: works("see `held`."),
         if_pressed: works("see `held`."),
+        most_players: works,
         players_connected: works("always 1: a Game Boy Color has one controller."),
         rumble: works("the cartridge carries a rumble motor, and the motor runs on the frames the pattern " \
                       "says. A cartridge with a `clock` has no motor, so a game that uses both is refused."),

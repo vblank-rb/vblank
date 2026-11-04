@@ -212,6 +212,7 @@ module VBlank
         pressed: works("see `held`."),
         if_held: works("see `held`."),
         if_pressed: works("see `held`."),
+        most_players: works,
         players_connected: works("a build for a computer answers it. The cartridge build does not make it yet: " \
                                  "it refuses it and says so, because it cannot yet tell if the second controller " \
                                  "is connected. A controller that is not connected holds no buttons, so a " \

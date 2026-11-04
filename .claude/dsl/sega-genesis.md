@@ -136,6 +136,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `pressed` — works: see `held`.
 - `if_held` — works: see `held`.
 - `if_pressed` — works: see `held`.
+- `most_players` — works: the same as on the Advance.
 - `players_connected` — works: always 1: this build reads the first pad only.
 - `rumble` — works: nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same without it.
 - `seed` — works: the same as on the Advance.

@@ -16,7 +16,8 @@
 #     drawn and not given a colour, and a player who lets go of everything stays.
 #   * HOW MANY SEATS — `players:` says how many players the game takes on each build. A game
 #     played on a computer (as C, in a web page, or as Ruby) reads sixteen controllers, and here
-#     it takes four; a cartridge reads the controllers its console has.
+#     it takes four; a cartridge reads the controllers its console has. The game says four once,
+#     and `most_players` hands that number back while the game is built, to make the walkers.
 #   * RANDOM COLOURS EVERYBODY AGREES ON — the colours come from the game's random numbers
 #     (`rand`), which start from the game's own `seed`. Nothing about them comes from outside
 #     the game, so the same presses pick the same colours every time, and two machines playing
@@ -27,7 +28,7 @@
 # THE CONSOLES. It is for the Game Boy Advance and the Game Boy Color, as one player. Both
 # consoles read one controller, so a cartridge for either is a one-player walk round the meadow:
 # `players: { computer: 1..4, else: 1 }` says four seats on a computer and one on a cartridge,
-# and `built_for_computer?` makes the matching number of walkers. They are here rather than left
+# and `most_players` makes the matching number of walkers. They are here rather than left
 # out because a game played on a computer is still built AS a console — its screen size and its
 # picture rules are that console's — so the computer builds of this game are the Advance's and
 # the Color's, laid out for each screen. The Super Nintendo (two controllers) is left out for now:
@@ -104,9 +105,9 @@ module Wanderers
     screen :tiled # a background for the meadow, and the console's own sprites for the walkers
     here = Layout.new(width: screen_width, height: screen_height)
 
-    # How many walkers this build makes: four on a computer, one on a cartridge. It is the same
-    # number `players:` gives this build, so no line below reads a player the build does not seat.
-    seats = built_for_computer? ? SEATS_ON_A_COMPUTER : 1
+    # How many walkers this build makes: four on a computer, one on a cartridge. It is the number
+    # `players:` gives this build, so no line below reads a player the build does not seat.
+    seats = most_players
 
     # The random numbers start here. Every build of the game starts from the same seed, so the
     # same presses always pick the same colours; a match played across several machines will

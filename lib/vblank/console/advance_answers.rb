@@ -91,6 +91,7 @@ module VBlank
                     "`player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. " \
                     "`player: :any` reads that one controller."),
         pressed: works("see `held`."), if_held: works("see `held`."), if_pressed: works("see `held`."),
+        most_players: works,
         players_connected: works("always 1: a Game Boy Advance has one controller."),
         rumble: works("nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, " \
                       "so the game plays the same without it."),
