@@ -45,6 +45,48 @@ class TestRoomyMemory < Minitest::Test
     assert_operator roomy_of(rom).used, :>, 0, "and something went in the roomy memory"
   end
 
+  # Lists a frame walks that fill the quick memory nearly to the top, a great many variables, and a
+  # place, whose fill and divide routines take the top of the quick memory. The lists are placed
+  # first and the variables after, so what the variables need has to be given back by a list.
+  def test_lists_filling_the_quick_memory_beside_a_place_and_many_variables_still_build
+    program = quick_memory_filled_beside_a_place
+    rom = assemble_rom(program, name: "FULLPLACE")
+
+    assert_operator roomy_of(rom).used, :>, 0, "a list went to the roomy memory to make the room"
+    assert_backends_agree(program, frames: 3, console_frames: 30, name: "FULLPLACE")
+  end
+
+  # So many variables that most are past what one instruction reaches: the routine that fills a
+  # face still fits its room, its own words named first.
+  def test_a_place_in_a_game_of_many_variables_builds
+    program = quick_memory_filled_beside_a_place(capacity: 1100, variables: 1200)
+
+    assert_backends_agree(program, frames: 3, console_frames: 30, name: "MANYVARS")
+  end
+
+  private def quick_memory_filled_beside_a_place(capacity: 1400, variables: 200)
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: (0...64).map { |at| (at * 4) | (12 << 10) }
+      place :wall do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      walked = Array.new(4) { |k| list(:"walked#{k}", capacity: capacity, full_of: k) }
+      counts = Array.new(variables) { |k| var(:"count#{k}", k) }
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        walked.each_with_index { |list, k| list[k] = list[k + 1] + 1 }
+        counts.each_slice(10) { |slice| slice.first.store!(slice.last + 1) }
+        draw_place :wall, seen_by: eye
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # --- the choice is made from what a frame touches, not declaration order ---
 
   # The bug this exists to prevent: a cold collection declared FIRST taking the quick memory

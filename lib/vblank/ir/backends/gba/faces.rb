@@ -61,6 +61,19 @@ module VBlank
           EDGE_FIELDS = %w[first past x u v step_x step_u step_v].freeze
           ROW_ENDS = %i[_face_left_x _face_left_u _face_left_v _face_right_x _face_right_u _face_right_v].freeze
 
+          # The routine's own working words.
+          WORKING_WORDS = %i[_face_corners _face_direct _face_reciprocals _face_row _face_rows_end _face_start
+                             _face_span_count _face_step_u _face_step_v].freeze
+
+          # EVERY WORD THE ROUTINE READS OR WRITES, which the lowering names before any of the game's
+          # own variables (GBA#lower), so each is in reach of one instruction. A word past that reach
+          # takes four, and the routine reads a word in some hundred places: left to the game's order
+          # of naming, a game with many variables would make the routine too big for its room.
+          def self.words
+            CORNER_WORDS + EDGE_WORDS + PICTURE_WORDS + ROW_ENDS + WORKING_WORDS +
+              MOST_CORNERS.times.flat_map { |k| EDGE_FIELDS.map { |field| :"_face_edge#{k}_#{field}" } }
+          end
+
           # The number no palette number or colour is, for a picture with no see-through pixel.
           NO_CLEAR = -1
 

@@ -284,6 +284,27 @@ module VBlank
                                  scene_blocks: @scene_blocks, screen: @planned_screen)
             @planned_screen ||= probe.screen_layout
             probe
+          rescue QuickMemoryOverrun => e
+            freed = lists_freeing(probe, e.bytes)
+            raise if freed.empty?
+
+            @lists_to_roomy |= freed
+            retry
+          end
+
+          # THE VARIABLES RAN INTO THE COLLECTIONS. The collections are placed before the variables
+          # are named, the ones a frame touches first, so the quick memory can be full before the
+          # last variable has a place. The ones placed last are the coldest, so they go to the roomy
+          # memory, as few as give back +bytes+; none when nothing the author left alone is there.
+          def lists_freeing(probe, bytes)
+            freed = []
+            probe.movable_quick_lists.to_a.reverse_each do |name, want|
+              break if bytes <= 0
+
+              freed << name
+              bytes -= want
+            end
+            bytes.positive? ? [] : freed
           end
 
           # THE VARIABLES THE KEPT ROUTINES USE, when any of them sits where the base register

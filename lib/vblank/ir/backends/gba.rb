@@ -121,6 +121,18 @@ module VBlank
         # plain words.
         class LoweringError < VBlank::BuildError; end
 
+        # The variables grew into the collections in the quick memory: +bytes+ more than there
+        # was room for. The measuring pass gives that room back by moving collections out
+        # (Placement#measure_routines); a game sees it only when none is left to move.
+        class QuickMemoryOverrun < LoweringError
+          attr_reader :bytes
+
+          def initialize(message, bytes:)
+            super(message)
+            @bytes = bytes
+          end
+        end
+
         # The sprites' colours do not fit the console's table however they are arranged. A
         # LoweringError like any other to the author; told apart so that when a layout giving
         # every list a group of its own fails this way, one that lends groups is tried (see
@@ -895,6 +907,7 @@ module VBlank
                                                divides_fractions: needs_divide_fix_routine?(program),
                                                fills_faces: Faces.fills_faces?(program))
           @memory.ceiling = @top.ceiling
+          Faces.words.each { |name| var_addr(name) } if @top.fill_face_at
           variables_first.each { |name| var_addr(name) }
           @lists_to_roomy = lists_to_roomy
           @scene_blocks = scene_blocks

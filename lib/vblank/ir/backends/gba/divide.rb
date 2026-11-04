@@ -219,9 +219,8 @@ module VBlank
           def refuse_variables_overlapping_divide!
             return unless @divide_routine_iwram && @memory.overrun.positive?
 
-            raise LoweringError,
-                  "this program uses more internal memory for its variables than there is " \
-                  "room for alongside the divide routine"
+            raise QuickMemoryOverrun.new("this program uses more internal memory for its variables than there is " \
+                                         "room for alongside the divide routine", bytes: @memory.overrun)
           end
 
           # Copy the routine from ROM into fast internal memory once, at boot. Internal
