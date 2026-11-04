@@ -1,5 +1,5 @@
 {
-  "about": "Example exchanges between machines and a relay, in the network format version 1 (see protocol.md). Every implementation tests itself against this file: the stand-in relay in Ruby, and the real relay when it exists. Each exchange is a list of steps. In a step one client sends a message (sends), sends raw text (sends_text), or goes away (closes). Then 'gets' lists every message the relay hands to any client because of it, in order, each with the client that receives it. A message in 'gets' matches when every field it names has that value; fields it does not name are ignored (for example the words of an error). A value that starts with $ names a thing the relay chooses, such as a room code: the first time it is met it is learned, and after that it must be the same.",
+  "about": "Example exchanges between machines and a relay, in the network format version 1 (see protocol.md). Every implementation tests itself against this file: the stand-in relay in Ruby, and the real relay when it exists. Each exchange is a list of steps. In a step one client sends a message (sends), sends raw text (sends_text), or goes away (closes). Then 'gets' lists every message the relay hands to any client because of it, in order, each with the client that receives it. A message in 'gets' matches when every field it names has that value; fields it does not name are ignored (for example the words of an error). An object inside it is matched the same way, and a list must be as long and match entry by entry. A value that starts with $ names a thing the relay chooses, such as a room code: the first time it is met it is learned, and after that it must be the same.",
   "format": 1,
   "exchanges": [
     {
@@ -70,6 +70,44 @@
           "gets": [ { "client": "host", "message": { "v": 1, "type": "left", "from": 2 } } ] },
         { "client": "later", "sends": { "v": 1, "type": "join_room", "code": "$room" },
           "gets": [ { "client": "later", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 3, "members": [1] } } ] }
+      ]
+    },
+    {
+      "name": "a room made public is listed to a machine of the same game, with its name and how many are in it",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room", "public": true, "digest": "ab12", "name": "Friday game", "seats": 3 },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "looking", "sends": { "v": 1, "type": "list_rooms", "digest": "ab12" },
+          "gets": [ { "client": "looking", "message": { "v": 1, "type": "rooms", "rooms": [ { "code": "$room", "name": "Friday game", "members": 1, "seats": 3 } ] } } ] }
+      ]
+    },
+    {
+      "name": "a public room is not listed to a machine of another game, and a private room is listed to nobody",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room", "public": true, "digest": "ab12", "name": "Friday game", "seats": 3 },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "private", "sends": { "v": 1, "type": "make_room" },
+          "gets": [ { "client": "private", "message": { "v": 1, "type": "room_made", "code": "$secret", "you": 1 } } ] },
+        { "client": "other", "sends": { "v": 1, "type": "list_rooms", "digest": "ffff" },
+          "gets": [ { "client": "other", "message": { "v": 1, "type": "rooms", "rooms": [] } } ] },
+        { "client": "same", "sends": { "v": 1, "type": "list_rooms", "digest": "ab12" },
+          "gets": [ { "client": "same", "message": { "v": 1, "type": "rooms", "rooms": [ { "code": "$room", "name": "Friday game", "members": 1, "seats": 3 } ] } } ] }
+      ]
+    },
+    {
+      "name": "a public room is dropped from the list when it fills, and when it empties",
+      "steps": [
+        { "client": "host", "sends": { "v": 1, "type": "make_room", "public": true, "digest": "ab12", "name": "Pair", "seats": 2 },
+          "gets": [ { "client": "host", "message": { "v": 1, "type": "room_made", "code": "$room", "you": 1 } } ] },
+        { "client": "guest", "sends": { "v": 1, "type": "join_room", "code": "$room" },
+          "gets": [ { "client": "guest", "message": { "v": 1, "type": "room_joined", "code": "$room", "you": 2, "members": [1] } } ] },
+        { "client": "looking", "sends": { "v": 1, "type": "list_rooms", "digest": "ab12" },
+          "gets": [ { "client": "looking", "message": { "v": 1, "type": "rooms", "rooms": [] } } ] },
+        { "client": "second", "sends": { "v": 1, "type": "make_room", "public": true, "digest": "ab12", "name": "Alone", "seats": 3 },
+          "gets": [ { "client": "second", "message": { "v": 1, "type": "room_made", "code": "$alone", "you": 1 } } ] },
+        { "client": "second", "closes": true, "gets": [] },
+        { "client": "looking", "sends": { "v": 1, "type": "list_rooms", "digest": "ab12" },
+          "gets": [ { "client": "looking", "message": { "v": 1, "type": "rooms", "rooms": [] } } ] }
       ]
     },
     {

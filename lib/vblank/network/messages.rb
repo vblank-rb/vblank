@@ -123,11 +123,46 @@ module VBlank
 
     # --- between a machine and a relay (never handed on to the room) ---
 
-    # Asks the relay for a new room, which the sender then is in, as player 1.
-    RelayMakeRoom = Data.define do
+    # A ROOM A MACHINE WANTS LISTED: the game it plays (its fingerprint), a name for the room that tells nobody who
+    # made it, and how many players the match holds. The relay lists it to machines that play the same game while
+    # it has a place free.
+    PublicListing = Data.define(:fingerprint, :name, :seats)
+
+    # A room in the relay's list: its +code+ to join it, its +name+, how many machines are in it (+members+) and how
+    # many it holds (+seats+).
+    PublicRoom = Data.define(:code, :name, :members, :seats) do
+      def self.from_wire(fields) = new(code: fields.fetch("code"), name: fields.fetch("name"), members: fields.fetch("members"), seats: fields.fetch("seats"))
+      def wire_fields = { "code" => code, "name" => name, "members" => members, "seats" => seats }
+    end
+
+    # Asks the relay for a new room, which the sender then is in, as player 1. With +public+ the room is listed to
+    # machines that play the game with this +digest+ (see PublicListing), until it fills or empties.
+    RelayMakeRoom = Data.define(:public, :digest, :name, :seats) do
       include Wirable
       wire_type "make_room"
       relay_message!
+
+      def initialize(public: false, digest: nil, name: nil, seats: nil) = super
+
+      def self.from_wire(fields) = new(public: fields["public"] == true, digest: fields["digest"], name: fields["name"], seats: fields["seats"])
+      def wire_fields = public ? { "public" => true, "digest" => digest, "name" => name, "seats" => seats }.compact : {}
+    end
+
+    # Asks the relay which public rooms there are for the game with this +digest+.
+    RelayListRooms = Data.define(:digest) do
+      include Wirable
+      wire_type "list_rooms"
+      relay_message!
+    end
+
+    # The relay's list: the rooms (PublicRoom) for the game that was asked about, in the order they were made.
+    RelayRooms = Data.define(:rooms) do
+      include Wirable
+      wire_type "rooms"
+      relay_message!
+
+      def self.from_wire(fields) = new(rooms: fields.fetch("rooms").map { |each| PublicRoom.from_wire(each) })
+      def wire_fields = { "rooms" => rooms.map(&:wire_fields) }
     end
 
     # The relay's answer: the code to give to the others, and the sender's number.

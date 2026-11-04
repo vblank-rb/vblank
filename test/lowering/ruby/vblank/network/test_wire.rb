@@ -23,6 +23,9 @@ class TestWire < Minitest::Test
 
   RELAY_MESSAGES = [
     Network::RelayMakeRoom.new,
+    Network::RelayMakeRoom.new(public: true, digest: "ab12cd34", name: "Friday game", seats: 4),
+    Network::RelayListRooms.new(digest: "ab12cd34"),
+    Network::RelayRooms.new(rooms: [Network::PublicRoom.new(code: "K7QF", name: "Friday game", members: 1, seats: 4)]),
     Network::RelayRoomMade.new(code: "K7QF", you: 1),
     Network::RelayJoinRoom.new(code: "K7QF"),
     Network::RelayRoomJoined.new(code: "K7QF", you: 2, members: [1]),

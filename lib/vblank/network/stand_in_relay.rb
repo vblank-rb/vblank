@@ -27,13 +27,17 @@ module VBlank
       CODE_LENGTH = 4
 
       # The messages only the relay sends, which a machine may not send to it.
-      RELAY_ONLY_TYPES = %w[room_made room_joined error].freeze
+      RELAY_ONLY_TYPES = %w[room_made room_joined rooms error].freeze
 
       # The versions of the format it knows.
       SUPPORTED_VERSIONS = [1].freeze
 
-      # A room: its +code+ and the machines in it by their numbers. A number is never used twice.
-      Room = Struct.new(:code, :members, :last_number)
+      # A room: its +code+ and the machines in it by their numbers (a number is never used twice), and, for a room
+      # that asked to be listed, what to list: the game's +digest+, a +name+ and how many +seats+.
+      Room = Struct.new(:code, :members, :last_number, :digest, :name, :seats)
+
+      # The longest a room's name is listed as.
+      MOST_NAME_CHARACTERS = 40
 
       # One machine's link to the relay: text goes in with #send_text, and the relay's text for the
       # machine comes out of #receive_text, in order.
@@ -92,7 +96,8 @@ module VBlank
         return reply_unknown_version(connection, message["v"]) unless SUPPORTED_VERSIONS.include?(message["v"])
 
         case message["type"]
-        when "make_room" then make_room(connection)
+        when "make_room" then make_room(connection, message)
+        when "list_rooms" then list_rooms(connection, message["digest"])
         when "join_room" then join_room(connection, message["code"])
         when *RELAY_ONLY_TYPES, nil then reply_error(connection, :bad_message, "A machine cannot send that kind of message.")
         else hand_on(connection, message)
@@ -117,10 +122,11 @@ module VBlank
         nil
       end
 
-      def make_room(connection)
+      def make_room(connection, message)
         return reply_error(connection, :already_in_a_room, "You are in a room already. A machine is in one room at a time.") if connection.room
 
         room = Room.new(@codes.next, {}, 0)
+        list_as_public(room, message) if message["public"] == true
         @rooms[room.code] = room
         number = admit(room, connection)
         connection.deliver(JSON.generate({ "v" => 1, "type" => "room_made", "code" => room.code, "you" => number }))
@@ -136,6 +142,22 @@ module VBlank
         others = room.members.keys
         number = admit(room, connection)
         connection.deliver(JSON.generate({ "v" => 1, "type" => "room_joined", "code" => room.code, "you" => number, "members" => others }))
+      end
+
+      # The room is to be listed: it keeps the game, a name that tells nobody who made it, and its seats.
+      def list_as_public(room, message)
+        room.digest = message["digest"].to_s
+        room.name = message["name"].to_s.strip[0, MOST_NAME_CHARACTERS]
+        room.name = "Room #{room.code}" if room.name.empty?
+        room.seats = message["seats"].is_a?(Integer) ? message["seats"].clamp(1, MOST_MEMBERS) : MOST_MEMBERS
+      end
+
+      # The public rooms for the game with +digest+ that still have a place, in the order they were made. A room
+      # that has filled, or emptied (it is gone then), is not listed.
+      def list_rooms(connection, digest)
+        open = @rooms.values.select { |room| room.digest && room.digest == digest.to_s && room.members.size < room.seats }
+        rooms = open.map { |room| { "code" => room.code, "name" => room.name, "members" => room.members.size, "seats" => room.seats } }
+        connection.deliver(JSON.generate({ "v" => 1, "type" => "rooms", "rooms" => rooms }))
       end
 
       def admit(room, connection)

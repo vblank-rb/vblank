@@ -26,7 +26,8 @@ module VBlank
 
       # Every message of the format, by the name it has on the wire.
       MESSAGES = [Join, Welcome, Refuse, Joined, Start, Buttons, Checkpoint, Left,
-                  RelayMakeRoom, RelayRoomMade, RelayJoinRoom, RelayRoomJoined, RelayError].to_h do |message|
+                  RelayMakeRoom, RelayRoomMade, RelayJoinRoom, RelayRoomJoined, RelayListRooms, RelayRooms,
+                  RelayError].to_h do |message|
         [message.wire_type, message]
       end.freeze
 

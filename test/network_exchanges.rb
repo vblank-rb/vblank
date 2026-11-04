@@ -58,12 +58,21 @@ module NetworkExchanges
     want.fetch("message").all? { |field, value| same?(value, message[field], learned) }
   end
 
-  # A $name is learned the first time it is met, and has to be the same after.
+  # A $name is learned the first time it is met, and has to be the same after. What is inside an object or a list is
+  # held to the same rule: an object matches when every field it names does, a list when it is as long and each entry does.
   def self.same?(wanted, found, learned)
-    return wanted == found unless wanted.is_a?(String) && wanted.start_with?("$")
-    return learned[wanted] == found if learned.key?(wanted)
+    case wanted
+    when Hash then found.is_a?(Hash) && wanted.all? { |field, value| same?(value, found[field], learned) }
+    when Array then found.is_a?(Array) && found.size == wanted.size && wanted.zip(found).all? { |want, have| same?(want, have, learned) }
+    when String then wanted.start_with?("$") ? learn(wanted, found, learned) : wanted == found
+    else wanted == found
+    end
+  end
 
-    learned[wanted] = found
+  def self.learn(name, found, learned)
+    return learned[name] == found if learned.key?(name)
+
+    learned[name] = found
     true
   end
 

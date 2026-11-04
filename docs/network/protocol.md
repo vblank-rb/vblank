@@ -61,11 +61,24 @@ These messages are between one machine and the relay. The relay does not pass th
 
 | type | sent by | fields | meaning |
 |---|---|---|---|
-| `make_room` | a machine | none | "Make a room, and put me in it." |
+| `make_room` | a machine | none, or `public`, `digest`, `name`, `seats` | "Make a room, and put me in it." With `"public": true` the room is listed (see below). |
 | `room_made` | the relay | `code`, `you` | The room is made. Give `code` to the others. `you` is 1. |
 | `join_room` | a machine | `code` | "Put me in the room with this code." |
 | `room_joined` | the relay | `code`, `you`, `members` | You are in the room. `you` is your number. `members` lists the numbers already there. |
+| `list_rooms` | a machine | `digest` | "Which public rooms are there for the game with this digest?" |
+| `rooms` | the relay | `rooms` | The answer: a list of `{ code, name, members, seats }`, in the order the rooms were made. |
 | `error` | the relay | `reason`, `words`, `supported` | The relay did not do what the machine asked. |
+
+### Public rooms
+
+A room is private unless its `make_room` says `"public": true`. A public room gives the `digest` of its
+game, a `name`, and its `seats`: how many machines the match holds. The name tells nobody who made the
+room, and a room with no name is listed as "Room" and its code. The relay lists a public room, in answer to
+`list_rooms` with the same `digest`, while it has a seat free. It drops the room from the list when the room
+fills (it has as many machines as `seats`), and when it empties. A machine that asks about another game's
+digest is told of none of the room. A private room is listed to nobody.
+
+A machine in the list joins with `join_room` and the `code` of the room, as it would with a code a person typed.
 
 The reasons in an `error` are:
 

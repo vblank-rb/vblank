@@ -11,8 +11,12 @@ module VBlank
     class RelayTransport
       attr_reader :id, :code
 
-      # Makes a room on the relay behind +line+. +code+ is what to tell the others.
-      def self.make_room(line) = new(line).tap(&:make_room)
+      # Makes a room on the relay behind +line+. +code+ is what to tell the others. With +listing+ (a PublicListing)
+      # the relay lists the room to machines that play the same game.
+      def self.make_room(line, listing: nil) = new(line).tap { |transport| transport.make_room(listing) }
+
+      # The public rooms on the relay behind +line+ for the game with +fingerprint+: an Array of PublicRoom.
+      def self.list_rooms(line, fingerprint) = new(line).list_rooms(fingerprint)
 
       # Joins the room that has +code+. Raises RoomRefused when there is none.
       def self.join_room(line, code) = new(line).tap { |transport| transport.join_room(code) }
@@ -35,11 +39,17 @@ module VBlank
       def close = @line.close
       def closed? = @line.closed?
 
-      def make_room
-        @line.send_text(Wire.encode(RelayMakeRoom.new))
+      def make_room(listing = nil)
+        request = listing ? RelayMakeRoom.new(public: true, digest: listing.fingerprint.digest, name: listing.name, seats: listing.seats) : RelayMakeRoom.new
+        @line.send_text(Wire.encode(request))
         made = answer
         @code = made.code
         @id = made.you
+      end
+
+      def list_rooms(fingerprint)
+        @line.send_text(Wire.encode(RelayListRooms.new(digest: fingerprint.digest)))
+        answer.rooms
       end
 
       def join_room(code)
