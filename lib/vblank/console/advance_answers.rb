@@ -57,7 +57,10 @@ module VBlank
         background: works("`above_row:` is refused: this build does not make it yet. `show_only_inside` uses the " \
                           "display's second window. One background at a time can be held to a box. A game " \
                           "that holds one cannot also have a light, a status bar, a fade held to part of the " \
-                          "screen, or a fade under a layer, because these need the same windows."),
+                          "screen, or a fade under a layer, because these need the same windows. With " \
+                          "`held: true`, the cells a pass changes with `set_tile` wait in work memory and go " \
+                          "into video memory together in the gap between frames, so they all show on the next " \
+                          "frame. Up to 1024 changes wait. A pass that makes more writes the waiting ones at once."),
         status_bar: works("the bar takes one of the four background layers. A game with a bar cannot also " \
                           "have a light, a fade held to part of the screen, or a fade under a layer, because " \
                           "these need the same part of the display."),

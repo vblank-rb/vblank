@@ -61,6 +61,9 @@ module VBlank
                                                # a Genesis cartridge has no rumble motor, so nothing is felt
                                                # (Console::Description#rumbles)
                                                rumble: :emit_nothing,
+                                               # video memory is written only between frames here, so a
+                                               # held background's changes already show together
+                                               show_held_tiles: :emit_nothing,
                                                # every picture is in video memory whichever group is up (the
                                                # interpreter's own check is all that groups are for here)
                                                show_picture_group: :emit_nothing,

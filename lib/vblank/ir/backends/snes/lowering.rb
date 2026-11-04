@@ -55,7 +55,10 @@ module VBlank
                                                show_light_now: :emit_nothing,
                                                # a Super Nintendo cartridge has no rumble motor, so nothing is felt
                                                # (Console::Description#rumbles)
-                                               rumble: :emit_nothing
+                                               rumble: :emit_nothing,
+                                               # video memory is written only between frames here, so a
+                                               # held background's changes already show together
+                                               show_held_tiles: :emit_nothing
                                              }.merge(Picture::STATEMENTS).merge(Paint::STATEMENTS)
                                               .merge(Saving::STATEMENTS).merge(Sound::STATEMENTS)
                                               .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))

@@ -46,8 +46,9 @@ module VBlank
       def initialize(builder, name:, scroll_x:, scroll_y:, walls: [],
                      cells: [0, 0], tile_index: {}, bitmap: false, map_names: nil,
                      solid_cells: [], tile_size: [8, 8], node: nil, tile_pictures: [], walks_areas: false,
-                     streams: false, solid_tiles: nil)
+                     streams: false, solid_tiles: nil, held: false)
         @builder = builder
+        @held = held # its set_tile changes wait for the frame boundary (Builder::Tiled#background)
         @name = name
         @tile_pictures = tile_pictures
         @declaration_tail = node
@@ -89,6 +90,9 @@ module VBlank
       # coordinate the game worked out can be off the edge without a test around it.
       #
       # +now+ is a status bar's (StatusBar#set_tile).
+      #
+      # On a background declared `held: true` the change waits, with every other change the pass
+      # makes, and they all show together on the next frame (Builder#finalize_held_tiles).
       def set_tile(col, row, tile, now: nil)
         refuse_on_bitmap_screen!("set_tile", instead: "Draw over the spot with `blit`")
         if @walks_areas
@@ -103,7 +107,9 @@ module VBlank
         index = @tile_index[tile]
         raise ArgumentError, unknown_tile_message(tile) if index.nil?
 
-        record(Build.set_tile(@name, Value.node_for(col), Value.node_for(row), index, now: now))
+        node = record(Build.set_tile(@name, Value.node_for(col), Value.node_for(row), index, now: now,
+                                                                                            held: (true if @held)))
+        @builder.note_held_tile_change(node) if @held
         record_wall_change(col, row, index)
         self
       end

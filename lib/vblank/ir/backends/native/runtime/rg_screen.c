@@ -1053,12 +1053,24 @@ static void stamp_in_stack_order(int32_t over) {
 /* The start of Reference#take_over (see rg_screen.h). */
 void rg_background_forget_cells(int32_t background) { forget_own_cells(background); }
 
+/* The cell changes of backgrounds declared `held: true`, waiting for rg_show_held_tiles
+ * (Reference's @held_tiles), in the order the game made them. */
+typedef struct {
+  int32_t background, col, row, tile;
+} held_tile;
+static held_tile held_tiles[RG_HELD_TILES_ROOM];
+static int32_t held_tile_count = 0;
+
+/* Reference#put_up_background: a change still waiting was made to cells put up again now. */
+static void forget_held_tiles(void) { held_tile_count = 0; }
+
 /* Reference#put_up_background. A stamp only covers where it has solid pixels, so a background a
  * named layer puts BEHIND one already up would land in front of it; the ones it belongs behind
  * are stamped again over it. A turned background is painted through its turn at the next rebuild,
  * and a status bar from its own top,
  * rather than stamped as drawn. */
 void rg_background_put_up(int32_t background) {
+  forget_held_tiles();
   if (background_field(background, RG_BG_ON_ARRIVAL)) {
     forget_own_cells(background);
     boxes[keeper_of(background)].held = 0; /* its scene puts it up showing everywhere */
@@ -1182,6 +1194,24 @@ void rg_background_set_tile(int32_t background, int32_t col, int32_t row, int32_
   if (*cell == tile) return;
   *cell = (int16_t)tile;
   request_repaint();
+}
+
+/* Reference#exec_set_tile, for a background declared `held: true`: the change waits, its cell
+ * worked out now, for rg_show_held_tiles. With +most+ waiting, everything waiting goes in first. */
+void rg_background_hold_tile(int32_t background, int32_t col, int32_t row, int32_t tile, int32_t most) {
+  if (tile >= background_field(declaration_up(background), RG_BG_TILES)) return;
+  if (held_tile_count >= most || held_tile_count >= RG_HELD_TILES_ROOM) rg_show_held_tiles();
+  held_tiles[held_tile_count++] = (held_tile){background, col, row, tile};
+}
+
+/* Reference#exec_show_held_tiles: every change waiting, in the order the game made them. */
+void rg_show_held_tiles(void) {
+  int32_t waiting = held_tile_count;
+  held_tile_count = 0;
+  for (int32_t i = 0; i < waiting; i++) {
+    held_tile change = held_tiles[i];
+    rg_background_set_tile(change.background, change.col, change.row, change.tile);
+  }
 }
 
 /* Reference#exec_show_map: of the maps of the declaration up now. */

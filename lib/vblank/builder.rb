@@ -603,6 +603,7 @@ module VBlank
       finalize_status_bars
       finalize_background_boxes
       finalize_background_maps
+      finalize_held_tiles # after the maps, so its write comes before theirs in the gap
       refuse_shifted_tile_run_lists!
       refuse_filled_shifted_lists!
       finalize_tile_copies
@@ -716,6 +717,12 @@ module VBlank
     # as a scroll's is (see #finalize_background_boxes).
     def record_inline_box_node(node)
       @inline_box_nodes << node
+    end
+
+    # A cell change on a background declared `held: true`, kept until the frame boundary is
+    # known (see #finalize_held_tiles).
+    def note_held_tile_change(node)
+      (@held_tile_changes ||= []) << node
     end
 
     # The variable that says whether the status bar +name+ covers sprites, made the first time a
@@ -1358,6 +1365,22 @@ module VBlank
         write_if_changed(said: background.shown_map, in_force: background.live_map,
                          write: [Build.show_map(name, which: Build.var_ref(background.shown_map)), *walls])
       end
+    end
+
+    # SHOW THE CELLS A HELD BACKGROUND'S PASS CHANGED, all at once, at each frame boundary.
+    #
+    # One write for the whole program, however many backgrounds are held: the changes wait in
+    # one queue, in the order they were made (see IR::Nodes::ShowHeldTiles). It goes in the gap
+    # before a map handed over in the same pass, as an unheld change written during the pass
+    # lands before that map's copy: a change made in the pass that walks into another room is
+    # gone with the room either way. A program with no frame boundary has no moment to hold the
+    # changes for, so its changes are written where the game says them.
+    def finalize_held_tiles
+      changes = @held_tile_changes || []
+      return if changes.empty?
+      return changes.each { |node| node.held = nil } if @frame_boundaries.empty?
+
+      write_between_frames([], { held: true }) { Build.show_held_tiles }
     end
 
     # WRITE A LAYER'S COLOURS INTO THE DISPLAY'S TABLE, in the gap between frames, and only

@@ -256,6 +256,9 @@ def rg_screen_setup
   # screen (Reference#screen_box), or nil where it shows everywhere; and the box the background being
   # laid on the picture keeps to, or nil.
   @rg_boxes = Array.new(RG_MAX_BACKGROUNDS)
+  # The cell changes of backgrounds declared `held: true`, waiting for rg_show_held_tiles (Reference
+  # @held_tiles), each [background, col, row, tile], in the order the game made them.
+  @rg_held_tiles = []
   @rg_laying_box = nil
   @rg_bar_covers = Array.new(RG_MAX_BACKGROUNDS, false) # ...and whether it hides the sprites under it
   @rg_any_from_corner = false
@@ -1108,6 +1111,7 @@ end
 # named layer puts BEHIND one already up would land in front of it; the ones it belongs behind are
 # stamped again over it. A turned background is painted through its turn at the next rebuild.
 def rg_background_put_up(background)
+  @rg_held_tiles = [] # a change still waiting was made to cells put up again now
   if rg_background_field(background, RG_BG_ON_ARRIVAL) != 0
     rg_forget_own_cells(background)
     @rg_boxes[rg_keeper_of(background)] = nil # its scene puts it up showing everywhere
@@ -1252,6 +1256,22 @@ def rg_background_set_tile(background, col, row, tile)
 
   cells[place] = rg_to_half(tile)
   rg_request_repaint
+end
+
+# Reference#exec_set_tile, held: the change waits, its cell worked out now. With +most+ waiting,
+# everything waiting goes in first.
+def rg_background_hold_tile(background, col, row, tile, most)
+  return if tile >= rg_background_field(rg_declaration_up(background), RG_BG_TILES)
+
+  rg_show_held_tiles if @rg_held_tiles.length >= most
+  @rg_held_tiles << [background, col, row, tile]
+end
+
+# Reference#exec_show_held_tiles
+def rg_show_held_tiles
+  waiting = @rg_held_tiles
+  @rg_held_tiles = []
+  waiting.each { |background, col, row, tile| rg_background_set_tile(background, col, row, tile) }
 end
 
 # Reference#exec_show_map: of the maps of the declaration up now.

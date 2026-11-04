@@ -53,7 +53,11 @@ module VBlank
                                                on_timer: :emit_nothing,
                                                # the light is not made yet (shade_outside), and a game
                                                # without one works nothing out again
-                                               show_light_now: :emit_nothing
+                                               show_light_now: :emit_nothing,
+                                               # a pass's cell changes already wait for the gap between
+                                               # frames here, so a held background's need nothing more
+                                               # (Console::ColorAnswers, `background`)
+                                               show_held_tiles: :emit_nothing
                                              }.merge(Picture::STATEMENTS).merge(Sound::STATEMENTS).merge(Clock::STATEMENTS)
                                               .merge(TileRuns::STATEMENTS).merge(SpriteTiles::STATEMENTS)
                                               .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))

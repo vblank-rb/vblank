@@ -241,6 +241,10 @@ module ConformanceFixture
       # a variable — a door opening. A backend that wrote the wrong cell, or none, draws a
       # different picture.
       B.set_tile(:grid, B.var_ref(:x), B.int(1), 0),
+      # ...and one change held for the frame boundary, then every held change shown: a backend that
+      # dropped the held change, or showed it before the boundary, draws a different picture.
+      B.set_tile(:grid, B.int(0), B.var_ref(:y), 1, held: true),
+      B.show_held_tiles,
       # A status bar's place given to the grid, which is not a status bar, so it changes nothing:
       # a backend that moved the grid, or drew it as a bar, differs. A real bar cannot be here,
       # since this program also fades under a layer, which the Advance refuses beside one

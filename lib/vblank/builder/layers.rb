@@ -94,6 +94,7 @@ module VBlank
         # neither is itself at one.
         set_tile: :free,
         show_map: :free,
+        show_held_tiles: :free,
         # ...or a run of its tiles painted from a list, which changes pixels, not depth.
         copy_tiles: :free,
         copy_owed_tiles: :free,

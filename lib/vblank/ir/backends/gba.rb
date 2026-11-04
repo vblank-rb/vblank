@@ -29,6 +29,7 @@ require_relative "gba/sprite_repeats" # which sprites are one sprite written out
 require_relative "gba/sprite_drawing" # writing the rows of the console's sprite table
 require_relative "gba/picture_group_copying" # ...and bringing a set of picture groups' groups up between frames
 require_relative "gba/map_streaming" # a map bigger than the grid, brought into view a strip at a time
+require_relative "gba/held_tiles" # a held background's cell changes, written together between frames
 require_relative "gba/background_drawing" # putting background layers up, and changing them as the game runs
 require_relative "gba/framebuffer"
 require_relative "gba/scene_entry"
@@ -469,7 +470,8 @@ module VBlank
           @background_drawing = BackgroundDrawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                                       divide: @divide, raster: @raster,
                                                       palette_tint: @palette_tint, uploads: @uploads, lists: @lists,
-                                                      call_cold_routine: method(:emit_call_cold_routine))
+                                                      call_cold_routine: method(:emit_call_cold_routine),
+                                                      memory: @memory)
           @drawing = Drawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                  divide: @divide, framebuffer: @framebuffer, raster: @raster,
                                  palette_tint: @palette_tint, layer_blend: @layer_blend, effects: @effects,
@@ -546,6 +548,7 @@ module VBlank
             tint: @effects.method(:emit_tint), pixelate: @effects.method(:emit_pixelate),
             see_through: @layer_blend.method(:emit_see_through),
             set_tile: @background_drawing.method(:emit_set_tile), show_map: @background_drawing.method(:emit_show_map),
+            show_held_tiles: @background_drawing.method(:emit_show_held_tiles),
             copy_tiles: @background_drawing.method(:emit_copy_tiles),
             copy_owed_tiles: @background_drawing.method(:emit_copy_owed_tiles),
             load_sprite_tiles: ->(node) { @background_drawing.emit_load_sprite_tiles(node, @tables.fetch(node.table)) },
@@ -1036,6 +1039,7 @@ module VBlank
           @picture_group_copying.emit_clear_groups_at_power_on # no picture group wanted or up yet
           @sprite_drawing.emit_sprites_shown_at_power_on # no frame without sprites asked for yet
           @sprite_drawing.emit_held_table_at_power_on # no sprite left out of a full table yet
+          @background_drawing.emit_held_tiles_at_power_on(program) # no cell change waiting yet
           emit_copy_hot_code_to_iwram unless @fast_funcs.empty?
           emit_call_power_on_swap # the scenes' own routines that fit side by side, the ones the game loop runs first
           # THE MIXER IS BROUGHT UP BEFORE THE INTERRUPTS ARE ARMED, and the order is load-bearing
@@ -1100,6 +1104,7 @@ module VBlank
           @drawing.emit_text_points_routine # the loop a long line of big letters calls
           @buffered.emit_text_points_routine # ...and its tear-free counterpart
           @background_drawing.emit_set_swap_routines # bringing another set of tiles in, a routine a background
+          @background_drawing.emit_held_tiles_routine # writing the cell changes held backgrounds keep
           @sprite_drawing.emit_shared_room_routines # giving a sprite a room for its pose, two routines a set of rooms
           @sprite_drawing.emit_lend_colors_routine # lending a group of sprite colours to the list a sprite wears
           @sprite_drawing.emit_held_table_copy_routine # copying the rows that show into the console's table

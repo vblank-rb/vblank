@@ -18,10 +18,12 @@ module VBlank
           include Console::Hardware
           include EmitterCalls
           include MapStreaming
+          include HeldTiles
 
           def initialize(emitter:, primitives:, lowering:, divide:, raster:, palette_tint:, uploads:, lists:,
-                         call_cold_routine:)
+                         call_cold_routine:, memory:)
             @emitter = emitter
+            @memory = memory
             @primitives = primitives
             @lowering = lowering
             @lists = lists
@@ -87,6 +89,7 @@ module VBlank
           # whole layer every frame for free, and composites the layers by priority so
           # nearer ones sit in front.
           def emit_background_hardware(node)
+            emit_forget_held_tiles
             bg = @layout.screen.declared_background(node)
             return emit_affine_background_hardware(bg) if bg.affine
 
@@ -309,6 +312,9 @@ module VBlank
           # bargain does NOT cover is a BULK change — a whole room swapped in one frame —
           # where half the old room and half the new really would show at once. That wants
           # a verb of its own, handing over a map in one go between frames.
+          #
+          # ...and a background declared `held: true` asks for the other bargain: its changes
+          # wait for the gap between frames and go in together (see HeldTiles).
           def emit_set_tile(node)
             emit_for_each_declaration(node.name) do |bg|
               next if bg.nil? # a background with no tiled layer (a bitmap-mode program)
@@ -318,7 +324,7 @@ module VBlank
               # for that scene: this declaration's part of the line writes nothing.
               entry = grid.cells[node.tile] or next
               fixed = [const_int(node.col), const_int(node.row)]
-              next emit_fixed_tile_write(bg, grid, entry, *fixed) if fixed.all?
+              next emit_fixed_tile_write(node, bg, grid, entry, *fixed) if fixed.all?
 
               emit_computed_tile_write(node, bg, grid, entry)
             end
@@ -335,7 +341,8 @@ module VBlank
 
           # A cell settled while the program was written: the address is worked out here,
           # in Ruby, and the console does one store.
-          def emit_fixed_tile_write(bg, grid, entry, col, row)
+          def emit_fixed_tile_write(node, bg, grid, entry, col, row)
+            return emit_fixed_tile_held(bg, grid, entry, col, row) if node.held
             return unless grid.holds?(col, row)
 
             write_reg16(map_cell_address(bg, grid, col, row), entry)
@@ -376,6 +383,11 @@ module VBlank
             emit_branch(:bcond, done, cond: :hs)
 
             emit_cell_index(grid)
+            if node.held
+              emit_computed_tile_held(bg, entry)
+              return place_label(done)
+            end
+
             emit_number(TMP, VRAM_START + (bg.screen_block * SCREENBLOCK_BYTES))
             emit(ASM.lsl_imm(TILE_ADDR, TILE_ADDR, 1)) # two bytes a cell
             emit(ASM.add_reg(TILE_ADDR, TMP, TILE_ADDR))

@@ -43,7 +43,7 @@ module VBlank
           # Reference#collect_definitions and #run, and #rebuilt_every_frame? for the rest of the
           # rule).
           REBUILT_FOR = %i[tile_run scroll_background place_bar box_background scroll_rows affine_background set_tile show_map
-                           background_colors pixelate].freeze
+                           show_held_tiles background_colors pixelate].freeze
 
           # A sprite the game leaves as drawn whatever size the picture's blocks are (RG_NOT_IN_BLOCKS).
           NOT_IN_BLOCKS = -1
@@ -722,9 +722,17 @@ module VBlank
           end
 
           def lower_set_tile(node)
+            if node.held
+              return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
+                                C::Int.new(node.tile), C::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
+            end
+
             [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row),
                        C::Int.new(node.tile))]
           end
+
+          # Reference#exec_show_held_tiles
+          def lower_show_held_tiles(_node) = [eval_call("rg_show_held_tiles")]
 
           def lower_show_map(node) = [eval_call("rg_background_show_map", background_number(node), value(node.which))]
 

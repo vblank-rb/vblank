@@ -47,13 +47,13 @@ module VBlank
 
       # WHAT A GAME LOOP PLACES AT THE FRAME BOUNDARY FOR THE DISPLAY, which the builder puts in the
       # gap after the loop's wait among the rest it does there: where each background it moves
-      # sits, the top of each status bar, the map and the colours each background was handed, how
-      # each turning one is turned, the tiles and sprite lists painted since, and the frame's
-      # sprites — each write held to its scene's turn, or to a change, by an `if`. The builder
-      # moves every such write out of the game's own lines to put it there, so a statement of the
-      # loop holding one of these is one of the boundary's.
-      PLACED_AT_BOUNDARY = %i[scroll_background place_bar box_background show_map background_colors affine_background
-                              copy_owed_tiles color_list_holds see_through present_objects].freeze
+      # sits, the top of each status bar, the map and the colours each background was handed, the
+      # cells changed on a held background, how each turning one is turned, the tiles and sprite
+      # lists painted since, and the frame's sprites — each write held to its scene's turn, or to a
+      # change, by an `if`. The builder moves every such write out of the game's own lines to put
+      # it there, so a statement of the loop holding one of these is one of the boundary's.
+      PLACED_AT_BOUNDARY = %i[scroll_background place_bar box_background show_map show_held_tiles background_colors
+                              affine_background copy_owed_tiles color_list_holds see_through present_objects].freeze
 
       # ...and the routines that do such a write for it: putting the frame's sprites in order (a
       # pool's things, a `draw_in_order`) and copying the tiles painted since, which a walk of the

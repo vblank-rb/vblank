@@ -64,6 +64,7 @@ module VBlank
                                                shade_outside: :lower_nothing,
                                                show_light_now: :lower_show_light_now,
                                                set_tile: :lower_set_tile, show_map: :lower_show_map,
+                                               show_held_tiles: :lower_show_held_tiles,
                                                background_colors: :lower_background_colors,
                                                color_list_holds: :lower_color_list_holds,
                                                # every picture is in reach whatever is up: nothing to do

@@ -173,7 +173,10 @@ module VBlank
                           "background that walks between areas can be told `draw_with` when the console holds " \
                           "the lists of every area at once. If the game uses more lists than the console holds " \
                           "at once, each area brings its own lists in. Then `draw_with` on a background that " \
-                          "walks between areas is refused."),
+                          "walks between areas is refused. `held: true` changes nothing: a Game Boy Color " \
+                          "already keeps the cells a pass changes with `set_tile` and writes them in the gap " \
+                          "between frames. A pass keeps 160 cells, and the gap has time for about 60 of them. " \
+                          "The others show as the display allows on the next frame."),
         status_bar: works("the bar is a layer of its own beside the one background, so a game with a bar " \
                           "still has its background. The bar's tiles and the background's tiles share the " \
                           "room for 512 tiles. A game with a bar cannot have a `screen :bitmap`, because the " \

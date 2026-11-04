@@ -222,6 +222,7 @@ module VBlank
           @bar_top = {}            # status bar name -> the screen row its top was last placed at
           @bar_covers = {}         # status bar name -> whether it hides the sprites from its top down
           @bg_maps = {}            # ...and this run's own copy of its cells, once any of them has changed
+          @held_tiles = []         # cell changes waiting for the next show_held_tiles (see #exec_set_tile)
           @bg_from_corner = Set.new # backgrounds put up this pass, shown unscrolled (see #put_up_background)
           @bg_corners_expired = false # ...once their pass has ended, until its picture is painted
           @row_bends = {}          # background name -> :scroll_rows node giving each row its own offset
@@ -764,6 +765,7 @@ module VBlank
           see_through: :exec_see_through,
           present_objects: :exec_present_objects,
           set_tile: :exec_set_tile,
+          show_held_tiles: :exec_show_held_tiles,
           show_map: :exec_show_map,
           copy_tiles: :exec_copy_tiles, copy_owed_tiles: :exec_copy_owed_tiles,
           load_sprite_tiles: :exec_load_sprite_tiles,
@@ -1571,6 +1573,9 @@ module VBlank
 
         # Stamp +node+ onto the picture, in its place in the stack.
         def put_up_background(node)
+          # A held change still waiting was made to cells this puts up again as declared, and
+          # the console forgets it here too (GBA::BackgroundDrawing#emit_background_hardware).
+          @held_tiles.clear
           if @handover.on_arrival?(node)
             @bg_maps.delete(node.name)
             # ...and a background its scene puts up shows everywhere, whatever box it had before.
@@ -1647,14 +1652,36 @@ module VBlank
         # first time a cell of that background is written and read by everything that
         # paints from then on. A coordinate outside the map is left alone rather than
         # growing the map or writing over a neighbour.
+        #
+        # A HELD CHANGE (Nodes::SetTile#held) waits instead, with its cell worked out now, until
+        # the frame boundary's show_held_tiles. With the queue full, everything waiting goes in
+        # first, there and then.
         def exec_set_tile(node)
-          # A tile only another scene's declaration of the name has, from a line written for that
-          # scene, changes nothing here.
-          return if node.tile && node.tile >= background_up(node.name).tiles.length
+          return unless tile_of_declaration_up?(node)
 
-          map = mutable_map(node.name)
           col = eval_value(node.col)
           row = eval_value(node.row)
+          return change_cell(node, col, row) unless node.held
+
+          show_held_tiles if @held_tiles.length >= Nodes::ShowHeldTiles::MOST_CELLS
+          @held_tiles << [node, col, row]
+        end
+
+        # A tile only another scene's declaration of the name has, from a line written for that
+        # scene, changes nothing here.
+        def tile_of_declaration_up?(node) = node.tile.nil? || node.tile < background_up(node.name).tiles.length
+
+        # EVERY HELD CHANGE, in the order the game made them.
+        def exec_show_held_tiles(_node) = show_held_tiles
+
+        def show_held_tiles
+          waiting = @held_tiles
+          @held_tiles = []
+          waiting.each { |node, col, row| change_cell(node, col, row) if tile_of_declaration_up?(node) }
+        end
+
+        def change_cell(node, col, row)
+          map = mutable_map(node.name)
           return unless row >= 0 && row < map.length && col >= 0 && col < map[row].length
           return if map[row][col] == node.tile
 
@@ -2334,8 +2361,8 @@ module VBlank
         # ...and the ones that change what the picture is built from and then always repaint, so
         # an owed repaint is replaced rather than painted — plus `background`, which settles one
         # itself when it has anything to put up (see #exec_background).
-        REPAINTING = %i[scroll_background place_bar box_background show_map set_tile copy_tiles copy_owed_tiles background_colors see_through present_objects
-                        background affine_background].freeze
+        REPAINTING = %i[scroll_background place_bar box_background show_map set_tile show_held_tiles copy_tiles copy_owed_tiles
+                        background_colors see_through present_objects background affine_background].freeze
         # ...and the ones that are mostly laid over the picture as the screen is read, and that
         # owe the picture again themselves on the occasions they change what is painted (see
         # #exec_fade).

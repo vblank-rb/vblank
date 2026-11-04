@@ -146,6 +146,8 @@ module VBlank
                                       "bringing background :#{parts[:background]} of the scene :#{parts[:scene]} " \
                                         "another set of tiles"
                                     end),
+        held_tiles: Kind.new(spelling: "__show_held_tiles", parts: {},
+                             words: ->(_) { "writing the cells changed on backgrounds with `held: true`" }),
         set_swap: Kind.new(spelling: "__set_swap_%{background}", parts: { background: ANY },
                            words: ->(parts) { "bringing background :#{parts[:background]} another set of tiles" }),
         shared_rooms: Kind.new(spelling: "__shared_rooms_%{number}__%{part}", parts: { number: "\\d+", part: PLAIN },

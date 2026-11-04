@@ -209,6 +209,26 @@ module VBlank
         operands name: :name, which: :value
       end
 
+      # EVERY CELL CHANGE HELD SINCE THE LAST ONE OF THESE, SHOWN NOW, together and in the order
+      # they were made (see SetTile's +held+). The builder puts one at each frame boundary of a
+      # game with a background declared `held: true`, among the boundary's other writes, so a
+      # pass's changes all appear on one frame.
+      #
+      # The changes wait in one queue for the whole program, of at most +cells+ changes. A change
+      # made with the queue full shows every change waiting first, there and then, and then waits
+      # itself. A background put up (as declared, by its scene or at power-on) forgets every
+      # change still waiting, since the cells they were made to are gone.
+      class ShowHeldTiles
+        include Node
+        kind :show_held_tiles
+        category :draw
+        operands cells: :int
+
+        # How many changes the queue holds: a whole 32 by 32 map's worth, a cell each. A pass
+        # that changes more than that is changing a whole map, which is what show_map is for.
+        MOST_CELLS = 1024
+      end
+
       # A RUN OF TILES WHOSE PIXELS COME FROM A LIST THE GAME OWNS, rather than from a
       # picture fixed while the program is built. +tiles+ names them in order — a background's
       # map names them like any other tile — and +list+ is where their pixels are kept: tile k
@@ -340,11 +360,13 @@ module VBlank
       # background's own tiles goes there, settled while the program is written. +now+ asks for
       # the change on the frame being drawn, on the rows still to come, and changes nothing about
       # what the program means: a console showing every pass whole shows the cell the same.
+      # +held+ keeps the change for the next ShowHeldTiles instead, for a background declared
+      # `held: true`: its cell shows on the frame every other change of the pass shows on.
       class SetTile
         include Node
         kind :set_tile
         category :draw
-        operands name: :name, col: :value, row: :value, tile: :int, now: :flag
+        operands name: :name, col: :value, row: :value, tile: :int, now: :flag, held: :flag
       end
 
       class BackingBuffer

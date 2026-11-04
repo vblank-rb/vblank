@@ -17,8 +17,9 @@ module VBlank
       # and its maps are what a sprite walks into, and which map is up comes back to its first as a
       # scene takes over; a bend's rows run a block of the game's own; and a list of colours left
       # unread is a C build's error. None of them paints anything until a picture is asked for,
-      # and here none is.
-      STAY = %i[screen background show_map set_tile scroll_rows background_colors color_list_holds].freeze
+      # and here none is. The cells a held background's `set_tile` keeps go in with the rest.
+      STAY = %i[screen background show_map set_tile show_held_tiles scroll_rows background_colors
+                color_list_holds].freeze
 
       module_function
 

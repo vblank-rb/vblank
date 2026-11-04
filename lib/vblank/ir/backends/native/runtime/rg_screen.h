@@ -99,6 +99,12 @@ void rg_screen_placing_at_pass_end(int32_t on);
 /* One cell becomes tile number +tile+ of the background's tiles. A cell the map does not have is
  * left alone. */
 void rg_background_set_tile(int32_t background, int32_t col, int32_t row, int32_t tile);
+/* The same change on a background declared `held: true`: it waits for rg_show_held_tiles. With
+ * +most+ changes waiting, every one of them goes in first. +most+ is at most RG_HELD_TILES_ROOM. */
+#define RG_HELD_TILES_ROOM 1024
+void rg_background_hold_tile(int32_t background, int32_t col, int32_t row, int32_t tile, int32_t most);
+/* Every change waiting, in the order the game made them. A background put up forgets them. */
+void rg_show_held_tiles(void);
 /* Every cell becomes map number +which+ of the background's maps, as it was declared. A number
  * naming none of them leaves the cells alone. */
 void rg_background_show_map(int32_t background, int32_t which);

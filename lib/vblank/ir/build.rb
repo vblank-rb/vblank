@@ -924,9 +924,16 @@ module VBlank
       # realizes both at once.
       # Put a different tile in one cell of a declared background. +col+/+row+ are cell
       # coordinates and may be worked out as the program runs; +tile+ is an index into
-      # that background's own tiles, settled while the program is written.
-      def set_tile(name, col, row, tile, now: nil)
-        Nodes.build(:set_tile, name: name, col: to_value_node(col), row: to_value_node(row), tile: tile, now: now)
+      # that background's own tiles, settled while the program is written. +held+ keeps the
+      # change for the next #show_held_tiles (see Nodes::SetTile).
+      def set_tile(name, col, row, tile, now: nil, held: nil)
+        Nodes.build(:set_tile, name: name, col: to_value_node(col), row: to_value_node(row), tile: tile, now: now,
+                               held: held)
+      end
+
+      # Show every held cell change at once (see Nodes::ShowHeldTiles).
+      def show_held_tiles(cells: Nodes::ShowHeldTiles::MOST_CELLS)
+        Nodes.build(:show_held_tiles, cells: cells)
       end
 
       # Reserves the object; #present_objects is what actually draws it for a frame.

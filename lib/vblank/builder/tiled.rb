@@ -59,7 +59,7 @@ module VBlank
       # #scrolls? is the same question as asking whether the game ever scrolled it.
       DeclaredBackground = Struct.new(:node, :scroll_x, :scroll_y, :shown_map, :live_map,
                                       :angle, :scale, :scene_gates, :bends_rows, :pivot,
-                                      :shown_colors, :live_colors, :box,
+                                      :shown_colors, :live_colors, :box, :held,
                                       keyword_init: true) do
         def scrolls? = !scroll_x.nil?
         def held_to_box? = !box.nil?
@@ -276,6 +276,24 @@ module VBlank
       # a `.`, a `0` or nothing at all — so a grid drawn by hand and a collision layer
       # decoded out of somewhere else both drop in.
       #
+      # CELLS THAT CHANGE TOGETHER: `held: true` keeps every `set_tile` of a pass and shows
+      # them all on the next frame, as the frame's other framework drawing shows.
+      #
+      #     box = background :box, tiles: :frame, map: EMPTY_BOX, held: true
+      #
+      # WHY A SETTING, AND WHY IT IS OFF UNLESS ASKED FOR. Without it a cell is written where
+      # the game says so, which is the cheapest thing and right for a door or a pot: the
+      # display reads the map while it draws, so a change shows on this frame or the next by
+      # where on the screen the display has got to, and nobody can tell for one cell. A
+      # message box growing a size a frame is seventy cells, and there the same writes show
+      # part of each size, or a size early on a quiet frame and on time on a busy one. The
+      # console's own games keep a copy of such a layer's map in work memory, change the copy
+      # during the frame, and copy it in between frames. This keeps the changes themselves
+      # in work memory instead, a word each, and writes them in the gap between frames: the
+      # same picture, without copying the cells nobody changed, and without a second copy of
+      # the map to keep in step when show_map or a scene puts the map up again. A game that
+      # does not say it builds what it built before.
+      #
       # Returns a {Background} handle you can scroll (`world.scroll_by dx, dy`).
       #
       # @param name [Symbol] the background's name
@@ -289,10 +307,13 @@ module VBlank
       #   a Hash of name => path for a background with several maps
       # @param walls [String, Array<String>, Array<Array>, Hash, nil] which cells stop a
       #   mover, apart from the picture. One grid, or a Hash keyed like `map:`.
+      # @param held [Boolean] keep each pass's `set_tile` changes and show them together on
+      #   the next frame
       # @return [Background] a handle: scroll_by / scroll_to / show_map
-      def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil)
+      def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, held: false)
         refuse_bad_above_row!(name, above_row)
-        declare_background(name, tiles: tiles, map: map, from: from, walls: walls, above_row: above_row)
+        refuse_bad_held!(name, held)
+        declare_background(name, tiles: tiles, map: map, from: from, walls: walls, above_row: above_row, held: held)
       end
 
       # A STATUS BAR: a strip of tiles fixed to the screen from row +top+ down to the bottom,
@@ -400,8 +421,32 @@ module VBlank
                              "screen. Give a number written in the program, from 1 to #{screen_height - 1}."
       end
 
+      # `held:` is true or false, on a screen with cells to change.
+      def refuse_bad_held!(name, held)
+        unless [true, false].include?(held)
+          raise ArgumentError, "background :#{name} has `held: #{held.inspect}`. `held:` must be true or false."
+        end
+        return unless held && @screen_mode == :bitmap
+
+        raise ArgumentError,
+              "background :#{name} has `held: true` on a `screen :bitmap`. On that screen, the framework paints " \
+              "the background into the picture one time, so the background has no cells to change. To fix this, " \
+              "remove `held: true`, or declare the background on a `screen :tiled`."
+      end
+
+      # One name declared in several scenes keeps its changes the same way in each: a line that
+      # changes a cell names the background, not the scene.
+      def refuse_held_differently!(name, declared, held)
+        return if declared.node.nil? || declared.held == held
+
+        raise ArgumentError,
+              "The game declares background :#{name} in more than one scene, and only some of these declarations " \
+              "have `held: true`. A `set_tile` line names the background, not the scene. To fix this, give " \
+              "`held: true` to every declaration of :#{name}, or to none of them."
+      end
+
       # The body of {#background}, and of {#status_bar}, which is a background with +bar_top+.
-      def declare_background(name, tiles:, map: nil, from: nil, walls: nil, bar_top: nil, above_row: nil)
+      def declare_background(name, tiles:, map: nil, from: nil, walls: nil, bar_top: nil, above_row: nil, held: false)
         refuse_background_in_game_loop!(name)
         if tiles.is_a?(Hash)
           set, map_names, drawn, tile_names, grids, sets = background_from_sets(name, tiles, map, from)
@@ -435,6 +480,8 @@ module VBlank
         # gap between frames and would tear where the author wrote it.
         refuse_name_in_two_places!(name, @backgrounds[name]) if @backgrounds[name]
         declared = (@backgrounds[name] ||= DeclaredBackground.new)
+        refuse_held_differently!(name, declared, held)
+        declared.held = held
         # Which map the game says is showing, and which one is really in the cells — and, for
         # a background drawn from several sets of tiles, which set is really in tile memory.
         choice = map_names.size > 1 ? [:"__bg_#{name}_map", :"__bg_#{name}_live"] : []
@@ -501,6 +548,7 @@ module VBlank
                              solid_tiles: walls.nil? && !sets ? solid_tile_numbers(tile_names, set) : nil,
                              tile_size: [set[:tile_w], set[:tile_h]],
                              walks_areas: !sets.nil?,
+                             held: held,
                              tile_pictures: sets ? tile_names.uniq : (set[:by_key].values + set[:by_number].values).uniq)
       end
 

@@ -62,7 +62,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 - `tiles :name, "#" => :brick, solid: ["#"]` — a tileset; `from:` a sheet, or a list painted at run time.
 - `canvas :board, width:, height:, colors:` — a picture drawn into with words.
 - `tile_pictures :water, colors:, tiles: { deep: %i[a b c] }` → `TilePictureGroup`: tiles taking turns through pictures in the cartridge; `group[:deep]` in a tileset, `group.show n`.
-- `background :name, tiles:, map:` → `Background`: set a tile, switch maps, recolour, scroll, bend rows, turn; four per screen; `above_row:` keeps it to the rows above one.
+- `background :name, tiles:, map:` → `Background`: set a tile, switch maps, recolour, scroll, bend rows, turn; four per screen; `above_row:` (rows above one), `held:` (cells as one).
 - `bg.show_only_inside x, y, w, h` / `bg.show_everywhere` — a background drawn only inside a box the game moves and sizes.
 - `status_bar :name, tiles:, map:, top:` → `StatusBar`: fixed from a row to the bottom over a scrolling field; `move_to`, `top`, `set_tile`.
 
