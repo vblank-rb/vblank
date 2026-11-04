@@ -114,6 +114,19 @@ class TestRelayPlayCommand < Minitest::Test
     assert_match(/Nobody answers at the relay address/, out)
   end
 
+  # With --relay, --host makes a room and listens on no port, so what follows it is not checked as one.
+  def test_a_relay_host_is_not_held_to_a_port
+    unused = TCPServer.new("127.0.0.1", 0)
+    port = unused.addr[1]
+    unused.close
+
+    out, status = Open3.capture2e(RUBY, BIN, "run", GAME, "--relay", "ws://127.0.0.1:#{port}/", "--host", "70000", "--no-window", "--pictures", "5")
+
+    refute_predicate status, :success?
+    refute_match(/is not a port/, out)
+    assert_match(/Nobody answers at the relay address/, out)
+  end
+
   def test_relay_with_no_host_or_join_is_refused
     out, status = Open3.capture2e(RUBY, BIN, "run", GAME, "--relay", "ws://x/")
 

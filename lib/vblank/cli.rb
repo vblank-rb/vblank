@@ -1404,7 +1404,7 @@ module VBlank
 
     # A port to host on, or an address to join, that cannot be used, said before the game is built.
     def refuse_unusable_match_address!
-      if !options[:relay] && options[:host] && !options[:host].match?(/\A\d+\z/) || options[:host].to_i > 65_535
+      if !options[:relay] && options[:host] && (!options[:host].match?(/\A\d+\z/) || options[:host].to_i > 65_535)
         raise Thor::Error, "#{options[:host].inspect} is not a port. A port is a number from 0 to 65535, for example --host 7777."
       end
       VBlank::Network::DirectPlay::Address.parse(options[:join]) if options[:join] && !options[:relay]
