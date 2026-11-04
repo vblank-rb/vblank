@@ -260,6 +260,15 @@ struct mgba_core {
     } feed_log;
     struct counting_clock counting_clock;
     struct cartridge_motor motor;
+    /* The console's own mix of its voices, sample by sample, as mGBA hands it on before it changes
+     * the rate for a speaker — see Core#mixed_sound_start. */
+    struct mixed_sound {
+        struct mAVStream stream;  /* first, so the stream mGBA hands back is the record itself */
+        int16_t *samples;         /* the left and the right side by side */
+        size_t count;             /* pairs kept */
+        size_t room;              /* pairs there is room for */
+        int cut_short;            /* the list could not grow, and some went unkept */
+    } mixed;
 };
 
 /* WHICH CARTRIDGE IS RUNNING RIGHT NOW, so the callbacks mGBA fires part-way through a
@@ -357,6 +366,8 @@ mgba_core_cleanup(struct mgba_core *mc)
     search_free(mc);
     free(mc->feed_log.events); /* a sound feed started and never finished */
     mc->feed_log.events = NULL;
+    free(mc->mixed.samples); /* mixed sound recorded and never taken */
+    mc->mixed.samples = NULL;
     if (!mc->destroyed && mc->core) {
         mc->core->deinit(mc->core);
         mc->core = NULL;
@@ -4050,6 +4061,63 @@ mgba_core_sound_feed_finish(VALUE self)
     return result;
 }
 
+/* One sample of the mix, kept. Called by mGBA part-way through a frame, with Ruby's lock released,
+ * so it only writes into the core's own list. */
+static void
+mixed_sound_keep(struct mAVStream *stream, int16_t left, int16_t right)
+{
+    struct mixed_sound *mixed = (struct mixed_sound *)stream;
+    if (mixed->count == mixed->room) {
+        size_t room = mixed->room ? mixed->room * 2 : 4096;
+        int16_t *grown = realloc(mixed->samples, room * 2 * sizeof(int16_t));
+        if (!grown) {
+            mixed->cut_short = 1;
+            return;
+        }
+        mixed->samples = grown;
+        mixed->room = room;
+    }
+    mixed->samples[2 * mixed->count] = left;
+    mixed->samples[2 * mixed->count + 1] = right;
+    mixed->count++;
+}
+
+/* Core#mixed_sound_start — keep the console's own mix of its voices, every sample of it, from now
+ * until Core#mixed_sound_finish, over the frames Core#run_frame runs between. These are the samples
+ * mGBA works out at the console's own mixing rate (32,768 a second unless the game asks for more),
+ * before it changes the rate for a speaker: what #audio_buffer hands back is these, smoothed and
+ * resampled to 44,100 a second. GBA-only. */
+static VALUE
+mgba_core_mixed_sound_start(VALUE self)
+{
+    struct mgba_core *mc = get_mgba_core(self);
+    if (mc->core->platform(mc->core) != mPLATFORM_GBA)
+        rb_raise(rb_eRuntimeError, "mixed_sound is GBA-only");
+    memset(&mc->mixed.stream, 0, sizeof(mc->mixed.stream));
+    mc->mixed.stream.postAudioFrame = mixed_sound_keep;
+    mc->mixed.count = 0;
+    mc->mixed.cut_short = 0;
+    mc->core->setAVStream(mc->core, &mc->mixed.stream);
+    return Qnil;
+}
+
+/* Core#mixed_sound_finish — stop keeping the mix, and hand back what was kept as a String of 16-bit
+ * little-endian samples, the left and the right of each moment side by side. Raises if the list
+ * could not grow and some went unkept. */
+static VALUE
+mgba_core_mixed_sound_finish(VALUE self)
+{
+    struct mgba_core *mc = get_mgba_core(self);
+    mc->core->setAVStream(mc->core, NULL);
+    VALUE out = rb_str_new((const char *)mc->mixed.samples, (long)(mc->mixed.count * 2 * sizeof(int16_t)));
+    int cut_short = mc->mixed.cut_short;
+    mc->mixed.count = 0;
+    mc->mixed.cut_short = 0;
+    if (cut_short)
+        rb_raise(rb_eNoMemError, "there was no memory to keep all of the mixed sound");
+    return out;
+}
+
 /* Core#registers — what the processor holds right now, as a Hash: :r0 through
  * :r14, :pc and :cpsr.
  *
@@ -4536,6 +4604,8 @@ Init_ruby_gba_emulator_ext(void)
     rb_define_method(cCore, "profile_gb",    mgba_core_profile_gb, 1);
     rb_define_method(cCore, "sound_feed_start",  mgba_core_sound_feed_start, 0);
     rb_define_method(cCore, "sound_feed_finish", mgba_core_sound_feed_finish, 0);
+    rb_define_method(cCore, "mixed_sound_start",  mgba_core_mixed_sound_start, 0);
+    rb_define_method(cCore, "mixed_sound_finish", mgba_core_mixed_sound_finish, 0);
     rb_define_method(cCore, "registers",     mgba_core_registers, 0);
     rb_define_method(cCore, "wave_rate",     mgba_core_wave_rate, 0);
     rb_define_method(cCore, "run_until",     mgba_core_run_until, 2);
