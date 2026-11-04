@@ -144,12 +144,14 @@ module VBlank
               @art = Art.new(backdrop: IR::SceneHandover.of(@program).game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
                              background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
-                             third_layer: @third_layer)
+                             third_layer: @third_layer, tile_memo: @tile_memo)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
               @objects = by_kind(:object)
               @backgrounds = by_kind(:background)
+              @backgrounds_by_name = backgrounds_declared.group_by(&:name) # every declaration of each name (#background_declared_for)
+              @set_tiles_by_name = @program.walk.select { |node| node.kind == :set_tile }.group_by(&:name)
               @sprite_names = SpriteNames.new(@program)
               @grids = {}
               @pose_tables = {}
@@ -465,7 +467,7 @@ module VBlank
 
               backgrounds_declared.reject(&:scene).each do |bg|
                 shown = bg.every_map.flat_map { |map| map.flat_map { |row| Array(row) } }
-                changed = @program.walk.select { |node| node.kind == :set_tile && node.name == bg.name }.map(&:tile)
+                changed = @set_tiles_by_name.fetch(bg.name, []).map(&:tile)
                 (shown + changed).uniq.each { |tile| cell_of(bg, tile) if tile.nil? || tile < bg.tiles.length }
               end
               @tile_runs.each_index { |number| make_run_art(number) unless @run_places[number] }
@@ -1085,7 +1087,7 @@ module VBlank
                 @layers[bar] = THIRD_LAYER
                 refuse_unmade_third_layer_bar!(bar)
                 bar.every_map.each_index { |which| grid_of(bar, which) }
-                @program.walk.select { |node| node.kind == :set_tile && node.name == bar.name && node.tile.is_a?(Integer) }
+                @set_tiles_by_name.fetch(bar.name, []).select { |node| node.tile.is_a?(Integer) }
                         .each { |node| cell_of(bar, node.tile) if node.tile < bar.tiles.length }
               end
               @art.reserve_bar_palettes
@@ -1119,7 +1121,7 @@ module VBlank
             # that name, or — where several scenes each declare their own by one name — the one of the
             # scene whose routine is being lowered, or the one every screen shows.
             def background_declared_for(node)
-              declared = @program.walk.select { |bg| bg.kind == :background && bg.name == node.name }
+              declared = @backgrounds_by_name.fetch(node.name, [])
               raise LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}" if declared.empty?
               return declared.first if declared.length == 1
 

@@ -144,7 +144,8 @@ module VBlank
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
-                                                one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?)
+                                                one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?,
+                                                tile_memo: @tile_memo ||= Art::TileMemo.new)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                       small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,

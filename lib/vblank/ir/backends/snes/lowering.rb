@@ -141,10 +141,13 @@ module VBlank
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own
           # background tiles (Art). +one_sprite_tile_set+ makes one set of a sprite's pictures for
           # all the lists of colours it wears (Picture#palette_in_places). +chip+ is a cartridge
-          # with a Super FX, which runs the routines marked for it (Chip).
+          # with a Super FX, which runs the routines marked for it (Chip). +tile_memo+ is what the
+          # build's tries have read of its background pictures already (Art::TileMemo).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false)
+                         background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
+                         tile_memo: Art::TileMemo.new)
             @program = program
+            @tile_memo = tile_memo
             @one_sprite_tile_set = one_sprite_tile_set
             @small_sprite_scenes = small_sprite_scenes
             @memory = memory
@@ -487,8 +490,9 @@ module VBlank
                                    SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode].freeze
 
           # What the lowering keeps that making a statement never changes, shared as it is: the
-          # statements already cut into parts, which only cutting adds to.
-          UNCHANGED_WHEN_MEASURING = %i[@cuts].freeze
+          # statements already cut into parts, which only cutting adds to, and what the pictures'
+          # pixels come to (Art::TileMemo), true whatever a measurement places.
+          UNCHANGED_WHEN_MEASURING = %i[@cuts @tile_memo].freeze
 
           # A copy of the lowering's +value+ (held in +name+) that measuring can change and leave the
           # lowering as it was. The lowering's own lists and tables are added to, never changed

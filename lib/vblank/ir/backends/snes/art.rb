@@ -133,6 +133,47 @@ module VBlank
 
           attr_reader :background_tiles, :sprite_tiles, :grids, :sprite_pictures
 
+          # WHAT A BACKGROUND TILE'S PIXELS COME TO, worked out once a build. A map names the same
+          # tile in many cells, and a build is tried several times over (SNES#build), and each time
+          # a cell is made its picture was read pixel by pixel again: which colours it draws, and the
+          # 32 bytes of each 8×8 quarter. Those depend on the picture alone, and on where its
+          # colours sit in the palette it is drawn from, so they are kept here by exactly that.
+          #
+          # Which palette a cell takes, and which tile number, are NOT kept: those are the Art's
+          # choices, made against the palettes and tiles placed so far, and a cell made twice can
+          # take an earlier palette the second time (one that has since gained its colours). So
+          # every call still makes those choices as it always did, and only reading the pixels is
+          # saved.
+          #
+          # It is one object for the whole build, handed to each try's Art, and shared as it is by
+          # the copies a measurement makes (Lowering#bytes_of): what it holds is true of the
+          # pictures whatever a try or a measurement places.
+          class TileMemo
+            def initialize
+              @colors = {}
+              @tiles = {}
+              @joined = {}.compare_by_identity
+            end
+
+            # The colours the first +count+ pixels of +image+ draw, each once, in the order the
+            # pixels first draw them.
+            def colors_drawn(image, count)
+              @colors[[image, count]] ||= (0...count).reject { |at| image.tile_see_through_at?(at) }
+                                                     .map { |at| image.color_at(at) }.uniq.freeze
+            end
+
+            # The bytes the block makes of +image+'s first +count+ pixels, kept by +places+: where
+            # each of its colours is in the palette it is drawn from (#places_of), or :held for a
+            # picture drawn from a list place for place.
+            def tiles(image, count, places) = @tiles[[image, count, places]] ||= Ractor.make_shareable(yield)
+
+            # A big tile's quarters as one string, the key Art finds its tile number by.
+            def joined(quarters) = @joined[quarters] ||= quarters.join.freeze
+
+            # Where each of +colors+ is in +palette+.
+            def self.places_of(colors, palette) = colors.map { |color| palette.index(color) }
+          end
+
           # The backdrop of a game that says none: black, as the interpreter's empty screen is.
           BACKDROP = 0
 
@@ -161,7 +202,8 @@ module VBlank
           # A STATUS BAR ON THE THIRD LAYER (+third_layer+, #bar_cell) takes the last 64 tile places
           # for its map (Runtime::Picture::THIRD_LAYER_MAP), so the backgrounds keep 960.
           def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [], third_layer: false)
+                         background_tiles: false, small_sprite_scenes: [], third_layer: false, tile_memo: TileMemo.new)
+            @tile_memo = tile_memo
             @most_background_tiles = third_layer ? THIRD_LAYER_TILE_PLACES : MOST_BACKGROUND_TILES
             @bar_palettes = []
             @bar_tile_numbers = { blank_bar_tile => 0 }
@@ -213,15 +255,16 @@ module VBlank
           # same for its tiles, in a game of +background_tiles+.
           def background_cell(image, held: nil, scene: nil, tile_scene: nil)
             palettes = background_palettes(scene)
-            drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
-            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_in_message(scene))
-            places = Array.new(64) do |at|
-              if image.tile_see_through_at?(at) then 0
-              elsif held then place_in_list(image, at)
-              else palettes[palette].index(image.color_at(at)) + 1
-              end
+            colors = @tile_memo.colors_drawn(image, 64)
+            palette = held || palette_for(palettes, colors, backgrounds_in_message(scene))
+            bytes = @tile_memo.tiles(image, 64, held ? :held : TileMemo.places_of(colors, palettes[palette])) do
+              tile_bytes(Array.new(64) do |at|
+                if image.tile_see_through_at?(at) then 0
+                elsif held then place_in_list(image, at)
+                else palettes[palette].index(image.color_at(at)) + 1
+                end
+              end)
             end
-            bytes = tile_bytes(places)
             number = with_background_tiles_of(tile_scene) do
               @background_tile_numbers[bytes] ||= begin
                 at = @background_tiles.index(nil) || @background_tiles.length
@@ -241,19 +284,21 @@ module VBlank
           # drawn from one palette. Its tile number (the top left quarter's) and the palette.
           def background_big_cell(image, held: nil, scene: nil, tile_scene: nil)
             palettes = background_palettes(scene)
-            drawn = (0...256).reject { |at| image.tile_see_through_at?(at) }
-            palette = held || palette_for(palettes, drawn.map { |at| image.color_at(at) }.uniq, backgrounds_in_message(scene))
-            quarters = (0...4).map do |quarter|
-              tile_bytes(Array.new(64) do |at|
-                pixel = ((((quarter / 2) * 8) + (at / 8)) * 16) + ((quarter % 2) * 8) + (at % 8)
-                if image.tile_see_through_at?(pixel) then 0
-                elsif held then place_in_list(image, pixel)
-                else palettes[palette].index(image.color_at(pixel)) + 1
-                end
-              end)
+            colors = @tile_memo.colors_drawn(image, 256)
+            palette = held || palette_for(palettes, colors, backgrounds_in_message(scene))
+            quarters = @tile_memo.tiles(image, 256, held ? :held : TileMemo.places_of(colors, palettes[palette])) do
+              (0...4).map do |quarter|
+                tile_bytes(Array.new(64) do |at|
+                  pixel = ((((quarter / 2) * 8) + (at / 8)) * 16) + ((quarter % 2) * 8) + (at % 8)
+                  if image.tile_see_through_at?(pixel) then 0
+                  elsif held then place_in_list(image, pixel)
+                  else palettes[palette].index(image.color_at(pixel)) + 1
+                  end
+                end)
+              end
             end
             number = with_background_tiles_of(tile_scene) do
-              @background_tile_numbers[quarters.join] ||= begin
+              @background_tile_numbers[@tile_memo.joined(quarters)] ||= begin
                 at = free_big_place
                 refuse_too_many!(at + BIG_TILE_PLACES.last, @most_background_tiles, "backgrounds", background_tiles_error)
                 BIG_TILE_PLACES.zip(quarters) { |offset, bytes| @background_tiles[at + offset] = bytes }
