@@ -125,10 +125,14 @@ module VBlank
               asm.label("rt_chip_run")
               asm.sep(0x20)
               # The chip sees the cartridge's ROM in banks $00-$3F, where the console sees it in
-              # banks $80-$BF as well.
+              # banks $80-$BF as well. Setting the bank empties the chip's quick memory, so a bank
+              # that is already the one is left alone, and code run again keeps it (ChipFill).
               asm.lda(asm.direct(2))
               asm.and_a(0x3F)
+              asm.cmp(asm.abs(h::GSU_PBR))
+              asm.beq("rt_chip_run_same_bank")
               asm.sta(asm.abs(h::GSU_PBR))
+              asm.label("rt_chip_run_same_bank")
               asm.lda(asm.direct(3))
               asm.ora(h::GSU_OWNS_ROM | h::GSU_OWNS_RAM)
               asm.rep(0x30)

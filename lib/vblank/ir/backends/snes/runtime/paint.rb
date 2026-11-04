@@ -265,9 +265,9 @@ module VBlank
               emit_helpers(asm, memory, s, bank, logged)
               PaintLog.emit(asm, memory, s, bank) if logged
               emit_clear(asm, memory, s, logged)
-              emit_fill(asm, memory, s, bank, logged)
+              chip ? ChipFill.emit_console(asm, memory, s) : emit_fill(asm, memory, s, bank, logged)
               emit_column(asm, memory) if columns
-              emit_blit(asm, memory, s, bank, logged)
+              emit_blit(asm, memory, s, bank, logged, chip: chip)
               emit_patches(asm, memory, s, bank, logged)
               emit_prepare(asm, memory, s, logged)
               emit_upload(asm, memory, s, bank, logged)
@@ -1197,7 +1197,9 @@ module VBlank
             #
             # A picture placed more than 2048 pixels off the screen's left or top, or past its right
             # or bottom, paints nothing, so everything below works in 16 bits; no picture is that big.
-            def emit_blit(asm, memory, s, bank, logged)
+            # On a Super FX cartridge (+chip+) the Super FX paints it, from the tiles across on
+            # (ChipBlit).
+            def emit_blit(asm, memory, s, bank, logged, chip: false)
               emit_blit_inked(asm, memory, s) if memory.reserved?(Tint::COLORS_NOW)
               asm.label("rt_paint_blit_one_of")
               asm.lda(asm.direct(R.call(0)))
@@ -1309,6 +1311,8 @@ module VBlank
               asm.beq("rt_paint_blit_across")
               asm.branch_long(:bpl, "rt_paint_blit_none")
               asm.label("rt_paint_blit_across")
+              return ChipBlit.emit_console(asm, memory, s) if chip
+
               emit_mark_or_log(asm, memory, logged, "rt_paint_blit_paint")
               # Which of each row's eight runs of columns: the one for the place across modulo eight,
               # the columns × ten bytes on for each (SNES::PaintedArt), in +shift+.

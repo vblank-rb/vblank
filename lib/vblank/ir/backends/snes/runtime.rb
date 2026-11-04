@@ -15,6 +15,8 @@ require_relative "runtime/tint"
 require_relative "runtime/collide"
 require_relative "runtime/chip"
 require_relative "runtime/chip_paint"
+require_relative "runtime/chip_fill"
+require_relative "runtime/chip_blit"
 require_relative "runtime/chip_sums"
 require_relative "runtime/chip_columns"
 require_relative "runtime/saving"
@@ -99,7 +101,8 @@ module VBlank
             emit_sound_routines(asm, memory, c, lowered)
             emit_start(asm, chip: c.chip?, sound: c.sound)
             emit_frame_begins(asm, lowering.frame_begins)
-            [vectors.section, asm.section] +
+            chip_paint = c.painted && c.chip? ? [ChipFill.section, ChipBlit.section] : []
+            [vectors.section, asm.section, *chip_paint] +
               (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings], whole_notes: memory.reserved?(Sound::AHEAD)) : []) +
               [lowered[:music], lowered[:plays]].compact
           end

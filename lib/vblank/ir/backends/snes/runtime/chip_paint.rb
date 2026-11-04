@@ -10,7 +10,8 @@ module VBlank
           # The picture is kept where Paint keeps it, laid out the same way (896 tiles of eight bits a
           # pixel, in the order they are shown), but in the Super FX's own RAM, $70:0000 to $70:DFFF,
           # rather than the last bank of work RAM. The console's processor can read and write that RAM
-          # whenever the chip is stopped, so every one of Paint's routines paints there unchanged.
+          # whenever the chip is stopped, so Paint's routines paint there unchanged, all but the
+          # rectangle and the picture, which the chip paints itself (ChipFill, ChipBlit).
           #
           # Each tile's generation (Paint's GENERATIONS, a byte a tile) is in the chip's RAM too, just
           # past the picture, because a routine run on the chip that paints (ChipColumns) has to know
@@ -32,12 +33,23 @@ module VBlank
           # rt_paint_upload, a blank at a time with the screen on, from the chip's RAM rather than
           # work RAM.
           #
+          # PAST THE GENERATIONS, WHAT THE CHIP'S PAINTING HANDS BACK: the list of tiles the chip made
+          # ready (a word each, after a word of how many bytes of it are in use), whose cells of the
+          # map the console points back at them after the run, and the blocks a rectangle (ChipFill)
+          # and a picture (ChipBlit) are handed over in.
+          #
           # THE CHIP'S NUMBERS ARE PAST THOSE: the rest of its 64K, whatever the game's screen is,
           # is where a routine run on the chip finds the variables it uses (ChipCode).
           module ChipPaint
             COPY = Console::SNESHardware::GSU_RAM_BANK << 16
             GENERATIONS = COPY + Paint::COPY_BYTES
-            NUMBERS = GENERATIONS + Paint::TILES
+            READIED_COUNT = GENERATIONS + Paint::TILES
+            READIED = READIED_COUNT + 2
+            FILL = READIED + (Paint::TILES * 2)
+            FILL_BYTES = 0x60
+            BLIT = FILL + FILL_BYTES
+            BLIT_BYTES = 0x40
+            NUMBERS = BLIT + BLIT_BYTES
             NUMBERS_END = COPY + 0x1_0000
           end
         end

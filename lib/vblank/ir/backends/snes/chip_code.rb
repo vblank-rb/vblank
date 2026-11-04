@@ -149,8 +149,8 @@ module VBlank
               **Runtime::ChipColumns::BYTES.to_h { |what, bytes| [what, place_of(:"chip columns #{what}", bytes: bytes)] },
               generation: place_of(:"chip paint generation", bytes: 2),
               clear: place_of(:"chip paint clear", bytes: 8), dirty: place_of(:"chip paint dirty", bytes: Runtime::Paint::ROWS * 4),
-              readied_count: place_of(:"chip paint readied count", bytes: 2),
-              readied: place_of(:"chip paint readied", bytes: Runtime::Paint::TILES * 2), area: area_places
+              readied_count: Runtime::ChipPaint::READIED_COUNT - Runtime::ChipPaint::COPY,
+              readied: Runtime::ChipPaint::READIED - Runtime::ChipPaint::COPY, area: area_places
             )
           end
 
