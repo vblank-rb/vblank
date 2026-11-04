@@ -9,6 +9,7 @@ require_relative "runtime/lists"
 require_relative "runtime/picture"
 require_relative "runtime/paint"
 require_relative "runtime/paint_log"
+require_relative "runtime/text_layer"
 require_relative "runtime/tint"
 require_relative "runtime/collide"
 require_relative "runtime/chip"
@@ -43,7 +44,7 @@ module VBlank
           # the copy of the screen's interrupt it runs meanwhile after the rest, so a plain cartridge's places do not move.
           def reserve(memory, carries)
             c = carries
-            Paint.reserve(memory, chip: c.chip?) if c.painted
+            Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer) if c.painted
             Frame.reserve(memory, second_controller: c.second_controller)
             Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, bends: c.bends, scene_bends: c.scene_bends,
                                     tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,

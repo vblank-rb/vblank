@@ -21,6 +21,10 @@ module VBlank
           #   $7860-$787F  the CLEAR TILE, every pixel the colour the screen was last cleared to
           #   $7880-$78BF  the SEE-THROUGH TILE, every pixel nought, never written (Boot leaves it so)
           #
+          # A game with text at places known when it is built shows that text on a second layer
+          # instead (TextLayer), whose map takes the rows of this map past the 32nd and whose tiles
+          # the rest of video RAM past the see-through tile; such a game has no camera.
+          #
           # The map's rows past the picture's 28 show the see-through tile, so a view moved down or
           # up past the picture (`camera`) shows the backdrop there, colour 0 of the colour memory,
           # which is black and fades with the picture (Tint) as the interpreter's backdrop does. The
@@ -212,7 +216,7 @@ module VBlank
             # On a cartridge with a Super FX (+chip+) the copy is the chip's RAM, so work RAM keeps
             # none, and what the painted screen keeps beside it goes with the rest of work RAM's far
             # places; on a plain one it goes in the last bank, after the copy.
-            def reserve(memory, chip: false)
+            def reserve(memory, chip: false, text_layer: false)
               memory.reserve_last_bank("rt paint copy", COPY_BYTES) unless chip
               far = chip ? memory.method(:reserve_far) : memory.method(:reserve_last_bank)
               chip ? memory.name_place(GENERATIONS, ChipPaint::GENERATIONS) : far.call(GENERATIONS, TILES)
@@ -235,6 +239,7 @@ module VBlank
               memory.reserve(SHOWN_GENERATION, 2)
               memory.reserve(CAMERA, CAMERA_BYTES)
               PaintLog.reserve(memory) unless chip
+              TextLayer.reserve(memory) if text_layer && !chip
             end
 
             def scratch(memory)
@@ -274,12 +279,15 @@ module VBlank
 
             def emit_start(asm, memory, logged)
               h = Console::SNESHardware
+              # A game with a text layer has no camera, and its map's rows past the picture's are
+              # the text layer's map (TextLayer).
+              layer = TextLayer.kept?(memory)
               asm.label("rt_paint_start")
               asm.sep(0x20)
               asm.lda(0x03) # mode 3: the first layer's tiles eight bits a pixel
               asm.sta(asm.abs(h::BGMODE))
               asm.stz(asm.abs(h::BG12NBA)) # its tiles from $0000
-              asm.lda(((MAP >> 10) << 2) | MAP_32_BY_64) # its map at $7000, 32 cells across and 64 down
+              asm.lda(((MAP >> 10) << 2) | (layer ? 0 : MAP_32_BY_64)) # its map at $7000, 32 cells across and 64 down (32)
               asm.sta(asm.abs(h::BG1SC))
               # The first window hides the layer outside its columns (W12SEL: the window on, its
               # outside the part hidden; TMW: on the main screen), every column at power-on.
@@ -290,7 +298,7 @@ module VBlank
               asm.sta(asm.abs(h::W12SEL))
               asm.lda(0x01)
               asm.sta(asm.abs(h::TMW))
-              asm.lda(0x01) # the first layer alone on the main screen
+              asm.lda(layer ? 0x03 : 0x01) # the first layer alone on the main screen, or with the text layer
               asm.sta(asm.abs(h::TM))
               # The screen's first row is the console's line 1 (see Runtime::Picture's scroll), so the
               # layer is scrolled up one: -1 is $3FF in the register's ten bits.
@@ -312,8 +320,9 @@ module VBlank
               asm.label("rt_paint_start_cell_shown")
               asm.sta(asm.abs(h::VMDATAL))
               asm.inx
-              asm.cpx(COLUMNS * MAP_ROWS)
+              asm.cpx(COLUMNS * (layer ? COLUMNS : MAP_ROWS))
               asm.bne("rt_paint_start_cell")
+              asm.jsr(asm.abs("rt_paint_layer_start")) if layer
               # The colours, all 256.
               asm.sep(0x20)
               asm.stz(asm.abs(h::CGADD))
@@ -788,6 +797,7 @@ module VBlank
               asm.label("rt_paint_clear_whole")
               asm.inc(asm.abs(memory[CLEARS]))
               PaintLog.emit_clear_deferred(asm, memory) if logged
+              asm.jsr(asm.abs("rt_paint_layer_clear_all")) if TextLayer.kept?(memory)
               asm.lda(asm.direct(R.call(0)))
               asm.cmp(asm.abs(memory[CLEAR_PLACE]))
               asm.branch_long(:beq, "rt_paint_clear_same_colour")
@@ -2180,10 +2190,14 @@ module VBlank
               end
               return unless logged
 
-              asm.lda(asm.abs(memory[PaintLog::MAP_RUN_BYTES]))
-              asm.clc
-              asm.adc(asm.direct(sum))
-              asm.sta(asm.direct(sum))
+              runs = [PaintLog::MAP_RUN_BYTES]
+              runs << TextLayer::CHANGED_BYTES if TextLayer.kept?(memory)
+              runs.each do |name|
+                asm.lda(asm.abs(memory[name]))
+                asm.clc
+                asm.adc(asm.direct(sum))
+                asm.sta(asm.direct(sum))
+              end
             end
 
             # --- the blank ---
@@ -2252,6 +2266,7 @@ module VBlank
               whole = [[CLEAR_CHANGED, CLEAR_TILE_COPY, CLEAR_TILE_AT, TILE_BYTES]]
               whole << [MAP_CHANGED, MAP_COPY, MAP, MAP_BYTES] unless logged
               PaintLog.emit_map_runs_upload(asm, memory) if logged
+              asm.jsr(asm.abs("rt_paint_layer_upload")) if TextLayer.kept?(memory)
               whole.each do |flag, from, to, bytes|
                 skip = "rt_paint_upload_#{to}_sent"
                 asm.lda(asm.abs(memory[flag]))

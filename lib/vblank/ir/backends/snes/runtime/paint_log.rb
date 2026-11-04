@@ -153,6 +153,11 @@ module VBlank
             KIND_FILL = 1
             KIND_BLIT = 2
             KIND_CLEAR = 3
+            # A text on TextLayer's layer, which paints no tile; and one taken off it, a picture
+            # painted (its numbers the text's, then the picture's). The two differ in their lowest
+            # bit alone, so one test finds either.
+            KIND_LAYER = 4
+            KIND_DEMOTED = 5
             # The ways a painting is known to rt_paint_hash, by the bytes of working numbers and the
             # step between the words hashed: a rectangle's five numbers whole, a picture's three by
             # their low words, and a clear's place.
@@ -340,8 +345,12 @@ module VBlank
             def emit(asm, memory, s, bank)
               log_bytes = memory.reserve_far_up_to(LOG, least: LEAST_LOG_ENTRIES * ENTRY_BYTES,
                                                         most: MOST_LOG_ENTRIES * ENTRY_BYTES, step: ENTRY_BYTES)
+              # With a text layer, room for an entry for each text a painting takes off it.
+              layer = TextLayer.kept?(memory)
+              log_bytes -= TextLayer::MOST_PLACED * ENTRY_BYTES if layer
               emit_hash(asm, memory)
               emit_op_begin(asm, memory, log_bytes)
+              TextLayer.emit(asm, memory, s, log_bytes) if layer
               emit_apply_deferred_clear(asm, memory, s)
               emit_mark(asm, memory, s)
               emit_mark_now(asm, memory, s)
@@ -538,11 +547,23 @@ module VBlank
               asm.label("rt_paint_apply_deferred_clear")
               asm.stz(asm.abs(memory[DEFERRED_CLEAR]))
               asm.jsr(asm.abs("rt_paint_next_generation"))
+              layer = TextLayer.kept?(memory)
+              # The layer cleared too, and each text matched put on it again (TextLayer).
+              asm.jsr(asm.abs("rt_paint_layer_clear_all")) if layer
               asm.ldx(0)
               asm.label("rt_paint_apply_deferred_clear_entry")
               asm.cpx(asm.abs(memory[LOG_END]))
               asm.bcs("rt_paint_apply_deferred_clear_done")
               asm.phx
+              if layer
+                asm.lda(asm.long_x(log))
+                asm.ora(1)
+                asm.cmp(KIND_DEMOTED)
+                asm.bne("rt_paint_apply_deferred_clear_painting")
+                asm.jsr(asm.abs("rt_paint_layer_replace"))
+                asm.beq("rt_paint_apply_deferred_clear_next") # on the layer: no tile to take it in
+                asm.label("rt_paint_apply_deferred_clear_painting")
+              end
               2.times do |half|
                 asm.lda(asm.long_x(log, ENTRY_HASH + (half * 2)))
                 asm.sta(asm.abs(hash + (half * 2)))
@@ -552,6 +573,7 @@ module VBlank
                 asm.sta(asm.direct(to))
               end
               asm.jsr(asm.abs("rt_paint_mark_rows"))
+              asm.label("rt_paint_apply_deferred_clear_next")
               asm.pla
               asm.clc
               asm.adc(ENTRY_BYTES)
@@ -584,8 +606,14 @@ module VBlank
               asm.lda(asm.direct(s.top))
               3.times { asm.lsr }
               asm.sta(asm.direct(s.mark_row))
-              # rt_paint_mark_rows (JSR): the same, the rows of tiles known: +mark_row+ to +temp+.
+              # rt_paint_mark_rows (JSR): the same, the rows of tiles known: +mark_row+ to +temp+. A
+              # text on the layer there is taken off it first (TextLayer's rt_paint_layer_check);
+              # rt_paint_mark_rows_checked is past that, for a text taken off.
               asm.label("rt_paint_mark_rows")
+              if TextLayer.kept?(memory)
+                asm.jsr(asm.abs("rt_paint_layer_check"))
+                asm.label("rt_paint_mark_rows_checked")
+              end
               emit_pointer(asm, generations, memory[Paint::GENERATIONS])
               # A tile new to the generation: the clear colour's key, with this painting taken in
               # unless it paints nothing (OP_HASH nought: +shift+ says which).
@@ -700,6 +728,8 @@ module VBlank
               asm.rts
 
               asm.label("rt_paint_mark_now")
+              # Texts on the layer it covers painted first (TextLayer).
+              asm.jsr(asm.abs("rt_paint_layer_check_now")) if TextLayer.kept?(memory)
               # Painted at once, the screen is no longer what the last pass's log says.
               asm.lda(NO_LAST_PASS)
               asm.sta(asm.abs(memory[LAST_PASS_END]))
@@ -1249,6 +1279,16 @@ module VBlank
               asm.label("rt_paint_replay_look")
               asm.cpx(asm.abs(memory[LOG_END]))
               asm.bcs("rt_paint_replay_looked")
+              if TextLayer.kept?(memory)
+                # A text on the layer paints no tile, and is never painted again.
+                asm.lda(asm.long_x(log))
+                asm.cmp(KIND_LAYER)
+                asm.bne("rt_paint_replay_look_painted")
+                asm.lda(0)
+                asm.sta(asm.long_x(log, ENTRY_AGAIN))
+                asm.bra("rt_paint_replay_look_next")
+                asm.label("rt_paint_replay_look_painted")
+              end
               asm.jsr(asm.abs("rt_paint_entry_repainted"))
               asm.sta(asm.long_x(log, ENTRY_AGAIN))
               asm.beq("rt_paint_replay_look_next")
@@ -1291,6 +1331,16 @@ module VBlank
               asm.jsl(asm.long("rt_paint_fill_now"))
               asm.bra("rt_paint_replay_painted")
               asm.label("rt_paint_replay_blit")
+              if TextLayer.kept?(memory)
+                # A text taken off the layer is its picture: the numbers after the text's own.
+                asm.cmp(KIND_DEMOTED)
+                asm.bne("rt_paint_replay_picture")
+                6.times do |i|
+                  asm.lda(asm.direct(Paint::R.call(1) + (i * 2)))
+                  asm.sta(asm.direct(Paint::R.call(0) + (i * 2)))
+                end
+                asm.label("rt_paint_replay_picture")
+              end
               asm.jsl(asm.long("rt_paint_blit_now"))
               asm.label("rt_paint_replay_painted")
               asm.plx
@@ -1450,7 +1500,35 @@ module VBlank
               asm.plb
               asm.lda(asm.direct(s.chunk))
               asm.bmi("rt_paint_map_runs_none")
+              # A run that starts where the last one ends (a row changed to its end, and the next
+              # from its start) is that run made longer: the cells are side by side in the map and
+              # in video RAM, and one copy costs the blank less than two.
               asm.ldx(asm.abs(memory[MAP_RUNS_END]))
+              asm.beq("rt_paint_map_runs_new")
+              4.times { asm.dex }
+              asm.lda(asm.long_x(runs))
+              asm.clc
+              asm.adc(asm.long_x(runs, 2))
+              asm.cmp(asm.direct(s.chunk))
+              asm.bne("rt_paint_map_runs_apart")
+              asm.lda(asm.direct(s.mark_count))
+              asm.sec
+              asm.sbc(asm.direct(s.chunk))
+              asm.inc
+              asm.pha
+              asm.clc
+              asm.adc(asm.long_x(runs, 2))
+              asm.sta(asm.long_x(runs, 2))
+              asm.pla
+              asm.asl
+              asm.clc
+              asm.adc(asm.abs(memory[MAP_RUN_BYTES]))
+              asm.sta(asm.abs(memory[MAP_RUN_BYTES]))
+              asm.bra("rt_paint_map_runs_none")
+              asm.label("rt_paint_map_runs_apart")
+              asm.ldx(asm.abs(memory[MAP_RUNS_END]))
+              asm.label("rt_paint_map_runs_new")
+              asm.lda(asm.direct(s.chunk))
               asm.sta(asm.long_x(runs))
               asm.lda(asm.direct(s.mark_count))
               asm.sec

@@ -55,6 +55,35 @@ module VBlank
               @column_tables = {} # a picture's name -> its columns' places
               @inks = [] # each a TextInk, by its number
               @text_inks = {} # a draw_text node's object_id -> its ink's number, or nil for none
+              # The text layer's tiles and texts, when the runtime keeps one (Runtime::TextLayer).
+              @text_layer_art = (TextLayerArt.new if Runtime::TextLayer.kept?(@memory))
+            end
+
+            # Whether +program+'s painted screen shows text on a layer of its own (Runtime::TextLayer):
+            # it writes text that can go there, and never moves the camera, whose room in video RAM
+            # the layer takes.
+            def self.text_layer?(program)
+              painted?(program) && program.walk.none? { |node| node.kind == :camera } &&
+                program.walk.any? { |node| node.kind == :draw_text && layer_pixels(node) }
+            end
+
+            # The screen's pixels a `draw_text` writes, when it can go on the text layer: in one colour,
+            # at a place known now, all of it on the screen. nil for any other.
+            def self.layer_pixels(node)
+              return nil if node.picked
+
+              x = constant_of(node.x)
+              y = constant_of(node.y)
+              return nil unless x && y
+
+              TextLayerArt.pixels_at(node.text, node.fonts.get(node.font), x, y)
+            end
+
+            # +operand+'s number when it is one known now.
+            def self.constant_of(operand)
+              return operand if operand.is_a?(Integer)
+
+              operand.value if operand.is_a?(IR::Node) && operand.kind == :int
             end
 
             # Whether +program+ paints text in a colour picked as it runs, which an ink can paint
@@ -137,6 +166,7 @@ module VBlank
               tables.label("paint inks")
               @inks.each { |ink| tables.data_words(ink.ink.place * 2, ink.shown, ink.picked, 0) }
               tables.data_words(0) if @inks.empty?
+              @text_layer_art&.emit_tables(tables)
               @painted_art.pictures.each do |picture|
                 tables.label("paint rows #{picture.number}")
                 picture.height.times do |row|
@@ -327,6 +357,11 @@ module VBlank
             def emit_draw_text(node)
               shown = text_picture(node.text, node.font, node.fonts, node.color)
               unless node.picked
+                layered = layer_text(node, shown)
+                if layered
+                  text = @text_layer_art.texts.fetch(layered)
+                  return runtime_call("rt_paint_layer_text", [layered, shown, text.x, text.y].map { |n| Build.int(n) })
+                end
                 return runtime_call("rt_paint_blit", [Build.int(shown), value_node(node.x), value_node(node.y)])
               end
 
@@ -341,6 +376,20 @@ module VBlank
               inked = text_picture(node.text, node.font, node.fonts, @inks.fetch(number).ink)
               runtime_call("rt_paint_blit_inked", [Build.int(picture_list([shown, picked, inked])), showing,
                                                    value_node(node.x), value_node(node.y), Build.int(number)])
+            end
+
+            # The number of +node+'s text on the text layer (TextLayerArt), standing for the picture
+            # +shown+, or nil when it is painted: there is no layer, it cannot go there
+            # (Paint.layer_pixels), its colour's place cannot colour the layer, or its tiles do not fit.
+            def layer_text(node, shown)
+              return nil unless @text_layer_art
+
+              drawn = Paint.layer_pixels(node)
+              place = place_of_color(node.color)
+              return nil unless drawn && TextLayerArt.place_usable?(place)
+
+              @text_layer_art.text(node.object_id, picture: shown, x: Paint.constant_of(node.x),
+                                                   y: Paint.constant_of(node.y), drawn: drawn, place: place)
             end
 
             # An ink and the two colours its text is drawn in.

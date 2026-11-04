@@ -459,7 +459,7 @@ module VBlank
           # The objects the lowering adds to as it makes a statement, besides its own lists and tables:
           # the work RAM it reserves and the pictures, tiles and colours it gathers. Each is copied
           # all the way down to be measured on.
-          COPIED_WHEN_MEASURING = [Memory, Art, PaintedArt].freeze
+          COPIED_WHEN_MEASURING = [Memory, Art, PaintedArt, TextLayerArt].freeze
 
           # What the lowering only reads while it makes a statement, shared as it is: numbers, names,
           # the program and what is worked out from it before any statement is made.
