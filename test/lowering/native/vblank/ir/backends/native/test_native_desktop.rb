@@ -268,9 +268,47 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # THE CONSOLE'S OWN START-UP plays before an Advance game where the player has the BIOS, and the
+  # game then plays its own frames as it would have. A scripted run plays it only when told
+  # (--start-up), and says how many frames it played. Without a BIOS the game starts at once and
+  # nothing is said; a file named as the BIOS that is not one is said, and the game plays anyway.
+  def test_the_console_start_up_plays_first_with_the_players_bios
+    bios = ENV.fetch("VBLANK_GBA_BIOS", nil)
+    unless bios && File.file?(bios)
+      skip_on_this_machine "the console's start-up needs the player's Game Boy Advance BIOS, and VBLANK_GBA_BIOS " \
+                           "does not name one here"
+    end
+
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)
+      played = play_window(exe, dir, [], frames: 10, options: ["--start-up"], env: { "VBLANK_GBA_BIOS" => bios })
+
+      assert_operator played.printed[/^start_up_frames (\d+)$/, 1].to_i, :>, 200, "about four and a half seconds of it"
+      assert_equal 10, played.variables[:frames], "and then the game's own frames"
+      assert_empty played.said
+    end
+  end
+
+  def test_without_a_bios_the_game_starts_at_once_and_nothing_is_said
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)
+      none = play_window(exe, dir, [], frames: 10, options: ["--start-up"], env: { "VBLANK_GBA_BIOS" => nil })
+      not_one = File.join(dir, "not_a_bios.bin")
+      File.binwrite(not_one, "\0".b * 16_384)
+      refused = play_window(exe, dir, [], frames: 10, options: ["--start-up"], env: { "VBLANK_GBA_BIOS" => not_one })
+
+      refute_includes none.printed, "start_up_frames"
+      assert_equal 10, none.variables[:frames]
+      assert_empty none.said
+      refute_includes refused.printed, "start_up_frames"
+      assert_includes refused.said, "cannot use #{not_one} as the Game Boy Advance BIOS"
+      assert_equal 10, refused.variables[:frames], "the game plays anyway"
+    end
+  end
+
   private
 
-  Played = Struct.new(:variables, :said, :seconds, :audio, keyword_init: true)
+  Played = Struct.new(:variables, :printed, :said, :seconds, :audio, keyword_init: true)
 
   # A run of the window (on SDL's stand-ins, and for a settings file of its own unless it is
   # given one) of +frames+ frames with a script's lines, a line each, as --scripted-keys reads
@@ -288,7 +326,7 @@ class TestNativeDesktop < Minitest::Test
                                            stdin_data: script.map { |line| "#{line}\n" }.join)
     took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     assert_predicate status, :success?, said
-    Played.new(variables: Native::HeadlessRun.variables_in(printed.lines.map(&:chomp)), said: said, seconds: took,
+    Played.new(variables: Native::HeadlessRun.variables_in(printed.lines.map(&:chomp)), printed: printed, said: said, seconds: took,
                audio: audio ? File.binread(raw).unpack("s<*") : nil)
   end
 

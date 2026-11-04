@@ -14,6 +14,8 @@
  *   ./pong --config-dir DIR              keep the settings files in that folder, in place of the usual one
  *   ./pong --usual-settings              with --scripted-keys, use the usual settings files as a player's run does
  *   ./pong --window-picture shot.bmp     with --scripted-keys, save the window as it ends (menu and all)
+ *   ./pong --start-up                    with --scripted-keys, play the console's start-up first, as a
+ *                                        player's run does where it has the BIOS (tests)
  *
  * A SCRIPT (--scripted-keys) is a line a frame: the console buttons held, as a number (a=1, b=2, select=4,
  * start=8, right=16, left=32, up=64, down=128, r=256, l=512), and then any of these words, each pressed
@@ -104,6 +106,14 @@
  * so as much is played as is made. A computer with nothing to play sound through still plays the
  * game.
  *
+ * THE CONSOLE'S OWN START-UP plays before an Advance game on a computer where the player keeps a
+ * copy of the console's BIOS (rg_console_bios.h says where it is looked for): the logo and its
+ * chime, run by the BIOS itself in a small emulator of the console (rg_bios_boot.h), its pictures and
+ * its sound handed to the window as the game's are. Where there is no BIOS the game starts at once
+ * and nothing is said; a file named as the BIOS that cannot be used is said, and the game starts
+ * anyway. A scripted run plays it only when told (--start-up), so a test never depends on whether
+ * the computer running it has a BIOS; it then prints how many frames it played.
+ *
  * THE SAVE is a file, for a game that has save memory (rg_save.h): the bytes a cartridge's chip
  * would hold, which is what an emulator calls a .sav file, so one can be carried between the two.
  * It is kept where the operating system keeps a program's own files for the person using the
@@ -130,6 +140,11 @@
 #include "rg_sound.h"
 #include "rg_window.h"
 #include "rg_window_menu.h"
+#if RG_CONSOLE_PLAYS_BIOS_START_UP
+#include "rg_bios_boot.h"
+#include "rg_cartridge_start.h"
+#include "rg_console_bios.h"
+#endif
 
 /* One frame of the console, in nanoseconds. */
 #define FRAME_NS ((Uint64)RG_CONSOLE_TICKS_A_FRAME * 1000000000ull / RG_CONSOLE_TICKS_A_SECOND)
@@ -500,6 +515,41 @@ static char *settings_file_in_programs_place(const char *folder) {
   return path;
 }
 
+#if RG_CONSOLE_PLAYS_BIOS_START_UP
+/* --- the player's BIOS, for the console's start-up (THE CONSOLE'S OWN START-UP, above) --- */
+
+static int start_up_asked;          /* --start-up: a scripted run plays it too */
+static int console_bios_looked_for;
+static char console_bios_path[1024]; /* the player's BIOS where one was found that can be used, or "" */
+
+static bool start_up_wanted(void) { return !scripted || start_up_asked; }
+
+/* Looks for the player's BIOS: VBLANK_GBA_BIOS, then gba_bios.bin in +shared_folder+, the folder of
+ * settings every game shares, or no folder (NULL). A file named as the BIOS that cannot be used is
+ * said; one simply not there is not. */
+static void find_console_bios(const char *shared_folder) {
+  static const char *const known_sha1[] = {RG_CONSOLE_BIOS_RETAIL_SHA1};
+  char message[2048];
+  console_bios_looked_for = 1;
+  rg_console_bios_answer answer =
+      rg_console_bios_find(SDL_getenv(RG_CONSOLE_BIOS_ENVIRONMENT_VARIABLE), NULL, shared_folder, known_sha1, 1,
+                           console_bios_path, sizeof console_bios_path, message, sizeof message);
+  if (answer == RG_CONSOLE_BIOS_REFUSED) fprintf(stderr, "%s: %s\n", rg_game_title, message);
+  if (answer != RG_CONSOLE_BIOS_FOUND) console_bios_path[0] = '\0';
+}
+
+/* Looks for the player's BIOS with the folder +settings_file+ is in as the shared folder. */
+static void find_console_bios_beside(const char *settings_file) {
+  char folder[1024];
+  snprintf(folder, sizeof folder, "%s", settings_file);
+  char *last = strrchr(folder, '/');
+  char *last_back = strrchr(folder, '\\');
+  if (last_back && (!last || last_back > last)) last = last_back;
+  if (last) *last = '\0';
+  find_console_bios(folder);
+}
+#endif
+
 /* The settings file inside +folder+, in the place rg_settings_root.h says, or NULL when the folder
  * cannot be made. Settings used to be kept in the operating system's own place, so a player with
  * no file here yet has the one from there copied across, once, and it stays where it was. */
@@ -541,6 +591,9 @@ static void load_settings(const char *asked, int usual_files_asked) {
     char game[64];
     name_save_folder(game, sizeof game);
     char *everyones = settings_file_in("(all games)");
+#if RG_CONSOLE_PLAYS_BIOS_START_UP
+    if (everyones && start_up_wanted()) find_console_bios_beside(everyones);
+#endif
     char *this_games = settings_file_in(game);
     if (everyones) read_settings_file(everyones, said, sizeof said);
     int game_has_its_own = this_games && SDL_GetPathInfo(this_games, NULL);
@@ -1532,6 +1585,88 @@ static void sdl_sound_logged(const char *line) { (void)line; }
 /* ...nor the lists. */
 static const rg_driver sdl = {sdl_wait_vblank, sdl_halt, sdl_fault, sdl_dump_variable, sdl_sound_logged, NULL};
 
+#if RG_CONSOLE_PLAYS_BIOS_START_UP
+/* The player's BIOS, read whole, or NULL. */
+static void *read_console_bios(void) {
+  if (!console_bios_looked_for) find_console_bios(NULL);
+  if (!console_bios_path[0]) return NULL;
+  size_t size = 0;
+  void *bytes = SDL_LoadFile(console_bios_path, &size);
+  if (bytes && size == RG_BIOS_BOOT_BIOS_BYTES) return bytes;
+  SDL_free(bytes);
+  fprintf(stderr, "%s: VBlank cannot read %s.%s\n", rg_game_title, console_bios_path, RG_CONSOLE_BIOS_NO_START_UP_SENTENCE);
+  return NULL;
+}
+
+/* One frame of the start-up's sound to the speaker, at the player's volume: the console's own
+ * mix, at its own rate, which the speaker's stream changes to the computer's. The stream is kept a
+ * few frames ahead, as the game's sound is. */
+static void play_start_up_sound(const int16_t *samples, int count) {
+  if (!speaker || count <= 0) return;
+  int16_t loud[2 * RG_BIOS_BOOT_SOUND_MOST];
+  memcpy(loud, samples, sizeof loud[0] * 2u * (size_t)count);
+  rg_window_apply_volume(loud, (size_t)(2 * count));
+  int bytes = 2 * count * (int)sizeof loud[0];
+  int waiting = SDL_GetAudioStreamQueued(speaker);
+  if (waiting > SOUND_BEHIND_FRAMES * bytes) return;
+  if (waiting < bytes) {
+    static const int16_t quiet[2 * RG_BIOS_BOOT_SOUND_MOST];
+    for (int i = 0; i < SOUND_AHEAD_FRAMES; i++) SDL_PutAudioStreamData(speaker, quiet, bytes);
+  }
+  SDL_PutAudioStreamData(speaker, loud, bytes);
+}
+
+/* THE CONSOLE'S OWN START-UP, before the game's first frame (see the top of this file). Each of its
+ * frames is shown and heard the way the game's are, on the same pacing; its pictures have eight bits
+ * a colour (mGBA's way of working out the console's blends), so they go through a texture of their
+ * own. Closing the window ends it, and the program, as it ends a game. */
+static void play_console_start_up(void) {
+  if (!start_up_wanted()) return;
+  void *bios = read_console_bios();
+  if (!bios) return;
+  rg_bios_boot *boot = rg_bios_boot_open(bios, rg_cartridge_start, rg_cartridge_size);
+  SDL_free(bios);
+  if (!boot) return;
+  SDL_Texture *start_up = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING,
+                                            RG_BIOS_BOOT_WIDTH, RG_BIOS_BOOT_HEIGHT);
+  if (start_up) SDL_SetTextureScaleMode(start_up, SDL_SCALEMODE_NEAREST);
+  if (speaker) {
+    SDL_AudioSpec mixed = {SDL_AUDIO_S16, 2, rg_bios_boot_sound_rate(boot)};
+    SDL_SetAudioStreamFormat(speaker, &mixed, NULL);
+    SDL_SetAudioStreamFrequencyRatio(speaker, (float)pacing.speed);
+  }
+
+  long frames = 0;
+  while (rg_bios_boot_play_frame(boot)) {
+    frames++;
+    const int16_t *samples;
+    int count = rg_bios_boot_sound(boot, &samples);
+    if (!rg_window_paused() && !rg_window_fast_forwarding()) play_start_up_sound(samples, count);
+    if (start_up && !scripted) {
+      SDL_UpdateTexture(start_up, NULL, rg_bios_boot_picture(boot), RG_BIOS_BOOT_WIDTH * (int)sizeof(uint32_t));
+      for (int i = 0; i < draws_per_picture; i++) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        SDL_RenderTexture(renderer, start_up, NULL, NULL);
+        SDL_RenderPresent(renderer);
+      }
+    }
+    read_and_apply_events();
+    if (!scripted) wait_for_next_frame();
+  }
+
+  if (speaker) {
+    SDL_AudioSpec game = {SDL_AUDIO_S16, 2, RG_SOUND_RATE};
+    SDL_SetAudioStreamFormat(speaker, &game, NULL);
+  }
+  if (start_up) SDL_DestroyTexture(start_up);
+  rg_bios_boot_close(boot);
+  window_owed_a_drawing = true;
+  restart_clocks();
+  if (scripted) printf("start_up_frames %ld\n", frames);
+}
+#endif
+
 /* The gamepad the keyboard presses: one SDL makes up. It turns up among the gamepads like any
  * other, and is opened and read the way they are.
  *
@@ -1625,6 +1760,9 @@ int main(int argc, char **argv) {
     if (strcmp(argv[i], "--usual-settings") == 0) usual_settings_asked_for = 1;
     if (strcmp(argv[i], "--window-picture") == 0 && i + 1 < argc) window_picture_file = argv[i + 1];
     if (strcmp(argv[i], "--trace") == 0) tracing = 1;
+#if RG_CONSOLE_PLAYS_BIOS_START_UP
+    if (strcmp(argv[i], "--start-up") == 0) start_up_asked = 1;
+#endif
     if (strcmp(argv[i], "--frame-times") == 0) timing_frames = 1;
     if (strcmp(argv[i], "--refresh-rate") == 0 && i + 1 < argc) pretended_refreshes_a_second = strtod(argv[i + 1], NULL);
     if (strcmp(argv[i], "--scripted-keys") == 0 && i + 1 < argc) {
@@ -1674,6 +1812,9 @@ int main(int argc, char **argv) {
   choose_save_file(save_file_asked_for);
   read_save_file();
 
+#if RG_CONSOLE_PLAYS_BIOS_START_UP
+  play_console_start_up();
+#endif
   read_computer_clock();
   rg_active_driver = &sdl;
   rg_game_main();
