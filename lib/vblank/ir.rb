@@ -21,6 +21,7 @@ require_relative "ir/tile_map" # how big a grid a background scrolls over, for e
 require_relative "ir/build"
 require_relative "ir/place_drawing" # how a place made of flat faces is drawn, as statements every target runs
 require_relative "ir/viewer_motion" # ...and how the viewer it is seen from moves and turns
+require_relative "ir/reciprocals" # ...and how far a point on a face is, for a picture in perspective
 require_relative "ir/kept_widths" # a variable kept a byte or two wide, on every backend
 require_relative "ir/unchanging" # which values change nothing by being worked out
 require_relative "ir/reach" # what a run can reach: its routines and its variables

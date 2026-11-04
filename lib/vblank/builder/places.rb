@@ -16,9 +16,11 @@ module VBlank
       # How wide an angle the view shows, in degrees across, by default.
       VIEW_ANGLE = 90
 
-      # The settings `perspective:` takes, and the ones this build makes.
-      PERSPECTIVES = %i[none every_8_pixels every_pixel].freeze
-      PERSPECTIVES_MADE = %i[none].freeze
+      # The settings `perspective:` takes. The default works the picture's place out exactly every
+      # eight pixels across a row and steps straight between; :every_pixel works it out at each
+      # pixel, and :none stretches the picture straight between a row's ends.
+      PERSPECTIVES = IR::Nodes::FillFace::PERSPECTIVE_SPANS.keys.freeze
+      PERSPECTIVE = :every_8_pixels
 
       # A place made of flat faces (see DSL::Place). The block declares its points and faces:
       #
@@ -71,7 +73,9 @@ module VBlank
       #
       # @param name [Symbol] the place
       # @param seen_by [DSL::Viewer] the viewer
-      # @param perspective [Symbol] how a picture is laid across a face that leans away
+      # @param perspective [Symbol] how a picture is laid across a face that leans away: the near
+      #   rooms of a place in perspective and the far ones with :none, as the old games did, is a
+      #   draw_place for each
       # @param near [Numeric] how near a point may be, in wholes
       # @param view_angle [Integer] how wide the view is, in degrees across
       # @param both_sides [Boolean] draw a face seen from behind too
@@ -84,11 +88,11 @@ module VBlank
       #
       # @param faces [DSL::List] which faces to draw, in order; all of them when not given
       # @param window [Array] four numbers or Values: the edges faces are held to as the game runs
-      def draw_place(name, seen_by:, perspective: :none, near: NEAR, view_angle: VIEW_ANGLE, both_sides: false,
+      def draw_place(name, seen_by:, perspective: PERSPECTIVE, near: NEAR, view_angle: VIEW_ANGLE, both_sides: false,
                      faces: nil, window: nil)
         shape = known_place(name, "draw_place")
         refuse_unknown_viewer!(name, seen_by)
-        refuse_perspective_not_made!(perspective)
+        refuse_unknown_perspective!(perspective)
         refuse_bad_faces!(name, faces)
         window_nodes = window && window_edges(name, window)
         refuse_bad_near!(near)
@@ -97,8 +101,8 @@ module VBlank
 
         drawing = place_drawing(shape)
         place_draw_routines(drawing)
-        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides)
-        drawn =faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
+        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides, perspective)
+        drawn = faces ?drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
         record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view),
                                 *place_clip(drawing, view, window_nodes), Build.add(drawing.drawing_var, 1), *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
@@ -206,15 +210,11 @@ module VBlank
                              "fix this, make one with `eye = viewer :eye, at: [0.0, 0.0, -4.0]` and give seen_by: eye."
       end
 
-      def refuse_perspective_not_made!(perspective)
-        unless PERSPECTIVES.include?(perspective)
-          raise ArgumentError, "draw_place was given perspective: #{perspective.inspect}. The settings are " \
-                               "#{PERSPECTIVES.map(&:inspect).join(', ')}. To fix this, use one of them."
-        end
-        return if PERSPECTIVES_MADE.include?(perspective)
+      def refuse_unknown_perspective!(perspective)
+        return if PERSPECTIVES.include?(perspective)
 
-        raise ArgumentError, "draw_place was given perspective: #{perspective.inspect}. This build does not make " \
-                             "that setting yet. To fix this, use perspective: :none."
+        raise ArgumentError, "draw_place was given perspective: #{perspective.inspect}. The settings are " \
+                             "#{PERSPECTIVES.map(&:inspect).join(', ')}. To fix this, use one of them."
       end
 
       def refuse_bad_near!(near)
@@ -301,9 +301,10 @@ module VBlank
       end
 
       # The view the place is drawn into: the `inside` area drawing is held to, or the screen.
-      def place_view(near, view_angle, both_sides)
+      def place_view(near, view_angle, both_sides, perspective = :none)
         left, top, width, height = @inside_area || [0, 0, screen_width, screen_height]
-        IR::PlaceDrawing::View.over(left, top, width, height, degrees: view_angle, near: near, both_sides: both_sides)
+        IR::PlaceDrawing::View.over(left, top, width, height, degrees: view_angle, near: near, both_sides: both_sides,
+                                                              perspective: perspective)
       end
 
       # What the routine is told before it draws: where the viewer is and which way it faces, and

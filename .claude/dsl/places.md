@@ -51,9 +51,13 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   limit is cut there**, so a wall beside the viewer is drawn up to the limit. **A face is seen from its
   front only**: the side from which its points go round clockwise. Settings: `near: 0.25` (the near
   limit, in wholes, more than 0 and not more than 16), `view_angle: 90` (degrees across, 10 to 170),
-  `both_sides: true` (draw a face from behind as well), and `perspective: :none` (a picture stretched
-  straight between the corners of its face; `:every_8_pixels` and `:every_pixel` are refused as not
-  made yet). **Needs `screen :bitmap, tear_free: true`** (a friendly error on any
+  `both_sides: true` (draw a face from behind as well), and **`perspective:`**: how a picture lies on
+  a face that leans away. `:every_8_pixels`, the default, works the place on the picture out exactly
+  every eight pixels across a row and steps straight between, so a wall's picture stays put as you
+  move; `:every_pixel` works it out at every pixel; `:none` stretches it straight between the
+  corners, cheaper, and it swims on a face that leans steeply. The choice is per call: a game of rooms
+  can draw its near rooms in perspective and its far ones with `:none`, as the old games did. A
+  setting that is not one of these three is a friendly error. **Needs `screen :bitmap, tear_free: true`** (a friendly error on any
   other screen): a place is drawn over a whole frame, and on one page the player would see it drawn. It
   draws over what is there and clears nothing.
 
@@ -88,11 +92,15 @@ and `div_fix`), and only the fill of a face, of three to eight corners, is writt
 Each point is turned and put on the screen once a drawing, however many faces share it, and on the
 Advance a face wholly outside the screen or the window is passed over before it is filled, so a
 game that draws a room through a doorway's window pays little for the faces the window hides. **What it
-costs on the Advance**: the fill takes about 15 of the console's cycles a pixel for a picture with
-no see-through pixel (two pixels worked out together and written as one pair), and about 37 for one
-with see-through pixels (each pixel reads its pair back first), so a face covering the whole screen
-runs at 20 pictures a second, or 10. `examples/cube3d.rb` runs at 60 with 37% of each frame spare,
-and `examples/two_rooms.rb`, its walls covering the screen, at 15. `rom.profile`
+costs on the Advance**, a face covering the whole screen with a picture with no see-through pixel:
+about 15 of the console's cycles a pixel with `perspective: :none` (two pixels worked out together
+and written as one pair; 20 pictures a second), about 30 with `:every_8_pixels` (each stretch of
+eight worked out exactly at its far end, then two pixels at a time; 12 a second), and about 90 with
+`:every_pixel`. A picture with see-through pixels reads each pixel's pair back first, about 37 without
+perspective. `examples/cube3d.rb` runs at 30 a second and `examples/two_rooms.rb` at 10, both in
+perspective. **Perspective is the same everywhere**: one over each corner's distance travels with its
+corner, and the place on the picture is found from it through one shared table (`IR::Reciprocals`),
+which every lowering reads, so all of them draw the same pixels. `rom.profile`
 names the fill "filling the faces of a place with their pictures".
 
 **Each console**: the Advance draws a place (its page says how). The Game Boy Color, the Super

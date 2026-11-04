@@ -227,9 +227,9 @@ module VBlank
       # Fill one face already on the screen: picture number +picture+ of +pictures+, its corners
       # the first +count+ fours of list +corners+, nothing drawn outside +edges+ ([left, top,
       # right, bottom]). See Nodes::FillFace.
-      def fill_face(pictures, picture, corners, count, edges)
+      def fill_face(pictures, picture, corners, count, edges, perspective: Nodes::FillFace::PERSPECTIVE_NONE)
         Nodes.build(:fill_face, pictures: pictures.to_a, picture: to_value_node(picture), corners: corners,
-                                count: to_value_node(count),
+                                count: to_value_node(count), perspective: to_value_node(perspective),
                                 **%i[left top right bottom].zip(edges).to_h { |side, edge| [side, to_value_node(edge)] })
       end
 

@@ -2037,21 +2037,20 @@ end
 
 # Reference::FaceEdge: one edge of a face, from its upper end down, as the fill walks it. Where it
 # crosses a row is #rg_face_crossing, since the game's sums are the runtime's own methods.
-RgFaceEdge = Data.define(:first_row, :past_row, :x, :u, :v, :step_x, :step_u, :step_v) do
+RgFaceEdge = Data.define(:first_row, :past_row, :at, :step) do
   def crosses?(row) = row >= first_row && row < past_row
 end
 
-# Reference::FaceEdge#at: [x, u, v] where +edge+ crosses +row+.
+# Reference::FaceEdge#at: [x, u, v, w] where +edge+ crosses +row+.
 def rg_face_crossing(edge, row)
   rows = rg_sub(row, edge.first_row)
-  [rg_add(edge.x, rg_mul(edge.step_x, rows)), rg_add(edge.u, rg_mul(edge.step_u, rows)),
-   rg_add(edge.v, rg_mul(edge.step_v, rows))]
+  edge.at.each_with_index.map { |start, part| rg_add(start, rg_mul(edge.step[part], rows)) }
 end
 
 # The most corners a face has (Nodes::FillFace::MOST_CORNERS).
 RG_FACE_MOST_CORNERS = 8
 
-# Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v), or nil when it
+# Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v, w), or nil when it
 # crosses no row's middle.
 def rg_face_edge(top, bottom)
   first_row = rg_shr(rg_add(top[1], 7), 4)
@@ -2060,30 +2059,60 @@ def rg_face_edge(top, bottom)
 
   along_row = rg_div(1 << 28, rg_sub(bottom[1], top[1]))
   into = rg_mul_fix(rg_sub(rg_add(rg_mul(first_row, 16), 8), top[1]), along_row, 4)
-  across = rg_shl(rg_sub(bottom[0], top[0]), 12)
-  part_u = rg_sub(bottom[2], top[2])
-  part_v = rg_sub(bottom[3], top[3])
+  parts = [rg_shl(rg_sub(bottom[0], top[0]), 12), *(2..4).map { |field| rg_sub(bottom[field], top[field]) }]
+  starts = [rg_shl(top[0], 12), *top[2..4]]
   RgFaceEdge.new(first_row: first_row, past_row: past_row,
-                 x: rg_add(rg_shl(top[0], 12), rg_mul_fix(across, into, 24)),
-                 u: rg_add(top[2], rg_mul_fix(part_u, into, 24)), v: rg_add(top[3], rg_mul_fix(part_v, into, 24)),
-                 step_x: rg_mul_fix(across, along_row, 24), step_u: rg_mul_fix(part_u, along_row, 24),
-                 step_v: rg_mul_fix(part_v, along_row, 24))
+                 at: starts.zip(parts).map { |start, part| rg_add(start, rg_mul_fix(part, into, 24)) },
+                 step: parts.map { |part| rg_mul_fix(part, along_row, 24) })
 end
 
-# Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v).
-def rg_face_row(row, from, to, left, right, image)
+# IR::Reciprocals: 2**40 over each number of eleven bits with the top one set.
+RG_FACE_RECIPROCALS = Ractor.make_shareable((1024...2048).map { |leading| (1 << 40) / leading })
+
+# IR::Reciprocals.distance: the distance, with 16 bits of fraction, for one over it with 26.
+def rg_face_distance(w)
+  w = 4096 if w < 4096
+  moved = w.bit_length - 11
+  RG_FACE_RECIPROCALS[(w >> moved) - 1024] >> (moved - 2)
+end
+
+# Reference#place_in_perspective
+def rg_face_place_in_perspective(from, steps, along)
+  over = (1..3).map { |part| rg_add(from[part], rg_mul(steps[part - 1], along)) }
+  distance = rg_face_distance(over[2])
+  [rg_mul_fix(over[0], distance, 14), rg_mul_fix(over[1], distance, 14)]
+end
+
+# Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v, w), in
+# perspective every +spans+ pixels (none when nought).
+def rg_face_row(row, from, to, left, right, image, spans)
   start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16)
   stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16)
   count = rg_sub(stop, start)
   return if count <= 0
 
   art, at, art_width, art_height = rg_picture_of(image)
-  step_u = rg_div(rg_sub(to[1], from[1]), count)
-  step_v = rg_div(rg_sub(to[2], from[2]), count)
+  steps = (1..3).map { |part| rg_div(rg_sub(to[part], from[part]), count) }
+  near_at = -1
+  near = far = nil
   ([start, left].max...[stop, right].min).each do |x|
     along = rg_sub(x, start)
-    u = rg_add(from[1], rg_mul(step_u, along))
-    v = rg_add(from[2], rg_mul(step_v, along))
+    if spans.zero?
+      u = rg_add(from[1], rg_mul(steps[0], along))
+      v = rg_add(from[2], rg_mul(steps[1], along))
+    else
+      # Reference#place_between
+      near_along = (along / spans) * spans
+      far_along = [near_along + spans, count].min
+      unless near_along == near_at
+        near = rg_face_place_in_perspective(from, steps, near_along)
+        far = rg_face_place_in_perspective(from, steps, far_along)
+        near_at = near_along
+      end
+      u, v = near.zip(far).map do |first, last|
+        rg_add(first, rg_mul(rg_div(rg_sub(last, first), far_along - near_along), along - near_along))
+      end
+    end
     across = rg_and(rg_shr(u, 16), art_width - 1)
     down = rg_and(rg_shr(v, 16), art_height - 1)
     color = art[at + (down * art_width) + across]
@@ -2092,11 +2121,18 @@ def rg_face_row(row, from, to, left, right, image)
 end
 
 # Reference#exec_fill_face: one face already on the screen, filled with its picture.
-def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, left, top, right, bottom)
+def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, left, top, right, bottom, spans)
   corner_count = RG_FACE_MOST_CORNERS if corner_count > RG_FACE_MOST_CORNERS
   return if corner_count < 3
 
-  corners = Array.new(corner_count) { |k| Array.new(4) { |field| rg_list_get(corner_list, (k * 4) + field) } }
+  corners = Array.new(corner_count) do |k|
+    corner = Array.new(5) { |field| rg_list_get(corner_list, (k * 5) + field) }
+    unless spans.zero? # Reference::FaceEdges.in_perspective
+      corner[2] = rg_mul_fix(corner[2], corner[4], 28)
+      corner[3] = rg_mul_fix(corner[3], corner[4], 28)
+    end
+    corner
+  end
   image = pictures[rg_clamp_wide(picture, 0, picture_count - 1)]
   left = 0 if left.negative?
   top = 0 if top.negative?
@@ -2126,7 +2162,7 @@ def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, 
       from = at if from.nil? || at[0] < from[0]
       to = at if to.nil? || at[0] >= to[0]
     end
-    rg_face_row(row, from, to, left, right, image) if crossing >= 2
+    rg_face_row(row, from, to, left, right, image, spans) if crossing >= 2
   end
 end
 

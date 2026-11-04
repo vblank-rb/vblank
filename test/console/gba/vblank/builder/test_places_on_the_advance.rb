@@ -68,7 +68,8 @@ module PlaceGames
   end
 
   # A face of five corners filled straight from a list, with what it shows changing every pass:
-  # the edges nothing outside is drawn move, and the picture it shows is the other of two. These
+  # the edges nothing outside is drawn move, the picture it shows is the other of two, and it is
+  # drawn without perspective, then in perspective every eight pixels, then every pixel. These
   # are the numbers a game works out as it runs, so a target that settled them while building
   # draws the wrong face on every pass but the first.
   #
@@ -80,24 +81,53 @@ module PlaceGames
   # first pass a pass later than this small a program usually does, so it wants a change slow
   # enough that the frame compared is in the middle of one.
   def self.moving_five_corners(passes: 1)
-    numbers = [[100, 20, -3, -2], [140, 30, 12, -2], [135, 70, 12, 9], [95, 80, -3, 13], [80, 50, -5, 5]]
-              .flat_map { |x, y, u, v| [x * 16, y * 16, u << 16, v << 16] }
+    numbers = [[100, 20, -3, -2, 1 << 26], [140, 30, 12, -2, 1 << 24], [135, 70, 12, 9, 3 << 23],
+               [95, 80, -3, 13, 1 << 25], [80, 50, -5, 5, 1 << 27]]
+              .flat_map { |x, y, u, v, w| [x * 16, y * 16, u << 16, v << 16, w] }
     builder = VBlank::Builder.new
     builder.instance_eval do
       b = VBlank::IR::Build
       screen :bitmap, tear_free: true
       image :tile, width: 8, height: 8, data: TILE
       image(:stripes, "r" => :red, "w" => :white) { "rw\nrw\n" }
-      corners = list :corners, capacity: 32, full_of: 0
+      corners = list :corners, capacity: 40, full_of: 0
       numbers.each_with_index { |number, at| corners[at] = number }
       frame = var :frame, 0
       game_loop do
         clear_screen :black
         at = b.binop(:/, b.var_ref(frame.name), passes)
+        # Without perspective, then every eight pixels, then every pixel, by turns.
+        turn = b.binop(:%, at, 3)
+        perspective = b.binop(:+, b.binop(:*, b.binop(:==, turn, 1), 8), b.binop(:==, turn, 2))
         record(b.fill_face(%i[tile stripes], b.binop(:%, at, 2), :corners, 5,
                            [b.binop(:+, 70, b.binop(:%, b.binop(:*, at, 7), 40)), b.binop(:%, b.binop(:*, at, 3), 40),
-                            b.binop(:-, 140, b.binop(:%, b.binop(:*, at, 11), 30)), 160]))
+                            b.binop(:-, 140, b.binop(:%, b.binop(:*, at, 11), 30)), 160],
+                           perspective: perspective))
         frame += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # A wall down the left of a viewer facing ahead, a whole to the left, from two wholes ahead to
+  # ten, a picture red for its near half and blue for its far half laid along it. It lands from x
+  # 60 (two ahead) to 108 (ten ahead), and the picture's halfway, six ahead, at x 100. Without
+  # perspective the picture is stretched straight across, so its halfway lands halfway, at 84.
+  # Drawn with +perspective+.
+  def self.wall_down_the_side(perspective)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :halves, width: 64, height: 8, data: (0...8).flat_map { (0...64).map { |across| across < 32 ? 0x001F : 0x7C00 } }
+      place :side do
+        face point(-1.0, 1.0, 2.0), point(-1.0, 1.0, 10.0), point(-1.0, -1.0, 10.0), point(-1.0, -1.0, 2.0),
+             picture: :halves, on_picture: [[0, 0], [64, 0], [64, 8], [0, 8]]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        draw_place :side, seen_by: eye, perspective: perspective
       end
     end
     builder.finalize_program
@@ -295,6 +325,30 @@ class TestPlacesOnTheAdvance < Minitest::Test
     assert_equal tile(0, 0), screen.pixel(30, 50)
     assert_equal shown(:red), screen.pixel(150, 105), "the triangle's left edge is red"
     assert_equal BLACK, screen.pixel(209, 51), "above the triangle's slope"
+  end
+
+  # The picture's halfway down a wall that leans away is where the wall is six wholes ahead, x 100,
+  # in perspective; stretched straight, it is halfway across the wall's span on the screen, x 84.
+  def test_a_picture_on_a_wall_leaning_away_is_in_perspective_by_default
+    red = shown(0x001F)
+    blue = shown(0x7C00)
+    every_8 = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels), frames: 2).screen
+    every_pixel = game_player.run(PlaceGames.wall_down_the_side(:every_pixel), frames: 2).screen
+    none = game_player.run(PlaceGames.wall_down_the_side(:none), frames: 2).screen
+
+    [every_8, every_pixel].each do |screen|
+      assert_equal red, screen.pixel(92, 80), "x 92 is under six wholes ahead"
+      assert_equal blue, screen.pixel(104, 80), "x 104 is past six wholes ahead"
+    end
+    assert_equal blue, none.pixel(92, 80), "stretched straight, x 92 is past halfway"
+    assert_equal red, none.pixel(80, 80)
+  end
+
+  def test_the_default_perspective_is_every_8_pixels
+    default = game_player.run(PlaceGames.wall_down_the_side(Builder::Places::PERSPECTIVE), frames: 2).screen
+
+    assert_equal :every_8_pixels, Builder::Places::PERSPECTIVE
+    assert_equal shown(0x001F), default.pixel(92, 80)
   end
 
   def test_listed_faces_are_drawn_in_the_order_the_list_gives

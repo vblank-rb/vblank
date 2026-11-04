@@ -67,10 +67,11 @@ void rg_screen_blit_pose(const int32_t *poses, int32_t count, int32_t pose, int3
 void rg_screen_column(int32_t image, int32_t slice, int32_t x, int32_t top, int32_t height, int32_t width);
 
 /* One face of a place, already on the screen, filled with picture +which+ of +pictures+ (the
- * game's image numbers, +picture_count+ of them): its corners the first +count+ fours of x, y, u
- * and v in +corners+, nothing drawn outside the four edges. */
+ * game's image numbers, +picture_count+ of them): its corners the first +count+ fives of x, y, u,
+ * v and w in +corners+, nothing drawn outside the four edges, the picture in perspective every
+ * +perspective+ pixels (none when nought). */
 void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t which, const rg_list *corners,
-                    int32_t count, int32_t left, int32_t top, int32_t right, int32_t bottom);
+                    int32_t count, int32_t left, int32_t top, int32_t right, int32_t bottom, int32_t perspective);
 
 /* The patch of the picture a sprite on a painted screen is about to cover, +width+ by +height+
  * at (x, y), kept in buffer number +buffer+; and that patch painted back. */

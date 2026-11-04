@@ -1931,10 +1931,11 @@ void rg_screen_column(int32_t image, int32_t slice, int32_t x, int32_t top, int3
   }
 }
 
-/* Reference::FaceEdge: one edge of a face, from its upper end down, as the fill walks it. */
-typedef struct { int32_t first_row, past_row, x, u, v, step_x, step_u, step_v; } face_edge;
+/* Reference::FaceEdge: one edge of a face, from its upper end down, as the fill walks it. The
+ * numbers are x, u, v and w, each where the edge crosses its first row, then each one's step. */
+typedef struct { int32_t first_row, past_row, at[4], step[4]; } face_edge;
 
-/* Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v), or 0 when it
+/* Reference::FaceEdges.edge: the edge from +top+ to +bottom+ (each x, y, u, v, w), or 0 when it
  * crosses no row's middle. */
 static int face_edge_of(const int32_t *top, const int32_t *bottom, face_edge *edge) {
   int32_t first_row = rg_shr(rg_add(top[1], 7), 4);
@@ -1942,32 +1943,73 @@ static int face_edge_of(const int32_t *top, const int32_t *bottom, face_edge *ed
   if (first_row >= past_row) return 0;
   int32_t along_row = rg_div(1 << 28, rg_sub(bottom[1], top[1]));
   int32_t into = rg_mul_fix(rg_sub(rg_add(rg_mul(first_row, 16), 8), top[1]), along_row, 4);
-  int32_t across = rg_shl(rg_sub(bottom[0], top[0]), 12);
-  int32_t part_u = rg_sub(bottom[2], top[2]);
-  int32_t part_v = rg_sub(bottom[3], top[3]);
-  *edge = (face_edge){first_row, past_row,
-                      rg_add(rg_shl(top[0], 12), rg_mul_fix(across, into, 24)),
-                      rg_add(top[2], rg_mul_fix(part_u, into, 24)),
-                      rg_add(top[3], rg_mul_fix(part_v, into, 24)),
-                      rg_mul_fix(across, along_row, 24), rg_mul_fix(part_u, along_row, 24),
-                      rg_mul_fix(part_v, along_row, 24)};
+  int32_t parts[4] = {rg_shl(rg_sub(bottom[0], top[0]), 12), rg_sub(bottom[2], top[2]), rg_sub(bottom[3], top[3]),
+                      rg_sub(bottom[4], top[4])};
+  int32_t starts[4] = {rg_shl(top[0], 12), top[2], top[3], top[4]};
+  edge->first_row = first_row;
+  edge->past_row = past_row;
+  for (int part = 0; part < 4; part++) {
+    edge->at[part] = rg_add(starts[part], rg_mul_fix(parts[part], into, 24));
+    edge->step[part] = rg_mul_fix(parts[part], along_row, 24);
+  }
   return 1;
 }
 
-/* Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v). */
-static void face_row(int32_t row, const int32_t *from, const int32_t *to, int32_t left, int32_t right, picture art) {
+/* IR::Reciprocals: 2**40 over each number of eleven bits with the top one set. */
+static int32_t face_reciprocals[1024];
+
+/* IR::Reciprocals.distance: the distance, with 16 bits of fraction, for one over it with 26. */
+static int32_t face_distance(int32_t w) {
+  if (face_reciprocals[0] == 0) {
+    for (int32_t leading = 0; leading < 1024; leading++) face_reciprocals[leading] = (int32_t)((1LL << 40) / (1024 + leading));
+  }
+  if (w < 4096) w = 4096;
+  int moved = 0;
+  while ((w >> moved) >= 2048) moved++;
+  return face_reciprocals[(w >> moved) - 1024] >> (moved - 2);
+}
+
+/* Reference#place_in_perspective: u and v exactly +along+ pixels into a row from +from+ (x, u/z,
+ * v/z, 1/z), whose numbers step +steps+ a pixel. */
+static void face_place_in_perspective(const int32_t *from, const int32_t *steps, int32_t along, int32_t *place) {
+  int32_t over_u = rg_add(from[1], rg_mul(steps[0], along));
+  int32_t over_v = rg_add(from[2], rg_mul(steps[1], along));
+  int32_t distance = face_distance(rg_add(from[3], rg_mul(steps[2], along)));
+  place[0] = rg_mul_fix(over_u, distance, 14);
+  place[1] = rg_mul_fix(over_v, distance, 14);
+}
+
+/* Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v, w), in
+ * perspective every +spans+ pixels (none when nought). */
+static void face_row(int32_t row, const int32_t *from, const int32_t *to, int32_t left, int32_t right, picture art,
+                     int32_t spans) {
   int32_t start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16);
   int32_t stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16);
   int32_t count = rg_sub(stop, start);
   if (count <= 0) return;
-  int32_t step_u = rg_div(rg_sub(to[1], from[1]), count);
-  int32_t step_v = rg_div(rg_sub(to[2], from[2]), count);
+  int32_t steps[3];
+  for (int part = 0; part < 3; part++) steps[part] = rg_div(rg_sub(to[part + 1], from[part + 1]), count);
   int32_t first = start > left ? start : left;
   int32_t past = stop < right ? stop : right;
+  int32_t near_at = -1, near[2], far[2];
   for (int32_t x = first; x < past; x++) {
     int32_t along = rg_sub(x, start);
-    int32_t u = rg_add(from[1], rg_mul(step_u, along));
-    int32_t v = rg_add(from[2], rg_mul(step_v, along));
+    int32_t u, v;
+    if (spans == 0) {
+      u = rg_add(from[1], rg_mul(steps[0], along));
+      v = rg_add(from[2], rg_mul(steps[1], along));
+    } else {
+      /* Reference#place_between: exact at the multiple of +spans+ before and the next, or the end */
+      int32_t near_along = (along / spans) * spans;
+      int32_t far_along = near_along + spans < count ? near_along + spans : count;
+      if (near_along != near_at) {
+        face_place_in_perspective(from, steps, near_along, near);
+        face_place_in_perspective(from, steps, far_along, far);
+        near_at = near_along;
+      }
+      u = rg_add(near[0], rg_mul(rg_div(rg_sub(far[0], near[0]), far_along - near_along), along - near_along));
+      v = rg_add(near[1], rg_mul(rg_div(rg_sub(far[1], near[1]), far_along - near_along), along - near_along));
+    }
     int32_t across = rg_and(rg_shr(u, 16), art.width - 1);
     int32_t down = rg_and(rg_shr(v, 16), art.height - 1);
     int32_t color = art.pixels[down * art.width + across];
@@ -1979,16 +2021,22 @@ static void face_row(int32_t row, const int32_t *from, const int32_t *to, int32_
 enum { FACE_MOST_CORNERS = 8 };
 
 /* Reference#exec_fill_face: one face already on the screen, filled with its picture. The corners
- * come four numbers each (x and y in sixteenths of a pixel, u and v in picture pixels with sixteen
- * fraction bits), and nothing outside left, top, right and bottom is drawn. The picture's number is
- * held to the ends of the list of pictures, and the count to FACE_MOST_CORNERS. */
+ * come five numbers each (x and y in sixteenths of a pixel, u and v in picture pixels with sixteen
+ * fraction bits, and one over the distance with 26), and nothing outside left, top, right and
+ * bottom is drawn. The picture's number is held to the ends of the list of pictures, and the count
+ * to FACE_MOST_CORNERS. In perspective (+spans+ not nought) u and v become u and v over the
+ * distance (Reference::FaceEdges.in_perspective) before the edges are walked. */
 void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t which, const rg_list *corner_list,
-                    int32_t corner_count, int32_t left, int32_t top, int32_t right, int32_t bottom) {
+                    int32_t corner_count, int32_t left, int32_t top, int32_t right, int32_t bottom, int32_t spans) {
   if (corner_count > FACE_MOST_CORNERS) corner_count = FACE_MOST_CORNERS;
   if (corner_count < 3) return;
-  int32_t corners[FACE_MOST_CORNERS][4];
+  int32_t corners[FACE_MOST_CORNERS][5];
   for (int32_t k = 0; k < corner_count; k++) {
-    for (int32_t field = 0; field < 4; field++) corners[k][field] = rg_list_get(corner_list, k * 4 + field);
+    for (int32_t field = 0; field < 5; field++) corners[k][field] = rg_list_get(corner_list, k * 5 + field);
+    if (spans != 0) {
+      corners[k][2] = rg_mul_fix(corners[k][2], corners[k][4], 28);
+      corners[k][3] = rg_mul_fix(corners[k][3], corners[k][4], 28);
+    }
   }
   int32_t image = pictures[clamp32(which, 0, picture_count - 1)];
   if (left < 0) left = 0;
@@ -2012,20 +2060,20 @@ void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t whic
   if (past > bottom) past = bottom;
   picture art = picture_of(image);
   for (int32_t row = first; row < past; row++) {
-    int32_t from[3] = {INT32_MAX, 0, 0}, to[3] = {INT32_MIN, 0, 0};
+    int32_t from[4] = {INT32_MAX, 0, 0, 0}, to[4] = {INT32_MIN, 0, 0, 0};
     int crossing = 0;
     for (int e = 0; e < count; e++) {
       const face_edge *edge = &edges[e];
       if (row < edge->first_row || row >= edge->past_row) continue;
       int32_t rows = rg_sub(row, edge->first_row);
-      int32_t at[3] = {rg_add(edge->x, rg_mul(edge->step_x, rows)), rg_add(edge->u, rg_mul(edge->step_u, rows)),
-                       rg_add(edge->v, rg_mul(edge->step_v, rows))};
+      int32_t at[4];
+      for (int part = 0; part < 4; part++) at[part] = rg_add(edge->at[part], rg_mul(edge->step[part], rows));
       crossing++;
       /* the leftmost is the first of the leftmost, the rightmost the last of the rightmost */
       if (at[0] < from[0]) memcpy(from, at, sizeof at);
       if (at[0] >= to[0]) memcpy(to, at, sizeof at);
     }
-    if (crossing >= 2) face_row(row, from, to, left, right, art);
+    if (crossing >= 2) face_row(row, from, to, left, right, art, spans);
   }
 }
 

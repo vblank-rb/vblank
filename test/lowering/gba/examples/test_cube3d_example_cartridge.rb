@@ -15,18 +15,14 @@ class TestCube3DExampleCartridge < Minitest::Test
     assert_backends_agree(Cube3D.program, frames: 3, console_frames: 20, name: "CUBE3D")
   end
 
-  # Each pass compared is its own run, with the buttons held from power-on: a viewer flying in,
-  # turning, tipping and rolling, the crate drawn from a new place on every pass.
-  #
-  # THE CARTRIDGE DRAWS A PASS A FRAME here, and shows a pass's picture once the pass after it has
-  # started, so its frame k + 3 shows what the interpreter shows after k passes (measured by trying
-  # every frame: that one alone matched). The pairing the comparison works out for itself counts
-  # the pass still drawing, so the frame is given.
+  # Each frame compared is its own run, with the buttons held from power-on: a viewer flying in,
+  # turning, tipping and rolling, the crate drawn from a new place on every pass. How many frames a
+  # pass takes changes with how much of the screen the crate covers, so each is read as
+  # assert_backends_agree_by_passes says.
   def test_a_moving_viewer_agrees_pass_by_pass
     [%i[a], %i[right], %i[up a], %i[l]].each do |keys|
-      [2, 5, 9].each do |passes|
-        assert_backends_agree(Cube3D.program, frames: passes, console_frames: passes + 3, keys: keys,
-                                              name: "CUBE3DFLY")
+      [6, 12, 20].each do |frame|
+        assert_backends_agree_by_passes(Cube3D.program, frame: frame, keys: keys, name: "CUBE3DFLY")
       end
     end
   end

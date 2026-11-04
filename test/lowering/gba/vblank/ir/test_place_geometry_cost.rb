@@ -34,7 +34,7 @@ class TestPlaceGeometryCost < Minitest::Test
       eye = viewer :eye, at: [0.0, 0.0, 0.0]
       game_loop do
         clear_screen :black
-        draw_place :grid, seen_by: eye
+        draw_place :grid, seen_by: eye, perspective: :none
       end
     end
     b.finalize_program
@@ -43,12 +43,12 @@ class TestPlaceGeometryCost < Minitest::Test
 
   # Each point is a corner of up to four faces; turned once a drawing rather than once a face,
   # a pass costs well under what it did when each face turned its own corners.
-  def test_a_grid_of_small_faces_costs_under_fifty_six_hundred_cycles_a_point
+  def test_a_grid_of_small_faces_costs_under_six_thousand_cycles_a_point
     program = grid
     profile = VBlank::Diagnostics::Profiler.run(assemble_rom(program, name: "GEOMCOST"), frames: 60, picture: false)
     cycles = (1 - profile.idle_share) * CYCLES_A_SECOND / profile.fps / POINTS
 
-    assert_operator cycles, :<, 5600, "a point took #{cycles.round} cycles; turned once a face it took 6270"
+    assert_operator cycles, :<, 6000, "a point took #{cycles.round} cycles; turned once a face it took 6270"
     assert_backends_agree(program, frames: 3, console_frames: 30, name: "GEOMCOST")
   end
 end

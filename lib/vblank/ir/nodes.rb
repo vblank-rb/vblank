@@ -755,13 +755,20 @@ module VBlank
         kind :fill_face
         category :draw
         operands pictures: :list, picture: :value, corners: :name, count: :value,
-                 left: :value, top: :value, right: :value, bottom: :value
+                 left: :value, top: :value, right: :value, bottom: :value, perspective: :value
 
         # The most corners a face can have: four, each cut by the near limit into two.
         MOST_CORNERS = 8
 
-        # How many numbers a corner is in the list: x, y, u, v.
-        CORNER_NUMBERS = 4
+        # How many numbers a corner is in the list: x, y, u, v, and one over its distance (w, with
+        # 26 bits of fraction), which only a picture in perspective reads.
+        CORNER_NUMBERS = 5
+
+        # +perspective+ is how many pixels apart the place on the picture is worked out exactly
+        # across a row: PERSPECTIVE_NONE for never (the picture is stretched straight between the
+        # row's ends), 8 or 1. Between, it steps straight.
+        PERSPECTIVE_NONE = 0
+        PERSPECTIVE_SPANS = Ractor.make_shareable({ none: PERSPECTIVE_NONE, every_8_pixels: 8, every_pixel: 1 })
 
         # The edges nothing outside is drawn, [left, top, right, bottom].
         def edges = [left, top, right, bottom]

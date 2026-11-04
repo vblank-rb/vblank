@@ -54,6 +54,12 @@ class TestPlacesCartridge < Minitest::Test
       end
   end
 
+  def test_a_wall_leaning_away_agrees_in_each_perspective
+    %i[none every_8_pixels every_pixel].each do |perspective|
+      assert_backends_agree(PlaceGames.wall_down_the_side(perspective), frames: 3, console_frames: 30, name: "WALL")
+    end
+  end
+
   def test_screen_spots_agree
     spots = [[-1.0, 1.0, 2.0], [1.0, -1.0, 2.0], [0.11, 0.0, 2.0], [0.0, 0.0, -1.0], [3.0, -2.5, 1.5]]
     program = PlaceGames.screen_spots(spots)

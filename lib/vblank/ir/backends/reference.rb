@@ -3283,6 +3283,8 @@ module VBlank
           top = [top, 0].max
           right = [right, @screen.width].min
           bottom = [bottom, @screen.height].min
+          spans = eval_value(node.perspective)
+          corners = corners.map { |corner| FaceEdges.in_perspective(corner) } unless spans == Nodes::FillFace::PERSPECTIVE_NONE
           edges = FaceEdges.of(corners)
           return if edges.empty?
 
@@ -3293,27 +3295,36 @@ module VBlank
             next if crossing.length < 2
 
             fill_face_row(row, crossing.min_by(&:first), crossing.reverse.max_by(&:first), [left, right],
-                          picture, pixels)
+                          picture, pixels, spans)
           end
         end
 
         # One row of a face, from where the edge +from+ crosses it to where +to+ does, each
-        # [x, u, v] (x in pixels with sixteen fraction bits): the pixels whose middles lie between,
-        # each the picture's pixel at its place on the picture, the place stepped by one equal
-        # amount a pixel. +span+ is [left, right] of what may be drawn.
-        def fill_face_row(row, from, to, span, picture, pixels)
+        # [x, u, v, w] (x in pixels with sixteen fraction bits): the pixels whose middles lie
+        # between, each the picture's pixel at its place on the picture. +span+ is [left, right]
+        # of what may be drawn.
+        #
+        # Without perspective (+spans+ nought) the place on the picture steps by one equal amount a
+        # pixel. In perspective, u, v and w are the place over the distance and one over the
+        # distance (FaceEdges.in_perspective), which do step equally; every +spans+ pixels along
+        # the row, and at its end, the place is worked out from them (#place_in_perspective), and
+        # between it steps equally from one to the next.
+        def fill_face_row(row, from, to, span, picture, pixels, spans)
           half = 1 << 15
           start = Int32.shift_right(Int32.add(from[0], half - 1), 16)
           stop = Int32.shift_right(Int32.add(to[0], half - 1), 16)
           count = Int32.sub(stop, start)
           return if count <= 0
 
-          step_u = Int32.div(Int32.sub(to[1], from[1]), count)
-          step_v = Int32.div(Int32.sub(to[2], from[2]), count)
+          steps = (1..3).map { |part| Int32.div(Int32.sub(to[part], from[part]), count) }
+          places = {}
           ([start, span[0]].max...[stop, span[1]].min).each do |x|
             along = Int32.sub(x, start)
-            u = Int32.add(from[1], Int32.mul(step_u, along))
-            v = Int32.add(from[2], Int32.mul(step_v, along))
+            u, v = if spans == Nodes::FillFace::PERSPECTIVE_NONE
+                     (0..1).map { |part| Int32.add(from[part + 1], Int32.mul(steps[part], along)) }
+                   else
+                     place_between(along, spans, count, places) { |at| place_in_perspective(from, steps, at) }
+                   end
             across = Int32.bit_and(Int32.shift_right(u, 16), picture.width - 1)
             down = Int32.bit_and(Int32.shift_right(v, 16), picture.height - 1)
             at = ((down * picture.width) + across) * 2
@@ -3324,6 +3335,29 @@ module VBlank
           end
         end
 
+        # [u, v] at +along+ pixels into a row in perspective: from the places worked out exactly
+        # at the last multiple of +spans+ before it and at the next (or the row's end, +count+
+        # along), one equal step a pixel between, each step the difference divided by how many
+        # pixels apart they are. +places+ keeps what the block worked out, by how far along.
+        def place_between(along, spans, count, places)
+          from = (along / spans) * spans
+          to = [from + spans, count].min
+          near = (places[from] ||= yield(from))
+          far = (places[to] ||= yield(to))
+          near.zip(far).map do |start, finish|
+            Int32.add(start, Int32.mul(Int32.div(Int32.sub(finish, start), to - from), along - from))
+          end
+        end
+
+        # [u, v] exactly +along+ pixels into a row whose left end is +from+ ([x, u/z, v/z, 1/z]) and
+        # whose numbers step +steps+ a pixel: the place over the distance times the distance, which
+        # is one over one over the distance (IR::Reciprocals.distance).
+        def place_in_perspective(from, steps, along)
+          over = (1..3).map { |part| Int32.add(from[part], Int32.mul(steps[part - 1], along)) }
+          distance = Reciprocals.distance(over[2])
+          [Int32.mul_fix(over[0], distance, 14), Int32.mul_fix(over[1], distance, 14)]
+        end
+
         # ONE EDGE OF A FACE, as the fill walks down it: the first row whose middle it crosses and
         # the row past its last, and at its first row where it crosses (+x+, in pixels with sixteen
         # fraction bits) and where on the picture that is (+u+, +v+), with how far each moves a row
@@ -3332,14 +3366,16 @@ module VBlank
         # An edge is taken from its upper end down. How far one row is along it, +along_row+, is
         # one division, kept with twenty-four fraction bits so that the steps it makes come out
         # true to a part in millions; the start is found from it too, so an edge costs one division.
-        FaceEdge = Data.define(:first_row, :past_row, :x, :u, :v, :step_x, :step_u, :step_v) do
+        #
+        # +w+ is one over the distance, which a picture in perspective steps down the edge too (and
+        # then +u+ and +v+ are the place over the distance; see FaceEdges.in_perspective).
+        FaceEdge = Data.define(:first_row, :past_row, :x, :u, :v, :w, :step_x, :step_u, :step_v, :step_w) do
           def crosses?(row) = row >= first_row && row < past_row
 
-          # [x, u, v] where this edge crosses +row+.
+          # [x, u, v, w] where this edge crosses +row+.
           def at(row)
             rows = Int32.sub(row, first_row)
-            [Int32.add(x, Int32.mul(step_x, rows)), Int32.add(u, Int32.mul(step_u, rows)),
-             Int32.add(v, Int32.mul(step_v, rows))]
+            [[x, step_x], [u, step_u], [v, step_v], [w, step_w]].map { |at, step| Int32.add(at, Int32.mul(step, rows)) }
           end
         end
 
@@ -3364,12 +3400,20 @@ module VBlank
             along_row = Int32.div(1 << 28, Int32.sub(bottom[1], top[1]))
             into = Int32.mul_fix(Int32.sub(Int32.add(Int32.mul(first_row, 16), 8), top[1]), along_row, 4)
             across = Int32.shift_left(Int32.sub(bottom[0], top[0]), 12)
-            parts = [across, Int32.sub(bottom[2], top[2]), Int32.sub(bottom[3], top[3])]
-            starts = [Int32.shift_left(top[0], 12), top[2], top[3]]
-            x, u, v = starts.zip(parts).map { |start, part| Int32.add(start, Int32.mul_fix(part, into, 24)) }
-            step_x, step_u, step_v = parts.map { |part| Int32.mul_fix(part, along_row, 24) }
-            FaceEdge.new(first_row: first_row, past_row: past_row, x: x, u: u, v: v,
-                         step_x: step_x, step_u: step_u, step_v: step_v)
+            parts = [across, *(2..4).map { |field| Int32.sub(bottom[field], top[field]) }]
+            starts = [Int32.shift_left(top[0], 12), *top[2..4]]
+            x, u, v, w = starts.zip(parts).map { |start, part| Int32.add(start, Int32.mul_fix(part, into, 24)) }
+            step_x, step_u, step_v, step_w = parts.map { |part| Int32.mul_fix(part, along_row, 24) }
+            FaceEdge.new(first_row: first_row, past_row: past_row, x: x, u: u, v: v, w: w,
+                         step_x: step_x, step_u: step_u, step_v: step_v, step_w: step_w)
+          end
+
+          # A corner [x, y, u, v, w] made ready for a picture in perspective: u and v over the
+          # distance in place of u and v, which is u and v times w (one over the distance, with 26
+          # bits of fraction) taken down 28 bits, so a quarter of u over the distance.
+          def in_perspective(corner)
+            x, y, u, v, w = corner
+            [x, y, Int32.mul_fix(u, w, 28), Int32.mul_fix(v, w, 28), w]
           end
         end
 

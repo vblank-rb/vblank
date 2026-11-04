@@ -61,22 +61,24 @@ module VBlank
       VIEWER_PARTS = %i[x y z right_x right_y right_z up_x up_y up_z ahead_x ahead_y ahead_z].freeze
 
       # What the routine is told about the view before each drawing (see View).
-      VIEW_PARTS = %i[left top right bottom middle_x middle_y focal near both_sides].freeze
+      VIEW_PARTS = %i[left top right bottom middle_x middle_y focal near both_sides perspective].freeze
 
       # The edges a face is held to, in the order a window gives them.
       CLIP_EDGES = %i[left top right bottom].freeze
 
       # WHAT THE ROUTINE IS TOLD ABOUT THE VIEW: its edges in whole pixels, its middle in
       # sixteenths of one, how far a point one whole to the side at one whole ahead lands from the
-      # middle (+focal+, sixteenths), the near limit (a fraction with sixteen bits), and 1 when
-      # a face is drawn from behind as well.
+      # middle (+focal+, sixteenths), the near limit (a fraction with sixteen bits), 1 when a face
+      # is drawn from behind as well, and how far apart a row's pictures are put in perspective
+      # (Nodes::FillFace::PERSPECTIVE_SPANS).
       View = Data.define(*VIEW_PARTS) do
         # The view over the screen area +left+, +top+, +width+, +height+, +degrees+ across.
-        def self.over(left, top, width, height, degrees:, near:, both_sides:)
+        def self.over(left, top, width, height, degrees:, near:, both_sides:, perspective: :none)
           focal = ((width / 2.0) / Math.tan(degrees * Math::PI / 360) * SUBPIXEL).round
           new(left: left, top: top, right: left + width, bottom: top + height,
               middle_x: ((left * 2) + width) * SUBPIXEL / 2, middle_y: ((top * 2) + height) * SUBPIXEL / 2,
-              focal: focal, near: near, both_sides: both_sides ? 1 : 0)
+              focal: focal, near: near, both_sides: both_sides ? 1 : 0,
+              perspective: Nodes::FillFace::PERSPECTIVE_SPANS.fetch(perspective))
         end
       end
 
@@ -110,16 +112,18 @@ module VBlank
       # more, and turning it is most of what a face costs before it is filled.
       #
       # The seen list keeps, for each point, SEEN_STRIDE numbers: where it is to the viewer's right,
-      # above and ahead, and where it lands on the screen across and down (written only when it is
-      # in front of the near limit, the only time anything reads them). The stamps list keeps, for
+      # above and ahead, and where it lands on the screen across and down and one over how far ahead
+      # it is (written only when it is in front of the near limit, the only time anything reads
+      # them). The stamps list keeps, for
       # each point, the number of the drawing that last turned it: every drawing counts one on
       # (the drawing variable), so a point whose stamp is not the drawing's own is turned afresh.
       # Both start full of nought and the count starts at one, so nothing is read before it is
       # written; the count is not part of the game's state that `start_over` puts back, and the
       # lists are, which only ever makes a stamp stale.
-      SEEN_STRIDE = 5
+      SEEN_STRIDE = 6
       SEEN_ACROSS = 3
       SEEN_DOWN = 4
+      SEEN_NEARNESS = 5
 
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
@@ -209,7 +213,9 @@ module VBlank
          *%i[at_x at_y at_z].each_with_index.map { |part, at| Build.list_set(seen_list, Build.binop(:+, seen, at), var(part)) },
          Build.if_(Build.binop(:>=, var(:at_z), Build.var_ref(view_var(:near))),
                    Build.list_set(seen_list, Build.binop(:+, seen, SEEN_ACROSS), landed(:+, :at_x, :middle_x)),
-                   Build.list_set(seen_list, Build.binop(:+, seen, SEEN_DOWN), landed(:-, :at_y, :middle_y))),
+                   Build.list_set(seen_list, Build.binop(:+, seen, SEEN_DOWN), landed(:-, :at_y, :middle_y)),
+                   Build.if_(in_perspective,
+                             Build.list_set(seen_list, Build.binop(:+, seen, SEEN_NEARNESS), nearness))),
          Build.list_set(stamps_list, number, var(:drawing))]
       end
 
@@ -222,8 +228,16 @@ module VBlank
          Build.list_set(corners_list, place.call(1), landed(:-, :at_y, :middle_y)),
          Build.list_set(corners_list, place.call(2), var(:at_u)),
          Build.list_set(corners_list, place.call(3), var(:at_v)),
+         Build.if_(in_perspective, Build.list_set(corners_list, place.call(4), nearness)),
          Build.add(name(:count), 1)]
       end
+
+      # One over how far ahead the corner in at_z is, with 26 bits of fraction, which a picture in
+      # perspective steps across a face (see Nodes::FillFace). Worked out only for a drawing in
+      # perspective, the only one that reads it: a divide a point.
+      def nearness = Build.div_fix(1 << 16, var(:at_z), 26)
+
+      def in_perspective = Build.binop(:!=, Build.var_ref(view_var(:perspective)), Nodes::FillFace::PERSPECTIVE_NONE)
 
       private
 
@@ -292,6 +306,9 @@ module VBlank
                    Build.list_set(corners_list, corner.call(1), Build.list_get(seen_list, Build.binop(:+, seen, SEEN_DOWN))),
                    Build.list_set(corners_list, corner.call(2), turned(:u, k)),
                    Build.list_set(corners_list, corner.call(3), turned(:v, k)),
+                   Build.if_(in_perspective,
+                             Build.list_set(corners_list, corner.call(4),
+                                            Build.list_get(seen_list, Build.binop(:+, seen, SEEN_NEARNESS)))),
                    Build.add(name(:count), 1)),
          Build.if_(Build.binop(:!=, in_front(k), in_front(other)),
                    Build.set(name(:along), through),
@@ -314,7 +331,9 @@ module VBlank
       # product is taken down eight bits, so it stays inside a number for any corner the
       # projection lets through.
       def front_test
-        corner = ->(index, axis) { Build.list_get(corners_list, Build.binop(:+, Build.binop(:*, index, 4), axis)) }
+        corner = lambda do |index, axis|
+          Build.list_get(corners_list, Build.binop(:+, Build.binop(:*, index, Nodes::FillFace::CORNER_NUMBERS), axis))
+        end
         from_first = ->(index, axis) { Build.binop(:-, corner.call(index, axis), corner.call(0, axis)) }
         each = var(:each)
         following = var(:next)
@@ -331,7 +350,8 @@ module VBlank
       # The fill, when the face is seen from in front or the place is drawn from both sides.
       def fill_when_seen
         edges = CLIP_EDGES.map { |edge| Build.var_ref(clip_var(edge)) }
-        fill = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges)
+        fill = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges,
+                               perspective: Build.var_ref(view_var(:perspective)))
         seen = Build.binop(:or, Build.binop(:>, var(:area), 0), Build.binop(:==, Build.var_ref(view_var(:both_sides)), 1))
         Build.if_(seen, fill)
       end

@@ -72,15 +72,15 @@ class TestPlaces < Minitest::Test
     assert_match(/one \[across, down\] for each point/, message)
   end
 
-  def test_a_perspective_not_made_yet_is_refused
+  def test_a_perspective_that_is_not_one_of_the_settings_is_refused
     shape = square
     message = refusal do
       place(:room, &shape)
       eye = viewer :eye, at: [0.0, 0.0, 0.0]
-      game_loop { draw_place :room, seen_by: eye, perspective: :every_8_pixels }
+      game_loop { draw_place :room, seen_by: eye, perspective: :sometimes }
     end
 
-    assert_match(/does not make that setting yet/, message)
+    assert_match(/The settings are :none, :every_8_pixels, :every_pixel/, message)
   end
 
   def test_a_point_further_than_a_place_reaches_is_refused

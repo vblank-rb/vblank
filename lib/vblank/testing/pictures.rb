@@ -128,6 +128,21 @@ module VBlank
         flunk e.message
       end
 
+      # A MOVING GAME WHOSE PASSES TAKE SEVERAL FRAMES, and not always the same number of them:
+      # the frame a pass ends on is read between two pictures. So the console's frame +frame+ and
+      # the ones after it, +tries+ in all, are read until one agrees with the interpreter played as
+      # many passes as the console counted by then. Two passes in a row each a frame long, and
+      # then a longer one, still leave one of three frames inside a pass.
+      def assert_backends_agree_by_passes(program, frame:, keys: [], name: "DIFF", tries: 3)
+        return assert_backends_agree(program, frames: frame, keys: keys, name: name) if Testing.checked?
+
+        differing = (frame...(frame + tries)).map do |read|
+          oracle, console, = backend_pictures(program, frames: read, console_frames: read, keys: keys, name: name)
+          mismatched_pixels(oracle, console).length
+        end
+        assert_includes differing, 0, "none of frames #{frame} to #{frame + tries - 1} agreed, holding #{keys.inspect}"
+      end
+
       # Both backends' screens for the same program, as arrays of 15-bit colors a row at a time
       # (read one with `pixel_at`), and how many frames the interpreter played to match. Use this directly to
       # assert on a KNOWN disagreement — a bug that's filed but not fixed — instead of failing

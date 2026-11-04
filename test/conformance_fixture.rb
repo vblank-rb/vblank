@@ -219,15 +219,19 @@ module ConformanceFixture
       # and they fall from -1 to 3 on a picture two pixels wide, so the picture repeats both ways.
       # The picture is the second of two, picked by a number worked out as it runs, and the right
       # edge cuts the face. A backend that stepped an edge or the picture wrongly, wrapped a place
-      # below nought the wrong way, or read the wrong picture or corner draws a different face.
-      B.list_new(:fixture_corners, 32, full_of: 0),
-      *[[1608, 1600, -65_536, -65_536], [1930, 1650, 196_608, -65_536], [1960, 1720, 196_608, 65_536],
-        [1900, 1800, 196_608, 196_608], [1603, 1790, -65_536, 196_608]].each_with_index.flat_map { |corner, k|
-        corner.each_with_index.map { |number, field| B.list_set(:fixture_corners, B.int((k * 4) + field), B.int(number)) }
+      # below nought the wrong way, or read the wrong picture or corner draws a different face. Its
+      # corners are at different distances (the last number, one over the distance) and the
+      # picture is in perspective, worked out every eight pixels, so a backend whose sums for
+      # perspective differ draws a different face too.
+      B.list_new(:fixture_corners, 40, full_of: 0),
+      *[[1608, 1600, -65_536, -65_536, 1 << 26], [1930, 1650, 196_608, -65_536, 1 << 24],
+        [1960, 1720, 196_608, 65_536, 3 << 23], [1900, 1800, 196_608, 196_608, 1 << 25],
+        [1603, 1790, -65_536, 196_608, 1 << 27]].each_with_index.flat_map { |corner, k|
+        corner.each_with_index.map { |number, field| B.list_set(:fixture_corners, B.int((k * 5) + field), B.int(number)) }
       },
       B.draw_place(:fixture_place, :fixture_viewer,
                    B.fill_face(%i[pose_b sprite], B.binop(:-, B.var_ref(:x), B.int(6)), :fixture_corners, B.int(5),
-                               [B.int(0), B.int(0), B.int(115), B.int(160)]),
+                               [B.int(0), B.int(0), B.int(115), B.int(160)], perspective: B.int(8)),
                    near: 16_384, view_angle: 90),
       B.draw_text("HI", 10, 10, :white),
       # A font the program declared for itself, and a line drawn with it. Every backend has
