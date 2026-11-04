@@ -555,8 +555,19 @@ module VBlank
               piece_x = work + 4
               piece_y = work + 6
 
+              # ONLY THE ROWS THE LAST PASS WROTE ARE HIDDEN AGAIN. Rows are handed out counting down
+              # from the last, so the rows a pass wrote are the ones from where NEXT_ROW stopped to
+              # the end, and every row above that is still as the begin before hid it. Hiding all
+              # 128 rows was 128 turns of a loop of nine every pass, a sprite or none; this is a
+              # turn for each row the last pass showed. At power-on NEXT_ROW is nought (Boot clears
+              # work RAM), so the first begin hides every row.
               asm.label("rt_sprites_begin")
-              asm.ldx(0)
+              asm.lda(asm.abs(memory[NEXT_ROW]))
+              asm.asl
+              asm.asl
+              asm.tax # four bytes a row
+              asm.cpx(512)
+              asm.beq("rt_sprites_begin_none")
               asm.label("rt_sprites_begin_row")
               asm.lda(HIDDEN_Y << 8)
               asm.sta(asm.long_x(oam)) # x 0, y below the screen
@@ -568,12 +579,23 @@ module VBlank
               asm.inx
               asm.cpx(512)
               asm.bne("rt_sprites_begin_row")
+              # The top bits: a byte holds four rows' two each, so from the byte the first row
+              # written is in (a word at a time, from an even byte) to the end.
+              asm.lda(asm.abs(memory[NEXT_ROW]))
+              asm.lsr
+              asm.lsr
+              asm.and_a(0xFFFE)
+              asm.clc
+              asm.adc(512)
+              asm.tax
+              asm.lda(0)
               asm.label("rt_sprites_begin_top_bits")
-              asm.sta(asm.long_x(oam)) # A is nought: no row's top bits set
+              asm.sta(asm.long_x(oam)) # no row's top bits set
               asm.inx
               asm.inx
               asm.cpx(544)
               asm.bne("rt_sprites_begin_top_bits")
+              asm.label("rt_sprites_begin_none")
               asm.lda(MOST_SPRITES)
               asm.sta(asm.abs(memory[NEXT_ROW]))
               asm.lda(0)

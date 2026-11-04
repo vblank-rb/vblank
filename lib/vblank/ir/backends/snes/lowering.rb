@@ -523,9 +523,29 @@ module VBlank
 
             known = folded(node.value)
             return store_number(place_of(node.var), known) if known
+            return copy_variable(node.value, node.var) if variable_named(node.value)
+            return emit_sum_into(node.value, variable_halves(node.var)) if sum_in_halves?(node.value) && !folded(node.value)
 
             value(node.value)
             store(node.var)
+          end
+
+          # Where the variable +name+'s two halves are, as operands.
+          def variable_halves(name)
+            at = place_of(name)
+            [at_place(at), at_place(at + 2)]
+          end
+
+          # One variable into another, a half at a time from where it is: four instructions, where
+          # working it out into R0 first and storing it from there is eight. A pool's walk does this
+          # several times for each thing it visits.
+          def copy_variable(from, name)
+            halves = operand_halves(from)
+            at = place_of(name)
+            2.times do |i|
+              @asm.lda(halves[i])
+              @asm.sta(at_place(at + (2 * i)))
+            end
           end
 
           # A number written in the program, straight into the variable at +at+.
@@ -568,6 +588,7 @@ module VBlank
 
           def emit_copy(node)
             return if node.dest == node.src
+            return copy_variable(node.src, node.dest) if variable_named(node.src)
 
             value(node.src)
             store(node.dest)
@@ -647,20 +668,24 @@ module VBlank
           # counting 0, 1, 2... and stored in the game's variable at the top of each pass; and
           # +stop_when+ asked BEFORE the body, so a loop already finished on its first pass runs the
           # body no times.
+          #
+          # A count written in the program is compared as the number it is, with no variable of its
+          # own to work out and read back each time round.
           def emit_repeat(node)
-            count = keep_local(:count)
             index = keep_local(:index)
-            value(node.count)
-            store(count)
+            count = folded(node.count)
+            unless count
+              count = keep_local(:count)
+              value(node.count)
+              store(count)
+            end
             store_number(place_of(index), 0)
             top = fresh("repeat")
             done = fresh("end_repeat")
             @asm.label(top)
-            jump_unless(Build.binop(:<, Build.var_ref(index), Build.var_ref(count)), done)
-            if node.index
-              value(index)
-              store(node.index)
-            end
+            limit = count.is_a?(Integer) ? Build.int(count) : Build.var_ref(count)
+            jump_unless(Build.binop(:<, Build.var_ref(index), limit), done)
+            copy_variable(index, node.index) if node.index
             jump_if(node.stop_when, done)
             children_of(node).first.each { |child| statement(child) }
             emit_sum(index, :+, Build.int(1))
@@ -810,7 +835,14 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
-          def value_of_list_len(node) = list_call("rt_list_length", node)
+          # How many a list holds is a word of its header, read where it is: three instructions, where
+          # the runtime's call takes the list's place handed over, the jump there and back, and the
+          # header found from the place. A pool asks it of its retired things at the end of every walk.
+          def value_of_list_len(node)
+            @asm.lda(@asm.long(list_place(node), Runtime::Lists::LENGTH))
+            @asm.sta(@asm.direct(R0))
+            @asm.stz(@asm.direct(R0 + 2))
+          end
 
           # A LIST NOTHING TAKES FROM THE FRONT keeps its first item in its first slot for good, so an
           # item's slot is its index, and its place is known here: one load with X as the index, past
@@ -1200,6 +1232,10 @@ module VBlank
               # not hold, which is the same thing where working it out changes nothing.
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
+            elsif (tested = comparison_in_truth_test(condition))
+              comparison, holds = tested
+              branch = compare(comparison)
+              @asm.branch_long(holds ? branch : W65816::OPPOSITES.fetch(branch), label)
             elsif condition.is_a?(Node) && condition.kind == :binop && COMPARISONS.include?(condition.op)
               @asm.branch_long(compare(condition), label)
             else
@@ -1212,6 +1248,26 @@ module VBlank
 
           def binop?(node, op) = node.is_a?(Node) && node.kind == :binop && node.op == op
 
+          # A COMPARISON'S ANSWER TESTED AGAINST 1 OR 0 — `(2 < count) == 1`, which is how a pool's
+          # drawing asks whether a slot is among the live ones — is the comparison itself, or its
+          # opposite: a comparison is 1 or 0, so `== 1` and `!= 0` hold when it does, and `== 0` and
+          # `!= 1` when it does not. Jumping on the comparison's own flags skips making a 1 or a 0
+          # of it and comparing both halves of that. The comparison, and whether the test holds when
+          # it does; or nil.
+          def comparison_in_truth_test(condition)
+            return unless binop?(condition, :==) || binop?(condition, :!=)
+
+            [[condition.lhs, condition.rhs], [condition.rhs, condition.lhs]].each do |inner, other|
+              next unless inner.is_a?(Node) && inner.kind == :binop && COMPARISONS.include?(inner.op) && !folded(inner)
+
+              number = folded(other)
+              next unless [0, 1].include?(number)
+
+              return [inner, (condition.op == :==) == (number == 1)]
+            end
+            nil
+          end
+
           # The two sides of a comparison compared, and the branch that is taken when it does NOT hold.
           #
           # Equal or not: the low halves compared and, when they match, the high halves; the zero flag
@@ -1221,6 +1277,8 @@ module VBlank
           # which case the sign came out the wrong way round and is flipped back.
           def compare(node)
             op = node.op
+            return compare_narrow_slot(op, *narrow_slot_and_number(node)) if narrow_slot_and_number(node)
+
             left, right = %i[> <=].include?(op) ? [node.rhs, node.lhs] : [node.lhs, node.rhs]
             with_both_halves(left, right) do |lefts, halves|
               if %i[== !=].include?(op)
@@ -1244,6 +1302,39 @@ module VBlank
             end
             # The negative flag now says left < right, where for > and <= the two were swapped.
             { :== => :bne, :!= => :beq, :< => :bpl, :> => :bpl, :>= => :bmi, :<= => :bmi }.fetch(op)
+          end
+
+          # A BYTE OR HALF SLOT OF A LIST SAID EQUAL, OR NOT, TO A NUMBER WRITTEN IN THE PROGRAM. A
+          # narrow slot reads back with its top bit as the sign (#emit_read_slot_at_x), so it equals a
+          # number that fits its width exactly when its own bits are that number's low bits: one
+          # compare of the slot where it is, where reading it out as 32 bits takes the sign worked
+          # out, both halves stored, and both compared. A pool keeps which slots are live, and each
+          # field a game narrows, in such slots, and asks them this every walk.
+          #
+          # The list and the number, or nil when +node+ is not such a test.
+          def narrow_slot_and_number(node)
+            return unless %i[== !=].include?(node.op)
+
+            [[node.lhs, node.rhs], [node.rhs, node.lhs]].each do |slot, other|
+              next unless slot.is_a?(Node) && slot.kind == :list_get && !front_dropped_lists.include?(slot.name)
+
+              number = folded(other)
+              next if number.nil? || folded(slot)
+
+              width = list_placed(slot)[2]
+              bits = 8 * width
+              return [slot, number] if width < 4 && number.between?(-(1 << (bits - 1)), (1 << (bits - 1)) - 1)
+            end
+            nil
+          end
+
+          def compare_narrow_slot(op, slot, number)
+            place, _capacity, width = list_placed(slot)
+            emit_slot_into_x(place, width, index_halves(slot.index))
+            @asm.lda(@asm.long_x(place + Runtime::Lists::HEADER))
+            @asm.and_a(0x00FF) if width == 1
+            @asm.cmp(number & (width == 1 ? 0xFF : 0xFFFF))
+            op == :== ? :bne : :beq
           end
 
           # --- values: each leaves its number in R0 ---
@@ -1277,7 +1368,7 @@ module VBlank
           def value_of_binop(node)
             return value_of_comparison(node) if COMPARISONS.include?(node.op)
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
-            return if node.op == :* && emit_product_by_power_of_two(node)
+            return if node.op == :* && emit_product_by_written_number(node)
             return if node.op == :% && emit_remainder_by_power_of_two(node)
             return if node.op == :/ && emit_quotient_by_power_of_two(node)
             return if SHIFTS_IN_PLACE.key?(node.op) && emit_shift_by_written_count(node)
@@ -1286,7 +1377,21 @@ module VBlank
               @divides ||= %i[/ %].include?(node.op)
               return runtime_call(routine, [node.lhs, node.rhs])
             end
-            return emit_bitwise_halves(node) if BITWISE.include?(node.op)
+            emit_sum_into(node, r0_halves)
+          end
+
+          # Where R0's two halves are, as operands.
+          def r0_halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
+
+          # Is +node+ a sum written a half at a time (+, -, &, | or ^), which #emit_sum_into can
+          # leave anywhere?
+          def sum_in_halves?(node) = node.is_a?(Node) && node.kind == :binop && IN_PLACE_SUMS.key?(node.op)
+
+          # A sum written a half at a time, each half stored into +to+ (two operands) as soon as it is
+          # worked out. Each half of +to+ is written only after both sides' same half are read, and the
+          # carry between them is in the processor's flags, so +to+ may be one of the sides: `x = x + 1`.
+          def emit_sum_into(node, to)
+            return emit_bitwise_halves(node, to) if BITWISE.include?(node.op)
 
             carry, sum = IN_PLACE_SUMS.fetch(node.op)
             with_both_halves(node.lhs, node.rhs) do |lefts, halves|
@@ -1294,7 +1399,7 @@ module VBlank
               2.times do |i|
                 @asm.lda(lefts[i])
                 @asm.public_send(sum, halves[i])
-                @asm.sta(@asm.direct(R0 + (2 * i)))
+                @asm.sta(to[i])
               end
             end
           end
@@ -1682,21 +1787,79 @@ module VBlank
             @asm.stx(@asm.direct(R0 + 2))
           end
 
-          # A product by a power of two up to 16 written in the program, as shifts of the two halves —
-          # none at all for a product by one. True when it was done so.
-          def emit_product_by_power_of_two(node)
+          # A PRODUCT BY A NUMBER WRITTEN IN THE PROGRAM is written in place, never as a call of
+          # rt_mul32. By a power of two it is a shift left (#emit_shift_left_of_r0), none at all for
+          # one; by any other number up to 255 either way it is four turns of the console's own
+          # multiplier (#emit_product_by_byte_of_r0); a number below nought turns the product round
+          # after. rt_mul32 took its numbers handed over, the jump there and back, and, for a number
+          # that is not a small one at or above nought, a loop of a dozen instructions for each of
+          # its 32 bits. True when it was done so.
+          def emit_product_by_written_number(node)
             [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
               number = folded(by)
-              next unless number&.positive? && (number & (number - 1)).zero? && number <= 16
+              next unless number
+
+              size = number.abs
+              power = size.positive? && (size & (size - 1)).zero?
+              next unless power || size <= 0xFF
 
               value(other)
-              number.bit_length.pred.times do
-                @asm.asl(@asm.direct(R0))
-                @asm.rol(@asm.direct(R0 + 2))
+              if size.zero?
+                @asm.stz(@asm.direct(R0))
+                @asm.stz(@asm.direct(R0 + 2))
+              elsif power
+                emit_shift_left_of_r0(size.bit_length - 1)
+              else
+                emit_product_by_byte_of_r0(size)
               end
+              emit_negate_r0 if number.negative?
               return true
             end
             false
+          end
+
+          # R0 times +number+, a byte, by the console's multiplier: it takes a byte in WRMPYA and a
+          # byte in WRMPYB, and eight cycles after WRMPYB is written the 16-bit product is at RDMPYL.
+          # WRMPYA keeps its byte, so it is written once, and each of R0's four bytes is multiplied in
+          # turn. The low 32 bits of the product are those four products added a byte apart, the way
+          # it is done on paper; what carries past the top is dropped, as Int32 drops it, so the sign
+          # takes care of itself.
+          #
+          # Bytes 1 and 3 are multiplied first, into R1, so that the products of bytes 0 and 2 can go
+          # straight into R0's halves once their own bytes are read. Byte 1's product is then added a
+          # byte up, across R0's middle two bytes, and byte 3's low byte into the top with the carry.
+          def emit_product_by_byte_of_r0(number)
+            h = Console::SNESHardware
+            multiply = lambda do |byte|
+              @asm.lda(@asm.direct(R0 + byte))
+              @asm.sta(@asm.abs(h::WRMPYB))
+              4.times { @asm.nop } # the eight cycles the multiplier takes
+            end
+            @asm.sep(0x20)
+            @asm.lda(number)
+            @asm.sta(@asm.abs(h::WRMPYA))
+            multiply.call(1)
+            @asm.ldx(@asm.abs(h::RDMPYL))
+            @asm.stx(@asm.direct(R1))
+            multiply.call(3)
+            @asm.lda(@asm.abs(h::RDMPYL))
+            @asm.sta(@asm.direct(R1 + 2))
+            multiply.call(0)
+            @asm.ldx(@asm.abs(h::RDMPYL))
+            @asm.stx(@asm.direct(R0))
+            multiply.call(2)
+            @asm.ldx(@asm.abs(h::RDMPYL))
+            @asm.stx(@asm.direct(R0 + 2))
+            @asm.rep(0x20)
+            @asm.clc
+            @asm.lda(@asm.direct(R0 + 1))
+            @asm.adc(@asm.direct(R1))
+            @asm.sta(@asm.direct(R0 + 1))
+            @asm.sep(0x20)
+            @asm.lda(@asm.direct(R0 + 3))
+            @asm.adc(@asm.direct(R1 + 2))
+            @asm.sta(@asm.direct(R0 + 3))
+            @asm.rep(0x20)
           end
 
           # A shift whose count is a number written in the program, written in place
@@ -1705,9 +1868,96 @@ module VBlank
             count = folded(node.rhs)
             return false unless count
 
-            value(node.lhs)
+            lhs = node.lhs
+            if node.op == :>>
+              lhs, count = shift_right_of_shift_right(lhs, count)
+              return true if count.between?(8, 30) && emit_shift_right_from_place(lhs, count)
+            end
+            value(lhs)
             send(SHIFTS_IN_PLACE.fetch(node.op), count)
             true
+          end
+
+          # `(x >> 8) >> 4` is `x >> 12`: an arithmetic shift right twice is one shift by the two
+          # counts together, and a count of 31 or more leaves only the sign either way. The number
+          # shifted and the count, for +lhs+ shifted right +count+.
+          def shift_right_of_shift_right(lhs, count)
+            while count.between?(0, 30) && binop?(lhs, :>>) && (inner = folded(lhs.rhs))&.between?(0, 30)
+              lhs = lhs.lhs
+              count = [count + inner, 31].min
+            end
+            [lhs, count]
+          end
+
+          # A SHIFT RIGHT BY A BYTE OR MORE OF A NUMBER THAT IS KEPT SOMEWHERE — a variable, or a
+          # word slot of a list — is read from that place a byte or more along, where the number's
+          # higher bytes already are: `x >> 8`'s low half is x's bytes 1 and 2, read as one word,
+          # and its high half is byte 3 with the sign above it. That skips copying x into R0 only to
+          # move it down a byte there. What is left of the count past the bytes is turned as
+          # #emit_shift_right_of_r0 turns it. True when it was done so.
+          def emit_shift_right_from_place(lhs, count)
+            read = place_reader(lhs)
+            return false unless read
+
+            low = @asm.direct(R0)
+            high = @asm.direct(R0 + 2)
+            case count / 8
+            when 1
+              @asm.lda(read.call(1))
+              @asm.sta(low)
+              emit_top_byte_widened(read, high)
+            when 2
+              @asm.lda(read.call(2))
+              @asm.sta(low)
+              emit_sign_word(read, high)
+            else
+              emit_top_byte_widened(read, low)
+              emit_sign_word(read, high)
+            end
+            emit_shift_right_of_r0(count % 8)
+            true
+          end
+
+          # Where the four bytes of +node+ are read, a byte along at a time: a block taking how many
+          # bytes along and giving the operand there, for a variable or a word slot of a list (its
+          # slot found into X first); nil for anything else.
+          def place_reader(node)
+            name = variable_named(node)
+            if name && !folded(node)
+              at = place_of(name)
+              return ->(along) { at_place(at + along) }
+            end
+            return unless node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
+
+            place, _capacity, width = list_placed(node)
+            return unless width == 4
+
+            emit_slot_into_x(place, width, index_halves(node.index))
+            ->(along) { @asm.long_x(place + Runtime::Lists::HEADER + along) }
+          end
+
+          # The number's top byte, with its sign above it, into the word +to+.
+          def emit_top_byte_widened(read, to)
+            done = fresh("top_byte_signed")
+            @asm.lda(read.call(2))
+            @asm.xba # byte 3 down to the low byte
+            @asm.and_a(0x00FF)
+            @asm.cmp(0x0080)
+            @asm.bcc(done)
+            @asm.ora(0xFF00)
+            @asm.label(done)
+            @asm.sta(to)
+          end
+
+          # Every bit of the word +to+ the number's sign: all ones below nought, else nought.
+          def emit_sign_word(read, to)
+            done = fresh("sign_word")
+            @asm.lda(read.call(2))
+            @asm.and_a(0x8000)
+            @asm.beq(done)
+            @asm.lda(0xFFFF)
+            @asm.label(done)
+            @asm.sta(to)
           end
 
           # `&`, `|` and `^`, a half at a time, each half read from where it is: a variable's own
@@ -1718,7 +1968,7 @@ module VBlank
           #
           # The three are the same either way round, so the side that needs nothing worked out, and
           # of two such the written number, is taken as the right.
-          def emit_bitwise_halves(node)
+          def emit_bitwise_halves(node, into = r0_halves)
             first = node.lhs
             left = operand_halves(node.lhs)
             right = operand_halves(node.rhs)
@@ -1726,15 +1976,15 @@ module VBlank
               first = node.rhs
               left, right = right, left
             end
-            return emit_bitwise_worked_out(node) unless right
+            return emit_bitwise_worked_out(node, into) unless right
 
             unless left
               value(first)
-              left = [@asm.direct(R0), @asm.direct(R0 + 2)]
+              left = r0_halves
             end
             sum = IN_PLACE_SUMS.fetch(node.op).last
             2.times do |i|
-              to = @asm.direct(R0 + (2 * i))
+              to = into[i]
               written = written_half(right[i])
               if written && written == HALF_WRITTEN[node.op]
                 store_half(written, to)
@@ -1752,13 +2002,13 @@ module VBlank
           end
 
           # A bitwise sum whose two sides both have to be worked out (#with_both_halves).
-          def emit_bitwise_worked_out(node)
+          def emit_bitwise_worked_out(node, into)
             sum = IN_PLACE_SUMS.fetch(node.op).last
             with_both_halves(node.lhs, node.rhs) do |lefts, halves|
               2.times do |i|
                 @asm.lda(lefts[i])
                 @asm.public_send(sum, halves[i])
-                @asm.sta(@asm.direct(R0 + (2 * i)))
+                @asm.sta(into[i])
               end
             end
           end
