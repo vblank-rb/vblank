@@ -62,12 +62,17 @@ module RubyPS1Emulator
     GET_SYSTEM_DIRECTORY = 9
     SET_PIXEL_FORMAT = 10
     GET_VARIABLE_UPDATE = 17
+    GET_LOG_INTERFACE = 27
     GET_SAVE_DIRECTORY = 31
 
     JOYPAD = 1
     JOYPAD_MASK = 256
 
     attr_reader :frames
+
+    # How many pairs of sound samples the console has made since power-on. The sound chip makes 44100 a
+    # second, one every 768 cycles of the processor, so this is a clock: how long the frames played took.
+    attr_reader :sound_frames
 
     # +exe_path+ is the program. +save_dir+ is where the core is told to keep files; a core made without
     # one keeps them in a folder of its own that is gone with it.
@@ -76,8 +81,10 @@ module RubyPS1Emulator
       @save_dir = save_dir || @dir
       @buttons = Array.new(2) { [] }
       @frames = 0
+      @sound_frames = 0
       @kept = [] # what the core holds a pointer to, kept from the garbage collector
       load_library
+      @quiet_log = quiet_log
       hand_over_callbacks
       @call[:retro_init].call
       load_program(exe_path)
@@ -215,7 +222,10 @@ module RubyPS1Emulator
         retro_set_video_refresh: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
                                                              Fiddle::TYPE_SIZE_T]) { nil },
         retro_set_audio_sample: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]) { nil },
-        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) { |_data, frames| frames },
+        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) do |_data, frames|
+          @sound_frames += frames
+          frames
+        end,
         retro_set_input_poll: closure(Fiddle::TYPE_VOID, []) { nil },
         retro_set_input_state: closure(Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
                                                               Fiddle::TYPE_UINT]) do |port, device, _index, id|
@@ -224,6 +234,12 @@ module RubyPS1Emulator
       }
       @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
     end
+
+    # What the core says as it works (which BIOS it found, which pads are plugged in) goes to a log the
+    # frontend hands it, or to the terminal when there is none. This one hears it and says nothing: the
+    # function takes a level, a format and the format's numbers, and only the first two are named here,
+    # which is all a caller of a C function that takes any number of them needs.
+    def quiet_log = closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP]) { nil }
 
     def closure(result, args, &block) = Fiddle::Closure::BlockCaller.new(result, args, &block)
 
@@ -247,6 +263,7 @@ module RubyPS1Emulator
       when GET_SYSTEM_DIRECTORY then write_pointer(data, kept_string(@dir))
       when GET_SAVE_DIRECTORY then write_pointer(data, kept_string(@save_dir))
       when GET_VARIABLE_UPDATE then write_bool(data, false)
+      when GET_LOG_INTERFACE then write_pointer(data, @quiet_log)
       else false
       end
     rescue StandardError
