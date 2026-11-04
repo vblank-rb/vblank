@@ -140,6 +140,27 @@ class TestDirectConnection < Minitest::Test
     assert_equal %w[second third], [channel.receive_text, channel.receive_text]
   end
 
+  def test_a_wait_with_a_time_limit_waits_that_long_when_nothing_comes
+    _ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    channel.wait_for_text(0.2)
+
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :>=, 0.19
+  end
+
+  def test_a_wait_with_a_time_limit_ends_when_a_line_comes
+    ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs)
+    ours.write("half a li")
+    Thread.new { sleep 0.05; ours.write("ne\n") }
+
+    channel.wait_for_text(5)
+
+    assert_equal "half a line", channel.receive_text
+  end
+
   def test_what_a_machine_sent_before_it_went_is_read_before_the_line_is_closed
     ours, theirs = UNIXSocket.pair
     channel = Network::LineChannel.new(theirs)

@@ -53,15 +53,17 @@ module VBlank
         @ended && @lines.empty?
       end
 
-      # Returns when there is a line to read, or the line is closed.
-      def wait_for_text
-        IO.select([@io]) until pending? || closed?
-      end
-
-      # Returns when there is a line to read, or the line is closed. +seconds+ is the longest to wait in one go,
-      # for a caller that has other things to look at; nil waits for the socket.
+      # Returns when there is a line to read, or the line is closed. +seconds+ is the longest to wait, for a
+      # caller that has other things to look at; nil waits for the socket however long that is. A byte that is
+      # not yet a whole line wakes the select but not the caller: the wait goes on until the deadline.
       def wait_for_text(seconds = nil)
-        IO.select([@io], nil, nil, seconds) until pending? || closed? || seconds
+        deadline = seconds && (Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds)
+        until pending? || closed?
+          left = deadline && (deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC))
+          return if left && left <= 0
+
+          IO.select([@io], nil, nil, left)
+        end
       end
 
       def close
