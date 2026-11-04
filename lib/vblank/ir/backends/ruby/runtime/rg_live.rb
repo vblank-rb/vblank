@@ -67,16 +67,30 @@ def rg_live_state_crc
   Zlib.crc32(text)
 end
 
-# A game played live prints nothing, but while it works out its state number the lines go there.
+# Every variable and list the game keeps, by name, as they stand now: { vars: { name => number },
+# lists: { name => items oldest first } }. It is what a bot reads (Bots::GameView), and it is the same
+# state the number above is made from.
+def rg_live_state
+  @rg_state_snapshot = { vars: {}, lists: {} }
+  rg_game_dump_state
+  snapshot = @rg_state_snapshot
+  @rg_state_snapshot = nil
+  snapshot
+end
+
+# A game played live prints nothing, but while it works out its state (as a number, or by name) the lines
+# go there.
 def rg_driver_dump_variable(name, value)
   @rg_state_text << "var #{name} #{value}\n" if @rg_state_text
+  @rg_state_snapshot[:vars][name.to_s] = value if @rg_state_snapshot
 end
 
 def rg_driver_dump_list(list)
-  return unless @rg_state_text
+  return unless @rg_state_text || @rg_state_snapshot
 
   items = Array.new(list.length) { |i| list.items[rg_list_slot(list, i)] }
-  @rg_state_text << "list #{list.name}\t#{items.join(' ')}\n"
+  @rg_state_text << "list #{list.name}\t#{items.join(' ')}\n" if @rg_state_text
+  @rg_state_snapshot[:lists][list.name.to_s] = items if @rg_state_snapshot
 end
 
 def rg_driver_sound_logged(_line); end

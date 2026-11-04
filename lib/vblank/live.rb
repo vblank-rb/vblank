@@ -15,6 +15,7 @@ require_relative "../vblank"
 require_relative "live/rate" # how fast the play went: passes and frames a second
 require_relative "live/session" # the game played a pass at a time through a device
 require_relative "live/headless" # ...a device with no screen, whose clock a test moves
+require_relative "live/bot_device" # ...and one with no person, whose buttons a bot chooses
 require_relative "live/recording" # ...any device, with the sound handed to its speaker kept
 require_relative "live/window_menu" # the window's menu written down once: its lines, keys and look
 require_relative "live/menu" # ...how it behaves and where it draws each part, with no window of its own

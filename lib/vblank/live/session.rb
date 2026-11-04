@@ -25,6 +25,9 @@ module VBlank
     #                                the player paused; otherwise returns true once they carry on or
     #                                stop, with what was waiting for the speaker thrown away
     #   stop?                        asked once a pass, after the pause
+    #   watch(game, player:, players:, input_delay:)
+    #                                optional: a device with nobody at the controls is told which game it plays
+    #                                (answering `state`), and how the match is set up, before the first pass
     #   notice(words)                a line for the person about the match (a player left), said
     #                                where the device can, in a match over a network only
     #   now                          the time, in seconds, from any start that does not move back
@@ -75,6 +78,7 @@ module VBlank
       def play(device)
         begin_play(device)
         @network&.begin_match
+        watch_game_for_device
         stopped_on = @game.play(self, match_seed: @network&.seed, local_player: @network&.player)
         rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
                         stopped_itself: !stopped_on.nil?)
@@ -131,6 +135,14 @@ module VBlank
       end
 
       private
+
+      # A device with nobody at the controls (a bot) reads the game it plays: it is told which game, and how
+      # the match is set up, before the first pass.
+      def watch_game_for_device
+        return unless @network && @device.respond_to?(:watch)
+
+        @device.watch(@game, player: @network.player, players: @network.settings.players, input_delay: @network.input_delay)
+      end
 
       # What happened in the match since the device was last told (a player left), said in a line a
       # person reads: the device shows it where it can (the window's title), and keeps it where it cannot.

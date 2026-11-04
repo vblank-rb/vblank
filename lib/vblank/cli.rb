@@ -281,6 +281,9 @@ module VBlank
                                        YJIT. With --tape or --script, nobody is
                                        at the controls.
 
+      Play with others:
+        vblank bot BOT_FILE          Join a match as a player that is a Ruby script.
+
       Check a game:
         vblank profile GAME_FILE     Run the game and report what it costs.
         vblank compare FIRST SECOND  Play two games on the same presses and say
@@ -919,6 +922,94 @@ module VBlank
       say_stopped_itself(game, rate) if rate.stopped_itself?
     end
 
+    desc "bot BOT_FILE", "Join a match as a player that is a Ruby script"
+    help_page "bot", <<~TEXT
+      Usage: vblank bot BOT_FILE --join ADDRESS [options]
+             vblank bot TAPE_FILE --game GAME_FILE --join ADDRESS [options]
+             vblank bot BOT_FILE --host [PORT] [options]
+             vblank bot BOT_FILE --relay [URL] --join CODE [options]
+
+      Join a match as a bot: a player with no window and no person. The bot is a
+      Ruby script. It runs its own copy of the game, like every computer in a
+      match, reads that copy, and chooses the buttons of its player on each
+      pass. Its only effect on the game is its buttons.
+
+      BOT_FILE says one bot, and the game it plays:
+
+        VBlank.bot "chaser", plays: "wanderers.rb" do |game|
+          [:left] if game.var(:__obj2_x) > game.var(:__obj1_x)
+        end
+
+      The block runs once for each pass. It is given the game, and answers the
+      buttons to hold: a list of button names, one name, or nothing. `game.var(:name)`
+      is a variable of the game, `game.list(:name)` a list, `game.player` which
+      player the bot is, and `game.pass` the pass that has just ended. The bot
+      cannot change the game. A button that the bot answers is used a few passes
+      later, on every computer at once (--input-delay on the host), so a bot that
+      chases is a little behind, as a person is.
+
+      A bot can play a tape instead: give a .tape file of passes (one that a match kept),
+      and --game. The bot presses the buttons of one player on the tape, --tape-player N,
+      on the same passes. One bot for each player on a tape gives the match the tape was
+      made of.
+
+      `plays:` is the path of the game file, from the folder of BOT_FILE. Instead, you
+      can give the game with --game. The bot and the other players must run the same
+      game, built for the same console.
+
+      A match is made with --host, --join and --relay, as with vblank run. The bot
+      plays with no window and as fast as the match lets it. It stops when
+      the match stops, or after --pictures pictures.
+
+      Examples:
+        vblank bot chaser.rb --join 192.168.1.5:7777
+        vblank bot chaser.rb --relay --join K7QF   through a relay, to room K7QF
+        vblank bot chaser.rb --host --players 2    host a match of the bot and one person
+
+      Options:
+        --game FILE              The game file the bot plays. Default: `plays:` in
+                                 BOT_FILE.
+        --tape-player N          With a tape, the player whose presses the bot presses.
+                                 Default: 1.
+        --console NAME           #{CONSOLE_CHOICES}: which console to play the
+                                 game as. Default: the first console in consoles:.
+        --host [PORT]            Host a match, and listen on PORT. See vblank run.
+        --join ADDRESS           Join the match at ADDRESS, or with --relay, the room
+                                 with this code.
+        --relay [URL]            Meet through a relay. See vblank run.
+        --players N              With --host, how many players the match has.
+        --input-delay PASSES     With --host, how many passes a press waits.
+        --pictures N             Stop after N passes.
+        #{SET}
+    TEXT
+    option :game, banner: "FILE"
+    option :tape_player, type: :numeric, banner: "N"
+    option :console, banner: "NAME", enum: CONSOLES
+    option :host, banner: "PORT", lazy_default: VBlank::Network::DirectPlay::DEFAULT_PORT.to_s
+    option :join, banner: "ADDRESS"
+    option :relay, banner: "URL", lazy_default: ""
+    option :players, type: :numeric, banner: "N"
+    option :input_delay, type: :numeric, banner: "PASSES"
+    option :pictures, type: :numeric, banner: "N"
+    option :set, type: :array, banner: "NAME=VALUE", default: []
+    def bot(bot_file)
+      refuse_bot_without_match!
+      refuse_mismatched_match_options!
+      bot = load_bot(bot_file)
+      game_file = game_file_of_bot(bot, bot_file)
+      game = load_game(game_file)
+      program = program_to_run(game)
+      require_relative "live"
+      network = network_to_play(game_file, game, program)
+      device = VBlank::Live::BotDevice.new(bot, passes: options[:pictures], on_notice: ->(words) { say words })
+      begin
+        live_session(game, program, network).play(device)
+      rescue *MATCH_FAILURES => e
+        raise Thor::Error, e.message
+      end
+      say_match_summary(network, events_said: true)
+    end
+
     desc "inspect ROM_FILE", "Print a .gba's header and first instructions"
     help_page "inspect", <<~TEXT
       Usage: vblank inspect ROM_FILE
@@ -1326,14 +1417,56 @@ module VBlank
     def play_match_without_window(session, network)
       keys = options[:keys].map(&:to_sym)
       device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words })
-      session.play(device).tap { say_match_summary(network) }
+      session.play(device).tap { say_match_summary(network, events_said: true) }
     rescue *MATCH_FAILURES => e
       raise Thor::Error, e.message
     end
 
-    def say_match_summary(network)
-      network.events.each { |event| say event.words } if options[:window] != false
+    # +events_said+ is true where the events were said as they came, and need no telling again.
+    def say_match_summary(network, events_said: false)
+      network.events.each { |event| say event.words } unless events_said
       say "The match is over. The computers agreed on every checkpoint."
+    end
+
+    # A bot plays in a match, so it needs a way into one.
+    def refuse_bot_without_match!
+      return if options[:host] || options[:join]
+
+      raise Thor::Error, "A bot plays in a match, and this command makes none. Add --join ADDRESS to join one, " \
+                         "or --host to host one."
+    end
+
+    # The one bot BOT_FILE says. A file that says none, or more than one, is a friendly error.
+    def load_bot(bot_file)
+      path = File.expand_path(bot_file)
+      raise Thor::Error, "I cannot find the bot file #{bot_file}." unless File.file?(path)
+      return tape_bot(path) if File.extname(path) == ".tape"
+
+      bots = VBlank::Bots::Bot.collecting { load path }
+      return bots.first if bots.one?
+
+      raise Thor::Error, "#{bot_file} says #{bots.size} bots, and a bot file says one. To fix this, " \
+                         "write one `VBlank.bot \"name\", plays: \"game.rb\" do |game| ... end` in it."
+    rescue VBlank::BuildError => e
+      raise Thor::Error, e.message
+    end
+
+    # A bot that presses one player's buttons from a tape of passes.
+    def tape_bot(path)
+      tape = VBlank::Playthroughs::Tape.read(path)
+      VBlank::Bots::TapeBot.new(tape, player: options[:tape_player] || 1)
+    rescue ArgumentError => e
+      raise Thor::Error, e.message
+    end
+
+    # The game file a bot plays: --game, else the bot's `plays:` found beside the bot's own file.
+    def game_file_of_bot(bot, bot_file)
+      return options[:game] if options[:game]
+      return File.expand_path(bot.plays, File.dirname(File.expand_path(bot_file))) if bot.plays
+      raise Thor::Error, "A tape does not say which game it is for. To fix this, give the game with --game FILE." if bot.is_a?(VBlank::Bots::TapeBot)
+
+      raise Thor::Error, "The bot #{bot.name.inspect} does not say which game it plays. To fix this, add " \
+                         "`plays: \"game.rb\"` to `VBlank.bot`, or give the game with --game FILE."
     end
 
     def write_recorded_sound(recording)

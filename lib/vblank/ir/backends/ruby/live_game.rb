@@ -48,6 +48,10 @@ module VBlank
           # variable and list it keeps, written out the way the windowless run prints them. Machines
           # that run the same game on the same buttons have the same number on the same pass.
           def state_crc = @game.rg_live_state_crc
+
+          # Every variable and list of the game by name, as they stand now: `{ vars: { "x" => 3 }, lists: { ... } }`.
+          # The keys are the game's own names, so a Hash is what answers.
+          def state = @game.rg_live_state
         end
       end
     end

@@ -24,8 +24,8 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Build / screen — `.claude/dsl/screen.md`
 
-- `VBlank.game "NAME", consoles: %i[gba]` — the game and the consoles it is for (`%i[gba gbc]` for the Color too); `vblank build` makes a cartridge for each. Its code is worked out from the name. `stack_room:`; `sprite_piece_size: { gbc: [8, 16] }` (taller sprite pieces); `menu: false` (no menu in a computer's window); `players: 4` (input).
-- `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default. `backdrop: :list` (`backdrop_place:`) — a backdrop that fades with a list `recolor` changes.
+- `VBlank.game "NAME", consoles: %i[gba]` — the game and the consoles it is for (`%i[gba gbc]` for the Color too); `vblank build` makes a cartridge for each. `stack_room:`; `sprite_piece_size: { gbc: [8, 16] }` (taller sprite pieces); `menu: false` (no menu in a computer's window); `players: 4` (input).
+- `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default. `backdrop: :list` (`backdrop_place:`) — a backdrop that fades with a list.
 - `screen_width` / `screen_height` — the screen the game is being built for, to lay it out from.
 - `border` — round a Color game on the Advance (`:color_screen`).
 - `setting :floors, 60` — a value handed to one build (`settings:`, `--set`).
@@ -49,11 +49,11 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 - `image :name, "#" => :red do … end` — ASCII art, `data:`, `from: "file.png"`, or `from: list` painted at run time.
 - `sprite :name, at: [x, y]` → `Sprite` (software on bitmap, hardware on tiled): moving, facing, frames, hitbox, turning. `over_picture: true` on bitmap: the console's own, in front of all the picture.
 - `blit :name, x, y` — a picture at a run-time place, clipped.
-- `mirror(:pic)` / `upside_down(:pic)` — the picture turned.
+- `mirror(:pic)` / `upside_down(:pic)` — turned.
 - `colors :hurt, [...]` + `draw_with`; `recolor :slot, :goblin` at run time; `colors_in_use` (a hint).
 - `color_walk :city, from: :black` → the lists of a console game's fade, for `draw_with` or `recolor` with `showing:`.
 - `picture_groups :rooms, {…}` + `show` — sprite pictures by room, so only the rooms up take sprite memory.
-- `sprite_tiles :ball, count: 32, colors:` → `SpriteTileSet`; `image :spin0, tiles_from: :ball, pieces: [[dx, dy, tile], …]` — poses drawn from one set of tiles; `set.copy_from :pic, at:, count:, to:` loads tiles from the cartridge.
+- `sprite_tiles :ball, count: 32, colors:` → `SpriteTileSet`; `image :spin0, tiles_from: :ball, pieces: [[dx, dy, tile], …]` — poses drawn from one set of tiles; `set.copy_from :pic, at:, count:, to:` loads tiles.
 - `hide_sprites` — no sprite (tiled text too) on the next frame drawn. Tiled screens only.
 - `rgb r, g, b` (0–31), `rgb8` (0–255), `color value` — a 15-bit colour.
 
@@ -110,7 +110,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Input — `.claude/dsl/input.md`
 
 - `held(:left)`, `pressed(:start)` (`:any`); low-level `if_held`, `if_pressed`. Buttons `a b select start right left up down r l`, and `x y` on the Super Nintendo.
-- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `most_players` → most this build seats; `drawing_for_local_player { |me| … }` → draw what only this player sees; `players_connected` → how many are connected now. `vblank run --host` / `--join ADDRESS`: a match.
+- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game` (by console too); `most_players` → most this build seats; `drawing_for_local_player { |me| … }` → draw what only this player sees; `players_connected` → how many are connected now. `vblank run --host` / `--join`: a match.
 - `rumble frames: 12, pattern: "##..##.."` — shake the hands, on a cartridge with a motor (the Color's).
 
 ## Menus — `.claude/dsl/menus.md`
@@ -149,7 +149,8 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Playing a finished game with nobody at the controls — `.claude/dsl/playthroughs.md`
 
 - `VBlank.playthrough "name" do … end` — scripted presses on a cartridge; `vblank compare`.
-- `vblank run game.rb --script s.rb` / `--tape t.tape` — the one command that plays a game: a person without either, nobody with one; as Ruby with YJIT unless `--on js|native|logic|interpreter`. No cartridge: `--write-mgba-script`, `--write-bk2` reach a console.
+- `vblank run game.rb --script s.rb` / `--tape t.tape` — the one command that plays a game: a person without either, nobody with one; as Ruby unless `--on js|native|logic|interpreter`. No cartridge: `--write-mgba-script`, `--write-bk2` reach a console.
+- `VBlank.bot` + `vblank bot FILE --join ADDRESS` — a script plays in a match.
 
 ## The Game Boy Advance — `.claude/dsl/game-boy-advance.md`
 
