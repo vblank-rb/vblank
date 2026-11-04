@@ -25,7 +25,7 @@ class TestBlocks < Minitest::Test
   end
 
   def test_the_interpreter_refuses_a_program_with_two_places
-    error = assert_raises(Reference::ProgramError) { game_player.run(two_places) }
+    error = assert_raises(Reference::ProgramError) { Reference.new.run(two_places) }
 
     assert_match(/one place/, error.message)
     assert_match(/under :ui/, error.message)

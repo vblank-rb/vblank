@@ -12,6 +12,41 @@ module VBlank
       end
     end
 
+    # A GAME ITS CONSOLE'S BUILD REFUSES IS NOT PLAYED on a run that plays games built for another
+    # machine. A build checks a game with the guardrails before it makes anything (VBlank.build_rom):
+    # a sprite too many on a row, more colour lists than the console holds, a recording looped on a
+    # console that cannot loop one, a tiled screen with nothing on it. A checked run plays a test's
+    # program without that build, so without this it would play, and pass, a game the console's own
+    # cartridge never runs. The checks are the ones every build runs (Guardrails.default_checks), on
+    # the program as the run plays it, so they ask the run's console, and a refusal is the build's own
+    # Guardrails::ValidationError in the build's own words. What a build learns from running the
+    # game's block (a test that is never used, an `estimate:`) is not in a program, so it is not asked.
+    #
+    # The interpreter's own run does not ask: it is the answer key for a game a console plays, and a
+    # game its console refuses is not one, so there is nothing to compare.
+    #
+    # One program is played without them: the conformance fixture, which holds every kind of step
+    # the IR has in one program so that each lowering is seen to write every one. No build accepts
+    # it (a light beside a painted screen, a fade held to a box beside a light), and it is no game,
+    # so its test plays it inside ::without_checks.
+    module BuildChecks
+      LEFT_OUT = :vblank_build_checks_left_out
+
+      def self.refuse_unbuildable!(program)
+        return if Thread.current[LEFT_OUT] || program.kind != :program
+
+        IR::Guardrails::Validator.new.run(program, autofix: false).raise_on_error!
+      end
+
+      # The block, with no program it plays checked as a build checks one.
+      def self.without_checks
+        Thread.current[LEFT_OUT] = true
+        yield
+      ensure
+        Thread.current[LEFT_OUT] = nil
+      end
+    end
+
     # A runtime's player plays a program that names no console as one for the run's console
     # (Testing.console): the Advance, or whichever CONSOLE names. The runtime is built for that
     # console's screen and clock, and the interpreter it is checked against reads the same one.
@@ -28,6 +63,7 @@ module VBlank
 
       def run(program, max_steps: nil, frames: nil)
         played = self.class.program_played(program)
+        BuildChecks.refuse_unbuildable!(played)
         refuse_recordings_without_clock!(played)
         super(played, max_steps: max_steps, frames: frames)
       end
@@ -121,6 +157,7 @@ module VBlank
 
       def run(program, max_steps: nil, frames: nil)
         program = self.class.program_played(program)
+        BuildChecks.refuse_unbuildable!(program)
         super
       rescue IR::Backends::RunComparison::CannotAnswer => e
         raise MissingFeature, cannot_answer_reason(e)

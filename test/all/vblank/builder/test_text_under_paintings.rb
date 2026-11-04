@@ -108,18 +108,18 @@ class TestTextUnderPaintings < Minitest::Test
   end
 
   # The same text on every pass, held to a narrower area after the first: a console that passes
-  # over a text the last pass drew too must see that its area changed.
+  # over a text the last pass drew too must see that its area changed. The text is written in the
+  # area rather than called from a routine there, which every build refuses (Checks::CallInsideArea).
   def test_text_in_an_area_that_narrows_is_held_to_it
     shown = screen_after(4) do
       screen :bitmap
-      func(:words) { draw_text "PRESS START", 16, 100, :white }
       n = 0
       game_loop do
         clear_screen :black
         if n == 0
-          call :words
+          draw_text "PRESS START", 16, 100, :white
         else
-          inside(0, 0, 40, screen_height) { call :words }
+          inside(0, 0, 40, screen_height) { draw_text "PRESS START", 16, 100, :white }
         end
         n += 1
       end

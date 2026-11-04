@@ -133,8 +133,8 @@ class TestNativeSaves < Minitest::Test
   # ones a save job keeps for itself among them — and at the end if the two chips do not hold the
   # same bytes. What each test asserts on top is that the run did what its name says.
 
-  private def program_with(save_memory, &block)
-    builder = Builder.new(options: VBlank::Cartridge::Options.new(save_memory: save_memory))
+  private def program_with(save_memory, console: nil, &block)
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(save_memory: save_memory, console: console))
     builder.instance_eval(&block)
     builder.finalize_program
     builder.program
@@ -144,8 +144,11 @@ class TestNativeSaves < Minitest::Test
   # file `slot` names: A saves the hearts and the name into it, B erases it, L loads it, R copies
   # file 0 over it, SELECT starts a new game, and UP moves the slot on. RIGHT saves 99 hearts.
   # What each file holds, and what state it is in, is read every frame without loading it.
+  #
+  # It is an Advance game, since the Advance has the buttons it reads: a run playing as another
+  # console refuses a game that reads one that console lacks, as the console's build does.
   private def three_files(save_memory: nil)
-    program_with(save_memory) do
+    program_with(save_memory, console: :gba) do
       hearts = 3
       name = list :name, capacity: 3, width: :byte
       slot = 0
@@ -318,9 +321,10 @@ class TestNativeSaves < Minitest::Test
   # 9 and L saves 11. The save that is cut is the THIRD, so the half it wipes held a save of its
   # own — and one long enough to reach into the second half of its block, which is the part
   # half a wipe leaves as it was. Wherever the power goes off, the game comes back with the
-  # second save or the third.
+  # second save or the third. It is an Advance game: a Color has no room for the trail, and
+  # neither a Color nor a Genesis has L.
   def test_a_save_on_flash_cut_off_keeps_the_last_good_one
-    program = program_with(64) do
+    program = program_with(64, console: :gba) do
       hearts = 3
       trail = list :trail, capacity: 2100, width: :byte
       repeat(2100) { trail.push 5 }

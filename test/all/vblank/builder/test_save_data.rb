@@ -28,11 +28,18 @@ module SaveDataGames
     builder.program
   end
 
+  # The buttons these games give a job before starting a new game.
+  BUTTONS_WITH_JOBS = %i[a b start up down left right].freeze
+
+  # THE BUTTON THAT STARTS A NEW GAME: SELECT, or C on a Genesis pad, which has no SELECT. Every
+  # other button already has a job, and a game cannot read a button its console lacks.
+  private def new_game_button = (VBlank::Console.described(game_console).buttons - BUTTONS_WITH_JOBS).first
+
   # A game with one save: A saves, B changes the hearts without saving, L loads. It loads
   # what is saved as it boots, and keeps whether the copy is good in a variable a test reads.
   private def one_save
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hearts = var :hearts, 3
       items = list :items, capacity: 4, width: :byte
       was_good = var :was_good, 0
@@ -57,11 +64,12 @@ module SaveDataGames
 
   # THREE SAVE FILES, picked by a number the game works out. Each button does one thing to the
   # file `slot` names: A saves the hearts into it, B erases it, L loads it, R copies file 0
-  # over it, SELECT starts a new game (the kept things back as they were declared), and UP
-  # and DOWN move the slot. What each file holds is read without loading it.
+  # over it, SELECT (new_game_button) starts a new game (the kept things back as they were
+  # declared), and UP and DOWN move the slot. What each file holds is read without loading it.
   private def three_files
+    new_game = new_game_button
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hearts = var :hearts, 3
       name = list :name, capacity: 3, width: :byte
       slot = var :slot, 0
@@ -80,7 +88,7 @@ module SaveDataGames
         files[slot].erase if pressed(:b)
         files[slot].load if pressed(:start)
         files.copy 0, to: slot if pressed(:left)
-        files.reset if pressed(:select)
+        files.reset if pressed(new_game)
         if pressed(:right)
           hearts = 99
           files[slot].save
@@ -135,8 +143,9 @@ module SaveDataGames
   # UP churns the numbers, A saves, B rolls into `rolled`, L loads. Rolled once after the save,
   # churned again, loaded, rolled again: the two rolls are the same number.
   private def rolling_after_a_load
+    new_game = new_game_button
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hearts = var :hearts, 3
       rolled = var :rolled, 0
       first = var :first, 0
@@ -149,7 +158,7 @@ module SaveDataGames
           first = rolled if first == 0
         end
         files[0].load if pressed(:start)
-        files.reset if pressed(:select)
+        files.reset if pressed(new_game)
       end
     end
   end
@@ -163,8 +172,9 @@ module SaveDataGames
   # `signature` sums each live guard by its slot, so two pools read the same only when every
   # guard is in the same slot with the same numbers.
   private def guards_saved(keeping: :pool)
+    new_game = new_game_button
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       guards = pool :guard, x: 0, hp: 0, capacity: 4
       signature = var :signature, 0
       files = save_data(:file)
@@ -182,7 +192,7 @@ module SaveDataGames
         end
         files[0].load if pressed(:start)
         guards.spawn(x: 4, hp: 8) if pressed(:left)
-        files.reset if pressed(:select)
+        files.reset if pressed(new_game)
         signature = 0
         guards.each { |g| signature += (g.index + 1) * ((g.x * 100) + g.hp) }
       end
@@ -222,8 +232,9 @@ module SaveDataGames
   # of its own, whose body is built after the screen's. The buttons are three_files' buttons,
   # so the two games are played the same way and must come out the same.
   private def file_screen_first
+    new_game = new_game_button
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       files = save_data :file, copies: 3
       slot = var :slot, 0
       shown = Array.new(3) { |n| var :"shown#{n}", 0 }
@@ -241,7 +252,7 @@ module SaveDataGames
         files[slot].erase if pressed(:b)
         files[slot].load if pressed(:start)
         files.copy 0, to: slot if pressed(:left)
-        files.reset if pressed(:select)
+        files.reset if pressed(new_game)
         3.times do |n|
           shown[n] = files[n].peek(:hearts)
           lengths[n] = files[n].peek(:name).length
@@ -272,7 +283,7 @@ module SaveDataGames
   # B scrambles the flags, L loads file 2 back.
   private def full_size
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       flags = list :flags, capacity: 1196, width: :byte
       hearts = var :hearts, 3
       speed = var :speed, 1
@@ -382,7 +393,7 @@ module SaveDataGames
   # into the settings. What each build finds is read without loading.
   private def version(settings: %i[speed], order: %i[settings file], copies: 2, extra: {})
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       state = { speed: var(:speed, 1), volume: var(:volume, 5), hearts: var(:hearts, 3) }
       extra.each { |name, capacity| state[name] = list(name, capacity: capacity, width: :byte) }
       declare = {
@@ -425,7 +436,7 @@ module SaveDataGames
 
   private def records_named_like_the_framework
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       records = NAMED_LIKE_THE_FRAMEWORK.each_with_index.map do |name, n|
         kept = var :"kept_#{name}", 0
         [kept, save_data(name) { keep kept }, 10 + n]
@@ -453,7 +464,7 @@ module SaveDataGames
   # A record of a variable and a list of half-words, saved with A.
   private def header_and_body
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hearts = var :hearts, 0
       items = list :items, capacity: 3, width: :half
       file = save_data(:file) { keep hearts, items }
@@ -555,7 +566,7 @@ class TestSaveData < Minitest::Test
   end
 
   def test_reset_puts_the_kept_things_back_as_they_were_declared
-    run = files_after(SaveImage.new, :a, :select)
+    run = files_after(SaveImage.new, :a, new_game_button)
 
     assert_equal 3, run[:hearts]
     assert_empty run.list(:name)
@@ -564,16 +575,17 @@ class TestSaveData < Minitest::Test
   # A kept list that starts full (`full_of:`) is full again after a reset, as power-on left it,
   # not empty: A writes into it, SELECT starts a new game.
   def test_reset_fills_a_kept_list_that_starts_full_again
+    new_game = new_game_button
     game = built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       flags = list :flags, capacity: 3, width: :byte, full_of: 1
       files = save_data(:files) { keep flags }
       game_loop do
         flags[0] = 9 if pressed(:a)
-        files.reset if pressed(:select)
+        files.reset if pressed(new_game)
       end
     end
-    run = play(game, SaveImage.new, pressing: presses(:a, :select), frames: 8)
+    run = play(game, SaveImage.new, pressing: presses(:a, new_game), frames: 8)
 
     assert_equal [1, 1, 1], run.list(:flags)
   end
@@ -616,7 +628,7 @@ class TestSaveData < Minitest::Test
 
   # A new game is not a replay: putting the kept things back leaves the numbers rolling on.
   def test_a_reset_leaves_the_random_numbers_rolling_on
-    run = play(rolling_after_a_load, SaveImage.new, pressing: presses(:b, :select, :b), frames: 10)
+    run = play(rolling_after_a_load, SaveImage.new, pressing: presses(:b, new_game_button, :b), frames: 10)
     refute_equal run[:first], run[:rolled]
   end
 
@@ -640,7 +652,7 @@ class TestSaveData < Minitest::Test
 
   # A new game empties the pool, and the pool still works afterwards.
   def test_a_reset_empties_a_kept_pool_and_it_still_spawns
-    run = guards_after(:a, :select, :left)
+    run = guards_after(:a, new_game_button, :left)
     assert_equal [4], run.pool(:guard, :x).compact
     assert_equal [8], run.pool(:guard, :hp).compact
   end
@@ -700,7 +712,7 @@ class TestSaveData < Minitest::Test
 
     assert_equal [10, 0, 10], (0..2).map { |n| back[:"shown#{n}"] }
     assert_equal [2, 1, 2], (0..2).map { |n| back[:"state#{n}"] }
-    assert_equal 3, screen_first_after(SaveImage.new, :a, :select)[:hearts]
+    assert_equal 3, screen_first_after(SaveImage.new, :a, new_game_button)[:hearts]
   end
 
   # Keeping the same things in the same order, a record filled in later is the same record as
@@ -718,7 +730,7 @@ class TestSaveData < Minitest::Test
   def test_a_save_says_it_worked
     run = files_after(SaveImage.new, :a)
     outcome = built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hearts = var :hearts, 3
       files = save_data(:file) { keep hearts }
       worked = var :worked, 0

@@ -18,7 +18,7 @@ module PoolFieldNamesGames
   private def tiled_program(&game)
     builder = VBlank::Builder.new
     builder.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       image :one, width: 8, height: 8, data: Array.new(64, :red), colors: OWN
       image :two, width: 8, height: 8, data: Array.new(64, :green), colors: OWN
       colors :hurt, HURT

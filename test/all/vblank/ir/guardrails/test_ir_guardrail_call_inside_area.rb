@@ -45,10 +45,11 @@ class TestIRGuardrailCallInsideArea < Minitest::Test
 
   # --- Proof that the footgun is real ---
 
-  # The player clips the routine's fill to the area, wherever the routine was built; the
-  # Advance's cartridge is held to the other half of the proof in the file named above.
-  def test_the_player_clips_a_routine_called_from_inside_an_area
-    interp = game_player.run(game_with_call_that_draws, frames: 2)
+  # The interpreter clips the routine's fill to the area, wherever the routine was built; the
+  # Advance's cartridge is held to the other half of the proof in the file named above. Every
+  # build refuses the game, so no run plays it.
+  def test_the_interpreter_clips_a_routine_called_from_inside_an_area
+    interp = Reference.new.run(game_with_call_that_draws, frames: 2)
     assert_equal 0, interp.screen.pixel(120, 50),
                  "the interpreter clips the routine's fill to the area"
   end

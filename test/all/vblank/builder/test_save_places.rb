@@ -20,7 +20,7 @@ class TestSavePlaces < Minitest::Test
   # The game: each record keeps one variable, or, given +bytes+, a list that many bytes long.
   private def game(records, save_memory: nil)
     built(save_memory: save_memory) do
-      screen :tiled
+      screen :tiled, backdrop: :black
       records.each do |name, spec|
         kept = spec[:bytes] ? list(:"#{name}_list", capacity: spec[:bytes], width: :byte) : var(:"#{name}_var", 0)
         save_data(name, copies: spec.fetch(:copies, 1)) { keep kept }

@@ -19,7 +19,7 @@ module SavePlacesGames
   # The game: each record keeps one variable, or, given +bytes+, a list that many bytes long.
   private def game(records, save_memory: nil)
     built(save_memory: save_memory) do
-      screen :tiled
+      screen :tiled, backdrop: :black
       records.each do |name, spec|
         kept = spec[:bytes] ? list(:"#{name}_list", capacity: spec[:bytes], width: :byte) : var(:"#{name}_var", 0)
         save_data(name, copies: spec.fetch(:copies, 1)) { keep kept }
@@ -176,7 +176,7 @@ class TestSavePlacesOnTheAdvance < Minitest::Test
   # first time) into the second copy, B erases it, and power-on loads it.
   private def flash_game
     built(save_memory: 64) do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hearts = var :hearts, 0
       files = save_data(:file, copies: 2) { keep hearts }
       files[1].load

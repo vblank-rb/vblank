@@ -22,7 +22,7 @@ module PartGames
   # before and after it is kept between games.
   private def game_that_starts_again
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       best = var :best, 0
       part :play
       score = var :score, 0
@@ -106,7 +106,7 @@ class TestParts < Minitest::Test
   # A save_var keeps its number between games even where a part declares it.
   def test_start_over_leaves_a_save_var_in_the_part_alone
     run = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       part :play
       best = save_var :best, 0
       score = var :score, 0
@@ -143,7 +143,7 @@ class TestParts < Minitest::Test
   # With a block, the part is what the block declares, and nothing after it.
   def test_a_part_given_a_block_ends_with_the_block
     run = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       part(:play) { var :score, 0 }
       kept = var :kept, 0
       score = var :score, 0
@@ -162,7 +162,7 @@ class TestParts < Minitest::Test
   # A scene names a part too: what its body declares.
   def test_start_over_takes_the_name_of_a_scene
     run = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       mode = var :mode, :level
       scene :level do
         steps = var :steps, 4
@@ -178,7 +178,7 @@ class TestParts < Minitest::Test
   # A routine written while a part is in force is in the part, though its body is built later.
   def test_a_func_and_a_scene_written_after_part_are_in_it
     run = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       mode = var :mode, :level
       part :play
       func(:tally) do
@@ -202,7 +202,7 @@ class TestParts < Minitest::Test
   # A routine written inside a scene is the scene's, as its body's own lines are.
   def test_a_func_written_inside_a_scene_is_in_the_scene
     run = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       mode = var :mode, :level
       scene :level do
         func(:tally) do
@@ -221,7 +221,7 @@ class TestParts < Minitest::Test
   # `after` counts again from the new game, so it fires in the second game too.
   def test_after_fires_again_in_the_next_game
     run = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       fired = var :fired, 0
       part :play
       game_loop do
@@ -236,7 +236,7 @@ class TestParts < Minitest::Test
   # A job of `each_pass` that the last game started is stopped in the new one.
   def test_a_running_each_pass_job_stops_in_the_next_game
     run = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       ticks = var :ticks, 0
       part :play
       each_pass(:count) { |_job| ticks += 1 }
@@ -247,7 +247,7 @@ class TestParts < Minitest::Test
     end, :a, :b)
     stopped = run[:ticks]
     longer = played(built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       ticks = var :ticks, 0
       part :play
       each_pass(:count) { |_job| ticks += 1 }

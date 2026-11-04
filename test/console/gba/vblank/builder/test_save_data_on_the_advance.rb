@@ -71,7 +71,7 @@ module SaveDataOnTheAdvanceGames
   # into the settings. What each build finds is read without loading.
   private def version(settings: %i[speed], order: %i[settings file], copies: 2, extra: {})
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       state = { speed: var(:speed, 1), volume: var(:volume, 5), hearts: var(:hearts, 3) }
       state = state.merge(extra.to_h { |name, capacity| [name, list(name, capacity: capacity, width: :byte)] })
       declare = {
@@ -106,7 +106,7 @@ module SaveDataOnTheAdvanceGames
   # where the old one was.
   private def journal_kept_as(record)
     built do
-      screen :tiled
+      screen :tiled, backdrop: :black
       speed = var :speed, 1
       journal = list :journal, capacity: 12_000, width: :byte
       save_data(:settings) { keep speed }

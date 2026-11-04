@@ -27,7 +27,7 @@ class TestDirectSound < Minitest::Test
   def test_a_recording_started_and_stopped_is_logged_on_its_passes
     b = Builder.new
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       hello = sample :hello, pcm: ([80] * 16 + [-80] * 16) * 100
       count = var :count, 0
       game_loop do
@@ -49,7 +49,7 @@ class TestDirectSound < Minitest::Test
   def test_recordings_played_together_sound_as_many_as_the_console_holds
     b = Builder.new
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       clips = %i[one two three].map { |name| sample name, pcm: ([80] * 16 + [-80] * 16) * 100 }
       count = var :count, 0
       game_loop do
@@ -69,7 +69,7 @@ class TestDirectSound < Minitest::Test
   def test_a_recording_over_a_songs_wave_part_leaves_the_song_playing
     b = Builder.new
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       enable_sound
       song :pad do
         tempo 240

@@ -93,9 +93,18 @@ class TestIRGuardrailPosesWithDifferentColors < Minitest::Test
   # The interpreter is the answer key a game's own tests run against, so it refuses the
   # same programs in the same words rather than drawing what the console cannot.
   def test_the_interpreter_refuses_in_the_same_words
-    error = assert_raises(Reference::ProgramError) { game_player.run(pool_game) }
+    error = assert_raises(Reference::ProgramError) { Reference.new.run(pool_game) }
 
     assert_equal refusal(pool_game), error.message
+  end
+
+  # Every run's player refuses it too, in the same words: the interpreter as it plays, and a run
+  # that plays the game built for another machine before it builds anything, as the build does
+  # (Testing::BuildChecks).
+  def test_every_run_refuses_in_the_same_words
+    error = assert_raises(Reference::ProgramError, VBlank::IR::Guardrails::ValidationError) { game_player.run(pool_game) }
+
+    assert_includes error.message, refusal(pool_game)
   end
 
   def test_the_lowering_refuses_in_the_same_words

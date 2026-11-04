@@ -12,8 +12,9 @@ class TestCrossBackendConformanceOnTheAdvance < Minitest::Test
   # The lowering this run is for plays the fixture too: on a native run the game built as C, on a
   # JavaScript run the game built as JavaScript, each checked against the interpreter on every
   # frame. The fixture's console-only kinds sit in a routine nothing calls, so a lowering that
-  # cannot write them still has nothing to refuse.
+  # cannot write them still has nothing to refuse. No build accepts the fixture, which is every
+  # kind at once rather than a game, so the run plays it without a build's checks.
   def test_the_lowering_under_test_plays_the_whole_fixture
-    game_player.run(ConformanceFixture.program, max_steps: 10_000)
+    VBlank::Testing::BuildChecks.without_checks { game_player.run(ConformanceFixture.program, max_steps: 10_000) }
   end
 end

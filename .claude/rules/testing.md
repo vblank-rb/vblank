@@ -73,8 +73,12 @@ of the consoles that can (`test/console/<console>/`), its game and tests kept on
 files include (`test/clock_tests.rb`). The one lowering skip there is: **a part the run's build does
 not make yet** (the player raises that itself, naming the part, or `skip_on_gbc "why"` and its
 siblings), and only while the work to make it is tracked; the skip names the part, never the
-tracker. `skip_on_console` is what is left of the old rule, and each use of it is a test to move.
-Any other skip fails the run (`Testing::SkipsByReason`). Reading
+tracker. A run playing as a console refuses a game that console's build refuses before it plays
+(`Testing::BuildChecks`: the guardrails a build runs, so the console's limits and its answers), with
+the build's `Guardrails::ValidationError`, so a test in `test/all/` of what one console cannot do
+fails on that console's runs rather than passing unseen. A test of the refusal itself asserts it
+there: its class and a key phrase. A test that shows what a refused game would do plays it on the
+interpreter by name (`Reference.new.run`), since no run's player plays it. Any other skip fails the run (`Testing::SkipsByReason`). Reading
 the Advance's cartridge (`require_emulator!`, `assert_emulator_loads_rom`) outside the gba run
 fails too, saying it belongs in `test/lowering/gba/`. A step budget (`max_steps:`) is fine
 anywhere: every run plays it as the frames it covers.

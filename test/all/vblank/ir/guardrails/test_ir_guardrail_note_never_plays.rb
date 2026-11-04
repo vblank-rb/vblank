@@ -20,9 +20,9 @@ class TestNoteNeverPlaysGuardrail < Minitest::Test
   private def detect(events, **opts) = Check.new.detect(program(tune(events, **opts)))
 
   # WHY IT IS WORTH REFUSING: a second note on the same frame stops the part, and the notes after
-  # it are never heard.
+  # it are never heard. Every build refuses the song, so no run plays it; the interpreter shows why.
   def test_a_second_note_on_one_frame_silences_the_rest_of_the_part
-    i = game_player.run(program(enable_sound, tune([[0, 262], [0, 330], [12, 392]]), play_song(:tune),
+    i = Reference.new.run(program(enable_sound, tune([[0, 262], [0, 330], [12, 392]]), play_song(:tune),
                                   loop_(wait_vblank)), frames: 30)
     heard = i.audio.select { |entry| entry[0] == :note }.map(&:last)
 

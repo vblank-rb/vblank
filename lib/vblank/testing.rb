@@ -134,14 +134,10 @@ module VBlank
       raise MissingFeature, "#{run.title} cannot play this yet: #{why}" if Testing.lowering == lowering
     end
 
-    # A test of something +console+'s HARDWARE cannot do skips on every run playing games as that
-    # console, saying +why+: the console's own cartridge run and a runtime's run built as it alike
-    # (`skip_on_console :gbc, "it cannot loop a recording"`). skip_on_<lowering> is for what one
-    # lowering does not make, which a runtime built as the same console can still play.
-    def skip_on_console(console, why)
-      named = Console.named(console)
-      raise MissingFeature, "#{Console.for(named).title} cannot do this: #{why}" if Testing.console == named
-    end
+    # A test of something a console's HARDWARE cannot do has no skip: it lives in the folders of the
+    # consoles that can (test/console/<console>/), and every run playing as a console refuses a game
+    # that console's build refuses, before playing it (BuildChecks), so a game it cannot play never
+    # passes there unseen.
 
     # This test cannot play on the machine running the suite, saying +why+: something that is not
     # installed, another operating system, a copy of a game's data it cannot ship. It says nothing

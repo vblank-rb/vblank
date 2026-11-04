@@ -21,7 +21,7 @@ module InputGames
   private def counting_presses
     builder = Builder.new
     builder.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       presses = var :presses, 0
       before_the_loop = var :before_the_loop, 0
       before_the_loop = 1 if pressed(:start)
@@ -37,7 +37,7 @@ module InputGames
   private def counting_any_button
     builder = Builder.new
     builder.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       held_frames = var :held_frames, 0
       presses = var :presses, 0
       game_loop do

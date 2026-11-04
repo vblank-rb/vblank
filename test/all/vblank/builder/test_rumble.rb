@@ -11,7 +11,7 @@ class TestRumble < Minitest::Test
   private def bumped(frames: 10, pattern: "##..#.#.", halt: nil)
     b = Builder.new
     b.instance_eval do
-      screen :tiled
+      screen :tiled, backdrop: :black
       pass = 0
       game_loop do
         pass += 1
