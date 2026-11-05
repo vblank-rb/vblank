@@ -529,7 +529,7 @@ teaching tone stays; the skill only makes it clear and consistent.
 
 ## Examples
 
-`examples/` (26 programs). Most are cited inline in the DSL reference's group files
+`examples/` (27 programs). Most are cited inline in the DSL reference's group files
 (`.claude/dsl/`, indexed by `.claude/rules/dsl-reference.md`) next to the verb they demonstrate. Two are flagship "putting it all together" showcases, grown as
 features land rather than spawning one-feature-per-example demos:
 
