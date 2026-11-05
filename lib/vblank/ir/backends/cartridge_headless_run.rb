@@ -154,6 +154,14 @@ module VBlank
         def frames_setting_up(*) = raise(RunComparison::AsksTheInterpreter, "how many frames setting up takes (`frames_setting_up`)")
         def fill_faces_with(*) = raise(RunComparison::AsksTheInterpreter, "to fill faces by a console chip's rules (`fill_faces_with`)")
 
+        # Which player the person at this machine is. A cartridge is never one machine of a match:
+        # its person is always the first player, so that is the one answer it takes.
+        def local_player=(player)
+          return if player == 1
+
+          raise RunComparison::AsksTheInterpreter, "for the person at this machine to be player #{player} (`local_player=`)"
+        end
+
         private
 
         def refuse_unanswered!(name)

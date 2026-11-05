@@ -86,7 +86,7 @@ module VBlank
         def refuse_game_code_in_plain_files!(from = @file, seen = [])
           files_loaded_by(from, :require_game_file).each { |path, _line| refuse_game_code_in_plain_files!(path, seen) }
           files_loaded_by(from, :require_relative).each do |path, line|
-            next if seen.include?(path) || path.start_with?(self.class.library_folder)
+            next if seen.include?(path) || library_file?(path)
 
             seen << path
             refuse_plain_file!(path, from, line) if game_code?(Prism.parse_file(path).value)
@@ -103,6 +103,17 @@ module VBlank
         end
 
         private
+
+        # A file of VBlank's own library, which builds games and is never one: under the library
+        # that is loaded, or the front door of another copy of it. A game file names the library by
+        # its path (`require_relative "../lib/vblank"`), and that copy need not be the one running:
+        # a tool that measures one library against another loads its own and turns the game's
+        # require into nothing, and the library's own files call verbs with blocks as they build.
+        def library_file?(path)
+          return true if path.start_with?(self.class.library_folder)
+
+          File.basename(path) == "vblank.rb" && File.file?(File.join(File.dirname(path), "vblank", "root.rb"))
+        end
 
         def files_loaded_by(from, verb)
           loading_calls(Prism.parse_file(from).value, verb).filter_map do |call|
