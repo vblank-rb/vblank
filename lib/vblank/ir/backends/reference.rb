@@ -454,6 +454,17 @@ module VBlank
           self
         end
 
+        # FILL EACH FACE OF A PLACE THE WAY A CONSOLE'S CHIP DOES, not by #exec_fill_face's own rule:
+        # +filler+ is handed what the face is (#exec_fill_face works out the picture, the corners, the
+        # edges and the perspective as it always does) and paints it on the screen. A console whose
+        # graphics chip fills faces by rules of its own has its checked run tell the interpreter so,
+        # and every number the place's drawing works out is still the interpreter's; only the pixels
+        # inside a face are the chip's (PS1::CheckedRun). Returns self.
+        def fill_faces_with(filler)
+          @face_filler = filler
+          self
+        end
+
         # SAY THAT SETTING UP TOOK +count+ FRAMES WITH THE SCREEN OFF, before the first frame it
         # shows. A console whose screen draws nothing while it is off — the Color's — reads its
         # buttons and plays its music from the screen's interrupt, which those frames never raise,
@@ -3288,6 +3299,11 @@ module VBlank
           right = [right, @screen.width].min
           bottom = [bottom, @screen.height].min
           spans = eval_value(node.perspective)
+          if @face_filler
+            return @face_filler.fill_face(@screen, picture: picture, pixels: pixels, corners: corners,
+                                                   edges: [left, top, right, bottom], spans: spans, shaded: !node.shading.nil?)
+          end
+
           corners = corners.map { |corner| FaceEdges.in_perspective(corner) } unless spans == Nodes::FillFace::PERSPECTIVE_NONE
           shade = node.shading && @shadings.fetch(node.shading) { raise ProgramError, "fill_face with undeclared shading #{node.shading.inspect}" }
           corners = corners.map { |corner| shade.shaded_corner(corner) } if shade

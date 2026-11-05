@@ -15,13 +15,16 @@ class TestPlacesOnThePlayStation < Minitest::Test
 
   private def tile(across, down) = shown(PlaceGames.tile(across, down))
 
+  # The landmarks inside the face are well inside a texel each: the PlayStation's graphics chip reads a
+  # pixel's top-left corner half a texel on, where the interpreter reads its middle, so in the last
+  # column and row of a picture stretched 15 times the chip has already reached the next repeat.
   def test_a_square_face_lands_where_the_view_says_with_its_picture_stretched_across
     screen = game_player.run(PlaceGames.square, frames: 2).screen
 
     assert_equal tile(0, 0), screen.pixel(60, 20)
-    assert_equal tile(7, 0), screen.pixel(179, 20)
-    assert_equal tile(0, 7), screen.pixel(60, 139)
-    assert_equal tile(7, 7), screen.pixel(179, 139)
+    assert_equal tile(7, 0), screen.pixel(170, 20)
+    assert_equal tile(0, 7), screen.pixel(60, 130)
+    assert_equal tile(7, 7), screen.pixel(170, 130)
     [[59, 20], [180, 20], [60, 19], [60, 140]].each do |x, y|
       assert_equal BLACK, screen.pixel(x, y), "(#{x}, #{y}) is outside the face"
     end
@@ -46,7 +49,7 @@ class TestPlacesOnThePlayStation < Minitest::Test
                              frames: 2).screen
 
     assert_equal tile(2, 2), screen.pixel(60, 20), "-70 is 2 past a repeat at -72"
-    assert_equal tile(2, 3), screen.pixel(60, 139), "139.1 down is 3 past a repeat at 136"
+    assert_equal tile(2, 1), screen.pixel(60, 24), "-62.1 down is 1 past a repeat at -64"
   end
 
   def test_a_face_wider_than_the_view_is_cut_at_its_edges
@@ -152,7 +155,7 @@ class TestPlacesOnThePlayStation < Minitest::Test
     screen = game_player.run(PlaceGames.listed_faces([0], window: [-50, -50, 400, 400]), frames: 2).screen
 
     assert_equal tile(0, 0), screen.pixel(60, 20)
-    assert_equal tile(7, 7), screen.pixel(179, 139)
+    assert_equal tile(7, 7), screen.pixel(170, 130)
   end
 
   def test_each_face_keeps_its_own_picture_when_the_game_starts_over

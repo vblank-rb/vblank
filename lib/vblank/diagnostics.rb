@@ -27,8 +27,7 @@ require_relative "diagnostics/advance_reading" # ...what an Advance cartridge ke
 require_relative "diagnostics/color_reading" # ...and what a Game Boy Color cartridge does
 require_relative "diagnostics/snes_reading" # ...and what a Super Nintendo cartridge does
 require_relative "diagnostics/genesis_reading" # ...and what a Genesis cartridge does
-require_relative "diagnostics/ps1_reading" # ...and what a PlayStation program does
-require_relative "diagnostics/tearing"
+require_relative "diagnostics/ps1_reading" # ...and what a PlayStation program doesrequire_relative "diagnostics/tearing"
 require_relative "diagnostics/flicker"
 require_relative "diagnostics/tick_rate"
 require_relative "diagnostics/sound_drops"

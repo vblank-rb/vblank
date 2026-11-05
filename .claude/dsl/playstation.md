@@ -41,7 +41,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `viewer` — works: a viewer is variables.
 - `shading` — works: a shading is data in the program.
 - `screen_spot` — works: the processor turns and projects the point, as the drawing of a place does.
-- `draw_place` — works: the processor turns and projects every corner and works out every pixel of each face, as the other consoles do, and the graphics chip copies the pixels to the screen.
+- `draw_place` — works: the processor turns and projects every corner, as the other consoles do. The graphics chip fills each face, by its own rules. Thus some pixels of a face's picture are one pixel or one picture pixel away from where the other consoles put them. In perspective, the processor cuts a face into squares of 32 pixels (8 for `perspective: :every_pixel`), and the picture is exact at the corners of each square.
 - `clear_screen` — works: the same as on the Advance.
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.

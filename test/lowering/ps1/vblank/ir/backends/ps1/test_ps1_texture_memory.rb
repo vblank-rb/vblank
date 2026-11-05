@@ -108,6 +108,28 @@ class TestPS1TextureMemory < Minitest::Test
     assert_none_overlap(textures)
   end
 
+  # An aligned texture starts in its page at a multiple of its width across and of its height down, so
+  # the texture window can repeat it, whatever lies before it: a face's picture beside odd-sized words.
+  def test_an_aligned_texture_starts_at_a_multiple_of_its_size_in_its_page
+    memory = TextureMemory.new
+    words = [[3, 5], [7, 40], [30, 9]].map { |w, h| memory.add_texture(width: w, height: h, colors: Array.new(w * h) { |at| at + 1 }) }
+    walls = [[16, 16, 3], [64, 32, 200], [8, 8, 300]].map do |w, h, base|
+      memory.add_texture(width: w, height: h, colors: Array.new(w * h) { |at| base + (at % 3) }, align: true)
+    end
+    memory.allocate!
+
+    walls.each do |wall|
+      corner = wall.texture_corner
+      assert_equal [0, 0], [(corner & 0xFF) % wall.width, ((corner >> 8) & 0xFF) % wall.height], "a #{wall.width} × #{wall.height}"
+      assert_inside_its_page(wall)
+    end
+    assert_none_overlap(words + walls)
+  end
+
+  def test_an_aligned_texture_has_sides_of_powers_of_two
+    assert_raises(ArgumentError) { TextureMemory.new.add_texture(width: 12, height: 8, colors: Array.new(96, 1), align: true) }
+  end
+
   def test_textures_that_do_not_fit_are_refused_in_plain_words
     memory = TextureMemory.new
     8.times { |n| memory.add_texture(width: 192, height: 256, colors: Array.new(192 * 256) { |at| (n * 7) + at }) }

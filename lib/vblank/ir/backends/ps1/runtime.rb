@@ -41,6 +41,7 @@ module VBlank
           # +faces+ is whether the game fills the faces of a place, so carries Faces and its table.
           def sections(memory, main:, frame_begins: nil, direct_slot_sizes: [], faces: false)
             asm = R3000.new("runtime")
+            Faces.reserve_pieces(memory) if faces
             Boot.emit(asm, memory, main: main)
             Int32.emit(asm)
             Frame.emit(asm, memory)

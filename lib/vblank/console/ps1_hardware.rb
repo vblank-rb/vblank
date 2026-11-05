@@ -130,7 +130,17 @@ module VBlank
       # A texel's top bit. With it set a black texel (0000h, which the chip never draws) is drawn black;
       # the picture shown is read with the top bit dropped, as the chip shows it.
       TEXEL_DRAWN = 0x8000
+      # A triangle textured from a page, each texel copied as it is (raw) and none see-through by
+      # halves: then for each corner y << 16 | x and v << 8 | u, the first corner's u and v word
+      # carrying the colour table in its top half and the second's the texture page (the draw mode's
+      # bits 0 to 8). The place on the picture steps straight across it from the corners'.
+      GP0_TEXTURED_TRIANGLE = 0x25 << 24
       GP0_DRAW_MODE = 0xE1 << 24
+      # The texture window: a power-of-two part of the page a texture repeats in. Bits 0-4 are which bits
+      # of u are replaced (in eights of a texel's place: (256 - width) / 8), bits 5-9 the same of v, bits
+      # 10-14 and 15-19 what they are replaced with (where the texture starts, in eights). Nought for
+      # none: the whole page.
+      GP0_TEXTURE_WINDOW = 0xE2 << 24
       GP0_DRAWING_AREA_TOP_LEFT = 0xE3 << 24 # x | y << 10
       GP0_DRAWING_AREA_BOTTOM_RIGHT = 0xE4 << 24
       GP0_DRAWING_OFFSET = 0xE5 << 24 # x | y << 11, each signed 11 bits

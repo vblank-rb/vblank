@@ -65,11 +65,19 @@ module VBlank
           # One texture: its size in texels, its texels row by row (each a colour as the chip reads it), and
           # once allocated, its depth, its colour table (none at 15 bits) and its place in video RAM, in
           # halfwords across and lines down.
-          Texture = Struct.new(:width, :height, :texels, :depth, :table, :x, :y) do
+          Texture = Struct.new(:width, :height, :texels, :aligned, :depth, :table, :x, :y) do
             def colors = texels.uniq
 
             # How many halfwords across one row of it takes.
             def width_halfwords = (width + TEXELS_A_HALFWORD.fetch(depth) - 1) / TEXELS_A_HALFWORD.fetch(depth)
+
+            # Whether +column+ and +line+ suit it: for an aligned texture, where in its page it starts must
+            # be a multiple of its width across and of its height down.
+            def aligned_at?(column, line)
+              return true unless aligned
+
+              (u_at(column) % width).zero? && ((line % PAGE_TEXELS) % height).zero?
+            end
 
             # The draw mode (GP0 E1h) naming its texture page and its depth.
             def draw_mode
@@ -118,9 +126,16 @@ module VBlank
             def column_for(texture)
               return nil if texture.height > height
 
-              [free_column, ((free_column / PAGE_STEP_HALFWORDS) + 1) * PAGE_STEP_HALFWORDS].find do |column|
-                texture.fits_at?(column)
-              end
+              candidates = [free_column, ((free_column / PAGE_STEP_HALFWORDS) + 1) * PAGE_STEP_HALFWORDS]
+              candidates.insert(1, aligned_column(texture)) if texture.aligned
+              candidates.find { |column| texture.fits_at?(column) && texture.aligned_at?(column, top_line) }
+            end
+
+            # The first column from the free one where an aligned +texture+ starts at a multiple of its
+            # width in its page.
+            def aligned_column(texture)
+              step = [texture.width / TEXELS_A_HALFWORD.fetch(texture.depth), PAGE_STEP_HALFWORDS].min
+              ((free_column + step - 1) / step) * step
             end
           end
 
@@ -137,14 +152,21 @@ module VBlank
           # A texture of +width+ × +height+ texels, from +colors+ row by row (a 15-bit colour, or nil where it
           # is see-through), to be given its depth, its table and its place by #allocate!. A texture is read
           # from one page, so it is at most a page across and down.
-          def add_texture(width:, height:, colors:)
+          #
+          # ALIGNED (+align:+ true), it is placed where its page's u and v are multiples of its width and
+          # height, which must be powers of two: then the chip's texture window (GP0 E2h) can repeat it
+          # across a shape larger than itself, as a face of a place repeats its picture like wallpaper.
+          def add_texture(width:, height:, colors:, align: false)
             unless width.between?(1, PAGE_TEXELS) && height.between?(1, PAGE_TEXELS) && colors.length == width * height
               raise ArgumentError, "a texture is 1 to #{PAGE_TEXELS} texels each way, a colour for each; not #{width} × #{height} " \
                                    "with #{colors.length}"
             end
+            if align && ![width, height].all? { |side| (side & (side - 1)).zero? }
+              raise ArgumentError, "an aligned texture's sides are powers of two; not #{width} × #{height}"
+            end
 
-            Texture.new(width: width, height: height, texels: colors.map { |color| TextureMemory.texel_for_color(color) })
-                   .tap { |texture| @textures << texture }
+            Texture.new(width: width, height: height, texels: colors.map { |color| TextureMemory.texel_for_color(color) },
+                        aligned: align).tap { |texture| @textures << texture }
           end
 
           # Every texture given its depth, its colour table and its place, and every table its place. Called
@@ -249,6 +271,7 @@ module VBlank
             [0, PAGE_TEXELS].each do |half|
               in_half = shelves.select { |shelf| shelf.top_line >= half && shelf.top_line < half + PAGE_TEXELS }
               top = in_half.map { |shelf| shelf.top_line + shelf.height }.max || half
+              top = half + ((top - half + texture.height - 1) / texture.height * texture.height) if texture.aligned
               next if top + texture.height > half + PAGE_TEXELS
 
               return Shelf.new(top_line: top, height: texture.height, free_column: FIRST_TEXTURE_COLUMN).tap { |shelf| shelves << shelf }

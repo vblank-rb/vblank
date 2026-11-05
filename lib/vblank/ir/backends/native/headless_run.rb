@@ -329,6 +329,7 @@ module VBlank
           def frame = refuse_unanswered!(:frame)
           def frames_each_pass(&) = raise(RunComparison::AsksTheInterpreter, "for a pass to take several frames (`frames_each_pass`)")
           def frames_setting_up(*) = raise(RunComparison::AsksTheInterpreter, "how many frames setting up takes (`frames_setting_up`)")
+          def fill_faces_with(*) = raise(RunComparison::AsksTheInterpreter, "to fill faces by a console chip's rules (`fill_faces_with`)")
           def log = refuse_unanswered!(:log)
           def screen_mode = refuse_unanswered!(:screen_mode)
           def sprites_by_depth = refuse_unanswered!(:sprites_by_depth)

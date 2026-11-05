@@ -16,6 +16,7 @@ end
 require_relative "ps1/r3000"
 require_relative "ps1/linker"
 require_relative "ps1/memory"
+require_relative "ps1/face_pieces" # what the runtime cuts a face of a place into, before the runtime that cuts it
 require_relative "ps1/runtime"
 require_relative "ps1/texture_memory"
 require_relative "ps1/painted_art"
@@ -23,6 +24,7 @@ require_relative "ps1/lowering/paint"
 require_relative "ps1/lowering/faces"
 require_relative "ps1/lowering"
 require_relative "ps1/headless_run"
+require_relative "ps1/polygon_fill" # the chip's fill of a triangle, the answer key the checked run draws faces with
 require_relative "ps1/checked_run"
 
 module VBlank
@@ -40,7 +42,8 @@ module VBlank
       #
       # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
       # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), and
-      # the places drawn on it in 3D, every face filled as the interpreter fills it (Runtime::Faces).
+      # the places drawn on it in 3D, each face cut by the processor and filled by the graphics chip
+      # (Runtime::Faces).
       # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
       class PS1

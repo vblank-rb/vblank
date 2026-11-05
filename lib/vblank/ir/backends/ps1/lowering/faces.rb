@@ -9,41 +9,48 @@ module VBlank
           # (IR::PlaceDrawing): turning each point to the viewer, cutting at the near limit and finding
           # where it lands are sums every lowering makes, so they come out the interpreter's to the bit,
           # and `screen_spot`, which runs the same sums, agrees with them. What is left is filling each
-          # face, which Runtime::Faces does as the interpreter does. Mixed into Lowering.
+          # face, which the graphics chip does (Runtime::Faces). Mixed into Lowering.
           #
-          # Each picture a face can show is a record (Runtime::Faces's RECORD_ fields) and its pixels,
-          # made while the program is built; a face's list of pictures is a table of their records.
+          # Each picture a face can show is a texture in video RAM (PS1::TextureMemory), placed so the
+          # chip's texture window repeats it, and a record (Runtime::Faces's RECORD_ fields) made once the
+          # textures have their places; a face's list of pictures is a table of their records.
           module Faces
             STATEMENTS = Ractor.make_shareable({ draw_place: :emit_children, fill_face: :emit_fill_face })
 
             # The part of the build a lit face waits on (Lowering#refuse_unmade_parts!).
             LIT_FACES = "faces lit by a shading"
 
+            # The least side the chip's texture window repeats: a picture narrower or shorter than this is
+            # kept repeated out to it.
+            LEAST_WINDOW_TEXELS = 8
+
             # Whether the game fills a face anywhere, so its build carries Runtime::Faces. Known once
             # Lowering#sections has made every routine, since a picture is registered as its fill is made.
             def fills_faces? = face_pictures.any?
 
-            # The pictures' records and pixels, and each list of pictures, as sections for the Linker.
+            # The pictures' records and each list of pictures, as a section for the Linker. Made after the
+            # textures have their places (#paint_sections).
             def face_sections
               return [] unless fills_faces?
 
               tables = R3000.new("face pictures", holds: TABLES_HOLDING)
-              pixels = face_pictures.map do |name, label|
-                image = @cache.image(picture_named(name))
-                tables.label(label)
-                tables.data_words("#{label} pixels", image.width.bit_length - 1, image.width - 1, image.height - 1)
-                face_pixels_section("#{label} pixels", image)
+              face_pictures.each_value do |picture|
+                tables.label(picture.label)
+                tables.data_words(*face_record(picture))
               end
               face_picture_lists.each do |names, label|
                 tables.label(label)
-                tables.data_words(names.map { |name| face_pictures.fetch(name) })
+                tables.data_words(names.map { |name| face_pictures.fetch(name).label })
               end
-              [tables.section, *pixels]
+              [tables.section]
             end
 
             private
 
-            # Each picture a face can show, by name, and the label of its record.
+            # A picture a face shows: its record's label, its size, and its texture.
+            FacePicture = Data.define(:label, :width, :height, :texture)
+
+            # Each picture a face can show, by name.
             def face_pictures = (@face_pictures ||= {})
 
             # Each list of pictures a face picks from, by the names, and the label of its table.
@@ -78,30 +85,46 @@ module VBlank
               @asm.label(too_few)
             end
 
-            # The picture +name+ a face shows, given a record once.
+            # The picture +name+ a face shows, made a texture once. Its sides are powers of two, so the
+            # texture window can repeat it; one under LEAST_WINDOW_TEXELS a side is repeated out to that in
+            # the texture, which shows the same texel at every place.
             def register_face_picture(name)
               face_pictures[name] ||= begin
                 image = @cache.image(picture_named(name))
-                unless [image.width, image.height].all? { |side| side.positive? && (side & (side - 1)).zero? }
+                unless [image.width, image.height].all? { |side| side.positive? && (side & (side - 1)).zero? && side <= TextureMemory::PAGE_TEXELS }
                   raise LoweringError, "The picture #{name.inspect} is on the face of a place, and its sides are " \
                                        "#{image.width} and #{image.height} pixels. A face's picture must have sides " \
                                        "of 1, 2, 4, 8, 16, 32, 64, 128 or 256 pixels. To fix this, make the picture one of those sizes."
                 end
-                "face picture #{face_pictures.length}"
+                across = [image.width, LEAST_WINDOW_TEXELS].max
+                down = [image.height, LEAST_WINDOW_TEXELS].max
+                colors = Array.new(across * down) do |at|
+                  place = ((at / across % image.height) * image.width) + (at % across % image.width)
+                  image.drawn_at?(place) ? image.color_at(place) : nil
+                end
+                texture = texture_memory.add_texture(width: across, height: down, colors: colors, align: true)
+                FacePicture.new(label: "face picture #{face_pictures.length}", width: image.width, height: image.height,
+                                texture: texture)
               end
             end
 
-            # A picture's pixels as Runtime::Faces reads them: a halfword each, row by row, the colour with
-            # its top bit set, or nought where the picture is see-through.
-            def face_pixels_section(label, image)
-              asm = R3000.new(label, holds: TABLES_HOLDING)
-              asm.label(label)
-              asm.data_halves(Array.new(image.width * image.height) do |at|
-                TextureMemory.texel_for_color(image.drawn_at?(at) ? image.color_at(at) : nil)
-              end)
-              asm.align
-              asm.section
+            # A picture's record (Runtime::Faces's RECORD_ fields): its texture window, its colour table and
+            # page as a triangle's corners carry them, and its size as masks.
+            def face_record(picture)
+              h = Console::PS1Hardware
+              texture = picture.texture
+              u = texture.u_at(texture.x)
+              v = texture.y % TextureMemory::PAGE_TEXELS
+              window = h::GP0_TEXTURE_WINDOW | window_mask(texture.width) | (window_mask(texture.height) << 5) |
+                       ((u >> 3) << 10) | ((v >> 3) << 15)
+              table = texture.table ? texture.table.field : 0
+              page = texture.draw_mode & 0x1FF
+              [window, table << 16, page << 16, -picture.width & 0xFFFF_FFFF, -picture.height & 0xFFFF_FFFF]
             end
+
+            # The texture window's mask for a side of +texels+: which of u's bits (in eights) are replaced
+            # by where the texture starts, so u repeats every +texels+.
+            def window_mask(texels) = ((TextureMemory::PAGE_TEXELS - texels) >> 3) & 0x1F
           end
         end
       end
