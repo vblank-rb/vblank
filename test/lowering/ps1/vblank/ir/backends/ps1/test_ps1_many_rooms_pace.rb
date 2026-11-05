@@ -80,7 +80,7 @@ class TestPS1ManyRoomsPace < Minitest::Test
     # With the setting, each room is drawn with the faces of the two rooms nearer than the one before it
     # as well, as a game whose rooms list more faces than can be seen through a doorway does. Seen
     # down the corridor those rooms lie round the doorway the room is seen through, wholly outside its
-    # window, and are passed over before anything is worked out for them.
+    # window, and are passed over before they are tested for which way they face or sent.
     neighbours = setting :neighbours, false
     drawn = list :drawn, capacity: 16
 
@@ -216,7 +216,7 @@ class TestPS1ManyRoomsPace < Minitest::Test
     assert_operator past.max, :<=, VBlank::Diagnostics::PS1Profiler::FRAME_LINES - SPARE_LINES, "lines past the first blank: #{past.minmax}"
   end
 
-  # A face wholly outside the window it is drawn through is passed over before it is cut, tested for
+  # A face wholly outside the window it is drawn through is passed over once it is cut, before it is tested for
   # which way it faces or sent: drawing each room with two more rooms' faces, nearly three times the
   # faces, most of them outside its window, costs under a third again of the processor's time.
   def test_faces_outside_a_rooms_window_cost_under_a_third_again

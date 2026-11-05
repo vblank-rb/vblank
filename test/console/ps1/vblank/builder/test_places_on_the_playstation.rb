@@ -279,4 +279,15 @@ class TestPlacesOnThePlayStation < Minitest::Test
     assert_equal tile(0, 0), screen.pixel(30, 50)
     assert_equal shown(:red), screen.pixel(150, 105)
   end
+
+  # Faces through windows hugging them, passed over in the shared drawing when wholly outside
+  # (IR::PlaceDrawing::OUTCODE_EDGES).
+  include PlaceGames::WindowHuggingTests
+
+  # The part the PlayStation's own build does not make yet, which the window-hugging tests need. Passing
+  # faces over is not the cause: the same differences come with the shared test left out of the build.
+  WINDOW_EDGE_SKIP_REASON = "a face held to a window drawn at the window's edge as the whole screen draws it " \
+                            "(the chip can differ there by a pixel or a picture pixel)"
+
+  private def refuse_window_hugging_on_this_run! = skip_on_ps1(WINDOW_EDGE_SKIP_REASON)
 end

@@ -180,10 +180,11 @@ draws each room with its own call turns a doorway's corners once, not once for t
 for each room beside it. A `screen_spot` with a nearer `near:` than the drawings' still shares. On a
 console whose processor runs its code from a small cache (the PlayStation's) a face's corners are
 worked in a loop, so a face's code stays in the cache from one face to the next. On every lowering a
-face whose corners are all in front of `near:` and all past one edge of the screen or the window is
-passed over once its points are turned, before it is cut, tested for which way it faces or filled
-(`IR::PlaceDrawing::OUTCODE_EDGES`), so a game that draws a room through a doorway's window pays little
-for the faces the window hides. **What it
+face whose corners, once it is cut at `near:`, all lie past one edge of the screen or the window is
+passed over before it is tested for which way it faces or filled, a face reaching behind the viewer
+included, so a game that draws a room through a doorway's window pays little for the faces the window
+hides. The Advance's fill makes that test itself; every other lowering makes it in the shared drawing,
+as the cut hands each corner on (`IR::PlaceDrawing::OUTCODE_EDGES`). **What it
 costs on the Advance**, a face covering the whole screen with a picture with no see-through pixel:
 about 15 of the console's cycles a pixel with `perspective: :none` (two pixels worked out together
 and written as one pair; 20 pictures a second), about 30 with `:every_8_pixels` (each stretch of

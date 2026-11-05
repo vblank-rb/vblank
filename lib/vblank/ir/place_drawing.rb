@@ -16,7 +16,8 @@ module VBlank
     #   - PROJECT each corner onto the screen. A point twice as far ahead looks half as far from
     #     the middle of the view, so how far right it lands is how far right it is divided by how
     #     far ahead it is, made bigger by how wide an angle the view shows.
-    #   - PASS OVER the face when it lies wholly past one edge of its window (see OUTCODE_EDGES).
+    #   - PASS OVER the face when the corners it was cut to lie wholly past one edge of its window
+    #     (see OUTCODE_EDGES).
     #   - SKIP the face when it is seen from behind (unless the place is drawn from both sides):
     #     its corners then go round the other way on the screen.
     #   - FILL it with its picture (Nodes::FillFace).
@@ -97,8 +98,10 @@ module VBlank
       # +shading+ is the shading a lit drawing of the place fills its faces with (nil for a place
       # never lit), and +point_lights+ the list of light the game adds to each point as it runs
       # (nil for none). +corners_in_a_loop+ says a face's corners are worked in a loop rather than written
-      # out four times (#face_loop_statements).
-      def initialize(place, faces:, points:, pictures:, shading: nil, point_lights: nil, corners_in_a_loop: false)
+      # out four times (#face_loop_statements). +outcode_test+ says the drawing passes over a face wholly
+      # outside its window itself (OUTCODE_EDGES); false where the target's fill does that already.
+      def initialize(place, faces:, points:, pictures:, shading: nil, point_lights: nil, corners_in_a_loop: false,
+                     outcode_test: true)
         @place = place
         @faces = faces
         @points = points
@@ -106,15 +109,12 @@ module VBlank
         @shading = shading
         @point_lights = point_lights
         @corners_in_a_loop = corners_in_a_loop
+        @outcode_test = outcode_test
       end
-
-      # Whether a face's corners are worked in a loop rather than written out four times.
-      def looped_corners? = @corners_in_a_loop
 
       def routine = name(:draw)
       def face_routine = name(:face_drawing)
       def corner_routine = name(:corner)
-      def outcode_routine = name(:outcode_test)
       def point_routine = name(:point_turning)
       def spot_routine = name(:spot)
       def count_routine = name(:counting)
@@ -144,7 +144,6 @@ module VBlank
       # written; the count is not part of the game's state that `start_over` puts back, and the
       # lists are, which only ever makes a stamp stale.
       SEEN_STRIDE = 6
-      SEEN_AHEAD = 2
       SEEN_ACROSS = 3
       SEEN_DOWN = 4
       SEEN_NEARNESS = 5
@@ -274,6 +273,13 @@ module VBlank
       # (the clipping test of Cohen and Sutherland), and the bits every corner shares say an edge the
       # whole face is past.
       #
+      # The corners tested are the ones the face is cut to at the near limit, each as the cut hands it
+      # to the fill (#cut_edge, #corner_statements), so a face reaching behind the viewer is tested on
+      # the corners it is drawn with. The test is folded into the cut, which has each corner's place on
+      # the screen in hand already: a few comparisons a corner, and no reading of the seen list again.
+      # Testing before the cut would spare the cut's copying for a face passed over, but costs every
+      # face seen a second reading of its corners, and cannot test a face that crosses the limit.
+      #
       # "Past" leaves a little to spare, so that no fill loses a pixel to it, whether it takes a pixel
       # when the face covers its middle (Reference#exec_fill_face) or rounds each corner to the nearest
       # pixel first and takes the pixels between. Each edge has a line, in sixteenths of a pixel,
@@ -307,26 +313,14 @@ module VBlank
       # The variable holding the line a corner is past +side+ beyond (see OUTCODE_EDGES).
       def outside_line_var(side) = name(:"outside_#{side}")
 
-      # A corner's part in the face's outcode, once its point is turned: the bits of OUTCODE_EDGES the
-      # point is past kept in the outcode variable, which starts a face as ALL_OUTCODE_BITS. +point+ is
-      # the point's number and +z+ how far ahead it is, as values. A corner nearer than the near limit
-      # has no place on the screen yet, only once the face is cut, so it empties the outcode: such a
-      # face is beside the viewer and is cut and filled as ever. The test comes before the cut, which
-      # is most of what a face costs before it is filled, and a face in front of the limit is cut to
-      # its own corners, so the corners tested are the ones the fill would be given.
-      def corner_outcode_statement(point, z)
-        in_front = Build.if_(Build.binop(:>=, z, Build.var_ref(view_var(:near))),
-                             Build.set(name(:at_x), seen_of(point, SEEN_ACROSS)),
-                             Build.set(name(:at_y), seen_of(point, SEEN_DOWN)),
-                             Build.set(name(:outcode), Build.binop(:&, var(:outcode), corner_outcode_bits)))
-        in_front.else = Build.else_(Build.set(name(:outcode), 0))
-        in_front
+      # A cut corner's part in the face's outcode: the bits of OUTCODE_EDGES the corner in at_x, at_y
+      # (its place on the screen) is past, kept in the outcode variable, which starts a face as
+      # ALL_OUTCODE_BITS. Once a corner leaves it nought, nothing a later corner is past can change
+      # that, so the comparisons are made only while it is not: a face in view is usually told by its
+      # first corner, and its others cost a test each.
+      def corner_outcode_statements
+        [Build.if_(var(:outcode), Build.set(name(:outcode), Build.binop(:&, var(:outcode), corner_outcode_bits)))]
       end
-
-      # The outcode routine's statements: #corner_outcode_statement for the point whose number is in the
-      # seen-point variable, at_z ahead. Where a face's corners are written out four times, each calls
-      # it rather than carrying the test four times over; in a loop, the test is written once in it.
-      def outcode_routine_statements = [corner_outcode_statement(var(:seen_point), var(:at_z))]
 
       # The bits of OUTCODE_EDGES the corner in at_x, at_y is past.
       def corner_outcode_bits
@@ -340,6 +334,8 @@ module VBlank
       # each side of the window was set from, by side: a number where the side is one, so a drawing
       # with no window works nothing out, and from the clip variable where the game works it out.
       def outside_line_statements(held)
+        return [] unless @outcode_test
+
         OUTCODE_EDGES.map do |edge|
           side = held.fetch(edge.side)
           line = if side.kind == :int
@@ -358,10 +354,17 @@ module VBlank
       # Every variable the routines keep their work in, the viewer's and the view's included.
       def variables
         VIEWER_PARTS.map { |part| viewer_var(part) } + VIEW_PARTS.map { |part| view_var(part) } +
-          CLIP_EDGES.map { |edge| clip_var(edge) } + OUTCODE_EDGES.map { |edge| outside_line_var(edge.side) } +
-          %i[face listed base slot picture point seen_point dx dy dz count along area each next drawing outcode
+          CLIP_EDGES.map { |edge| clip_var(edge) } + outcode_variables +
+          %i[face listed base slot picture point seen_point dx dy dz count along area each next drawing
              at_x at_y at_z at_u at_v at_light spot_point spot_x spot_y spot_behind turn_changed].map { |part| name(part) } +
           turn_parts.map { |part| turn_var(part) } + corner_variables
+      end
+
+      # The variables the test for a face outside its window keeps its work in, where the drawing makes it.
+      def outcode_variables
+        return [] unless @outcode_test
+
+        OUTCODE_EDGES.map { |edge| outside_line_var(edge.side) } + [name(:outcode)]
       end
 
       # The variables a face's corners are worked in: four of each kind written out, or the loop's own.
@@ -420,11 +423,7 @@ module VBlank
          Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
          Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
          *CORNERS.times.flat_map { |k| turned_corner(k) },
-         Build.set(name(:outcode), ALL_OUTCODE_BITS),
-         *CORNERS.times.flat_map do |k|
-           [Build.set(name(:seen_point), turned(:p, k)), Build.set(name(:at_z), turned(:z, k)), Build.call(outcode_routine)]
-         end,
-         cut_and_fill_when_inside(*CORNERS.times.flat_map { |k| cut_edge(k) })]
+         *cut_and_fill(*CORNERS.times.flat_map { |k| cut_edge(k) })]
       end
 
       # THE SAME FACE WITH ITS CORNERS IN A LOOP, for a console whose processor runs its code from a
@@ -436,28 +435,27 @@ module VBlank
       # out by the same sums in the same order: first every corner turned, then every edge cut.
       def face_loop_statements
         corner = var(:corner)
-        z = seen_of(var(:corner_point), SEEN_AHEAD)
         [Build.set(name(:base), Build.binop(:*, var(:face), FACE_STRIDE)),
          Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
          Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
-         Build.set(name(:outcode), ALL_OUTCODE_BITS),
          Build.repeat(CORNERS, name(:corner),
                       Build.set(name(:corner_point), Build.table_get(faces_table, corner_at(corner))),
                       Build.if_(Build.binop(:!=, Build.list_get(stamps_list, var(:corner_point)), var(:drawing)),
                                 Build.set(name(:seen_point), var(:corner_point)),
-                                Build.call(point_routine)),
-                      Build.set(name(:corner_z), z),
-                      corner_outcode_statement(var(:corner_point), var(:corner_z))),
-         cut_and_fill_when_inside(Build.repeat(CORNERS, name(:corner), *looped_cut_edge))]
+                                Build.call(point_routine))),
+         *cut_and_fill(Build.repeat(CORNERS, name(:corner), *looped_cut_edge))]
       end
 
-      # What follows the turning: a face not wholly past an edge of its window (#corner_outcode_statement)
-      # is cut by +cut+, and if three corners or more are left, tested for which way it faces and filled.
-      def cut_and_fill_when_inside(*cut)
-        Build.if_(Build.binop(:==, var(:outcode), 0),
-                  Build.set(name(:count), 0),
-                  *cut,
-                  Build.if_(Build.binop(:>=, var(:count), 3), *front_test, fill_when_seen))
+      # What follows the turning: the face cut by +cut+, and if three corners or more are left and they
+      # are not wholly past one edge of the window (OUTCODE_EDGES), tested for which way it faces and filled.
+      def cut_and_fill(*cut)
+        test_and_fill = [*front_test, fill_when_seen]
+        return [Build.set(name(:count), 0), *cut, Build.if_(Build.binop(:>=, var(:count), 3), *test_and_fill)] unless @outcode_test
+
+        [Build.set(name(:outcode), ALL_OUTCODE_BITS),
+         Build.set(name(:count), 0),
+         *cut,
+         Build.if_(Build.binop(:>=, var(:count), 3), Build.if_(Build.binop(:==, var(:outcode), 0), *test_and_fill))]
       end
 
       # The edge from the loop's corner to the next, cut at the near limit, as #cut_edge cuts it.
@@ -483,8 +481,7 @@ module VBlank
          Build.set(name(:corner_z), seen.call(:corner_point, 2)),
          Build.set(name(:other_z), seen.call(:other_point, 2)),
          Build.if_(in_front_here,
-                   Build.list_set(corners_list, corner.call(0), seen.call(:corner_point, SEEN_ACROSS)),
-                   Build.list_set(corners_list, corner.call(1), seen.call(:corner_point, SEEN_DOWN)),
+                   *corner_on_screen_statements(corner, seen.call(:corner_point, SEEN_ACROSS), seen.call(:corner_point, SEEN_DOWN)),
                    Build.list_set(corners_list, corner.call(2), on_face.call(here, 1)),
                    Build.list_set(corners_list, corner.call(3), on_face.call(here, 2)),
                    Build.if_(in_perspective,
@@ -581,8 +578,7 @@ module VBlank
       def corner_statements
         at = var(:count)
         place = ->(offset) { Build.binop(:+, Build.binop(:*, at, Nodes::FillFace::CORNER_NUMBERS), offset) }
-        [Build.list_set(corners_list, place.call(0), landed(:+, :at_x, :middle_x)),
-         Build.list_set(corners_list, place.call(1), landed(:-, :at_y, :middle_y)),
+        [*corner_on_screen_statements(place, landed(:+, :at_x, :middle_x), landed(:-, :at_y, :middle_y)),
          Build.list_set(corners_list, place.call(2), var(:at_u)),
          Build.list_set(corners_list, place.call(3), var(:at_v)),
          Build.if_(in_perspective, Build.list_set(corners_list, place.call(4), nearness)),
@@ -607,9 +603,19 @@ module VBlank
 
       def turned(field, k) = Build.var_ref(turned_var(field, k))
 
-      # Number +at+ (SEEN_AHEAD, SEEN_ACROSS...) of the point whose number is the value +point+, read
-      # from the seen list.
-      def seen_of(point, at) = Build.list_get(seen_list, Build.binop(:+, Build.binop(:*, point, SEEN_STRIDE), at))
+      # A cut corner's place on the screen, +across+ and +down+ (values), put in the corner list where
+      # +place+ (the corner's number in the list for an offset) says, and its bits taken into the face's
+      # outcode (#corner_outcode_statements). Where the drawing tests the window, the place is kept in
+      # at_x and at_y as it is put in the list, which costs less than reading the list back to test it.
+      def corner_on_screen_statements(place, across, down)
+        unless @outcode_test
+          return [Build.list_set(corners_list, place.call(0), across), Build.list_set(corners_list, place.call(1), down)]
+        end
+
+        [Build.set(name(:at_x), across), Build.set(name(:at_y), down),
+         Build.list_set(corners_list, place.call(0), var(:at_x)), Build.list_set(corners_list, place.call(1), var(:at_y)),
+         *corner_outcode_statements]
+      end
 
       # The variable keeping +part+ of TURN_PARTS as the last drawing to move the count on had it.
       def turn_var(part) = name(:"turn_#{part}")
@@ -691,8 +697,8 @@ module VBlank
         seen = Build.binop(:*, turned(:p, k), SEEN_STRIDE)
         corner = ->(offset) { Build.binop(:+, Build.binop(:*, var(:count), Nodes::FillFace::CORNER_NUMBERS), offset) }
         [Build.if_(in_front(k),
-                   Build.list_set(corners_list, corner.call(0), Build.list_get(seen_list, Build.binop(:+, seen, SEEN_ACROSS))),
-                   Build.list_set(corners_list, corner.call(1), Build.list_get(seen_list, Build.binop(:+, seen, SEEN_DOWN))),
+                   *corner_on_screen_statements(corner, Build.list_get(seen_list, Build.binop(:+, seen, SEEN_ACROSS)),
+                                     Build.list_get(seen_list, Build.binop(:+, seen, SEEN_DOWN))),
                    Build.list_set(corners_list, corner.call(2), turned(:u, k)),
                    Build.list_set(corners_list, corner.call(3), turned(:v, k)),
                    Build.if_(in_perspective,

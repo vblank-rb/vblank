@@ -132,13 +132,19 @@ module VBlank
                               :recording_voice_hz, :lowest_square_hz,
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
-                              :whole_screen_size, :extension, :code_cache_bytes) do
+                              :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
       # small, a routine run over and over is best written short, as a loop, so it stays in the cache
       # (IR::PlaceDrawing#face_loop_statements).
-      def initialize(code_cache_bytes: nil, **rest) = super
+      #
+      # +face_fill_skips_outside_window+ is true where the console's cartridge fills a place's faces
+      # with a routine of its own that passes over a face wholly outside its window before it does any
+      # work for it, so the shared drawing leaves its own test of that out (IR::PlaceDrawing::OUTCODE_EDGES).
+      # The drawing is made once for the console, so a computer's build of such a game (as C,
+      # JavaScript or Ruby) leaves it out too: it fills those faces and draws nothing of them.
+      def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, **rest) = super
 
       def screen_size = [screen_width, screen_height]
 
@@ -226,7 +232,10 @@ module VBlank
                               # Its rumble cartridges are not made here yet: nothing is felt.
                               rumbles: false,
                               # The logo and its chime, played from the player's own BIOS.
-                              plays_bios_start_up: true, whole_screen_size: nil, extension: ".gba")
+                              plays_bios_start_up: true, whole_screen_size: nil, extension: ".gba",
+                              # The fill in ARM (Backends::GBA::Faces) tests a face's corners against
+                              # its window itself, in fewer instructions than the shared test.
+                              face_fill_skips_outside_window: true)
 
     # The Game Boy Color: a smaller screen, eight buttons, forty sprites and ten on a row, one
     # background, nothing that turns, lists of four colours, and a clock that counts days. What

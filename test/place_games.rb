@@ -299,22 +299,30 @@ module PlaceGames
     builder.program
   end
 
-  # How many passes square_through_windows holds each window for.
+  # How many passes face_through_windows holds each window for.
   WINDOW_PASSES = 3
 
-  # The square face (two wholes ahead, x 60 to 179 and y 20 to 139 seen straight on), seen by a
-  # viewer turned left by +spin+ degrees and standing +rise+ wholes up, so its corners land part
-  # way into a pixel. With +windows+ ([left, top, right, bottom] each) it is drawn through each in
-  # turn, WINDOW_PASSES passes each, the window read from a table as the game runs; without, on the
-  # whole screen.
-  def self.square_through_windows(spin:, rise:, windows: nil)
+  # The corners of the faces face_through_windows draws: the square face, two wholes ahead (x 60 to
+  # 179 and y 20 to 139 seen straight on); and a wall down the left side from a whole behind the
+  # viewer to six ahead, which the near limit cuts, so the corners it is drawn with are made by the
+  # cut. Seen straight on, the wall reaches from past the screen's left edge to x 100.
+  WINDOW_FACES = Ractor.make_shareable({
+                                         square: [[-1.0, 1.0, 2.0], [1.0, 1.0, 2.0], [1.0, -1.0, 2.0], [-1.0, -1.0, 2.0]],
+                                         side: [[-1.0, 1.0, -1.0], [-1.0, 1.0, 6.0], [-1.0, -1.0, 6.0], [-1.0, -1.0, -1.0]]
+                                       })
+
+  # The face named +shape+ in WINDOW_FACES, seen by a viewer turned left by +spin+ degrees and
+  # standing +rise+ wholes up, so its corners land part way into a pixel. With +windows+ ([left,
+  # top, right, bottom] each) it is drawn through each in turn, WINDOW_PASSES passes each, the window
+  # read from a table as the game runs; without, on the whole screen.
+  def self.face_through_windows(shape, spin:, rise:, windows: nil)
     builder = VBlank::Builder.new
     builder.instance_eval do
       screen :bitmap, tear_free: true
       image :tile, width: 8, height: 8, data: TILE
       place :wall do
-        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
-             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+        face(*WINDOW_FACES.fetch(shape).map { |x, y, z| point(x, y, z) },
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]])
       end
       eye = viewer :eye, at: [0.0, rise, 0.0]
       eye.turn :left, by: spin
@@ -336,6 +344,87 @@ module PlaceGames
     end
     builder.finalize_program
     builder.program
+  end
+
+  # The tests that a face drawn through a window hugging it is the face drawn on the whole screen, cut
+  # to the window, kept once for each console's test of places, which includes them.
+  module WindowHuggingTests
+    # The helpers below (WindowHugging) come with the tests.
+    def self.included(test_class) = test_class.include(WindowHugging)
+
+    # A face lying wholly outside its window is passed over before it is tested for which way it faces
+    # or filled; one that reaches into the window by a pixel is not. So through a window that ends at
+    # the face's last pixel, or a pixel past it, or begins there, the picture is the face drawn on the
+    # whole screen, cut to the window, pixel for pixel.
+    def test_a_window_hugging_a_face_shows_the_face_as_drawn_on_the_whole_screen
+      refuse_window_hugging_on_this_run!
+      assert_windows_hugging_show_the_whole_screens_picture(:square)
+    end
+
+    # ...and the same for a face the near limit cuts, tested on the corners the cut made.
+    def test_a_window_hugging_a_face_cut_at_the_near_limit_shows_the_face_as_drawn_on_the_whole_screen
+      refuse_window_hugging_on_this_run!
+      assert_windows_hugging_show_the_whole_screens_picture(:side)
+    end
+
+    # Where a run cannot play these yet, a class including them says so here; by default every run can.
+    private def refuse_window_hugging_on_this_run! = nil
+  end
+
+  # What the window-hugging tests are made of: the windows hugging a face, and the comparison.
+  module WindowHugging
+    BLACK = VBlank::Testing.shown(:black)
+
+    # The face named +shape+ in WINDOW_FACES, drawn on the whole screen and then through windows whose
+    # edge is at its first or last pixel, or a pixel either side, on each side; through each window the
+    # picture is the whole screen's, cut to it, pixel for pixel. The face's corners land part way into
+    # a pixel, at a few turns and heights.
+    private def assert_windows_hugging_show_the_whole_screens_picture(shape)
+      [[0.3, 0.013], [2.6, -0.021], [-1.7, 0.047]].each do |spin, rise|
+        whole = picture_of(game_player.run(PlaceGames.face_through_windows(shape, spin: spin, rise: rise), frames: 2).screen)
+        windows = windows_hugging(whole)
+        seen = {}
+        player = game_player
+        player.each_vblank { |frame| seen[frame] = picture_of(player.screen) }
+        player.run(PlaceGames.face_through_windows(shape, spin: spin, rise: rise, windows: windows),
+                   frames: windows.length * WINDOW_PASSES)
+
+        windows.each_with_index do |window, k|
+          frame = ((k + 1) * WINDOW_PASSES) - 1
+
+          assert_equal cut_to(whole, window), seen.fetch(frame), "#{shape} turned #{spin}, #{rise} up, through #{window}"
+        end
+      end
+    end
+
+    # The windows hugging the face named +shape+ as the player draws it on the whole screen.
+    private def windows_hugging_face(shape, spin:, rise:)
+      windows_hugging(picture_of(game_player.run(PlaceGames.face_through_windows(shape, spin: spin, rise: rise), frames: 2).screen))
+    end
+
+    # Every pixel of the 240 by 160 the game is laid out for on +screen+, row by row.
+    private def picture_of(screen) = (0...160).map { |y| (0...240).map { |x| screen.pixel(x, y) } }
+
+    # +picture+ with every pixel outside +window+ black.
+    private def cut_to(picture, window)
+      left, top, right, bottom = window
+      picture.each_with_index.map do |row, y|
+        row.each_with_index.map { |color, x| x >= left && x < right && y >= top && y < bottom ? color : BLACK }
+      end
+    end
+
+    # Windows whose edge is at the face's first or last pixel, or a pixel either side, on each side,
+    # held to the screen; one that holds no pixel once held is left out.
+    private def windows_hugging(picture)
+      drawn = picture.each_with_index.flat_map { |row, y| row.each_index.filter_map { |x| [x, y] unless row[x] == BLACK } }
+      left, right = drawn.map(&:first).minmax
+      top, bottom = drawn.map(&:last).minmax
+      windows = [-1, 0, 1].flat_map do |by|
+        [[0, 0, left + by, 160], [right + 1 + by, 0, 240, 160], [0, 0, 240, top + by], [0, bottom + 1 + by, 240, 160]]
+      end
+      held = windows.map { |l, t, r, b| [l.clamp(0, 240), t.clamp(0, 160), r.clamp(0, 240), b.clamp(0, 160)] }
+      held.uniq.reject { |l, t, r, b| l >= r || t >= b }
+    end
   end
 
   # A face whose lowest corners land half a pixel into row 79: a strip a whole wide, from a whole

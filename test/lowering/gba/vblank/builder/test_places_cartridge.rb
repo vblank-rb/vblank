@@ -45,6 +45,21 @@ class TestPlacesCartridge < Minitest::Test
                                                                                           console_frames: 30, name: "WINDOW")
   end
 
+  include PlaceGames::WindowHugging
+
+  # The cartridge's fill passes over a face wholly outside its window itself
+  # (Backends::GBA::Faces#emit_skip_face_outside_edges), on the corners the near limit cut it to.
+  # Through windows hugging the square face and a wall the near limit cuts, it draws what the
+  # interpreter draws.
+  def test_faces_through_windows_hugging_them_agree
+    %i[square side].each do |shape|
+      windows_hugging_face(shape, spin: 0.3, rise: 0.013).each do |window|
+        assert_backends_agree(PlaceGames.face_through_windows(shape, spin: 0.3, rise: 0.013, windows: [window]),
+                              frames: 3, console_frames: 30, name: "HUG")
+      end
+    end
+  end
+
   # A row starting on the right half of a pair and ending on the left half of one: the pixels
   # written alone, beside the ones written in pairs.
   def test_rows_starting_and_ending_halfway_through_a_pair_agree

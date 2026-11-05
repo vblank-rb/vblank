@@ -29,7 +29,7 @@ class TestPS1PolygonFill < Minitest::Test
 
   # The chip's corners are whole pixels, each rounded to the nearest, so a face whose lowest corners
   # land halfway into row 79 reaches down to the row's end and the chip fills row 79. The test that
-  # passes over a face lying wholly outside its window (IR::PlaceDrawing#corner_outcode_statement) must not
+  # passes over a face lying wholly outside its window (IR::PlaceDrawing::OUTCODE_EDGES) must not
   # pass over this one through a window whose top is row 79, though the interpreter's fill, which takes
   # a row only when the face covers its middle, draws nothing there.
   def test_a_face_reaching_halfway_into_its_windows_first_row_fills_that_row

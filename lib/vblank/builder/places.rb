@@ -368,7 +368,8 @@ module VBlank
         drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, points: shape.points.length,
                                                    pictures: shape.listed_pictures, shading: shape.shading,
                                                    point_lights: shape.point_lights&.name,
-                                                   corners_in_a_loop: !@console.code_cache_bytes.nil?)
+                                                   corners_in_a_loop: !@console.code_cache_bytes.nil?,
+                                                   outcode_test: !@console.face_fill_skips_outside_window)
         @place_variables ||= {}
         @place_variables[shape.name] ||= drawing.variables.each { |variable| ensure_var(variable) }
         drawing
@@ -381,7 +382,6 @@ module VBlank
         declare_place_routine(drawing.point_routine, drawing.point_statements)
         declare_place_routine(drawing.corner_routine, drawing.corner_statements)
         declare_place_routine(drawing.count_routine, drawing.drawing_count_statements)
-        declare_place_routine(drawing.outcode_routine, drawing.outcode_routine_statements) unless drawing.looped_corners?
       end
 
       # The routine that works out where one point lands, declared the first time a game asks, so
