@@ -46,7 +46,8 @@ module VBlank
     #                           what goes in a quick memory, and what its cartridge reports of
     #                           packing and placement
     #   compared_side_by_side?  whether two of its cartridges can be compared side by side
-    #                           (Playthroughs::Comparison lines screens up at the Advance's size)
+    #                           (Playthroughs::Comparison, at the console's screen size): one the
+    #                           reader plays whose screen is the size its description says
     #   open_core(path, save_dir:)
     #                           the emulator its cartridges play in, opened on a cartridge file
     #   save_file_extension     how that emulator names the file it keeps battery-backed RAM in
@@ -230,6 +231,7 @@ module VBlank
       def reading = Diagnostics::ColorReading
       def routine_lister = Diagnostics::SM83Listing
       def sprite_piece_sizes = GBCHardware::SPRITE_PIECE_SIZES
+      def compared_side_by_side? = true
     end
 
     # The Super Nintendo's. Its cartridges play in bsnes rather than libmgba, through
@@ -244,6 +246,7 @@ module VBlank
       def open_probe(path, save_dir:) = Diagnostics::SNESProbe.new(path, save_dir: save_dir)
       def save_file_extension = ".srm"
       def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
+      def compared_side_by_side? = true
       def variants = SNES_VARIANTS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze

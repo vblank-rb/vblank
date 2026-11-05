@@ -175,13 +175,15 @@ class TestPlaythroughColor < Minitest::Test
     game
   end
 
-  # A comparison lines two screens up as the Advance's, so two Color cartridges are refused in
-  # plain words rather than compared wrong.
-  def test_a_comparison_refuses_a_color_cartridge
+  # A comparison lines two screens up at their console's size, so two Color cartridges are
+  # compared on the Color's screen; a Color cartridge beside an Advance one, a screen of another
+  # size, is refused in plain words rather than compared wrong.
+  def test_a_comparison_lines_up_color_cartridges_and_refuses_a_mixed_pair
+    refute VBlank.playthrough("wait") { wait frames: 3 }.compare(color_cartridge, color_cartridge).drift?
     error = assert_raises(ArgumentError) do
-      VBlank.playthrough("wait") { wait frames: 3 }.compare(color_cartridge, color_cartridge)
+      VBlank.playthrough("wait") { wait frames: 3 }.compare(color_cartridge, assemble_rom(VBlank::IR::Build.program(VBlank::IR::Build.halt)))
     end
 
-    assert_match(/Game Boy Color/, error.message)
+    assert_match(/different sizes/, error.message)
   end
 end

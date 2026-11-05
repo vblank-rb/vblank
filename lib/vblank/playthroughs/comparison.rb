@@ -66,8 +66,12 @@ module VBlank
       #
       # +report+ is the folder a report of it was written into (see DriftReport), or nil
       # when the comparison was given nowhere to write one.
-      Drift = Data.define(:frame, :last_frame, :ended, :moment, :differed, :readings, :report) do
-        def initialize(frame:, moment:, differed:, readings:, last_frame: nil, ended: nil, report: nil) = super
+      #
+      # +picture_difference+ is how the pictures differed on the frame it began, where the
+      # picture is what differed (Verifier#difference_from: how many pixels, the box they lie in,
+      # the first and its colour on each), and nil otherwise and for a drift found at a moment.
+      Drift = Data.define(:frame, :last_frame, :ended, :moment, :differed, :readings, :report, :picture_difference) do
+        def initialize(frame:, moment:, differed:, readings:, last_frame: nil, ended: nil, report: nil, picture_difference: nil) = super
 
         # The frames of the stretch as a range, first to last, or nil where the last is
         # not known.
@@ -151,8 +155,9 @@ module VBlank
         refuse_malformed_lead_ins!(lead_ins)
         @lead_ins = lead_ins || [nil, nil]
         @ignored = IgnoredFrames.new(ignoring_frames, moments)
-        @likeness = Likeness.new(**how_alike)
+        @likeness = Likeness.new(**how_alike, screen_size: early_screen_size(first))
         @readings = Readings.new(readings)
+        @comparing = comparing
         @compared = Compared.new(comparing, @likeness, @readings)
         refuse_non_boolean_carrying_on!(carrying_on)
         @carrying_on = carrying_on
@@ -231,11 +236,48 @@ module VBlank
         @starts ||= begin
           pair = @handed_over.map { |given| Playthrough.cartridge_from(given) }
           refuse_cartridges_not_compared!(pair)
+          sized_for_screens_of(pair)
           @readings.refuse_unreadable_on!(pair)
           pair.zip(%w[first second], @lead_ins).map do |cartridge, which, lead_in|
             Start.new(which: which, cartridge: cartridge, save: save_fitted_to(cartridge, which), lead_in: lead_in)
           end
         end
+      end
+
+      # THE SCREEN THE TWO ARE COMPARED ON, the size their console draws: any console's, so a
+      # cartridge of the original is compared with ours whatever it was made for. Two cartridges
+      # whose screens differ in size cannot be compared a pixel at a time, and are refused.
+      private def sized_for_screens_of(pair)
+        sizes = pair.map { |cartridge| Console.described(cartridge.console).screen_size }
+        if sizes.uniq.size > 1
+          raise ArgumentError, "The two cartridges show screens of different sizes: #{sizes.map { it.join(' by ') }.join(' and ')} " \
+                               "pixels. A comparison can compare only two screens of one size. Compare two cartridges " \
+                               "for one console."
+        end
+
+        @likeness = @likeness.sized_for(sizes.first)
+        @compared = Compared.new(@comparing, @likeness, @readings)
+      end
+
+      # The screen each running console draws, which the emulator says, against the size the
+      # comparison was laid out for: a cartridge that draws another size (a mode with more lines,
+      # say) would be compared a row out of line, so it is refused.
+      private def refuse_screens_not_described!(consoles)
+        drawn = consoles.map { |console| [console.screen_width, console.screen_height] }
+        return if drawn.all?(@likeness.screen_size)
+
+        raise ArgumentError, "A cartridge draws a screen of #{drawn.map { it.join(' by ') }.uniq.join(' and ')} pixels. " \
+                             "The comparison is for #{@likeness.screen_size.join(' by ')}. These cartridges cannot be compared."
+      end
+
+      # The screen's size as soon as it can be known without opening a cartridge: a built cartridge
+      # says its console, and with none given the size is the Advance's, so a setting that cannot
+      # be right is refused at once. A cartridge given by its path is looked at with the other.
+      private def early_screen_size(first)
+        return Console.described(first.console).screen_size if first.respond_to?(:console) && first.console
+        return Likeness::ADVANCE_SCREEN if first.nil?
+
+        nil
       end
 
       # A copy of the save both start from, made to fit +cartridge+, or nil for none.
@@ -249,6 +291,7 @@ module VBlank
       def run(tape)
         ignored = @ignored.frame_ranges_on(tape)
         consoles = starts.map(&:console)
+        refuse_screens_not_described!(consoles)
         reporter = ->(drift, pictures) { drift_with_report(drift, pictures, tape) } if @reports_in
         pair = SideBySide.new(*consoles, @compared, ignored, carrying_on: @carrying_on, reporter: reporter)
         # A pair that has stopped plays no more frames, and is still told a moment that
@@ -303,7 +346,7 @@ module VBlank
       end
 
       # Two screens that were kept, with where they differ of the places that are looked at.
-      private def screen_pair(pictures) = ScreenPair.new(*pictures, @likeness.differing_places(*pictures))
+      private def screen_pair(pictures) = ScreenPair.new(*pictures, @likeness.differing_places(*pictures), @likeness.screen_size.first)
 
       # Play +playthrough+'s script on each cartridge by itself, compare the two at each
       # named moment, and say what was found.
@@ -350,9 +393,10 @@ module VBlank
 
       private def what_any_report_has(settings) = { cartridges: cartridges, settings: settings + starting_sentences }
 
-      # A comparison lines two screens up, and frames rectangles on them, at the Advance's size.
-      # Another console's screen is another size, so its cartridge is refused rather than compared
-      # wrong (Console::Kit#compared_side_by_side?).
+      # A comparison lines two screens up, and frames rectangles on them, at the size the console's
+      # description says. A console whose cartridge the reader cannot play, or whose screen changes
+      # size as its program runs, is refused rather than compared wrong
+      # (Console::Kit#compared_side_by_side?).
       private def refuse_cartridges_not_compared!(pair)
         which, cartridge = %w[first second].zip(pair).find do |_, each|
           !Console.for(each.console).compared_side_by_side?
@@ -483,16 +527,33 @@ module VBlank
       class Likeness
         SETTINGS = %i[share_may_differ frames_in_a_row ignoring_rectangles].freeze
 
-        def initialize(share_may_differ: 0, frames_in_a_row: 1, ignoring_rectangles: [])
+        # +screen_size+ is the screen the two cartridges show, [width, height]: the Advance's until
+        # the cartridges are known, when the comparison asks for #sized_for theirs.
+        def initialize(share_may_differ: 0, frames_in_a_row: 1, ignoring_rectangles: [], screen_size: ADVANCE_SCREEN)
           refuse_share_outside_range!(share_may_differ)
           refuse_invalid_run_length!(frames_in_a_row)
           refuse_malformed_rectangles!(ignoring_rectangles)
+          @settings = { share_may_differ: share_may_differ, frames_in_a_row: frames_in_a_row, ignoring_rectangles: ignoring_rectangles }
+          @width, @height = screen_size
           @share_may_differ = share_may_differ
           @frames_in_a_row = frames_in_a_row
           @ignored_rectangles = ignoring_rectangles.map { |corner_and_size| Rectangle.new(*corner_and_size) }
-          @looked_at = pixels_outside(@ignored_rectangles)
-          @pixels_looked_at = @looked_at.count(LOOKED_AT)
+          @looked_at = pixels_outside(@ignored_rectangles) if screen_size
+          @pixels_looked_at = @looked_at&.count(LOOKED_AT)
         end
+
+        # The same settings, for a screen of +screen_size+ ([width, height]). A rectangle off that
+        # screen is refused then.
+        def sized_for(screen_size)
+          screen_size == [@width, @height] ? self : Likeness.new(**@settings, screen_size: screen_size)
+        end
+
+        # The screen's size this is for, [width, height].
+        def screen_size = [@width, @height]
+
+        # The list of what is looked at, a byte for each pixel (see #pixels_outside), for asking the
+        # emulator where two pictures differ.
+        attr_reader :looked_at
 
         # Whether the two running cartridges are showing pictures alike enough.
         #
@@ -517,6 +578,10 @@ module VBlank
           differing_places(first, second).size.fdiv(@pixels_looked_at) <= @share_may_differ
         end
 
+        # How the two running cartridges' pictures differ, of the places that are looked at
+        # (Verifier#difference_from), or nil when they do not.
+        def difference(first, second) = first.difference_from(second, looked_at: @ignored_rectangles.empty? ? nil : @looked_at)
+
         # Whether +frames+ differing frames, one after another, are drift.
         def drift_after?(frames) = frames >= @frames_in_a_row
 
@@ -531,7 +596,7 @@ module VBlank
         # HOW ALIKE THE PICTURES HAD TO BE, AS SENTENCES, for a report a person reads.
         # +point+ is what the two were compared at, `A frame` or `A moment`.
         def picture_sentences(point)
-          looked_at = @pixels_looked_at == WIDTH * HEIGHT ? "pixels" : "pixels that were looked at"
+          looked_at = @pixels_looked_at == @width * @height ? "pixels" : "pixels that were looked at"
           words = if @share_may_differ.zero?
                     ["#{point} differed when one of the #{looked_at} was a different colour."]
                   else
@@ -548,26 +613,27 @@ module VBlank
           @frames_in_a_row > 1 ? ["#{@frames_in_a_row} frames in a row had to differ before it was drift."] : []
         end
 
-        WIDTH = Console::Hardware::SCREEN_WIDTH
-        HEIGHT = Console::Hardware::SCREEN_HEIGHT
+        # The Advance's screen, [width, height]: the size settings are checked against before the
+        # cartridges are known, when none is given.
+        ADVANCE_SCREEN = Ractor.make_shareable([Console::Hardware::SCREEN_WIDTH, Console::Hardware::SCREEN_HEIGHT])
 
         # What a pixel's byte says in the list of what is looked at.
         LOOKED_AT = "\x01".b.freeze
         LEFT_OUT = "\x00".b.freeze
-        private_constant :WIDTH, :HEIGHT, :LOOKED_AT, :LEFT_OUT
+        private_constant :LOOKED_AT, :LEFT_OUT
 
         # A part of the screen, by its top left corner and its size.
         Rectangle = Data.define(:x, :y, :width, :height) do
           def columns = x...(x + width)
           def rows = y...(y + height)
-          def on_screen? = x >= 0 && y >= 0 && columns.end <= WIDTH && rows.end <= HEIGHT
+          def on_screen?(screen_width, screen_height) = x >= 0 && y >= 0 && columns.end <= screen_width && rows.end <= screen_height
           def in_words = "#{width} by #{height} pixels from column #{x}, row #{y}"
         end
         private_constant :Rectangle
 
         private
 
-        def strict? = @share_may_differ.zero? && @pixels_looked_at == WIDTH * HEIGHT
+        def strict? = @share_may_differ.zero? && @pixels_looked_at == @width * @height
 
         # The share as a percentage a person reads: `1`, `0.5`, and for one pixel of the
         # screen `0.0026041667`. It is written out in full and never with an exponent,
@@ -591,9 +657,9 @@ module VBlank
         # are left is what a share is a share of.
         def pixels_outside(rectangles)
           rectangles.each { |rectangle| refuse_rectangle_off_screen!(rectangle) }
-          outside = LOOKED_AT * (WIDTH * HEIGHT)
+          outside = LOOKED_AT * (@width * @height)
           rectangles.each do |rectangle|
-            rectangle.rows.each { |row| outside[(row * WIDTH) + rectangle.x, rectangle.width] = LEFT_OUT * rectangle.width }
+            rectangle.rows.each { |row| outside[(row * @width) + rectangle.x, rectangle.width] = LEFT_OUT * rectangle.width }
           end
           outside.freeze
         end
@@ -631,10 +697,10 @@ module VBlank
         end
 
         def refuse_rectangle_off_screen!(rectangle)
-          return if rectangle.on_screen?
+          return if rectangle.on_screen?(@width, @height)
 
           raise ArgumentError, "`ignoring_rectangles:` holds #{rectangle.to_h.values.inspect}. A part of that rectangle is " \
-                               "off the screen. The screen is #{WIDTH} pixels wide and #{HEIGHT} pixels high. " \
+                               "off the screen. The screen is #{@width} pixels wide and #{@height} pixels high. " \
                                "Give a rectangle that is on the screen."
         end
       end
@@ -676,7 +742,7 @@ module VBlank
         # every reading, and the two screens when they are kept. All of it is taken on that
         # frame, because by the time the thing has differed long enough to be called drift
         # both consoles have played on and the frame cannot be asked for again.
-        Beginning = Data.define(:frame, :moment, :readings, :pictures)
+        Beginning = Data.define(:frame, :moment, :readings, :pictures, :picture_difference)
 
         # A drift that has not ended, with the two screens on the frame it began.
         UnderWay = Struct.new(:drift, :pictures)
@@ -773,7 +839,8 @@ module VBlank
           return if things.empty?
 
           pictures = [@first.frame_gba, @second.frame_gba] if @reporter
-          beginning = Beginning.new(frame: @frames, moment: @moment, readings: seen.readings, pictures: pictures)
+          beginning = Beginning.new(frame: @frames, moment: @moment, readings: seen.readings, pictures: pictures,
+                                  picture_difference: (@compared.picture_difference(@first, @second) if things.include?(PICTURE)))
           things.each { |thing| @began[thing] = beginning }
         end
 
@@ -783,7 +850,8 @@ module VBlank
         private def start_drift_of(lasted)
           beginning = lasted.values.first or return
 
-          drift = Drift.new(frame: beginning.frame, moment: beginning.moment, differed: lasted.keys, readings: beginning.readings)
+          drift = Drift.new(frame: beginning.frame, moment: beginning.moment, differed: lasted.keys, readings: beginning.readings,
+                            picture_difference: beginning.picture_difference)
           @under_way = UnderWay.new(drift, beginning.pictures)
           end_drift_under_way(nil, nil) unless @carrying_on
         end

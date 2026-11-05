@@ -35,15 +35,12 @@ module VBlank
         # A SECOND OF PLAY, in frames: how far back the report says what was down.
         ONE_SECOND = 60
 
-        WIDTH = Console::Hardware::SCREEN_WIDTH
-        HEIGHT = Console::Hardware::SCREEN_HEIGHT
-
         # The two cartridges as a report names them, in order.
         SIDES = %w[first second].freeze
 
         # What can differ that is not a reading, as a report says it.
         WHAT_IS_NOT_A_READING = { PICTURE => "the picture", FRAMES_APART => "how many frames each cartridge took" }.freeze
-        private_constant :ONE_SECOND, :WIDTH, :HEIGHT, :SIDES, :WHAT_IS_NOT_A_READING
+        private_constant :ONE_SECOND, :SIDES, :WHAT_IS_NOT_A_READING
 
         # THE PLACE REPORTS GO, as its path, or nil for nowhere. It is looked at before a
         # frame is played, and nothing is made there: a comparison that finds no drift
@@ -110,7 +107,7 @@ module VBlank
 
         private
 
-        def write_picture(path, pixels) = Graphics::PNG.write(path, width: WIDTH, height: HEIGHT, pixels: pixels)
+        def write_picture(path, pixels) = Graphics::PNG.write(path, width: @screens.width, height: pixels.size / @screens.width, pixels: pixels)
 
         # What the two pictures of the difference are, which every kind of report says alike.
         def difference_lines

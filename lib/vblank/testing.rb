@@ -33,6 +33,7 @@ require_relative "testing/checked_player"
 require_relative "testing/pictures"
 require_relative "testing/rewritten_blocks"
 require_relative "testing/cartridge_cache"
+require_relative "testing/plays_alike"
 
 module VBlank
   module Testing

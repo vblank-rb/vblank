@@ -305,7 +305,7 @@ module VBlank
     # The consoles whose cartridges `compare` can line up side by side
     # (Console::Kit#compared_side_by_side?), and how a sentence says them.
     COMPARED = VBlank::Console.kits.select(&:compared_side_by_side?).freeze
-    COMPARED_TITLES = COMPARED.map(&:title).join(" and ").freeze
+    COMPARED_TITLES = [COMPARED[0...-1].map(&:title).join(", "), COMPARED.last.title].reject(&:empty?).join(" and ").freeze
     COMPARED_NAMES = COMPARED.map(&:name).freeze
 
     # The words for --set, the same on every command that takes it.
@@ -545,8 +545,9 @@ module VBlank
 
       Play two cartridges on the same presses, and say the first frame on which
       their screens differ. Each is a game file (a .rb, built first) or a .gba.
-      A comparison compares #{COMPARED_TITLES} cartridges only, so a game file
-      for several consoles needs --console #{COMPARED_NAMES.join(" or ")}.
+      Both must be cartridges for one of these consoles, with one screen size:
+      #{COMPARED_TITLES}.
+      A game file for several consoles needs --console, one of #{COMPARED_NAMES.join(", ")}.
 
       Exit status: 0 the same, 1 different, 2 not compared (a file that is not
       there, a script that gave up).
@@ -1589,17 +1590,20 @@ module VBlank
     # The console a command that runs one cartridge runs +game+ on: the one --console names, or the
     # game's only one. A game for two with neither said is asked which, since nothing is taken to
     # be for the Advance. +doing+ is what the command does with it ("profile", "play"), and
-    # +offered+ the consoles it can do that on, which `compare` holds to the Advance.
+    # +offered+ the consoles it can do that on, which `compare` holds to those it lines up side by
+    # side; only the game's own of those are offered.
     def console_to_run(game, doing, offered: game.consoles)
       return options[:console].to_sym if options[:console]
       return game.consoles.first if game.consoles.size == 1
 
-      raise Thor::Error, consoles_choice_message(game, doing, offered)
+      raise Thor::Error, consoles_choice_message(game, doing, offered & game.consoles)
     end
 
     # "PONG is for the Game Boy Advance and the Game Boy Color. Say which cartridge to play: add
     # --console gba or --console gbc."
     def consoles_choice_message(game, doing, offered)
+      return "#{game.title} is for the #{consoles_named(game)}. This command cannot #{doing} a cartridge for those consoles." if offered.empty?
+
       "#{game.title} is for the #{consoles_named(game)}. Say which cartridge to #{doing}: add --console " \
         "#{offered.join(' or --console ')}."
     end

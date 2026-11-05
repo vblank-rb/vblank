@@ -281,8 +281,7 @@ class TestCommandLineCompare < Minitest::Test
   end
 
   # A GAME FILE FOR TWO CONSOLES is asked which cartridge to compare, and ends with 2 until
-  # --console says; then it is compared like any other. Only the Advance's is offered, since a
-  # comparison lines screens up at the Advance's size.
+  # --console says; then it is compared like any other. Only the game's own consoles are offered.
   def test_a_game_file_for_two_consoles_is_compared_on_the_console_said
     with_cartridges do |dir|
       File.write(File.join(dir, "both.rb"), GAME.sub("consoles: %i[gba]", "consoles: %i[gba gbc]"))
@@ -292,7 +291,7 @@ class TestCommandLineCompare < Minitest::Test
 
       assert_equal NOT_COMPARED, asked_status.exitstatus, asked
       assert_match(/WALKER is for the Game Boy Advance and the Game Boy Color/, asked)
-      assert_match(/add --console gba\.$/, asked)
+      assert_match(/add --console gba or --console gbc\.$/, asked)
       assert_equal AGREED, status.exitstatus, out
     end
   end

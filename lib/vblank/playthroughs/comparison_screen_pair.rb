@@ -11,7 +11,8 @@ module VBlank
       # colours, of the places that were looked at (see Likeness#differing_places): a part
       # of the screen a comparison was told to leave out is never in it, so nothing here
       # marks a pixel that was not what made the two differ.
-      ScreenPair = Data.define(:first, :second, :differing)
+      # +width+ is how many pixels a row of the screen holds, the console's.
+      ScreenPair = Data.define(:first, :second, :differing, :width)
 
       class ScreenPair
         # What a differing pixel is marked in: a colour a greyed screen cannot hold.
@@ -27,8 +28,7 @@ module VBlank
         STRIP_WIDTH = 8
         STRIP_COLOUR = Graphics::Color.resolve(:gray)
 
-        WIDTH = Console::Hardware::SCREEN_WIDTH
-        private_constant :MARK, :SCALE, :STRIP_WIDTH, :STRIP_COLOUR, :WIDTH
+        private_constant :MARK, :SCALE, :STRIP_WIDTH, :STRIP_COLOUR
 
         # THE DIFFERENCE AS A SCREEN: the first screen with its colour taken out and dimmed,
         # so it is only there to say where on the screen things are, and every pixel that
@@ -53,7 +53,7 @@ module VBlank
 
         # +screens+ as the rows of one picture, each screen a panel of it.
         def rows_side_by_side(screens)
-          panels = screens.map { |screen| screen.each_slice(WIDTH).to_a }
+          panels = screens.map { |screen| screen.each_slice(width).to_a }
           strip = Array.new(STRIP_WIDTH, STRIP_COLOUR)
           panels.first.each_index.flat_map do |row|
             across = panels.map { |panel| panel[row].flat_map { |colour| [colour] * SCALE } }

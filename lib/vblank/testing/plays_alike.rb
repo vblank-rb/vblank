@@ -1,0 +1,69 @@
+# frozen_string_literal: true
+
+module VBlank
+  module Testing
+    # ONE GAME HELD TO ANOTHER, FRAME BY FRAME, in a test: a port's cartridge held to the original it
+    # is made from, the same presses on both from power-on. Matching the original is how a port is
+    # accepted, and this is the one assertion for it, over Playthroughs::Comparison:
+    #
+    #   class TitleTest < Minitest::Test
+    #     include VBlank::Testing::PlaysAlike
+    #
+    #     def test_the_title_comes_up_as_the_original_does
+    #       assert_plays_alike ours, ORIGINAL.copy.path, to_the_title, ignoring_rectangles: [[0, 0, 160, 8]]
+    #     end
+    #   end
+    #
+    # +first+ and +second+ are cartridges (built ones, or files by their path: an original on any
+    # console), and +playthrough+ a VBlank.playthrough: its script is played on the first, and the
+    # presses it made are played on the second. The settings are Comparison's: `ignoring_rectangles:`
+    # leaves parts of the screen out (a part not drawn yet, or a sprite layer the port draws another
+    # way), `frames_in_a_row:` lets a difference that lasts fewer frames pass (an original that shows
+    # a change torn for a frame while it copies it in), `share_may_differ:`, `readings:` (numbers read
+    # off each and compared by name: a block for each side, handed the running cartridge, so the
+    # original's is read by address, `game.mem16(0xD4B4)`, and ours by a variable's name, `:lives`),
+    # `comparing:`, `lead_ins:` and `reports_in:` (a folder for the two pictures and what differed).
+    #
+    # A failure says where the two first part: the frame and the moment before it, what differed,
+    # every reading on both, how many pixels differ, the box they lie in, the first of them and its
+    # colour on each, and the report's folder when one was written.
+    #
+    # It plays both in the emulator, so the game's test group needs the emulator gems.
+    module PlaysAlike
+      def assert_plays_alike(first, second, playthrough, message = nil, **settings)
+        drift = playthrough.compare(first, second, **settings).drift
+        assert_nil drift, (drift && [message, PlaysAlike.drift_message(drift)].compact.join("\n"))
+      end
+
+      # The words of a failure: where the two parted, and how.
+      def self.drift_message(drift)
+        moment = drift.moment ? " The last moment named was #{drift.moment}." : ""
+        ["The two cartridges stop playing alike on frame #{drift.frame}.#{moment} What differed: #{differed_words(drift)}.",
+         *readings_words(drift), *picture_words(drift.picture_difference),
+         ("The report is in #{drift.report}." if drift.report)].compact.join("\n")
+      end
+
+      DIFFERED_WORDS = { Playthroughs::Comparison::PICTURE => "the picture",
+                         Playthroughs::Comparison::FRAMES_APART => "how many frames each cartridge took" }.freeze
+
+      def self.differed_words(drift) = drift.differed.map { |what| DIFFERED_WORDS.fetch(what) { "the reading #{what}" } }.join(", ")
+
+      def self.readings_words(drift)
+        return [] if drift.readings.empty?
+
+        ["The readings on that frame: #{drift.readings.map { |name, (one, other)| "#{name} is #{one.inspect} on the first and #{other.inspect} on the second" }.join('; ')}."]
+      end
+
+      def self.picture_words(difference)
+        return [] unless difference
+
+        x, y, width, height = difference.fetch(:box)
+        first_color, second_color = difference.fetch(:colors).map { |color| format("0x%04X", color) }
+        at_x, at_y = difference.fetch(:at)
+        ["#{difference.fetch(:count)} pixels differ, all in the box from (#{x}, #{y}), #{width} wide and #{height} high. " \
+         "The first is at (#{at_x}, #{at_y}): #{first_color} on the first cartridge and #{second_color} on the second."]
+      end
+      private_class_method :differed_words, :readings_words, :picture_words
+    end
+  end
+end

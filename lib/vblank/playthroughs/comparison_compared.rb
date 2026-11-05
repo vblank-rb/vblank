@@ -46,6 +46,11 @@ module VBlank
           Seen.new(differed: differed, readings: readings)
         end
 
+        # How the two running cartridges' pictures differ, of the places looked at
+        # (Verifier#difference_from: how many pixels, the box they lie in, the first and its two
+        # colours), or nil. Asked once, on the frame a difference in the picture begins.
+        def picture_difference(first, second) = @likeness.difference(first, second)
+
         # The same question of two cartridges that are not running side by side, asked of
         # what was kept from each: +pictures+ is their two screens, and +readings+ every
         # named reading as its pair of values.
