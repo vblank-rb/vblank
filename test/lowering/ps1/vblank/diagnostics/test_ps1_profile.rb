@@ -21,6 +21,30 @@ class TestPS1Profile < Minitest::Test
     game_loop { call :too_much }
   end
 
+  # Work that runs a few lines past the blank after it began: each pass then waits for the next blank,
+  # and takes two frames. The count was found by playing it.
+  JUST_LATE_STEPS = 29_500
+  JUST_LATE = VBlank.game("JUST LATE", consoles: %i[ps1]) do
+    total = 0
+    func(:a_little_too_much) { repeat(JUST_LATE_STEPS) { total += 3 } }
+    game_loop { call :a_little_too_much }
+  end
+
+  # The same work and a little more, so each pass ends further past the blank.
+  LATER = VBlank.game("LATER", consoles: %i[ps1]) do
+    total = 0
+    func(:a_little_too_much) { repeat(JUST_LATE_STEPS + 600) { total += 3 } }
+    game_loop { call :a_little_too_much }
+  end
+
+  # Work for a little over two frames: each pass runs past its second blank into a third frame, well
+  # past the blank's own lines. Its count was found by playing it too.
+  PAST_TWO_FRAMES = VBlank.game("PAST TWO", consoles: %i[ps1]) do
+    total = 0
+    func(:too_much) { repeat(62_000) { total += 3 } }
+    game_loop { call :too_much }
+  end
+
   # A routine of its own that does more while B is down.
   WALKER = VBlank.game("WALKER", consoles: %i[ps1]) do
     total = 0
@@ -83,6 +107,49 @@ class TestPS1Profile < Minitest::Test
     assert_operator result.idle_share, :<, 0.5
   end
 
+  # The lines are read from the run: where the pass went to sleep, counted by the console's own line
+  # timer from the blank that began while it ran.
+  def test_a_pass_that_ends_a_few_lines_past_the_blank_is_reported_late_by_those_lines
+    out = StringIO.new
+    result = rom(JUST_LATE).profile(out: out, frames: 10)
+
+    assert_equal({ 2 => 10 }, result.passes_by_frames)
+    assert_equal 10, result.late_passes.size
+    assert(result.late_passes.all? { |lines| lines.between?(1, 20) }, "late by #{result.late_passes}")
+    assert_equal({ 2 => result.late_passes }, result.lines_past_blank)
+    assert_match(/10 passes ended after the break between pictures began.*Ending \d+( to \d+)? lines? sooner/, out.string)
+    assert_match(/10 passes of 2 frames ran \d+( to \d+)? lines? past the last break between pictures/, out.string)
+  end
+
+  def test_more_work_past_the_blank_is_more_lines_late
+    late = rom(JUST_LATE).profile(out: StringIO.new, frames: 6)
+    later = rom(LATER).profile(out: StringIO.new, frames: 6)
+
+    assert_equal [{ 2 => 6 }] * 2, [late.passes_by_frames, later.passes_by_frames]
+    assert_operator later.late_passes.min, :>, late.late_passes.max
+  end
+
+  # A pass that runs well into a third frame is not a few lines late, so the Advance's line leaves it
+  # out; how far past its second blank it ran is said by the frames it took.
+  def test_a_pass_of_three_frames_says_how_far_past_its_second_blank_it_ran
+    out = StringIO.new
+    result = rom(PAST_TWO_FRAMES).profile(out: out, frames: 6)
+
+    assert_equal({ 3 => 6 }, result.passes_by_frames)
+    assert_empty result.late_passes
+    assert(result.lines_past_blank.fetch(3).all? { |lines| lines.between?(24, 120) }, result.lines_past_blank.inspect)
+    assert_match(/6 passes of 3 frames ran \d+( to \d+)? lines past the last break between pictures/, out.string)
+  end
+
+  def test_a_game_that_keeps_up_has_no_late_passes
+    out = StringIO.new
+    result = rom(BUSY).profile(out: out, frames: 10)
+
+    assert_empty result.late_passes
+    assert_empty result.lines_past_blank
+    refute_match(/break between pictures/, out.string)
+  end
+
   def test_the_graphics_chip_drawing_is_its_share_of_the_time
     painted = rom(PAINTER).profile(out: StringIO.new, frames: 10)
     idle = rom(BUSY).profile(out: StringIO.new, frames: 10)
@@ -109,6 +176,7 @@ class TestPS1Profile < Minitest::Test
     assert_equal 10, data.fetch("passes")
     assert_match(/hard_work/, data.fetch("game").first.fetch("routine"))
     assert data.key?("gpu_share")
+    assert_equal [], data.fetch("late_passes")
   end
 
   def test_a_frame_made_slow_by_a_press_names_its_routine

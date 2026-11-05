@@ -68,6 +68,13 @@ module VBlank
       JOY_BAUD = 0x1F80_104E
       SPU_MAIN_VOLUME = 0x1F80_1D80
       SPU_CONTROL = 0x1F80_1DAA
+      # The second of the three timers: its count, 16 bits that turn round, and how it counts. Told to
+      # count the ends of lines (TIMER1_COUNTS_LINES, the clock source bits set to the horizontal
+      # retrace) and never to stop or start again, it says how many lines the screen has drawn, so two
+      # readings say how many lines went by between them (psx-spx, "Timers").
+      TIMER1_COUNT = 0x1F80_1110
+      TIMER1_MODE = 0x1F80_1114
+      TIMER1_COUNTS_LINES = 0x0100
 
       # --- interrupts (I_STAT and I_MASK bits) ---
       IRQ_VBLANK = 1 << 0

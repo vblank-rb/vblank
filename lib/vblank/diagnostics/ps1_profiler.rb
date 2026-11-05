@@ -33,7 +33,8 @@ module VBlank
       FRAME_RATE = CYCLES_A_SECOND.fdiv(CYCLES_A_FRAME)
 
       # An NTSC frame is 263 lines, so this many of the processor's cycles are one line of the picture.
-      LINE_CYCLES = CYCLES_A_FRAME / 263
+      FRAME_LINES = 263
+      LINE_CYCLES = CYCLES_A_FRAME / FRAME_LINES
 
       # A game that has not reached its passes by now has stopped trying to.
       MOST_FRAMES_TO_SETTLE = 3600
@@ -51,8 +52,16 @@ module VBlank
       # of frames; TimeByRoutine::Report's four; +gpu_share+, the graphics chip's time drawing out of all
       # the time measured, 0 to 1; and +measured_frames+, the frames the time was read over, counted
       # from 1 at power-on as a tape counts them.
+      #
+      # A pass waits for the NEXT blank, so one that ends a line after a blank began while it ran waits a
+      # whole frame for the one after. +lines_past_blank+ says, by the frames each took, how many lines
+      # past that blank each pass of more than a frame ran: the lines sooner it had to end to take a
+      # frame fewer, in the order they ran. +late_passes+ is the same lines for the passes that went to
+      # sleep inside the blank itself, a few lines late, as the Advance's profile has it
+      # (Profiler::Result#late_passes): a game whose rate halves for a few lines of work says why there.
       Result = Data.define(:passes, :frames, :fps, :slowest_frames, :slowest_pass, :passes_by_frames,
-                           :idle_share, :fewest_lines_spare, :game, :runtime, :gpu_share, :measured_frames) do
+                           :late_passes, :lines_past_blank, :idle_share, :fewest_lines_spare, :game, :runtime,
+                           :gpu_share, :measured_frames) do
         def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h),
                                measured_frames: [measured_frames.begin, measured_frames.end])
       end
@@ -64,7 +73,17 @@ module VBlank
         Emulator.load_ps1!
         headless = IR::Backends::PS1::HeadlessRun.new.hold(*keys).run(built.source_program, frames: settle + frames + 1)
         took = ((settle + 1)..(settle + frames)).to_h { |pass| [pass, headless.frames_took(pass)] }
-        result_of(took, *time_of(rom, frames: frames, settle: settle, keys: keys))
+        result_of(took, lines_past_blank(headless, took), *time_of(rom, frames: frames, settle: settle, keys: keys))
+      end
+
+      # The lines of the frame below the picture, the blank: the lines a frame has past those shown.
+      BLANK_LINES = FRAME_LINES - Console::PLAYSTATION.screen_size.last
+
+      # For each pass of +took+ that took more than a frame, by its number, how many lines sooner it
+      # had to go to sleep to make the blank that began while it ran: the lines the screen had drawn
+      # since that blank began, counting the one it was on.
+      def self.lines_past_blank(headless, took)
+        took.filter_map { |pass, frames| [pass, headless.lines_after_blank(pass) + 1] if frames > 1 }.to_h
       end
 
       # +tape+ played on +rom+ from power-on, and each of +frames+ read by itself (TapeProfile).
@@ -121,14 +140,17 @@ module VBlank
         TimeByRoutine.new(code: places.code, waits: WAITS, line: LINE_CYCLES, routine_at: routine_at)
       end
 
-      # What the frames each pass took (+took+, by pass), the +time+ and the +gpu_share+ come to, over
-      # +measured_frames+.
-      def self.result_of(took, time, gpu_share, measured_frames)
+      # What the frames each pass took (+took+, by pass), the lines each pass of more than a frame ran past
+      # the blank (+past+, by pass), the +time+ and the +gpu_share+ come to, over +measured_frames+.
+      def self.result_of(took, past, time, gpu_share, measured_frames)
         frames = took.values.sum
         counted, slowest_frames = took.max_by { |pass, count| [count, -pass] }
+        by_frames = past.group_by { |pass, _| took.fetch(pass) }.sort.to_h
         # The runtime counts the wait before the game's first pass as a pass of its own.
         Result.new(passes: took.size, frames: frames, fps: FRAME_RATE * took.size / frames,
                    slowest_frames: slowest_frames, slowest_pass: counted - 1, passes_by_frames: took.values.tally.sort.to_h,
+                   late_passes: past.values.select { |lines| lines <= BLANK_LINES },
+                   lines_past_blank: by_frames.transform_values { |passes| passes.map(&:last) },
                    gpu_share: gpu_share, measured_frames: measured_frames, **time.to_h)
       end
 
@@ -145,7 +167,17 @@ module VBlank
         result.passes_by_frames.each do |frames, passes|
           out.puts format("  %4d of them took %d %s", passes, frames, frames == 1 ? "frame" : "frames")
         end
+        out.puts "  #{Profiler.late_pass_message(result.late_passes)}" unless result.late_passes.empty?
+        result.lines_past_blank.each { |frames, lines| print_lines_past_blank(frames, lines, out) }
         TimeByRoutine.render(result, out: out)
+      end
+
+      # Said only of passes that took more than a frame: each waited for the NEXT break between pictures,
+      # so the lines it ran past the one that began while it ran are what cost it a whole frame.
+      def self.print_lines_past_blank(frames, lines, out)
+        passes = lines.one? ? "1 pass" : "#{lines.size} passes"
+        out.puts "  #{passes} of #{frames} frames ran #{Profiler.lines_phrase(lines)} past the last break between " \
+                 "pictures. If a pass ends that many lines sooner, it takes one frame fewer."
       end
     end
   end

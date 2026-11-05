@@ -64,6 +64,14 @@ module VBlank
             # number less its multiples of STEPS_KEPT, for a reader of the run.
             STEPS = "rt steps"
             STEPS_KEPT = 16
+            # HOW LATE A PASS WAS. The console's line timer (PS1Hardware::TIMER1_COUNT) as the last blank
+            # began, kept by the interrupt (BLANK_LINE); and for each of the last STEPS_KEPT passes, a half
+            # each, how many lines the screen had drawn since then as the pass went to sleep (END_LINES),
+            # by the same number as STEPS. A pass that took several frames went to sleep after a blank began
+            # while it ran, and those lines are how much sooner it had to end to take a frame fewer. Only a
+            # reader of the run asks (Diagnostics::PS1Profiler); the game never does.
+            BLANK_LINE = "rt blank line"
+            END_LINES = "rt end lines"
             # The buttons as the interrupt reads them on every frame: held at the last, and every one that
             # went down on any of them since the last wait ended.
             PAD_HELD = "rt pad held"
@@ -83,7 +91,8 @@ module VBlank
             KEPT_REGISTERS = %i[at v0 v1 a0 a1 a2 a3 t0 t1 t2 t3 t4 t5 t6 t7 t8 t9 ra].freeze
 
             WORDS = [STATE, WAITING, PASSES, SHOWN, HELD, SEEN, PRESSED, HOLD, LAST_PASS_TAKEN, FRAMES,
-                     FRAMES_MARK, STEP_TAKEN, FRAMES_TAKEN, PAD_HELD, PAD_PRESSED, VBLANK, DISPLAY_ON].freeze
+                     FRAMES_MARK, STEP_TAKEN, FRAMES_TAKEN, PAD_HELD, PAD_PRESSED, VBLANK, DISPLAY_ON,
+                     BLANK_LINE].freeze
 
             module_function
 
@@ -91,6 +100,7 @@ module VBlank
               WORDS.each { |name| memory.reserve(name, 4) }
               memory.reserve(FAULT, FAULT_BYTES)
               memory.reserve(STEPS, STEPS_KEPT)
+              memory.reserve(END_LINES, STEPS_KEPT * 2)
               memory.reserve(SAVED, (KEPT_REGISTERS.size + 2) * 4)
             end
 
@@ -130,6 +140,8 @@ module VBlank
               asm.sw(:t0, at.call(FRAMES), :gp)
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(VBLANK), :gp)
+              asm.lhu(:t0, h::TIMER1_COUNT & 0xFFFF, :t2)
+              asm.sw(:t0, at.call(BLANK_LINE), :gp)
               asm.jal("rt_pad_read")
               asm.label("rt_interrupt_done")
               asm.lw(:t0, saved + (KEPT_REGISTERS.size * 4), :gp)
@@ -160,6 +172,7 @@ module VBlank
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(Paint::FLIP_OWED), :gp) # the page this pass drew is shown
               asm.sw(:t0, at.call(WAITING), :gp)
+              emit_end_lines_store(asm, at)
               asm.jal("rt_show_pass")
               asm.lw(:t0, at.call(HOLD), :gp)
               asm.bne(:t0, :zero, "rt_stopped")
@@ -175,6 +188,28 @@ module VBlank
               asm.lw(:t0, at.call(LAST_PASS_TAKEN), :gp)
               asm.beq(:t0, :zero, "rt_frame_begins")
               asm.jr(:ra)
+            end
+
+            # THE MOMENT THE PASS ENDS: END_LINES for it, the lines since the last blank began, and VBLANK
+            # cleared, so the wait (rt_show_pass) catches the first blank that begins from here on. Both
+            # with the interrupt held off, so no blank can come between reading the timer and clearing
+            # VBLANK: one that did would be missed by the wait and counted from the blank before. The
+            # timer's count turns round at 16 bits, and so does the difference.
+            def emit_end_lines_store(asm, at)
+              asm.mtc0(:zero, R3000::COP0_STATUS)
+              asm.lui(:t1, Console::PS1Hardware::IO >> 16)
+              asm.lw(:t2, at.call(BLANK_LINE), :gp)
+              asm.lhu(:t0, Console::PS1Hardware::TIMER1_COUNT & 0xFFFF, :t1)
+              asm.lw(:t1, at.call(PASSES), :gp)
+              asm.subu(:t0, :t0, :t2)
+              asm.andi(:t0, :t0, 0xFFFF)
+              asm.andi(:t1, :t1, STEPS_KEPT - 1)
+              asm.sll(:t1, :t1, 1)
+              asm.addu(:t1, :t1, :gp)
+              asm.sh(:t0, at.call(END_LINES), :t1)
+              asm.sw(:zero, at.call(VBLANK), :gp)
+              asm.li(:t0, Console::PS1Hardware::SR_INTERRUPTS_ON)
+              asm.mtc0(:t0, R3000::COP0_STATUS)
             end
 
             # rt_show_pass: the pass on the screen, and SHOWN saying so. The first time, the picture is
@@ -199,8 +234,9 @@ module VBlank
               asm.sw(:t0, at.call(FRAMES), :gp)
               asm.sw(:t0, at.call(FRAMES_MARK), :gp)
               asm.b("rt_show_pass_shown") { asm.sw(:t0, at.call(DISPLAY_ON), :gp) }
+              # VBLANK was cleared where the pass ended (#emit_end_lines_store), or where the game stopped.
               asm.label("rt_show_pass_on")
-              asm.jal("rt_sleep_until_vblank")
+              asm.jal("rt_sleep_until_vblank_wait")
               asm.label("rt_show_pass_shown")
               # A tear-free screen's pages trade places in the blank, before SHOWN says the pass is up.
               asm.jal("rt_paint_flip")
@@ -262,6 +298,7 @@ module VBlank
               asm.li(:t0, HALTED)
               asm.label("rt_stop_with_state")
               asm.sw(:t0, at.call(STATE), :gp)
+              asm.sw(:zero, at.call(VBLANK), :gp)
               asm.jal("rt_show_pass")
               asm.li(:t0, END_SHOWN)
               asm.sw(:t0, at.call(SHOWN), :gp)

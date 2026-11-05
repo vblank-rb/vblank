@@ -32,7 +32,19 @@ module VBlank
           # The rest of what the interpreter answers, each refused by name.
           refuses :clock_at, :mixed_sound, :active_samples
 
+          # HOW MANY LINES THE SCREEN HAD DRAWN since the last blank began when +pass+ went to sleep, by
+          # the pass's number as #frames_took has it, read off the console's line timer
+          # (Runtime::Frame::END_LINES). For a pass that took several frames a blank began while it ran,
+          # so this is how many lines too late it went to sleep to take a frame fewer. Nothing the
+          # interpreter can say: it has no screen drawing a line at a time.
+          def lines_after_blank(pass) = @lines_after_blank.fetch(pass)
+
           private
+
+          def note_frames_took(pass)
+            super
+            @lines_after_blank[pass] = half(runtime_place(Runtime::Frame::END_LINES) + ((pass % Runtime::Frame::STEPS_KEPT) * 2))
+          end
 
           def kit = Console.for(:ps1)
 
@@ -56,7 +68,10 @@ module VBlank
                                                               camera_x: 0, camera_y: 0), sounds)
           end
 
-          def start_run(_program) = @frames_played = 0
+          def start_run(_program)
+            @frames_played = 0
+            @lines_after_blank = {}
+          end
 
           def next_screen_frame = screen_on? ? super : 1
 

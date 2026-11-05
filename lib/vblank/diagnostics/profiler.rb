@@ -942,13 +942,19 @@ module VBlank
       def self.late_pass_line(late, printer)
         return if late.nil? || late.empty?
 
-        lines = late.minmax.uniq.join(" to ")
-        unit = late.max == 1 ? "line" : "lines"
-        passes = late.one? ? "1 pass" : "#{late.size} passes"
-        printer.puts("  #{passes} ended after the break between pictures began. Each one then waited " \
-                     "a whole picture for the next break. Ending #{lines} #{unit} sooner keeps the picture.",
-                     severity: :bad)
+        printer.puts("  #{late_pass_message(late)}", severity: :bad)
       end
+
+      # The words for passes that ended +late+ lines into a break between pictures (each pass's lines).
+      # The PlayStation's profile says them too (PS1Profiler).
+      def self.late_pass_message(late)
+        passes = late.one? ? "1 pass" : "#{late.size} passes"
+        "#{passes} ended after the break between pictures began. Each one then waited a whole picture for " \
+          "the next break. Ending #{lines_phrase(late)} sooner keeps the picture."
+      end
+
+      # "3 lines", "1 to 9 lines": the least and the most of +lines+.
+      def self.lines_phrase(lines) = "#{lines.minmax.uniq.join(' to ')} #{lines.max == 1 ? 'line' : 'lines'}"
 
       # HOW CLOSE THE FIRST PASS AFTER POWER-ON CAME TO ONE MORE BREAK, said only on a run that saw
       # it whole. The setting up is in that pass, so it is the one a game makes longer each time it

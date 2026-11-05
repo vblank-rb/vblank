@@ -37,6 +37,7 @@ module VBlank
               emit_instruction_cache_on(asm, h)
               asm.lui(:s1, h::IO >> 16) # s1: the ports, for the rest of the boot
               emit_interrupts_quiet(asm, h)
+              emit_port_word(asm, h::TIMER1_MODE, h::TIMER1_COUNTS_LINES) # for Frame::END_LINES
               emit_handler_installed(asm, h)
               asm.jal("rt_pads_start")
               asm.jal("rt_buttons_now")
