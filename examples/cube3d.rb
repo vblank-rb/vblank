@@ -52,7 +52,7 @@ module Cube3D
   # ...and the same reaching twice as far, so the picture repeats twice each way.
   TWICE = Ractor.make_shareable([[0, 0], [32, 0], [32, 32], [0, 32]])
 
-  GAME = VBlank.game("CUBE3D", consoles: %i[gba]) do
+  GAME = VBlank.game("CUBE3D", consoles: %i[gba ps1]) do
     screen :bitmap, tear_free: true
     image :crate, "#" => rgb(12, 6, 2), "." => rgb(24, 14, 6), "o" => rgb(30, 22, 10) do
       CRATE

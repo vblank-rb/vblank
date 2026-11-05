@@ -57,7 +57,7 @@ module TwoRooms
   STONE = 0
   BRICK = 1
 
-  GAME = VBlank.game("TWO ROOMS", consoles: %i[gba]) do
+  GAME = VBlank.game("TWO ROOMS", consoles: %i[gba ps1]) do
     screen :bitmap, tear_free: true
     image :stone, "#" => rgb(8, 8, 9), "." => rgb(20, 20, 22) do
       BLOCKS

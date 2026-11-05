@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "differential"
-require "console/gba/vblank/builder/test_places_on_the_advance"
+require "place_games"
 require VBlank.root.join("examples/raycaster").to_s
 require VBlank.root.join("examples/breakout").to_s
 

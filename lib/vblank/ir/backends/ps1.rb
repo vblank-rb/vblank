@@ -20,6 +20,7 @@ require_relative "ps1/runtime"
 require_relative "ps1/texture_memory"
 require_relative "ps1/painted_art"
 require_relative "ps1/lowering/paint"
+require_relative "ps1/lowering/faces"
 require_relative "ps1/lowering"
 require_relative "ps1/headless_run"
 require_relative "ps1/checked_run"
@@ -38,7 +39,8 @@ module VBlank
       # Beetle PSX through ruby-ps1-emulator, which `rake compile_ps1_core` builds.
       #
       # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
-      # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint).
+      # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), and
+      # the places drawn on it in 3D, every face filled as the interpreter fills it (Runtime::Faces).
       # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
       class PS1
@@ -66,7 +68,7 @@ module VBlank
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
-                                             direct_slot_sizes: lowering.direct_slot_sizes)
+                                             direct_slot_sizes: lowering.direct_slot_sizes, faces: lowering.fills_faces?)
           linked = Linker.new(runtime + game, room: Memory::PROGRAM_ROOM).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

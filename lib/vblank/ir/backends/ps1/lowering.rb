@@ -56,7 +56,7 @@ module VBlank
                                                # the build reads a digital pad, which has no motor: nothing is felt
                                                rumble: :emit_nothing
                                              }.merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] },
-                                                     Paint::STATEMENTS))
+                                                     Paint::STATEMENTS, Faces::STATEMENTS))
 
           VALUES = Ractor.make_shareable({
                                            int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
@@ -77,7 +77,6 @@ module VBlank
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the painted (bitmap) screen" => %i[draw_column_at save_region restore_region camera],
                                                     "fades, lights and screen effects" => %i[fade tint pixelate shade_outside],
-                                                    "places drawn in 3D" => %i[draw_place fill_face],
                                                     "sprites and tiled backgrounds" => %i[background scroll_background set_tile show_map
                                                                                           present_objects color_list_holds background_colors
                                                                                           hide_sprites place_bar copy_tiles box_background
@@ -137,6 +136,7 @@ module VBlank
           attr_reader :variables, :lists, :frame_begins
 
           include Paint
+          include Faces
 
           def initialize(program, memory:, cache: BuildCache.for(PS1, program))
             @program = program
@@ -189,7 +189,7 @@ module VBlank
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
             # The pictures are known once every routine is made, so their tables come last.
-            [data_section, *table_sections, *routines, *timers, main, *paint_sections]
+            [data_section, *table_sections, *routines, *timers, main, *paint_sections, *face_sections]
           end
 
           private
@@ -213,6 +213,8 @@ module VBlank
               %i[held pressed].include?(node.kind) && node.player.is_a?(Integer) && node.player > 1
             end
             refuse_unmade!(SECOND_PAD, "reads the second pad") if second_pad
+            lit = @program.walk.any? { |node| node.kind == :fill_face && node.shading }
+            refuse_unmade!(Faces::LIT_FACES, "lights the faces of a place from their corners") if lit
           end
 
           def tiles_screen?(node)

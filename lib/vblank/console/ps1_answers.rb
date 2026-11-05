@@ -62,7 +62,8 @@ module VBlank
         viewer: works("a viewer is variables."),
         shading: works("a shading is data in the program."),
         screen_spot: works("the processor turns and projects the point, as the drawing of a place does."),
-        draw_place: works("the processor turns and projects every corner, and the graphics chip fills the faces."),
+        draw_place: works("the processor turns and projects every corner and works out every pixel of each face, " \
+                          "as the other consoles do, and the graphics chip copies the pixels to the screen."),
         clear_screen: works,
         inside: works,
         grid: works,
@@ -247,7 +248,6 @@ module VBlank
         "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen sprite],
         "fades, lights and screen effects" => %i[fade tint fade_in fade_out flash_screen pixelate pixelate_in
                                                  pixelate_out spotlight iris_in iris_out],
-        "places drawn in 3D" => %i[draw_place],
         "sprites and tiled backgrounds" => %i[sprite tiles background status_bar canvas tile_pictures sprite_tiles
                                               layers layer draw_in_order hide_sprites picture_groups colors recolor
                                               color_walk],

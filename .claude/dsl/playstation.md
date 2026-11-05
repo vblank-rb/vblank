@@ -41,7 +41,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `viewer` — works: a viewer is variables.
 - `shading` — works: a shading is data in the program.
 - `screen_spot` — works: the processor turns and projects the point, as the drawing of a place does.
-- `draw_place` — works: the processor turns and projects every corner, and the graphics chip fills the faces.
+- `draw_place` — works: the processor turns and projects every corner and works out every pixel of each face, as the other consoles do, and the graphics chip copies the pixels to the screen.
 - `clear_screen` — works: the same as on the Advance.
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
@@ -177,7 +177,6 @@ and a game that reaches one of these steps is refused, naming the step, until it
 
 - the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`, `sprite`; the steps `draw_column_at`, `save_region`, `restore_region`, `camera`
 - fades, lights and screen effects: the verbs `fade`, `tint`, `fade_in`, `fade_out`, `flash_screen`, `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `fade`, `tint`, `pixelate`, `shade_outside`
-- places drawn in 3D: the verbs `draw_place`; the steps `draw_place`, `fill_face`
 - sprites and tiled backgrounds: the verbs `sprite`, `tiles`, `background`, `status_bar`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `draw_in_order`, `hide_sprites`, `picture_groups`, `colors`, `recolor`, `color_walk`; the steps `background`, `scroll_background`, `set_tile`, `show_map`, `present_objects`, `color_list_holds`, `background_colors`, `hide_sprites`, `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`, `pixels_overlap`
 - sound: the verbs `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `enable_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
 - save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`

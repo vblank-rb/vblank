@@ -85,7 +85,7 @@ module VBlank
             # finds it off, and runs its loops several times slower. So the runtime sets the BIOS's value
             # itself, which changes nothing on a console the BIOS has already set it on.
             def emit_instruction_cache_on(asm, h)
-              asm.li(:t0, h::CACHE_CONTROL_USUAL)
+              asm.li(:t0, h::CACHE_CONTROL_SET_BY_BIOS)
               asm.li(:t1, h::CACHE_CONTROL)
               asm.sw(:t0, 0, :t1)
             end

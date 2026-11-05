@@ -6,6 +6,7 @@ require_relative "runtime/frame"
 require_relative "runtime/pads"
 require_relative "runtime/lists"
 require_relative "runtime/paint"
+require_relative "runtime/faces"
 
 module VBlank
   module IR
@@ -13,7 +14,7 @@ module VBlank
       class PS1
         # THE RUNTIME every PlayStation program carries: from power-on to the game's first line (Boot),
         # the arithmetic too long to write in place (Int32), the frame, the interrupt and the pads
-        # (Frame, Pads), the lists (Lists), and the painted screen (Paint).
+        # (Frame, Pads), the lists (Lists), the painted screen (Paint), and the faces of a place (Faces).
         #
         # HOW ITS ROUTINES ARE CALLED. With JAL, from anywhere in the program, and they return with
         # `jr ra`. Their numbers are in ARGUMENTS (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
@@ -30,13 +31,15 @@ module VBlank
           def reserve(memory)
             Frame.reserve(memory)
             Paint.reserve(memory)
+            Faces.reserve(memory)
           end
 
           # The runtime's sections: the entry point, then everything else. +main+ is the label of the
           # game's main routine; +frame_begins+ the label of the game's routine run at each frame
           # boundary (its timers moving on), or nil for none. +direct_slot_sizes+ are the slot sizes, in
           # bytes, whose lists the game reads and writes directly (Lists#emit_fixed_front_access).
-          def sections(memory, main:, frame_begins: nil, direct_slot_sizes: [])
+          # +faces+ is whether the game fills the faces of a place, so carries Faces and its table.
+          def sections(memory, main:, frame_begins: nil, direct_slot_sizes: [], faces: false)
             asm = R3000.new("runtime")
             Boot.emit(asm, memory, main: main)
             Int32.emit(asm)
@@ -44,9 +47,10 @@ module VBlank
             Pads.emit(asm, memory)
             Lists.emit(asm, memory, direct_slot_sizes: direct_slot_sizes)
             Paint.emit(asm, memory)
+            Faces.emit(asm, memory) if faces
             emit_start(asm)
             emit_frame_begins(asm, frame_begins)
-            [asm.section]
+            [asm.section, *(Faces.reciprocals_section(Lowering::TABLES_HOLDING) if faces)]
           end
 
           # The runtime place +name+, as the distance from gp an instruction names. The runtime's places
