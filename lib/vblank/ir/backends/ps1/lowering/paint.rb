@@ -22,21 +22,24 @@ module VBlank
                                                  draw_text: :emit_draw_text, draw_digit: :emit_draw_digit
                                                })
 
+            # The PS1::TextureMemory every texture the game draws is kept in.
+            def texture_memory = (@texture_memory ||= TextureMemory.new)
+
             # The PS1::PaintedArt the game draws with.
-            def painted_art = (@painted_art ||= PaintedArt.new)
+            def painted_art = (@painted_art ||= PaintedArt.new(texture_memory))
 
             # The tables Runtime::Paint reads, as sections for the Linker: every picture's pieces, the lists
-            # of pictures a number picks from, what is copied into video RAM at power-on, and the pieces'
-            # texels. Made last, once every picture has been asked for.
+            # of pictures a number picks from, what is copied into video RAM at power-on (every texture and
+            # colour table), and their halfwords. Made last, once every texture has been asked for.
             def paint_sections
-              painted_art.allocate_video_ram!
+              texture_memory.allocate!
               tables = R3000.new("paint tables", holds: TABLES_HOLDING)
               painted_art.pictures.each do |picture|
                 tables.label(picture.label)
                 tables.data_words(picture.pieces.length)
                 picture.pieces.each do |piece|
                   tables.data_halves(piece.dx, piece.dy, piece.width, piece.height)
-                  tables.data_words(piece.draw_mode, piece.texture_corner)
+                  tables.data_words(piece.texture.draw_mode, piece.texture.texture_corner)
                 end
               end
               picture_list_labels.each do |labels, list|
@@ -44,15 +47,13 @@ module VBlank
                 tables.data_words(labels.length, *labels)
               end
               tables.label("paint uploads")
-              texels = []
-              painted_art.pictures.flat_map(&:pieces).each_with_index do |piece, number|
-                words = piece.words
-                tables.data_words((piece.y << 16) | piece.x, (piece.height << 16) | piece.width, "paint texels #{number}",
-                                  words.length)
-                texels << build_texel_section("paint texels #{number}", words)
+              copies = texture_memory.uploads.each_with_index.map do |upload, number|
+                tables.data_words((upload.y << 16) | upload.x, (upload.height << 16) | upload.width, "paint texels #{number}",
+                                  upload.words.length)
+                build_texel_section("paint texels #{number}", upload.words)
               end
               tables.data_words(0)
-              [tables.section, *texels]
+              [tables.section, *copies]
             end
 
             private

@@ -103,20 +103,24 @@ module VBlank
       GPUSTAT_READY_FOR_COMMAND = 1 << 28
 
       # GP0 commands.
+      GP0_CLEAR_CACHE = 0x01 << 24 # the texture cache emptied, so texels copied in since are read afresh
       GP0_FILL = 0x02 << 24 # colour, then y << 16 | x, then height << 16 | width
       # A flat rectangle of any size, in the colour in the command's low 24 bits: then y << 16 | x, then
       # height << 16 | width. It is held to the drawing area, and a rectangle is never dithered.
       GP0_RECTANGLE = 0x60 << 24
       # A rectangle of any size textured from the page the draw mode names, each texel copied as it is
       # (raw: no colour mixed in) and none see-through by halves: then y << 16 | x, then the colour table
-      # << 16 | v << 8 | u, then height << 16 | width. A texel of 0000h is not drawn.
+      # << 16 | v << 8 | u, then height << 16 | width. A texel of 0000h, or a number into a colour table
+      # whose entry is 0000h, is not drawn.
       GP0_TEXTURED_RECTANGLE = 0x65 << 24
       # A copy from the processor into video RAM: then y << 16 | x, then height << 16 | width, then the
       # pixels two to a word, the left one in the low half.
       GP0_COPY_TO_VRAM = 0xA0 << 24
       # The draw mode's texture page: its left edge in 64s of pixels (bits 0-3) and its top in 256s
-      # (bit 4); TEXTURE_15_BIT reads it as colours of 15 bits, one a pixel; DRAW_ON_SHOWN_PICTURE lets a
-      # command draw where the picture shown is, which a screen of one page always does.
+      # (bit 4); bits 7-8 its depth, 0 for 4-bit and 1 for 8-bit numbers into a colour table (CLUT), and
+      # TEXTURE_15_BIT for colours of 15 bits, one a pixel (Backends::PS1::TextureMemory);
+      # DRAW_ON_SHOWN_PICTURE lets a command draw where the picture shown is, which a screen of one page
+      # always does.
       TEXTURE_15_BIT = 2 << 7
       DRAW_ON_SHOWN_PICTURE = 1 << 10
       # A texel's top bit. With it set a black texel (0000h, which the chip never draws) is drawn black;

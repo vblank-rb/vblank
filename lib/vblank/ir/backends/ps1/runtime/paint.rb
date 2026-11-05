@@ -13,11 +13,13 @@ module VBlank
           # bits: the interpreter's own colours, so a colour lands exactly. A tear-free screen keeps a
           # second page 256 lines down, at (0, 256), and draws into the one not shown (PAGE_Y says
           # which); they trade places at the frame boundary (rt_paint_flip). Everything to the right of
-          # x 320 holds the game's pictures (PS1::PaintedArt), copied in at power-on.
+          # x 320 holds the game's pictures (PS1::PaintedArt), and the 16 lines under each page their
+          # colour tables (PS1::TextureMemory), copied in at power-on.
           #
           # HOW IT IS DRAWN. The graphics chip draws whatever the processor sends to its GP0 port, a
           # command at a time. A rectangle of one colour is one command (GP0 60h), and a picture is a
-          # textured rectangle for each piece of it (GP0 65h), each texel copied as it is. Neither is
+          # textured rectangle for each piece of it (GP0 65h), each texel's colour copied as it is, read
+          # from the piece's colour table where it has one (PS1::TextureMemory). Neither is
           # dithered or blended, so the pixels are the colours the game named. The processor works out
           # what is inside the screen, and inside the area `inside` holds drawing to (AREA), before
           # anything is sent: the chip is given only the part that lands, so its own clipping is never
@@ -213,8 +215,8 @@ module VBlank
 
             # rt_paint_blit: a0 = a picture's place in PaintedArt's table, a1, a2 = x, y. Each piece of it
             # that lands inside the area is a textured rectangle: the draw mode naming the piece's page,
-            # then the rectangle from as far into the piece as the area cuts it. The pieces' see-through
-            # texels are 0000h, which the chip leaves undrawn.
+            # then the rectangle from as far into the piece as the area cuts it. A see-through texel's
+            # colour is 0000h, in the piece or in its colour table, which the chip leaves undrawn.
             #
             # rt_paint_blit_one_of: a0 = a list of pictures (its length, then each one's place), a1 = which,
             # a2, a3 = x, y. A number naming none of them, below nought or past the end, draws nothing.
@@ -323,10 +325,10 @@ module VBlank
               asm.b("rt_paint_show_t0") { asm.sw(:t1, at.call(PAGE_Y), :gp) }
             end
 
-            # rt_paint_upload: every piece of every picture copied into video RAM, at power-on, from the
-            # table "paint uploads" (PaintedArt): for each, where it goes (y << 16 | x), its size
-            # (height << 16 | width), where its pixels are and how many words they take; a nought after
-            # the last.
+            # rt_paint_upload: every texture and colour table copied into video RAM, at power-on, from the
+            # table "paint uploads" (PS1::TextureMemory#uploads): for each, where it goes (y << 16 | x), its
+            # size in halfwords (height << 16 | width), where its halfwords are and how many words they
+            # take; a nought after the last.
             #
             # THE PIXELS GO BY DMA, not a word at a time from the processor. While the chip takes a copy
             # in, it says it has room for another word only once it has had time to store the last, and
@@ -376,6 +378,9 @@ module VBlank
               asm.sw(:t0, h::GP1 & 0xFFFF, :t5)
               asm.b("rt_paint_upload_piece") { asm.addiu(:s0, :s0, 16) }
               asm.label("rt_paint_upload_end")
+              # The chip keeps a small cache of the texels and colour table it read last; what it holds from
+              # before the copies is thrown away, so the first picture drawn reads what was copied in.
+              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
               asm.lw(:ra, 0, :sp)
               asm.lw(:s0, 4, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 8) }

@@ -64,7 +64,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `iris_shut?` — works: see `iris_in`.
 - `pulse` — works: the graphics chip draws the sprite bigger or smaller as a textured shape.
 - `camera_follows` — works: the same as on the Advance.
-- `image` — works: a picture is kept in video RAM, with a list of 16 or 256 colours.
+- `image` — works: a picture is kept in video RAM. A picture of 16 colours or fewer takes 4 bits a pixel, and one of 256 or fewer takes 8, each pixel a number into a list of its colours. Pictures share a list where their colours fit in one. A picture of more colours takes 16 bits a pixel. A game whose pictures do not fit in video RAM beside the screen is refused when it is built.
 - `color` — works: a colour has fifteen bits, as on the Advance.
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.

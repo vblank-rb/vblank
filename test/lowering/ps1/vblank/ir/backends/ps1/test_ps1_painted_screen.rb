@@ -48,8 +48,8 @@ class TestPS1PaintedScreen < Minitest::Test
     assert_equal BLUE, run.screen.pixel(7, 0)
   end
 
-  # A black pixel of a picture is 0000h, the one texel the graphics chip leaves undrawn, so the picture
-  # keeps it with its top bit set (PaintedArt, TEXEL_DRAWN): drawn black, not see-through.
+  # A black pixel of a picture is 0000h, the one colour the graphics chip leaves undrawn, so the picture's
+  # colour table keeps it with its top bit set (TextureMemory, TEXEL_DRAWN): drawn black, not see-through.
   def test_a_black_pixel_of_a_picture_is_drawn_black
     run = PS1::CheckedRun.new.run(program_of do
       image :eye, "K" => :black, "W" => :white, "." => :transparent do
@@ -64,7 +64,7 @@ class TestPS1PaintedScreen < Minitest::Test
     assert_equal [VBlank::Graphics::Color.resolve(:white), 0, RED], [10, 11, 12].map { |x| run.screen.pixel(x, 10) }
   end
 
-  # A picture wider than one piece the graphics chip reads (PaintedArt::PIECE_WIDTH) is drawn as several,
+  # A picture wider than one piece the graphics chip reads (PaintedArt::PIECE_WIDTH_TEXELS) is drawn as several,
   # each in its place, and cut at both edges of the screen as the interpreter cuts it.
   def test_a_picture_cut_into_pieces_lands_whole_and_clipped
     run = PS1::CheckedRun.new.run(program_of do
@@ -81,10 +81,31 @@ class TestPS1PaintedScreen < Minitest::Test
     assert_equal 1, run.screen.pixel(100, 237), "the band's first pixel, at the bottom edge"
   end
 
+  # Eight pictures of 192 × 256 are more than video RAM holds beside the screen at a colour a pixel.
+  # Kept as palette numbers (PS1::TextureMemory), 4 bits a pixel for the six of 16 colours and 8 for the
+  # two of 200, they fit, and every pass draws its picture exactly: see-through pixels show the red
+  # behind, and black ones are black.
+  def test_more_pictures_than_fit_at_fifteen_bits_draw_exactly
+    pictures = (0...8).map { |n| picture_of_colors(n, n < 6 ? 16 : 201) }
+    run = PS1::CheckedRun.new.run(program_of do
+      names = pictures.each_index.map { |n| :"picture#{n}" }
+      names.zip(pictures) { |name, data| image name, data: data, width: 192, height: 256, transparent: true }
+      shown = var :shown, 0
+      game_loop do
+        clear_screen :red
+        blit names, (shown * 13) - 20, -8, showing: shown
+        shown += 1
+      end
+    end, frames: 8)
+
+    refute run.screen.shown.all?(RED), "the last pass drew a picture"
+  end
+
   # The pictures go beside the screen's pages in video RAM, and a game whose pictures do not fit there
-  # is refused in plain words.
+  # even as palette numbers (these have thousands of colours, so they are kept a colour a pixel) is
+  # refused in plain words.
   def test_pictures_too_big_for_video_ram_are_refused
-    error = assert_raises(PS1::PaintedArt::Full) do
+    error = assert_raises(PS1::TextureMemory::Full) do
       PS1.new.build(program_of do
         8.times do |n|
           image :"big#{n}", data: Array.new(192 * 256) { |i| (i + n) | 1 }, width: 192, height: 256
@@ -94,9 +115,17 @@ class TestPS1PaintedScreen < Minitest::Test
     end
 
     assert_match(/video memory/, error.message)
+    assert_match(/fewer colours/, error.message)
   end
 
   private
+
+  # A 192 × 256 picture of +count+ colours, the see-through one and black among them, each pixel's colour
+  # moving on from its neighbour's so a texel read from the wrong place shows.
+  def picture_of_colors(number, count)
+    colors = [:transparent, 0, *(2...count).map { |k| (((number * 997) + (k * 1237)) & 0x7FFF) | 1 }]
+    Array.new(192 * 256) { |at| colors[((at % 192 * 7) + (at / 192 * 13) + number) % count] }
+  end
 
   def program_of(&game)
     builder = Builder.new
