@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "stringio"
+require "draw_order_cost_games"
 
 # WHAT AN ORDER THAT TAKES TURNS COSTS ON THE GENESIS, measured in the emulator. A console's own
 # games turn their sprite table round every frame by walking their sprites from one end or the
@@ -60,5 +61,29 @@ class TestDrawInOrderCost < Minitest::Test
 
     assert_operator work[16], :>, 0
     assert_operator work[32], :<, work[16] * 2.5, "twice the things, about twice the work: #{work.inspect}"
+  end
+
+  # AN ORDER WORKED OUT FROM WHERE EVERYTHING STANDS: seven things sorted by height every pass, as
+  # a console's own games sort their sprites, cost a few of the frame's 262 lines, and thirty under
+  # an eighth of them. The cost is the sort, each thing's number worked out, and each sprite placed
+  # through a routine of its own picked by the order (Lowering::Picture#emit_ordered_run).
+  BOUND_SEVEN = 8
+  BOUND_THIRTY = 32
+
+  private def lines_order_costs(sprites)
+    spare = ->(ordered) { DrawOrderCostGames.profile(:genesis, ordered: ordered, sprites: sprites).fewest_lines_spare }
+    spare.call(false) - spare.call(true)
+  end
+
+  def test_an_order_of_seven_costs_a_few_lines
+    cost = lines_order_costs(4)
+
+    assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs #{cost} lines"
+  end
+
+  def test_an_order_of_thirty_costs_under_an_eighth_of_the_frame
+    cost = lines_order_costs(27)
+
+    assert_operator cost, :<=, BOUND_THIRTY, "an order of thirty costs #{cost} lines"
   end
 end

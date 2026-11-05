@@ -883,13 +883,41 @@ module VBlank
               @asm.label(table)
               @asm.data_longs(run.objects.map { |name| sprite_placing_label(name) })
               @asm.label(past)
+              outside = fresh("order_outside") unless @lists_dropped_from_front.include?(run.order)
               run.objects.each_index do |k|
-                value(Build.list_get(run.order, Build.int(k)))
+                outside ? emit_order_entry_read(run.order, k, outside) : value(Build.list_get(run.order, Build.int(k)))
                 @asm.lsl(:l, 2, @asm.d(0))
                 @asm.lea(@asm.abs_l(table), @asm.a(0))
                 @asm.movea(:l, @asm.idx(0, 0, 0), @asm.a(0))
                 @asm.jsr(@asm.ind(0))
               end
+              emit_order_index_fault(run.order, outside) if outside
+            end
+
+            # D0 = entry +k+ of the order list +order+, whose first item is in its first slot, read from
+            # its slot's address: the index tested against how many the list holds (D1 = +k+ for the
+            # fault at +outside+), where reading it through the runtime would take a call, and the
+            # list's place found and the index scaled there. The entry is a place in the run, never
+            # below nought.
+            def emit_order_entry_read(order, k, outside)
+              place, _capacity, bytes = @lists.fetch(order)
+              k.between?(-128, 127) ? @asm.moveq(k, @asm.d(1)) : @asm.move(:l, @asm.imm(k), @asm.d(1))
+              @asm.cmp(:w, @asm.abs_l(place, Runtime::Lists::LENGTH), @asm.d(1))
+              @asm.branch(:cc, outside)
+              @asm.moveq(0, @asm.d(0)) unless bytes == 4
+              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(place, Runtime::Lists::HEADER + (k * bytes)), @asm.d(0))
+            end
+
+            # The run's entry D1 was outside the order list: the game stopped as the runtime stops it
+            # (Runtime::Lists#emit_faults), past the code the run's entries go on to.
+            def emit_order_index_fault(order, outside)
+              past = fresh("order_inside")
+              @asm.bra(past)
+              @asm.label(outside)
+              @asm.move(:l, @asm.imm(@lists.fetch(order).first), @asm.d(0))
+              @asm.movea(:l, @asm.d(0), @asm.a(0))
+              @asm.jmp(@asm.abs_l("rt_list_index_fault"))
+              @asm.label(past)
             end
 
             def sprite_placing_label(name) = (@sprite_placings ||= {})[name] ||= "sprite placing #{@sprite_placings.length}"

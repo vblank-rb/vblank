@@ -52,6 +52,7 @@ module VBlank
                                                list_new: :emit_list_new, list_push: :emit_list_push,
                                                list_drop: :emit_list_drop, list_set: :emit_list_set,
                                                list_fill: :emit_list_fill, list_copy: :emit_list_copy,
+                                               list_sort: :emit_list_sort,
                                                timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
                                                # a timer's handler runs as its timer ticks, not where it is written
                                                on_timer: :emit_nothing,
@@ -736,8 +737,55 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
-          def emit_list_set(node) = list_call(list_routine("rt_list_set", node), node, node.index, node.value)
-          def value_of_list_get(node) = list_call(list_routine("rt_list_get", node), node, node.index)
+          # A LIST THAT ALWAYS HOLDS ITS CAPACITY, read or written at a number written in the program
+          # below that capacity: the slot is at an address known here, and the index can never be
+          # outside the list, so the item is one MOVE to or from that address, where the runtime's
+          # routine takes the list's place handed over, a call, the index checked and scaled, and the
+          # return. A draw order sets the number of each of its things this way every pass.
+          def emit_list_set(node)
+            slot = fixed_slot(node)
+            return list_call(list_routine("rt_list_set", node), node, node.index, node.value) unless slot
+
+            value(node.value)
+            @asm.move(Runtime::Lists::SLOT_SIZES.fetch(slot.last), @asm.d(0), @asm.abs_l(slot.first))
+          end
+
+          def value_of_list_get(node)
+            slot = fixed_slot(node)
+            return list_call(list_routine("rt_list_get", node), node, node.index) unless slot
+
+            address, bytes = slot
+            @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(address), @asm.d(0))
+            @asm.ext(:w, @asm.d(0)) if bytes == 1
+            @asm.ext(:l, @asm.d(0)) if bytes < 4
+          end
+
+          # [the address of the slot, its bytes] that +node+'s index names, when the index is a number
+          # written in the program and the list always holds its capacity, which the number is below;
+          # or nil.
+          def fixed_slot(node)
+            capacity = always_full_lists[node.name]
+            index = capacity && folded(node.index)
+            return unless index&.between?(0, capacity - 1)
+
+            place, _capacity, bytes = @lists.fetch(node.name)
+            [place + Runtime::Lists::HEADER + (index * bytes), bytes]
+          end
+
+          # The lists made full of one number and never made longer or shorter, so each holds its
+          # capacity for good, by name, with that capacity (the least, if made twice). Every way a
+          # list's length changes is a list_push, a list_drop, a list_copy, or a list_new that makes it
+          # empty; a list_fill or a list_sort leaves it as long as it was. Nothing taken from the
+          # front, so the first item stays in the first slot.
+          def always_full_lists
+            @always_full_lists ||= begin
+              resized = @program.walk.filter_map do |node|
+                node.name if %i[list_push list_drop list_copy].include?(node.kind) || (node.kind == :list_new && !node.full_of)
+              end
+              made = @program.walk.select { |node| node.kind == :list_new && node.full_of && !resized.include?(node.name) }
+              made.group_by(&:name).transform_values { |nodes| nodes.map(&:capacity).min }
+            end
+          end
           def value_of_list_len(node) = list_call("rt_list_length", node)
 
           # The routine that reads or writes an item of the list +node+ names: for a list whose first
@@ -765,6 +813,145 @@ module VBlank
             kept = Runtime::Lists::KEPT.fetch(TABLE_KEPT.fetch(table_keeping(table)))
             list_call("rt_list_copy", node, LabelAddress.new(table_label(table.name)), Build.int(kept),
                       Build.int(table.values.length), node.at, Build.int(node.count))
+          end
+
+          # A LIST PUT IN ORDER (Reference#exec_list_sort), written here in place: an insertion sort,
+          # each item in turn taken out and moved back past every item before it whose number is
+          # strictly beyond its own, so level items keep their order and a list already in order is
+          # one compare an item. Both lists' places are known here, so the items are walked with a
+          # pointer in A2 and A3 (the one being placed, and the gap moving back), and a number is read
+          # with the item as the index from A1, the first of the numbers' slots. Nothing is checked:
+          # every item is a place in +by+ (IR ListSort).
+          #
+          # A list the game takes items from the front of goes round its slots like a ring, so its
+          # first item can be in any slot; it is sorted by index instead, each slot found as the
+          # runtime finds one (#emit_ring_slot).
+          def emit_list_sort(node)
+            order = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is sorted and never declared" }
+            keys = @lists.fetch(node.by) { raise LoweringError, "the list #{node.by.inspect} is sorted by and never declared" }
+            stays = node.descending ? :ge : :le # the number before is not beyond this one's: it stays
+            done = fresh("sorted")
+            @asm.moveq(0, @asm.d(7))
+            @asm.move(:w, @asm.abs_l(order.first, Runtime::Lists::LENGTH), @asm.d(7))
+            @asm.lea(@asm.abs_l(keys.first, Runtime::Lists::HEADER), @asm.a(1))
+            if @lists_dropped_from_front.include?(node.name)
+              emit_ring_sort(order, keys, stays, done)
+            else
+              emit_pointer_sort(order, keys, stays, done)
+            end
+            @asm.label(done)
+          end
+
+          # The sort over a list whose first item is in its first slot. D7 counts the items left to
+          # place, from the second; D3 is the one being placed and D4 its number; D5 the one before
+          # the gap and D6 its number.
+          def emit_pointer_sort(order, keys, stays, done)
+            size = Runtime::Lists::SLOT_SIZES.fetch(bytes = order[2])
+            item = fresh("sort_item")
+            back = fresh("sort_back")
+            stay = fresh("sort_stay")
+            place = fresh("sort_place")
+            @asm.subq(:l, 1, @asm.d(7))
+            @asm.branch(:le, done)
+            @asm.lea(@asm.abs_l(order.first, Runtime::Lists::HEADER), @asm.a(0))
+            @asm.movea(:l, @asm.a(0), @asm.a(2))
+            @asm.label(item)
+            @asm.lea(@asm.disp(2, bytes), @asm.a(2))
+            emit_order_item_read(size, @asm.ind(2), 3)
+            emit_order_number_read(keys, 3, 4)
+            @asm.movea(:l, @asm.a(2), @asm.a(3))
+            @asm.label(back)
+            @asm.cmp(:l, @asm.a(0), @asm.a(3))
+            @asm.branch(:eq, place)
+            emit_order_item_read(size, @asm.pre(3), 5)
+            emit_order_number_read(keys, 5, 6)
+            @asm.cmp(:l, @asm.d(4), @asm.d(6))
+            @asm.branch(stays, stay)
+            @asm.move(size, @asm.d(5), @asm.disp(3, bytes))
+            @asm.bra(back)
+            @asm.label(stay)
+            @asm.lea(@asm.disp(3, bytes), @asm.a(3))
+            @asm.label(place)
+            @asm.move(size, @asm.d(3), @asm.ind(3))
+            @asm.subq(:l, 1, @asm.d(7))
+            @asm.branch(:ne, item)
+          end
+
+          # The sort over a list that goes round its slots, by index: D1 the item being placed, D2 the
+          # gap, D7 how many there are; the slots found by #emit_ring_slot into A2 and A3.
+          def emit_ring_sort(order, keys, stays, done)
+            size = Runtime::Lists::SLOT_SIZES.fetch(order[2])
+            item = fresh("sort_item")
+            back = fresh("sort_back")
+            place = fresh("sort_place")
+            @asm.moveq(1, @asm.d(1))
+            @asm.cmp(:l, @asm.d(7), @asm.d(1))
+            @asm.branch(:ge, done)
+            @asm.label(item)
+            emit_ring_slot(order, 1, 2)
+            emit_order_item_read(size, @asm.ind(2), 3)
+            emit_order_number_read(keys, 3, 4)
+            @asm.move(:l, @asm.d(1), @asm.d(2))
+            @asm.label(back)
+            @asm.tst(:l, @asm.d(2))
+            @asm.branch(:eq, place)
+            @asm.move(:l, @asm.d(2), @asm.d(0))
+            @asm.subq(:l, 1, @asm.d(0))
+            emit_ring_slot(order, 0, 3)
+            emit_order_item_read(size, @asm.ind(3), 5)
+            emit_order_number_read(keys, 5, 6)
+            @asm.cmp(:l, @asm.d(4), @asm.d(6))
+            @asm.branch(stays, place)
+            emit_ring_slot(order, 2, 3)
+            @asm.move(size, @asm.d(5), @asm.ind(3))
+            @asm.subq(:l, 1, @asm.d(2))
+            @asm.bra(back)
+            @asm.label(place)
+            emit_ring_slot(order, 2, 3)
+            @asm.move(size, @asm.d(3), @asm.ind(3))
+            @asm.addq(:l, 1, @asm.d(1))
+            @asm.cmp(:l, @asm.d(7), @asm.d(1))
+            @asm.branch(:lt, item)
+          end
+
+          # D(+into+) = the item at +from+, a place in the numbers' list, so never below nought.
+          def emit_order_item_read(size, from, into)
+            @asm.moveq(0, @asm.d(into)) unless size == :l
+            @asm.move(size, from, @asm.d(into))
+          end
+
+          # D(+into+) = the number the list +keys+ holds at the place in D(+item+), widened by its sign.
+          # D6 is worked with.
+          def emit_order_number_read(keys, item, into)
+            bytes = keys[2]
+            if @lists_dropped_from_front.include?(keys.last.to_sym)
+              emit_ring_slot(keys, item, 4)
+              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.ind(4), @asm.d(into))
+            else
+              @asm.move(:l, @asm.d(item), @asm.d(6))
+              (bytes.bit_length - 1).times { @asm.add(:l, @asm.d(6), @asm.d(6)) }
+              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.idx(1, 0, 6), @asm.d(into))
+            end
+            @asm.ext(:w, @asm.d(into)) if bytes == 1
+            @asm.ext(:l, @asm.d(into)) if bytes < 4
+          end
+
+          # A(+into+) = the slot of +list+ that the index in D(+index+) names, for a list going round
+          # its slots: its first item's slot and the index, once round the ring if that is past the
+          # last slot (Runtime::Lists#emit_slot_access). D6 is worked with.
+          def emit_ring_slot(list, index, into)
+            place, _capacity, bytes = list
+            within = fresh("ring_within")
+            @asm.move(:w, @asm.abs_l(place, Runtime::Lists::FRONT), @asm.d(6))
+            @asm.add(:w, @asm.d(index), @asm.d(6))
+            @asm.cmp(:w, @asm.abs_l(place, Runtime::Lists::CAPACITY), @asm.d(6))
+            @asm.branch(:cs, within)
+            @asm.sub(:w, @asm.abs_l(place, Runtime::Lists::CAPACITY), @asm.d(6))
+            @asm.label(within)
+            @asm.and(:l, @asm.imm(0xFFFF), @asm.d(6))
+            (bytes.bit_length - 1).times { @asm.add(:l, @asm.d(6), @asm.d(6)) }
+            @asm.lea(@asm.abs_l(place, Runtime::Lists::HEADER), @asm.a(into))
+            @asm.lea(@asm.idx(into, 0, 6), @asm.a(into))
           end
 
           # The runtime's list routine +routine+ on the list +node+ names, the list's place first.
