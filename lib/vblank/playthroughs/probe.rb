@@ -236,12 +236,15 @@ module VBlank
                              "one of those, or read its bytes with read_bytes."
       end
 
-      # A value of two or four bytes at an address that is not a multiple of its size.
+      # A value of two or four bytes at an address its processor does not read it at
+      # (Console::Kit#value_alignment).
       def refuse_misaligned!(place, at, width)
-        return if (at % width.bytes).zero?
+        boundary = @kit.value_alignment(width.bytes)
+        return if (at % boundary).zero?
 
+        where = boundary == 2 ? "an even address" : "a multiple of #{boundary}"
         raise ArgumentError, "#{place} is at #{format('0x%X', at)}. A #{@kit.title} reads a value of #{width.bytes} " \
-                             "bytes only at a multiple of #{width.bytes}. Use a smaller width, or the right address."
+                             "bytes only at #{where}. Use a smaller width, or the right address."
       end
 
       def refuse_unknown_label!(place)

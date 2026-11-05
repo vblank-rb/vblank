@@ -91,13 +91,17 @@ module VBlank
       def inspector = nil
 
       # WHETHER ITS PROCESSOR READS A NUMBER OF TWO OR MORE BYTES AT ANY ADDRESS. The ARM of the
-      # Advance, the 68000 of the Genesis and the MIPS of the PlayStation read two bytes only at an
-      # even address and four only at a multiple of four (the ARM turns the word round, the 68000
-      # and the MIPS stop), so a game for them never keeps one anywhere else, and a read anywhere
+      # Advance and the MIPS of the PlayStation read two bytes only at an even address and four only
+      # at a multiple of four, and the 68000 of the Genesis reads either at any even address
+      # (#value_alignment), so a game for them never keeps one anywhere else, and a read anywhere
       # else is a wrong address. The Color's SM83 and the Super Nintendo's 65816 fetch a byte at a
       # time and read a word at any address, so their games keep words at odd ones, and three-byte
       # numbers besides (the 65816's long addresses). Both keep the low byte first.
       def words_at_any_address? = false
+
+      # THE BOUNDARY A VALUE OF +bytes+ BYTES MUST START ON for its processor to read it whole: its
+      # own size on the ARM and the MIPS, which read four bytes only at a multiple of four.
+      def value_alignment(bytes) = bytes
 
       # The emulator core its cartridges play in, opened on a cartridge file
       # (Diagnostics::Emulator), and how the file the core keeps battery-backed RAM in is named
@@ -304,6 +308,8 @@ module VBlank
       def save_file_extension = ".srm"
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
+      # The 68000 reads a word or a long word at any even address, and stops at an odd one.
+      def value_alignment(bytes) = [bytes, 2].min
     end
 
     # The PlayStation's. Its programs play in Beetle PSX, through ruby-ps1-emulator. A program is a PS-X

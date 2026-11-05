@@ -79,6 +79,17 @@ class TestGenesisProbe < Minitest::Test
     end
   end
 
+  # The 68000 reads a word or a long word at any even address, so a game keeps long words at
+  # addresses that are not a multiple of four; an odd address stops the processor and is refused.
+  def test_a_long_word_reads_at_any_even_address_and_not_at_an_odd_one
+    with_recorded_and_bare do |_recorded, probe, ticks|
+      between = ticks + 2
+
+      assert_equal probe.read_bytes(between, 4).unpack1("N"), probe.read(between, as: :u32)
+      assert_match "even", assert_raises(ArgumentError) { probe.read(ticks + 1, as: :u16) }.message
+    end
+  end
+
   def test_an_address_outside_work_ram_is_refused
     with_recorded_and_bare do |_recorded, probe, _ticks|
       assert_match "work RAM", assert_raises(ArgumentError) { probe.read(0x0100) }.message

@@ -78,7 +78,8 @@ class TestProbe < Minitest::Test
 
         assert_equal 300, probe.read("box_x")
         assert_equal [probe.read("box_x")].pack("V"), probe.read_bytes("box_x", 4)
-        assert_match "multiple of 2", assert_raises(ArgumentError) { probe.read(labels.fetch("box_x") + 1, as: :u16) }.message
+        assert_match "even address", assert_raises(ArgumentError) { probe.read(labels.fetch("box_x") + 1, as: :u16) }.message
+        assert_match "multiple of 4", assert_raises(ArgumentError) { probe.read(labels.fetch("box_x") + 2, as: :u32) }.message
         assert_match "not 3", assert_raises(ArgumentError) { probe.read("box_x", as: :u24) }.message
       end
     end
