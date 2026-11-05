@@ -38,6 +38,7 @@ class TestOriginalGame < Minitest::Test
 
       assert_equal path, copy.path
       assert_equal "US", copy.release
+      assert_equal Digest::SHA1.hexdigest(RIGHT), copy.sha1
     end
   end
 
@@ -142,6 +143,68 @@ class TestOriginalGame < Minitest::Test
       assert_raises(VBlank::Original::WrongCopy) do
         game(folder, env: named(File.join(folder, "empty")), releases: nil, probe: ->(_) {}).copy
       end
+    end
+  end
+
+  # A game made from a decompilation names more than its copy: the checkout and the assembler,
+  # each found by the same rules and refused in the same kind of error.
+  private def decompiling(folder, env: {})
+    game(folder, env: env, paths: {
+           checkout: { setting: "SPACE_PINBALL_DISASSEMBLY", key: "disassembly", folder: true, what: "a checkout of the disassembly" },
+           assembler: { setting: "SPACE_PINBALL_ASSEMBLER", key: "assembler", what: "the assembler's program" }
+         })
+  end
+
+  def test_each_path_a_game_names_is_found_by_its_setting_or_the_settings_file
+    Dir.mktmpdir do |folder|
+      Dir.mkdir(File.join(folder, "disasm"))
+      assembler = write(folder, "rgbasm", "#!")
+      write(folder, "space_pinball.yml", "disassembly: disasm\nassembler: /nowhere\n")
+
+      paths = decompiling(folder, env: { "SPACE_PINBALL_ASSEMBLER" => assembler })
+
+      assert_equal File.join(folder, "disasm"), paths.path(:checkout)
+      assert_equal assembler, paths.path(:assembler)
+    end
+  end
+
+  def test_a_path_not_set_or_not_there_is_refused_saying_what_to_set
+    Dir.mktmpdir do |folder|
+      write(folder, "space_pinball.yml", "disassembly: missing\n")
+
+      not_set = assert_raises(VBlank::Original::NotSet) { decompiling(folder).path(:assembler) }
+      wrong = assert_raises(VBlank::Original::WrongPath) { decompiling(folder).path(:checkout) }
+
+      assert_match "SPACE_PINBALL_ASSEMBLER", not_set.message
+      assert_match "the assembler's program", not_set.message
+      assert_match "folder", wrong.message
+      assert_raises(ArgumentError) { decompiling(folder).path(:linker) }
+    end
+  end
+
+  def test_a_settings_file_that_is_not_yaml_is_a_wrong_path_for_a_path
+    Dir.mktmpdir do |folder|
+      write(folder, "space_pinball.yml", "disassembly: [unclosed\n")
+
+      assert_raises(VBlank::Original::WrongPath) { decompiling(folder).path(:checkout) }
+    end
+  end
+
+  def test_a_file_a_probe_accepts_is_hashed
+    Dir.mktmpdir do |folder|
+      path = write(folder, "copy.bin", RIGHT)
+
+      copy = game(folder, env: named(path), releases: nil, probe: ->(_) { "full" }).copy
+
+      assert_equal Digest::SHA1.hexdigest(RIGHT), copy.sha1
+    end
+  end
+
+  def test_a_file_where_a_folder_is_named_is_refused
+    Dir.mktmpdir do |folder|
+      file = write(folder, "not_a_folder", "")
+
+      assert_raises(VBlank::Original::WrongPath) { decompiling(folder, env: { "SPACE_PINBALL_DISASSEMBLY" => file }).path(:checkout) }
     end
   end
 
