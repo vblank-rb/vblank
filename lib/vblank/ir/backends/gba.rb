@@ -42,7 +42,6 @@ require_relative "gba/buffered"
 require_relative "gba/faces" # a face of a place filled with its picture, on the tear-free screen
 require_relative "gba/sound_registers"
 require_relative "gba/audio"
-require_relative "gba/reciprocal"
 require_relative "gba/divide"
 require_relative "gba/expressions"
 require_relative "gba/primitives"

@@ -7,7 +7,7 @@ module VBlank
         # Dividing by a number the game works out, without the console's divide routine.
         #
         # The chip has no divide instruction. A divisor written into the program never
-        # needs one — the build turns it into a shift or a multiply (see Reciprocal) —
+        # needs one — the build turns it into a shift or a multiply (see IR::ConstantDivisor) —
         # but a divisor the game works out has nothing to precompute, so it has to be
         # divided out as the program runs.
         #

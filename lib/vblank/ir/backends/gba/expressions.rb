@@ -448,11 +448,7 @@ module VBlank
           # How many bits +value+ is a power of two of, or nil if it isn't one. Only
           # positive powers: 1 has nothing to shift, and a negative number is turned
           # positive before it gets here.
-          def power_of_two_bits(value)
-            return nil unless value.positive? && (value & (value - 1)).zero? && value > 1
-
-            Math.log2(value).to_i
-          end
+          def power_of_two_bits(value) = ConstantDivisor.power_of_two_bits(value)
 
           # x / d for a d written into the program. A power of two is a shift; a negative
           # divisor is the same division with the answer flipped (truncation is symmetric
@@ -502,8 +498,8 @@ module VBlank
             true
           end
 
-          # x / d by multiplying instead of dividing (see Reciprocal for how the
-          # multiplier is found).
+          # x / d by multiplying instead of dividing (see IR::ConstantDivisor for how the
+          # multiplier is found, and its #quotient for the steps these instructions take).
           #
           # SMULL multiplies two 32-bit numbers and keeps the whole 64-bit product across
           # a register pair. Multiplying by a number close to 2**k/d and keeping only the
@@ -516,7 +512,7 @@ module VBlank
           # right. The numerator stays in r2 the whole way, because it is needed again
           # both for the correction some divisors want and by the wrap below.
           def emit_reciprocal_divide(lhs, divisor)
-            recipe = Reciprocal.for(divisor)
+            recipe = ConstantDivisor.recipe_for(divisor)
             @lowering.value(lhs)
             @emitter.emit(ASM.mov_reg(SPARE, ACC))                      # r2 = the numerator, kept
             @emitter.emit_number(TMP, recipe.multiplier)

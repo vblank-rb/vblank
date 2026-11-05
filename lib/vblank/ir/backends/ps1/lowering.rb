@@ -1020,6 +1020,8 @@ module VBlank
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
             return if %i[<< >>].include?(node.op) && emit_shift_by_number(node)
             return if node.op == :% && emit_remainder_by_power_of_two(node)
+            return if node.op == :/ && emit_divide_by_number(node)
+            return if node.op == :% && emit_remainder_by_number(node)
             return runtime_call(CALLED_SUMS.fetch(node.op), [node.lhs, node.rhs]) if CALLED_SUMS.key?(node.op)
             return if emit_sum_with_number(node)
             return if node.op == :* && emit_multiply_by_shifts(node)
@@ -1277,6 +1279,78 @@ module VBlank
 
             emit_value(Build.binop(:&, node.lhs, Build.int(divisor - 1)))
             true
+          end
+
+          # `/` by a number written in the program, other than 1, 0 and -1, which the runtime's divide
+          # answers as Int32.div does: a shift for a power of two and a multiply for any other
+          # (IR::ConstantDivisor), and a negative divisor the same division with the answer negated. The
+          # R3000's DIV is a wait of dozens of cycles and a call; this is a handful of instructions and one
+          # MULT, whose wait is shorter. True when done so.
+          def emit_divide_by_number(node)
+            divisor = folded(node.rhs)
+            return false unless divisor && divisor.abs > 1
+
+            emit_value(node.lhs)
+            emit_quotient_by(divisor.abs)
+            @asm.subu(:v0, :zero, :v0) if divisor.negative?
+            true
+          end
+
+          # `%` by a number written in the program, other than 1, 0 and -1, with Int32.mod's meaning: the
+          # sign of the divisor. The quotient (#emit_quotient_by) times the size, taken off the numerator,
+          # leaves what is left with the sign of the numerator; the size is added back to a negative one,
+          # which puts it in 0...size, and for a negative divisor any but nought then moves down a size,
+          # into -size...0. No branch: the sign bit and SLTU's nought-or-one make the masks. True when done.
+          def emit_remainder_by_number(node)
+            divisor = folded(node.rhs)
+            return false unless divisor && divisor.abs > 1
+
+            size = divisor.abs
+            emit_value(node.lhs)
+            emit_quotient_by(size)
+            @asm.li(:t0, size)
+            @asm.mult(:v0, :t0)
+            @asm.mflo(:v0)
+            @asm.subu(:v0, :t1, :v0)  # the numerator less quotient times size: the sign of the numerator
+            @asm.sra(:t1, :v0, 31)
+            @asm.and(:t1, :t1, :t0)
+            @asm.addu(:v0, :v0, :t1)  # in 0...size
+            return true unless divisor.negative?
+
+            @asm.sltu(:t1, :zero, :v0)
+            @asm.subu(:t1, :zero, :t1)
+            @asm.and(:t1, :t1, :t0)
+            @asm.subu(:v0, :v0, :t1)  # in -size...0
+            true
+          end
+
+          # v0 divided by +size+ (2 or more), truncating toward nought, the numerator left in t1.
+          #
+          # A power of two is an arithmetic shift, which rounds toward minus infinity, so a negative
+          # numerator is first lifted by one less than the size: its sign, spread over the word by SRA and
+          # brought down to that many ones by SRL. Any other size is IR::ConstantDivisor#quotient's steps:
+          # MULT leaves the 64-bit product in HI and LO, HI is the product divided by 2**32, the numerator
+          # goes back in for a recipe that asks, a shift takes it the rest of the way, and the answer's
+          # own sign bit added lifts a negative one toward nought.
+          def emit_quotient_by(size)
+            @asm.move(:t1, :v0)
+            bits = ConstantDivisor.power_of_two_bits(size)
+            if bits
+              @asm.sra(:t0, :v0, 31)
+              @asm.srl(:t0, :t0, 32 - bits)
+              @asm.addu(:v0, :v0, :t0)
+              @asm.sra(:v0, :v0, bits)
+              return
+            end
+
+            recipe = ConstantDivisor.recipe_for(size)
+            @asm.li(:t0, recipe.multiplier)
+            @asm.mult(:v0, :t0)
+            @asm.mfhi(:v0)
+            @asm.addu(:v0, :v0, :t1) if recipe.add_numerator
+            @asm.sra(:v0, :v0, recipe.shift) if recipe.shift.positive?
+            @asm.srl(:t0, :v0, 31)
+            @asm.addu(:v0, :v0, :t0)
           end
 
           # `<<` and `>>` by a number written in the program, in range: one shift. True when done so.

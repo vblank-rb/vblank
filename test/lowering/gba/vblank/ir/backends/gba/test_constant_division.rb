@@ -10,56 +10,10 @@ require "test_helper"
 # Nothing about the DSL changes, so what these tests care about is that the ANSWERS are
 # still exactly right — the whole trick rests on a rounded reciprocal being close enough
 # for every numerator there is — and that the shortcut is really being taken.
+#
+# The recipe itself, and the answers on every lowering, are test/all/vblank/ir/test_constant_divisor.rb.
 class TestConstantDivision < Minitest::Test
-  Reciprocal = VBlank::IR::Backends::GBA::Reciprocal
   Int32 = VBlank::IR::Int32
-
-  # --- the reciprocal itself ---------------------------------------------------
-
-  # The emitted sequence, instruction for instruction, in Ruby: multiply and keep the
-  # high word, add the numerator back for the divisors that need it, shift, then nudge a
-  # negative answer up to truncate toward zero.
-  private def apply(recipe, numerator)
-    multiplier = Int32.wrap(recipe.multiplier)
-    high = (multiplier * numerator) >> 32
-    high = Int32.wrap(high + numerator) if recipe.add_numerator
-    quotient = high >> recipe.shift
-    Int32.wrap(quotient + ((quotient & 0xFFFF_FFFF) >> 31))
-  end
-
-  # Numerators worth trying for one divisor: the ends of the range, and both sides of
-  # enough exact multiples that an off-by-one in the rounding cannot hide.
-  private def numerators(divisor)
-    edges = [0, 1, -1, Int32::MIN, Int32::MAX, Int32::MIN + 1, Int32::MAX - 1]
-    boundaries = (1..30).flat_map { |k| [(k * divisor) - 1, k * divisor, (k * divisor) + 1] }
-    spread = Random.new(divisor).then { |r| Array.new(60) { r.rand(Int32::MIN..Int32::MAX) } }
-    (edges + boundaries + boundaries.map(&:-@) + spread).uniq.select do |n|
-      n.between?(Int32::MIN, Int32::MAX)
-    end
-  end
-
-  # The claim the whole feature rests on: the reciprocal is not an approximation that is
-  # usually right, it is exactly right for every numerator.
-  def test_the_reciprocal_divides_exactly_for_every_numerator
-    divisors = (2..120).to_a + [200, 1000, 3600, 60_000, 100_000, 1 << 30, Int32::MAX]
-    checked = 0
-    divisors.each do |divisor|
-      recipe = Reciprocal.for(divisor)
-      numerators(divisor).each do |n|
-        checked += 1
-        want = (n.abs / divisor) * (n.negative? ? -1 : 1) # truncating toward zero
-
-        assert_equal want, apply(recipe, n), "#{n} / #{divisor}"
-      end
-    end
-    assert_operator checked, :>, 20_000, "the sweep should be wide enough to mean something"
-  end
-
-  def test_a_divisor_below_two_has_no_reciprocal_to_find
-    assert_raises(ArgumentError) { Reciprocal.for(1) }
-    assert_raises(ArgumentError) { Reciprocal.for(0) }
-    assert_raises(ArgumentError) { Reciprocal.for(-10) }
-  end
 
   # --- the answers, on both backends -------------------------------------------
 
