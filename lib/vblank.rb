@@ -51,6 +51,7 @@ require_relative "vblank/diagnostics" # reading a built or running cartridge bac
 require_relative "vblank/playthroughs" # ...and playing one with nobody at the controls, or two side by side
 require_relative "vblank/network" # more than one machine playing one match: what they say, and how they keep in step
 require_relative "vblank/bots" # a player with no window and no person: a script that chooses its buttons
+require_relative "vblank/original" # the player's own copy of the retail game a port is made from
 require_relative "vblank/pager" # a long report shown a screen at a time
 
 module VBlank
