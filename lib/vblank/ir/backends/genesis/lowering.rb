@@ -40,6 +40,7 @@ module VBlank
           include Picture
           include Collision
           include Sound
+          include Division
 
           STATEMENTS = Ractor.make_shareable({
                                                program: :emit_children, set: :emit_set, add: :emit_add,
@@ -1194,7 +1195,8 @@ module VBlank
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
             return if %i[<< >>].include?(node.op) && emit_shift_by_number(node)
             return if node.op == :* && emit_product_by_power_of_two(node)
-            return if node.op == :% && emit_remainder_by_power_of_two(node)
+            return if node.op == :/ && emit_divide_by_number(node)
+            return if node.op == :% && emit_remainder_by_number(node)
 
             return runtime_call(CALLED_SUMS.fetch(node.op), [node.lhs, node.rhs]) if CALLED_SUMS.key?(node.op)
 
@@ -1345,17 +1347,6 @@ module VBlank
             @asm.move(:l, @asm.d(0), @asm.pre(M68000::SP))
           end
 
-          # What is left after dividing by a positive power of two, as Int32.mod has it: the sign of
-          # the divisor, so it is the low bits alone (-1 % 16 is 15, and so is -1 & 15) — an AND, where
-          # the runtime's division takes a loop of 32 steps. True when it was done so.
-          def emit_remainder_by_power_of_two(node)
-            divisor = folded(node.rhs)
-            return false unless divisor&.positive? && (divisor & (divisor - 1)).zero?
-
-            value(Build.binop(:&, node.lhs, Build.int(divisor - 1)))
-            true
-          end
-
           # A product by a power of two written in the program, as a shift — none at all for a product
           # by one. True when it was done so.
           def emit_product_by_power_of_two(node)
@@ -1376,17 +1367,22 @@ module VBlank
             emit_shift(node.lhs, node.op == :<< ? :lsl : :asr, count)
           end
 
-          # +operand+ worked out and shifted by +count+ places: one instruction up to 8, and the count
-          # put in a register beyond. True.
+          # +operand+ worked out and shifted by +count+ places (#emit_shift_of_d0). True.
           def emit_shift(operand, how, count)
             value(operand)
+            emit_shift_of_d0(how, count)
+            true
+          end
+
+          # D0 shifted by +count+ places, 0 to 31: one instruction up to 8, and the count put in a
+          # register beyond.
+          def emit_shift_of_d0(how, count)
             if count.between?(1, 8)
               @asm.public_send(how, :l, count, @asm.d(0))
             elsif count > 8
               @asm.moveq(count, @asm.d(1))
               @asm.public_send(how, :l, @asm.d(1), @asm.d(0))
             end
-            true
           end
 
           # A runtime routine taking +args+ in D0, D1, D2... Each that needs working out is worked out
