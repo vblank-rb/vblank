@@ -540,7 +540,7 @@ module VBlank
             every: @statements.method(:emit_every), after: @statements.method(:emit_after),
             list_new: @lists.method(:emit_list_new), list_push: @lists.method(:emit_list_push),
             list_drop: @lists.method(:emit_list_drop), list_set: @lists.method(:emit_list_set),
-            list_fill: @lists.method(:emit_list_fill),
+            list_fill: @lists.method(:emit_list_fill), list_sort: @lists.method(:emit_list_sort),
             list_copy: ->(node) { @lists.emit_list_copy(node, @tables.fetch(node.table)) },
             call: @statements.method(:emit_call), case: @functions.method(:emit_case),
             call_one_of: @functions.method(:emit_call_one_of),

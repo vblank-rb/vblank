@@ -143,6 +143,77 @@ module VBlank
             @primitives.store_var(ACC, length_var(node.name))
           end
 
+          # The registers a sort works in, beyond the four scratch ones: where the item being
+          # placed is, where the list ends, the keys' first slot, that item, and the list's
+          # first slot. They are saved and put back around it, since the code around may hold
+          # its own things there.
+          SORT_AT = 4
+          SORT_END = 5
+          SORT_KEYS = 6
+          SORT_ITEM = 7
+          SORT_FIRST = 8
+
+          # list_sort: every item put in order by the number +by+ holds at it (Reference
+          # #exec_list_sort), as an insertion sort written here in the program's own code, where
+          # both lists' places are known when the cartridge is built. Each item in turn is taken
+          # out and walked back past every item before it whose number is beyond its own — only
+          # STRICTLY beyond, so level items keep their order — and put down where it stops. A list
+          # already in order, which is what a draw order is on nearly every frame, is one compare
+          # an item: about twenty instructions each, none of them a call.
+          #
+          # The walk goes by address rather than by index, a slot's width a step, so no index is
+          # ever scaled; only an item, to find its number in +by+, is shifted by that list's width.
+          # Every item is a place in +by+ (see IR ListSort), so none is checked.
+          #
+          # Only plain arrays are sorted: a shifted list's items wrap round its block, and nothing
+          # builds a sort of one.
+          def emit_list_sort(node)
+            info = list_info(node.name)
+            keys = list_info(node.by)
+            [[node.name, info], [node.by, keys]].each do |name, each|
+              raise LoweringError, "list #{name.inspect} is shifted, so it cannot be sorted" if each[:ring]
+            end
+
+            e = @emitter
+            step = info[:bytes]
+            outer = e.gensym
+            inner = e.gensym
+            place = e.gensym
+            done = e.gensym
+            stays = node.descending ? :ge : :le # the item before stays before when it is not beyond
+            e.emit(ASM.push(SORT_AT, SORT_END, SORT_KEYS, SORT_ITEM, SORT_FIRST))
+            e.emit_number(SORT_FIRST, info[:base])
+            e.emit_number(SORT_KEYS, keys[:base])
+            @primitives.load_var(SORT_END, length_var(node.name))
+            shift = Math.log2(step).to_i
+            e.emit(ASM.lsl_imm(SORT_END, SORT_END, shift)) if shift.positive?
+            e.emit(ASM.add_reg(SORT_END, SORT_END, SORT_FIRST))     # past the last item
+            e.emit(ASM.add_imm(SORT_AT, SORT_FIRST, step))          # the second item is placed first
+            e.place_label(outer)
+            e.emit(ASM.cmp_reg(SORT_AT, SORT_END))
+            e.emit_branch(:bcond, done, cond: :hs)
+            emit_load_element(info, SORT_ITEM, SORT_AT)              # the item being placed
+            emit_load_key(keys, ACC, SORT_ITEM)                      # r0 = its number
+            e.emit(ASM.mov_reg(TMP, SORT_AT))                        # r1 = where it would go
+            e.place_label(inner)
+            e.emit(ASM.cmp_reg(TMP, SORT_FIRST))
+            e.emit_branch(:bcond, place, cond: :eq)                  # nothing before it
+            e.emit(ASM.sub_imm(HIGH, TMP, step))
+            emit_load_element(info, SPARE, HIGH)                     # r2 = the item before
+            emit_load_key(keys, HIGH, SPARE)                         # r3 = its number
+            e.emit(ASM.cmp_reg(HIGH, ACC))
+            e.emit_branch(:bcond, place, cond: stays)
+            emit_store_element(info, SPARE, TMP)                     # it moves up a slot
+            e.emit(ASM.sub_imm(TMP, TMP, step))
+            e.emit_branch(:b, inner)
+            e.place_label(place)
+            emit_store_element(info, SORT_ITEM, TMP)
+            e.emit(ASM.add_imm(SORT_AT, SORT_AT, step))
+            e.emit_branch(:b, outer)
+            e.place_label(done)
+            e.emit(ASM.pop(SORT_AT, SORT_END, SORT_KEYS, SORT_ITEM, SORT_FIRST))
+          end
+
           # THE ROUTINE THAT COPIES A RUN: r0 where it comes from, r1 where it goes, r2 how many
           # bytes, more than nought. The copying engine moves a run without the processor, a
           # word or a half-word at a time, while a byte at a time is all the processor can do
@@ -627,6 +698,19 @@ module VBlank
             when :half then @emitter.emit(ASM.ldrsh(into, addr))
             when :byte then @emitter.emit(ASM.ldrsb(into, addr))
             end
+          end
+
+          # +into+ = the number list +keys+ holds at the place in +item+: the place shifted by the
+          # list's width and added to its first slot (in SORT_KEYS), then read at that width.
+          def emit_load_key(keys, into, item)
+            shift = Math.log2(keys[:bytes]).to_i
+            if shift.positive?
+              @emitter.emit(ASM.lsl_imm(into, item, shift))
+              @emitter.emit(ASM.add_reg(into, into, SORT_KEYS))
+            else
+              @emitter.emit(ASM.add_reg(into, item, SORT_KEYS))
+            end
+            emit_load_element(keys, into, into)
           end
 
           # ...and the store, which keeps only the low bits that fit. A value too big for the
