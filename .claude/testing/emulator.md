@@ -34,6 +34,8 @@ v.mem32(address) / v.mem16 / v.mem8        # the raw word/halfword/byte at an ad
 
 v.palette(:sprites, row.palette)           # the sixteen colours that sprite row is wearing
 v.palette                                  # the whole table: 512, backgrounds first then sprites
+v.video_ram / v.color_ram / v.sprite_table / v.sound_registers  # the console's own tables as bytes; no build record needed
+v.sprite_boxes                             # the sprite table as SpriteBox (slot, x, y, width, height, tile); SNES takes sizes:
 v.showing(only: :sprites) { v.step; ... }  # draw the picture without some of it
 v.hearing(without: :wave) { v.step(40); ... }  # mix the sound without some of it
 v.layers / v.channels                      # the names those two can be given

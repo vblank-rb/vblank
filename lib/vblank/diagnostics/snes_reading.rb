@@ -27,6 +27,44 @@ module VBlank
           sprite_table: @probe.sprite_table.bytes.each_with_index.to_h { |byte, at| [at, byte] } }
       end
 
+      # THE SPRITE TABLE AS BOXES (SpriteBox), one for each of the 128 entries that reaches the screen,
+      # in the table's order. Nothing here needs a build record, so it is how a cartridge with none
+      # says where its sprites are.
+      #
+      # +sizes+ is [small, large], each [width, height]: the two sizes the game set the register
+      # OBSEL to, and an entry's bit in the upper table says which of the two it is. bsnes here does
+      # not hand OBSEL over, so the game says it ([[8, 8], [16, 16]] is OBSEL's sizes 0, and what
+      # VBlank's own build sets). An entry's across is nine bits, its top bit in the upper table, and
+      # wraps at 512; its down wraps at 256. The console draws a sprite a line below its down, and
+      # its picture starts a line down too, so the down kept is the row of the picture it is on. The
+      # tile number is nine bits, its top bit the low bit of the entry's fourth byte.
+      #
+      # @return [Array<SpriteBox>]
+      def sprite_boxes(sizes: nil)
+        refuse_sprite_sizes_missing!(sizes)
+        table = sprite_table
+        upper = table.byteslice(SPRITE_ENTRIES * 4, SPRITE_ENTRIES / 4).bytes
+        boxes = Array.new(SPRITE_ENTRIES) do |slot|
+          across, down, tile, attributes = table.byteslice(slot * 4, 4).bytes
+          bits = (upper[slot / 4] >> ((slot % 4) * 2)) & 0b11
+          width, height = sizes.fetch(bits[1])
+          SpriteBox.new(slot: slot, x: SpriteBox.wrapped(across | (bits[0] << 8), width, 512),
+                        y: SpriteBox.wrapped(down, height, 256), width: width, height: height,
+                        tile: tile | ((attributes & 1) << 8))
+        end
+        boxes.select { |box| box.on_screen?(screen_width, screen_height) }
+      end
+
+      SPRITE_ENTRIES = 128
+
+      private def refuse_sprite_sizes_missing!(sizes)
+        return if sizes.is_a?(Array) && sizes.size == 2 && sizes.all? { |size| size.is_a?(Array) && size.size == 2 }
+
+        raise ArgumentError, "A Super Nintendo cartridge draws its sprites in two sizes that the game sets, and this " \
+                             "reader cannot read them. To fix this, give the two sizes, small then large, like " \
+                             "`sprite_boxes(sizes: [[8, 8], [16, 16]])`."
+      end
+
       # bsnes keeps a cartridge's battery-backed RAM in a .srm file of its own, nothing after it,
       # as big as the header says: the size the header's byte says for the save memory a game has
       # (IR::Backends::SNES::Runtime::Saving), worked out the way the header is written

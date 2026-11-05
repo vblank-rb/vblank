@@ -48,6 +48,30 @@ module VBlank
           registers: VIDEO_REGISTERS.transform_values { |address| mem16(address) } }
       end
 
+      # THE SPRITE TABLE AS BOXES (SpriteBox), one for each entry switched on that reaches the
+      # screen, in the table's order. Nothing here needs a build record, so it is how a cartridge
+      # with none says where its sprites are. A turned entry is the size of its picture, not of the
+      # doubled box a turned sprite can be drawn in. Across wraps at 512 and down at 256, as the
+      # console wraps them.
+      #
+      # @return [Array<SpriteBox>]
+      def sprite_boxes
+        ensure_rendered!
+        # Shape 3 is no shape: the console draws nothing for it, so it has no box.
+        boxes = @probe.sprites.filter_map do |row|
+          sizes = SPRITE_SIZES[row[:shape]] or next
+          width, height = sizes.fetch(row[:size])
+          SpriteBox.new(slot: row[:slot], x: SpriteBox.wrapped(row[:x], width, 512),
+                        y: SpriteBox.wrapped(row[:y], height, 256), width: width, height: height, tile: row[:tile])
+        end
+        boxes.select { |box| box.on_screen?(screen_width, screen_height) }
+      end
+
+      # A sprite's [width, height] in pixels, by its shape (square, wide, tall) and its size, 0 to 3.
+      SPRITE_SIZES = Ractor.make_shareable([[[8, 8], [16, 16], [32, 32], [64, 64]],
+                                            [[16, 8], [32, 8], [32, 16], [64, 32]],
+                                            [[8, 16], [8, 32], [16, 32], [32, 64]]])
+
       # A list here is its slots, with its length and, for one the game shifts, where its oldest
       # item is, kept apart from them (IR::Backends::GBA::Lists#list_places).
       private def kept_list_items(place)

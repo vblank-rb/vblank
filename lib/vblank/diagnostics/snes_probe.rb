@@ -66,6 +66,13 @@ module VBlank
       # the 32 that hold each sprite's top bit of across and its size.
       def sprite_table = @core.oam
 
+      # The console's own memories as bsnes holds them (Verifier#video_ram): the 64K of video
+      # memory, the 512 bytes of colour memory, and the sound unit's DSP registers, 128 bytes, as the
+      # sound unit's program last wrote them.
+      def video_ram = @core.vram
+      def color_ram = @core.cgram
+      def sound_registers = @core.dsp_registers
+
       # bsnes here draws every layer into one picture and takes no word to leave one out.
       def showing(**)
         raise ArgumentError, "This reader cannot draw the picture without a layer on a Super Nintendo cartridge. " \

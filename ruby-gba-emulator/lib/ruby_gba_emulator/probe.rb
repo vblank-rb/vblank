@@ -288,6 +288,36 @@ module RubyGBAEmulator
       @core.palette
     end
 
+    # THE CONSOLE'S OWN TABLES AS THE BYTES IT KEEPS THEM IN, for a cartridge nothing else is known
+    # about: what a port of a game reads off its original and decodes itself. Each is what the game
+    # last wrote, out of the emulator's memory and not through the bus, which shows a Color's video
+    # memory a bank at a time and its sprite table only while it is not drawing.
+    #
+    # +video_ram+: the tiles' pictures and the maps of them, 96K on an Advance, both 8K banks on a
+    # Color, bank 0 first. +sprite_table+: 1K on an Advance (128 sprites of eight bytes, the turning
+    # numbers among them), 160 bytes on a Color (40 sprites of four).
+    # +sound_registers+: an Advance's from 0x04000060 to 0x040000A7, wave memory included; a Color's
+    # from 0xFF10 to 0xFF3F, wave memory included. +color_ram+: #palette as the console keeps it, two
+    # bytes a colour, low byte first: 1K on an Advance, 128 bytes on a Color.
+    #
+    # @return [String]
+    def video_ram
+      ensure_open!
+      @core.video_ram
+    end
+
+    def sprite_table
+      ensure_open!
+      @core.sprite_table
+    end
+
+    def sound_registers
+      ensure_open!
+      @core.sound_registers
+    end
+
+    def color_ram = palette.pack("v*")
+
     # WHERE BACKGROUND +which+ (0 to 3) IS SCROLLED TO, as [across, down] in pixels.
     #
     # The console's scroll registers are write-only: a game sets them and nothing on the

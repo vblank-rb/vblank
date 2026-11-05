@@ -576,6 +576,40 @@ module VBlank
         whole[from + (group * layout.group), layout.group]
       end
 
+      # THE CONSOLE'S OWN TABLES, AS THE BYTES IT KEEPS THEM IN, on the frame the run stopped on.
+      # Nothing here needs a build record, so they are what a port reads off its original cartridge
+      # and decodes the way the original's code reads them: the tiles and maps a game wrote, the
+      # colours, where each sprite is, and what the sound chip was last told.
+      #
+      #                     video_ram       color_ram   sprite_table   sound_registers
+      #   Advance           96K             1K          1K             0x04000060..0x040000A7, 72
+      #   Color             16K, 2 banks    128         160            0xFF10..0xFF3F, 48
+      #   Super Nintendo    64K             512         544            the DSP's 128
+      #   Genesis           64K             128         640 or 512     the FM chip's 512
+      #
+      # Each is in the console's own byte order: low byte first, but on the Genesis, whose 68000
+      # keeps the high byte first. The Genesis's sprite table is the part of its video memory the
+      # video chip's register 5 points at, 80 entries of eight bytes on a screen 320 wide and 64 on
+      # one 256 wide; its square voices' registers, scroll memory and video registers are GenesisReading's.
+      # The Super Nintendo's sprite table is bsnes's: four bytes for each of 128 sprites, then 32
+      # bytes holding each one's top bit of across and its size.
+      #
+      # @return [String]
+      def video_ram = probe_table(:video_ram)
+      def color_ram = probe_table(:color_ram)
+      def sprite_table = probe_table(:sprite_table)
+      def sound_registers = probe_table(:sound_registers)
+
+      private def probe_table(table)
+        ensure_rendered!
+        unless @probe.respond_to?(table)
+          raise ArgumentError, "This reader cannot read `#{table}` off a #{kit.title} program yet. Read its memory by " \
+                               "address (`mem8`, `mem16`, `mem32`) or its screen instead."
+        end
+
+        @probe.public_send(table)
+      end
+
       # DRAW THE PICTURE WITHOUT SOME OF IT, so a test can ask which layer drew what.
       #
       #   v.showing(only: :sprites) { v.step; v.pixel_is?(44, 44, :red) }

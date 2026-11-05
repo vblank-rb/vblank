@@ -2392,6 +2392,77 @@ mgba_core_palette(VALUE self)
 }
 
 /* --------------------------------------------------------- */
+/* Core#video_ram, Core#sprite_table, Core#sound_registers     */
+/*                                                            */
+/* THE CONSOLE'S OWN TABLES AS BYTES, for a cartridge nothing  */
+/* else is known about: a port reading its original reads what */
+/* the console draws and sounds from, and decodes it itself.   */
+/*                                                            */
+/* Straight out of the emulator's memory rather than through   */
+/* the bus, because the bus shows less: a Color shows one of   */
+/* its two banks of video memory at a time, locks its sprite   */
+/* table while it draws, and reads back the sound registers    */
+/* with their write-only bits set. These are what the game     */
+/* last wrote.                                                 */
+/*                                                            */
+/* video_ram: all of it, 96K on an Advance, both 8K banks on a */
+/* Color (bank 0 first). sprite_table: 1K on an Advance, 160   */
+/* bytes on a Color. sound_registers: an Advance's from        */
+/* 0x04000060 to 0x040000A7, wave memory included, as the      */
+/* emulator keeps them; a Color's from 0xFF10 to 0xFF3F.       */
+/* --------------------------------------------------------- */
+#define GBA_SOUND_REGISTERS_FROM 0x60
+#define GBA_SOUND_REGISTERS_BYTES 0x48
+#define GB_SOUND_REGISTERS_FROM 0x10
+#define GB_SOUND_REGISTERS_BYTES 0x30
+
+static VALUE
+mgba_core_video_ram(VALUE self)
+{
+    struct mgba_core *mc = get_mgba_core(self);
+
+    if (mc->core->platform(mc->core) == mPLATFORM_GB) {
+        struct GB *gb = (struct GB *)mc->core->board;
+        return rb_str_new((const char *)gb->video.vram, GB_SIZE_VRAM);
+    }
+    if (mc->core->platform(mc->core) != mPLATFORM_GBA) {
+        rb_raise(rb_eRuntimeError, "video_ram reads a Game Boy Advance or a Game Boy");
+    }
+    return rb_str_new((const char *)((struct GBA *)mc->core->board)->video.vram, SIZE_VRAM);
+}
+
+static VALUE
+mgba_core_sprite_table(VALUE self)
+{
+    struct mgba_core *mc = get_mgba_core(self);
+
+    if (mc->core->platform(mc->core) == mPLATFORM_GB) {
+        struct GB *gb = (struct GB *)mc->core->board;
+        return rb_str_new((const char *)gb->video.oam.raw, GB_SIZE_OAM);
+    }
+    if (mc->core->platform(mc->core) != mPLATFORM_GBA) {
+        rb_raise(rb_eRuntimeError, "sprite_table reads a Game Boy Advance or a Game Boy");
+    }
+    return rb_str_new((const char *)((struct GBA *)mc->core->board)->video.oam.raw, SIZE_OAM);
+}
+
+static VALUE
+mgba_core_sound_registers(VALUE self)
+{
+    struct mgba_core *mc = get_mgba_core(self);
+
+    if (mc->core->platform(mc->core) == mPLATFORM_GB) {
+        struct GB *gb = (struct GB *)mc->core->board;
+        return rb_str_new((const char *)&gb->memory.io[GB_SOUND_REGISTERS_FROM], GB_SOUND_REGISTERS_BYTES);
+    }
+    if (mc->core->platform(mc->core) != mPLATFORM_GBA) {
+        rb_raise(rb_eRuntimeError, "sound_registers reads a Game Boy Advance or a Game Boy");
+    }
+    return rb_str_new((const char *)((struct GBA *)mc->core->board)->memory.io + GBA_SOUND_REGISTERS_FROM,
+                      GBA_SOUND_REGISTERS_BYTES);
+}
+
+/* --------------------------------------------------------- */
 /* Core#scroll(n) — where background n is scrolled to          */
 /*                                                            */
 /* [across, down], in pixels. These registers are WRITE-ONLY  */
@@ -4529,6 +4600,9 @@ Init_ruby_gba_emulator_ext(void)
     rb_define_method(cCore, "pad_reads",   mgba_core_pad_reads, 0);
     rb_define_method(cCore, "sprites",     mgba_core_sprites, 0);
     rb_define_method(cCore, "palette",     mgba_core_palette, 0);
+    rb_define_method(cCore, "video_ram",   mgba_core_video_ram, 0);
+    rb_define_method(cCore, "sprite_table", mgba_core_sprite_table, 0);
+    rb_define_method(cCore, "sound_registers", mgba_core_sound_registers, 0);
     rb_define_method(cCore, "scroll",      mgba_core_scroll, 1);
     rb_define_method(cCore, "video_layers",   mgba_core_video_layers, 0);
     rb_define_method(cCore, "audio_channels", mgba_core_audio_channels, 0);

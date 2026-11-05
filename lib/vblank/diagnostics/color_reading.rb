@@ -38,6 +38,26 @@ module VBlank
           registers: VIDEO_REGISTERS.transform_values { |address| mem8(address) } }
       end
 
+      # THE SPRITE TABLE AS BOXES (SpriteBox), one for each of the forty entries the console draws, in
+      # the table's order. Nothing here needs a build record, so it is how a cartridge with none says
+      # where its sprites are. An entry is four bytes: its down plus 16, its across plus 8, its tile
+      # and its settings. So a sprite at nought either way is wholly off the screen, which is how a game
+      # hides one. Every entry is 8 wide and 8 tall, or 16 tall when the register LCDC says so (bit 2),
+      # drawing from an even tile and the one after.
+      #
+      # @return [Array<SpriteBox>]
+      def sprite_boxes
+        ensure_rendered!
+        tall = mem8(VIDEO_REGISTERS.fetch(:LCDC)).anybits?(TALL_SPRITES_BIT)
+        boxes = sprite_table.bytes.each_slice(4).with_index.map do |(down, across, tile, _settings), slot|
+          SpriteBox.new(slot: slot, x: across - 8, y: down - 16, width: 8, height: tall ? 16 : 8,
+                        tile: tall ? tile & 0xFE : tile)
+        end
+        boxes.select { |box| box.on_screen?(screen_width, screen_height) }
+      end
+
+      TALL_SPRITES_BIT = 0x04
+
       # A GAME BOY CARTRIDGE WITH A CLOCK CHIP has the emulator write the chip's counters, and the
       # moment it last read them, after the save memory in its file: 48 bytes, the layout other Game
       # Boy emulators write too. What the game saved is the memory before them, in whole banks.

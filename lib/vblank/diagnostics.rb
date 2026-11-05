@@ -6,6 +6,7 @@
 # Messages.
 
 require_relative "diagnostics/sprite_row" # one sprite read back, off the console or off the oracle
+require_relative "diagnostics/sprite_box" # ...and one entry of a console's sprite table, as the box it draws
 require_relative "diagnostics/video_memory" # how much room the pictures took, and what the storage saved
 require_relative "diagnostics/inspector" # a finished ROM taken apart: header, and the code disassembled
 require_relative "diagnostics/func_dumper"
@@ -21,7 +22,8 @@ require_relative "diagnostics/sound_recording" # what a game sounds like on the 
 require_relative "diagnostics/counted_passes" # ...the passes of a console whose runtime counts them
 require_relative "diagnostics/snes_memory" # ...its memory, work RAM and the Super FX chip's, by address
 require_relative "diagnostics/snes_probe" # ...a running Super Nintendo cartridge, as the reader asks of one
-require_relative "diagnostics/ps1_memory" # ...its memory, main RAM and the scratchpad, by address
+require_relative "diagnostics/genesis_probe" # ...a running Genesis cartridge
+require_relative "diagnostics/ps1_memory" # ...a PlayStation's memory, main RAM and the scratchpad, by address
 require_relative "diagnostics/ps1_probe" # ...and a running PlayStation program
 require_relative "diagnostics/runtime_lists" # ...a list as the Color's and the Super Nintendo's runtimes keep it
 require_relative "diagnostics/advance_reading" # ...what an Advance cartridge keeps its own way

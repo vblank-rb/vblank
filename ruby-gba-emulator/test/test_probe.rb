@@ -283,6 +283,29 @@ class TestRubyGBAEmulatorProbe < Minitest::Test
     end
   end
 
+  # THE CONSOLE'S OWN TABLES AS BYTES: a sprite placed at (40, 24) is in the sprite table's first
+  # entry, its down in the first byte and its across in the low nine bits of the third and fourth.
+  def test_a_probe_hands_over_the_consoles_tables_as_bytes
+    path = build_rom("TABLES", code: "TTAB") do
+      screen :tiled
+      image(:dot, "#" => :red) { ("########\n" * 8) }
+      sprite :dot, at: [40, 24]
+      game_loop {}
+    end
+
+    with_probe(path) do |probe|
+      probe.step(4)
+      table = probe.sprite_table
+
+      assert_equal 1024, table.bytesize
+      assert_equal 24, table.getbyte(0)
+      assert_equal 40, table.byteslice(2, 2).unpack1("v") & 0x1FF
+      assert_equal 0x18000, probe.video_ram.bytesize
+      assert_equal probe.palette.pack("v*"), probe.color_ram
+      assert_equal 0x48, probe.sound_registers.bytesize
+    end
+  end
+
   private
 
   # A cartridge holding exactly these instructions and nothing the framework adds.

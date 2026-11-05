@@ -300,6 +300,7 @@ module VBlank
       def cartridge = Cartridge::GenesisROM
       def reading = Diagnostics::GenesisReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_genesis(path, save_dir: save_dir)
+      def open_probe(path, save_dir:) = Diagnostics::GenesisProbe.new(path, save_dir: save_dir)
       def save_file_extension = ".srm"
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
