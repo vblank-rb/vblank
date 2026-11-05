@@ -38,10 +38,13 @@ module VBlank
       # What was waited for did not happen in the frames allowed.
       class NeverHappened < StandardError; end
 
-      # How a value in memory is read: how many bytes, and whether it is signed.
+      # How a value in memory is read: how many bytes, and whether it is signed. Three bytes is the
+      # 65816's long address (a routine's, say), kept low byte first, and only a console whose
+      # processor reads a number at any address keeps one (Console::Kit#words_at_any_address?).
       Width = Data.define(:bytes, :signed)
       WIDTHS = Ractor.make_shareable({ u8: Width.new(1, false), s8: Width.new(1, true), u16: Width.new(2, false),
-                                       s16: Width.new(2, true), u32: Width.new(4, false), s32: Width.new(4, true) })
+                                       s16: Width.new(2, true), u24: Width.new(3, false), s24: Width.new(3, true),
+                                       u32: Width.new(4, false), s32: Width.new(4, true) })
 
       # A label: where it is, and how it is read.
       Label = Data.define(:address, :as)
@@ -72,6 +75,7 @@ module VBlank
         @owns_save_dir = save_dir.nil?
         @save_dir = save_dir || Dir.mktmpdir("vblank-probe")
         cartridge = Diagnostics::CartridgeFile.new(cartridge) unless cartridge.respond_to?(:console)
+        @kit = Console.for(cartridge.console)
         @reader = Diagnostics::Verifier.new(cartridge, frames: 0, save: save, save_dir: @save_dir)
         @frame = 0
       rescue StandardError
@@ -128,13 +132,16 @@ module VBlank
       end
 
       # The value at +place+ (a label or an address) now, read +as+ one of WIDTHS (as the label says,
-      # or one byte unsigned), in the console's own byte order, as its processor keeps it. A value of
-      # two or four bytes is read at an address that is a multiple of its size.
+      # or one byte unsigned), in the console's own byte order, as its processor keeps it. Where a
+      # value of two or more bytes can be, and whether three bytes are one value, is the processor's
+      # rule too (Console::Kit#words_at_any_address?); a read it would not make is refused. Three
+      # bytes are read one at a time, low byte first, so each is the byte the console has there.
       def read(place, as: nil)
         at, width = located(place, as)
         value = case width.bytes
                 when 1 then @reader.mem8(at)
                 when 2 then @reader.mem16(at)
+                when 3 then (0..2).sum { |offset| @reader.mem8(at + offset) << (offset * 8) }
                 else @reader.mem32(at)
                 end
         width.signed && value >= (1 << ((width.bytes * 8) - 1)) ? value - (1 << (width.bytes * 8)) : value
@@ -151,17 +158,16 @@ module VBlank
       # a new game gives), so say beside anything measured after one that it was reached this way.
       #
       # The emulator writes a whole word of four bytes at a time, so the word holding the value is
-      # read, changed in its place, and written back: the three bytes beside it are written again with
-      # what they held, which is no change in memory and can be one in a register the console acts on
-      # when it is written. Only the consoles whose emulator writes memory can be written (the Advance
-      # and the Color, whose processors keep the low byte first); on another it is refused saying so.
+      # read, changed in its place, and written back: the bytes beside it are written again with
+      # what they held, which is no change in memory and can be one in a register the console acts
+      # on when it is written. A value the Color keeps across two words is written into each of them
+      # in turn. Only the consoles whose emulator writes memory can be written (the Advance and the
+      # Color, whose processors keep the low byte first); on another it is refused saying so.
       def write(place, value, as: nil)
         at, width = located(place, as)
-        boundary = at & ~3
-        shift = (at - boundary) * 8
-        mask = ((1 << (width.bytes * 8)) - 1) << shift
-        word = @reader.mem32(boundary)
-        @reader.write32(boundary, (word & ~mask & 0xFFFF_FFFF) | ((value << shift) & mask))
+        (at...(at + width.bytes)).group_by { |address| address & ~3 }.each do |boundary, addresses|
+          write_into_word(boundary, addresses.to_h { |address| [address, (value >> ((address - at) * 8)) & 0xFF] })
+        end
         self
       end
 
@@ -195,6 +201,16 @@ module VBlank
         self
       end
 
+      # The word at +boundary+ (a multiple of four) with +bytes+ (an address to its byte) put in it,
+      # read and written back once, low byte first.
+      def write_into_word(boundary, bytes)
+        word = bytes.reduce(@reader.mem32(boundary)) do |kept, (address, byte)|
+          shift = (address - boundary) * 8
+          (kept & ~(0xFF << shift) & 0xFFFF_FFFF) | (byte << shift)
+        end
+        @reader.write32(boundary, word)
+      end
+
       def label_from(place)
         at, as = Array(place)
         width_of(as || :u8)
@@ -205,12 +221,27 @@ module VBlank
       def located(place, as)
         label = place.is_a?(Integer) ? Label.new(address: place, as: :u8) : @labels.fetch(place.to_s) { refuse_unknown_label!(place) }
         width = width_of(as || label.as)
-        unless (label.address % width.bytes).zero?
-          raise ArgumentError, "#{place} is at #{format('0x%X', label.address)}, and a value of #{width.bytes} bytes " \
-                               "must be at a multiple of #{width.bytes}. Use a smaller width, or the right address."
+        unless @kit.words_at_any_address?
+          refuse_three_bytes!(width)
+          refuse_misaligned!(place, label.address, width)
         end
-
         [label.address, width]
+      end
+
+      # A processor that keeps its values aligned reads 1, 2 or 4 bytes, and never 3 as one value.
+      def refuse_three_bytes!(width)
+        return unless width.bytes == 3
+
+        raise ArgumentError, "A #{@kit.title} reads a number of 1, 2 or 4 bytes, not 3. To fix this, read it as " \
+                             "one of those, or read its bytes with read_bytes."
+      end
+
+      # A value of two or four bytes at an address that is not a multiple of its size.
+      def refuse_misaligned!(place, at, width)
+        return if (at % width.bytes).zero?
+
+        raise ArgumentError, "#{place} is at #{format('0x%X', at)}. A #{@kit.title} reads a value of #{width.bytes} " \
+                             "bytes only at a multiple of #{width.bytes}. Use a smaller width, or the right address."
       end
 
       def refuse_unknown_label!(place)

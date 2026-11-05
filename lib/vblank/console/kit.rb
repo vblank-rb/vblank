@@ -57,6 +57,8 @@ module VBlank
     #   routine_lister          what lists a routine of its cartridges (`dump_func`), or nil
     #   inspector              what prints one of its cartridges' header and first instructions
     #                           (`vblank inspect`), or nil for a console with none yet
+    #   words_at_any_address?   whether its processor reads a value of two or more bytes at any
+    #                           address, an odd one included, and keeps it low byte first
     #
     # What every console's cartridge answers, whichever kind it is, and all a caller that has not
     # asked which console it is for can ask of one:
@@ -87,6 +89,15 @@ module VBlank
       def measured_builds? = false
       def compared_side_by_side? = false
       def inspector = nil
+
+      # WHETHER ITS PROCESSOR READS A NUMBER OF TWO OR MORE BYTES AT ANY ADDRESS. The ARM of the
+      # Advance, the 68000 of the Genesis and the MIPS of the PlayStation read two bytes only at an
+      # even address and four only at a multiple of four (the ARM turns the word round, the 68000
+      # and the MIPS stop), so a game for them never keeps one anywhere else, and a read anywhere
+      # else is a wrong address. The Color's SM83 and the Super Nintendo's 65816 fetch a byte at a
+      # time and read a word at any address, so their games keep words at odd ones, and three-byte
+      # numbers besides (the 65816's long addresses). Both keep the low byte first.
+      def words_at_any_address? = false
 
       # The emulator core its cartridges play in, opened on a cartridge file
       # (Diagnostics::Emulator), and how the file the core keeps battery-backed RAM in is named
@@ -232,6 +243,7 @@ module VBlank
       def routine_lister = Diagnostics::SM83Listing
       def sprite_piece_sizes = GBCHardware::SPRITE_PIECE_SIZES
       def compared_side_by_side? = true
+      def words_at_any_address? = true
     end
 
     # The Super Nintendo's. Its cartridges play in bsnes rather than libmgba, through
@@ -247,6 +259,7 @@ module VBlank
       def save_file_extension = ".srm"
       def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
       def compared_side_by_side? = true
+      def words_at_any_address? = true
       def variants = SNES_VARIANTS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
