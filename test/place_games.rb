@@ -179,9 +179,12 @@ module PlaceGames
   # ten, a picture red for its near half and blue for its far half laid along it. It lands from x
   # 60 (two ahead) to 108 (ten ahead), and the picture's halfway, six ahead, at x 100. Without
   # perspective the picture is stretched straight across, so its halfway lands halfway, at 84.
-  # Drawn with +perspective+.
-  def self.wall_down_the_side(perspective)
-    builder = VBlank::Builder.new
+  # Drawn with +perspective+. +asked_first+ asks where its corners land first, with a near limit nearer
+  # than the drawing's, and +drawn_straight_first+ draws it without perspective first, the same pass:
+  # both turn its points before the drawing, which reads them. +console+ is the console it is built for
+  # (none, the unbound program a test plays as each run's console).
+  def self.wall_down_the_side(perspective, asked_first: false, drawn_straight_first: false, console: nil)
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
     builder.instance_eval do
       screen :bitmap, tear_free: true
       image :halves, width: 64, height: 8, data: (0...8).flat_map { (0...64).map { |across| across < 32 ? 0x001F : 0x7C00 } }
@@ -192,6 +195,8 @@ module PlaceGames
       eye = viewer :eye, at: [0.0, 0.0, 0.0]
       game_loop do
         clear_screen :black
+        4.times { |corner| screen_spot :side, corner, seen_by: eye, near: 0.01 } if asked_first
+        draw_place :side, seen_by: eye, perspective: :none if drawn_straight_first
         draw_place :side, seen_by: eye, perspective: perspective
       end
     end

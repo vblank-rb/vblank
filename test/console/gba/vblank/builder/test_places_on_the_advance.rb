@@ -160,6 +160,18 @@ class TestPlacesOnTheAdvance < Minitest::Test
     assert_equal shown(0x7FFF), brightest.pixel(120, 80), "more than all the light is all of it"
   end
 
+  # Its points turned first by a question with a nearer limit and by a drawing without perspective, the
+  # drawing in perspective reads them and is the same picture as drawn alone.
+  def test_a_wall_whose_points_were_turned_first_is_drawn_the_same
+    alone = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels), frames: 2).screen
+    after = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels, asked_first: true, drawn_straight_first: true),
+                            frames: 2).screen
+
+    assert_equal shown(0x001F), after.pixel(92, 80)
+    assert_equal shown(0x7C00), after.pixel(104, 80)
+    assert_equal((56..112).map { |x| alone.pixel(x, 80) }, (56..112).map { |x| after.pixel(x, 80) })
+  end
+
   def test_the_default_perspective_is_every_8_pixels
     default = game_player.run(PlaceGames.wall_down_the_side(Builder::Places::PERSPECTIVE), frames: 2).screen
 

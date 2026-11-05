@@ -158,6 +158,7 @@ module VBlank
             @scenes = @plan.scenes
             @lists = {}
             @lists_dropped_from_front = program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }.uniq
+            @lists_of_fixed_length = lists_of_fixed_length(program)
             @variables = {}
             @locals = {}
             @starts = [] # [address, value] for a place that does not start at nought
@@ -678,8 +679,12 @@ module VBlank
           # register] that name the slot in a load or a store. Changes t6 to t9 and at.
           def emit_slot_place(list)
             lists = Runtime::Lists
-            @asm.lhu(:t6, *base_and_distance(list.address + lists::LENGTH))
-            @asm.sltu(:t7, :v0, :t6)
+            if @lists_of_fixed_length.include?(list.name.to_sym) && list.capacity <= 0x7FFF # SLTIU's number, sign and all
+              @asm.sltiu(:t7, :v0, list.capacity)
+            else
+              @asm.lhu(:t6, *base_and_distance(list.address + lists::LENGTH))
+              @asm.sltu(:t7, :v0, :t6)
+            end
             fault = @index_faults[list.address] ||= fresh_label("index_past_end")
             @asm.beq(:t7, :zero, fault) { @asm.move(:t8, :v0) }
             shift = list.slot_bytes.bit_length - 1
@@ -687,6 +692,32 @@ module VBlank
             distance, base = base_and_distance(list.address + lists::HEADER)
             @asm.addu(:t9, :t9, base)
             [distance, :t9]
+          end
+
+          # THE LISTS WHOSE LENGTH IS ALWAYS THEIR CAPACITY, so an index is checked against a number written
+          # in the instruction rather than a length read from main RAM, which has no cache and makes the
+          # processor wait for every load: a game of rooms reads its lists hundreds of times a pass. Such a
+          # list is made full (`full_of:`) every time it is made, nothing pushes to it, drops from it or
+          # copies a table into it, and it is made among the program's first statements, before anything
+          # that could read a list runs: one read before then stops the interpreter's game (the list is not
+          # made yet), and must stop this one's, which the length read from RAM, nought, does. Only these kinds
+          # of statement may come first, and only when no value in them reads a list: a declaration, the
+          # screen chosen, a list made, a variable set.
+          STATEMENTS_BEFORE_FIXED_LISTS = Ractor.make_shareable(Set[:list_new, :screen, :set, :copy, :add, :sub,
+                                                                    *Nodes.of_role(:declaration)])
+          LIST_READING_VALUES = %i[list_get list_len].freeze
+
+          def lists_of_fixed_length(program)
+            changed = program.walk.filter_map { |node| node.name if %i[list_push list_drop list_copy].include?(node.kind) }
+            made = program.walk.select { |node| node.kind == :list_new }.group_by(&:name)
+            first = []
+            program.children.each do |child|
+              break unless STATEMENTS_BEFORE_FIXED_LISTS.include?(child.kind)
+              break if child.walk.any? { |node| LIST_READING_VALUES.include?(node.kind) }
+
+              first << child.name if child.kind == :list_new
+            end
+            made.filter_map { |name, news| name if news.all?(&:full_of) && first.include?(name) && !changed.include?(name) }
           end
 
           # After the routine's return, for each list it reads or writes in place, where an index past the

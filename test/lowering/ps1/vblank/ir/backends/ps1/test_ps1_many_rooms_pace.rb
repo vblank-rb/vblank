@@ -13,6 +13,8 @@ class TestPS1ManyRoomsPace < Minitest::Test
   ROOMS = 17
   # The rooms drawn in perspective, nearest first; those past it are drawn straight.
   IN_PERSPECTIVE = 8
+  # The corners of every room: four where each room meets the next, and four at the far end.
+  CORNERS = (ROOMS + 1) * 4
 
   BLOCKS = <<~ART
     ################
@@ -68,6 +70,9 @@ class TestPS1ManyRoomsPace < Minitest::Test
     starts = faces_of.each_with_object([0]) { |faces, at| at << (at.last + faces.length) }
     face_start = table :face_start, starts
     face_number = table :face_number, faces_of.flatten
+    spot_x = list :spot_x, capacity: CORNERS, full_of: 0
+    spot_y = list :spot_y, capacity: CORNERS, full_of: 0
+    spot_behind = list :spot_behind, capacity: CORNERS, full_of: 0
     win_left = list :win_left, capacity: ROOMS, full_of: 0
     win_top = list :win_top, capacity: ROOMS, full_of: 0
     win_right = list :win_right, capacity: ROOMS, full_of: 0
@@ -96,6 +101,18 @@ class TestPS1ManyRoomsPace < Minitest::Test
       phase += 1
       phase = 0 if phase == 48
 
+      # Every room's eight corners put on the screen first, as a game of rooms does before it walks:
+      # the four where a room meets the one before, and the four where it meets the next.
+      repeat(ROOMS) do |room|
+        repeat(8) do |c|
+          corner = screen_spot :corridor, (room * 4) + c, seen_by: eye
+          spot_x[(room * 4) + c] = corner.x
+          spot_y[(room * 4) + c] = corner.y
+          spot_behind[(room * 4) + c] = 0
+          spot_behind[(room * 4) + c] = 1 if corner.behind?
+        end
+      end
+
       # The walk: each room's window is the box round its doorway's corners, inside the window of the
       # room before; the first doorway it cannot see through ends it.
       win_left[0] = 0
@@ -106,21 +123,20 @@ class TestPS1ManyRoomsPace < Minitest::Test
       open = 1
       repeat(ROOMS - 1) do |j|
         if open == 1
-          # The points are declared a doorway at a time, four each, so doorway k's are k * 4 on.
-          corners = 4.times.map { |c| screen_spot :corridor, ((j + 1) * 4) + c, seen_by: eye }
           left = screen_width
           top = screen_height
           right = 0
           bottom = 0
           behind = 0
-          corners.each do |corner|
-            if corner.behind?
+          # The points are declared a doorway at a time, four each, so doorway k's are k * 4 on.
+          4.times do |c|
+            if spot_behind[((j + 1) * 4) + c] == 1
               behind += 1
             else
-              left = corner.x if corner.x < left
-              right = corner.x if corner.x > right
-              top = corner.y if corner.y < top
-              bottom = corner.y if corner.y > bottom
+              left = spot_x[((j + 1) * 4) + c] if spot_x[((j + 1) * 4) + c] < left
+              right = spot_x[((j + 1) * 4) + c] if spot_x[((j + 1) * 4) + c] > right
+              top = spot_y[((j + 1) * 4) + c] if spot_y[((j + 1) * 4) + c] < top
+              bottom = spot_y[((j + 1) * 4) + c] if spot_y[((j + 1) * 4) + c] > bottom
             end
           end
           if behind > 0
@@ -169,6 +185,17 @@ class TestPS1ManyRoomsPace < Minitest::Test
     result = profile
 
     assert_operator result.passes_by_frames.keys.max, :<=, 2, result.passes_by_frames.inspect
+  end
+
+  # ...with room to spare in the second frame for what a real game of rooms does besides: its own walk
+  # through the rooms it can see, and their doors and things. A pass that ran this close to the next
+  # blank in this scene ran past it in such a game.
+  SPARE_LINES = 60
+
+  def test_a_corridor_of_many_rooms_leaves_room_in_its_second_frame
+    past = profile.lines_past_blank.fetch(2, [0])
+
+    assert_operator past.max, :<=, VBlank::Diagnostics::PS1Profiler::FRAME_LINES - SPARE_LINES, "lines past the first blank: #{past.minmax}"
   end
 
   private def profile

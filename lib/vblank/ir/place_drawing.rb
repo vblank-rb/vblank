@@ -95,14 +95,16 @@ module VBlank
       #
       # +shading+ is the shading a lit drawing of the place fills its faces with (nil for a place
       # never lit), and +point_lights+ the list of light the game adds to each point as it runs
-      # (nil for none).
-      def initialize(place, faces:, points:, pictures:, shading: nil, point_lights: nil)
+      # (nil for none). +corners_in_a_loop+ says a face's corners are worked in a loop rather than written
+      # out four times (#face_loop_statements).
+      def initialize(place, faces:, points:, pictures:, shading: nil, point_lights: nil, corners_in_a_loop: false)
         @place = place
         @faces = faces
         @points = points
         @pictures = pictures
         @shading = shading
         @point_lights = point_lights
+        @corners_in_a_loop = corners_in_a_loop
       end
 
       def routine = name(:draw)
@@ -125,7 +127,11 @@ module VBlank
       # The seen list keeps, for each point, SEEN_STRIDE numbers: where it is to the viewer's right,
       # above and ahead, and where it lands on the screen across and down and one over how far ahead
       # it is (written only when it is in front of the near limit, the only time anything reads
-      # them). The stamps list keeps, for
+      # them). One over how far ahead is worked out only for a drawing in perspective, the only one
+      # that reads it. Where the corners are worked in a loop, a point turned for any other holds
+      # nought there, which no point in front can have, and the first drawing in perspective to read it
+      # works it out then (#nearness_filled); written out four times, whether the drawing is in
+      # perspective is one of TURN_PARTS instead, which costs no test a corner. The stamps list keeps, for
       # each point, the number of the drawing that last turned it: a drawing counts one on (the
       # drawing variable) when it sees the place differently from the last (see TURN_PARTS), so a
       # point whose stamp is not the count is turned afresh.
@@ -138,15 +144,33 @@ module VBlank
       SEEN_NEARNESS = 5
 
       # WHAT A POINT'S TURN IS WORKED OUT FROM: the viewer, and the parts of the view the point routine
-      # reads (the near limit, the view's middle, how wide it is, and whether it is in perspective,
-      # which says whether the nearness is kept). A drawing that sees the place from the same viewer
-      # through the same view as the last one to move the count on turns every point the same, so it
-      # does not move the count on, and the points that one turned are read again rather than turned
-      # afresh. A game of rooms draws each room with a call of its own, its doorways' corners shared
-      # with the rooms either side, so most points are turned once a frame, not once for each room.
+      # reads (the near limit, the view's middle and how wide it is). A drawing that sees the place from
+      # the same viewer through the same view as the last one to move the count on turns every point
+      # the same, so it does not move the count on, and the points that one turned are read again rather
+      # than turned afresh. A game of rooms draws each room with a call of its own, its doorways' corners
+      # shared with the rooms either side, and asks where they land (`screen_spot`) before it draws, so
+      # most points are turned once a frame, not once for each room and once more for the asking.
       # The window is not among them: it holds where faces are filled, not where points land.
+      #
+      # THE NEAR LIMIT NEED NOT MATCH. Where a point lands does not depend on it; only whether the point
+      # routine writes that down does (a point in front of the limit). So points turned with a nearer
+      # limit than a drawing's hold everything that drawing reads, and only a drawing whose limit is
+      # nearer than the one the points were turned with moves the count on for it. A game that asks
+      # where points land with a limit of its own, nearer than its drawings', still turns each once.
       TURN_VIEW_PARTS = %i[near middle_x middle_y focal].freeze
       TURN_PARTS = [*VIEWER_PARTS, *TURN_VIEW_PARTS, :in_perspective].freeze
+
+      MATCHED_TURN_PARTS = (TURN_PARTS - %i[near in_perspective]).freeze
+
+      # The parts this drawing keeps of the last drawing to move the count on: whether it was in
+      # perspective only where the points' nearness is not worked out as it is first read (see
+      # SEEN_STRIDE).
+      def turn_parts = @corners_in_a_loop ? TURN_PARTS - [:in_perspective] : TURN_PARTS
+
+      # The perspective `screen_spot` asks for, which fills no face. Where the nearness is worked out as
+      # the point routine turns a point, a question asks for it, so the drawings in perspective that
+      # follow read the points it turned; where it is worked out as it is first read, none.
+      def spot_perspective = @corners_in_a_loop ? :none : :every_8_pixels
 
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
@@ -168,8 +192,14 @@ module VBlank
           CLIP_EDGES.map { |edge| clip_var(edge) } +
           %i[face listed base slot picture point seen_point dx dy dz count along area each next drawing
              at_x at_y at_z at_u at_v at_light spot_point spot_x spot_y spot_behind turn_changed].map { |part| name(part) } +
-          TURN_PARTS.map { |part| turn_var(part) } +
-          CORNERS.times.flat_map { |k| TURNED_FIELDS.map { |field| turned_var(field, k) } }
+          turn_parts.map { |part| turn_var(part) } + corner_variables
+      end
+
+      # The variables a face's corners are worked in: four of each kind written out, or the loop's own.
+      def corner_variables
+        return %i[corner corner_at other_at corner_point other_point corner_z other_z].map { |part| name(part) } if @corners_in_a_loop
+
+        CORNERS.times.flat_map { |k| TURNED_FIELDS.map { |field| turned_var(field, k) } }
       end
 
       # The variable counting the drawings, which marks the points each has turned (see SEEN_STRIDE).
@@ -178,15 +208,22 @@ module VBlank
       # The count moved on as a drawing starts, once its viewer and view are handed over, when what a
       # point's turn is worked out from differs from the last drawing's that moved it on (see
       # TURN_PARTS); each part that differs is kept for the next. The count routine's statements, which
-      # every drawing of the place calls.
+      # every drawing of the place, and every `screen_spot`, calls. The near limit kept is the one the
+      # points were turned with, which the point routine reads (see THE NEAR LIMIT NEED NOT MATCH).
+      # Whether the points were turned in perspective, where it is kept, is the same: points turned with
+      # their nearness serve a drawing that reads none.
       def drawing_count_statements
         changed = name(:turn_changed)
+        kept = %i[near in_perspective] & turn_parts
         [Build.set(changed, 0),
-         *TURN_PARTS.map do |part|
+         *MATCHED_TURN_PARTS.map do |part|
            Build.if_(Build.binop(:!=, Build.var_ref(turn_var(part)), turn_part_now(part)),
                      Build.set(changed, 1), Build.set(turn_var(part), turn_part_now(part)))
          end,
-         Build.if_(Build.var_ref(changed), Build.add(drawing_var, 1))]
+         Build.if_(Build.binop(:<, turn_part_now(:near), Build.var_ref(turn_var(:near))), Build.set(changed, 1)),
+         *(kept.include?(:in_perspective) ? [Build.if_(Build.binop(:>, in_perspective, Build.var_ref(turn_var(:in_perspective))), Build.set(changed, 1))] : []),
+         Build.if_(Build.var_ref(changed), Build.add(drawing_var, 1),
+                   *kept.map { |part| Build.set(turn_var(part), turn_part_now(part)) })]
       end
 
       # The drawing routine's statements: every face, in the order the place declares them.
@@ -208,6 +245,8 @@ module VBlank
       # One face's statements, the face whose number is in the face variable: turned, cut,
       # projected, tested and filled.
       def face_statements
+        return face_loop_statements if @corners_in_a_loop
+
         [Build.set(name(:base), Build.binop(:*, var(:face), FACE_STRIDE)),
          Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
          Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
@@ -217,23 +256,103 @@ module VBlank
          Build.if_(Build.binop(:>=, var(:count), 3), *front_test, fill_when_seen)]
       end
 
+      # THE SAME FACE WITH ITS CORNERS IN A LOOP, for a console whose processor runs its code from a
+      # small cache (Console::Description#code_cache_bytes). Written out four times over, the corners'
+      # work is most of a face's code, and a face's code bigger than the cache is fetched from memory
+      # again for every face; once, in a loop, it stays in the cache from one face to the next. Each
+      # pass of the loop reads its corner from where the turning left it (the seen list) and from the
+      # faces table, rather than from variables of its own, so the numbers are the same numbers, worked
+      # out by the same sums in the same order: first every corner turned, then every edge cut.
+      def face_loop_statements
+        corner = var(:corner)
+        [Build.set(name(:base), Build.binop(:*, var(:face), FACE_STRIDE)),
+         Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
+         Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
+         Build.repeat(CORNERS, name(:corner),
+                      Build.set(name(:corner_point), Build.table_get(faces_table, corner_at(corner))),
+                      Build.if_(Build.binop(:!=, Build.list_get(stamps_list, var(:corner_point)), var(:drawing)),
+                                Build.set(name(:seen_point), var(:corner_point)),
+                                Build.call(point_routine))),
+         Build.set(name(:count), 0),
+         Build.repeat(CORNERS, name(:corner), *looped_cut_edge),
+         Build.if_(Build.binop(:>=, var(:count), 3), *front_test, fill_when_seen)]
+      end
+
+      # The edge from the loop's corner to the next, cut at the near limit, as #cut_edge cuts it.
+      def looped_cut_edge
+        following = Build.binop(:&, Build.binop(:+, var(:corner), 1), CORNERS - 1)
+        here = var(:corner_at)
+        there = var(:other_at)
+        seen = ->(point, at) { Build.list_get(seen_list, Build.binop(:+, Build.binop(:*, var(point), SEEN_STRIDE), at)) }
+        z_here = var(:corner_z)
+        z_there = var(:other_z)
+        in_front_here = Build.binop(:>=, z_here, Build.var_ref(view_var(:near)))
+        in_front_there = Build.binop(:>=, z_there, Build.var_ref(view_var(:near)))
+        moved = lambda do |from, to|
+          Build.binop(:+, from, Build.mul_fix(Build.binop(:-, to, from), var(:along), 16))
+        end
+        on_face = ->(at, offset) { Build.table_get(faces_table, Build.binop(:+, at, offset)) }
+        light = ->(at, point) { looped_corner_light(at, point) }
+        corner = ->(offset) { Build.binop(:+, Build.binop(:*, var(:count), Nodes::FillFace::CORNER_NUMBERS), offset) }
+        [Build.set(name(:corner_at), corner_at(var(:corner))),
+         Build.set(name(:other_at), corner_at(following)),
+         Build.set(name(:corner_point), Build.table_get(faces_table, here)),
+         Build.set(name(:other_point), Build.table_get(faces_table, there)),
+         Build.set(name(:corner_z), seen.call(:corner_point, 2)),
+         Build.set(name(:other_z), seen.call(:other_point, 2)),
+         Build.if_(in_front_here,
+                   Build.list_set(corners_list, corner.call(0), seen.call(:corner_point, SEEN_ACROSS)),
+                   Build.list_set(corners_list, corner.call(1), seen.call(:corner_point, SEEN_DOWN)),
+                   Build.list_set(corners_list, corner.call(2), on_face.call(here, 1)),
+                   Build.list_set(corners_list, corner.call(3), on_face.call(here, 2)),
+                   Build.if_(in_perspective,
+                             nearness_filled(Build.binop(:+, Build.binop(:*, var(:corner_point), SEEN_STRIDE), SEEN_NEARNESS), z_here),
+                             Build.list_set(corners_list, corner.call(4), seen.call(:corner_point, SEEN_NEARNESS))),
+                   *(@shading ? [Build.list_set(corners_list, corner.call(5), light.call(here, :corner_point))] : []),
+                   Build.add(name(:count), 1)),
+         Build.if_(Build.binop(:!=, in_front_here, in_front_there),
+                   Build.set(name(:along), Build.div_fix(Build.binop(:-, Build.var_ref(view_var(:near)), z_here),
+                                                         Build.binop(:-, z_there, z_here), 16)),
+                   Build.set(name(:at_x), moved.call(seen.call(:corner_point, 0), seen.call(:other_point, 0))),
+                   Build.set(name(:at_y), moved.call(seen.call(:corner_point, 1), seen.call(:other_point, 1))),
+                   Build.set(name(:at_u), moved.call(on_face.call(here, 1), on_face.call(there, 1))),
+                   Build.set(name(:at_v), moved.call(on_face.call(here, 2), on_face.call(there, 2))),
+                   *(@shading ? [Build.set(name(:at_light), moved.call(light.call(here, :corner_point), light.call(there, :other_point)))] : []),
+                   Build.set(name(:at_z), Build.var_ref(view_var(:near))),
+                   Build.call(corner_routine))]
+      end
+
+      # Where in the faces table the face being drawn keeps corner +corner+ (a value): its point's number,
+      # then u, v and its light.
+      def corner_at(corner) = Build.binop(:+, var(:base), Build.binop(:+, Build.binop(:*, corner, CORNER_FIELDS), 1))
+
+      # #corner_light for the corner whose entry starts at +at+ and whose point's number is in +point+.
+      def looped_corner_light(at, point)
+        own = Build.table_get(faces_table, Build.binop(:+, at, 3))
+        @point_lights ? Build.binop(:+, own, Build.list_get(@point_lights, var(point))) : own
+      end
+
       # Where the point whose number is in the spot's point variable lands, turned and projected
       # as a face's corner is: the pixel whose middle is first at or past it, across and down, and
       # whether it is nearer than the near limit (then both are nought).
+      #
+      # It turns the point as a drawing does, through the count and the point routine, and leaves it in
+      # the seen list stamped: a game of rooms asks where a room's corners land before it draws the room,
+      # and the drawing then reads them rather than turning them again.
       def spot_statements
-        point = Build.binop(:*, Build.clamped(Build.var_ref(spot_point_var), 0, @points - 1), POINT_STRIDE)
+        number = var(:seen_point)
+        seen = ->(at) { Build.list_get(seen_list, Build.binop(:+, Build.binop(:*, number, SEEN_STRIDE), at)) }
         pixel = ->(sixteenths) { Build.shift_right(Build.binop(:+, sixteenths, (SUBPIXEL / 2) - 1), 4) }
-        [Build.set(name(:point), point),
-         *offsets_from_viewer,
-         Build.set(name(:at_x), along(:right)),
-         Build.set(name(:at_y), along(:up)),
-         Build.set(name(:at_z), along(:ahead)),
+        [Build.set(name(:seen_point), Build.clamped(Build.var_ref(spot_point_var), 0, @points - 1)),
+         Build.call(count_routine),
+         Build.if_(Build.binop(:!=, Build.list_get(stamps_list, number), var(:drawing)), Build.call(point_routine)),
+         Build.set(name(:at_z), seen.call(2)),
          Build.set(spot_answer_var(:x), 0),
          Build.set(spot_answer_var(:y), 0),
          Build.set(spot_answer_var(:behind), 1),
          Build.if_(Build.binop(:>=, var(:at_z), Build.var_ref(view_var(:near))),
-                   Build.set(spot_answer_var(:x), pixel.call(landed(:+, :at_x, :middle_x))),
-                   Build.set(spot_answer_var(:y), pixel.call(landed(:-, :at_y, :middle_y))),
+                   Build.set(spot_answer_var(:x), pixel.call(seen.call(SEEN_ACROSS))),
+                   Build.set(spot_answer_var(:y), pixel.call(seen.call(SEEN_DOWN))),
                    Build.set(spot_answer_var(:behind), 0))]
       end
 
@@ -249,12 +368,30 @@ module VBlank
          Build.set(name(:at_y), along(:up)),
          Build.set(name(:at_z), along(:ahead)),
          *%i[at_x at_y at_z].each_with_index.map { |part, at| Build.list_set(seen_list, Build.binop(:+, seen, at), var(part)) },
-         Build.if_(Build.binop(:>=, var(:at_z), Build.var_ref(view_var(:near))),
+         Build.if_(Build.binop(:>=, var(:at_z), Build.var_ref(turn_var(:near))),
                    Build.list_set(seen_list, Build.binop(:+, seen, SEEN_ACROSS), landed(:+, :at_x, :middle_x)),
                    Build.list_set(seen_list, Build.binop(:+, seen, SEEN_DOWN), landed(:-, :at_y, :middle_y)),
-                   Build.if_(in_perspective,
-                             Build.list_set(seen_list, Build.binop(:+, seen, SEEN_NEARNESS), nearness))),
+                   nearness_or_nought(Build.binop(:+, seen, SEEN_NEARNESS))),
          Build.list_set(stamps_list, number, var(:drawing))]
+      end
+
+      # The nearness of the point just turned into the seen list at +place+: where the corners are worked
+      # in a loop, for a drawing in perspective, and nought for any other, meaning not worked out yet;
+      # otherwise for points the count turns in perspective (see SEEN_STRIDE).
+      def nearness_or_nought(place)
+        return Build.if_(Build.var_ref(turn_var(:in_perspective)), Build.list_set(seen_list, place, nearness)) unless @corners_in_a_loop
+
+        kept = Build.if_(in_perspective, Build.list_set(seen_list, place, nearness))
+        kept.else = Build.else_(Build.list_set(seen_list, place, 0))
+        kept
+      end
+
+      # A drawing in perspective reading the nearness of a corner whose point was turned without it: the
+      # nearness worked out from +z+, how far ahead the point is, and kept in the seen list at +place+.
+      def nearness_filled(place, z)
+        Build.if_(Build.binop(:==, Build.list_get(seen_list, place), 0),
+                  Build.set(name(:at_z), z),
+                  Build.list_set(seen_list, place, nearness))
       end
 
       # The corner routine: the corner in at_x, at_y, at_z (turned, at_z at or past the near

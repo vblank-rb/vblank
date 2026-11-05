@@ -298,6 +298,32 @@ class TestList < Minitest::Test
     end
   end
 
+  # A list made full and never pushed to or dropped from always holds its capacity; reading past it,
+  # by a number or a variable, still stops the game.
+  def test_indexing_a_full_list_past_its_capacity_raises
+    [4, 70_000, -1].each do |far|
+      err = assert_raises(Reference::ProgramError) do
+        interpret do
+          row = list :row, capacity: 4, full_of: 3
+          at = var :at, far
+          oops = var :oops, 0
+          oops = row[at]
+          halt
+        end
+      end
+      assert_match(/out of range/i, err.message, "reading at #{far}")
+    end
+  end
+
+  # Set before the list is made, which only the IR can say: the list is empty until then, so the game
+  # stops, though the list made after is full.
+  def test_setting_a_full_list_before_it_is_made_raises
+    err = assert_raises(Reference::ProgramError) do
+      game_player.run(Build.program(Build.list_set(:early, 1, 7), Build.list_new(:early, 4, full_of: 0), Build.halt))
+    end
+    assert_match(/out of range/i, err.message)
+  end
+
   def test_using_a_list_before_it_is_created_raises
     # Built straight from the IR: the DSL can't express this (a handle only comes
     # from `list`), but a stray push must still fail loudly rather than silently.

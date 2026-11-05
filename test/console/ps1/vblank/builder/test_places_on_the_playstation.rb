@@ -128,6 +128,42 @@ class TestPlacesOnThePlayStation < Minitest::Test
     assert_equal blue, none.pixel(92, 80), "stretched straight, x 92 is past halfway"
   end
 
+  # Its points turned first by a question with a nearer limit and by a drawing without perspective, the
+  # drawing in perspective reads them and is the same picture as drawn alone.
+  def test_a_wall_whose_points_were_turned_first_is_drawn_the_same
+    alone = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels), frames: 2).screen
+    after = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels, asked_first: true, drawn_straight_first: true),
+                            frames: 2).screen
+
+    assert_equal shown(0x001F), after.pixel(92, 80)
+    assert_equal shown(0x7C00), after.pixel(104, 80)
+    assert_equal((56..112).map { |x| alone.pixel(x, 80) }, (56..112).map { |x| after.pixel(x, 80) })
+  end
+
+  # Built for the PlayStation, a face's corners are worked in a loop (Console::Description#code_cache_bytes),
+  # on its own screen of 320 by 240: the wall lands from x 80 (two ahead) to 144 (ten ahead), its near half
+  # red and its far half blue, the far half narrower in perspective than straight across. Its points
+  # turned first, the wall is the same picture as drawn alone.
+  def test_a_wall_built_for_the_playstation_lands_where_its_corners_say
+    straight = row_of(PlaceGames.wall_down_the_side(:none, console: :ps1))
+    leaning = row_of(PlaceGames.wall_down_the_side(:every_8_pixels, console: :ps1))
+    turned_first = row_of(PlaceGames.wall_down_the_side(:every_8_pixels, console: :ps1, asked_first: true,
+                                                                          drawn_straight_first: true))
+
+    outside_and_in = [76, 84, 140, 148]
+    [straight, leaning].each do |row|
+      assert_equal [0, shown(0x001F), shown(0x7C00), 0], outside_and_in.map { |x| row.fetch(x) }
+    end
+    assert_operator straight.index(shown(0x7C00)), :<, leaning.index(shown(0x7C00))
+    assert_equal leaning, turned_first
+  end
+
+  # The pixels of the row through the middle of the PlayStation's screen, once +program+ has drawn two passes.
+  private def row_of(program)
+    screen = game_player.run(program, frames: 2).screen
+    (0...320).map { |x| screen.pixel(x, 120) }
+  end
+
   def test_a_face_is_lit_from_its_corners_through_the_shading
     %i[none every_8_pixels].each do |perspective|
       screen = game_player.run(PlaceGames.lit_square(left: 0.0, right: 1.0, perspective: perspective), frames: 2).screen

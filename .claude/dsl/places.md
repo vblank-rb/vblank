@@ -125,9 +125,14 @@ the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bi
 and `div_fix`), and only the fill of a face, of three to eight corners, is written by hand for each
 (`Reference#exec_fill_face` is the rule every one follows). So the interpreter and every build draw the same pixels.
 Each point is turned and put on the screen once, however many faces share it, and once for all the
-drawings in a row seen from the same viewer at the same `near:`, `view_angle:` and `inside` area,
-and with perspective or without (`IR::PlaceDrawing::TURN_PARTS`): a game of rooms drawing each room
-with its own call turns a doorway's corners once, not once for each room beside it. On the
+drawings and `screen_spot`s in a row seen from the same viewer with the same `view_angle:` and `inside`
+area, and with the same `near:` or a farther one than the first (`IR::PlaceDrawing::TURN_PARTS`); a
+drawing without perspective shares the points one in perspective turned, and on the PlayStation the
+other way round too: a game of rooms that asks where each room's corners land and then
+draws each room with its own call turns a doorway's corners once, not once for the asking and once
+for each room beside it. A `screen_spot` with a nearer `near:` than the drawings' still shares. On a
+console whose processor runs its code from a small cache (the PlayStation's) a face's corners are
+worked in a loop, so a face's code stays in the cache from one face to the next. On the
 Advance a face wholly outside the screen or the window is passed over before it is filled, so a
 game that draws a room through a doorway's window pays little for the faces the window hides. **What it
 costs on the Advance**, a face covering the whole screen with a picture with no see-through pixel:

@@ -132,7 +132,14 @@ module VBlank
                               :recording_voice_hz, :lowest_square_hz,
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
-                              :whole_screen_size, :extension) do
+                              :whole_screen_size, :extension, :code_cache_bytes) do
+      # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
+      # runs without going out to memory for each instruction, or nil for a processor with none (it
+      # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
+      # small, a routine run over and over is best written short, as a loop, so it stays in the cache
+      # (IR::PlaceDrawing#face_loop_statements).
+      def initialize(code_cache_bytes: nil, **rest) = super
+
       def screen_size = [screen_width, screen_height]
 
       # Whether the game's screen is shown in a border, inside a bigger screen (#whole_screen_size).
@@ -423,7 +430,9 @@ module VBlank
                                   # A pass's drawing is sent to the graphics chip as its wait ends.
                                   sprites_placed_before_wait: true,
                                   rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
-                                  extension: ".exe")
+                                  extension: ".exe",
+                                  # The R3000 keeps the last 4K of code it ran (psx-spx, "Memory Map").
+                                  code_cache_bytes: 4096)
 
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 

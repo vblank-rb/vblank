@@ -165,7 +165,7 @@ module VBlank
 
         drawing = place_drawing(shape)
         place_spot_routine(drawing)
-        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, false)
+        view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, false, drawing.spot_perspective)
         @screen_spots = (@screen_spots || 0) + 1
         answers = DSL::ScreenSpot::ANSWERS.to_h do |part|
           variable = IR::PlaceDrawing.name_of(name, :"spot#{@screen_spots}_#{part}")
@@ -312,7 +312,8 @@ module VBlank
       def place_drawing(shape)
         drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, points: shape.points.length,
                                                    pictures: shape.slots, shading: shape.shading,
-                                                   point_lights: shape.point_lights&.name)
+                                                   point_lights: shape.point_lights&.name,
+                                                   corners_in_a_loop: !@console.code_cache_bytes.nil?)
         @place_variables ||= {}
         @place_variables[shape.name] ||= drawing.variables.each { |variable| ensure_var(variable) }
         drawing
@@ -330,7 +331,12 @@ module VBlank
       # The routine that works out where one point lands, declared the first time a game asks, so
       # a game that never asks carries none of it, and a game that only asks carries nothing that
       # draws.
-      def place_spot_routine(drawing) = declare_place_routine(drawing.spot_routine, drawing.spot_statements)
+      # It turns its point as a drawing does, so it brings the point routine and the count with it.
+      def place_spot_routine(drawing)
+        declare_place_routine(drawing.spot_routine, drawing.spot_statements)
+        declare_place_routine(drawing.point_routine, drawing.point_statements)
+        declare_place_routine(drawing.count_routine, drawing.drawing_count_statements)
+      end
 
       def declare_place_routine(name, statements)
         @place_routines ||= {}
