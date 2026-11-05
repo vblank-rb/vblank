@@ -570,6 +570,13 @@ module VBlank
                                  and the two are compared at each moment.
         --frames-apart N         With --same script: how many frames apart the
                                  two can reach a moment.
+        --by-passes COUNT        Line the two up by the game's passes, not by
+                                 frames: each is compared on the first frame it
+                                 shows each pass. passes is the game loop's own
+                                 count; any other word is a variable read from
+                                 both; FIRST,SECOND is one for each.
+        --pass-count-wraps-at N  Where the count comes back round to 0, like
+                                 256 for a count kept in a byte.
 
       Where the two start:
         --save PATH              Start both from this save file.
@@ -623,6 +630,8 @@ module VBlank
     option :carrying_on, type: :boolean
     option :same, banner: "WHICH", enum: %w[tape script]
     option :frames_apart, type: :numeric, banner: "N"
+    option :by_passes, banner: "COUNT"
+    option :pass_count_wraps_at, type: :numeric, banner: "N"
     option :save, banner: "PATH"
     option :lead_ins, type: :array, banner: "NAME"
     option :reports_in, banner: "DIR"

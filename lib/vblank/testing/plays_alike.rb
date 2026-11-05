@@ -27,7 +27,11 @@ module VBlank
     # works the part out on each frame (a part that slides with the scenery); `pixels_apart:` looks at
     # every few pixels only; `layers:` compares the picture without its sprites or the sprites alone;
     # and `forgiving_torn_frames_of: :second` forgives the original a torn frame only where ours
-    # already shows the frame it settles on.
+    # already shows the frame it settles on. `by_passes:` lines the two up by the game's own passes
+    # and not by frames, for an original that takes two frames over a pass now and then: each
+    # cartridge's count of passes (`true` for the game loop's own on a cartridge built here, a
+    # variable's name, a block, or one for each, as `readings:` takes them), with
+    # `pass_count_wraps_at: 256` for a count kept in a byte.
     #
     # A failure says where the two first part: the frame and the moment before it, what differed,
     # every reading on both, how many pixels differ, the box they lie in, the first of them and its
@@ -43,13 +47,20 @@ module VBlank
       # The words of a failure: where the two parted, and how.
       def self.drift_message(drift)
         moment = drift.moment ? " The last moment named was #{drift.moment}." : ""
-        ["The two cartridges stop playing alike on frame #{drift.frame}.#{moment} What differed: #{differed_words(drift)}.",
+        ["The two cartridges stop playing alike #{where_words(drift)}.#{moment} What differed: #{differed_words(drift)}.",
          *readings_words(drift), *picture_words(drift.picture_difference), *video_words(drift),
          ("The report is in #{drift.report}." if drift.report)].compact.join("\n")
       end
 
       DIFFERED_WORDS = { Playthroughs::Comparison::PICTURE => "the picture",
                          Playthroughs::Comparison::FRAMES_APART => "how many frames each cartridge took" }.freeze
+
+      # The frame, or for two lined up by passes the pass and the frame each showed it on.
+      def self.where_words(drift)
+        return "on frame #{drift.frame}" unless drift.pass
+
+        "on pass #{drift.pass}, frame #{drift.frame} of the first cartridge and frame #{drift.second_frame} of the second"
+      end
 
       def self.differed_words(drift) = drift.differed.map { |what| DIFFERED_WORDS.fetch(what) { "the reading #{what}" } }.join(", ")
 
@@ -74,7 +85,7 @@ module VBlank
 
         ["These video memories differ: #{drift.video_differences.map(&:in_words).join('; ')}."]
       end
-      private_class_method :differed_words, :readings_words, :picture_words, :video_words
+      private_class_method :where_words, :differed_words, :readings_words, :picture_words, :video_words
     end
   end
 end

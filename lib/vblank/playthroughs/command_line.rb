@@ -151,7 +151,8 @@ module VBlank
       # message is passed on as it is.
       def saying_errors_plainly
         yield
-      rescue ArgumentError, VBlank::BuildError, GaveUp, Comparison::ReadingFailed, Comparison::ReportNotWritten => e
+      rescue ArgumentError, VBlank::BuildError, GaveUp, Comparison::ReadingFailed, Comparison::ReportNotWritten,
+             Comparison::PassCountFell, Comparison::PassNotReached => e
         raise Refused, message_with_flags(e.message)
       end
 
@@ -365,6 +366,7 @@ module VBlank
                     when :layers, :forgiving_torn_frames_of then written.to_sym
                     when :ignoring_frames then written.map { |one| parse_frame_stretch(one) }
                     when :readings then written.to_h { |one| parse_reading(one) }
+                    when :by_passes then parse_pass_count(written)
                     when :comparing then written.map(&:to_sym)
                     when :same then written.to_sym
                     when :lead_ins then lead_ins_named(written)
@@ -412,6 +414,17 @@ module VBlank
         [name.to_sym, variables.one? ? variables.first : variables]
       end
 
+      # A count of passes as it is written on a command line: `passes` is the game loop's own
+      # count, as for `--in-passes`, and any other word a variable's name; two with a comma
+      # between them are the first cartridge's and the second's.
+      def parse_pass_count(written)
+        counts = written.split(",").map { |one| one == "passes" ? true : one.to_sym }
+        return counts.one? ? counts.first : counts if counts.size.between?(1, 2) && !written.end_with?(",")
+
+        raise Refused, "--by-passes #{written} is not a count of passes. Write passes, or VARIABLE, or FIRST,SECOND, " \
+                       "for example --by-passes passes or --by-passes ticks,passes."
+      end
+
       def same_script? = options[:same] == "script"
 
       def say_drifts_or_agreement(result)
@@ -436,6 +449,7 @@ module VBlank
           before = drift.moment ? " The moment named before it was #{drift.moment}." : ""
           say "The two cartridges drifted on frame #{drift.frame}.#{before}"
         end
+        say "  on pass #{drift.pass}: frame #{drift.frame} on the first, frame #{drift.second_frame} on the second" if drift.pass
         say "  what differed: #{drift.differed.join(', ')}"
         say "  it lasted to frame #{drift.last_frame} (#{HOW_A_DRIFT_ENDED.fetch(drift.ended)})" if drift.last_frame
         say "  report: #{drift.report}" if drift.report

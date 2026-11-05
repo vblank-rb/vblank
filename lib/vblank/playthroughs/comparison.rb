@@ -38,6 +38,11 @@ module VBlank
     # the picture, the readings, or both — is a list said where the comparison is made (see
     # Compared).
     #
+    # OR LINED UP BY THE GAME'S OWN PASSES, asked for with `by_passes:`: each cartridge says its
+    # count of passes, and the two are compared on the first frame each shows each pass, so a
+    # pass that takes two frames on one and one on the other is still like with like (see
+    # Passes).
+    #
     # AND ONE FRAME OF THE TWO AS A PICTURE, for a person to look at: the two screens side by
     # side with what differs marked (see ScreenPair). A report of a drift holds one, and one
     # can be asked for by itself, of any frame (see PictureRequest).
@@ -76,10 +81,14 @@ module VBlank
       # (VideoDifference): the colours, the sprite table, the scroll, the video registers. It is
       # empty otherwise, for a drift found at a moment, and for two cartridges whose pictures
       # differ though none of those does (the pictures the tiles are made of, say).
+      #
+      # +pass+ is, for a comparison lined up by passes (see Passes), the pass the drift began on,
+      # and +second_frame+ the frame the second cartridge showed it on (+frame+ is the first's).
+      # Both are nil otherwise. +last_frame+ there is the first cartridge's frame too.
       Drift = Data.define(:frame, :last_frame, :ended, :moment, :differed, :readings, :report, :picture_difference,
-                          :video_differences) do
+                          :video_differences, :pass, :second_frame) do
         def initialize(frame:, moment:, differed:, readings:, last_frame: nil, ended: nil, report: nil, picture_difference: nil,
-                       video_differences: []) = super
+                       video_differences: [], pass: nil, second_frame: nil) = super
 
         # The frames of the stretch as a range, first to last, or nil where the last is
         # not known.
@@ -160,10 +169,16 @@ module VBlank
       # picture without its sprites, `:sprites` for the sprites alone (see LAYERS).
       # +forgiving_torn_frames_of+ is the cartridge whose torn frames are forgiven where the
       # other already shows what they settle on (see TornFrames), `:first` or `:second`, or nil.
+      #
+      # +by_passes+ is how each cartridge counts its passes, for two lined up by the game's own
+      # passes and not by frames, and +pass_count_wraps_at+ where that count comes back round to
+      # nought (see Passes). Nil for a comparison frame by frame.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
                      same: :tape, frames_apart: nil, save: nil, lead_ins: nil, reports_in: nil, layers: nil,
-                     forgiving_torn_frames_of: nil, **how_alike)
+                     forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil, **how_alike)
         refuse_unknown_settings!(how_alike.keys)
+        @passes = Passes.from(by_passes, pass_count_wraps_at)
+        refuse_settings_wrong_for_passes!(same: same, torn: forgiving_torn_frames_of, reports_in: reports_in)
         @moments = moments
         @save = Playthrough.save_from(save)
         refuse_malformed_lead_ins!(lead_ins)
@@ -208,9 +223,14 @@ module VBlank
       # console is switched on, and the lead-in played on it first — the save one that
       # fits this cartridge, and a copy of its own. +which+ is `first` or `second`, for an
       # error to say which of the two it was about.
-      Start = Data.define(:which, :cartridge, :save, :lead_in) do
+      # +count_passes+ says the console keeps the game loop's count of passes (see Passes).
+      Start = Data.define(:which, :cartridge, :save, :lead_in, :count_passes) do
         # A console switched on with the cartridge in it, and led in.
-        def console = saying_which_cartridge { Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in) }
+        def console
+          saying_which_cartridge do
+            Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, count_passes: count_passes)
+          end
+        end
 
         # The cartridge played by +playthrough+ from this start.
         def played_by(playthrough, &at_each_moment)
@@ -262,8 +282,10 @@ module VBlank
           refuse_cartridges_not_compared!(pair)
           sized_for_screens_of(pair)
           @readings.refuse_unreadable_on!(pair)
-          pair.zip(%w[first second], @lead_ins).map do |cartridge, which, lead_in|
-            Start.new(which: which, cartridge: cartridge, save: save_fitted_to(cartridge, which), lead_in: lead_in)
+          @passes&.refuse_unreadable_on!(pair)
+          pair.zip(%w[first second], @lead_ins).each_with_index.map do |(cartridge, which, lead_in), side|
+            Start.new(which: which, cartridge: cartridge, save: save_fitted_to(cartridge, which), lead_in: lead_in,
+                      count_passes: @passes&.game_loop_count?(side) || false)
           end
         end
       end
@@ -320,7 +342,8 @@ module VBlank
         reporter = ->(drift, pictures, part) { drift_with_report(drift, pictures, part, tape) } if @reports_in
         pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),
                                                              torn: TornFrames.for(@torn_side, @likeness),
-                                                             carrying_on: @carrying_on, reporter: reporter)
+                                                             carrying_on: @carrying_on, reporter: reporter,
+                                                             lined_up: @passes&.lined_up_on(*consoles))
         # A pair that has stopped plays no more frames, and is still told a moment that
         # names the very frame it stopped on: that one it reached. +due+ is the frame the
         # tape is on after each step, so a step is past where the pair stopped when it is
@@ -478,7 +501,25 @@ module VBlank
       # Every setting a comparison has: the ones that say how alike, and the ones of its own.
       def self.settings
         [*how_alike_settings, :ignoring_frames, :layers, :forgiving_torn_frames_of, :readings, :comparing, :carrying_on, :same,
-         :frames_apart, :save, :lead_ins, :reports_in]
+         :frames_apart, :save, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at]
+      end
+
+      # What a comparison lined up by passes cannot do yet, or at all. On the same script there
+      # is no tape to line up. The strict rule for torn frames needs the frame after each one,
+      # and a report's tape would play the second cartridge on the first one's frames, which is
+      # not how it was played.
+      private def refuse_settings_wrong_for_passes!(same:, torn:, reports_in:)
+        return unless @passes
+
+        said = []
+        said << "`same: :script`" if same == :script
+        said << "`forgiving_torn_frames_of:`" if torn
+        said << "`reports_in:`" if reports_in
+        return if said.empty?
+
+        raise ArgumentError, "The comparison is lined up by passes, with `by_passes:`. It was given #{said.join(' and ')}. " \
+                             "A comparison lined up by passes cannot use #{said.size == 1 ? 'that setting' : 'those settings'}. " \
+                             "Remove #{said.size == 1 ? 'it' : 'them'}, or remove `by_passes:` to compare frame by frame."
       end
 
       # The settings that say how alike two pictures have to be and which of them is looked at.
@@ -636,8 +677,11 @@ module VBlank
 
         # ONE FRAME AS IT WAS SEEN: its number, the moment named before it, what was seen
         # (Compared::Seen, or nil on a frame that is not looked at), and what is kept from it
-        # in case something begins to differ on it (Kept, or nil when nothing did).
-        Observation = Data.define(:frame, :moment, :seen, :kept)
+        # in case something begins to differ on it (Kept, or nil when nothing did). +step+ counts
+        # the observations from 1, which is what frames in a row are counted in: one a frame, or
+        # one a pass when the two are lined up by passes. There +pass+ is the pass and
+        # +second_frame+ the frame the second cartridge showed it on; both are nil otherwise.
+        Observation = Data.define(:frame, :moment, :seen, :kept, :step, :pass, :second_frame)
 
         # WHAT IS KEPT FROM A FRAME ON WHICH SOMETHING DIFFERS, because by the time it has
         # differed long enough to be called drift both consoles have played on and the frame
@@ -646,14 +690,14 @@ module VBlank
         Kept = Data.define(:pictures, :picture_difference, :video_differences, :part)
 
         # THE FRAME A THING BEGAN TO DIFFER ON, and what was kept from it.
-        Beginning = Data.define(:frame, :moment, :readings, :kept)
+        Beginning = Data.define(:frame, :moment, :readings, :kept, :step, :pass, :second_frame)
 
         # A drift that has not ended, with what was kept from the frame it began.
         UnderWay = Struct.new(:drift, :kept)
 
-        # Where a drift under way seems to have ended, and how: the frame before the one on
-        # which nothing had differed for long enough.
-        Lull = Data.define(:last_frame, :ended)
+        # Where a drift under way seems to have ended, and how: the frame looked at before the
+        # one on which nothing had differed for long enough, and the step of that one.
+        Lull = Data.define(:last_frame, :ended, :step)
         private_constant :Observation, :Kept, :Beginning, :UnderWay, :Lull
 
         # +compared+ is what is compared on each frame, +ignored+ the stretches that are not
@@ -662,8 +706,12 @@ module VBlank
         # nil. +reporter+ is handed each drift as it ends, with the two screens on the frame
         # it began and the part looked at there, and hands the drift back with its report
         # noted — or is nil, and then no screen is copied out, which is only worth doing for
-        # a report.
-        def initialize(first, second, compared, ignored, looked_at:, torn:, carrying_on:, reporter:)
+        # a report. +lined_up+ is the two lined up by passes (Passes::LinedUp), or nil to compare
+        # them frame by frame.
+        def initialize(first, second, compared, ignored, looked_at:, torn:, carrying_on:, reporter:, lined_up: nil)
+          @lined_up = lined_up
+          @steps = 0
+          @decided_frame = 0
           @first = first
           @second = second
           @compared = compared
@@ -685,9 +733,11 @@ module VBlank
           keys = Playthrough.key_mask(buttons)
           frames.times do
             @first.step(1, keys: keys)
-            @second.step(1, keys: keys)
+            @second.step(1, keys: keys) unless @lined_up
             @frames += 1
-            seen = observe
+            seen = @lined_up ? observe_pass(keys) : observe
+            next unless seen
+
             decided = @torn ? @torn.decide_previous(seen, [@first, @second]) : seen
             extend_or_end_differing_stretches(decided) if decided
             return if stopped?
@@ -696,7 +746,7 @@ module VBlank
 
         def mark(name)
           @moment = name
-          @moments[name] = [@frames, @frames]
+          @moments[name] = [@frames, @lined_up ? @lined_up.second_frames : @frames]
         end
 
         # Whether the pair plays no further: it has its first drift, and was not told to
@@ -707,21 +757,35 @@ module VBlank
         # that is under way, if one is. It ended where it had seemed to, or it was still going
         # and ran to the last frame that was played.
         def end_playing
+          @lined_up&.refuse_nothing_compared!
           waiting = @torn&.last_observation
           extend_or_end_differing_stretches(waiting) if waiting && !stopped?
           return end_drift_under_way(@lull.last_frame, @lull.ended) if @lull
 
-          end_drift_under_way(@frames, :tape_ran_out)
+          end_drift_under_way(@decided_frame, :tape_ran_out)
         end
 
         # The frame just played, looked at. The part of the screen is asked for on every
         # frame that is looked at, so a block that chooses it is asked in order.
-        private def observe
-          return Observation.new(frame: @frames, moment: @moment, seen: nil, kept: nil) if ignored_frame?
+        private def observe(pass: nil, passed_over: false)
+          @steps += 1
+          unseen = Observation.new(frame: @frames, moment: @moment, seen: nil, kept: nil, step: @steps, pass: pass,
+                                   second_frame: (@lined_up.second_frames if pass))
+          return unseen if passed_over || ignored_frame?
 
           part = @looked_at.part_on(@frames, @first, @second)
           seen = @compared.seen_on(@first, @second, part)
-          Observation.new(frame: @frames, moment: @moment, seen: seen, kept: (kept_from(seen, part) if beginning?(seen)))
+          unseen.with(seen: seen, kept: (kept_from(seen, part) if beginning?(seen)))
+        end
+
+        # The frame just played on the first cartridge, looked at if it is the first frame of a
+        # pass, with the second played on to the same pass and held +keys+ as it goes. Nil for a
+        # frame of a pass the first has shown before. A pass the second goes past without
+        # showing is not looked at.
+        private def observe_pass(keys)
+          pass = @lined_up.read_pass_begun_on_first! or return nil
+
+          observe(pass: pass, passed_over: !@lined_up.play_second_to_pass!(pass, keys))
         end
 
         # Whether something may begin to differ on this frame. With the strict rule for torn
@@ -743,10 +807,15 @@ module VBlank
           differed = observation.seen ? observation.seen.differed : []
           @began.keep_if { |thing, _beginning| differed.include?(thing) }
           start_differing_stretches(differed - @began.keys, observation)
-          lasted = @began.select { |_thing, beginning| @compared.drift_after?(observation.frame - beginning.frame + 1) }
-          return start_drift_of(lasted) unless @under_way
-
-          lasted.empty? ? end_drift_once_settled(observation) : carry_drift_on(lasted.keys)
+          lasted = @began.select { |_thing, beginning| @compared.drift_after?(observation.step - beginning.step + 1) }
+          if !@under_way
+            start_drift_of(lasted)
+          elsif lasted.empty?
+            end_drift_once_settled(observation)
+          else
+            carry_drift_on(lasted.keys)
+          end
+          @decided_frame = observation.frame
         end
 
         # The drift goes on, and whatever has now differed for long enough is part of it —
@@ -761,8 +830,9 @@ module VBlank
         # that began before this frame was over: such a thing may yet count, and then it
         # was one drift all along.
         private def end_drift_once_settled(observation)
-          @lull ||= Lull.new(last_frame: observation.frame - 1, ended: observation.seen ? :back_in_step : :not_looked_at)
-          return if @began.any? { |_thing, beginning| beginning.frame <= @lull.last_frame + 1 }
+          @lull ||= Lull.new(last_frame: @decided_frame, ended: observation.seen ? :back_in_step : :not_looked_at,
+                             step: observation.step)
+          return if @began.any? { |_thing, beginning| beginning.step <= @lull.step }
 
           end_drift_under_way(@lull.last_frame, @lull.ended)
         end
@@ -772,7 +842,8 @@ module VBlank
           return if things.empty?
 
           beginning = Beginning.new(frame: observation.frame, moment: observation.moment, readings: observation.seen.readings,
-                                    kept: observation.kept)
+                                    kept: observation.kept, step: observation.step, pass: observation.pass,
+                                    second_frame: observation.second_frame)
           things.each { |thing| @began[thing] = beginning }
         end
 
@@ -785,6 +856,7 @@ module VBlank
           kept = beginning.kept
           picture_differed = lasted.key?(PICTURE)
           drift = Drift.new(frame: beginning.frame, moment: beginning.moment, differed: lasted.keys, readings: beginning.readings,
+                            pass: beginning.pass, second_frame: beginning.second_frame,
                             picture_difference: (kept.picture_difference if picture_differed),
                             video_differences: picture_differed ? kept.video_differences : [])
           @under_way = UnderWay.new(drift, kept)

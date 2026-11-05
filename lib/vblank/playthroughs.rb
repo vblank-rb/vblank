@@ -23,6 +23,7 @@ require_relative "playthroughs/comparison_torn_frames" # ...and the strict rule 
 require_relative "playthroughs/comparison_video_differences" # ...and which video memories differ where the two part
 require_relative "playthroughs/comparison_readings" # ...and the numbers it reads off both and compares by name
 require_relative "playthroughs/comparison_compared" # ...and the list of what it compares: the picture, the readings
+require_relative "playthroughs/comparison_passes" # ...and the two lined up by the game's own passes, not by frames
 require_relative "playthroughs/comparison_at_moments" # ...and the other way to compare: the same script on each
 require_relative "playthroughs/comparison_screen_pair" # ...and the two screens of one frame, as pictures to look at
 require_relative "playthroughs/comparison_picture_request" # ......one of which can be asked for by itself, for any frame
