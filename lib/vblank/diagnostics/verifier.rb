@@ -301,6 +301,9 @@ module VBlank
       # @return [String]
       def picture
         ensure_rendered!
+        # Kept so that it cannot be changed: it is handed out as `picture`, and the emulator's own
+        # reader holds the same string. Read once per step, the first time it is asked for.
+        @pixels ||= (@probe.frame_buffer.freeze if @played.positive?)
         @pixels || raise(RuntimeError,
                          "This run has played no frames, so there is no picture to read. " \
                          "Give the Verifier `frames:` of 1 or more, or call `step` first.")
@@ -955,9 +958,10 @@ module VBlank
           @sound.keep(@probe.audio_by_frame)
           @played += frames
         end
-        # Kept so that it cannot be changed: it is handed out as `picture`, and the emulator's
-        # own reader holds the same string.
-        @pixels = @probe.frame_buffer.freeze
+        # The picture is read from the emulator only when something asks for it (#picture): a
+        # caller stepping a frame at a time and reading memory would otherwise copy the whole
+        # screen into Ruby on every frame, several times what playing the frame costs.
+        @pixels = nil
         read_picture_size
       end
 
