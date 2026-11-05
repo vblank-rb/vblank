@@ -122,8 +122,14 @@ module VBlank
       # @param faces [DSL::List] which faces to draw, in order; all of them when not given
       # @param window [Array] four numbers or Values: the edges faces are held to as the game runs
       # @param lit [Boolean] for a place with a shading, draw it lit (the default) or as its pictures are
+      # A SHAPE DRAWN WHERE THE GAME SAYS, a robot flying in a room: +at+ is where the place's own
+      # middle stands now, three numbers or values the game works out, and +facing+ which way the
+      # place's own arrows point, as `viewer` takes them (`bot.facing` hands a viewer's over). Each
+      # drawing stands it afresh, so one shape is drawn as many times a pass as the game likes.
+      # @param at [Array, nil] where the shape stands, [x, y, z]; nil where it was declared
+      # @param facing [Hash, nil] the shape's right:, up: and ahead: arrows; nil as it was declared
       def draw_place(name, seen_by:, perspective: PERSPECTIVE, near: NEAR, view_angle: VIEW_ANGLE, both_sides: false,
-                     faces: nil, window: nil, lit: true)
+                     faces: nil, window: nil, lit: true, at: nil, facing: nil)
         shape = known_place(name, "draw_place")
         refuse_unknown_viewer!(name, seen_by)
         refuse_unknown_perspective!(perspective)
@@ -132,13 +138,14 @@ module VBlank
         refuse_bad_near!(near)
         refuse_bad_view_angle!(view_angle)
         refuse_place_on_plain_screen!(name)
+        stance = make_stance("draw_place", name, at, facing)
 
         drawing = place_drawing(shape)
         place_draw_routines(drawing)
         view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides, perspective,
                           lit: lit && !shape.shading.nil?)
         drawn = faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
-        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view),
+        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view, stance),
                                 *place_clip(drawing, view, window_nodes), Build.call(drawing.count_routine), *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
                                 both_sides: both_sides == true, faces: faces&.name, window: window_nodes))
@@ -152,16 +159,18 @@ module VBlank
       #   corner = screen_spot :rooms, door_top_left, seen_by: eye
       #   left = corner.x if corner.x < left
       #
-      # Each `screen_spot` line keeps its answers in variables of its own.
+      # Each `screen_spot` line keeps its answers in variables of its own. A shape drawn where the
+      # game says (`draw_place ..., at:, facing:`) is asked about with the same +at+ and +facing+.
       #
       # @param point [Integer, DSL::Value] a point's number, what `point` gave back
       # @return [DSL::ScreenSpot]
-      def screen_spot(name, point, seen_by:, near: NEAR, view_angle: VIEW_ANGLE)
+      def screen_spot(name, point, seen_by:, near: NEAR, view_angle: VIEW_ANGLE, at: nil, facing: nil)
         shape = known_place(name, "screen_spot")
         refuse_unknown_viewer!(name, seen_by)
         refuse_unknown_spot_point!(shape, point)
         refuse_bad_near!(near)
         refuse_bad_view_angle!(view_angle)
+        stance = make_stance("screen_spot", name, at, facing)
 
         drawing = place_drawing(shape)
         place_spot_routine(drawing)
@@ -173,7 +182,7 @@ module VBlank
           [part, variable]
         end
         record(Build.set(drawing.spot_point_var, DSL::Value.node_for(point)))
-        place_handover(drawing, seen_by, view).each { |statement| record(statement) }
+        place_handover(drawing, seen_by, view, stance).each { |statement| record(statement) }
         record(Build.call(drawing.spot_routine))
         answers.each { |part, variable| record(Build.copy(variable, drawing.spot_answer_var(part))) }
         DSL::ScreenSpot.new(answers.transform_values { |variable| value_handle_for(variable) })
@@ -414,11 +423,66 @@ module VBlank
       end
 
       # What the routine is told before it draws: where the viewer is and which way it faces, and
-      # the view.
-      def place_handover(drawing, seen_by, view)
-        seen_by.variables.zip(IR::PlaceDrawing::VIEWER_PARTS).map do |variable, part|
+      # the view. For a shape standing where the game says (+stance+, from #make_stance), the
+      # viewer handed over is then moved into the shape's own arrows
+      # (IR::PlaceDrawing#stance_handover_statements).
+      def place_handover(drawing, seen_by, view, stance = nil)
+        viewer = seen_by.variables.zip(IR::PlaceDrawing::VIEWER_PARTS).map do |variable, part|
           Build.copy(drawing.viewer_var(part), variable)
-        end + view.to_h.map { |part, number| Build.set(drawing.view_var(part), Build.int(number)) }
+        end
+        if stance&.turned?
+          declare_place_routine(drawing.stance_routine, drawing.stance_statements)
+          stance.parts.each { |part, _| ensure_var(drawing.stance_var(part)) }
+        end
+        viewer + (stance ? drawing.stance_handover_statements(stance) : []) +
+          view.to_h.map { |part, number| Build.set(drawing.view_var(part), Build.int(number)) }
+      end
+
+      # The IR::PlaceDrawing::Stance +at+ and +facing+ give, each number a fraction node, or nil for
+      # a shape drawn where it was declared. Refused in plain words unless +at+ is three numbers or
+      # values within the place's reach and +facing+ three arrows of three, written ones square
+      # and of length one.
+      def make_stance(verb, name, at, facing)
+        return nil if at.nil? && facing.nil?
+
+        spot = at.nil? ? [0, 0, 0] : at
+        refuse_bad_stance_spot!(verb, name, spot)
+        refuse_bad_facing!(verb, name, facing) if facing
+        fraction = ->(number) { DSL::Viewer.fraction_node(number, "#{verb} :#{name}") }
+        arrows = facing&.values_at(*IR::PlaceDrawing::ARROWS)&.map { |arrow| arrow.map(&fraction) }
+        IR::PlaceDrawing::Stance.new(spot: spot.map(&fraction), arrows: arrows)
+      end
+
+      # A number or a value the game works out, as a stance takes.
+      def stance_number?(number) = number.is_a?(Numeric) || number.is_a?(DSL::Value)
+
+      def refuse_bad_stance_spot!(verb, name, spot)
+        numbers = spot.is_a?(Array) && spot.length == 3 && spot.all? { |n| stance_number?(n) }
+        unless numbers
+          raise ArgumentError, "#{verb} :#{name} was given at: #{spot.inspect}. at: needs three numbers: across, up " \
+                               "and ahead. To fix this, give `at: [x, y, z]`, with numbers or values the game works out."
+        end
+        return if spot.all? { |n| n.is_a?(DSL::Value) || n.abs <= DSL::Place::FURTHEST }
+
+        raise ArgumentError, "#{verb} :#{name} was given at: #{spot.inspect}. Each number of at: is from " \
+                             "-#{DSL::Place::FURTHEST} to #{DSL::Place::FURTHEST}. To fix this, give numbers in that range."
+      end
+
+      def refuse_bad_facing!(verb, name, facing)
+        arrows = facing.is_a?(Hash) && facing.keys.sort == IR::PlaceDrawing::ARROWS.sort &&
+                 facing.values_at(*IR::PlaceDrawing::ARROWS)
+        fits = arrows && arrows.all? { |arrow| arrow.is_a?(Array) && arrow.length == 3 && arrow.all? { |n| stance_number?(n) } }
+        unless fits
+          raise ArgumentError, "#{verb} :#{name} was given facing: #{facing.inspect}. facing: needs three arrows: " \
+                               "right:, up: and ahead:, each three numbers. To fix this, give arrows like " \
+                               "`facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] }`, or `facing: bot.facing`."
+        end
+        reason = arrows.flatten.all?(Numeric) && DSL::Viewer.unfit_arrows_reason(arrows)
+        return unless reason
+
+        raise ArgumentError, "#{verb} :#{name} was given a facing: that cannot be: #{reason}. Each arrow has a " \
+                             "length of one, and each is square to the other two. To fix this, give arrows like " \
+                             "right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1]."
       end
     end
   end

@@ -58,6 +58,11 @@ module VBlank
       def up_arrow = %i[up_x up_y up_z].map { |part| read(part) }
       def ahead_arrow = %i[ahead_x ahead_y ahead_z].map { |part| read(part) }
 
+      # All three, as `facing:` takes them: a shape drawn standing where this viewer stands and
+      # facing the way it faces (`draw_place :robot, seen_by: eye, at: bot.spot, facing: bot.facing`),
+      # so a robot moves and turns with the viewer's own words.
+      def facing = { right: right_arrow, up: up_arrow, ahead: ahead_arrow }
+
       # Put the viewer at +x+, +y+, +z+ (numbers, or values the game works out).
       def at(x, y, z)
         refuse_bad_numbers!("at", [x, y, z])
@@ -125,19 +130,10 @@ module VBlank
         @builder.record_statement(IR::Build.set(variable(part), fraction_node(number)))
       end
 
-      # +number+ (a number, or a value the game works out) as a fraction with sixteen bits: a whole
-      # value multiplied up, a fraction taken as it is.
       def fraction_node(number)
-        case number
-        when Numeric then IR::Build.int(Fraction.scale(number, BITS))
-        when Value
-          return number.node if number.fraction_bits == BITS
-          return IR::Build.binop(:*, number.node, 1 << BITS) if number.fraction_bits.nil?
+        return self.class.fraction_node(number, "A viewer") if number.is_a?(Numeric) || number.is_a?(Value)
 
-          raise ArgumentError, "A viewer was given a number with #{number.fraction_bits} fraction bits. It takes a " \
-                               "whole number or a fraction like 0.5. To fix this, give one of those."
-        else refuse_bad_numbers!("move by:", [number])
-        end
+        refuse_bad_numbers!("move by:", [number])
       end
 
       def refuse_unknown_direction!(verb, direction, directions)
@@ -156,6 +152,26 @@ module VBlank
       end
 
       public
+
+      # +number+ (a number, or a value the game works out) as a fraction with sixteen bits: a whole
+      # value multiplied up, a fraction taken as it is. +who+ names what was given it, for the
+      # friendly error a fraction of another size gets.
+      def self.fraction_node(number, who)
+        return IR::Build.int(Fraction.scale(number, BITS)) if number.is_a?(Numeric)
+        return number.node if number.fraction_bits == BITS
+        return IR::Build.binop(:*, number.node, 1 << BITS) if number.fraction_bits.nil?
+
+        raise ArgumentError, "#{who} was given a number with #{number.fraction_bits} fraction bits. It takes a " \
+                             "whole number or a fraction like 0.5. To fix this, give one of those."
+      end
+
+      # How far from length one, and from square to the others, three written arrows are, as one
+      # of the reasons a facing is refused, or nil when they are a facing.
+      def self.unfit_arrows_reason(arrows)
+        return "an arrow is not of length one" unless arrows.all? { |arrow| (dot(arrow, arrow) - 1).abs <= SLACK }
+
+        "two of its arrows are not square to each other" unless arrows.combination(2).all? { |one, other| dot(one, other).abs <= SLACK }
+      end
 
       # The twelve starting numbers for +at+ and +facing+ (a Hash of :right, :up and :ahead, each
       # three numbers), in PARTS order, refused in plain words when they are not a spot and three
@@ -179,9 +195,8 @@ module VBlank
         unless arrows.all? { |arrow| arrow.is_a?(Array) && arrow.length == 3 && arrow.all?(Numeric) }
           refuse_bad_facing!(name, "an arrow is not three numbers")
         end
-        refuse_bad_facing!(name, "an arrow is not of length one") unless arrows.all? { |arrow| (dot(arrow, arrow) - 1).abs <= SLACK }
-        square = arrows.combination(2).all? { |one, other| dot(one, other).abs <= SLACK }
-        refuse_bad_facing!(name, "two of its arrows are not square to each other") unless square
+        reason = unfit_arrows_reason(arrows)
+        refuse_bad_facing!(name, reason) if reason
       end
 
       def self.refuse_bad_facing!(name, what)

@@ -299,6 +299,108 @@ module PlaceGames
     builder.program
   end
 
+  # The angles the second robot of moved_shapes turns left by, one a change, round and round: it
+  # swings to 30 degrees left and back past nought to 30 right, with a fraction of a degree on the way.
+  ROBOT_SPINS = Ractor.make_shareable([10.5, 19.5, -30.0, -30.0, 30.0])
+
+  # One shape declared once, a square two wholes wide standing round its own middle, drawn twice
+  # a pass at a position and facing the game works out (`draw_place ..., at:, facing:`), with the
+  # viewer at the middle facing ahead. Five wholes ahead a whole is 24 pixels across.
+  #
+  # The first robot stands at x0 from -2 to -1.25 wholes, a quarter to the right every change: its
+  # middle lands at x 72 to 90 and it is 48 pixels wide, facing as the place was declared. The
+  # second stands 1.5 wholes right, its middle at x 156, turned about its own up arrow by the next
+  # of ROBOT_SPINS every change: a robot held in a viewer of its own (`bot.turn`), its facing read
+  # back with `bot.facing`. The gap between them, x 121 to 125, is never drawn.
+  #
+  # Each pass the top left corner of each robot is asked where it lands (`screen_spot` with the
+  # same at: and facing:), kept in x0, y0 and x1, y1. +passes+ is how many passes each change
+  # lasts. A drawing of the same shape that read the points the first one turned would draw the
+  # second robot over the first.
+  def self.moved_shapes(passes: 1)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      corner = nil
+      place :robot do
+        corner = point(-1.0, 1.0, 0.0)
+        face corner, point(1.0, 1.0, 0.0), point(1.0, -1.0, 0.0), point(-1.0, -1.0, 0.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      spins = table :robot_spins, ROBOT_SPINS, width: :word
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      bot = viewer :bot, at: [1.5, 0.0, 5.0]
+      frame = var :frame, 0
+      across = var :across, -2.0
+      spin = var :spin, 0.0
+      answers = Array.new(2) { |k| [var(:"x#{k}", -1), var(:"y#{k}", -1)] }
+      game_loop do
+        if (frame % passes) == 0
+          spin.store!(spins[(frame / passes) % ROBOT_SPINS.length])
+          bot.turn :left, by: spin
+          across.store!(across + 0.25)
+          across.store!(-2.0) if across > -1.25
+        end
+        clear_screen :black
+        stances = [{ at: [across, 0.0, 5.0] }, { at: bot.spot, facing: bot.facing }]
+        stances.each { |stance| draw_place :robot, seen_by: eye, **stance }
+        stances.zip(answers).each do |stance, (x, y)|
+          spot = screen_spot(:robot, corner, seen_by: eye, **stance)
+          x.store!(spot.x)
+          y.store!(spot.y)
+        end
+        frame += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # THE ANSWER KEY FOR A MOVED SHAPE: the same square drawn two ways, which must be the same picture.
+  # The viewer looks along x (its right is -z), and the square stands at STANCE_SPOT turned a
+  # quarter round so its right points up and its up points along z. With +moved+ the square is
+  # declared round its own middle and drawn with at: and facing:; without, it is declared with its
+  # points already where that puts them, worked out here, and drawn as a fixed place. Every arrow is
+  # nought or one, so both ways work out the same numbers exactly, and a turn the wrong way round
+  # draws a different picture. It is lit from its corners, through a window, in perspective.
+  STANCE_SPOT = Ractor.make_shareable([4.0, 0.5, 0.25])
+  STANCE_ARROWS = Ractor.make_shareable({ right: [0, 1, 0], up: [0, 0, 1], ahead: [1, 0, 0] })
+
+  # Which of SHADES each quarter of the stance's picture is, top row first.
+  QUARTER_SHADES = Ractor.make_shareable([[0, 1], [2, 0]])
+
+  def self.stance_against_declared(moved:)
+    corners = [[-1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, -1.0, 0.0], [-1.0, -1.0, 0.0]]
+    placed = corners.map do |local|
+      STANCE_SPOT.each_index.map do |axis|
+        STANCE_SPOT[axis] + STANCE_ARROWS.values.each_with_index.sum { |arrow, k| local[k] * arrow[axis] }
+      end
+    end
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      # Three of the shading's colours in the picture's quarters, so a turn the wrong way round (a
+      # mirror, or across the slant) shows in the picture as well as in where the corners land.
+      quarters = (0...8).flat_map { |down| (0...8).map { |across| SHADES[QUARTER_SHADES[down / 4][across / 4]] } }
+      image :quarters, width: 8, height: 8, data: quarters
+      shading :fade, colors: SHADES, levels: SHADE_LEVELS
+      place :robot, shading: :fade do
+        points = (moved ? corners : placed).map { |x, y, z| point(x, y, z) }
+        face(*points, picture: :quarters, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: [0.2, 1.0, 0.6, 0.0])
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0], facing: { right: [0, 0, -1], up: [0, 1, 0], ahead: [1, 0, 0] }
+      game_loop do
+        clear_screen :black
+        settings = { seen_by: eye, window: [30, 10, 200, 150], perspective: :every_pixel }
+        settings = settings.merge(at: STANCE_SPOT, facing: STANCE_ARROWS) if moved
+        draw_place :robot, **settings
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # The points +spots+ ([x, y, z] each) of a place, each asked where it lands on the screen of a
   # viewer at the middle facing ahead, the answers kept in variables x0, y0 and behind0 onwards.
   def self.screen_spots(spots)

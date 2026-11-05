@@ -63,7 +63,7 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
     arrows, from numbers or values the game works out (a game with a flight model of its own hands its
     arrows straight in; they are taken as given, not squared up).
   - `eye.spot`, `eye.right_arrow`, `eye.up_arrow`, `eye.ahead_arrow` — read them back, three fractions
-    each.
+    each; `eye.facing` gives all three arrows as `facing:` takes them.
 
   Worked example: `examples/cube3d.rb`, a crate flown round with the buttons.
 - `draw_place :cube, seen_by: eye` — draw the place as the viewer sees it, across the screen or the
@@ -101,6 +101,36 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
     `inside` area, so give it the same. Write it inside `game_loop`: each line keeps its answers in
     variables of its own, worked out each time the line runs. A point the place does not have is a
     friendly error. It works on every console (only sums).
+
+  **A shape drawn where the game says**: a robot that flies and turns in a room, from one shape
+  declared once and drawn as many times a pass as there are robots. Declare the shape round its own
+  middle (a place like any other), and give the drawing two settings:
+  - `at: [x, y, z]` — where the shape's middle (the place's 0, 0, 0) stands now: numbers, or values
+    the game works out (whole or fractions).
+  - `facing: { right: [...], up: [...], ahead: [...] }` — which way the shape's own arrows point now,
+    three arrows of three numbers or values, as `viewer` takes them; left out, the shape faces as it
+    was declared. The arrows are taken as given, as `eye.face` takes them, so arrows that are not of
+    length one and square to each other draw the shape bent.
+
+  A robot that moves and turns with the viewer's own words keeps a viewer of its own and hands it
+  over: `bot = viewer :bot, at: [3.0, 0.0, 8.0]`, `bot.turn :left, by: spin`, then
+  `draw_place :robot, seen_by: eye, at: bot.spot, facing: bot.facing`. A game with a flight model of
+  its own gives its numbers straight in. `screen_spot :robot, point, seen_by: eye, at:, facing:` with
+  the same stance says where a point of the moved shape lands, to the pixel. `window:`, `faces:`,
+  `perspective:`, lighting and picture slots work as for a shape drawn where it was declared; the
+  slots and the point lights belong to the shape, so every robot drawn from it shows the same. The
+  shape where it stands, its points included, must stay within -8191 to 8191, as a place's points
+  must. Each drawing at another stance turns the shape's points afresh: they are not shared with a
+  drawing at another stance. Friendly errors: `at:` that is not three numbers or values, a written
+  number out of range, `facing:` that is not three arrows of three, and written arrows that are not
+  of length one and square. A written `at:` is checked, but not where it puts the shape's points: a
+  point that lands past the place's reach raises nothing and draws wrong. **What it costs on the
+  Advance**: the viewer is moved into the shape's own arrows once a drawing (a routine of 18
+  products, about 900 cycles; three subtractions for `at:` alone), and the shape's points are turned
+  afresh (a square's four, about 3000 cycles); nothing more for each point than a fixed place's first
+  drawing costs. Worked examples in `test/place_games.rb`: `PlaceGames.moved_shapes`, one shape drawn
+  at two stances that change every pass, and `PlaceGames.stance_against_declared`, a moved shape
+  against the same shape declared where it stands.
 
   A game of rooms draws each room with its own call, far rooms first: the box round a doorway's
   `screen_spot`s is the window of the room beyond (any corner behind: the whole screen; all behind: not

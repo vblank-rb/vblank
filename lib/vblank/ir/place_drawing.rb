@@ -175,6 +175,85 @@ module VBlank
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
 
+      # A SHAPE DRAWN WHERE THE GAME SAYS IT STANDS, facing the way the game says (`draw_place ...,
+      # at:, facing:`): one shape, a robot, drawn several times a pass, each where it is now. The
+      # stance is a spot and three arrows, kept as a viewer's are (VIEWER_PARTS), the shape's own
+      # right, up and ahead as they lie in the place.
+      #
+      # The points are not moved. The VIEWER is, into the shape's own arrows: where the viewer stands
+      # measured from the shape's spot along the shape's arrows, and each of the viewer's arrows
+      # measured along them too. A point measured from that viewer along those arrows lands where
+      # the point moved into the place would land measured from the real viewer, because measuring
+      # along three square arrows of length one and measuring back is no change at all. The old
+      # first-person games of moving models drew them the same way: the viewer handed to the model's
+      # frame once, eighteen products a drawing, and not one more for each point.
+      #
+      # So the point routine, the cut, the projection and the fill are the fixed place's own, and
+      # the points the drawing turns are stamped as seen by a viewer that differs from one stance to
+      # the next (TURN_PARTS): a second robot never reads the points the first one turned.
+      #
+      # The stance's arrows are taken as given, as `eye.face` takes them. Arrows that are not
+      # square and of length one draw the shape bent, the same bent on every lowering.
+      AXES = %i[x y z].freeze
+      ARROWS = %i[right up ahead].freeze
+
+      # WHERE A SHAPE STANDS AND WHICH WAY IT FACES, as the game gave them: +spot+ three fraction
+      # nodes (x, y, z), and +arrows+ three of three (right, up, ahead), or nil for a shape that faces
+      # as the place was declared.
+      Stance = Data.define(:spot, :arrows) do
+        def turned? = !arrows.nil?
+
+        # Each part of the stance (VIEWER_PARTS) with its node: the spot, then the arrows'.
+        def parts
+          spot_parts = AXES.zip(spot)
+          return spot_parts unless turned?
+
+          spot_parts + ARROWS.zip(arrows).flat_map { |arrow, numbers| AXES.map { |axis| :"#{arrow}_#{axis}" }.zip(numbers) }
+        end
+      end
+
+      # The variables the stance routine keeps its work in: where the viewer stands from the stance's
+      # spot, and one of the viewer's arrows measured along the stance's while the arrow is still read.
+      VIEWER_FROM_STANCE_VARS = %i[dx dy dz].freeze
+      MEASURED_ARROW_VARS = %i[at_x at_y at_z].freeze
+
+      def stance_var(part) = name(:"stance_#{part}")
+
+      def stance_routine = name(:stance)
+
+      # The stance routine: the viewer, handed over as it is, moved into the shape's own arrows from
+      # the stance in the stance variables. A routine of its own, made once for the place, so each
+      # drawing of a turned shape costs a call rather than eighteen products written out again.
+      def stance_statements
+        offsets = VIEWER_FROM_STANCE_VARS.zip(AXES).map do |offset, axis|
+          Build.set(name(offset), Build.binop(:-, Build.var_ref(viewer_var(axis)), Build.var_ref(stance_var(axis))))
+        end
+        from_stance = VIEWER_FROM_STANCE_VARS.map { |offset| var(offset) }
+        spot = AXES.zip(ARROWS).map { |axis, arrow| Build.set(viewer_var(axis), dot_with_stance_arrow(from_stance, arrow)) }
+        arrows = ARROWS.flat_map do |viewer_arrow|
+          parts = AXES.map { |axis| :"#{viewer_arrow}_#{axis}" }
+          from = parts.map { |part| Build.var_ref(viewer_var(part)) }
+          measured = MEASURED_ARROW_VARS.zip(ARROWS).map do |held, arrow|
+            Build.set(name(held), dot_with_stance_arrow(from, arrow))
+          end
+          measured + parts.zip(MEASURED_ARROW_VARS).map { |part, held| Build.set(viewer_var(part), var(held)) }
+        end
+        offsets + spot + arrows
+      end
+
+      # What a drawing of a shape standing at +stance+ does once the viewer is handed over as it is:
+      # for a turned stance, keep it in the stance variables and call the stance routine; for one
+      # facing as the place does, move the viewer by the spot alone, three subtractions.
+      def stance_handover_statements(stance)
+        unless stance.turned?
+          return AXES.zip(stance.spot).map do |axis, node|
+            Build.set(viewer_var(axis), Build.binop(:-, Build.var_ref(viewer_var(axis)), node))
+          end
+        end
+
+        stance.parts.map { |part, node| Build.set(stance_var(part), node) } + [Build.call(stance_routine)]
+      end
+
       # The variable the routine reads the view's +part+ from.
       def view_var(part) = name(:"view_#{part}")
 
@@ -434,6 +513,14 @@ module VBlank
         return Build.var_ref(view_var(part)) if TURN_VIEW_PARTS.include?(part)
 
         Build.var_ref(viewer_var(part))
+      end
+
+      # How far +numbers+ (three values, along the place's x, y and z) reach along the stance's arrow
+      # +arrow+: three products added, as #along measures a point along the viewer's.
+      def dot_with_stance_arrow(numbers, arrow)
+        numbers.zip(AXES).map do |number, axis|
+          Build.mul_fix(number, Build.var_ref(stance_var(:"#{arrow}_#{axis}")), 16)
+        end.reduce { |sum, product| Build.binop(:+, sum, product) }
       end
 
       # The faces table's entry +offset+ along the face being drawn.

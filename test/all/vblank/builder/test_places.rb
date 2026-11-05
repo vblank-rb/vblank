@@ -130,6 +130,50 @@ class TestPlaces < Minitest::Test
     assert_match(/whole number/, message)
   end
 
+  def test_a_shape_moved_to_a_spot_that_is_not_three_numbers_is_refused
+    shape = square
+    message = refusal do
+      place(:robot, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop { draw_place :robot, seen_by: eye, at: [1.0, 2.0] }
+    end
+
+    assert_match(/at: needs three numbers/, message)
+  end
+
+  def test_a_shape_moved_further_than_a_place_reaches_is_refused
+    shape = square
+    message = refusal do
+      place(:robot, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop { screen_spot :robot, 0, seen_by: eye, at: [9000.0, 0.0, 0.0] }
+    end
+
+    assert_match(/-8191 to 8191/, message)
+  end
+
+  def test_a_shape_facing_that_is_not_three_arrows_is_refused
+    shape = square
+    message = refusal do
+      place(:robot, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop { draw_place :robot, seen_by: eye, facing: { right: [1, 0, 0], up: [0, 1, 0] } }
+    end
+
+    assert_match(/facing: needs three arrows/, message)
+  end
+
+  def test_a_shape_facing_written_with_arrows_that_are_not_square_is_refused
+    shape = square
+    message = refusal do
+      place(:robot, &shape)
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop { draw_place :robot, seen_by: eye, facing: { right: [1, 0, 0], up: [1, 0, 0], ahead: [0, 0, 1] } }
+    end
+
+    assert_match(/square to the other two/, message)
+  end
+
   def test_a_screen_spot_of_a_place_that_was_never_declared_is_refused
     message = refusal do
       eye = viewer :eye, at: [0.0, 0.0, 0.0]

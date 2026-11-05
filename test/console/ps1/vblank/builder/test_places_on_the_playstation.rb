@@ -44,6 +44,41 @@ class TestPlacesOnThePlayStation < Minitest::Test
     end
   end
 
+  # One shape drawn at two positions and facings that change every pass (PlaceGames.moved_shapes):
+  # each robot's top left corner is drawn where screen_spot, given the same at: and facing:, says it
+  # lands, and the second is not drawn over the first.
+  def test_one_shape_drawn_at_two_positions_and_facings_lands_where_its_corners_do
+    (2..8).each do |frames|
+      played = game_player.run(PlaceGames.moved_shapes, frames: frames)
+      after = "after #{played[:frame]} passes"
+
+      assert_equal 56, played[:y0], "the first robot is not turned: its top is a whole above the middle, #{after}"
+      2.times do |k|
+        x = played[:"x#{k}"]
+        y = played[:"y#{k}"]
+
+        assert_equal tile(0, 0), played.screen.pixel(x + 2, y + 2), "inside robot #{k}'s corner, #{after}"
+        assert_equal BLACK, played.screen.pixel(x - 2, y + 2), "left of robot #{k}'s corner, #{after}"
+      end
+      assert_equal BLACK, played.screen.pixel(123, 80), "between the robots, #{after}"
+    end
+  end
+
+  # The answer key: a shape moved and turned, seen by a turned viewer, lit, through a window and in
+  # perspective, is the same picture as the shape declared where that puts it.
+  def test_a_moved_shape_is_drawn_as_the_same_shape_declared_where_it_stands
+    moved = pixels_of(PlaceGames.stance_against_declared(moved: true))
+    declared = pixels_of(PlaceGames.stance_against_declared(moved: false))
+
+    assert_operator declared.count { |color| color != BLACK }, :>, 1000, "the declared square is drawn"
+    assert_equal declared, moved
+  end
+
+  private def pixels_of(program)
+    screen = game_player.run(program, frames: 2).screen
+    (0...160).flat_map { |y| (0...240).map { |x| screen.pixel(x, y) } }
+  end
+
   def test_a_picture_repeats_past_its_edges_both_ways
     screen = game_player.run(PlaceGames.square(on_picture: [[-70, -70], [140, -70], [140, 140], [-70, 140]]),
                              frames: 2).screen

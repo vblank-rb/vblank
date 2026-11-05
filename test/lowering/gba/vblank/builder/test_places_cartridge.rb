@@ -140,6 +140,12 @@ class TestPlacesCartridge < Minitest::Test
                           name: "WHOLETURN")
   end
 
+  # One shape drawn at two positions and facings the game works out, each changing every eight
+  # passes, so each frame compared is in the middle of a different pair of stances.
+  def test_one_shape_drawn_at_two_moving_stances_agrees_at_each_change
+    assert_backends_agree(PlaceGames.moved_shapes(passes: 8), frames: [6, 14, 22, 30, 38], name: "ROBOTS")
+  end
+
   # A game that draws no place carries none of the machinery: no routine for filling a face in
   # the quick memory, so its layout and its bytes are what they were before places existed.
   def test_a_game_with_no_place_carries_nothing_of_one
