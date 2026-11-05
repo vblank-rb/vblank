@@ -67,13 +67,16 @@ module VBlank
       #
       # A Super Nintendo cartridge is the same story with its own numbers, measured the same way and
       # pinned by test_pictures_on_the_super_nintendo_interpreter.rb. It too copies a pass's picture
-      # in the blank after the pass, and a game here has no turning screen either.
+      # in the blank after the pass, and a game here has no turning screen either. Its painted screen
+      # sets up two frames longer than its tiled one, the second of them since at power-on the
+      # painting runtime writes a key for every tile of the screen twice over
+      # (SNES::Runtime::PaintLog.emit_start), so it knows later which tiles a pass changed.
       LineUp = Data.define(:boot_frames, :shows_pass_before_last)
       LINE_UPS = Ractor.make_shareable({
                                          gba: LineUp.new(boot_frames: BOOT_FRAMES, shows_pass_before_last: false),
                                          gbc: LineUp.new(boot_frames: { bitmap: 9, tiled: 6 },
                                                          shows_pass_before_last: true),
-                                         snes: LineUp.new(boot_frames: { bitmap: 7, tiled: 6 },
+                                         snes: LineUp.new(boot_frames: { bitmap: 8, tiled: 6 },
                                                           shows_pass_before_last: true)
                                        })
 
