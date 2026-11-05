@@ -46,6 +46,7 @@ module VBlank
                                                list_new: :emit_list_new, list_push: :emit_list_push,
                                                list_drop: :emit_list_drop, list_set: :emit_list_set,
                                                list_fill: :emit_list_fill, list_copy: :emit_list_copy,
+                                               list_sort: :emit_list_sort,
                                                save_init: :emit_save_init, save_store: :emit_save_store,
                                                save_write: :emit_save_write, save_erase: :emit_save_erase,
                                                timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
@@ -1026,6 +1027,188 @@ module VBlank
             kept, = TABLE_KEPT.fetch(table_keeping(table))
             list_call("rt_list_copy", node, Address.new(table_label(table.name)), Build.int(kept), Build.int(table.values.length),
                       node.at, Build.int(node.count))
+          end
+
+          # Where a sort keeps its numbers as it goes, in quick memory: the slot it is placing an item
+          # from (2 bytes), the slot past the last (2), the item's number (4) and the item itself (4).
+          LIST_SORT_NUMBERS = "the numbers a list sort keeps"
+
+          # Reference#exec_list_sort: an insertion sort, written here with both lists' places known,
+          # so nothing is looked up as it runs. Each item from the second on is taken out of its slot
+          # with its number, and the items before it are moved up a slot while the one just before
+          # has a number beyond its own, strictly; it then goes in the slot left. A list already in
+          # order is one compare an item and no moves, and level numbers never pass each other.
+          #
+          # BC is the slot the item will go in, walking down; a compare is the item's number less
+          # the one before's, a byte at a time from the lowest, and the borrow out of it says which
+          # is smaller as whole unsigned numbers. Two numbers of different signs are the other way
+          # round as signed ones, so the borrow is turned over when their top bits differ.
+          def emit_list_sort(node)
+            refuse_sorting_front_dropped!(node)
+            place, _capacity, width = list_placed(node)
+            keys_place, _key_capacity, key_width = @lists.fetch(node.by) do
+              raise LoweringError, "the list #{node.by.inspect} is sorted by and never declared"
+            end
+            numbers = @memory.reserve_quick(LIST_SORT_NUMBERS, 12)
+            at, last, key, item = numbers, numbers + 2, numbers + 4, numbers + 8
+            slots = place + Runtime::Lists::HEADER
+            key_slots = keys_place + Runtime::Lists::HEADER
+            sorted, next_item, take_item = fresh("sorted"), fresh("sort_next"), fresh("sort_item")
+            compare, before, put_item = fresh("sort_compare"), fresh("sort_before"), fresh("sort_place")
+
+            emit_sort_bounds(place, slots, width, at, last, sorted)
+            @asm.label(next_item)
+            @asm.load_high(:a, at)
+            @asm.load(:c, :a)
+            @asm.load_high(:a, at + 1)
+            @asm.load(:b, :a)
+            @asm.load_high(:a, last)
+            @asm.cp_a(:c)
+            @asm.jump_relative(:nz, take_item)
+            @asm.load_high(:a, last + 1)
+            @asm.cp_a(:b)
+            @asm.jump(:z, sorted)
+            @asm.label(take_item)
+            @asm.load(:h, :b)
+            @asm.load(:l, :c)
+            width.times do |i|
+              @asm.load(:a, [:hli])
+              @asm.load_high(item + i, :a)
+              @asm.load(:e, :a) if i.zero?
+              @asm.load(:d, :a) if i == 1
+            end
+            @asm.load(:d, 0) if width == 1
+            emit_sort_key_address(key_slots, key_width)
+            key_width.times do |i|
+              @asm.load(:a, [:hli])
+              @asm.load_high(key + i, :a)
+            end
+
+            @asm.label(compare)
+            @asm.load(:a, :c)
+            @asm.cp_a(slots & 0xFF)
+            @asm.jump_relative(:nz, before)
+            @asm.load(:a, :b)
+            @asm.cp_a(slots >> 8)
+            @asm.jump(:z, put_item)
+            @asm.label(before)
+            @asm.load(:h, :b)
+            @asm.load(:l, :c)
+            width.times { @asm.dec(:hl) }
+            @asm.load(:a, [:hli])
+            @asm.load(:e, :a)
+            width == 1 ? @asm.load(:d, 0) : @asm.load(:d, [:hl])
+            emit_sort_key_address(key_slots, key_width)
+            emit_sort_borrow(key, key_width, descending: node.descending)
+            @asm.jump(:nc, put_item)
+            emit_sort_move_up(width)
+            @asm.jump(compare)
+
+            @asm.label(put_item)
+            width.times do |i|
+              @asm.load_high(:a, item + i)
+              @asm.load([:bc], :a)
+              @asm.inc(:bc) unless i == width - 1
+            end
+            @asm.load_high(:a, at)
+            @asm.add_a(width)
+            @asm.load_high(at, :a)
+            @asm.jump(:nc, next_item)
+            @asm.load_high(:a, at + 1)
+            @asm.inc(:a)
+            @asm.load_high(at + 1, :a)
+            @asm.jump(next_item)
+            @asm.label(sorted)
+          end
+
+          # The slot past the last item into +last+ and the second slot into +at+, or straight to the
+          # end, +sorted+, for a list of fewer than two items, which is in order already.
+          def emit_sort_bounds(place, slots, width, at, last, sorted)
+            @asm.load(:hl, place + Runtime::Lists::LENGTH)
+            @asm.load(:a, [:hli])
+            @asm.load(:h, [:hl])
+            @asm.load(:l, :a)
+            sorting = fresh("sort_some")
+            @asm.load(:a, :h)
+            @asm.or_a(:a)
+            @asm.jump_relative(:nz, sorting)
+            @asm.load(:a, :l)
+            @asm.cp_a(2)
+            @asm.jump(:c, sorted)
+            @asm.label(sorting)
+            (width / 2).times { @asm.add_hl(:hl) } # × the slot's width: 1, 2 or 4
+            @asm.load(:de, slots)
+            @asm.add_hl(:de)
+            @asm.load(:a, :l)
+            @asm.load_high(last, :a)
+            @asm.load(:a, :h)
+            @asm.load_high(last + 1, :a)
+            second = slots + width
+            @asm.load(:a, second & 0xFF)
+            @asm.load_high(at, :a)
+            @asm.load(:a, second >> 8)
+            @asm.load_high(at + 1, :a)
+          end
+
+          # HL = where the number for the item in DE is, in the list of numbers whose slots start at
+          # +key_slots+ and are +key_width+ bytes.
+          def emit_sort_key_address(key_slots, key_width)
+            @asm.load(:h, :d)
+            @asm.load(:l, :e)
+            (key_width / 2).times { @asm.add_hl(:hl) }
+            @asm.load(:de, key_slots)
+            @asm.add_hl(:de)
+          end
+
+          # The carry set when the item before (its number at HL) is to move up past the item placed,
+          # whose number is at +key+: a number beyond the item's, strictly — bigger rising, smaller
+          # with +descending+. The subtraction is the item's less the one before's, or the other way
+          # round descending, and its borrow is turned over when the two top bits differ.
+          def emit_sort_borrow(key, key_width, descending:)
+            key_width.times do |i|
+              if descending
+                @asm.load_high(:a, key + i)
+                @asm.load(:e, :a)
+                @asm.load(:a, [:hl])
+                i.zero? ? @asm.sub_a(:e) : @asm.sbc_a(:e)
+              else
+                @asm.load_high(:a, key + i)
+                i.zero? ? @asm.sub_a([:hl]) : @asm.sbc_a([:hl])
+              end
+              @asm.inc(:hl) unless i == key_width - 1
+            end
+            @asm.sbc_a(:a) # every bit the borrow
+            @asm.xor_a([:hl]) # ...turned over by the one before's top bit
+            @asm.load(:e, :a)
+            @asm.load_high(:a, key + key_width - 1)
+            @asm.xor_a(:e) # ...and by the item's: its top bit says
+            @asm.rla
+          end
+
+          # The item before BC moved up into BC's slot, top byte first, and BC a slot down.
+          def emit_sort_move_up(width)
+            @asm.load(:h, :b)
+            @asm.load(:l, :c)
+            @asm.dec(:hl)
+            (width - 1).times { @asm.inc(:bc) }
+            width.times do
+              @asm.load(:a, [:hld])
+              @asm.load([:bc], :a)
+              @asm.dec(:bc)
+            end
+            (width - 1).times { @asm.dec(:bc) }
+          end
+
+          # A list something takes items from the front of keeps them round its slots like a ring, so
+          # its items are not in a row from its first slot, which is what the sort walks.
+          def refuse_sorting_front_dropped!(node)
+            dropped = [node.name, node.by] & front_dropped_lists
+            return if dropped.empty?
+
+            raise NotMadeYet.new("The game puts a list in order (`list_sort`) and takes items from the front of " \
+                                 "#{dropped.map(&:inspect).join(' and ')}. The Game Boy Color build does not make this yet. " \
+                                 "To fix this, build the game for the Game Boy Advance only (`consoles: %i[gba]`).",
+                                 part: "a list in order")
           end
 
           # Reference::ListValue#[]. The index is worked out first, and then it and the list's place
