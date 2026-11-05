@@ -13,5 +13,6 @@
 require_relative "original/game" # where the player's copy is, and whether it is the right one
 require_relative "original/facts_file" # a facts file as text: its values rewritten, its comments kept
 require_relative "original/facts" # ...and what the port measured from the original, read from those files
+require_relative "original/decompilation" # ...and the decompilation built and proven to be the copy before it is read
 require_relative "original/data_guard" # the pre-commit check that keeps the original's data out of the port's history.
 # Its rake tasks, data_guard_tasks.rb, are a Rakefile's and are not required here.
