@@ -46,6 +46,10 @@ module VBlank
       EXCEPTION_VECTOR = 0x8000_0080
       # The low 21 bits of an address in main RAM are the byte's place in the 2 megabytes.
       RAM_MASK = RAM_SIZE - 1
+      # The processor's cache control register, and the value Sony's BIOS leaves in it: the instruction
+      # cache and the scratchpad on (psx-spx, "Cache Control").
+      CACHE_CONTROL = 0xFFFE_0130
+      CACHE_CONTROL_USUAL = 0x0001_E988
 
       # --- the ports, all reached from one register holding 1F800000h, at a 16-bit distance ---
       IO = 0x1F80_0000

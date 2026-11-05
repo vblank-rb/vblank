@@ -33,6 +33,7 @@ module VBlank
               asm.mtc0(:zero, R3000::COP0_STATUS) # every interrupt off
               asm.li(:sp, Memory::STACK_TOP)
               asm.li(:gp, Memory::BASE)
+              emit_instruction_cache_on(asm, h)
               asm.lui(:s1, h::IO >> 16) # s1: the ports, for the rest of the boot
               emit_interrupts_quiet(asm, h)
               emit_handler_installed(asm, h)
@@ -74,6 +75,19 @@ module VBlank
               asm.beq(:t2, :zero, "rt_gp0_word_wait")
               asm.sw(:a0, h::GP0 & 0xFFFF, :t1)
               asm.jr(:ra)
+            end
+
+            # THE INSTRUCTION CACHE ON. The processor keeps the last 4K of code it ran in a cache inside
+            # itself, and runs code from there without going out to RAM for each instruction, but only
+            # once the cache control register (FFFE0130h) says so. Sony's BIOS sets it to 0001E988h
+            # before it starts a program (psx-spx, "Cache Control"), so a program loaded from a disc or by
+            # a loader finds it on; a program started at power-on, as ruby-ps1-emulator starts one,
+            # finds it off, and runs its loops several times slower. So the runtime sets the BIOS's value
+            # itself, which changes nothing on a console the BIOS has already set it on.
+            def emit_instruction_cache_on(asm, h)
+              asm.li(:t0, h::CACHE_CONTROL_USUAL)
+              asm.li(:t1, h::CACHE_CONTROL)
+              asm.sw(:t0, 0, :t1)
             end
 
             # Nothing the BIOS left pending reaches the processor: every interrupt masked off, and every one
