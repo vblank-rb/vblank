@@ -26,8 +26,12 @@ module VBlank
       # +given+ is the stretches as they were written, and +moments+ the names of the moments
       # the playthrough declares, in the order it declares them — so a name it does not have
       # is refused here, before a frame is played.
+      #
+      # +setting+ is the setting the stretches were given in, for a refusal to name: the
+      # stretches of a part of the screen (LookedAt) are read the same way.
       class IgnoredFrames
-        def initialize(given, moments)
+        def initialize(given, moments, setting: :ignoring_frames)
+          @setting = setting
           refuse_malformed_stretches!(given)
           @numbered, @named = given.partition { |stretch| ends_of(stretch).all?(Integer) }
           @numbered.each do |stretch|
@@ -127,7 +131,7 @@ module VBlank
         def refuse_frames_below_one!(stretch)
           return if ends_of(stretch).all?(&:positive?)
 
-          raise ArgumentError, "`ignoring_frames:` holds #{stretch.inspect}. Frames are counted from 1, so a range of " \
+          raise ArgumentError, "`#{@setting}:` holds #{stretch.inspect}. Frames are counted from 1, so a range of " \
                                "frames cannot go below 1. Use frame numbers of 1 or more."
         end
 
@@ -136,7 +140,7 @@ module VBlank
           return if unknown.empty?
 
           there_are = moments.empty? ? "The playthrough names no moments." : "Its moments are #{moments.map(&:inspect).join(', ')}."
-          raise ArgumentError, "`ignoring_frames:` holds #{stretch.inspect}. The playthrough has no moment named " \
+          raise ArgumentError, "`#{@setting}:` holds #{stretch.inspect}. The playthrough has no moment named " \
                                "#{unknown.map(&:inspect).join(' or ')}. #{there_are}"
         end
 
@@ -177,7 +181,7 @@ module VBlank
         end
 
         def raise_holding_no_frame!(stretch, advice)
-          raise ArgumentError, "`ignoring_frames:` holds #{stretch.inspect}. That range holds no frame. #{advice}"
+          raise ArgumentError, "`#{@setting}:` holds #{stretch.inspect}. That range holds no frame. #{advice}"
         end
       end
     end

@@ -17,6 +17,16 @@ module VBlank
       # Eight lists of sixteen colours for the backgrounds, then eight for the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 128, group: 16)
 
+      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
+      # AdvanceReading#video_memories says it: the 256 colours, and the sprite table by its
+      # bytes. The Super Nintendo's scroll and video registers cannot be read back on the
+      # console, and bsnes does not hand them over here, so they are not among them.
+      def video_memories
+        ensure_rendered!
+        { colors: palette.each_with_index.to_h { |color, at| [at, color] },
+          sprite_table: @probe.sprite_table.bytes.each_with_index.to_h { |byte, at| [at, byte] } }
+      end
+
       # bsnes keeps a cartridge's battery-backed RAM in a .srm file of its own, nothing after it,
       # as big as the header says: the size the header's byte says for the save memory a game has
       # (IR::Backends::SNES::Runtime::Saving), worked out the way the header is written

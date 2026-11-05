@@ -70,8 +70,16 @@ module VBlank
       # +picture_difference+ is how the pictures differed on the frame it began, where the
       # picture is what differed (Verifier#difference_from: how many pixels, the box they lie in,
       # the first and its colour on each), and nil otherwise and for a drift found at a moment.
-      Drift = Data.define(:frame, :last_frame, :ended, :moment, :differed, :readings, :report, :picture_difference) do
-        def initialize(frame:, moment:, differed:, readings:, last_frame: nil, ended: nil, report: nil, picture_difference: nil) = super
+      #
+      # +video_differences+ is, where the picture is what differed, which of the console's video
+      # memories differed between the two on the frame it began, each with its first difference
+      # (VideoDifference): the colours, the sprite table, the scroll, the video registers. It is
+      # empty otherwise, for a drift found at a moment, and for two cartridges whose pictures
+      # differ though none of those does (the pictures the tiles are made of, say).
+      Drift = Data.define(:frame, :last_frame, :ended, :moment, :differed, :readings, :report, :picture_difference,
+                          :video_differences) do
+        def initialize(frame:, moment:, differed:, readings:, last_frame: nil, ended: nil, report: nil, picture_difference: nil,
+                       video_differences: []) = super
 
         # The frames of the stretch as a range, first to last, or nil where the last is
         # not known.
@@ -147,26 +155,42 @@ module VBlank
       # each — a playthrough played on it first and not counted (see
       # Playthrough.power_on_and_lead_in) — the first cartridge's and then the second's,
       # either of them nil for none.
+      #
+      # +layers+ is which of the picture is compared: nil for all of it, `:backgrounds` for the
+      # picture without its sprites, `:sprites` for the sprites alone (see LAYERS).
+      # +forgiving_torn_frames_of+ is the cartridge whose torn frames are forgiven where the
+      # other already shows what they settle on (see TornFrames), `:first` or `:second`, or nil.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
-                     same: :tape, frames_apart: nil, save: nil, lead_ins: nil, reports_in: nil, **how_alike)
+                     same: :tape, frames_apart: nil, save: nil, lead_ins: nil, reports_in: nil, layers: nil,
+                     forgiving_torn_frames_of: nil, **how_alike)
         refuse_unknown_settings!(how_alike.keys)
         @moments = moments
         @save = Playthrough.save_from(save)
         refuse_malformed_lead_ins!(lead_ins)
         @lead_ins = lead_ins || [nil, nil]
         @ignored = IgnoredFrames.new(ignoring_frames, moments)
-        @likeness = Likeness.new(**how_alike, screen_size: early_screen_size(first))
+        looked_at = LookedAt.new(**how_alike.slice(*LookedAt::SETTINGS), moments: moments, screen_size: early_screen_size(first))
+        @likeness = Likeness.new(**how_alike.slice(*Likeness::SETTINGS), looked_at: looked_at)
         @readings = Readings.new(readings)
         @comparing = comparing
         @compared = Compared.new(comparing, @likeness, @readings)
         refuse_non_boolean_carrying_on!(carrying_on)
         @carrying_on = carrying_on
+        refuse_unknown_layers!(layers)
+        @layers = layers
+        @torn_side = forgiving_torn_frames_of
+        TornFrames.refuse_unknown_side!(@torn_side)
         @same = same
         @frames_apart = frames_apart
         @reports_in = Report.place_for(reports_in)
         refuse_settings_wrong_for_same!(how_alike)
         @handed_over = [first, second]
       end
+
+      # WHICH OF THE PICTURE `layers:` KEEPS, as the reader's own words for leaving layers out
+      # (Diagnostics::Verifier#showing). Every console the comparison lines up calls its sprites
+      # `:sprites`, so the two words mean the same on each.
+      LAYERS = Ractor.make_shareable({ backgrounds: { without: :sprites }, sprites: { only: :sprites } })
 
       # Whether each cartridge is played by the script on its own.
       def same_script? = @same == :script
@@ -292,8 +316,11 @@ module VBlank
         ignored = @ignored.frame_ranges_on(tape)
         consoles = starts.map(&:console)
         refuse_screens_not_described!(consoles)
-        reporter = ->(drift, pictures) { drift_with_report(drift, pictures, tape) } if @reports_in
-        pair = SideBySide.new(*consoles, @compared, ignored, carrying_on: @carrying_on, reporter: reporter)
+        show_layers_asked_for(consoles)
+        reporter = ->(drift, pictures, part) { drift_with_report(drift, pictures, part, tape) } if @reports_in
+        pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),
+                                                             torn: TornFrames.for(@torn_side, @likeness),
+                                                             carrying_on: @carrying_on, reporter: reporter)
         # A pair that has stopped plays no more frames, and is still told a moment that
         # names the very frame it stopped on: that one it reached. +due+ is the frame the
         # tape is on after each step, so a step is past where the pair stopped when it is
@@ -312,16 +339,34 @@ module VBlank
         raise e.after(pair.drifts)
       end
 
+      # Leave out of each console's picture what `layers:` leaves out, for the rest of the
+      # playing. A console whose emulator draws every layer together cannot, and is refused
+      # saying which cartridge it was.
+      private def show_layers_asked_for(consoles)
+        return unless @layers
+
+        consoles.zip(%w[first second], cartridges).each do |console, which, cartridge|
+          console.showing(**LAYERS.fetch(@layers))
+        rescue ArgumentError => e
+          raise ArgumentError, "`layers:` was #{@layers.inspect}, and the #{which} cartridge is for a " \
+                               "#{Console.for(cartridge.console).title}. #{e.message} Remove `layers:`, or leave the " \
+                               "sprites out with `ignoring_rectangles:`."
+        end
+      end
+
       # THE SETTINGS OF A COMPARISON THAT A PICTURE OF ONE FRAME HAS A USE FOR, each meaning
       # what it means of a comparison: the parts of the screen that are not looked at,
       # which are never marked, and where the two cartridges start.
-      PICTURE_SETTINGS = %i[ignoring_rectangles save lead_ins].freeze
+      PICTURE_SETTINGS = %i[ignoring_rectangles looking_at pixels_apart save lead_ins].freeze
 
       # The comparison that plays the two for a picture of one frame (see PictureRequest),
-      # which takes those settings and no others.
+      # which takes those settings and no others. A part of the screen said for a stretch of
+      # frames or by a block is refused there: one frame is marked by one fixed part.
       def self.for_picture(first, second, moments, **settings)
         unknown = settings.keys - PICTURE_SETTINGS
-        return new(first, second, moments, **settings) if unknown.empty?
+        if unknown.empty?
+          return new(first, second, moments, **settings).tap(&:refuse_moving_part_in_picture!)
+        end
 
         known = [:at, :difference, *PICTURE_SETTINGS].map { |name| "`#{name}:`" }.join(", ")
         raise ArgumentError, "A side-by-side picture has no setting named #{unknown.map(&:inspect).join(' or ')}. " \
@@ -345,14 +390,26 @@ module VBlank
         write_picture_of_tape(starts.first.played_by(playthrough).tape, request)
       end
 
-      # Two screens that were kept, with where they differ of the places that are looked at.
-      private def screen_pair(pictures) = ScreenPair.new(*pictures, @likeness.differing_places(*pictures), @likeness.screen_size.first)
+      def refuse_moving_part_in_picture!
+        return unless @likeness.looked_at.changes_with_frame?
+
+        raise ArgumentError, "A side-by-side picture is of one frame, so it takes the parts of the screen as a list of " \
+                             "rectangles. Give `ignoring_rectangles:` and `looking_at:` as lists, like " \
+                             "`ignoring_rectangles: [[0, 128, 240, 32]]`."
+      end
+
+      # Two screens that were kept, with where they differ of the places that are looked at:
+      # +part+, or the part looked at on every frame where none is said.
+      private def screen_pair(pictures, part = @likeness.looked_at.fixed_part)
+        ScreenPair.new(*pictures, @likeness.differing_places(*pictures, part), @likeness.screen_size.first)
+      end
 
       # Play +playthrough+'s script on each cartridge by itself, compare the two at each
       # named moment, and say what was found.
       def run_script(playthrough)
         at_moments = AtMoments.new(sides_played_by(playthrough), compared: @compared, frames_apart: @frames_apart,
-                                                                 left_out: @ignored.moments_left_out(@moments))
+                                                                 left_out: @ignored.moments_left_out(@moments),
+                                                                 part: @likeness.looked_at.fixed_part)
         drifts = []
         at_moments.each_drift do |drift, pictures, reached|
           drifts << (@reports_in ? drift_with_moment_report(drift, pictures, reached, at_moments.sentences) : drift)
@@ -375,10 +432,11 @@ module VBlank
       end
 
       # A drift with its report written, and the folder it went into noted on it.
-      # +pictures+ is the two screens on the frame it began. The tape is handed over once
-      # for each cartridge, said to start the way that cartridge was started.
-      private def drift_with_report(drift, pictures, tape)
-        report = DriftReport.new(drift, screen_pair(pictures), tapes: starts.map { |start| start.tape_said(tape) },
+      # +pictures+ is the two screens on the frame it began and +part+ the part of the screen
+      # looked at there. The tape is handed over once for each cartridge, said to start the
+      # way that cartridge was started.
+      private def drift_with_report(drift, pictures, part, tape)
+        report = DriftReport.new(drift, screen_pair(pictures, part), tapes: starts.map { |start| start.tape_said(tape) },
                                                                **what_any_report_has(@compared.sentences + @ignored.sentences(tape)))
         drift.with(report: report.write_in(@reports_in))
       end
@@ -419,9 +477,12 @@ module VBlank
 
       # Every setting a comparison has: the ones that say how alike, and the ones of its own.
       def self.settings
-        [*Likeness::SETTINGS, :ignoring_frames, :readings, :comparing, :carrying_on, :same, :frames_apart, :save, :lead_ins,
-         :reports_in]
+        [*how_alike_settings, :ignoring_frames, :layers, :forgiving_torn_frames_of, :readings, :comparing, :carrying_on, :same,
+         :frames_apart, :save, :lead_ins, :reports_in]
       end
+
+      # The settings that say how alike two pictures have to be and which of them is looked at.
+      def self.how_alike_settings = [*Likeness::SETTINGS, *LookedAt::SETTINGS]
 
       # What the two ways of feeding the second cartridge each make no sense with. On the
       # same script there is no frame the two share, so nothing can be said in frames in a
@@ -437,8 +498,31 @@ module VBlank
         refuse_invalid_frames_apart!
         refuse_script_with_no_moment!
         refuse_frame_counts_on_script!(how_alike)
+        refuse_per_frame_settings_on_script!
         refuse_every_moment_left_out!
         refuse_moments_sharing_one_folder! if @reports_in
+      end
+
+      # What only a comparison frame by frame can do: a part of the screen that changes with
+      # the frame, the strict rule for torn frames, which needs the frames either side, and
+      # the picture without some of its layers, which is set on the two consoles it plays.
+      private def refuse_per_frame_settings_on_script!
+        said = []
+        said << "a part of the screen for a stretch of frames or from a block" if @likeness.looked_at.changes_with_frame?
+        said << "`forgiving_torn_frames_of:`" if @torn_side
+        said << "`layers:`" if @layers
+        return if said.empty?
+
+        raise ArgumentError, "The comparison is on the same script. It was given #{said.join('; ')}. On the same script, " \
+                             "the comparison looks at each named moment, not at each frame. Remove " \
+                             "#{said.size == 1 ? 'that setting' : 'those settings'}, or compare on the same tape."
+      end
+
+      private def refuse_unknown_layers!(given)
+        return if given.nil? || LAYERS.key?(given)
+
+        raise ArgumentError, "`layers:` was #{given.inspect}. It must be `:backgrounds`, for the picture without its " \
+                             "sprites, or `:sprites`, for the sprites alone."
       end
 
       # Leaving out every moment leaves nowhere to compare, the same as naming none, and
@@ -505,204 +589,11 @@ module VBlank
       end
 
       private def refuse_unknown_settings!(given)
-        unknown = given - Likeness::SETTINGS
+        unknown = given - Comparison.how_alike_settings
         return if unknown.empty?
 
         raise ArgumentError, "A comparison has no setting named #{unknown.map(&:inspect).join(' or ')}. " \
                              "Its settings are #{Comparison.settings.map { |name| "`#{name}:`" }.join(', ')}."
-      end
-
-      # HOW ALIKE TWO PICTURES HAVE TO BE to count as the same. With nothing said, every pixel
-      # has to be the same colour: the strict comparison.
-      #
-      # That is the right question of a framework change, and the wrong one of a game being
-      # rebuilt to match another, where one stray pixel several minutes in would otherwise
-      # hide everything after it.
-      #
-      # +ignoring_rectangles+ is parts of the screen, each [x, y, width, height], whose pixels
-      # are not looked at: a part that has not been drawn yet. +share_may_differ+ is the share
-      # of the pixels that ARE looked at that may be a different colour, from 0 to 1, before a
-      # frame counts as differing. +frames_in_a_row+ is how many frames running have to differ
-      # before it is drift, so that one frame of flicker is not.
-      class Likeness
-        SETTINGS = %i[share_may_differ frames_in_a_row ignoring_rectangles].freeze
-
-        # +screen_size+ is the screen the two cartridges show, [width, height]: the Advance's until
-        # the cartridges are known, when the comparison asks for #sized_for theirs.
-        def initialize(share_may_differ: 0, frames_in_a_row: 1, ignoring_rectangles: [], screen_size: ADVANCE_SCREEN)
-          refuse_share_outside_range!(share_may_differ)
-          refuse_invalid_run_length!(frames_in_a_row)
-          refuse_malformed_rectangles!(ignoring_rectangles)
-          @settings = { share_may_differ: share_may_differ, frames_in_a_row: frames_in_a_row, ignoring_rectangles: ignoring_rectangles }
-          @width, @height = screen_size
-          @share_may_differ = share_may_differ
-          @frames_in_a_row = frames_in_a_row
-          @ignored_rectangles = ignoring_rectangles.map { |corner_and_size| Rectangle.new(*corner_and_size) }
-          @looked_at = pixels_outside(@ignored_rectangles) if screen_size
-          @pixels_looked_at = @looked_at&.count(LOOKED_AT)
-        end
-
-        # The same settings, for a screen of +screen_size+ ([width, height]). A rectangle off that
-        # screen is refused then.
-        def sized_for(screen_size)
-          screen_size == [@width, @height] ? self : Likeness.new(**@settings, screen_size: screen_size)
-        end
-
-        # The screen's size this is for, [width, height].
-        def screen_size = [@width, @height]
-
-        # The list of what is looked at, a byte for each pixel (see #pixels_outside), for asking the
-        # emulator where two pictures differ.
-        attr_reader :looked_at
-
-        # Whether the two running cartridges are showing pictures alike enough.
-        #
-        # Two pictures that are the same are known to be in one comparison, and two that are
-        # not are known to differ in the same one when nothing may: only a comparison that
-        # was told some of the screen may differ, or need not be looked at, has to go and
-        # count what is out. The emulator does the counting, in one pass over the two
-        # pictures, so that costs little more than the frame did.
-        def alike?(first, second)
-          return true if first.same_picture_as?(second)
-          return false if strict?
-
-          share_differing(first, second) <= @share_may_differ
-        end
-
-        # The same question of two screens that were kept, each a screenful of colours: the
-        # two cartridges are not running side by side, so there is nothing to ask but the
-        # pictures themselves.
-        def pictures_alike?(first, second)
-          return true if first == second || @pixels_looked_at.zero?
-
-          differing_places(first, second).size.fdiv(@pixels_looked_at) <= @share_may_differ
-        end
-
-        # How the two running cartridges' pictures differ, of the places that are looked at
-        # (Verifier#difference_from), or nil when they do not.
-        def difference(first, second) = first.difference_from(second, looked_at: @ignored_rectangles.empty? ? nil : @looked_at)
-
-        # Whether +frames+ differing frames, one after another, are drift.
-        def drift_after?(frames) = frames >= @frames_in_a_row
-
-        # Where two pictures differ, of the places that are looked at. This is for two
-        # screens that were kept, each a screenful of colours a row at a time, and what
-        # comes back is where in that list the two hold different colours. (Two consoles
-        # still running are asked through `alike?`, which does not copy their screens out.)
-        def differing_places(first, second)
-          (0...first.size).select { |at| @looked_at.getbyte(at) != 0 && first[at] != second[at] }
-        end
-
-        # HOW ALIKE THE PICTURES HAD TO BE, AS SENTENCES, for a report a person reads.
-        # +point+ is what the two were compared at, `A frame` or `A moment`.
-        def picture_sentences(point)
-          looked_at = @pixels_looked_at == @width * @height ? "pixels" : "pixels that were looked at"
-          words = if @share_may_differ.zero?
-                    ["#{point} differed when one of the #{looked_at} was a different colour."]
-                  else
-                    ["#{point} differed when more than #{percent_allowed} percent of the #{looked_at} were a different colour."]
-                  end
-          words << "These parts of the screen were not looked at: #{@ignored_rectangles.map(&:in_words).join('; ')}." if @ignored_rectangles.any?
-          words
-        end
-
-        # How many differing frames in a row it took, as a sentence, where that was more
-        # than one. It is its own sentence because it holds whatever is compared, a reading
-        # as much as the picture.
-        def run_length_sentences
-          @frames_in_a_row > 1 ? ["#{@frames_in_a_row} frames in a row had to differ before it was drift."] : []
-        end
-
-        # The Advance's screen, [width, height]: the size settings are checked against before the
-        # cartridges are known, when none is given.
-        ADVANCE_SCREEN = Ractor.make_shareable([Console::Hardware::SCREEN_WIDTH, Console::Hardware::SCREEN_HEIGHT])
-
-        # What a pixel's byte says in the list of what is looked at.
-        LOOKED_AT = "\x01".b.freeze
-        LEFT_OUT = "\x00".b.freeze
-        private_constant :LOOKED_AT, :LEFT_OUT
-
-        # A part of the screen, by its top left corner and its size.
-        Rectangle = Data.define(:x, :y, :width, :height) do
-          def columns = x...(x + width)
-          def rows = y...(y + height)
-          def on_screen?(screen_width, screen_height) = x >= 0 && y >= 0 && columns.end <= screen_width && rows.end <= screen_height
-          def in_words = "#{width} by #{height} pixels from column #{x}, row #{y}"
-        end
-        private_constant :Rectangle
-
-        private
-
-        def strict? = @share_may_differ.zero? && @pixels_looked_at == @width * @height
-
-        # The share as a percentage a person reads: `1`, `0.5`, and for one pixel of the
-        # screen `0.0026041667`. It is written out in full and never with an exponent,
-        # which is how a very small number is otherwise printed.
-        def percent_allowed = format("%.10f", @share_may_differ * 100.0).sub(/\.?0+\z/, "")
-
-        # The share of the pixels looked at that are a different colour in the two pictures.
-        # It is the shares that are compared and never a count worked back out of one: a
-        # share written as a decimal, multiplied back up by the pixels, can come out a hair
-        # under the count it was worked out from.
-        def share_differing(first, second)
-          return 0 if @pixels_looked_at.zero?
-
-          difference = first.difference_from(second, looked_at: @looked_at)
-          (difference ? difference[:count] : 0).fdiv(@pixels_looked_at)
-        end
-
-        # Every pixel of the screen, a row at a time, as whether it lies outside all of
-        # +rectangles+: a byte for each, the form the emulator takes it in when it is asked
-        # to count what differs. Worked out once: rectangles can overlap, and how many pixels
-        # are left is what a share is a share of.
-        def pixels_outside(rectangles)
-          rectangles.each { |rectangle| refuse_rectangle_off_screen!(rectangle) }
-          outside = LOOKED_AT * (@width * @height)
-          rectangles.each do |rectangle|
-            rectangle.rows.each { |row| outside[(row * @width) + rectangle.x, rectangle.width] = LEFT_OUT * rectangle.width }
-          end
-          outside.freeze
-        end
-
-        # A share is a plain number from 0 to 1. The comparisons are written out because the
-        # things that are not one — a number that is not a number, a complex one — answer
-        # neither, where asking whether they lie between 0 and 1 would stop with an error
-        # of Ruby's own.
-        def refuse_share_outside_range!(share)
-          return if share.is_a?(Numeric) && share.real? && share >= 0 && share <= 1
-
-          raise ArgumentError, "`share_may_differ:` was #{share.inspect}. It must be a number from 0 to 1. " \
-                               "It is the share of the pixels that can differ: 0.01 is one pixel in a hundred."
-        end
-
-        def refuse_invalid_run_length!(frames)
-          return if frames.is_a?(Integer) && frames >= 1
-
-          raise ArgumentError, "`frames_in_a_row:` was #{frames.inspect}. It must be a whole number, 1 or more. " \
-                               "It is how many frames in a row must differ before the comparison calls it drift."
-        end
-
-        # The whole of what was given is quoted back, because the commonest slip is one
-        # rectangle written with no list around it.
-        def refuse_malformed_rectangles!(given)
-          return if given.is_a?(Array) && given.all? { |written| well_formed_rectangle?(written) }
-
-          raise ArgumentError, "`ignoring_rectangles:` was #{given.inspect}. It must be a list of rectangles. " \
-                               "Each rectangle is four whole numbers: [x, y, width, height]. The width and the height " \
-                               "must be 1 or more. One rectangle is written like `ignoring_rectangles: [[0, 128, 240, 32]]`."
-        end
-
-        def well_formed_rectangle?(written)
-          written.is_a?(Array) && written.size == 4 && written.all?(Integer) && written.last(2).all?(&:positive?)
-        end
-
-        def refuse_rectangle_off_screen!(rectangle)
-          return if rectangle.on_screen?(@width, @height)
-
-          raise ArgumentError, "`ignoring_rectangles:` holds #{rectangle.to_h.values.inspect}. A part of that rectangle is " \
-                               "off the screen. The screen is #{@width} pixels wide and #{@height} pixels high. " \
-                               "Give a rectangle that is on the screen."
-        end
       end
 
       # TWO RUNNING CARTRIDGES PLAYED AS ONE. The lines of a tape play themselves on this as
@@ -728,6 +619,11 @@ module VBlank
       # drift going on and not a second one that began inside the first. That cannot be
       # known on the frame the first thing stops, so a drift is not ended there: its last
       # frame is noted, and it is ended once nothing that could still join it is differing.
+      #
+      # A FRAME IS SEEN, THEN DECIDED. Each frame is looked at as soon as it is played, and
+      # what can only be asked then is kept (an Observation). With the strict rule for torn
+      # frames (TornFrames) a frame is decided a frame later, once the frame after it says
+      # whether it was torn; without, at once.
       class SideBySide
         attr_reader :frames
 
@@ -738,30 +634,42 @@ module VBlank
         # cartridges are on the same frame here, and a result says it for each.
         attr_reader :moments
 
-        # THE FRAME A THING BEGAN TO DIFFER ON, and what is kept from it: the moment before,
-        # every reading, and the two screens when they are kept. All of it is taken on that
-        # frame, because by the time the thing has differed long enough to be called drift
-        # both consoles have played on and the frame cannot be asked for again.
-        Beginning = Data.define(:frame, :moment, :readings, :pictures, :picture_difference)
+        # ONE FRAME AS IT WAS SEEN: its number, the moment named before it, what was seen
+        # (Compared::Seen, or nil on a frame that is not looked at), and what is kept from it
+        # in case something begins to differ on it (Kept, or nil when nothing did).
+        Observation = Data.define(:frame, :moment, :seen, :kept)
 
-        # A drift that has not ended, with the two screens on the frame it began.
-        UnderWay = Struct.new(:drift, :pictures)
+        # WHAT IS KEPT FROM A FRAME ON WHICH SOMETHING DIFFERS, because by the time it has
+        # differed long enough to be called drift both consoles have played on and the frame
+        # cannot be asked for again: the two screens (for a report), how the pictures
+        # differed, which video memories differed, and the part of the screen looked at.
+        Kept = Data.define(:pictures, :picture_difference, :video_differences, :part)
+
+        # THE FRAME A THING BEGAN TO DIFFER ON, and what was kept from it.
+        Beginning = Data.define(:frame, :moment, :readings, :kept)
+
+        # A drift that has not ended, with what was kept from the frame it began.
+        UnderWay = Struct.new(:drift, :kept)
 
         # Where a drift under way seems to have ended, and how: the frame before the one on
         # which nothing had differed for long enough.
         Lull = Data.define(:last_frame, :ended)
-        private_constant :Beginning, :UnderWay, :Lull
+        private_constant :Observation, :Kept, :Beginning, :UnderWay, :Lull
 
-        # +compared+ is what is compared on each frame, and +ignored+ the stretches that are
-        # not looked at, as ranges of frame numbers. +reporter+ is handed each drift as it
-        # ends, with the two screens on the frame it began, and hands the drift back with
-        # its report noted — or is nil, and then no screen is copied out, which is only
-        # worth doing for a report.
-        def initialize(first, second, compared, ignored, carrying_on:, reporter:)
+        # +compared+ is what is compared on each frame, +ignored+ the stretches that are not
+        # looked at, as ranges of frame numbers, and +looked_at+ the part of the screen looked
+        # at on each frame (LookedAt::OnTape). +torn+ is the strict rule for torn frames, or
+        # nil. +reporter+ is handed each drift as it ends, with the two screens on the frame
+        # it began and the part looked at there, and hands the drift back with its report
+        # noted — or is nil, and then no screen is copied out, which is only worth doing for
+        # a report.
+        def initialize(first, second, compared, ignored, looked_at:, torn:, carrying_on:, reporter:)
           @first = first
           @second = second
           @compared = compared
           @ignored = ignored
+          @looked_at = looked_at
+          @torn = torn
           @carrying_on = carrying_on
           @reporter = reporter
           @frames = 0
@@ -779,7 +687,9 @@ module VBlank
             @first.step(1, keys: keys)
             @second.step(1, keys: keys)
             @frames += 1
-            extend_or_end_differing_stretches
+            seen = observe
+            decided = @torn ? @torn.decide_previous(seen, [@first, @second]) : seen
+            extend_or_end_differing_stretches(decided) if decided
             return if stopped?
           end
         end
@@ -793,27 +703,50 @@ module VBlank
         # carry on.
         def stopped? = !@carrying_on && @drifts.any?
 
-        # The tape has run out: end the drift that is under way, if one is. It ended where
-        # it had seemed to, or it was still going and ran to the last frame that was played.
+        # The tape has run out: decide the last frame, if one is waiting, and end the drift
+        # that is under way, if one is. It ended where it had seemed to, or it was still going
+        # and ran to the last frame that was played.
         def end_playing
+          waiting = @torn&.last_observation
+          extend_or_end_differing_stretches(waiting) if waiting && !stopped?
           return end_drift_under_way(@lull.last_frame, @lull.ended) if @lull
 
           end_drift_under_way(@frames, :tape_ran_out)
+        end
+
+        # The frame just played, looked at. The part of the screen is asked for on every
+        # frame that is looked at, so a block that chooses it is asked in order.
+        private def observe
+          return Observation.new(frame: @frames, moment: @moment, seen: nil, kept: nil) if ignored_frame?
+
+          part = @looked_at.part_on(@frames, @first, @second)
+          seen = @compared.seen_on(@first, @second, part)
+          Observation.new(frame: @frames, moment: @moment, seen: seen, kept: (kept_from(seen, part) if beginning?(seen)))
+        end
+
+        # Whether something may begin to differ on this frame. With the strict rule for torn
+        # frames the frames before this one are not decided yet, so anything differing may be.
+        private def beginning?(seen) = @torn ? seen.differed.any? : (seen.differed - @began.keys).any?
+
+        private def kept_from(seen, part)
+          picture = seen.differed.include?(PICTURE)
+          Kept.new(pictures: ([@first.frame_gba, @second.frame_gba] if @reporter),
+                   picture_difference: (@compared.picture_difference(@first, @second, part) if picture),
+                   video_differences: (picture ? VideoDifference.between(@first, @second) : []), part: part)
         end
 
         # A thing that differs is remembered from the frame it began to, and is drift once
         # it has differed on every frame since for long enough. A frame on which it is
         # alike again ends its stretch, and so does a frame that is not looked at: nothing
         # is known about that one, so the frames either side of it are not in a row.
-        private def extend_or_end_differing_stretches
-          seen = @compared.seen_on(@first, @second) unless ignored_frame?
-          differed = seen ? seen.differed : []
+        private def extend_or_end_differing_stretches(observation)
+          differed = observation.seen ? observation.seen.differed : []
           @began.keep_if { |thing, _beginning| differed.include?(thing) }
-          start_differing_stretches(differed - @began.keys, seen)
-          lasted = @began.select { |_thing, beginning| @compared.drift_after?(@frames - beginning.frame + 1) }
+          start_differing_stretches(differed - @began.keys, observation)
+          lasted = @began.select { |_thing, beginning| @compared.drift_after?(observation.frame - beginning.frame + 1) }
           return start_drift_of(lasted) unless @under_way
 
-          lasted.empty? ? end_drift_once_settled : carry_drift_on(lasted.keys)
+          lasted.empty? ? end_drift_once_settled(observation) : carry_drift_on(lasted.keys)
         end
 
         # The drift goes on, and whatever has now differed for long enough is part of it —
@@ -827,20 +760,19 @@ module VBlank
         # ended on the frame before. It is ended for good once nothing is still differing
         # that began before this frame was over: such a thing may yet count, and then it
         # was one drift all along.
-        private def end_drift_once_settled
-          @lull ||= Lull.new(last_frame: @frames - 1, ended: ignored_frame? ? :not_looked_at : :back_in_step)
+        private def end_drift_once_settled(observation)
+          @lull ||= Lull.new(last_frame: observation.frame - 1, ended: observation.seen ? :back_in_step : :not_looked_at)
           return if @began.any? { |_thing, beginning| beginning.frame <= @lull.last_frame + 1 }
 
           end_drift_under_way(@lull.last_frame, @lull.ended)
         end
 
         # Things that begin to differ on one frame share what is kept from it.
-        private def start_differing_stretches(things, seen)
+        private def start_differing_stretches(things, observation)
           return if things.empty?
 
-          pictures = [@first.frame_gba, @second.frame_gba] if @reporter
-          beginning = Beginning.new(frame: @frames, moment: @moment, readings: seen.readings, pictures: pictures,
-                                  picture_difference: (@compared.picture_difference(@first, @second) if things.include?(PICTURE)))
+          beginning = Beginning.new(frame: observation.frame, moment: observation.moment, readings: observation.seen.readings,
+                                    kept: observation.kept)
           things.each { |thing| @began[thing] = beginning }
         end
 
@@ -850,9 +782,12 @@ module VBlank
         private def start_drift_of(lasted)
           beginning = lasted.values.first or return
 
+          kept = beginning.kept
+          picture_differed = lasted.key?(PICTURE)
           drift = Drift.new(frame: beginning.frame, moment: beginning.moment, differed: lasted.keys, readings: beginning.readings,
-                            picture_difference: beginning.picture_difference)
-          @under_way = UnderWay.new(drift, beginning.pictures)
+                            picture_difference: (kept.picture_difference if picture_differed),
+                            video_differences: picture_differed ? kept.video_differences : [])
+          @under_way = UnderWay.new(drift, kept)
           end_drift_under_way(nil, nil) unless @carrying_on
         end
 
@@ -864,7 +799,7 @@ module VBlank
           @under_way = nil
           @lull = nil
           drift = open.drift.with(last_frame: last_frame, ended: ended)
-          @drifts << (@reporter ? @reporter.call(drift, open.pictures) : drift)
+          @drifts << (@reporter ? @reporter.call(drift, open.kept.pictures, open.kept.part) : drift)
         end
 
         private def ignored_frame? = @ignored.any? { |stretch| stretch.cover?(@frames) }

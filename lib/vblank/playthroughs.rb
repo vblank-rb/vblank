@@ -16,7 +16,11 @@ require_relative "playthroughs/tape" # ...and the presses it made, written down 
 require_relative "playthroughs/tape_export" # ...and that tape written out for another emulator
 require_relative "playthroughs/playthrough_picture_folder" # ...and the folder its pictures are written into
 require_relative "playthroughs/comparison" # two cartridges played side by side on the same presses
+require_relative "playthroughs/comparison_likeness" # ...and how alike two pictures have to be
+require_relative "playthroughs/comparison_looked_at" # ...and which pixels of the screen it looks at, frame by frame
 require_relative "playthroughs/comparison_ignored_frames" # ...and the stretches of the playing it does not look at
+require_relative "playthroughs/comparison_torn_frames" # ...and the strict rule for a frame shown torn
+require_relative "playthroughs/comparison_video_differences" # ...and which video memories differ where the two part
 require_relative "playthroughs/comparison_readings" # ...and the numbers it reads off both and compares by name
 require_relative "playthroughs/comparison_compared" # ...and the list of what it compares: the picture, the readings
 require_relative "playthroughs/comparison_at_moments" # ...and the other way to compare: the same script on each

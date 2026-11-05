@@ -33,6 +33,27 @@ class TestComparisonOnTheSuperNintendo < Minitest::Test
     assert_plays_alike walker(224), walker(228), standing, ignoring_rectangles: [[224, 56, 32, 16]]
   end
 
+  def test_a_part_looked_within_reaches_past_the_advance_s_columns
+    standing = VBlank.playthrough("stand") { wait frames: 20 }
+
+    assert_plays_alike walker(224), walker(228), standing, looking_at: [[0, 0, 256, 56], [0, 72, 256, 152]]
+  end
+
+  def test_a_drift_names_the_super_nintendo_s_sprite_table
+    drift = walk.compare(walker(20), walker(28)).drift
+
+    assert_includes drift.video_differences.map(&:memory), :sprite_table
+    refute_includes drift.video_differences.map(&:memory), :colors
+  end
+
+  # bsnes here draws every layer together, so a picture without its sprites cannot be had.
+  def test_the_picture_without_sprites_is_refused_naming_the_console
+    error = assert_raises(ArgumentError) { assert_plays_alike walker(20), walker(28), walk, layers: :backgrounds }
+
+    assert_match "Super Nintendo", error.message
+    assert_match "`layers:`", error.message
+  end
+
   def test_a_difference_is_placed_on_the_console_s_screen
     failure = assert_raises(Minitest::Assertion) { assert_plays_alike walker(20), walker(28), walk }
 

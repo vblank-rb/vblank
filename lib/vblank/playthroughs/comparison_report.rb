@@ -121,6 +121,7 @@ module VBlank
           [
             *where_lines,
             screens_sentence,
+            *video_lines,
             "",
             *readings_lines,
             "What was played",
@@ -147,6 +148,14 @@ module VBlank
           return "The two screens were the same picture there." if @screens.first == @screens.second
 
           "The two screens differed only in the parts that were not looked at."
+        end
+
+        # Which of the console's video memories differed there, each with its first
+        # difference: nothing when none did or the picture did not differ.
+        def video_lines
+          return [] if @drift.video_differences.empty?
+
+          ["These video memories differed there: #{@drift.video_differences.map(&:in_words).join('; ')}."]
         end
 
         # +where+ is `on that frame` or `at that moment`.

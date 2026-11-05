@@ -37,11 +37,12 @@ module VBlank
         # Look at two running cartridges on the frame they have just played. Every reading
         # is read, once, whether or not readings are compared: a drift says them all, and a
         # block that cannot read its cartridge is found on the first frame and not on the
-        # frame of a drift.
-        def seen_on(first, second)
+        # frame of a drift. +part+ is the part of the screen looked at on this frame
+        # (LookedAt::Part).
+        def seen_on(first, second, part)
           readings = @readings.values_on(first, second)
           differed = []
-          differed << PICTURE if picture? && !@likeness.alike?(first, second)
+          differed << PICTURE if picture? && !@likeness.alike?(first, second, part)
           differed.concat(Readings.differing(readings)) if readings?
           Seen.new(differed: differed, readings: readings)
         end
@@ -49,14 +50,14 @@ module VBlank
         # How the two running cartridges' pictures differ, of the places looked at
         # (Verifier#difference_from: how many pixels, the box they lie in, the first and its two
         # colours), or nil. Asked once, on the frame a difference in the picture begins.
-        def picture_difference(first, second) = @likeness.difference(first, second)
+        def picture_difference(first, second, part) = @likeness.difference(first, second, part)
 
         # The same question of two cartridges that are not running side by side, asked of
         # what was kept from each: +pictures+ is their two screens, and +readings+ every
         # named reading as its pair of values.
-        def differing_between(pictures, readings)
+        def differing_between(pictures, readings, part)
           differed = []
-          differed << PICTURE if picture? && !@likeness.pictures_alike?(*pictures)
+          differed << PICTURE if picture? && !@likeness.pictures_alike?(*pictures, part)
           differed.concat(Readings.differing(readings)) if readings?
           differed
         end

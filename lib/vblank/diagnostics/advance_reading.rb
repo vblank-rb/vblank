@@ -18,6 +18,36 @@ module VBlank
       # draws from — so these are what turns "group 4" into a place in the table.
       PALETTE = Verifier::PaletteLayout.new(half: 256, group: 16)
 
+      # THE VIDEO REGISTERS THAT CAN BE READ BACK, by the manual's names: which layers and mode
+      # are on, each background's settings, the windows, and the blending. The scroll registers
+      # cannot be read back on the console, so the scroll is a memory of its own below, read from
+      # what the emulator kept.
+      VIDEO_REGISTERS = { DISPCNT: 0x0400_0000, BG0CNT: 0x0400_0008, BG1CNT: 0x0400_000A, BG2CNT: 0x0400_000C,
+                          BG3CNT: 0x0400_000E, WININ: 0x0400_0048, WINOUT: 0x0400_004A, BLDCNT: 0x0400_0050,
+                          BLDALPHA: 0x0400_0052 }.freeze
+
+      # Where the table of 128 sprites is, and how many bytes it holds: eight for each sprite,
+      # the last two of each eight being the rotation numbers kept between them.
+      SPRITE_TABLE = 0x0700_0000
+      SPRITE_TABLE_BYTES = 1024
+
+      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures: each memory a
+      # list of what is at each place in it, by where (Comparison::VideoDifference names the
+      # first place two cartridges differ). +colors+ is the 512 colours by their number,
+      # +sprite_table+ the table of sprites as halfwords by their byte in it, +scroll+ each
+      # background's scroll across and down, and +registers+ the registers above by name.
+      def video_memories
+        ensure_rendered!
+        { colors: palette.each_with_index.to_h { |color, at| [at, color] },
+          sprite_table: (0...SPRITE_TABLE_BYTES).step(2).to_h { |at| [at, mem16(SPRITE_TABLE + at)] },
+          scroll: (0..3).each_with_object({}) do |which, kept|
+            across, down = @probe.scroll(which)
+            kept[:"background #{which} across"] = across
+            kept[:"background #{which} down"] = down
+          end,
+          registers: VIDEO_REGISTERS.transform_values { |address| mem16(address) } }
+      end
+
       # A list here is its slots, with its length and, for one the game shifts, where its oldest
       # item is, kept apart from them (IR::Backends::GBA::Lists#list_places).
       private def kept_list_items(place)

@@ -29,9 +29,11 @@ module VBlank
         # named reading as it was at each moment.
         Side = Data.define(:played, :readings)
 
-        def initialize(sides, compared:, frames_apart:, left_out:)
+        # +part+ is the part of the screen looked at (LookedAt::Part), the same at every moment.
+        def initialize(sides, compared:, frames_apart:, left_out:, part:)
           @first, @second = sides
           @compared = compared
+          @part = part
           @frames_apart = frames_apart
           @left_out = left_out
         end
@@ -85,7 +87,7 @@ module VBlank
         end
 
         def differing_at(name)
-          differed = @compared.differing_between(pictures_at(name), readings_at(name))
+          differed = @compared.differing_between(pictures_at(name), readings_at(name), @part)
           differed << FRAMES_APART if too_far_apart?(name)
           differed
         end

@@ -23,10 +23,15 @@ module VBlank
     # off each and compared by name: a block for each side, handed the running cartridge, so the
     # original's is read by address, `game.mem16(0xD4B4)`, and ours by a variable's name, `:lives`),
     # `comparing:`, `lead_ins:` and `reports_in:` (a folder for the two pictures and what differed).
+    # `looking_at:` and `ignoring_rectangles:` take a list for each stretch of frames, or a block that
+    # works the part out on each frame (a part that slides with the scenery); `pixels_apart:` looks at
+    # every few pixels only; `layers:` compares the picture without its sprites or the sprites alone;
+    # and `forgiving_torn_frames_of: :second` forgives the original a torn frame only where ours
+    # already shows the frame it settles on.
     #
     # A failure says where the two first part: the frame and the moment before it, what differed,
     # every reading on both, how many pixels differ, the box they lie in, the first of them and its
-    # colour on each, and the report's folder when one was written.
+    # colour on each, which video memories differ, and the report's folder when one was written.
     #
     # It plays both in the emulator, so the game's test group needs the emulator gems.
     module PlaysAlike
@@ -39,7 +44,7 @@ module VBlank
       def self.drift_message(drift)
         moment = drift.moment ? " The last moment named was #{drift.moment}." : ""
         ["The two cartridges stop playing alike on frame #{drift.frame}.#{moment} What differed: #{differed_words(drift)}.",
-         *readings_words(drift), *picture_words(drift.picture_difference),
+         *readings_words(drift), *picture_words(drift.picture_difference), *video_words(drift),
          ("The report is in #{drift.report}." if drift.report)].compact.join("\n")
       end
 
@@ -63,7 +68,13 @@ module VBlank
         ["#{difference.fetch(:count)} pixels differ, all in the box from (#{x}, #{y}), #{width} wide and #{height} high. " \
          "The first is at (#{at_x}, #{at_y}): #{first_color} on the first cartridge and #{second_color} on the second."]
       end
-      private_class_method :differed_words, :readings_words, :picture_words
+      # Which of the console's video memories differed, each with its first difference.
+      def self.video_words(drift)
+        return [] if drift.video_differences.empty?
+
+        ["These video memories differ: #{drift.video_differences.map(&:in_words).join('; ')}."]
+      end
+      private_class_method :differed_words, :readings_words, :picture_words, :video_words
     end
   end
 end

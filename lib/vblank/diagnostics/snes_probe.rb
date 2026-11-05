@@ -62,6 +62,16 @@ module VBlank
 
       def palette = @core.cgram.unpack("v*")
 
+      # The sprite table as bsnes holds it: 544 bytes, four for each of 128 sprites and then
+      # the 32 that hold each sprite's top bit of across and its size.
+      def sprite_table = @core.oam
+
+      # bsnes here draws every layer into one picture and takes no word to leave one out.
+      def showing(**)
+        raise ArgumentError, "This reader cannot draw the picture without a layer on a Super Nintendo cartridge. " \
+                             "bsnes here draws every layer together."
+      end
+
       # A Super Nintendo cartridge here has no motor.
       def motor_on? = false
 

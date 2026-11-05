@@ -20,6 +20,24 @@ module VBlank
       # for the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 32, group: 4)
 
+      # The Color's table of forty sprites, four bytes each, and its scroll and window registers
+      # and the register that switches the parts of the picture on, by the manual's names.
+      SPRITE_TABLE = 0xFE00
+      SPRITE_TABLE_BYTES = 160
+      SCROLL_REGISTERS = { SCY: 0xFF42, SCX: 0xFF43, WY: 0xFF4A, WX: 0xFF4B }.freeze
+      VIDEO_REGISTERS = { LCDC: 0xFF40 }.freeze
+
+      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
+      # AdvanceReading#video_memories says it: the 64 colours, the sprite table by its bytes,
+      # the scroll and the window's place, and the register that switches the parts on.
+      def video_memories
+        ensure_rendered!
+        { colors: palette.each_with_index.to_h { |color, at| [at, color] },
+          sprite_table: (0...SPRITE_TABLE_BYTES).to_h { |at| [at, mem8(SPRITE_TABLE + at)] },
+          scroll: SCROLL_REGISTERS.transform_values { |address| mem8(address) },
+          registers: VIDEO_REGISTERS.transform_values { |address| mem8(address) } }
+      end
+
       # A GAME BOY CARTRIDGE WITH A CLOCK CHIP has the emulator write the chip's counters, and the
       # moment it last read them, after the save memory in its file: 48 bytes, the layout other Game
       # Boy emulators write too. What the game saved is the memory before them, in whole banks.

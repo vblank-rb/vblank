@@ -582,6 +582,15 @@ module VBlank
         --frames-in-a-row N      How many frames in a row must differ.
         --ignoring-rectangles X,Y,WIDTH,HEIGHT ...
                                  Parts of the screen to leave out.
+        --looking-at X,Y,WIDTH,HEIGHT ...
+                                 Look only inside these parts of the screen.
+        --pixels-apart N         Look at every Nth pixel across and down only.
+        --layers WHICH           backgrounds: the picture without its sprites.
+                                 sprites: the sprites alone.
+        --forgiving-torn-frames-of WHICH
+                                 first or second: forgive that cartridge a frame
+                                 unlike the frames either side of it, where the
+                                 other already shows the frame after it.
         --ignoring-frames RANGE ...
                                  Frames to leave out: 1..120, 900.., or moments
                                  by name, title..in_the_world.
@@ -604,6 +613,10 @@ module VBlank
     option :share_may_differ, type: :numeric, banner: "SHARE"
     option :frames_in_a_row, type: :numeric, banner: "N"
     option :ignoring_rectangles, type: :array, banner: "X,Y,WIDTH,HEIGHT"
+    option :looking_at, type: :array, banner: "X,Y,WIDTH,HEIGHT"
+    option :pixels_apart, type: :numeric, banner: "N"
+    option :layers, banner: "WHICH", enum: %w[backgrounds sprites]
+    option :forgiving_torn_frames_of, banner: "WHICH", enum: %w[first second]
     option :ignoring_frames, type: :array, banner: "RANGE"
     option :readings, type: :array, banner: "NAME[=VARIABLE[,VARIABLE]]"
     option :comparing, type: :array, banner: "WHAT", enum: %w[picture readings]

@@ -36,6 +36,21 @@ class TestComparisonOnTheColor < Minitest::Test
     end
   end
 
+  def test_a_part_looked_within_is_on_the_color_s_screen
+    assert_plays_alike walker(20), walker(28), walk, looking_at: [[0, 0, 160, 56], [0, 72, 160, 72]]
+  end
+
+  def test_the_picture_without_sprites_forgives_a_sprite_elsewhere
+    assert_plays_alike walker(20), walker(28), walk, layers: :backgrounds
+  end
+
+  def test_a_drift_names_the_color_s_sprite_table
+    drift = walk.compare(walker(20), walker(28)).drift
+
+    assert_includes drift.video_differences.map(&:memory), :sprite_table
+    refute_includes drift.video_differences.map(&:memory), :colors
+  end
+
   def test_a_rectangle_off_the_color_s_screen_is_refused_naming_its_size
     error = assert_raises(ArgumentError) { assert_plays_alike walker(20), walker(20), walk, ignoring_rectangles: [[150, 0, 20, 8]] }
 

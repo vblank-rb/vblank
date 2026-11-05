@@ -361,7 +361,8 @@ module VBlank
         said = Comparison.settings.to_h { |setting| [setting, options[setting]] }.compact
         said.to_h do |setting, written|
           [setting, case setting
-                    when :ignoring_rectangles then written.map { |one| parse_rectangle(one) }
+                    when :ignoring_rectangles, :looking_at then written.map { |one| parse_rectangle(one, setting) }
+                    when :layers, :forgiving_torn_frames_of then written.to_sym
                     when :ignoring_frames then written.map { |one| parse_frame_stretch(one) }
                     when :readings then written.to_h { |one| parse_reading(one) }
                     when :comparing then written.map(&:to_sym)
@@ -372,12 +373,12 @@ module VBlank
         end
       end
 
-      def parse_rectangle(written)
+      def parse_rectangle(written, setting)
         numbers = written.split(",")
         return numbers.map(&:to_i) if numbers.size == 4 && numbers.all? { |number| number.match?(/\A\d+\z/) }
 
-        raise Refused, "--ignoring-rectangles #{written} is not a rectangle. Write it as X,Y,WIDTH,HEIGHT, " \
-                       "for example --ignoring-rectangles 0,128,240,32."
+        flag = "--#{setting.to_s.tr('_', '-')}"
+        raise Refused, "#{flag} #{written} is not a rectangle. Write it as X,Y,WIDTH,HEIGHT, for example #{flag} 0,128,240,32."
       end
 
       # A stretch as it is written on a command line: two ends with two dots between them,
