@@ -4,9 +4,9 @@ require "test_helper"
 require "digest"
 require "tmpdir"
 
-# A game's test that needs the player's copy of the original asks for it with `original_copy`: a
-# machine with none set skips the test, saying what to set, and a copy that is set and wrong fails
-# it, since that is a mistake to fix and not a machine without the game.
+# A game's test that needs the player's copy of the original asks for it with `original_copy`. A
+# machine with none set stops the test, saying what to set, and nothing skips: a suite that skipped
+# would pass having checked nothing of the game. A copy that is set and wrong stops it too.
 class TestOriginalCopy < Minitest::Test
   include VBlank::Testing
 
@@ -16,12 +16,11 @@ class TestOriginalCopy < Minitest::Test
                                releases: { "US" => { "sha1" => Digest::SHA1.hexdigest("right") } })
   end
 
-  def test_a_machine_with_no_copy_skips_saying_what_to_set
+  def test_a_machine_with_no_copy_stops_saying_what_to_set
     Dir.mktmpdir do |folder|
-      skipped = assert_raises(Minitest::Skip) { original_copy(game(folder, {})) }
+      stopped = assert_raises(VBlank::Original::NotSet) { original_copy(game(folder, {})) }
 
-      assert VBlank::Testing::NotOnThisMachine === skipped # rubocop:disable Style/CaseEquality
-      assert_match "PINBALL_ROM", skipped.message
+      assert_match "PINBALL_ROM", stopped.message
     end
   end
 

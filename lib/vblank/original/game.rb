@@ -11,8 +11,8 @@ module VBlank
     class CopyError < StandardError; end
 
     # NOTHING SAYS WHERE THE COPY IS: neither the setting nor the settings file names one. A fresh
-    # clone of a game is like this, so a test skips (Testing#original_copy) and a build can carry on
-    # without the original's data. Every other CopyError is a mistake to fix.
+    # clone of a game is like this. A build can carry on without the original's data; a test stops,
+    # saying what to set (Testing#original_copy). Every other CopyError is a mistake to fix.
     class NotSet < CopyError; end
 
     # A COPY WAS NAMED AND CANNOT BE USED: nothing is there, it is the wrong length, its bytes are

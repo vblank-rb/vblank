@@ -145,18 +145,13 @@ module VBlank
     def skip_on_this_machine(why) = raise(NotOnThisMachine, why)
 
     # THE PLAYER'S COPY OF THE ORIGINAL +game+ (an Original::Game) IS MADE FROM, for a test that reads
-    # it. A machine where nothing says where one is skips the test, saying what to set: the copy
-    # cannot ship with the game, so a fresh clone has none, and the end of the run lists the skip. A
-    # copy that is named and wrong fails the test (Original::WrongCopy), since that is a mistake to
-    # fix, and a suite that skipped it would pass having checked nothing.
+    # it. A machine where nothing says where one is stops the test (Original::NotSet), saying what to
+    # set, and a copy that is named and wrong stops it too (Original::WrongCopy). Nothing skips: the
+    # games' shared rule is that a suite without the copy stops, because a suite that skipped would
+    # pass having checked nothing of the game.
     #
-    # It is the one choice for every game, so no game makes its own. A machine a run is trusted on
-    # must name the copy: a run there that lists this skip has not checked it.
-    def original_copy(game)
-      game.copy
-    rescue Original::NotSet => e
-      skip_on_this_machine(e.message)
-    end
+    # It is the one choice for every game, so no game makes its own.
+    def original_copy(game) = game.copy
 
     # A test of an example +game+ (a VBlank.game) skips on a console the game does not name yet: it is
     # laid out for its own consoles, so there is nothing to play.
