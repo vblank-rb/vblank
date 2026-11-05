@@ -47,6 +47,7 @@ module VBlank
                                                list_new: :emit_list_new, list_push: :emit_list_push,
                                                list_drop: :emit_list_drop, list_set: :emit_list_set,
                                                list_fill: :emit_list_fill, list_copy: :emit_list_copy,
+                                               list_sort: :emit_list_sort,
                                                timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
                                                # a timer's handler runs as its timer ticks, not where it is written
                                                on_timer: :emit_nothing,
@@ -878,9 +879,36 @@ module VBlank
             return list_call("rt_list_get", node, node.index) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
-            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_pool_list?(node.name, node.index))
+            slot = fixed_slot_address(node, place, width)
+            return emit_read_slot_at_x(slot, width, x: false) if slot
+
+            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
             emit_read_slot_at_x(place + Runtime::Lists::HEADER, width)
           end
+
+          # Where the slot is, when the index is a number written in the program that is always
+          # inside the list (#index_inside_full_list?): the read or write then names the slot
+          # itself, with no index worked out at all. Nil otherwise.
+          def fixed_slot_address(node, place, width)
+            number = folded(node.index)
+            return nil unless number && index_inside_full_list?(node.name, node.index)
+
+            place + Runtime::Lists::HEADER + (number * width)
+          end
+
+          # Where the two halves of +node+ are when it reads a whole-word slot at a fixed address
+          # (#fixed_slot_address), so a copy from one word slot to another is two loads and two
+          # stores; nil for anything else.
+          def fixed_word_slot_halves(node)
+            return nil unless node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
+
+            place, _capacity, width = list_placed(node)
+            slot = width == 4 && fixed_slot_address(node, place, width)
+            slot ? [@asm.long(slot), @asm.long(slot, 2)] : nil
+          end
+
+          # The operand naming a slot: +slots+ plus X, or +slots+ itself when +x+ is false.
+          def slot_operand(slots, plus, x) = x ? @asm.long_x(slots, plus) : @asm.long(slots, plus)
 
           # Reference#exec_list_set: the index worked out, then the value, then the test. An index
           # that is a variable or a written number is read where it is, after the value: working a
@@ -890,8 +918,23 @@ module VBlank
 
             place, _capacity, width = list_placed(node)
             halves = operand_halves(node.value)
+            slot = fixed_slot_address(node, place, width)
+            halves ||= fixed_word_slot_halves(node.value) if slot && width == 4
+            if slot
+              # A word's sum is written straight into its slot, a half at a time.
+              if !halves && width == 4 && sum_in_halves?(node.value) && %i[+ -].include?(node.value.op)
+                return emit_sum_into(node.value, [@asm.long(slot), @asm.long(slot, 2)])
+              end
+
+              unless halves
+                value(node.value)
+                halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
+              end
+              return emit_write_slot_at_x(slot, width, halves, x: false)
+            end
+
             index = operand_halves(node.index)
-            checked = !index_inside_pool_list?(node.name, node.index)
+            checked = !index_inside_full_list?(node.name, node.index)
             if halves
               emit_slot_into_x(place, width, index_halves(node.index), checked: checked)
             elsif index
@@ -926,24 +969,26 @@ module VBlank
             @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
           end
 
-          # A POOL KNOWS ITS SLOTS ARE IN ITS LISTS. A field of the thing a walk is on, read or
-          # written in `pool.each` or in a routine of the pool, is a list of the pool's own at a
-          # variable the pool keeps a slot in (DSL::Pool::SLOT_PARTS); a pool's sprite reads its
-          # place in the order, a number written in the program below the pool's capacity. Each
-          # list of a pool's own is made full when the game starts, its capacity the pool's. So
-          # the test that the index is inside the list, five instructions on every field, can
-          # never fail there and is left out. Every other list read or write keeps it: a list that
-          # is not a pool's, one ever made longer or shorter, or another pool's slot.
-          def index_inside_pool_list?(list, index)
+          # AN INDEX THAT CANNOT FALL OUTSIDE ITS LIST. A list made full and never made longer or
+          # shorter holds its capacity for good, so a number written in the program below that
+          # capacity is always inside it: a pool's sprite reading its place in the order, a draw
+          # order setting the number of each of its things. And a pool knows its slots are in its
+          # lists: a field of the thing a walk is on, read or written in `pool.each` or in a routine
+          # of the pool, is a list of the pool's own at a variable the pool keeps a slot in
+          # (DSL::Pool::SLOT_PARTS), each made full when the game starts. So the test that the
+          # index is inside the list, five instructions on every read, can never fail there and is
+          # left out. Every other list read or write keeps it: one ever made longer or shorter, an
+          # index worked out, or another pool's slot.
+          def index_inside_full_list?(list, index)
             capacity = full_length_lists[list]
-            pool = DSL::Pool.owner_of_list(list)
-            return false unless capacity && pool
+            return false unless capacity
 
             number = folded(index)
             return number.between?(0, capacity - 1) if number
 
+            pool = DSL::Pool.owner_of_list(list)
             var = variable_named(index)
-            !var.nil? && DSL::Pool.walked_by(var) == pool
+            !pool.nil? && !var.nil? && DSL::Pool.walked_by(var) == pool
           end
 
           # The lists made full of one number and never made longer or shorter after, so each holds
@@ -962,7 +1007,7 @@ module VBlank
           # X at how far into its slots the item the number in +index+ (its two halves) names is. An
           # index outside the list is handed to the runtime, in R0 or R1, which stops the game in the
           # interpreter's words and never returns. Without +checked+, the index is known to be inside
-          # (#index_inside_pool_list?).
+          # (#index_inside_full_list?).
           def emit_slot_into_x(place, width, index, checked: true)
             unless checked
               @asm.lda(index[0])
@@ -995,17 +1040,17 @@ module VBlank
 
           # R0 = the slot at +slots+ plus X. A slot narrower than a word reads back with its top bit
           # as the sign (Reference::ListValue#wrap_to_width).
-          def emit_read_slot_at_x(slots, width)
+          def emit_read_slot_at_x(slots, width, x: true)
             if width == 4
-              @asm.lda(@asm.long_x(slots, 2))
+              @asm.lda(slot_operand(slots, 2, x))
               @asm.sta(@asm.direct(R0 + 2))
-              @asm.lda(@asm.long_x(slots))
+              @asm.lda(slot_operand(slots, 0, x))
               return @asm.sta(@asm.direct(R0))
             end
 
             read = fresh("slot_read")
             @asm.stz(@asm.direct(R0 + 2))
-            @asm.lda(@asm.long_x(slots))
+            @asm.lda(slot_operand(slots, 0, x))
             if width == 1
               @asm.and_a(0x00FF)
               @asm.cmp(0x0080)
@@ -1019,19 +1064,236 @@ module VBlank
             @asm.sta(@asm.direct(R0))
           end
 
-          def emit_write_slot_at_x(slots, width, halves)
+          def emit_write_slot_at_x(slots, width, halves, x: true)
             @asm.lda(halves.first)
             if width == 1
               @asm.sep(0x20)
-              @asm.sta(@asm.long_x(slots))
+              @asm.sta(slot_operand(slots, 0, x))
               return @asm.rep(0x20)
             end
 
-            @asm.sta(@asm.long_x(slots))
+            @asm.sta(slot_operand(slots, 0, x))
             return unless width == 4
 
             @asm.lda(halves.last)
-            @asm.sta(@asm.long_x(slots, 2))
+            @asm.sta(slot_operand(slots, 2, x))
+          end
+
+          # A LIST PUT IN ORDER, written in place (Reference#exec_list_sort): an insertion sort over
+          # the slots, which are where they are for good (a list nothing takes from the front keeps
+          # its first item in its first slot), so both lists are reached with their own addresses.
+          # Each item is taken in turn and moved back past every item before it whose number is
+          # strictly beyond its own, so level items keep their order, and a list already in order
+          # costs one compare an item. The console's own games put their sprites in order by height
+          # every frame the same way, in about ten instructions a sprite.
+          #
+          # Y is how far into the list's slots the item taken is, and two pointers on the direct page
+          # reach the slot there and the slot before it, so a step back is a load and a store with
+          # Y; X is how far into +by+'s slots an item's number is, so it is compared where it lies.
+          # A half or a byte number fits in 16 bits once its sign is spread, so it is kept and
+          # compared as 16 bits.
+          #
+          # The number of the item in the slot before the one taken is kept in R0, so the first
+          # compare of each item, the only one when nothing passed anything, reads nothing but the
+          # item's own number. It stays true either way: an item that stays is the slot's now, and
+          # one that moves back moves the item that was before it into its slot. An item that stays
+          # is the whole of that path: its number into R0, Y on to the next. Everything a move needs
+          # is set up only when one is, out of the way after the loop.
+          #
+          #   R0  the number of the item in the slot before    R1  how far in the item that moves
+          #   R2  the item that moves, as its slot holds it        is, and (high half) the list's end
+          #   R3  its number    R4  pointer to the slot before Y's    R5  pointer to Y's slot
+          def emit_list_sort(node)
+            refuse_ring_sort!(node)
+            place, _capacity, width = list_placed(node)
+            keys_place, _keys_capacity, key_width = @lists.fetch(node.by) do
+              raise LoweringError, "the list #{node.by.inspect} is sorted by and never declared"
+            end
+            sort = SortPlaces.new(slots: place + Runtime::Lists::HEADER, width: width,
+                                  keys: keys_place + Runtime::Lists::HEADER, key_width: key_width,
+                                  descending: node.descending)
+            next_item = fresh("sort_item")
+            moves = fresh("sort_moves")
+            step_back = fresh("sort_step")
+            placed = fresh("sort_placed")
+            advance = fresh("sort_next")
+            done = fresh("sort_done")
+
+            @asm.lda(@asm.long(place, Runtime::Lists::LENGTH))
+            @asm.cmp(2)
+            @asm.branch_long(:bcc, done) # one item or none is in order already
+            (width - 1).bit_length.times { @asm.asl }
+            @asm.sta(@asm.direct(SORT_SPAN + 2))
+            { SORT_BEFORE => sort.slots - width, SORT_AT => sort.slots }.each do |pointer, address|
+              @asm.lda(address & 0xFFFF)
+              @asm.sta(@asm.direct(pointer))
+              @asm.lda(address >> 16)
+              @asm.sta(@asm.direct(pointer + 2))
+            end
+            @asm.lda(@asm.long(sort.slots))
+            emit_sort_key_offset_into_x(sort)
+            emit_sort_key_copy(emit_sort_key_at_x(sort), R0)
+            @asm.ldy(width)
+
+            # Each item: stays, or moves.
+            @asm.label(next_item)
+            @asm.lda(@asm.ind_long_y(SORT_AT))
+            emit_sort_key_offset_into_x(sort)
+            key = emit_sort_key_at_x(sort)
+            emit_sort_compare(sort, sort.halves(@asm, R0), key)
+            @asm.bmi(moves)
+            emit_sort_key_copy(key, R0)
+            @asm.label(advance)
+            width.times { @asm.iny }
+            @asm.cpy(@asm.direct(SORT_SPAN + 2))
+            @asm.bcc(next_item)
+            @asm.brl(done)
+
+            # An item that moves: taken, and every item before it whose number is beyond its own
+            # moved up a slot, the first of them the one already compared.
+            @asm.label(moves)
+            @asm.sty(@asm.direct(SORT_SPAN))
+            emit_sort_key_copy(key, SORT_KEY)
+            @asm.lda(@asm.ind_long_y(SORT_AT))
+            @asm.sta(@asm.direct(SORT_ITEM))
+            if width == 4
+              2.times { @asm.iny }
+              @asm.lda(@asm.ind_long_y(SORT_AT))
+              @asm.sta(@asm.direct(SORT_ITEM + 2))
+              2.times { @asm.dey }
+            end
+            emit_sort_slot_move_up(width)
+            width.times { @asm.dey }
+            @asm.beq(placed)
+            @asm.label(step_back)
+            @asm.lda(@asm.ind_long_y(SORT_BEFORE))
+            emit_sort_key_offset_into_x(sort)
+            emit_sort_compare(sort, emit_sort_key_at_x(sort), sort.halves(@asm, SORT_KEY))
+            @asm.bpl(placed)
+            emit_sort_slot_move_up(width)
+            width.times { @asm.dey }
+            @asm.bne(step_back)
+            @asm.label(placed)
+            @asm.lda(@asm.direct(SORT_ITEM))
+            emit_sort_slot_write(width)
+            @asm.ldy(@asm.direct(SORT_SPAN))
+            @asm.brl(advance)
+            @asm.label(done)
+          end
+
+          # Where the sort keeps what it works with, on the direct page (#emit_list_sort).
+          SORT_SPAN = Memory.register(1)
+          SORT_ITEM = Memory.register(2)
+          SORT_KEY = Memory.register(3)
+          SORT_BEFORE = Memory.register(4)
+          SORT_AT = Memory.register(5)
+          SORT_SPREAD = Memory.register(6)
+
+          # One list_sort's two lists: where each one's slots start and how wide a slot is, and which
+          # way round. +halves+ is where a number kept on the direct page at +at+ is, as operands: one
+          # 16-bit half, or two for a word.
+          SortPlaces = Data.define(:slots, :width, :keys, :key_width, :descending) do
+            def halves(asm, at) = key_width == 4 ? [asm.direct(at), asm.direct(at + 2)] : [asm.direct(at)]
+          end
+
+          # X = how far into +by+'s slots the number of the item in A is: a byte slot's item is its
+          # low byte alone.
+          def emit_sort_key_offset_into_x(sort)
+            @asm.and_a(0x00FF) if sort.width == 1
+            (sort.key_width - 1).bit_length.times { @asm.asl }
+            @asm.tax
+          end
+
+          # The number +by+ holds at X, as the operands it can be read from: where it lies, for a
+          # half or a word, or the direct page once a byte's sign is spread through 16 bits.
+          def emit_sort_key_at_x(sort)
+            case sort.key_width
+            when 4 then [@asm.long_x(sort.keys), @asm.long_x(sort.keys, 2)]
+            when 2 then [@asm.long_x(sort.keys)]
+            else
+              @asm.lda(@asm.long_x(sort.keys))
+              emit_byte_sign_spread
+              @asm.sta(@asm.direct(SORT_SPREAD))
+              [@asm.direct(SORT_SPREAD)]
+            end
+          end
+
+          # The number at +halves+ kept on the direct page at +at+.
+          def emit_sort_key_copy(halves, at)
+            halves.each_with_index do |half, i|
+              @asm.lda(half)
+              @asm.sta(@asm.direct(at + (2 * i)))
+            end
+          end
+
+          # A's low byte as a signed number in all 16 bits: flipping the top bit and taking it away
+          # again carries the sign up.
+          def emit_byte_sign_spread
+            @asm.and_a(0x00FF)
+            @asm.eor(0x0080)
+            @asm.sec
+            @asm.sbc(0x0080)
+          end
+
+          # N set when the number at +before+ (its halves) is strictly beyond the one at +key+: above
+          # it, or below it when the sort is descending, so the item whose number is +key+ moves back
+          # past it. The one taken from the other is signed, so its sign is the answer once an
+          # overflow (V) has turned it round.
+          def emit_sort_compare(sort, before, key)
+            first, second = sort.descending ? [before, key] : [key, before]
+            signed = fresh("sort_signed")
+            @asm.lda(first[0])
+            @asm.sec
+            @asm.sbc(second[0])
+            if sort.key_width == 4
+              @asm.lda(first[1])
+              @asm.sbc(second[1])
+            end
+            @asm.bvc(signed)
+            @asm.eor(0x8000)
+            @asm.label(signed)
+          end
+
+          # The slot before Y's copied into Y's, as many bytes as a slot takes.
+          def emit_sort_slot_move_up(width)
+            @asm.lda(@asm.ind_long_y(SORT_BEFORE))
+            return emit_sort_byte_store if width == 1
+
+            @asm.sta(@asm.ind_long_y(SORT_AT))
+            return unless width == 4
+
+            2.times { @asm.iny }
+            @asm.lda(@asm.ind_long_y(SORT_BEFORE))
+            @asm.sta(@asm.ind_long_y(SORT_AT))
+            2.times { @asm.dey }
+          end
+
+          # A (the item's low half) into Y's slot, and its high half after it for a word.
+          def emit_sort_slot_write(width)
+            return emit_sort_byte_store if width == 1
+
+            @asm.sta(@asm.ind_long_y(SORT_AT))
+            return unless width == 4
+
+            2.times { @asm.iny }
+            @asm.lda(@asm.direct(SORT_ITEM + 2))
+            @asm.sta(@asm.ind_long_y(SORT_AT))
+          end
+
+          def emit_sort_byte_store
+            @asm.sep(0x20)
+            @asm.sta(@asm.ind_long_y(SORT_AT))
+            @asm.rep(0x20)
+          end
+
+          # A list taken from the front keeps its items round a ring, so its slots are not where the
+          # sort reaches them. The framework sorts only lists it made, which nothing takes from.
+          def refuse_ring_sort!(node)
+            ring = [node.name, node.by].find { |name| front_dropped_lists.include?(name) }
+            return unless ring
+
+            raise LoweringError, "the list #{ring.inspect} is put in order and also has items taken from its " \
+                                 "front, which the Super Nintendo's sort cannot reach. Sort a list nothing takes from the front."
           end
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its
@@ -1396,7 +1658,7 @@ module VBlank
 
           def compare_narrow_slot(op, slot, number)
             place, _capacity, width = list_placed(slot)
-            emit_slot_into_x(place, width, index_halves(slot.index), checked: !index_inside_pool_list?(slot.name, slot.index))
+            emit_slot_into_x(place, width, index_halves(slot.index), checked: !index_inside_full_list?(slot.name, slot.index))
             @asm.lda(@asm.long_x(place + Runtime::Lists::HEADER))
             @asm.and_a(0x00FF) if width == 1
             @asm.cmp(number & (width == 1 ? 0xFF : 0xFFFF))
@@ -1464,7 +1726,7 @@ module VBlank
             return emit_bitwise_halves(node, to) if BITWISE.include?(node.op)
 
             carry, sum = IN_PLACE_SUMS.fetch(node.op)
-            with_both_halves(node.lhs, node.rhs) do |lefts, halves|
+            with_both_halves(without_added_nought(node.lhs), node.rhs) do |lefts, halves|
               @asm.public_send(carry)
               2.times do |i|
                 @asm.lda(lefts[i])
@@ -1472,6 +1734,14 @@ module VBlank
                 @asm.sta(to[i])
               end
             end
+          end
+
+          # +node+ with any nought added to it or taken from it left out, since that changes nothing:
+          # a sprite's bottom is its place, plus where its box starts in it (often nought), plus the
+          # box's height, and the sum is then one add rather than two.
+          def without_added_nought(node)
+            node = node.lhs while sum_in_halves?(node) && %i[+ -].include?(node.op) && folded(node.rhs)&.zero?
+            node
           end
 
           # A comparison as a 1 when it holds and a 0 when it does not.
@@ -2028,7 +2298,7 @@ module VBlank
             place, _capacity, width = list_placed(node)
             return unless width == 4
 
-            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_pool_list?(node.name, node.index))
+            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
             ->(along) { @asm.long_x(place + Runtime::Lists::HEADER + along) }
           end
 

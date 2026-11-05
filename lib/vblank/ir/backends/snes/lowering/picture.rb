@@ -1850,7 +1850,47 @@ module VBlank
             # routine of its own (#sprite_placing_sections), so the entries share it. +depths+ is the
             # names of the depth being placed, by sprite, for a frame with sprites that change layer;
             # a sprite not named has no place at that depth.
+            #
+            # The list is the framework's own (Builder::DrawOrder#declare_order_lists): a place of the
+            # run pushed for each sprite as the game starts, before anything is drawn, and from then on
+            # only sorted or copied whole from a table of places, never made shorter or taken from the
+            # front. So every entry is in its slot and names a place of the run, and nothing is tested:
+            # each is read straight from its slot and doubled into X, and JSR (table,X) jumps to the entry's
+            # stub in a table of them written here, a JSL to its sprite's placing and an RTS: five
+            # instructions an entry however long the run, where comparing the entry with each place in
+            # turn would grow with the square of the run. The table is in this routine's own code, so
+            # in its bank, which is where JSR (table,X) reads it. A sprite with no place at this depth
+            # has a stub that only returns.
             def emit_ordered_run(run, depths = nil)
+              return emit_ordered_run_by_reads(run, depths) if front_dropped_lists.include?(run.order)
+
+              place, _capacity, width = @lists.fetch(run.order) do
+                raise LoweringError, "the list #{run.order.inspect} orders sprites and is never declared"
+              end
+              table = fresh("ordered_stubs")
+              stubs = run.objects.map { fresh("ordered_stub") }
+              placing = fresh("ordered_placing")
+              @asm.brl(placing)
+              @asm.label(table)
+              @asm.data_words(stubs)
+              run.objects.each_with_index do |name, at|
+                @asm.label(stubs[at])
+                call_routine(sprite_placing_label(name, depths&.fetch(name))) unless depths && !depths.key?(name)
+                @asm.rts
+              end
+              @asm.label(placing)
+              run.objects.each_index do |k|
+                @asm.lda(@asm.long(place + Runtime::Lists::HEADER + (k * width)))
+                @asm.and_a(0x00FF) if width == 1
+                @asm.asl
+                @asm.tax
+                @asm.jsr(@asm.ind_abs_x(table))
+              end
+            end
+
+            # The same run for an order list something takes from the front, whose slots move round:
+            # each entry read as any list read is.
+            def emit_ordered_run_by_reads(run, depths)
               entry = keep_local(:ordered_entry)
               run.objects.each_index do |k|
                 statement(Build.set(entry, Build.list_get(run.order, Build.int(k))))

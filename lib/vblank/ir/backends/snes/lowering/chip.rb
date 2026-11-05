@@ -84,6 +84,7 @@ module VBlank
               return "a change of scene (case_var), and a scene sets up the screen, which only the console can do" if kind == :case
               return "a drawing step (#{kind})" if node.category == :draw
               return "a sound step (#{kind})" if node.category == :sound
+              return "putting a list in order (list_sort)" if kind == :list_sort
 
               "the step #{kind}"
             end
