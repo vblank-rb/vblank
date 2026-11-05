@@ -37,10 +37,13 @@ module VBlank
           #   at the end of the range, as the interpreter holds it. That is also what makes the rest safe:
           #   the answer then fits 32 bits, and what is left over never reaches 32 bits.
           # - When the top half is nought, DIVU does the whole divide in one instruction.
-          # - Otherwise the long division of school, a bit at a time: what is left is moved up a bit, the
-          #   numerator's next bit is brought down into it, and the divisor taken away whenever it goes.
-          #   What is left is below the divisor, which is 2**31 at most, so moving it up a bit never loses
-          #   its top bit. Thirty-two times round, once for each bit of the answer.
+          # - Otherwise the long division of school, done with digits of sixteen bits rather than one bit
+          #   at a time, so DIVU works out each digit of the answer (Hacker's Delight, `divlu`, figure 9-3).
+          #   The divisor is first moved up until its top bit is set, and the numerator with it, which
+          #   changes no quotient. Then each of the answer's two digits is guessed by dividing the top of
+          #   what is left by the divisor's top digit; the guess is never too small and at most two too
+          #   big, and the divisor's second digit says which, so it is taken down until it is right. Two
+          #   divides and a few multiplies, where a bit at a time was thirty-two times round a loop.
           # - An answer of 2**31 or more does not fit with its sign, and is held too: the highest number
           #   for a positive answer, the lowest for a negative one (where 2**31 is exactly the lowest).
           #
@@ -72,7 +75,7 @@ module VBlank
               emit_widen_numerator(asm)
               asm.sltu(:t3, :t1, :a1)
               asm.beq(:t3, :zero, "rt_div_fix_too_big")
-              asm.bne(:t1, :zero, "rt_div_fix_long") { asm.li(:t4, 32) }
+              asm.bne(:t1, :zero, "rt_div_fix_long")
               asm.divu(:t2, :a1)
               asm.b("rt_div_fix_signed") { asm.mflo(:t2) }
               emit_long_division(asm)
@@ -103,20 +106,78 @@ module VBlank
               asm.label("rt_div_fix_split")
             end
 
-            # t1:t2 over a1, a bit at a time: the quotient's bits come in at the bottom of t2 as the
-            # numerator's go out at the top, and t1 holds what is left. t4 counts the bits.
+            # t1:t2 over a1, t1 below a1, into t2 (see A NUMBER WITH A FRACTION above). The divisor moved
+            # up is t3, by t4 places; its top digit t5 and its bottom one t6. What is left on top is t1,
+            # the numerator's two bottom digits t8 and t2. The answer's top digit is a0, its bottom one a3;
+            # a2 is what each guess leaves over.
             def emit_long_division(asm)
               asm.label("rt_div_fix_long")
-              asm.srl(:t5, :t2, 31)
-              asm.sll(:t1, :t1, 1)
-              asm.or(:t1, :t1, :t5)
-              asm.sll(:t2, :t2, 1)
-              asm.sltu(:t5, :t1, :a1)
-              asm.bne(:t5, :zero, "rt_div_fix_leave") { asm.addiu(:t4, :t4, -1) }
-              asm.subu(:t1, :t1, :a1)
-              asm.ori(:t2, :t2, 1)
-              asm.label("rt_div_fix_leave")
-              asm.bne(:t4, :zero, "rt_div_fix_long")
+              asm.move(:t3, :a1)
+              asm.move(:t4, :zero)
+              [16, 8, 4, 2, 1].each do |places|
+                kept = "rt_div_fix_top#{places}"
+                asm.srl(:t0, :t3, 32 - places)
+                asm.bne(:t0, :zero, kept)
+                asm.label("#{kept}_up")
+                asm.sll(:t3, :t3, places)
+                asm.addiu(:t4, :t4, places)
+                asm.label(kept)
+              end
+              asm.beq(:t4, :zero, "rt_div_fix_moved_up")
+              asm.label("rt_div_fix_move_up")
+              asm.sllv(:t1, :t1, :t4)
+              asm.li(:t0, 32)
+              asm.subu(:t0, :t0, :t4)
+              asm.srlv(:t0, :t2, :t0)
+              asm.or(:t1, :t1, :t0)
+              asm.sllv(:t2, :t2, :t4)
+              asm.label("rt_div_fix_moved_up")
+              asm.srl(:t5, :t3, 16)
+              asm.andi(:t6, :t3, 0xFFFF)
+              asm.srl(:t8, :t2, 16)
+              asm.andi(:t2, :t2, 0xFFFF)
+              asm.divu(:t1, :t5)
+              asm.mflo(:a0)
+              asm.mfhi(:a2)
+              emit_digit_correction(asm, "top", :a0, :t8)
+              # What is left once the top digit's share is taken away, over the next digit.
+              asm.sll(:t9, :t1, 16)
+              asm.or(:t9, :t9, :t8)
+              asm.multu(:a0, :t3)
+              asm.mflo(:t0)
+              asm.subu(:t9, :t9, :t0)
+              asm.divu(:t9, :t5)
+              asm.mflo(:a3)
+              asm.mfhi(:a2)
+              emit_digit_correction(asm, "bottom", :a3, :t2)
+              asm.sll(:t2, :a0, 16)
+              asm.or(:t2, :t2, :a3)
+            end
+
+            # The guessed digit in +digit+, with a2 left over from dividing by the divisor's top digit
+            # (t5), taken down while it is too big: while it is a whole digit's worth or more, or times the
+            # divisor's bottom digit (t6) it is past what is left over with the numerator's next digit
+            # (+next_digit+) brought down; a2 grows by the top digit each time, and once it is a whole
+            # digit's worth or more the guess is right. Changes t0 and v1.
+            def emit_digit_correction(asm, which, digit, next_digit)
+              again = "rt_div_fix_#{which}_again"
+              too_big = "rt_div_fix_#{which}_too_big"
+              right = "rt_div_fix_#{which}_right"
+              asm.label(again)
+              asm.srl(:t0, digit, 16)
+              asm.bne(:t0, :zero, too_big)
+              asm.multu(digit, :t6)
+              asm.mflo(:t0)
+              asm.sll(:v1, :a2, 16)
+              asm.or(:v1, :v1, next_digit)
+              asm.sltu(:t0, :v1, :t0)
+              asm.beq(:t0, :zero, right)
+              asm.label(too_big)
+              asm.addiu(digit, digit, -1)
+              asm.addu(:a2, :a2, :t5)
+              asm.srl(:t0, :a2, 16)
+              asm.beq(:t0, :zero, again)
+              asm.label(right)
             end
 
             # The quotient's size, in t2, given the sign in t7's top bit, or held at the end of the range.

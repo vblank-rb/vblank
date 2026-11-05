@@ -52,6 +52,18 @@ class TestPlacesOnThePlayStation < Minitest::Test
     assert_equal tile(2, 1), screen.pixel(60, 24), "-62.1 down is 1 past a repeat at -64"
   end
 
+  # The picture repeated two thousand times each way across a narrow face, 30 pixels wide: every
+  # square the face is cut into reaches thousands of texels across the picture, so it is cut on the
+  # picture dozens of times each way, far more than the pieces that can wait at once. The checked run
+  # holds every pixel to what those cuts send, so what the cutting keeps of one piece for the next
+  # cannot run out.
+  def test_a_picture_repeated_thousands_of_times_is_cut_on_the_picture_again_and_again
+    on_picture = [[-8000, -8000], [8000, -8000], [8000, 8000], [-8000, 8000]]
+    played = game_player.run(PlaceGames.square(on_picture: on_picture, x_scale: 0.25), frames: 2)
+
+    assert((105...135).any? { |x| played.screen.pixel(x, 80) != BLACK }, "the face is drawn")
+  end
+
   def test_a_face_wider_than_the_view_is_cut_at_its_edges
     screen = game_player.run(PlaceGames.square(x_scale: 3.0), frames: 2).screen
 

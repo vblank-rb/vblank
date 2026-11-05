@@ -73,7 +73,10 @@ module VBlank
           TEXEL_V = 6
           SHADE = 7
           NUMBERS = 8
-          # The numbers a cut on the picture or between levels steps (#corner_between).
+          # The numbers a cut across the screen steps (#corner_between): x and y (the one cut on is then
+          # the line), and what the texel is worked out from; the texel is worked out afresh.
+          SCREEN_CUT_NUMBERS = [X, Y, U_SOURCE, V_SOURCE, NEARNESS, SHADE].freeze
+          # The numbers a cut on the picture or between levels steps.
           LATE_CUT_NUMBERS = [X, Y, TEXEL_U, TEXEL_V, SHADE].freeze
 
           # One level of a shade: its whole part's one.
@@ -195,13 +198,14 @@ module VBlank
           # way along from the end below the line, the share with SHARE_BITS of fraction; then the number
           # cut on set to the line itself, and, for a line across the screen, the texel worked out there.
           #
-          # A cut on the picture or between levels comes after every cut across the screen, so nothing
-          # reads U_SOURCE, V_SOURCE or NEARNESS again: they are left as the start's, not stepped, which
-          # spares the runtime three multiplies a corner.
+          # Only what is read again is stepped, the rest left as the start's. On a line across the screen
+          # the texel is worked out afresh, so it is not stepped (SCREEN_CUT_NUMBERS). A cut on the picture
+          # or between levels comes after every cut across the screen, so nothing reads U_SOURCE, V_SOURCE
+          # or NEARNESS again (LATE_CUT_NUMBERS). Each multiply left out is one the runtime spares a corner.
           def corner_between(from, to, from_side, to_side, number, line, spans)
             start, finish, start_side, finish_side = from_side.negative? ? [from, to, from_side, to_side] : [to, from, to_side, from_side]
             share = Int32.div(Int32.shift_left(Int32.sub(0, start_side), SHARE_BITS), Int32.sub(finish_side, start_side))
-            stepped = [X, Y].include?(number) ? (0...NUMBERS) : LATE_CUT_NUMBERS
+            stepped = [X, Y].include?(number) ? SCREEN_CUT_NUMBERS : LATE_CUT_NUMBERS
             made = Array.new(NUMBERS) do |part|
               next start[part] unless stepped.include?(part)
 

@@ -28,8 +28,21 @@ module VBlank
           # worked out (LEFT_OFFSET_BYTES to SPANS_OFFSET_BYTES), and rt_fill_face called.
           #
           # THE PIECES are kept in RAM out of gp's reach (PIECES, made only for a game that fills faces):
-          # each a count and up to FacePieces::MOST_CORNERS corners of FacePieces::NUMBERS words,
-          # POLYGON_BYTES in all.
+          # each a count and up to FacePieces::MOST_CORNERS corners, POLYGON_BYTES in all. A piece holds
+          # the ADDRESS of each of its corners, a word, not the corner's FacePieces::NUMBERS words: a cut
+          # hands most of a piece's corners on to the pieces either side of its line unchanged, and the
+          # main RAM the pieces are in has no cache, so copying a corner's eight words at every cut was most
+          # of what cutting cost. The corners themselves are in the pool after the pieces (POOL_CORNERS):
+          # the face's own first, then each corner a cut makes, taken from the pool's next free place
+          # (POOL_NEXT_OFFSET_BYTES). A corner is never changed once made, so pieces can share it, as
+          # FacePieces' pieces share their corners' arrays.
+          #
+          # The pool is handed back as the pieces finish with it: all of it as each face starts; whatever
+          # the work on a part took, once rt_face_sweep has sent that part; and as a piece comes off the
+          # waiting stack, everything past where the piece below it was put waiting (WAITING_MARKS), its
+          # own corners from there moved down to the start of what was handed back (rt_face_compact). Only
+          # that piece can still be using any of it, so a piece cut on the picture again and again takes no
+          # more of the pool than one cut once. POOL_CORNERS says why that is always enough.
           #
           # A LIT FACE (LEVELS_OFFSET_BYTES not nought) has a shade at each corner, is cut along every
           # whole level, and each piece names its level's colour table (FacePieces says why). A face not
@@ -53,21 +66,25 @@ module VBlank
             SIDE_OFFSET_BYTES = 28 # the side of a square a face in perspective is cut into, in sixteenths
             LEVELS_OFFSET_BYTES = 32 # how many levels the face's shading has; nought for a face not lit
             TABLE_OFFSET_BYTES = 36 # the colour table the piece being sent names, as its first corner carries it
-            MADE_OFFSET_BYTES = 40 # the corner a cut makes, FacePieces::NUMBERS words
-            CORNERS_OFFSET_BYTES = MADE_OFFSET_BYTES + (FacePieces::NUMBERS * 4)
+            # The least and the most of each of EXTENT_NUMBERS over the piece being sent, a word each, in
+            # that order (rt_face_extents).
+            EXTENTS_OFFSET_BYTES = 40
+            EXTENT_NUMBERS = [FacePieces::TEXEL_U, FacePieces::TEXEL_V, FacePieces::SHADE].freeze
+            POOL_NEXT_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + (EXTENT_NUMBERS.length * 8) # the pool's next free corner
+            # The pool's next free corner as each piece waiting was put there, a word each.
+            WAITING_MARKS_OFFSET_BYTES = POOL_NEXT_OFFSET_BYTES + 4
+            CORNERS_OFFSET_BYTES = WAITING_MARKS_OFFSET_BYTES + (FacePieces::MOST_WAITING * 4)
             BYTES = CORNERS_OFFSET_BYTES + (Nodes::FillFace::MOST_CORNERS * LIST_CORNER_BYTES)
 
-            # A corner of a piece, and a piece: its count, then its corners.
+            # A corner in the pool: FacePieces::NUMBERS words.
             CORNER_BYTES = FacePieces::NUMBERS * 4
-            # A corner's bytes are a power of two, so a corner's place is its number moved up this far.
-            CORNER_SHIFT = CORNER_BYTES.bit_length - 1
-            raise "a corner of a piece is #{CORNER_BYTES} bytes, not a power of two" unless CORNER_BYTES == 1 << CORNER_SHIFT
 
             # A corner's light is held to LIGHTEST by testing its top half for nought (rt_fill_face), which
             # is right only while LIGHTEST is the whole bottom half.
             raise "rt_fill_face holds a light to 0xFFFF, not #{Nodes::FillFace::LIGHTEST}" unless Nodes::FillFace::LIGHTEST == 0xFFFF
 
-            POLYGON_BYTES = 4 +(FacePieces::MOST_CORNERS * CORNER_BYTES)
+            # A piece: its count, then the address of each corner.
+            POLYGON_BYTES = 4 + (FacePieces::MOST_CORNERS * 4)
             # Where each number of a corner is (FacePieces::X to V).
             NUMBER_OFFSETS = (0...FacePieces::NUMBERS).to_h { |number| [number, number * 4] }.freeze
 
@@ -79,7 +96,25 @@ module VBlank
             # chip takes it, a word each.
             SENT_CORNER_BYTES = 16
             SENT_OFFSET_BYTES = WAITING_OFFSET_BYTES + (FacePieces::MOST_WAITING * POLYGON_BYTES)
-            PIECES_BYTES = SENT_OFFSET_BYTES + (FacePieces::MOST_CORNERS * SENT_CORNER_BYTES)
+            # ...the corners rt_face_compact is moving, on their way down.
+            COMPACT_OFFSET_BYTES = SENT_OFFSET_BYTES + (FacePieces::MOST_CORNERS * SENT_CORNER_BYTES)
+            POOL_OFFSET_BYTES = COMPACT_OFFSET_BYTES + (FacePieces::MOST_CORNERS * CORNER_BYTES)
+
+            # HOW MANY CORNERS THE POOL HOLDS: the most that can be in use at once. A cut makes at most a
+            # corner for each edge of the piece it cuts, so MOST_CORNERS. In use at once are the face's own,
+            # the four cuts that hold it to its edges, every cut of rt_face_sweep's rest across the screen
+            # one way and the other (its parts are handed back, the rest is not), and on the picture and
+            # between levels, for each piece waiting and for the part being sent, the corners it came off
+            # the stack with and the cuts made since: three at the most before a part is sent, since a part
+            # cut once across the picture, once down it and once between levels lies inside all three. The
+            # smallest square is the one most cut.
+            unless FacePieces::CELL_PIXELS >= FacePieces::EVERY_PIXEL_CELL_PIXELS
+              raise "the pool is sized for squares of #{FacePieces::EVERY_PIXEL_CELL_PIXELS} pixels or more"
+            end
+            SWEEP_LINES = Console::PLAYSTATION.screen_size.sum { |side| (side / FacePieces::EVERY_PIXEL_CELL_PIXELS) + 1 }
+            POOL_CORNERS = Nodes::FillFace::MOST_CORNERS +
+                           (FacePieces::MOST_CORNERS * (4 + SWEEP_LINES + ((FacePieces::MOST_WAITING + 1) * (1 + 3))))
+            PIECES_BYTES = POOL_OFFSET_BYTES + (POOL_CORNERS * CORNER_BYTES)
 
             # A picture's record: its texture window (GP0 E2h, whole), its colour table and its page each
             # moved up to the top half of a corner's u and v word, and its width and height as masks that
@@ -109,14 +144,15 @@ module VBlank
               pieces = memory[PIECES]
               polygon = ->(name) { pieces + (POLYGONS.index(name) * POLYGON_BYTES) }
               emit_face_corners_routine(asm, at)
-              emit_fill_face_routine(asm, at, memory, polygon)
+              emit_fill_face_routine(asm, at, memory, polygon, pieces + POOL_OFFSET_BYTES)
               emit_sweep_routine(asm, at)
               emit_send_piece_routine(asm, at, polygon, pieces + WAITING_OFFSET_BYTES)
               emit_fan_routine(asm, at, memory, pieces + SENT_OFFSET_BYTES)
               emit_cut_routine(asm, at)
-              emit_append_routine(asm)
               emit_extent_routine(asm)
+              emit_extents_routine(asm, at)
               emit_copy_routine(asm)
+              emit_compact_routine(asm, at, pieces + COMPACT_OFFSET_BYTES)
               emit_texel_routine(asm, at)
             end
 
@@ -149,8 +185,25 @@ module VBlank
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * KEPT_REGISTERS.length) }
             end
 
-            # +into+ = +number+ * CORNER_BYTES, one shift.
-            def emit_times_corner(asm, into, number) = asm.sll(into, number, CORNER_SHIFT)
+            # +into+ = where the address of corner +number+ is in a piece, from the piece's start less its
+            # count's word: the number times a word.
+            def emit_corner_slot(asm, into, number) = asm.sll(into, number, 2)
+
+            # The corner +corner+ (a register holding its address) put on the end of the piece in +piece+
+            # (nought: none) while it has fewer than FacePieces::MOST_CORNERS; +label+ names where to go on.
+            # Changes t0 and t1.
+            def emit_append(asm, piece, corner, label)
+              asm.beq(piece, :zero, label)
+              asm.lw(:t0, 0, piece)
+              asm.slti(:t1, :t0, FacePieces::MOST_CORNERS)
+              asm.beq(:t1, :zero, label)
+              emit_corner_slot(asm, :t1, :t0)
+              asm.addu(:t1, :t1, piece)
+              asm.sw(corner, 4, :t1)
+              asm.addiu(:t0, :t0, 1)
+              asm.sw(:t0, 0, piece)
+              asm.label(label)
+            end
 
             # rt_face_corners: a0 = the list of corners, a1 = how many. The count held to MOST_CORNERS and
             # kept in COUNT_OFFSET_BYTES; with three or more, each corner's numbers read from the list into
@@ -197,7 +250,7 @@ module VBlank
             # inside the screen, as the interpreter draws a pixel only inside both. The chip's texture
             # window and drawing area are set for the face and put back after it, since the painted
             # screen's own drawing counts on the whole of video RAM and no window (Runtime::Boot).
-            def emit_fill_face_routine(asm, at, memory, polygon)
+            def emit_fill_face_routine(asm, at, memory, polygon, pool)
               h = Console::PS1Hardware
               area = ->(offset) { Runtime.at(memory, Paint::AREA) + offset }
               face = polygon.call(:face)
@@ -225,7 +278,7 @@ module VBlank
                 asm.slt(:t2, :t0, :t1)
                 asm.beq(:t2, :zero, "rt_fill_face_done")
               end
-              emit_face_corners_made(asm, at, face)
+              emit_face_corners_made(asm, at, face, pool)
               # Clipped to the four edges, in sixteenths: above the left, below the right, then the same
               # down.
               [[x, LEFT_OFFSET_BYTES, :above], [x, RIGHT_OFFSET_BYTES, :below], [y, TOP_OFFSET_BYTES, :above],
@@ -306,18 +359,21 @@ module VBlank
 
             # The face's corners as pieces' corners, into +face+ (FacePieces.corner_from_list): x and y, then
             # without perspective u and v, in perspective u and v over the distance and w; then each one's
-            # texel. Changes s1 to s3.
-            def emit_face_corners_made(asm, at, face)
+            # texel. Each is made in the pool, from its start, and the pool's next free place is the one
+            # after the last. Changes s1 to s4.
+            def emit_face_corners_made(asm, at, face, pool)
               asm.li(:s1, face)
               asm.lw(:s2, at + COUNT_OFFSET_BYTES, :gp)
               asm.sw(:s2, 0, :s1)
               asm.addiu(:s1, :s1, 4)
               asm.addiu(:s3, :gp, at + CORNERS_OFFSET_BYTES)
+              asm.li(:s4, pool)
               asm.label("rt_fill_face_corner")
+              asm.sw(:s4, 0, :s1)
               asm.lw(:t0, 0, :s3)
               asm.lw(:t1, 4, :s3)
-              asm.sw(:t0, 0, :s1)
-              asm.sw(:t1, 4, :s1)
+              asm.sw(:t0, 0, :s4)
+              asm.sw(:t1, 4, :s4)
               asm.lw(:t0, 8, :s3) # u
               asm.lw(:t1, 12, :s3) # v
               asm.lw(:t2, 16, :s3) # w
@@ -329,10 +385,10 @@ module VBlank
               emit_mul_fix(asm, :t0, :t0, :t2, 28)
               emit_mul_fix(asm, :t1, :t1, :t2, 28)
               asm.label("rt_fill_face_corner_kept")
-              asm.sw(:t0, 8, :s1)
-              asm.sw(:t1, 12, :s1)
-              asm.sw(:t2, 16, :s1)
-              asm.jal("rt_face_texel") { asm.move(:a0, :s1) }
+              asm.sw(:t0, 8, :s4)
+              asm.sw(:t1, 12, :s4)
+              asm.sw(:t2, 16, :s4)
+              asm.jal("rt_face_texel") { asm.move(:a0, :s4) }
               # The shade: the light held to nought to LIGHTEST, times the levels (nought for a face not lit).
               asm.lw(:t0, at + LEVELS_OFFSET_BYTES, :gp)
               asm.lw(:t1, 20, :s3) # the light
@@ -347,17 +403,21 @@ module VBlank
               asm.label("rt_fill_face_light_held")
               asm.mult(:t1, :t0)
               asm.mflo(:t1)
-              asm.sw(:t1, NUMBER_OFFSETS.fetch(FacePieces::SHADE), :s1)
-              asm.addiu(:s1, :s1, CORNER_BYTES)
+              asm.sw(:t1, NUMBER_OFFSETS.fetch(FacePieces::SHADE), :s4)
+              asm.addiu(:s1, :s1, 4)
+              asm.addiu(:s4, :s4, CORNER_BYTES)
               asm.addiu(:s2, :s2, -1)
               asm.bne(:s2, :zero, "rt_fill_face_corner") { asm.addiu(:s3, :s3, LIST_CORNER_BYTES) }
+              asm.sw(:s4, at + POOL_NEXT_OFFSET_BYTES, :gp)
             end
 
             # rt_face_sweep: a0 = a piece, a1 = which number it is cut along (X or Y's offset), a2 = where
             # each part before a line goes, a3 = two pieces, one after the other, the rest goes in by turns,
             # t4 = the routine each part of three corners or more is handed to in a0
             # (FacePieces.each_strip): cut along every multiple of SIDE_OFFSET_BYTES strictly inside the
-            # piece, the part before each line in turn, then the rest. Keeps s0 to s7.
+            # piece, the part before each line in turn, then the rest. Keeps s0 to s7. Whatever of the
+            # pool a part before a line took is handed back once it is sent; what the rest takes is the
+            # caller's to hand back.
             def emit_sweep_routine(asm, at)
               asm.label("rt_face_sweep")
               emit_keep_registers(asm)
@@ -390,8 +450,12 @@ module VBlank
               asm.lw(:t0, 0, :s2)
               asm.slti(:t0, :t0, 3)
               asm.bne(:t0, :zero, "rt_face_sweep_next")
+              # What the part takes of the pool is handed back once it is sent: the rest's corners were
+              # all made before it.
               asm.label("rt_face_sweep_part")
+              asm.lw(:s7, at + POOL_NEXT_OFFSET_BYTES, :gp)
               asm.jalr(:s4) { asm.move(:a0, :s2) }
+              asm.sw(:s7, at + POOL_NEXT_OFFSET_BYTES, :gp)
               asm.label("rt_face_sweep_next")
               asm.lw(:t0, at + SIDE_OFFSET_BYTES, :gp)
               asm.b("rt_face_sweep_line") { asm.addu(:s6, :s6, :t0) }
@@ -407,7 +471,8 @@ module VBlank
 
             # rt_face_send_piece: a0 = a piece, cut on the picture until each part's places run no more than
             # FacePieces::PICTURE_REACH each way, and each part sent (FacePieces.send_cut_on_picture). s0 is
-            # the part, s1 how many wait, s2 the picture's record, s3 where the part before a cut goes.
+            # the part, s1 how many wait, s2 the picture's record, s3 where the part before a cut goes, s4 1
+            # when the part past it is put waiting, s5 where the pool stood as the routine began.
             def emit_send_piece_routine(asm, at, polygon, waiting)
               part_a = polygon.call(:part_a)
               part_b = polygon.call(:part_b)
@@ -416,14 +481,16 @@ module VBlank
               asm.move(:s0, :a0)
               asm.move(:s1, :zero)
               asm.lw(:s2, at + PICTURE_OFFSET_BYTES, :gp)
+              asm.lw(:s5, at + POOL_NEXT_OFFSET_BYTES, :gp) # where the pool stood as this began
               asm.label("rt_face_send_part")
               asm.lw(:t0, 0, :s0)
               asm.slti(:t0, :t0, 3)
               asm.bne(:t0, :zero, "rt_face_send_waiting")
+              asm.jal("rt_face_extents") { asm.move(:a0, :s0) }
               [[FacePieces::TEXEL_U, RECORD_ACROSS_MASK_OFFSET_BYTES], [FacePieces::TEXEL_V, RECORD_DOWN_MASK_OFFSET_BYTES]].each do |number, mask|
                 fits = "rt_face_send_fits_#{number}"
-                asm.move(:a0, :s0)
-                asm.jal("rt_face_extent") { asm.li(:a1, NUMBER_OFFSETS.fetch(number)) }
+                asm.lw(:v0, at + least_offset_bytes(number), :gp)
+                asm.lw(:v1, at + least_offset_bytes(number) + 4, :gp)
                 asm.lw(:t0, mask, :s2)
                 asm.and(:t1, :v0, :t0) # the least, moved down to a whole picture
                 asm.subu(:t2, :v1, :t1)
@@ -439,8 +506,8 @@ module VBlank
               asm.lw(:t0, at + LEVELS_OFFSET_BYTES, :gp)
               asm.beq(:t0, :zero, "rt_face_send_one_level")
               asm.label("rt_face_send_lit")
-              asm.move(:a0, :s0)
-              asm.jal("rt_face_extent") { asm.li(:a1, NUMBER_OFFSETS.fetch(FacePieces::SHADE)) }
+              asm.lw(:v0, at + least_offset_bytes(FacePieces::SHADE), :gp)
+              asm.lw(:v1, at + least_offset_bytes(FacePieces::SHADE) + 4, :gp)
               asm.lui(:t0, 0xFFFF)
               asm.and(:t1, :v0, :t0)
               asm.lui(:t0, FacePieces::LEVEL_STEP >> 16)
@@ -454,7 +521,9 @@ module VBlank
               asm.jal("rt_face_fan") { asm.move(:a0, :s0) }
               asm.label("rt_face_send_waiting")
               asm.beq(:s1, :zero, "rt_face_send_done")
-              # The last to wait, copied out to be the part: its room is free for the next to wait.
+              # The last to wait, copied out to be the part: its room is free for the next to wait. Of the
+              # pool past where the piece below it was put waiting (or where this routine began), only this
+              # part's corners are still used, so the rest is handed back.
               asm.addiu(:s1, :s1, -1)
               asm.li(:t0, POLYGON_BYTES)
               asm.mult(:s1, :t0)
@@ -463,6 +532,14 @@ module VBlank
               asm.addu(:a0, :a0, :t0)
               asm.li(:s0, part_a)
               asm.jal("rt_face_copy") { asm.move(:a1, :s0) }
+              asm.move(:a1, :s5)
+              asm.beq(:s1, :zero, "rt_face_send_mark_found")
+              asm.label("rt_face_send_mark_below")
+              asm.sll(:t0, :s1, 2)
+              asm.addu(:t0, :t0, :gp)
+              asm.lw(:a1, at + WAITING_MARKS_OFFSET_BYTES - 4, :t0)
+              asm.label("rt_face_send_mark_found")
+              asm.jal("rt_face_compact") { asm.move(:a0, :s0) }
               asm.b("rt_face_send_part")
 
               # Cut at t4 on the number at a3: the part before it into whichever of the two it is not in
@@ -474,6 +551,7 @@ module VBlank
               asm.li(:s3, part_b)
               asm.label("rt_face_send_cut_into")
               asm.move(:a2, :zero)
+              asm.move(:s4, :zero) # 1 once the part past the line is put waiting
               asm.slti(:t0, :s1, FacePieces::MOST_WAITING)
               asm.beq(:t0, :zero, "rt_face_send_cut_now")
               asm.label("rt_face_send_cut_wait")
@@ -483,15 +561,26 @@ module VBlank
               asm.li(:a2, waiting)
               asm.addu(:a2, :a2, :t0)
               asm.addiu(:s1, :s1, 1)
+              asm.li(:s4, 1)
               asm.label("rt_face_send_cut_now")
               asm.move(:a0, :s0)
               asm.jal("rt_face_cut") { asm.move(:a1, :s3) }
+              # The pool's next free place once the part waiting is made, which is where it is handed back
+              # to when that part comes off the stack.
+              asm.beq(:s4, :zero, "rt_face_send_cut_made")
+              asm.label("rt_face_send_cut_marked")
+              asm.sll(:t0, :s1, 2)
+              asm.addu(:t0, :t0, :gp)
+              asm.lw(:t1, at + POOL_NEXT_OFFSET_BYTES, :gp)
+              asm.sw(:t1, at + WAITING_MARKS_OFFSET_BYTES - 4, :t0)
+              asm.label("rt_face_send_cut_made")
               asm.b("rt_face_send_part") { asm.move(:s0, :s3) }
               asm.label("rt_face_send_done")
               emit_return_with_registers(asm)
             end
 
-            # rt_face_fan: a0 = a piece, sent as a fan of textured triangles from its first corner
+            # rt_face_fan: a0 = a piece whose extents rt_face_extents has just found (rt_face_send_piece
+            # calls it straight after), sent as a fan of textured triangles from its first corner
             # (FacePieces.send_fan): its places moved by whole pictures to start between nought and the
             # picture's size, each held to a byte, its corners rounded to whole pixels on the page drawn
             # into; a triangle with no area is left out.
@@ -504,11 +593,10 @@ module VBlank
               asm.move(:s0, :a0)
               asm.lw(:s1, 0, :s0) # how many corners
               asm.lw(:s2, at + PICTURE_OFFSET_BYTES, :gp)
-              asm.jal("rt_face_extent") { asm.li(:a1, offset.call(FacePieces::TEXEL_U)) }
+              asm.lw(:v0, at + least_offset_bytes(FacePieces::TEXEL_U), :gp)
               asm.lw(:t0, RECORD_ACROSS_MASK_OFFSET_BYTES, :s2)
               asm.and(:s3, :v0, :t0)
-              asm.move(:a0, :s0)
-              asm.jal("rt_face_extent") { asm.li(:a1, offset.call(FacePieces::TEXEL_V)) }
+              asm.lw(:v0, at + least_offset_bytes(FacePieces::TEXEL_V), :gp)
               asm.lw(:t0, RECORD_DOWN_MASK_OFFSET_BYTES, :s2)
               asm.and(:s4, :v0, :t0)
               emit_fan_table(asm, at)
@@ -518,11 +606,12 @@ module VBlank
               asm.li(:t1, sent)
               asm.move(:t2, :s1)
               asm.label("rt_face_fan_corner")
-              asm.lw(:t3, offset.call(FacePieces::X), :t0)
+              asm.lw(:t8, 0, :t0) # the corner
+              asm.lw(:t3, offset.call(FacePieces::X), :t8)
               asm.addiu(:t3, :t3, 8)
               asm.sra(:t3, :t3, 4)
               asm.sw(:t3, 0, :t1)
-              asm.lw(:t4, offset.call(FacePieces::Y), :t0)
+              asm.lw(:t4, offset.call(FacePieces::Y), :t8)
               asm.addiu(:t4, :t4, 8)
               asm.sra(:t4, :t4, 4)
               asm.sw(:t4, 4, :t1)
@@ -533,7 +622,7 @@ module VBlank
               asm.sw(:t5, 12, :t1)
               [[FacePieces::TEXEL_U, :s3, :t5], [FacePieces::TEXEL_V, :s4, :t6]].each do |number, base, into|
                 held = "rt_face_fan_held_#{number}"
-                asm.lw(into, offset.call(number), :t0)
+                asm.lw(into, offset.call(number), :t8)
                 asm.subu(into, into, base)
                 asm.slti(:t7, into, 256)
                 asm.bne(:t7, :zero, held)
@@ -544,7 +633,7 @@ module VBlank
               asm.sll(:t6, :t6, 8)
               asm.or(:t5, :t5, :t6)
               asm.sw(:t5, 8, :t1)
-              asm.addiu(:t0, :t0, CORNER_BYTES)
+              asm.addiu(:t0, :t0, 4)
               asm.addiu(:t2, :t2, -1)
               asm.bne(:t2, :zero, "rt_face_fan_corner") { asm.addiu(:t1, :t1, SENT_CORNER_BYTES) }
               # The triangles: the first corner, then each next two. s6 is the second's place in the corners
@@ -603,8 +692,7 @@ module VBlank
               asm.lw(:t0, at + LEVELS_OFFSET_BYTES, :gp)
               asm.beq(:t0, :zero, "rt_face_fan_table")
               asm.label("rt_face_fan_lit")
-              asm.move(:a0, :s0)
-              asm.jal("rt_face_extent") { asm.li(:a1, NUMBER_OFFSETS.fetch(FacePieces::SHADE)) }
+              asm.lw(:v0, at + least_offset_bytes(FacePieces::SHADE), :gp)
               asm.sra(:v0, :v0, 16) # the level
               asm.lw(:t0, at + LEVELS_OFFSET_BYTES, :gp)
               asm.slt(:t2, :v0, :t0)
@@ -622,11 +710,11 @@ module VBlank
             # rt_face_cut: a0 = a piece, a1 = where the part at or before the line goes, a2 = where the part
             # at or past it goes (nought for either: not kept), a3 = the number cut on (its offset in a
             # corner), t4 = the line (FacePieces.cut). A corner on the line goes to both; where an edge
-            # crosses it a corner is made once (FacePieces.corner_between, into MADE_OFFSET_BYTES) and goes to
-            # both. s0 is the piece, s5 its count, s6 the corner, s7 where it is; t5 and t6 how far the
-            # corner and the next are past the line, t7 where the next is.
+            # crosses it a corner is made once (FacePieces.corner_between, in the pool's next free place)
+            # and goes to both. s0 is the piece, s5 its count, s6 the corner's number, s7 where its address
+            # is in the piece and v1 the address; t5 and t6 how far the corner and the next are past the
+            # line, t7 the next one's address; v0 the corner made.
             def emit_cut_routine(asm, at)
-              made = at + MADE_OFFSET_BYTES
               asm.label("rt_face_cut")
               emit_keep_registers(asm)
               asm.move(:s0, :a0)
@@ -650,25 +738,22 @@ module VBlank
               asm.label("rt_face_cut_round")
               asm.move(:t0, :zero)
               asm.label("rt_face_cut_next_found")
-              emit_times_corner(asm, :t7, :t0)
+              emit_corner_slot(asm, :t7, :t0)
               asm.addu(:t7, :t7, :s0)
-              asm.addiu(:t7, :t7, 4)
-              asm.addu(:t1, :s7, :s3)
-              asm.lw(:t5, 0, :t1)
-              asm.subu(:t5, :t5, :s4)
+              asm.lw(:t7, 4, :t7)
+              asm.lw(:v1, 0, :s7)
               asm.addu(:t1, :t7, :s3)
               asm.lw(:t6, 0, :t1)
+              asm.addu(:t1, :v1, :s3)
+              asm.lw(:t5, 0, :t1)
               asm.subu(:t6, :t6, :s4)
+              asm.subu(:t5, :t5, :s4)
               asm.bgtz(:t5, "rt_face_cut_not_below")
               asm.label("rt_face_cut_below")
-              asm.move(:a0, :s1)
-              asm.jal("rt_face_append") { asm.move(:a1, :s7) }
-              asm.label("rt_face_cut_not_below")
+              emit_append(asm, :s1, :v1, "rt_face_cut_not_below")
               asm.bltz(:t5, "rt_face_cut_not_above")
               asm.label("rt_face_cut_above")
-              asm.move(:a0, :s2)
-              asm.jal("rt_face_append") { asm.move(:a1, :s7) }
-              asm.label("rt_face_cut_not_above")
+              emit_append(asm, :s2, :v1, "rt_face_cut_not_above")
               # An edge crosses the line when neither end is on it and they are on its two sides.
               asm.beq(:t5, :zero, "rt_face_cut_step")
               asm.beq(:t6, :zero, "rt_face_cut_step")
@@ -676,13 +761,13 @@ module VBlank
               asm.bgez(:t0, "rt_face_cut_step")
               # From the end below the line (t0, how far past it t2) to the other (t1, t3).
               asm.label("rt_face_cut_crosses")
-              asm.move(:t0, :s7)
+              asm.move(:t0, :v1)
               asm.move(:t1, :t7)
               asm.move(:t2, :t5)
               asm.bltz(:t5, "rt_face_cut_ends") { asm.move(:t3, :t6) }
               asm.label("rt_face_cut_from_next")
               asm.move(:t0, :t7)
-              asm.move(:t1, :s7)
+              asm.move(:t1, :v1)
               asm.move(:t2, :t6)
               asm.move(:t3, :t5)
               asm.label("rt_face_cut_ends")
@@ -690,71 +775,93 @@ module VBlank
               asm.subu(:t2, :zero, :t2)
               asm.sll(:t2, :t2, FacePieces::SHARE_BITS)
               asm.div(:t2, :t3)
+              # The corner made goes in the pool's next free place, while the divide works.
+              asm.lw(:v0, at + POOL_NEXT_OFFSET_BYTES, :gp)
+              asm.addiu(:a0, :v0, CORNER_BYTES)
+              asm.sw(:a0, at + POOL_NEXT_OFFSET_BYTES, :gp)
               asm.mflo(:t8) # the share of the way along
-              # Every number stepped on a line across the screen; on the picture or between levels only
-              # FacePieces::LATE_CUT_NUMBERS, the rest the start's.
+              # On a line across the screen, only the numbers read again are stepped
+              # (FacePieces::SCREEN_CUT_NUMBERS): the other of x and y, and what the texel is worked out
+              # from. The texel itself is worked out where the corner is, below, and the number cut on is
+              # the line. A nearness of a face not in perspective, and a shade of a face not lit, are
+              # nought at both ends, so they are left nought rather than stepped. On the picture or
+              # between levels only FacePieces::LATE_CUT_NUMBERS are stepped, the rest the start's.
               asm.sltiu(:t2, :s3, NUMBER_OFFSETS.fetch(FacePieces::U_SOURCE))
               asm.beq(:t2, :zero, "rt_face_cut_late")
-              [[FacePieces::NUMBERS.times.to_a, "rt_face_cut_screen"], [FacePieces::LATE_CUT_NUMBERS, "rt_face_cut_late"]].each do |stepped, name|
-                asm.label(name)
-                FacePieces::NUMBERS.times do |number|
+              emit_screen_cut_corner(asm, at)
+              asm.label("rt_face_cut_late")
+              FacePieces::NUMBERS.times do |number|
+                if FacePieces::LATE_CUT_NUMBERS.include?(number)
+                  emit_step_number(asm, number)
+                else
                   asm.lw(:a0, number * 4, :t0)
-                  if stepped.include?(number)
-                    asm.lw(:a1, number * 4, :t1)
-                    asm.subu(:a1, :a1, :a0)
-                    emit_mul_fix(asm, :a1, :a1, :t8, FacePieces::SHARE_BITS)
-                    asm.addu(:a0, :a1, :a0)
-                  end
-                  asm.sw(:a0, made + (number * 4), :gp)
+                  asm.sw(:a0, number * 4, :v0)
                 end
-                asm.b("rt_face_cut_stepped") if name == "rt_face_cut_screen"
               end
               asm.label("rt_face_cut_stepped")
-              asm.addu(:t0, :gp, :s3)
-              asm.sw(:s4, made, :t0)
+              asm.addu(:t0, :v0, :s3)
+              asm.sw(:s4, 0, :t0)
               # A line between two levels: the corner moved right by FacePieces::LEVEL_LINE_NUDGE.
               asm.li(:t0, NUMBER_OFFSETS.fetch(FacePieces::SHADE))
               asm.bne(:s3, :t0, "rt_face_cut_not_level")
               asm.label("rt_face_cut_level")
-              asm.lw(:t0, made + NUMBER_OFFSETS.fetch(FacePieces::X), :gp)
+              asm.lw(:t0, NUMBER_OFFSETS.fetch(FacePieces::X), :v0)
               asm.addiu(:t0, :t0, FacePieces::LEVEL_LINE_NUDGE)
-              asm.sw(:t0, made + NUMBER_OFFSETS.fetch(FacePieces::X), :gp)
+              asm.sw(:t0, NUMBER_OFFSETS.fetch(FacePieces::X), :v0)
               asm.label("rt_face_cut_not_level")
               # A line across the screen: the texel worked out where the corner is.
               asm.sltiu(:t0, :s3, NUMBER_OFFSETS.fetch(FacePieces::U_SOURCE))
               asm.beq(:t0, :zero, "rt_face_cut_made")
               asm.label("rt_face_cut_texel")
-              asm.jal("rt_face_texel") { asm.addiu(:a0, :gp, made) }
+              asm.jal("rt_face_texel") { asm.move(:a0, :v0) }
               asm.label("rt_face_cut_made")
-              asm.move(:a0, :s1)
-              asm.jal("rt_face_append") { asm.addiu(:a1, :gp, made) }
-              asm.move(:a0, :s2)
-              asm.jal("rt_face_append") { asm.addiu(:a1, :gp, made) }
-              asm.label("rt_face_cut_step")
+              emit_append(asm, :s1, :v0, "rt_face_cut_made_below")
+              emit_append(asm, :s2, :v0, "rt_face_cut_step")
               asm.addiu(:s6, :s6, 1)
-              asm.b("rt_face_cut_corner") { asm.addiu(:s7, :s7, CORNER_BYTES) }
+              asm.b("rt_face_cut_corner") { asm.addiu(:s7, :s7, 4) }
               asm.label("rt_face_cut_done")
               emit_return_with_registers(asm)
             end
 
-            # rt_face_append: a0 = a piece (nought: none), a1 = a corner, copied onto its end while it has
-            # fewer than FacePieces::MOST_CORNERS. Changes t0 to t2.
-            def emit_append_routine(asm)
-              asm.label("rt_face_append")
-              asm.beq(:a0, :zero, "rt_face_append_done")
-              asm.lw(:t0, 0, :a0)
-              asm.slti(:t1, :t0, FacePieces::MOST_CORNERS)
-              asm.beq(:t1, :zero, "rt_face_append_done")
-              emit_times_corner(asm, :t1, :t0)
-              asm.addu(:t1, :t1, :a0)
-              FacePieces::NUMBERS.times do |number|
-                asm.lw(:t2, number * 4, :a1)
-                asm.sw(:t2, 4 + (number * 4), :t1)
+            # The corner a cut across the screen makes, at v0, from the end below the line (t0) the share t8
+            # of the way to the other (t1), then on to rt_face_cut_stepped: x stepped for a line along y (s3
+            # Y's offset) and y for one along x, then FacePieces::SCREEN_CUT_NUMBERS' others.
+            def emit_screen_cut_corner(asm, at)
+              x = FacePieces::X
+              y = FacePieces::Y
+              asm.label("rt_face_cut_screen")
+              asm.bne(:s3, :zero, "rt_face_cut_down")
+              asm.label("rt_face_cut_across")
+              emit_step_number(asm, y)
+              asm.b("rt_face_cut_sources")
+              asm.label("rt_face_cut_down")
+              emit_step_number(asm, x)
+              asm.label("rt_face_cut_sources")
+              emit_step_number(asm, FacePieces::U_SOURCE)
+              emit_step_number(asm, FacePieces::V_SOURCE)
+              [[FacePieces::NEARNESS, SPANS_OFFSET_BYTES], [FacePieces::SHADE, LEVELS_OFFSET_BYTES]].each do |number, said|
+                none = "rt_face_cut_none_#{number}"
+                done = "rt_face_cut_stepped_#{number}"
+                asm.lw(:t2, at + said, :gp)
+                asm.beq(:t2, :zero, none)
+                emit_step_number(asm, number)
+                asm.b(done)
+                asm.label(none)
+                asm.sw(:zero, NUMBER_OFFSETS.fetch(number), :v0)
+                asm.label(done)
               end
-              asm.addiu(:t0, :t0, 1)
-              asm.sw(:t0, 0, :a0)
-              asm.label("rt_face_append_done")
-              asm.jr(:ra)
+              asm.b("rt_face_cut_stepped")
+            end
+
+            # +number+ of the corner at t0 stepped the share t8 of the way to the one at t1, into the corner
+            # at v0. Changes a0, a1 and t9.
+            def emit_step_number(asm, number)
+              asm.lw(:a0, number * 4, :t0)
+              asm.lw(:a1, number * 4, :t1)
+              asm.subu(:a1, :a1, :a0)
+              emit_mul_fix(asm, :a1, :a1, :t8, FacePieces::SHARE_BITS)
+              asm.addu(:a0, :a1, :a0)
+              asm.sw(:a0, number * 4, :v0)
             end
 
             # rt_face_extent: a0 = a piece of one corner or more, a1 = a number's offset in a corner. v0 =
@@ -762,14 +869,18 @@ module VBlank
             def emit_extent_routine(asm)
               asm.label("rt_face_extent")
               asm.lw(:t0, 0, :a0)
-              asm.addu(:t1, :a0, :a1)
-              asm.lw(:v0, 4, :t1)
+              asm.lw(:t2, 4, :a0)
+              asm.addiu(:t1, :a0, 4)
+              asm.addu(:t2, :t2, :a1)
+              asm.lw(:v0, 0, :t2)
               asm.move(:v1, :v0)
               asm.label("rt_face_extent_corner")
               asm.addiu(:t0, :t0, -1)
               asm.beq(:t0, :zero, "rt_face_extent_done")
-              asm.addiu(:t1, :t1, CORNER_BYTES)
-              asm.lw(:t2, 4, :t1)
+              asm.addiu(:t1, :t1, 4)
+              asm.lw(:t2, 0, :t1)
+              asm.addu(:t2, :t2, :a1)
+              asm.lw(:t2, 0, :t2)
               asm.slt(:t3, :t2, :v0)
               asm.beq(:t3, :zero, "rt_face_extent_not_least")
               asm.label("rt_face_extent_least")
@@ -783,12 +894,57 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # rt_face_copy: the piece at a0 copied to a1, its count and its corners. Changes t0 to t2.
+            # Where the least of +number+ (one of EXTENT_NUMBERS) over the piece being sent is in FACE; its
+            # most is the word after.
+            def least_offset_bytes(number) = EXTENTS_OFFSET_BYTES + (EXTENT_NUMBERS.index(number) * 8)
+
+            # rt_face_extents: a0 = a piece of one corner or more; the least and the most of each of
+            # EXTENT_NUMBERS over its corners into EXTENTS_OFFSET_BYTES, in one look at each corner rather
+            # than one for each number. Changes t0 to t9 and v0.
+            def emit_extents_routine(asm, at)
+              kept = EXTENT_NUMBERS.zip(%i[t2 t4 t6], %i[t3 t5 t7])
+              asm.label("rt_face_extents")
+              asm.lw(:t0, 0, :a0)
+              asm.lw(:v0, 4, :a0)
+              asm.addiu(:t1, :a0, 4)
+              kept.each do |number, least, most|
+                asm.lw(least, NUMBER_OFFSETS.fetch(number), :v0)
+                asm.move(most, least)
+              end
+              asm.label("rt_face_extents_corner")
+              asm.addiu(:t0, :t0, -1)
+              asm.beq(:t0, :zero, "rt_face_extents_done")
+              asm.addiu(:t1, :t1, 4)
+              asm.lw(:v0, 0, :t1)
+              kept.each do |number, least, most|
+                not_least = "rt_face_extents_not_least_#{number}"
+                not_most = "rt_face_extents_not_most_#{number}"
+                asm.lw(:t8, NUMBER_OFFSETS.fetch(number), :v0)
+                asm.slt(:t9, :t8, least)
+                asm.beq(:t9, :zero, not_least)
+                asm.label("rt_face_extents_least_#{number}")
+                asm.move(least, :t8)
+                asm.label(not_least)
+                asm.slt(:t9, most, :t8)
+                asm.beq(:t9, :zero, not_most)
+                asm.label("rt_face_extents_most_#{number}")
+                asm.move(most, :t8)
+                asm.label(not_most)
+              end
+              asm.b("rt_face_extents_corner")
+              asm.label("rt_face_extents_done")
+              kept.each do |number, least, most|
+                asm.sw(least, at + least_offset_bytes(number), :gp)
+                asm.sw(most, at + least_offset_bytes(number) + 4, :gp)
+              end
+              asm.jr(:ra)
+            end
+
+            # rt_face_copy: the piece at a0 copied to a1, its count and its corners' addresses. Changes t0
+            # and t1.
             def emit_copy_routine(asm)
               asm.label("rt_face_copy")
               asm.lw(:t0, 0, :a0)
-              emit_times_corner(asm, :t1, :t0)
-              asm.srl(:t0, :t1, 2)
               asm.addiu(:t0, :t0, 1) # words, the count's with them
               asm.label("rt_face_copy_word")
               asm.lw(:t1, 0, :a0)
@@ -796,6 +952,46 @@ module VBlank
               asm.sw(:t1, 0, :a1)
               asm.addiu(:t0, :t0, -1)
               asm.bne(:t0, :zero, "rt_face_copy_word") { asm.addiu(:a1, :a1, 4) }
+              asm.jr(:ra)
+            end
+
+            # rt_face_compact: a0 = a piece, a1 = a place in the pool past which only this piece's corners
+            # are used. Each of its corners at or past a1 is moved down, in the piece's order, to start at
+            # a1, and the pool's next free place is the one after the last. They go by +compacted+ first, so
+            # no corner is written over before it is moved. Changes t0 to t7.
+            def emit_compact_routine(asm, at, compacted)
+              asm.label("rt_face_compact")
+              asm.lw(:t0, 0, :a0)
+              asm.addiu(:t1, :a0, 4)
+              asm.li(:t2, compacted)
+              asm.move(:t3, :a1) # where the next one moved ends up
+              asm.label("rt_face_compact_corner")
+              asm.beq(:t0, :zero, "rt_face_compact_moved")
+              asm.lw(:t4, 0, :t1)
+              asm.sltu(:t5, :t4, :a1)
+              asm.bne(:t5, :zero, "rt_face_compact_next")
+              asm.label("rt_face_compact_move")
+              FacePieces::NUMBERS.times do |number|
+                asm.lw(:t5, number * 4, :t4)
+                asm.sw(:t5, number * 4, :t2)
+              end
+              asm.sw(:t3, 0, :t1)
+              asm.addiu(:t2, :t2, CORNER_BYTES)
+              asm.addiu(:t3, :t3, CORNER_BYTES)
+              asm.label("rt_face_compact_next")
+              asm.addiu(:t1, :t1, 4)
+              asm.b("rt_face_compact_corner") { asm.addiu(:t0, :t0, -1) }
+              asm.label("rt_face_compact_moved")
+              asm.sw(:t3, at + POOL_NEXT_OFFSET_BYTES, :gp)
+              asm.li(:t4, compacted)
+              asm.move(:t6, :a1)
+              asm.label("rt_face_compact_word")
+              asm.beq(:t4, :t2, "rt_face_compact_done")
+              asm.lw(:t5, 0, :t4)
+              asm.addiu(:t4, :t4, 4)
+              asm.sw(:t5, 0, :t6)
+              asm.b("rt_face_compact_word") { asm.addiu(:t6, :t6, 4) }
+              asm.label("rt_face_compact_done")
               asm.jr(:ra)
             end
 

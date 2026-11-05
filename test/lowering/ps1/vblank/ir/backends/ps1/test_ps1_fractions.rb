@@ -67,6 +67,35 @@ class TestPS1Fractions < Minitest::Test
     assert_operator run[:i], :>=, PAIRS.length, "every pair was worked out"
   end
 
+  # A divide whose numerator passes 32 bits is worked out a digit of sixteen bits at a time, each digit
+  # guessed and then taken down while it is too big. These pairs are drawn at every size, numerators and
+  # divisors with every count of leading noughts, so the guesses come out right and too big alike.
+  def test_quotients_of_wide_numerators_agree_with_the_interpreter_on_drawn_pairs
+    random = Random.new(20_261_105)
+    size = -> { random.rand(1..31).then { |bits| random.rand(1 << bits) * (random.rand(2).zero? ? 1 : -1) } }
+    pairs = Array.new(300) { [size.call, size.call] }.reject { |_, b| b.zero? }
+    program = program_of do
+      screen :bitmap
+      as = table :as, pairs.map(&:first), width: :word
+      bs = table :bs, pairs.map(&:last), width: :word
+      i = 0
+      div16 = 0
+      div26 = 0
+      div31 = 0
+      game_loop do
+        a = as[i]
+        b = bs[i]
+        div16 = VBlank::DSL::Value.new(self, VBlank::IR::Build.div_fix(a.node, b.node, 16))
+        div26 = VBlank::DSL::Value.new(self, VBlank::IR::Build.div_fix(a.node, b.node, 26))
+        div31 = VBlank::DSL::Value.new(self, VBlank::IR::Build.div_fix(a.node, b.node, 31))
+        i += 1
+      end
+    end
+    run = PS1::CheckedRun.new.run(program, frames: pairs.length + 1)
+
+    assert_operator run[:i], :>=, pairs.length, "every pair was worked out"
+  end
+
   private
 
   def program_of(&game)

@@ -992,10 +992,14 @@ module VBlank
           def value_of_clamped(node)
             emit_value(node.operand)
             [[node.min, :floor], [node.max, :ceiling]].each do |bound, side|
-              emit_push(:v0)
-              emit_value(bound)
-              @asm.move(:v1, :v0)
-              emit_pop(:v0)
+              if simple?(bound)
+                emit_load_simple(bound, :v1)
+              else
+                emit_push(:v0)
+                emit_value(bound)
+                @asm.move(:v1, :v0)
+                emit_pop(:v0)
+              end
               within = fresh_label("within")
               side == :floor ? @asm.slt(:t0, :v0, :v1) : @asm.slt(:t0, :v1, :v0)
               @asm.beq(:t0, :zero, within)
@@ -1059,12 +1063,18 @@ module VBlank
           end
 
           # The left side worked out into v0 and the right side into v1, then the block: the right side
-          # straight from where it is when that needs nothing worked out, and otherwise worked out first,
-          # pushed, and pulled into v1 once the left side is in v0.
+          # straight from where it is when that needs nothing worked out; when only the right side needs
+          # working out, it first, moved to v1, and the left side then put straight in v0 (working a value
+          # out changes no variable, so the left side reads the same either way); and otherwise the right
+          # side worked out first, pushed, and pulled into v1 once the left side is in v0.
           def with_right_operand(left, right)
             if simple?(right)
               emit_value(left)
               emit_load_simple(right, :v1)
+            elsif simple?(left)
+              emit_value(right)
+              @asm.move(:v1, :v0)
+              emit_load_simple(left, :v0)
             else
               emit_value(right)
               emit_push(:v0)
@@ -1095,16 +1105,22 @@ module VBlank
           end
 
           # A runtime routine taking +args+ in Runtime::ARGUMENTS. Each that needs working out is worked out
-          # in order and pushed, then they are pulled into their registers, the last first; then the ones
-          # that are only a number, a variable or a label's address are put in theirs.
+          # in order and pushed, but the last, which goes straight to its register since nothing is worked
+          # out after it; then the pushed ones are pulled into theirs, the last first; then the ones that
+          # are only a number, a variable or a label's address are put in theirs.
           def runtime_call(name, args)
             registers = Runtime::ARGUMENTS
             worked = args.each_index.reject { |i| simple?(args[i]) }
-            worked.each do |i|
+            *pushed, last = worked
+            pushed.each do |i|
               emit_value(args[i])
               emit_push(:v0)
             end
-            worked.reverse_each { |i| emit_pop(registers.fetch(i)) }
+            if last
+              emit_value(args[last])
+              @asm.move(registers.fetch(last), :v0)
+            end
+            pushed.reverse_each { |i| emit_pop(registers.fetch(i)) }
             args.each_with_index { |arg, i| emit_load_simple(arg, registers.fetch(i)) unless worked.include?(i) }
             call_routine(name)
           end
