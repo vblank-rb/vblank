@@ -12,7 +12,7 @@ end
 # The library's test helper, the one a game's own suite requires: minitest, the library, and
 # which lowering this run tests. This suite uses it as a game does, so the two cannot drift.
 require_relative "../lib/vblank/testing"
-require "minitest/ractor"
+require_relative "../lib/vblank/testing/in_ractors"
 require "support/suites"
 
 # The one require a test file needs. It pulls in minitest and the library, and
@@ -149,69 +149,10 @@ class Minitest::Test # rubocop:disable Style/ClassAndModuleChildren
   include TreeAssertions
   include VBlank::Testing # game_player, skip_on_native and CheckedPlayer, as a game's suite has them
 
-  # Hand every test to the pool. Minitest runs a class serially until the class asks not to.
-  parallelize_me!
-
-  # ...and back out again, for a file whose tests CONFIGURE THE LIBRARY — registering an
-  # effect pack, a font, a guardrail. Those change the whole process by design, which is the
-  # thing a worker may not do, and it is what the test is about rather than a fault in it.
-  # Such a class says so, and runs on the main Ractor before the pool starts.
-  #
-  # A STOPGAP, and it is pinned to minitest's own internals: the two methods below are
-  # minitest's, overridden to undo what asking for the pool did, and the body of the second
-  # is copied from it because the parallel module has already replaced it on the base class.
-  # That belongs in the runner, which owns the override and can simply not apply it. This
-  # comes out the day minitest-ractor grows an opt-out of its own.
-  def self.runs_on_the_main_ractor!
-    class << self
-      def run_order = :random # anything but :parallel; :random is minitest's own default
-
-      def run(klass, method_name, reporter)
-        reporter.prerecord klass, method_name
-        reporter.record klass.new(method_name).run
-      end
-    end
-  end
-
-  # EVERY FIXTURE A TEST CLASS PARKS IN A CONSTANT IS FROZEN, ALL THE WAY DOWN, the moment it
-  # is declared. Ruby tells a class when a constant is added to it, so there is nothing to
-  # remember and nothing to repeat: this is the whole rule, in one place.
-  #
-  # It buys two things. A fixture shared by the tests in a file can no longer be changed by
-  # one of them and read changed by the next — a real bug that is invisible until the day
-  # test order moves. And it makes the suite runnable in a Ractor, which is Ruby's way of
-  # using several cores at once: a worker may read a constant only when nothing in it can
-  # change.
-  #
-  # Doing it by hand did not work, and the evidence is in the tree it replaced. Twenty-six
-  # files had written out the same tile of art, and four of them wrote
-  # `(("#" * 8) + "\n").freeze * 8` — where the freeze lands on the inner string and the
-  # multiplication then makes a fresh unfrozen one. The intent was there and the result was
-  # not, in four files, for years.
-  #
-  # TWO THINGS ARE LEFT ALONE. A nested module or class, because that is code rather than a
-  # fixture. And a STREAM — a file, a socket, $stdout — because freezing one of those works,
-  # and then nothing can write to it again: a test that parked $stdout in a constant would
-  # take the whole run down, from here, with an error pointing somewhere else entirely.
-  #
-  # Anything that refuses to freeze is left exactly as it was and named by
-  # test/all/vblank/test_ractor_safety.rb rather than passing quietly. Only one thing does
-  # refuse: a block that reaches for a variable around it, which can never be shared.
-  # That is the one error caught here — anything else raising is a mistake in this method
-  # and should be heard.
-  #
-  # Freezing a block hands back a new one rather than changing the old, so that case has to
-  # put the constant back. That re-enters here, and stops on the first line.
-  def self.const_added(name)
-    value = const_get(name, false)
-    return if value.is_a?(Module) || value.is_a?(IO) || Ractor.shareable?(value)
-
-    shareable = Ractor.make_shareable(value)
-    return if shareable.equal?(value)
-
-    remove_const(name)
-    const_set(name, shareable)
-  rescue Ractor::IsolationError
-    nil
-  end
+  # Every test in the pool and every fixture in a constant frozen all the way down: the same line a
+  # game's test helper has (Testing::InRactors says why each is what it is). A file whose tests
+  # change the whole process on purpose says minitest-ractor's `runs_on_the_main_ractor!`. Anything
+  # that refuses to freeze is named by test/all/vblank/test_ractor_safety.rb rather than passing
+  # quietly.
+  include VBlank::Testing::InRactors
 end

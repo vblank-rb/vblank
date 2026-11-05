@@ -6,6 +6,7 @@ require "rake/testtask"
 require_relative "../console/description"
 require_relative "../console/kit" # which names its parts and loads none of them
 require_relative "lowering"
+require_relative "ractor_settings"
 require_relative "watched_run"
 
 module VBlank
@@ -154,7 +155,7 @@ module VBlank
 
         { Lowering::SETTING => lowering.to_s, "MT_RACTOR" => nil, "MT_CPU" => "1", **shared,
           "TESTOPTS" => ENV["TESTOPTS"] && without_ractor(ENV["TESTOPTS"]),
-          "TEST_PROCESSES" => ENV.fetch("TEST_PROCESSES") { ENV.fetch("MT_RACTOR_WORKERS") { [Etc.nprocessors / 2, 1].max.to_s } } }
+          "TEST_PROCESSES" => ENV.fetch("TEST_PROCESSES") { ENV.fetch("MT_RACTOR_WORKERS") { RactorSettings.default_workers.to_s } } }
       end
 
       def refuse_lowering_after_definition!

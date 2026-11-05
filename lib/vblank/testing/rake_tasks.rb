@@ -7,6 +7,7 @@ require_relative "../console/kit" # which names its parts and loads none of them
 require_relative "golden_limit"
 require_relative "lowering"
 require_relative "run_progress"
+require_relative "suite_groups"
 require_relative "test_task"
 
 module VBlank
@@ -50,7 +51,7 @@ module VBlank
     # plays only the runs that play games as that console, for a quicker look at one.
     #
     # The GBA lowering's run is a plain test run, so a suite that puts its tests in Ractors
-    # (--ractor in TESTOPTS) keeps doing so there. The native lowering's run cannot, and spreads
+    # (RactorSettings in the Rakefile, InRactors in the test helper) keeps doing so there. The native lowering's run cannot, and spreads
     # its tests over several processes instead (TestTask says how). The runs go one after the
     # other so they never compete for a core.
     #
@@ -60,22 +61,33 @@ module VBlank
     # hardware can do goes in a folder that console owns, and only the runs playing games as that
     # console load it: `t.console_folders = { gbc: ["test/gbc"] }`. Every other test plays on all.
     #
-    # A game whose Rakefile keeps its own rake test, or a task for each group of its tests, does
-    # not want this whole set: it makes the runs it wants out of TestTask, which defines nothing
-    # but the task it is asked for.
+    # THE GOLDEN PATH, `rake test:golden`, is the files a list names (t.golden_list, test/golden.txt
+    # unless said; a test file a line, from the folder t.golden_from names, the one rake runs in
+    # unless said), on every lowering that plays each, failing past GoldenLimit's time. A game that
+    # keeps no such file has no such task.
+    #
+    # A TASK FOR EACH FOLDER OF TESTS, with `t.groups = "test"`: `rake test:group:enemies` plays every
+    # test beneath test/enemies/ on every lowering that plays each, and `rake test:group:enemies:bat`
+    # those beneath test/enemies/bat/ (SuiteGroups). `t.broad_groups = { "doors" => %w[rooms
+    # enemies/test_door*.rb] }` adds a group of tests from several folders.
+    #
+    # A game whose Rakefile keeps its own rake test does not want this whole set: it makes the runs
+    # it wants out of TestTask, which defines nothing but the task it is asked for, its golden path
+    # out of GoldenTask, and a task for each folder of its tests out of GroupTasks.
     class RakeTasks < Rake::TaskLib
       OUTCOMES = { passed: "passed", failed: "FAILED", not_played: "does not play this file",
                    passed_earlier: "passed earlier" }.freeze
       RESUMED_NOTE = "This run was resumed, so it does not stand in for one clean rake test:all."
-      # The list `rake test:golden` plays, a short run of a tenth of the tests or less. A game that
-      # keeps no such file has no such task.
+      # The list `rake test:golden` plays unless t.golden_list names another.
       GOLDEN_LIST = "test/golden.txt"
 
       # The test files; the folders a test file can require from by bare name (the game's own code
       # and its tests, lib and test unless told); the folders each lowering owns, and each console;
-      # the consoles the game is for, which every Rakefile names; and how long its golden path may
-      # take, if not GoldenLimit::MOST_SECONDS.
-      attr_accessor :test_files, :libs, :lowering_folders, :console_folders, :consoles, :golden_most_seconds
+      # the consoles the game is for, which every Rakefile names; the golden path's list, and how
+      # long it may take, if not GoldenLimit::MOST_SECONDS; and the folder whose folders of tests are
+      # groups, with any broad groups.
+      attr_accessor :test_files, :libs, :lowering_folders, :console_folders, :consoles, :golden_most_seconds,
+                    :golden_list, :golden_from, :groups, :broad_groups
 
       def initialize
         super
@@ -85,11 +97,16 @@ module VBlank
         @console_folders = {}
         @consoles = nil
         @golden_most_seconds = GoldenLimit::MOST_SECONDS
+        @golden_list = GOLDEN_LIST
+        @golden_from = "."
+        @groups = nil
+        @broad_groups = {}
         yield self if block_given?
         @consoles = Console.refuse_unknown_consoles!(consoles, setting: "t.consoles")
         @lowerings = Lowering.lowerings_for(@consoles)
         define_lowering_tasks
         define_test_task
+        define_group_tasks if groups
       end
 
       # The test files +lowering+'s run loads, playing games as +console+.
@@ -132,8 +149,8 @@ module VBlank
         namespace :test do
           desc "Run the tests on every lowering, one after the other (CONSOLE= for one console)"
           task(:all) { play_all_runs }
-          desc "Run the golden path: the files #{GOLDEN_LIST} names, on every lowering that plays each"
-          task(:golden) { play_golden_runs } if File.file?(GOLDEN_LIST)
+          desc "Run the golden path: the files #{golden_list} names, on every lowering that plays each"
+          task(:golden) { play_golden_runs } if File.file?(golden_list.to_s)
         end
 
         desc "Run one file on every lowering that plays it (TEST=test/test_foo.rb); see test:all"
@@ -143,8 +160,24 @@ module VBlank
       end
 
       def play_golden_runs
-        GoldenLimit.hold(list: GOLDEN_LIST, most_seconds: golden_most_seconds) do
-          play_runs(plays, golden: Lowering.golden_files(GOLDEN_LIST))
+        GoldenLimit.hold(list: golden_list, most_seconds: golden_most_seconds) do
+          play_runs(plays, golden: golden_files)
+        end
+      end
+
+      # The test files the golden list names, as paths from the folder rake runs in.
+      def golden_files = Lowering.golden_files(golden_list).map { |file| golden_from == "." ? file : File.join(golden_from, file) }
+
+      # A task for each group of tests (SuiteGroups), playing its files as the golden path plays its
+      # list: on every lowering that plays each.
+      def define_group_tasks
+        namespace :test do
+          namespace :group do
+            SuiteGroups.new(groups, files: test_files.to_a, broad: broad_groups).each do |group|
+              desc "Run the tests of #{group.name.tr(':', '/')} on every lowering that plays each"
+              task(group.name) { play_runs(plays, golden: group.files) }
+            end
+          end
         end
       end
 

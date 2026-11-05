@@ -11,4 +11,6 @@ VBlank::Testing::RakeTasks.new do |t|
   # for every kind.
   t.consoles = ENV.fetch("GAME_SUITE_CONSOLES", "gba").split.map(&:to_sym)
   t.golden_most_seconds = Integer(ENV["GAME_SUITE_GOLDEN_SECONDS"]) if ENV["GAME_SUITE_GOLDEN_SECONDS"]
+  t.golden_list = ENV["GAME_SUITE_GOLDEN_LIST"] if ENV["GAME_SUITE_GOLDEN_LIST"]
+  t.groups = "test" if ENV["GAME_SUITE_GROUPS"]
 end

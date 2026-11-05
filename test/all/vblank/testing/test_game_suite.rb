@@ -89,6 +89,26 @@ class TestGameSuite < Minitest::Test
     end
   end
 
+  # A game whose list is somewhere of its own names it, and gets the task all the same.
+  def test_a_golden_list_kept_elsewhere_is_named
+    game_with_a_golden_path do |game|
+      FileUtils.mv(File.join(game, "test/golden.txt"), File.join(game, "short.txt"))
+
+      assert_match "test:golden", rake("-T", env: { "GAME_SUITE_GOLDEN_LIST" => "short.txt" }, game: game).first
+      refute_match "test:golden", rake("-T", game: game).first
+    end
+  end
+
+  # Each folder of tests is a task of its own, so a person can play one part of the game.
+  def test_each_folder_of_tests_has_a_task
+    game_with_a_golden_path do |game|
+      FileUtils.mkdir_p(File.join(game, "test/walk"))
+      FileUtils.mv(File.join(game, "test/walker_test.rb"), File.join(game, "test/walk/walker_test.rb"))
+
+      assert_match "test:group:walk", rake("-T", env: { "GAME_SUITE_GROUPS" => "1" }, game: game).first
+    end
+  end
+
   # A copy of the game with one test more, which fails on the native run until a file exists.
   private def game_with_a_fault
     Dir.mktmpdir do |folder|

@@ -4,7 +4,6 @@
 # it the test runner — declared there, not in the gemspec — is not on the load path.
 require "bundler/setup"
 
-require "etc"
 require "rake/testtask"
 require "rbconfig"
 require_relative "ruby-gba-emulator/lib/ruby_gba_emulator/built_for"
@@ -73,24 +72,12 @@ task :clear_coverage do
   rm_f "coverage/.resultset.json" if ENV["COVERAGE"] == "1"
 end
 
-# EVERY TEST IN A RACTOR OF ITS OWN, however the suite is started. The flag goes into TESTOPTS
-# itself rather than into the task's options, because rake reads TESTOPTS INSTEAD of those when
-# it is set: naming one test with `TESTOPTS="--name=/x/"` used to drop the flag and run that
-# test on plain threads, where something the suite refuses passes. It is matched as a whole
-# word, so a pattern that happens to say "ractor" is not taken for it, and `--no-ractor` is
-# left to mean what it says.
-testopts = ENV.fetch("TESTOPTS", "")
-GIVEN_TESTOPTS = testopts # as the caller wrote them, for a suite that is not run on Ractors
-unless testopts.split.intersect?(%w[--ractor --no-ractor])
-  ENV["TESTOPTS"] = "--ractor #{testopts}".strip
-end
+GIVEN_TESTOPTS = ENV.fetch("TESTOPTS", "") # as the caller wrote them, for a suite that is not run on Ractors
 
-# HALF THE CORES, NOT ALL OF THEM. The runner starts one worker per core unless told otherwise,
-# which holds the whole machine for the length of the run. The suite is not short of cores: four
-# workers finish it in about the time all of them do, because so much of it waits on things
-# other than arithmetic. So a run leaves the machine usable, and MT_RACTOR_WORKERS still says
-# exactly how many, for anybody who wants more or fewer.
-ENV["MT_RACTOR_WORKERS"] ||= [Etc.nprocessors / 2, 1].max.to_s
+# EVERY TEST IN A RACTOR OF ITS OWN, however the suite is started, on half the cores: the same
+# settings a game's Rakefile asks for, and RactorSettings says why each is what it is.
+require_relative "lib/vblank/testing/ractor_settings"
+VBlank::Testing::RactorSettings.apply(ENV)
 
 require_relative "lib/vblank/testing/rake_tasks"
 require_relative "test/support/suites"
