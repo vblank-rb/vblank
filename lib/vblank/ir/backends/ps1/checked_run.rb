@@ -44,21 +44,24 @@ module VBlank
 
             # The face the interpreter worked out, painted on +screen+ (a Reference::Framebuffer): its edges
             # held to the area drawing is held to, as the runtime holds them, then each triangle the
-            # runtime sends filled inside them.
-            def fill_face(screen, picture:, pixels:, corners:, edges:, spans:, shaded:)
-              raise LoweringError, "the PlayStation build does not light faces yet" if shaded
-
+            # runtime sends filled inside them. Lit by +shade+ (a Reference::Shade), each triangle's texels
+            # are read through its level's colour table, which holds what the shading makes of each
+            # colour at that level: the interpreter's own lookup, at the triangle's level.
+            def fill_face(screen, picture:, pixels:, corners:, edges:, spans:, shade:)
               area = screen.area || [0, 0, screen.width, screen.height]
               left, top, right, bottom = edges
               held = [[left, area[0]].max, [top, area[1]].max, [right, area[2]].min, [bottom, area[3]].min]
-              triangles = FacePieces.triangles(corners: corners, edges: held, spans: spans,
-                                               width: picture.width, height: picture.height)
+              triangles = FacePieces.triangles(corners: corners, edges: held, spans: spans, width: picture.width,
+                                               height: picture.height, levels: shade ? shade.level_count : 0)
               drawing_area = [held[0], held[1], held[2] - 1, held[3] - 1]
               triangles.each do |triangle|
                 @polygon_fill.fill(triangle.corners, drawing_area) do |x, y, u, v|
                   at = (((v & (picture.height - 1)) * picture.width) + (u & (picture.width - 1))) * 2
                   color = pixels.getbyte(at) | (pixels.getbyte(at + 1) << 8)
-                  screen.set_pixel(x, y, color) unless picture.transparent && color == picture.transparent
+                  next if picture.transparent && color == picture.transparent
+
+                  color = shade.color_at(color, triangle.level << 16) if shade
+                  screen.set_pixel(x, y, color)
                 end
               end
             end

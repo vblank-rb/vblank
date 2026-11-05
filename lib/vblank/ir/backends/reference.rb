@@ -3299,13 +3299,13 @@ module VBlank
           right = [right, @screen.width].min
           bottom = [bottom, @screen.height].min
           spans = eval_value(node.perspective)
+          shade = node.shading && @shadings.fetch(node.shading) { raise ProgramError, "fill_face with undeclared shading #{node.shading.inspect}" }
           if @face_filler
             return @face_filler.fill_face(@screen, picture: picture, pixels: pixels, corners: corners,
-                                                   edges: [left, top, right, bottom], spans: spans, shaded: !node.shading.nil?)
+                                                   edges: [left, top, right, bottom], spans: spans, shade: shade)
           end
 
           corners = corners.map { |corner| FaceEdges.in_perspective(corner) } unless spans == Nodes::FillFace::PERSPECTIVE_NONE
-          shade = node.shading && @shadings.fetch(node.shading) { raise ProgramError, "fill_face with undeclared shading #{node.shading.inspect}" }
           corners = corners.map { |corner| shade.shaded_corner(corner) } if shade
           edges = FaceEdges.of(corners)
           return if edges.empty?
@@ -3330,6 +3330,9 @@ module VBlank
             @colors = node.colors
             @places = node.places
           end
+
+          # How many levels of light the shading has.
+          def level_count = @levels.length
 
           # The corner [x, y, u, v, w, light] with its light held to 0..LIGHTEST and made its shade:
           # times the levels, so a shade's top sixteen bits are its level.

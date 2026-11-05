@@ -216,8 +216,6 @@ module VBlank
               %i[held pressed].include?(node.kind) && node.player.is_a?(Integer) && node.player > 1
             end
             refuse_unmade!(SECOND_PAD, "reads the second pad") if second_pad
-            lit = @program.walk.any? { |node| node.kind == :fill_face && node.shading }
-            refuse_unmade!(Faces::LIT_FACES, "lights the faces of a place from their corners") if lit
           end
 
           def tiles_screen?(node)

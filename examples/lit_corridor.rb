@@ -70,7 +70,7 @@ module LitCorridor
   # How lit a point is: full under the lamp, less with each whole away, never quite dark.
   def self.light_at(ring) = (1.0 - ((ring - LAMP).abs * 0.22)).clamp(0.12, 1.0)
 
-  GAME = VBlank.game("LIT CORRIDOR", consoles: %i[gba]) do
+  GAME = VBlank.game("LIT CORRIDOR", consoles: %i[gba ps1]) do
     screen :bitmap, tear_free: true
     stone_rgb = COLORS[0..1].map { |red, green, blue| rgb(red, green, blue) }
     ground_rgb = COLORS[2..3].map { |red, green, blue| rgb(red, green, blue) }

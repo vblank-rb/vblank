@@ -112,8 +112,13 @@ a corridor whose lamp flickers.
 - **Each console**: the Advance looks each pixel up in a table the build makes from the shading, so
   every pixel is exactly the colour the shading gives. A lit pixel costs one load more than an unlit
   one: about two thirds again the unlit fill's cost with `:none`, and about a third again with
-  `:every_8_pixels`. A game that lights no place carries none of it. A console that shades in its own hardware, as the PlayStation and the Nintendo 64 do, would
-  blend each corner's colour across the face: close to the shading, but not exactly it.
+  `:every_8_pixels`. A game that lights no place carries none of it. The PlayStation draws the
+  shading's own colours too, not its graphics chip's blend of corner colours (which only scales red,
+  green and blue, and so cannot give a shading's colours): the processor cuts each face where its
+  light passes a whole level, and the chip draws each piece through a list of that level's colours,
+  one list for each level of each lit picture's colours. So every pixel is a colour the shading gives,
+  and only a pixel beside a line between two levels can show the level across the line. A lit
+  picture there must have 256 colours or fewer (a friendly error otherwise).
 
 **How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`
@@ -133,6 +138,6 @@ corner, and the place on the picture is found from it through one shared table (
 which every lowering reads, so all of them draw the same pixels. `rom.profile`
 names the fill "filling the faces of a place with their pictures".
 
-**Each console**: the Advance draws a place (its page says how). The Game Boy Color, the Super
+**Each console**: the Advance and the PlayStation draw a place, lit or not (their pages say how). The Game Boy Color, the Super
 Nintendo and the Sega Genesis refuse `draw_place` in plain words (see their pages); `screen_spot` works
 on all four.
