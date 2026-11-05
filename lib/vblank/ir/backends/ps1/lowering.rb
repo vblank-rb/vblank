@@ -46,6 +46,7 @@ module VBlank
                                                list_new: :emit_list_new, list_push: :emit_list_push,
                                                list_drop: :emit_list_drop, list_set: :emit_list_set,
                                                list_fill: :emit_list_fill, list_copy: :emit_list_copy,
+                                               list_sort: :emit_list_sort,
                                                timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
                                                # a timer's handler runs as its timer ticks, not where it is written
                                                on_timer: :emit_nothing,
@@ -589,6 +590,71 @@ module VBlank
             kept = Runtime::Lists::EntryKeeping.of(@plan.table_keeping(table)).number
             list_call("rt_list_copy", node, LabelAddress.new(table_label(table.name)), Build.int(kept),
                       Build.int(table.values.length), node.at, Build.int(node.count))
+          end
+
+          # Reference#exec_list_sort: the list's items put in order by the numbers the list +by+ holds at
+          # them. Where neither list ever has an item taken from its front, every item stays in the slot
+          # its index names, so the sort is written here with both lists' places and slot sizes known
+          # (#emit_fixed_front_sort); otherwise the runtime sorts through the ring (Runtime::Lists#emit_sort).
+          def emit_list_sort(node)
+            keys = @lists.fetch(node.by) { raise LoweringError, "the list #{node.by.inspect} is used and never declared" }
+            if [node.name, node.by].any? { |name| @lists_dropped_from_front.include?(name) }
+              return list_call("rt_list_sort", node, Build.int(keys.address), Build.int(node.descending ? 1 : 0))
+            end
+
+            emit_fixed_front_sort(@lists.fetch(node.name), keys, node.descending)
+          end
+
+          # AN INSERTION SORT IN THE ROUTINE'S OWN CODE, the way a console's own games sort their sprites by
+          # height: for each item after the first, its number is read once, and it moves back a slot at a
+          # time past the items before it whose numbers are strictly beyond its own, each moved up a slot as
+          # it is passed. So level items keep their order, and a list already in order takes one compare an
+          # item: about twenty instructions. Every slot is read straight from its place (the list's address,
+          # its header, and the index scaled to the slot's size), and the comparison has the sign.
+          #
+          # a0 is the list and a1 the numbers; t0 how many items, t1 the item being placed, t3 the place of
+          # the slot it would go in, t4 the item and t5 its number, t7 and t8 the item before and its number.
+          def emit_fixed_front_sort(list, keys, descending)
+            lists = Runtime::Lists
+            item_load = lists::LOADS.fetch(list.slot_bytes)
+            item_store = lists::STORES.fetch(list.slot_bytes)
+            key_load = lists::LOADS.fetch(keys.slot_bytes)
+            item_shift = list.slot_bytes.bit_length - 1
+            key_shift = keys.slot_bytes.bit_length - 1
+            next_item = fresh_label("sort_item")
+            step = fresh_label("sort_step")
+            place = fresh_label("sort_place")
+            done = fresh_label("sort_done")
+
+            @asm.li(:a0, list.address)
+            @asm.li(:a1, keys.address)
+            @asm.lhu(:t0, lists::LENGTH, :a0)
+            @asm.li(:t1, 1)
+            @asm.slt(:t2, :t1, :t0)
+            @asm.beq(:t2, :zero, done)
+            @asm.label(next_item)
+            @asm.sll(:t3, :t1, item_shift)
+            @asm.addu(:t3, :t3, :a0)
+            @asm.public_send(item_load, :t4, lists::HEADER, :t3)
+            @asm.sll(:t5, :t4, key_shift)
+            @asm.addu(:t5, :t5, :a1)
+            @asm.public_send(key_load, :t5, lists::HEADER, :t5)
+            @asm.label(step)
+            @asm.beq(:t3, :a0, place) # the first slot: nothing before it
+            @asm.public_send(item_load, :t7, lists::HEADER - list.slot_bytes, :t3)
+            @asm.sll(:t8, :t7, key_shift)
+            @asm.addu(:t8, :t8, :a1)
+            @asm.public_send(key_load, :t8, lists::HEADER, :t8)
+            # Moves back past a bigger number, or past a smaller one when the biggest comes first.
+            descending ? @asm.slt(:t9, :t8, :t5) : @asm.slt(:t9, :t5, :t8)
+            @asm.beq(:t9, :zero, place)
+            @asm.public_send(item_store, :t7, lists::HEADER, :t3)
+            @asm.b(step) { @asm.addiu(:t3, :t3, -list.slot_bytes) }
+            @asm.label(place)
+            @asm.public_send(item_store, :t4, lists::HEADER, :t3)
+            @asm.addiu(:t1, :t1, 1)
+            @asm.bne(:t1, :t0, next_item)
+            @asm.label(done)
           end
 
           # The runtime's list routine +routine+ on the list +node+ names, the list's place first.

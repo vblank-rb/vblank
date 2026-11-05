@@ -63,6 +63,7 @@ module VBlank
               emit_fixed_front_access(asm, direct_slot_sizes)
               emit_fill(asm)
               emit_copy(asm)
+              emit_sort(asm)
               emit_faults(asm, memory)
             end
 
@@ -101,19 +102,19 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # t9 = the address of the slot +offset+ (a register) places after the first item, unchecked.
-            # Changes t6 and t7.
-            def emit_slot_of_offset(asm, offset, label)
-              asm.lhu(:t6, FRONT, :a0)
-              asm.lhu(:t7, CAPACITY, :a0)
+            # t9 = the address of the slot +offset+ (a register) places after the first item of the list at
+            # +list+ (a0 unless said), unchecked. Changes t6 and t7.
+            def emit_slot_of_offset(asm, offset, label, list: :a0)
+              asm.lhu(:t6, FRONT, list)
+              asm.lhu(:t7, CAPACITY, list)
               asm.addu(:t6, :t6, offset)
               asm.sltu(:t9, :t6, :t7)
               asm.bne(:t9, :zero, label)
               asm.subu(:t6, :t6, :t7) # once round the ring
               asm.label(label)
-              asm.lhu(:t7, SHIFT, :a0)
+              asm.lhu(:t7, SHIFT, list)
               asm.sllv(:t6, :t6, :t7)
-              asm.addu(:t9, :a0, :t6)
+              asm.addu(:t9, list, :t6)
             end
 
             # +value+ into the slot at t9, as many bytes as its list's slots take. Changes t7.
@@ -130,9 +131,10 @@ module VBlank
               asm.label("#{label}_done")
             end
 
-            # v0 = what the slot at t9 holds, widened by its sign. Changes t7.
-            def emit_read_slot(asm, label)
-              asm.lhu(:t7, SHIFT, :a0)
+            # v0 = what the slot at t9 of the list at +list+ (a0 unless said) holds, widened by its sign.
+            # Changes t7.
+            def emit_read_slot(asm, label, list: :a0)
+              asm.lhu(:t7, SHIFT, list)
               asm.addiu(:t7, :t7, -1)
               asm.bltz(:t7, "#{label}_byte")
               asm.beq(:t7, :zero, "#{label}_half")
@@ -275,6 +277,56 @@ module VBlank
               asm.addiu(:t0, :t0, 1)
               asm.bne(:t0, :t5, "rt_list_copy_item")
               asm.label("rt_list_copy_done")
+              asm.jr(:ra)
+            end
+
+            # rt_list_sort(list, keys, descending): every item of the list put in order by the number the
+            # list +keys+ (a1) holds at it, the smallest first, or the biggest when +descending+ (a2) is not
+            # nought (Reference#exec_list_sort). An insertion sort: each item in turn moves back past the
+            # ones before it whose numbers are strictly beyond its own, so level items keep their order
+            # and a list already in order costs a compare an item.
+            #
+            # This is the way for a list that items are taken from the front of, whose items go round its
+            # slots, so each is found through the ring. A list whose first item stays in its first slot is
+            # sorted by code the lowering writes where the sort is, with the places known
+            # (Lowering#emit_fixed_front_sort).
+            def emit_sort(asm)
+              asm.label("rt_list_sort")
+              asm.lhu(:t0, LENGTH, :a0)
+              asm.li(:t1, 1) # the item to place next
+              asm.slt(:t2, :t1, :t0)
+              asm.beq(:t2, :zero, "rt_list_sort_done")
+              asm.label("rt_list_sort_item")
+              emit_slot_of_offset(asm, :t1, "rt_list_sort_item_within")
+              emit_read_slot(asm, "rt_list_sort_item_read")
+              asm.move(:t4, :v0) # the item
+              emit_slot_of_offset(asm, :t4, "rt_list_sort_key_within", list: :a1)
+              emit_read_slot(asm, "rt_list_sort_key_read", list: :a1)
+              asm.move(:t5, :v0) # its number
+              asm.move(:t3, :t1) # where it goes
+              asm.label("rt_list_sort_step")
+              asm.beq(:t3, :zero, "rt_list_sort_place")
+              asm.addiu(:a3, :t3, -1)
+              emit_slot_of_offset(asm, :a3, "rt_list_sort_before_within")
+              emit_read_slot(asm, "rt_list_sort_before_read")
+              asm.move(:t2, :v0) # the item before
+              emit_slot_of_offset(asm, :t2, "rt_list_sort_before_key_within", list: :a1)
+              emit_read_slot(asm, "rt_list_sort_before_key_read", list: :a1)
+              asm.bne(:a2, :zero, "rt_list_sort_falling")
+              asm.b("rt_list_sort_compared") { asm.slt(:t8, :t5, :v0) } # moves back past a bigger number
+              asm.label("rt_list_sort_falling")
+              asm.slt(:t8, :v0, :t5) # ...or past a smaller one
+              asm.label("rt_list_sort_compared")
+              asm.beq(:t8, :zero, "rt_list_sort_place")
+              emit_slot_of_offset(asm, :t3, "rt_list_sort_move_within")
+              emit_write_slot(asm, :t2, "rt_list_sort_move_write")
+              asm.b("rt_list_sort_step") { asm.move(:t3, :a3) }
+              asm.label("rt_list_sort_place")
+              emit_slot_of_offset(asm, :t3, "rt_list_sort_place_within")
+              emit_write_slot(asm, :t4, "rt_list_sort_place_write")
+              asm.addiu(:t1, :t1, 1)
+              asm.bne(:t1, :t0, "rt_list_sort_item")
+              asm.label("rt_list_sort_done")
               asm.jr(:ra)
             end
 
