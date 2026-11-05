@@ -72,6 +72,8 @@ module LitCorridor
 
   GAME = VBlank.game("LIT CORRIDOR", consoles: %i[gba ps1]) do
     screen :bitmap, tear_free: true
+    # Drawn lit unless a build says `lit: false`, to see what the light costs.
+    lit = setting :lit, true
     stone_rgb = COLORS[0..1].map { |red, green, blue| rgb(red, green, blue) }
     ground_rgb = COLORS[2..3].map { |red, green, blue| rgb(red, green, blue) }
     image(:stone, "#" => stone_rgb[0], "." => stone_rgb[1]) { BLOCKS }
@@ -113,7 +115,7 @@ module LitCorridor
       lamp_points.each { |point| corridor.point_lights[point] = flicker * -0.1 }
 
       clear_screen :black
-      draw_place :corridor, seen_by: eye
+      draw_place :corridor, seen_by: eye, lit: lit
     end
   end
 

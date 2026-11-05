@@ -40,7 +40,8 @@ module VBlank
           # The pool is handed back as the pieces finish with it: all of it as each face starts; whatever
           # the work on a part took, once rt_face_sweep has sent that part; and as a piece comes off the
           # waiting stack, everything past where the piece below it was put waiting (WAITING_MARKS), its
-          # own corners from there moved down to the start of what was handed back (rt_face_compact). Only
+          # own corners from there moved down to the start of what was handed back (rt_face_compact), once
+          # more than a piece's worth lies there. Only
           # that piece can still be using any of it, so a piece cut on the picture again and again takes no
           # more of the pool than one cut once. POOL_CORNERS says why that is always enough.
           #
@@ -207,8 +208,10 @@ module VBlank
 
             # rt_face_corners: a0 = the list of corners, a1 = how many. The count held to MOST_CORNERS and
             # kept in COUNT_OFFSET_BYTES; with three or more, each corner's numbers read from the list into
-            # CORNERS_OFFSET_BYTES, through rt_list_get, so an index past the list's end stops the game as
-            # the interpreter's does (Reference#check_list_index!).
+            # CORNERS_OFFSET_BYTES: straight from its slots when the list's slots are words, its first item
+            # is in its first slot and it holds every number read, and otherwise
+            # through rt_list_get, so an index past the list's end stops the game as the interpreter's does
+            # (Reference#check_list_index!).
             def emit_face_corners_routine(asm, at)
               most = Nodes::FillFace::MOST_CORNERS
               asm.label("rt_face_corners")
@@ -220,13 +223,36 @@ module VBlank
               asm.sw(:a1, at + COUNT_OFFSET_BYTES, :gp)
               asm.slti(:t0, :a1, 3)
               asm.bne(:t0, :zero, "rt_face_corners_none")
+              asm.sll(:t0, :a1, 1)
+              asm.sll(:t1, :a1, 2)
+              asm.addu(:t1, :t1, :t0) # six numbers a corner
+              # A list of words whose first item is in its first slot, holding them all, is copied straight:
+              # no index can be past its end, and its items are its slots in order.
+              lists = Runtime::Lists
+              asm.lhu(:t2, lists::FRONT, :a0)
+              asm.bne(:t2, :zero, "rt_face_corners_one_by_one")
+              asm.lhu(:t2, lists::SHIFT, :a0)
+              asm.addiu(:t2, :t2, -2)
+              asm.bne(:t2, :zero, "rt_face_corners_one_by_one")
+              asm.lhu(:t2, lists::LENGTH, :a0)
+              asm.sltu(:t2, :t2, :t1)
+              asm.bne(:t2, :zero, "rt_face_corners_one_by_one")
+              asm.label("rt_face_corners_straight")
+              asm.addiu(:t2, :a0, lists::HEADER)
+              asm.addiu(:t3, :gp, at + CORNERS_OFFSET_BYTES)
+              asm.label("rt_face_corners_word")
+              asm.lw(:t4, 0, :t2)
+              asm.addiu(:t2, :t2, 4)
+              asm.sw(:t4, 0, :t3)
+              asm.addiu(:t1, :t1, -1)
+              asm.bne(:t1, :zero, "rt_face_corners_word") { asm.addiu(:t3, :t3, 4) }
+              asm.jr(:ra)
+              asm.label("rt_face_corners_one_by_one")
               asm.addiu(:sp, :sp, -16)
               asm.sw(:ra, 0, :sp)
               %i[s0 s1 s2].each_with_index { |register, i| asm.sw(register, 4 + (i * 4), :sp) }
               asm.move(:s0, :a0)
-              asm.sll(:t0, :a1, 1)
-              asm.sll(:s1, :a1, 2)
-              asm.addu(:s1, :s1, :t0) # six numbers a corner
+              asm.move(:s1, :t1)
               asm.move(:s2, :zero)
               asm.label("rt_face_corners_next")
               asm.move(:a0, :s0)
@@ -539,6 +565,14 @@ module VBlank
               asm.addu(:t0, :t0, :gp)
               asm.lw(:a1, at + WAITING_MARKS_OFFSET_BYTES - 4, :t0)
               asm.label("rt_face_send_mark_found")
+              # Moved down only once more than a piece's worth of corners is past the mark: up to that, the
+              # room is the same as the moving would leave (POOL_CORNERS), and the moving costs more than it
+              # gives back.
+              asm.lw(:t0, at + POOL_NEXT_OFFSET_BYTES, :gp)
+              asm.subu(:t0, :t0, :a1)
+              asm.slti(:t0, :t0, (FacePieces::MOST_CORNERS * CORNER_BYTES) + 1)
+              asm.bne(:t0, :zero, "rt_face_send_part")
+              asm.label("rt_face_send_compact")
               asm.jal("rt_face_compact") { asm.move(:a0, :s0) }
               asm.b("rt_face_send_part")
 
@@ -789,15 +823,7 @@ module VBlank
               asm.sltiu(:t2, :s3, NUMBER_OFFSETS.fetch(FacePieces::U_SOURCE))
               asm.beq(:t2, :zero, "rt_face_cut_late")
               emit_screen_cut_corner(asm, at)
-              asm.label("rt_face_cut_late")
-              FacePieces::NUMBERS.times do |number|
-                if FacePieces::LATE_CUT_NUMBERS.include?(number)
-                  emit_step_number(asm, number)
-                else
-                  asm.lw(:a0, number * 4, :t0)
-                  asm.sw(:a0, number * 4, :v0)
-                end
-              end
+              emit_late_cut_corner(asm, at)
               asm.label("rt_face_cut_stepped")
               asm.addu(:t0, :v0, :s3)
               asm.sw(:s4, 0, :t0)
@@ -851,6 +877,38 @@ module VBlank
                 asm.label(done)
               end
               asm.b("rt_face_cut_stepped")
+            end
+
+            # The corner a cut on the picture or between levels makes, at v0, from t0 the share t8 of the way
+            # to t1, falling through to rt_face_cut_stepped: x and y stepped; each texel and the shade stepped
+            # unless it is the number cut on (s3), which the line sets, and the shade only on a lit face (on
+            # a face not lit it is nought at both ends); the rest the start's (FacePieces::LATE_CUT_NUMBERS).
+            def emit_late_cut_corner(asm, at)
+              asm.label("rt_face_cut_late")
+              FacePieces::NUMBERS.times do |number|
+                if [FacePieces::X, FacePieces::Y].include?(number)
+                  emit_step_number(asm, number)
+                elsif FacePieces::LATE_CUT_NUMBERS.include?(number)
+                  copied = "rt_face_cut_late_copied_#{number}"
+                  stepped = "rt_face_cut_late_stepped_#{number}"
+                  asm.li(:t2, NUMBER_OFFSETS.fetch(number))
+                  asm.beq(:s3, :t2, stepped) # the line sets it
+                  if number == FacePieces::SHADE
+                    asm.lw(:t2, at + LEVELS_OFFSET_BYTES, :gp)
+                    asm.beq(:t2, :zero, copied)
+                  end
+                  emit_step_number(asm, number)
+                  if number == FacePieces::SHADE
+                    asm.b(stepped)
+                    asm.label(copied)
+                    asm.sw(:zero, number * 4, :v0)
+                  end
+                  asm.label(stepped)
+                else
+                  asm.lw(:a0, number * 4, :t0)
+                  asm.sw(:a0, number * 4, :v0)
+                end
+              end
             end
 
             # +number+ of the corner at t0 stepped the share t8 of the way to the one at t1, into the corner
