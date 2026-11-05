@@ -152,7 +152,7 @@ module VBlank
       def saying_errors_plainly
         yield
       rescue ArgumentError, VBlank::BuildError, GaveUp, Comparison::ReadingFailed, Comparison::ReportNotWritten,
-             Comparison::PassCountFell, Comparison::PassNotReached => e
+             Comparison::PassCountFell, Comparison::PassNotReached, Comparison::PictureStoodStill => e
         raise Refused, message_with_flags(e.message)
       end
 
@@ -363,7 +363,7 @@ module VBlank
         said.to_h do |setting, written|
           [setting, case setting
                     when :ignoring_rectangles, :looking_at then written.map { |one| parse_rectangle(one, setting) }
-                    when :layers, :forgiving_torn_frames_of then written.to_sym
+                    when :layers, :forgiving_torn_frames_of, :skipping_still_frames_of then written.to_sym
                     when :ignoring_frames then written.map { |one| parse_frame_stretch(one) }
                     when :readings then written.to_h { |one| parse_reading(one) }
                     when :by_passes then parse_pass_count(written)
@@ -449,7 +449,10 @@ module VBlank
           before = drift.moment ? " The moment named before it was #{drift.moment}." : ""
           say "The two cartridges drifted on frame #{drift.frame}.#{before}"
         end
-        say "  on pass #{drift.pass}: frame #{drift.frame} on the first, frame #{drift.second_frame} on the second" if drift.pass
+        if drift.second_frame
+          say "  #{"on pass #{drift.pass}: " if drift.pass}frame #{drift.frame} on the first, frame #{drift.second_frame} " \
+              "on the second"
+        end
         say "  what differed: #{drift.differed.join(', ')}"
         say "  it lasted to frame #{drift.last_frame} (#{HOW_A_DRIFT_ENDED.fetch(drift.ended)})" if drift.last_frame
         say "  report: #{drift.report}" if drift.report

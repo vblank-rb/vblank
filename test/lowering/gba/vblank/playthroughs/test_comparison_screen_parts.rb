@@ -130,4 +130,17 @@ class TestComparisonScreenParts < Minitest::Test
       assert_match "every 2nd pixel", text
     end
   end
+
+  # A part of the screen worked out by a block is asked on every frame, those `ignoring_frames:`
+  # leaves out too, so a block that keeps what it saw on the frame before is never stale.
+  def test_a_part_block_is_asked_on_frames_left_out_too
+    frames = []
+    part = lambda do |_first, _second, frame|
+      frames << frame
+      [[0, 0, 240, 160]]
+    end
+    walk_right.compare(walker, walker, looking_at: part, ignoring_frames: [5..20])
+
+    assert_equal (1..60).to_a, frames
+  end
 end

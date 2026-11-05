@@ -31,7 +31,9 @@ module VBlank
     # and not by frames, for an original that takes two frames over a pass now and then: each
     # cartridge's count of passes (`true` for the game loop's own on a cartridge built here, a
     # variable's name, a block, or one for each, as `readings:` takes them), with
-    # `pass_count_wraps_at: 256` for a count kept in a byte.
+    # `pass_count_wraps_at: 256` for a count kept in a byte. `skipping_still_frames_of: :second`
+    # (or `:first`, or `:both`) skips that cartridge's frames whose picture is the one before's, a
+    # room loading, so the two are in step again after a load that is longer on one.
     #
     # A failure says where the two first part: the frame and the moment before it, what differed,
     # every reading on both, how many pixels differ, the box they lie in, the first of them and its
@@ -55,11 +57,13 @@ module VBlank
       DIFFERED_WORDS = { Playthroughs::Comparison::PICTURE => "the picture",
                          Playthroughs::Comparison::FRAMES_APART => "how many frames each cartridge took" }.freeze
 
-      # The frame, or for two lined up by passes the pass and the frame each showed it on.
+      # The frame, or for two lined up step by step the frame each showed it on, and the pass
+      # where the steps are passes.
       def self.where_words(drift)
-        return "on frame #{drift.frame}" unless drift.pass
+        return "on frame #{drift.frame}" unless drift.second_frame
 
-        "on pass #{drift.pass}, frame #{drift.frame} of the first cartridge and frame #{drift.second_frame} of the second"
+        frames = "frame #{drift.frame} of the first cartridge and frame #{drift.second_frame} of the second"
+        drift.pass ? "on pass #{drift.pass}, #{frames}" : "on #{frames}"
       end
 
       def self.differed_words(drift) = drift.differed.map { |what| DIFFERED_WORDS.fetch(what) { "the reading #{what}" } }.join(", ")

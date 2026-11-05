@@ -139,7 +139,7 @@ class TestComparisonByPasses < Minitest::Test
       watch.compare(passing, passing, by_passes: [:passes, ->(game) { game.var(:passes) + 1000 }])
     end
 
-    assert_match "no pass was compared", error.message
+    assert_match "nothing was compared", error.message
   end
 
   def test_settings_that_need_frames_are_refused

@@ -41,7 +41,9 @@ module VBlank
     # OR LINED UP BY THE GAME'S OWN PASSES, asked for with `by_passes:`: each cartridge says its
     # count of passes, and the two are compared on the first frame each shows each pass, so a
     # pass that takes two frames on one and one on the other is still like with like (see
-    # Passes).
+    # Passes). Or with each cartridge's own still frames skipped, asked for with
+    # `skipping_still_frames_of:`, so a room that loads for longer on one is in step again after
+    # (see StillFrames).
     #
     # AND ONE FRAME OF THE TWO AS A PICTURE, for a person to look at: the two screens side by
     # side with what differs marked (see ScreenPair). A report of a drift holds one, and one
@@ -82,9 +84,9 @@ module VBlank
       # empty otherwise, for a drift found at a moment, and for two cartridges whose pictures
       # differ though none of those does (the pictures the tiles are made of, say).
       #
-      # +pass+ is, for a comparison lined up by passes (see Passes), the pass the drift began on,
-      # and +second_frame+ the frame the second cartridge showed it on (+frame+ is the first's).
-      # Both are nil otherwise. +last_frame+ there is the first cartridge's frame too.
+      # +second_frame+ is, for a comparison lined up step by step (see LinedUp), the frame the
+      # second cartridge began it on (+frame+ is the first's, and so is +last_frame+), and +pass+
+      # the pass it began on where the steps are passes (see Passes). Both are nil frame by frame.
       Drift = Data.define(:frame, :last_frame, :ended, :moment, :differed, :readings, :report, :picture_difference,
                           :video_differences, :pass, :second_frame) do
         def initialize(frame:, moment:, differed:, readings:, last_frame: nil, ended: nil, report: nil, picture_difference: nil,
@@ -172,13 +174,19 @@ module VBlank
       #
       # +by_passes+ is how each cartridge counts its passes, for two lined up by the game's own
       # passes and not by frames, and +pass_count_wraps_at+ where that count comes back round to
-      # nought (see Passes). Nil for a comparison frame by frame.
+      # nought (see Passes). +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
+      # cartridges whose frames that show the picture of the frame before are skipped (see
+      # StillFrames). Nil for a comparison frame by frame.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
                      same: :tape, frames_apart: nil, save: nil, lead_ins: nil, reports_in: nil, layers: nil,
-                     forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil, **how_alike)
+                     forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil, skipping_still_frames_of: nil,
+                     **how_alike)
         refuse_unknown_settings!(how_alike.keys)
-        @passes = Passes.from(by_passes, pass_count_wraps_at)
-        refuse_settings_wrong_for_passes!(same: same, torn: forgiving_torn_frames_of, reports_in: reports_in)
+        passes = Passes.from(by_passes, pass_count_wraps_at)
+        still_frames = StillFrames.from(skipping_still_frames_of)
+        refuse_two_step_counts!(passes, still_frames)
+        @step_count = passes || still_frames
+        refuse_settings_wrong_for_lined_up!(same: same, torn: forgiving_torn_frames_of, reports_in: reports_in)
         @moments = moments
         @save = Playthrough.save_from(save)
         refuse_malformed_lead_ins!(lead_ins)
@@ -282,10 +290,10 @@ module VBlank
           refuse_cartridges_not_compared!(pair)
           sized_for_screens_of(pair)
           @readings.refuse_unreadable_on!(pair)
-          @passes&.refuse_unreadable_on!(pair)
+          @step_count&.refuse_unreadable_on!(pair)
           pair.zip(%w[first second], @lead_ins).each_with_index.map do |(cartridge, which, lead_in), side|
             Start.new(which: which, cartridge: cartridge, save: save_fitted_to(cartridge, which), lead_in: lead_in,
-                      count_passes: @passes&.game_loop_count?(side) || false)
+                      count_passes: @step_count&.game_loop_count?(side) || false)
           end
         end
       end
@@ -343,7 +351,7 @@ module VBlank
         pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),
                                                              torn: TornFrames.for(@torn_side, @likeness),
                                                              carrying_on: @carrying_on, reporter: reporter,
-                                                             lined_up: @passes&.lined_up_on(*consoles))
+                                                             lined_up: @step_count&.lined_up_on(*consoles, @likeness.looked_at.fixed_part))
         # A pair that has stopped plays no more frames, and is still told a moment that
         # names the very frame it stopped on: that one it reached. +due+ is the frame the
         # tape is on after each step, so a step is past where the pair stopped when it is
@@ -501,15 +509,25 @@ module VBlank
       # Every setting a comparison has: the ones that say how alike, and the ones of its own.
       def self.settings
         [*how_alike_settings, :ignoring_frames, :layers, :forgiving_torn_frames_of, :readings, :comparing, :carrying_on, :same,
-         :frames_apart, :save, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at]
+         :frames_apart, :save, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :skipping_still_frames_of]
       end
 
-      # What a comparison lined up by passes cannot do yet, or at all. On the same script there
-      # is no tape to line up. The strict rule for torn frames needs the frame after each one,
-      # and a report's tape would play the second cartridge on the first one's frames, which is
-      # not how it was played.
-      private def refuse_settings_wrong_for_passes!(same:, torn:, reports_in:)
-        return unless @passes
+      # Passes and still frames are two counts of steps (see LinedUp), and a comparison lines the
+      # two cartridges up by one of them at most.
+      private def refuse_two_step_counts!(passes, still_frames)
+        return unless passes && still_frames
+
+        raise ArgumentError, "The comparison was given `by_passes:` and `skipping_still_frames_of:`. A comparison can line " \
+                             "the two cartridges up by their passes or by the frames whose picture changed, not by both. " \
+                             "Remove one of them."
+      end
+
+      # What a comparison lined up step by step cannot do yet, or at all. On the same script
+      # there is no tape to line up. The strict rule for torn frames needs the frame after each
+      # one, and a report's tape would play the second cartridge on the first one's frames,
+      # which is not how it was played.
+      private def refuse_settings_wrong_for_lined_up!(same:, torn:, reports_in:)
+        return unless @step_count
 
         said = []
         said << "`same: :script`" if same == :script
@@ -517,9 +535,10 @@ module VBlank
         said << "`reports_in:`" if reports_in
         return if said.empty?
 
-        raise ArgumentError, "The comparison is lined up by passes, with `by_passes:`. It was given #{said.join(' and ')}. " \
-                             "A comparison lined up by passes cannot use #{said.size == 1 ? 'that setting' : 'those settings'}. " \
-                             "Remove #{said.size == 1 ? 'it' : 'them'}, or remove `by_passes:` to compare frame by frame."
+        setting = @step_count.setting_name
+        raise ArgumentError, "The comparison is lined up step by step, with #{setting}. It was given #{said.join(' and ')}. " \
+                             "A comparison lined up step by step cannot use #{said.size == 1 ? 'that setting' : 'those settings'}. " \
+                             "Remove #{said.size == 1 ? 'it' : 'them'}, or remove #{setting} to compare frame by frame."
       end
 
       # The settings that say how alike two pictures have to be and which of them is looked at.
@@ -679,8 +698,9 @@ module VBlank
         # (Compared::Seen, or nil on a frame that is not looked at), and what is kept from it
         # in case something begins to differ on it (Kept, or nil when nothing did). +step+ counts
         # the observations from 1, which is what frames in a row are counted in: one a frame, or
-        # one a pass when the two are lined up by passes. There +pass+ is the pass and
-        # +second_frame+ the frame the second cartridge showed it on; both are nil otherwise.
+        # one a step when the two are lined up step by step. There +second_frame+ is the frame
+        # the second cartridge showed the step on, and +pass+ the step where steps are passes;
+        # both are nil otherwise.
         Observation = Data.define(:frame, :moment, :seen, :kept, :step, :pass, :second_frame)
 
         # WHAT IS KEPT FROM A FRAME ON WHICH SOMETHING DIFFERS, because by the time it has
@@ -706,7 +726,7 @@ module VBlank
         # nil. +reporter+ is handed each drift as it ends, with the two screens on the frame
         # it began and the part looked at there, and hands the drift back with its report
         # noted — or is nil, and then no screen is copied out, which is only worth doing for
-        # a report. +lined_up+ is the two lined up by passes (Passes::LinedUp), or nil to compare
+        # a report. +lined_up+ is the two lined up step by step (LinedUp), or nil to compare
         # them frame by frame.
         def initialize(first, second, compared, ignored, looked_at:, torn:, carrying_on:, reporter:, lined_up: nil)
           @lined_up = lined_up
@@ -735,7 +755,7 @@ module VBlank
             @first.step(1, keys: keys)
             @second.step(1, keys: keys) unless @lined_up
             @frames += 1
-            seen = @lined_up ? observe_pass(keys) : observe
+            seen = @lined_up ? observe_step(keys) : observe
             next unless seen
 
             decided = @torn ? @torn.decide_previous(seen, [@first, @second]) : seen
@@ -765,27 +785,32 @@ module VBlank
           end_drift_under_way(@decided_frame, :tape_ran_out)
         end
 
-        # The frame just played, looked at. The part of the screen is asked for on every
-        # frame that is looked at, so a block that chooses it is asked in order.
-        private def observe(pass: nil, passed_over: false)
+        # The frame just played, looked at. The part of the screen is asked for on every frame
+        # the two are on together, one `ignoring_frames:` leaves out included, so a block that
+        # chooses it is asked in order and what it keeps from the frame before is never stale.
+        # +step+ is the step the two are lined up on, or nil frame by frame; +passed_over+ says
+        # the second went past it without showing it.
+        private def observe(step: nil, passed_over: false)
           @steps += 1
-          unseen = Observation.new(frame: @frames, moment: @moment, seen: nil, kept: nil, step: @steps, pass: pass,
-                                   second_frame: (@lined_up.second_frames if pass))
-          return unseen if passed_over || ignored_frame?
+          unseen = Observation.new(frame: @frames, moment: @moment, seen: nil, kept: nil, step: @steps,
+                                   pass: (step if @lined_up&.passes?), second_frame: (@lined_up.second_frames if step))
+          return unseen if passed_over
 
           part = @looked_at.part_on(@frames, @first, @second)
+          return unseen if ignored_frame?
+
           seen = @compared.seen_on(@first, @second, part)
           unseen.with(seen: seen, kept: (kept_from(seen, part) if beginning?(seen)))
         end
 
-        # The frame just played on the first cartridge, looked at if it is the first frame of a
-        # pass, with the second played on to the same pass and held +keys+ as it goes. Nil for a
-        # frame of a pass the first has shown before. A pass the second goes past without
-        # showing is not looked at.
-        private def observe_pass(keys)
-          pass = @lined_up.read_pass_begun_on_first! or return nil
+        # The frame just played on the first cartridge, looked at if it is the frame the first
+        # took a step on, with the second played on to the same step and held +keys+ as it goes.
+        # Nil for a frame that took no step. A step the second goes past without showing is not
+        # looked at.
+        private def observe_step(keys)
+          step = @lined_up.read_step_begun_on_first!(keys) or return nil
 
-          observe(pass: pass, passed_over: !@lined_up.play_second_to_pass!(pass, keys))
+          observe(step: step, passed_over: !@lined_up.play_second_to_step!(step))
         end
 
         # Whether something may begin to differ on this frame. With the strict rule for torn

@@ -96,7 +96,14 @@ module VBlank
         end
 
         # The two running cartridges, lined up.
-        def lined_up_on(first, second) = LinedUp.new(Count.new(@reading, 0, @wraps_at, first), Count.new(@reading, 1, @wraps_at, second))
+        # (A pass is counted by the game, so +_part+, the part of the screen looked at, has
+        # nothing to say about it.)
+        def lined_up_on(first, second, _part)
+          LinedUp.new(Count.new(@reading, 0, @wraps_at, first), Count.new(@reading, 1, @wraps_at, second), passes: true)
+        end
+
+        # The setting's name, for an error about settings it cannot be used with.
+        def setting_name = "`by_passes:`"
 
         # ONE CARTRIDGE'S COUNT OF PASSES AS IT PLAYS, counted on past each wrap so that a later
         # pass is always a bigger number. +side+ is 0 for the first cartridge and 1 for the second.
@@ -108,11 +115,19 @@ module VBlank
             @game = game
             @last = nil
             @laps = 0
+            @current = nil
           end
 
-          # The pass the cartridge shows now, read off it and counted on past a wrap since the
-          # last reading. It is read after every frame the cartridge plays, so no wrap is missed.
-          def read_pass!
+          # The pass the cartridge showed after the last frame read, or nil before any was.
+          def current_step = @current
+
+          # What it counts, for a message: "passes".
+          def counted_words = "passes"
+
+          # The pass the cartridge shows after the frame it has just played, read off it and
+          # counted on past a wrap since the frame before. It is read once after every frame
+          # the cartridge plays, so no wrap is missed.
+          def read_after_frame!
             raw = @reading.values_from(@game, @side).fetch(COUNT)
             refuse_count_not_whole!(raw)
             raw %= @wraps_at if @wraps_at
@@ -121,13 +136,20 @@ module VBlank
               @laps += @wraps_at
             end
             @last = raw
-            raw + @laps
+            @current = raw + @laps
           end
 
           # Play the cartridge one frame, holding +keys+, and read the pass it shows after it.
-          def step_and_read_pass!(keys)
+          def step_and_read!(keys)
             @game.step(1, keys: keys)
-            read_pass!
+            read_after_frame!
+          end
+
+          def refuse_stood_still!(wanted)
+            raise PassNotReached, "The second cartridge's count of passes stopped at #{@current}, and the first cartridge " \
+                                  "showed pass #{wanted}. The count did not move in #{LinedUp::MOST_FRAMES_STILL} frames, " \
+                                  "so the comparison stopped. The second game ended there, or its count does not move on " \
+                                  "that stretch. Make the tape end sooner, or count something that goes on moving there."
           end
 
           private
@@ -150,68 +172,6 @@ module VBlank
           end
         end
         private_constant :Count
-
-        # THE TWO CARTRIDGES PLAYED PASS BY PASS: the first frame by frame, the second as far as
-        # each pass the first shows.
-        class LinedUp
-          # How many frames each has played.
-          attr_reader :second_frames
-
-          def initialize(first, second)
-            @first = first
-            @second = second
-            @shown = nil
-            @second_frames = 0
-            @both_shown = 0
-          end
-
-          # The pass the first cartridge shows for the first time on the frame it has just
-          # played, or nil when it shows one it has shown before.
-          def read_pass_begun_on_first!
-            pass = @first.read_pass!
-            return nil if @shown && pass <= @shown
-
-            @shown = pass
-          end
-
-          # Play the second cartridge on, holding +keys+, until its count shows +pass+ or a later
-          # one, and answer whether it shows that very pass, which is then compared. It plays at
-          # least one frame the first time, since nothing is shown before a frame is played.
-          def play_second_to_pass!(pass, keys)
-            count = @second_frames.zero? ? nil : @second.read_pass!
-            still = 0
-            until count && count >= pass
-              moved = @second.step_and_read_pass!(keys)
-              @second_frames += 1
-              still = moved == count ? still + 1 : 0
-              count = moved
-              refuse_stopped_count!(pass, count) if still >= PassSteppedGame::MOST_FRAMES_STILL
-            end
-            (count == pass).tap { |shown| @both_shown += 1 if shown }
-          end
-
-          # The playing has ended. A comparison in which the second never showed a pass the first
-          # did compared nothing, and would pass whatever the two did: two counts that do not
-          # count the same passes, most likely.
-          def refuse_nothing_compared!
-            return if @both_shown.positive? || @shown.nil?
-
-            raise PassNotReached, "The second cartridge showed none of the passes the first cartridge showed, so no pass " \
-                                  "was compared. The first cartridge's last pass was #{@shown}, and the second cartridge's " \
-                                  "count was #{@second.read_pass!}. Make the two counts count the same passes, from the " \
-                                  "same number."
-          end
-
-          private
-
-          def refuse_stopped_count!(pass, count)
-            raise PassNotReached, "The second cartridge's count of passes stopped at #{count}, and the first cartridge " \
-                                  "showed pass #{pass}. The count did not move in #{PassSteppedGame::MOST_FRAMES_STILL} " \
-                                  "frames, so the comparison stopped. The second game ended there, or its count does not " \
-                                  "move on that stretch. Make the tape end sooner, or count something that goes on moving there."
-          end
-        end
-        private_constant :LinedUp
 
         private
 

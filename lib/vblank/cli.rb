@@ -577,6 +577,10 @@ module VBlank
                                  both; FIRST,SECOND is one for each.
         --pass-count-wraps-at N  Where the count comes back round to 0, like
                                  256 for a count kept in a byte.
+        --skipping-still-frames-of WHICH
+                                 first, second or both: skip that cartridge's
+                                 frames whose picture is the one before's, as
+                                 a room loads, so the two are in step after.
 
       Where the two start:
         --save PATH              Start both from this save file.
@@ -632,6 +636,7 @@ module VBlank
     option :frames_apart, type: :numeric, banner: "N"
     option :by_passes, banner: "COUNT"
     option :pass_count_wraps_at, type: :numeric, banner: "N"
+    option :skipping_still_frames_of, banner: "WHICH", enum: %w[first second both]
     option :save, banner: "PATH"
     option :lead_ins, type: :array, banner: "NAME"
     option :reports_in, banner: "DIR"

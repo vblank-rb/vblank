@@ -150,6 +150,21 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
+  # --skipping-still-frames-of takes the side whose still frames are skipped, and the drift then
+  # says each cartridge's frame.
+  def test_skipping_still_frames_of_a_side
+    with_cartridges do |dir|
+      agreed, agreed_status = cli("compare", "walker.gba", "walker.rb", "--script", "walk.rb",
+                                  "--skipping-still-frames-of", "both", dir: dir)
+      drifted, drifted_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb",
+                                    "--skipping-still-frames-of", "second", dir: dir)
+
+      assert_equal AGREED, agreed_status.exitstatus, agreed
+      assert_equal DRIFTED, drifted_status.exitstatus, drifted
+      assert_match(/frame \d+ on the first, frame \d+ on the second/, drifted)
+    end
+  end
+
   # --comparing says what is compared. The red game's picture drifts from the game's and
   # its box is in the same place, so with only the readings compared the two agree, and
   # with the picture compared too they do not.

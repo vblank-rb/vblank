@@ -26,8 +26,9 @@ module VBlank
       #                                                covers is looked at whole
       #   ->(first, second) { [[x, y, w, h], ...] }    a block, handed the two running cartridges
       #                                                (and the frame's number, if it takes three)
-      #                                                and asked on every frame that is looked at,
+      #                                                and asked on every frame, those left out too,
       #                                                in order, so it can remember the frame before
+      #                                                (once a step, for two lined up step by step)
       #
       # A rectangle given in a list or for a stretch has to lie on the screen, since a part off
       # it is a slip. One a block answers is cut to the screen, since a part that moves with
