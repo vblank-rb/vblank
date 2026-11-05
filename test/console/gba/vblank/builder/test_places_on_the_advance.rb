@@ -227,6 +227,25 @@ class TestPlacesOnTheAdvance < Minitest::Test
     refute_equal BLACK, screen.pixel(200, 80), "the second drawing, half a whole to the left"
   end
 
+  # The door's slot pointed at the next of three pictures every three passes, by a number worked out as
+  # the game runs, and a number that is not one of the place's pictures passed over; the wall beside
+  # it keeps its own picture throughout.
+  def test_a_slot_pointed_at_another_picture_shows_it_from_that_pass
+    (2..14).each do |frames|
+      played = game_player.run(PlaceGames.changing_door, frames: frames)
+      pass = played[:drawn]
+
+      assert_equal shown(PlaceGames.door_color(pass)), played.screen.pixel(60, 80), "the door on pass #{pass}"
+      assert_equal tile(0, 0), played.screen.pixel(151, 51), "the wall on pass #{pass}"
+    end
+  end
+
+  def test_a_slot_pointed_at_a_picture_by_its_name_shows_it
+    screen = game_player.run(PlaceGames.changing_door(named: true), frames: 2).screen
+
+    assert_equal shown(:blue), screen.pixel(60, 80)
+  end
+
   def test_each_face_keeps_its_own_picture_when_the_game_starts_over
     screen = game_player.run(PlaceGames.two_faces(starting_over: true), frames: 3).screen
 

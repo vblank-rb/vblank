@@ -18,13 +18,29 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   otherwise). A point's numbers go from -8191 to 8191, with fractions, and so do the viewer's: half of
   what a fraction holds, so no point is ever too far from the viewer to measure. A corner falls from
   -8191 to 8191 picture pixels. The place is written into the cartridge as it is declared and does not
-  change shape as the game runs. **Each face shows its picture through a slot** (one for each picture
-  the place names), kept in a list the game will be able to re-point as it runs, for walls whose picture
-  changes; nothing re-points one yet. The list is declared showing each slot its own picture, so a place
-  declared in a scene or a `part` the game starts over shows the same. Friendly errors: no block, no
-  faces, a face of other than three or four points, a point the place does not have, a picture that is
-  not declared, `on_picture:` that does not give one spot for each point, a number out of range, a name
-  with two underscores in a row or one at its end, and a second place of the same name.
+  change shape as the game runs. **Each face shows its picture through a slot**, one for each picture
+  the place lists, named after it; a place declared in a scene or a `part` the game starts over shows
+  each slot its own picture again. Friendly errors: no block, no faces, a face of other than three or
+  four points, a point the place does not have, a picture that is not declared, `on_picture:` that does
+  not give one spot for each point, a number out of range, a name with two underscores in a row or one
+  at its end, and a second place of the same name.
+- **Walls whose picture changes**: a door sliding through its frames, a wall of lava, a forcefield.
+  Inside the place, `pictures :door0, :door1, :door2` lists pictures the place can show, numbered in a
+  row after those listed before (a face's `picture:` lists its picture too, where it first names it);
+  list a door's frames first, so they are 0, 1, 2. `hall.picture_number(:door1)` gives a picture's
+  number. As the game runs, `change_picture :hall, slot: :door0, to: :door2` points the slot named
+  for `:door0` at `:door2`: every face that starts with `:door0` shows `:door2` from that drawing on,
+  until the slot is pointed again. `to:` is a picture the place lists, by name or number, or a whole
+  number the game works out (`to: frame + hall.picture_number(:door0)`); a worked-out number that is
+  not one of the place's pictures is passed over and the slot keeps what it shows. `slot:` is a
+  picture's name or number. A place that never changes a picture builds the same as before. Friendly
+  errors: a slot or a picture the place does not list, a picture number out of range, and a fraction.
+  **Each console**: on the Advance, a change by name is a store; by a worked-out number, about 18
+  instructions more than working the number out (two tests and a store). The PlayStation keeps every
+  picture the place lists in video memory from the start, so a change copies nothing. The Game Boy
+  Color, the Super Nintendo and the Genesis change the slot as well, though they refuse to draw the
+  place. Worked examples: `examples/cube3d.rb` (hold START), and `PlaceGames.changing_door` in
+  `test/place_games.rb`, a door through three pictures by a worked-out number.
 - `viewer :eye, at: [x, y, z], facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] }` →
   `DSL::Viewer` — the spot a place is seen from, and which way it faces. `facing:` is three arrows,
   each three numbers of length one and square to the other two (a friendly error otherwise); left out,

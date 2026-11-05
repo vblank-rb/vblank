@@ -40,6 +40,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `draw_column_at` — works: the same as on the Advance.
 - `place` — works: a place is data in the program.
 - `viewer` — works: a viewer is variables.
+- `change_picture` — works: every picture the place lists is in video memory from the start, so a change copies nothing.
 - `shading` — works: a shading is data in the program.
 - `screen_spot` — works: the processor turns and projects the point, as the drawing of a place does.
 - `draw_place` — works: the processor turns and projects every corner, as the other consoles do. The graphics chip fills each face, by its own rules. Thus some pixels of a face's picture are one pixel or one picture pixel away from where the other consoles put them. In perspective, the processor cuts a face into squares of 32 pixels (8 for `perspective: :every_pixel`), and the picture is exact at the corners of each square. The graphics chip lights a face, as the console's own games did: it makes each picture pixel darker by the light, which changes smoothly across the face. If the shading makes each colour darker evenly, a pixel is one level or less from the shading's colour. If the shading changes colours in another way, the pixel is the picture's colour made darker.

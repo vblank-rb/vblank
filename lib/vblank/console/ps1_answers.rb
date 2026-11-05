@@ -61,6 +61,8 @@ module VBlank
         draw_column_at: works,
         place: works("a place is data in the program."),
         viewer: works("a viewer is variables."),
+        change_picture: works("every picture the place lists is in video memory from the start, so a change " \
+                              "copies nothing."),
         shading: works("a shading is data in the program."),
         screen_spot: works("the processor turns and projects the point, as the drawing of a place does."),
         draw_place: works("the processor turns and projects every corner, as the other consoles do. The graphics chip " \

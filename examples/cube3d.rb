@@ -11,7 +11,7 @@
 # from the middle), cuts away whatever is behind you, and fills each face with its picture.
 #
 # Fly with A (ahead) and B (back). Turn with LEFT and RIGHT, tip up and down with UP and DOWN,
-# and roll with L and R. Build it:
+# and roll with L and R. Hold START to give the lid the sides' boards. Build it:
 #   ruby examples/cube3d.rb
 #
 # Three things worth noticing:
@@ -93,6 +93,14 @@ module Cube3D
       eye.roll :right, by: 2 if held(:r)
       eye.move :ahead, by: 0.05 if held(:a)
       eye.move :back, by: 0.05 if held(:b)
+
+      # Hold START and the top and bottom show the crate's side boards: a face shows its picture
+      # through a slot named for it, and the game points the slot at another picture as it runs.
+      if held(:start)
+        change_picture :crate, slot: :lid, to: :crate
+      else
+        change_picture :crate, slot: :lid, to: :lid
+      end
 
       clear_screen rgb(2, 2, 10) # space round the crate
       draw_place :crate, seen_by: eye

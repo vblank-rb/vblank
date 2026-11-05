@@ -19,8 +19,9 @@ module VBlank
     #
     # The block runs while the game is built. Its numbers are written into the cartridge as they
     # are; nothing about the place's shape changes as the game runs. Which picture each face shows
-    # is kept in a picture SLOT the face names (by default the picture's own name), so a later
-    # change can swap the picture a slot shows while the game runs.
+    # is kept in a picture SLOT, one for each picture the place lists and named after it, and the
+    # game can point a slot at any of the place's pictures as it runs (Builder#change_picture):
+    # every face that starts with that picture then shows the other.
     class Place
       # The most a point's number can be either way, and the viewer's: half of what a fraction
       # holds, so a point is never further from the viewer than a fraction holds, along any
@@ -36,7 +37,7 @@ module VBlank
         @images = images
         @points = []
         @faces = []
-        @slots = []
+        @listed_pictures = []
       end
 
       attr_reader :name
@@ -48,8 +49,8 @@ module VBlank
       # sixteen bits), four of them: a face of three gives its last corner twice.
       attr_reader :faces
 
-      # The picture each slot shows to start with, in slot order.
-      attr_reader :slots
+      # Every picture the place lists, by number: the picture each slot shows to start with.
+      attr_reader :listed_pictures
 
       # The shading the place is lit by (`place :mine, shading: :fade`), or nil.
       attr_accessor :shading
@@ -79,12 +80,50 @@ module VBlank
         refuse_mismatched_corners!(points, on_picture)
         lights = corner_lights(points, light)
         corners = points.zip(on_picture, lights).map do |point, spot, lit|
-          [point, *spot.each_with_index.map { |number, axis| picture_number(number, %w[across down][axis]) }, lit]
+          [point, *spot.each_with_index.map { |number, axis| scale_corner_on_picture(number, %w[across down][axis]) }, lit]
         end
         corners << corners.last if corners.length == 3
-        @slots << picture unless @slots.include?(picture)
-        @faces << [@slots.index(picture), corners]
+        list_picture(picture)
+        @faces << [@listed_pictures.index(picture), corners]
         @faces.length - 1
+      end
+
+      # Pictures the place can show that no face starts with: the frames a door slides through, or
+      # a wall's animation, for the game to point a slot at as it runs (Builder#change_picture).
+      # Each is given a number, after the pictures listed before it, and has a slot of its own.
+      def pictures(*names)
+        names.each do |picture|
+          refuse_unknown_picture!(picture)
+          list_picture(picture)
+        end
+      end
+
+      # The number of +picture+ (a name, or a number already) among the pictures the place lists, in
+      # the order it lists them: what `change_picture ..., to:` takes as a value the game works out.
+      # A picture's slot has the same number. Raises a friendly error for a picture not listed.
+      def picture_number(picture)
+        return picture if listed_number?(picture)
+
+        if picture.is_a?(Integer)
+          raise ArgumentError, "place :#{@name} has no picture #{picture}. It lists #{@listed_pictures.length} " \
+                               "pictures, numbered from 0. To fix this, give a number from 0 to " \
+                               "#{@listed_pictures.length - 1}, or a picture's name."
+        end
+
+        @listed_pictures.index(picture) or
+          raise ArgumentError, "place :#{@name} does not list the picture #{picture.inspect}. To fix this, name it " \
+                               "in a face, or with `pictures #{picture.inspect}` in the place."
+      end
+
+      # The number of slot +slot+ (the name of the picture it starts with, or its number). Raises a
+      # friendly error for a slot the place does not have.
+      def slot_number(slot)
+        return slot if listed_number?(slot)
+        return @listed_pictures.index(slot) if @listed_pictures.include?(slot)
+
+        raise ArgumentError, "place :#{@name} has no slot #{slot.inspect}. Each slot has the name of a picture that " \
+                             "the place lists: #{@listed_pictures.map(&:inspect).join(', ')}. To fix this, give one " \
+                             "of those names, or its number from 0 to #{@listed_pictures.length - 1}."
       end
 
       # The points as a table holds them: three numbers a point.
@@ -94,6 +133,12 @@ module VBlank
       def faces_table = @faces.flat_map { |slot, corners| [slot, *corners.flatten] }
 
       private
+
+      def list_picture(picture)
+        @listed_pictures << picture unless @listed_pictures.include?(picture)
+      end
+
+      def listed_number?(number) = number.is_a?(Integer) && number.between?(0, @listed_pictures.length - 1)
 
       # Each corner's light as the faces table keeps it: sixteen bits of fraction, held just under
       # one (IR::Nodes::FillFace::LIGHTEST).
@@ -117,7 +162,7 @@ module VBlank
         Fraction.scale(number, Fraction::DEFAULT_BITS)
       end
 
-      def picture_number(number, axis)
+      def scale_corner_on_picture(number, axis)
         unless number.is_a?(Numeric) && number.abs <= FURTHEST_ON_PICTURE
           raise ArgumentError, "place :#{@name} has a face with a corner #{number.inspect} pixels #{axis} its " \
                                "picture. A corner must fall from -#{FURTHEST_ON_PICTURE} to #{FURTHEST_ON_PICTURE} " \

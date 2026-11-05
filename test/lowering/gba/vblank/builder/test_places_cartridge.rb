@@ -126,6 +126,12 @@ class TestPlacesCartridge < Minitest::Test
                           name: "MOVINGLIT")
   end
 
+  # The door's slot pointed at the next picture every eight passes, so each frame compared is in the
+  # middle of a different picture: red, green, blue, then a number passed over.
+  def test_a_slot_pointed_at_another_picture_agrees_at_each_change
+    assert_backends_agree(PlaceGames.changing_door(passes: 8), frames: [6, 14, 22, 30], name: "DOOR")
+  end
+
   # A viewer turned by angles the game works out (PlaceGames::SPINS), a turn every eight passes,
   # so each frame compared is in the middle of a different turn's view.
   def test_a_viewer_turned_by_a_worked_out_angle_agrees_at_each_turn

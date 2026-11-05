@@ -179,7 +179,53 @@ module VBlank
         DSL::ScreenSpot.new(answers.transform_values { |variable| value_handle_for(variable) })
       end
 
+      # Point slot +slot+ of place +name+ at picture +to+, from here on: every face that starts with
+      # the slot's picture shows +to+ instead, from the next drawing, until the slot is pointed again.
+      # A door slides through its frames, a wall of lava runs.
+      #
+      #   place :hall do
+      #     pictures :door0, :door1, :door2   # numbered in a row, the frames no face starts with among them
+      #     face ..., picture: :door0, ...
+      #   end
+      #   change_picture :hall, slot: :door0, to: :door2                                # by name
+      #   change_picture :hall, slot: :door0, to: frame + hall.picture_number(:door0)   # worked out
+      #
+      # +slot+ is named for the picture it starts with (or is that picture's number). +to+ is a
+      # picture the place lists, by name or number, or a whole-number value the game works out: the
+      # number of one of the place's pictures (DSL::Place#picture_number), where a number that is
+      # not one is passed over and the slot keeps what it shows.
+      #
+      # A slot keeps how far along the place's pictures it is from its own, so pointing it back is
+      # the same as never pointing it (see #declare_place_data).
+      #
+      # @param name [Symbol] the place
+      # @param slot [Symbol, Integer] the slot, by the picture it starts with or its number
+      # @param to [Symbol, Integer, DSL::Value] the picture it shows from now on
+      def change_picture(name, slot:, to:)
+        shape = known_place(name, "change_picture")
+        slot_number = shape.slot_number(slot)
+        slots = IR::PlaceDrawing.name_of(name, :slots)
+        if to.is_a?(DSL::Value)
+          refuse_fraction_picture!(name, to)
+          chosen = IR::PlaceDrawing.name_of(name, :chosen_picture)
+          ensure_var(chosen)
+          picture = Build.var_ref(chosen)
+          listed = Build.binop(:and, Build.binop(:>=, picture, 0), Build.binop(:<, picture, shape.listed_pictures.length))
+          record(Build.set(chosen, DSL::Value.node_for(to)))
+          record(Build.if_(listed, Build.list_set(slots, slot_number, Build.binop(:-, picture, slot_number))))
+        else
+          record(Build.list_set(slots, slot_number, shape.picture_number(to) - slot_number))
+        end
+      end
+
       private
+
+      def refuse_fraction_picture!(name, to)
+        return unless to.fraction?
+
+        raise ArgumentError, "change_picture :#{name} was given to: a fraction. A picture's number is a whole number. " \
+                             "To fix this, give a whole number, or a variable that holds one."
+      end
 
       def known_place(name, verb)
         (@places || {})[name] or
@@ -299,7 +345,7 @@ module VBlank
       def declare_place_data(shape)
         table(IR::PlaceDrawing.name_of(shape.name, :points), shape.points_table, width: :word, signed: true)
         table(IR::PlaceDrawing.name_of(shape.name, :faces), shape.faces_table, width: :word, signed: true)
-        list(IR::PlaceDrawing.name_of(shape.name, :slots), capacity: shape.slots.length, full_of: 0)
+        list(IR::PlaceDrawing.name_of(shape.name, :slots), capacity: shape.listed_pictures.length, full_of: 0)
         list(IR::PlaceDrawing.name_of(shape.name, :corners),
              capacity: IR::Nodes::FillFace::MOST_CORNERS * IR::Nodes::FillFace::CORNER_NUMBERS, full_of: 0)
         list(IR::PlaceDrawing.name_of(shape.name, :seen), capacity: shape.points.length * IR::PlaceDrawing::SEEN_STRIDE,
@@ -311,7 +357,7 @@ module VBlank
       # where one of its points lands.
       def place_drawing(shape)
         drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, points: shape.points.length,
-                                                   pictures: shape.slots, shading: shape.shading,
+                                                   pictures: shape.listed_pictures, shading: shape.shading,
                                                    point_lights: shape.point_lights&.name,
                                                    corners_in_a_loop: !@console.code_cache_bytes.nil?)
         @place_variables ||= {}

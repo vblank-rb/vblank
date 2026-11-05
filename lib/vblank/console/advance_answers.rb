@@ -39,7 +39,7 @@ module VBlank
         # --- drawing on a painted screen ---
         pixel: works, fill_rect: works, dma_fill_rect: works, draw_rect_at: works, draw_column_at: works,
         clear_screen: works, inside: works, grid: works, camera: works, keep_showing: works,
-        place: works, viewer: works, screen_spot: works,
+        place: works, viewer: works, screen_spot: works, change_picture: works,
         draw_place: works("on `screen :bitmap, tear_free: true` only. The processor turns each point and " \
                           "fills each face a pixel at a time. Each `perspective:` setting is made."),
         shading: works("the processor finds each lit pixel's colour in a table the build makes from the " \

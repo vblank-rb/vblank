@@ -359,4 +359,57 @@ module PlaceGames
     builder.finalize_program
     builder.program
   end
+
+  # The three pictures a door goes through, a colour each, and the order the game shows them in: a
+  # number not one of the place's pictures (-1) is passed over, so the door stays blue for it.
+  DOOR_COLORS = Ractor.make_shareable(%i[red green blue])
+  DOOR_STEPS = Ractor.make_shareable([0, 1, 2, -1])
+
+  # A door on the left and a wall of the tile on the right. Every +passes+ passes the game points the
+  # door's slot at the next picture of DOOR_STEPS (red, green, blue, then a number it passes over),
+  # worked out as it runs; the wall's slot is never changed. The pass the door showed is kept in
+  # `drawn`, so a test can say which colour the screen should show.
+  # +named+ instead points the slot once, before the loop, at the picture named :door2 (blue).
+  def self.changing_door(passes: 3, named: false)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      DOOR_COLORS.each_with_index do |color, k|
+        image(:"door#{k}", "#" => color) { "##\n##\n" }
+      end
+      hall = place :hall do
+        pictures :door0, :door1, :door2
+        face point(-3.0, 1.0, 4.0), point(-1.0, 1.0, 4.0), point(-1.0, -1.0, 4.0), point(-3.0, -1.0, 4.0),
+             picture: :door0, on_picture: [[0, 0], [2, 0], [2, 2], [0, 2]]
+        face point(1.0, 1.0, 4.0), point(3.0, 1.0, 4.0), point(3.0, -1.0, 4.0), point(1.0, -1.0, 4.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      steps = table :door_steps, DOOR_STEPS, width: :word
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      pass = var :pass, 0
+      drawn = var :drawn, -1
+      change_picture :hall, slot: :door0, to: :door2 if named
+      game_loop do
+        unless named
+          step = steps[(pass / passes) % DOOR_STEPS.length]
+          change_picture :hall, slot: :door0, to: step + hall.picture_number(:door0)
+        end
+        clear_screen :black
+        draw_place :hall, seen_by: eye
+        drawn.store!(pass)
+        pass += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # The colour the door shows on pass +pass+ of changing_door(passes:): the step's own, or for a
+  # step passed over, the last one shown before it.
+  def self.door_color(pass, passes: 3)
+    k = (pass / passes) % DOOR_STEPS.length
+    k -= 1 while DOOR_STEPS[k].negative?
+    DOOR_COLORS[DOOR_STEPS[k]]
+  end
 end

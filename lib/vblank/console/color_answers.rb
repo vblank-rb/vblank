@@ -75,6 +75,7 @@ module VBlank
         draw_column_at: works,
         place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
         viewer: works("a viewer is variables. To draw a place from it is refused: see `draw_place`."),
+        change_picture: works("a slot is a number in a list. To draw the place is refused: see `draw_place`."),
         shading: works("a shading is data in the cartridge. To draw a place with it is refused: see `draw_place`."),
         screen_spot: works("the processor turns and projects the point. With no multiply instruction, each " \
                            "spot takes many times longer than on a Game Boy Advance."),

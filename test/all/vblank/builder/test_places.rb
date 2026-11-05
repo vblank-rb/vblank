@@ -159,6 +159,63 @@ class TestPlaces < Minitest::Test
     assert_match(/no place :nowhere/, message)
   end
 
+  def test_changing_the_picture_of_a_slot_the_place_does_not_have_is_refused
+    shape = square
+    message = refusal do
+      image(:door, "#" => :red) { "##\n##\n" }
+      place(:room, &shape)
+      change_picture :room, slot: :door, to: :wall
+    end
+
+    assert_match(/no slot :door/, message)
+  end
+
+  def test_changing_a_slot_to_a_picture_the_place_does_not_list_is_refused
+    shape = square
+    message = refusal do
+      image(:door, "#" => :red) { "##\n##\n" }
+      place(:room, &shape)
+      change_picture :room, slot: :wall, to: :door
+    end
+
+    assert_match(/does not list the picture :door/, message)
+  end
+
+  def test_changing_a_slot_to_a_picture_number_the_place_does_not_have_is_refused
+    shape = square
+    message = refusal do
+      place(:room, &shape)
+      change_picture :room, slot: :wall, to: 1
+    end
+
+    assert_match(/no picture 1/, message)
+  end
+
+  def test_changing_a_slot_to_a_fraction_is_refused
+    shape = square
+    message = refusal do
+      place(:room, &shape)
+      frame = var :frame, 0.5
+      game_loop { change_picture :room, slot: :wall, to: frame }
+    end
+
+    assert_match(/whole number/, message)
+  end
+
+  def test_a_place_listing_a_picture_that_is_not_declared_is_refused
+    message = refusal do
+      place :room do
+        pictures :door
+        a = point(-1.0, 1.0, 2.0)
+        b = point(1.0, 1.0, 2.0)
+        c = point(1.0, -1.0, 2.0)
+        face a, b, c, picture: :wall, on_picture: [[0, 0], [2, 0], [2, 2]]
+      end
+    end
+
+    assert_match(/no such image/, message)
+  end
+
   def test_a_facing_that_is_not_three_square_arrows_is_refused
     message = refusal { viewer :eye, at: [0.0, 0.0, 0.0], facing: { right: [1, 0, 0], up: [1, 0, 0], ahead: [0, 0, 1] } }
 
