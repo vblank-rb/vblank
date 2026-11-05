@@ -15,6 +15,7 @@ module VBlank
         #   80180000h-...        the runtime's own state, then the game's variables and lists, upward
         #   ...-801F7FFFh        free
         #   801F8000h-801FFFEFh  the stack, 32K, growing down from the top
+        #   1F800000h-1F8003FFh  the scratchpad: the numbers read most (see below)
         #
         # THE GAME'S CODE REACHES ITS VARIABLES WITH ONE REGISTER. gp (the "global pointer") holds the
         # address 32K into the region, and a load or a store names a place as a signed 16-bit distance
@@ -24,6 +25,15 @@ module VBlank
         #
         # EVERY PLACE IS A WHOLE NUMBER OF WORDS, and starts at an address that is a multiple of four:
         # the R3000 stops with an address error when it reads a word from anywhere else.
+        #
+        # THE GAME'S MOST-READ NUMBERS ARE IN THE SCRATCHPAD, not in main RAM. The processor has no cache
+        # for data: every load from main RAM goes out over the bus and waits for it, several cycles
+        # each, where a load from the scratchpad (1K inside the processor, at 1F800000h) takes one. The
+        # console's own games kept the numbers their inner loops read there for that reason. So a game's
+        # variables, and the numbers its routines keep of their own, are given the scratchpad first
+        # (#reserve_scratchpad), as far as it goes, and main RAM after. The code reaches the scratchpad with
+        # one register as it reaches the region with gp: fp holds 1F800000h from power-on (Boot), and
+        # the scratchpad's 1K is a distance of 0 to 3FFh from it.
         class Memory
           FIRST = Console::PS1Hardware::PROGRAM_END
           STACK_TOP = Console::PS1Hardware::STACK_TOP
@@ -32,6 +42,10 @@ module VBlank
 
           # Where gp points: 32K into the region, so a signed 16-bit distance reaches its first 64K.
           BASE = FIRST + 0x8000
+
+          # The scratchpad, which fp points at.
+          SCRATCHPAD_FIRST = Console::PS1Hardware::SCRATCHPAD
+          SCRATCHPAD_LAST = SCRATCHPAD_FIRST + Console::PS1Hardware::SCRATCHPAD_SIZE
 
           # How many bytes the program itself may take from where it is loaded: up to the region.
           PROGRAM_ROOM = Console::PS1Hardware::PROGRAM_END - Console::PS1Hardware::EXE_AT
@@ -42,6 +56,7 @@ module VBlank
 
           def initialize
             @next = FIRST
+            @next_scratchpad = SCRATCHPAD_FIRST
             @places = {}
           end
 
@@ -56,6 +71,24 @@ module VBlank
             end
           end
 
+          # +bytes+ for +name+ in the scratchpad while it has room, and in the region (#reserve) once it
+          # has not.
+          def reserve_scratchpad(name, bytes)
+            @places.fetch(name) do
+              size = (bytes + 3) & ~3
+              next reserve(name, bytes) if @next_scratchpad + size > SCRATCHPAD_LAST
+
+              @places[name] = @next_scratchpad.tap { @next_scratchpad += size }
+            end
+          end
+
+          # How many bytes of the scratchpad are in use, which the runtime clears at power-on as it clears
+          # the region.
+          def scratchpad_used = @next_scratchpad - SCRATCHPAD_FIRST
+
+          # Whether +address+ is in the scratchpad.
+          def self.scratchpad?(address) = address >= SCRATCHPAD_FIRST && address < SCRATCHPAD_LAST
+
           # The address +name+ was given.
           def [](name) = @places.fetch(name)
 
@@ -66,6 +99,10 @@ module VBlank
 
           # How many bytes of the region are in use, which the runtime clears at power-on.
           def used = @next - FIRST
+
+          # The distance of +address+ from where fp points (the scratchpad's start), or nil when it is not
+          # in the scratchpad.
+          def self.distance_from_scratchpad(address) = scratchpad?(address) ? address - SCRATCHPAD_FIRST : nil
 
           # The distance of +address+ from where gp points, or nil when it is too far for one instruction.
           def self.distance_from_base(address)

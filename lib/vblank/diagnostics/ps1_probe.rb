@@ -46,9 +46,9 @@ module VBlank
       # The sound of the last step, a String for each frame of it: empty, since the build makes none.
       def audio_by_frame = Array.new(@frames) { "".b }
 
-      def read8(address) = @core.ram_read8(address)
-      def read16(address) = @core.ram_read16(address)
-      def read32(address) = @core.ram_read32(address)
+      def read8(address) = PS1Memory.read8(@core, address)
+      def read16(address) = PS1Memory.read16(@core, address)
+      def read32(address) = PS1Memory.read32(@core, address)
 
       # The pad the build reads has no motor.
       def motor_on? = false

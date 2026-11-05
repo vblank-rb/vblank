@@ -110,6 +110,7 @@ module VBlank
       def corner_routine = name(:corner)
       def point_routine = name(:point_turning)
       def spot_routine = name(:spot)
+      def count_routine = name(:counting)
       def points_table = name(:points)
       def faces_table = name(:faces)
       def slots_list = name(:slots)
@@ -125,8 +126,9 @@ module VBlank
       # above and ahead, and where it lands on the screen across and down and one over how far ahead
       # it is (written only when it is in front of the near limit, the only time anything reads
       # them). The stamps list keeps, for
-      # each point, the number of the drawing that last turned it: every drawing counts one on
-      # (the drawing variable), so a point whose stamp is not the drawing's own is turned afresh.
+      # each point, the number of the drawing that last turned it: a drawing counts one on (the
+      # drawing variable) when it sees the place differently from the last (see TURN_PARTS), so a
+      # point whose stamp is not the count is turned afresh.
       # Both start full of nought and the count starts at one, so nothing is read before it is
       # written; the count is not part of the game's state that `start_over` puts back, and the
       # lists are, which only ever makes a stamp stale.
@@ -134,6 +136,17 @@ module VBlank
       SEEN_ACROSS = 3
       SEEN_DOWN = 4
       SEEN_NEARNESS = 5
+
+      # WHAT A POINT'S TURN IS WORKED OUT FROM: the viewer, and the parts of the view the point routine
+      # reads (the near limit, the view's middle, how wide it is, and whether it is in perspective,
+      # which says whether the nearness is kept). A drawing that sees the place from the same viewer
+      # through the same view as the last one to move the count on turns every point the same, so it
+      # does not move the count on, and the points that one turned are read again rather than turned
+      # afresh. A game of rooms draws each room with a call of its own, its doorways' corners shared
+      # with the rooms either side, so most points are turned once a frame, not once for each room.
+      # The window is not among them: it holds where faces are filled, not where points land.
+      TURN_VIEW_PARTS = %i[near middle_x middle_y focal].freeze
+      TURN_PARTS = [*VIEWER_PARTS, *TURN_VIEW_PARTS, :in_perspective].freeze
 
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
@@ -154,12 +167,27 @@ module VBlank
         VIEWER_PARTS.map { |part| viewer_var(part) } + VIEW_PARTS.map { |part| view_var(part) } +
           CLIP_EDGES.map { |edge| clip_var(edge) } +
           %i[face listed base slot picture point seen_point dx dy dz count along area each next drawing
-             at_x at_y at_z at_u at_v at_light spot_point spot_x spot_y spot_behind].map { |part| name(part) } +
+             at_x at_y at_z at_u at_v at_light spot_point spot_x spot_y spot_behind turn_changed].map { |part| name(part) } +
+          TURN_PARTS.map { |part| turn_var(part) } +
           CORNERS.times.flat_map { |k| TURNED_FIELDS.map { |field| turned_var(field, k) } }
       end
 
       # The variable counting the drawings, which marks the points each has turned (see SEEN_STRIDE).
       def drawing_var = name(:drawing)
+
+      # The count moved on as a drawing starts, once its viewer and view are handed over, when what a
+      # point's turn is worked out from differs from the last drawing's that moved it on (see
+      # TURN_PARTS); each part that differs is kept for the next. The count routine's statements, which
+      # every drawing of the place calls.
+      def drawing_count_statements
+        changed = name(:turn_changed)
+        [Build.set(changed, 0),
+         *TURN_PARTS.map do |part|
+           Build.if_(Build.binop(:!=, Build.var_ref(turn_var(part)), turn_part_now(part)),
+                     Build.set(changed, 1), Build.set(turn_var(part), turn_part_now(part)))
+         end,
+         Build.if_(Build.var_ref(changed), Build.add(drawing_var, 1))]
+      end
 
       # The drawing routine's statements: every face, in the order the place declares them.
       def statements
@@ -259,6 +287,17 @@ module VBlank
       def turned_var(field, k) = name(:"#{field}#{k}")
 
       def turned(field, k) = Build.var_ref(turned_var(field, k))
+
+      # The variable keeping +part+ of TURN_PARTS as the last drawing to move the count on had it.
+      def turn_var(part) = name(:"turn_#{part}")
+
+      # +part+ of TURN_PARTS as this drawing has it.
+      def turn_part_now(part)
+        return in_perspective if part == :in_perspective
+        return Build.var_ref(view_var(part)) if TURN_VIEW_PARTS.include?(part)
+
+        Build.var_ref(viewer_var(part))
+      end
 
       # The faces table's entry +offset+ along the face being drawn.
       def face_field(offset) = Build.binop(:+, var(:base), offset)

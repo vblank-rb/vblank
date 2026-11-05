@@ -76,7 +76,7 @@ class TestPS1CheckedRun < Minitest::Test
       once_a_frame { frames += 1 }
       game_loop do
         passes += 1
-        repeat(20_000) { x = (x * 1103) + 12_345 }
+        repeat(40_000) { x = (x * 1103) + 12_345 }
       end
     end
 

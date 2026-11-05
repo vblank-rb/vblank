@@ -24,9 +24,11 @@ module VBlank
         # So the face is cut, on the processor, into pieces the chip can draw:
         #
         # 1. CLIPPED to its edges (`window:`, `inside`, the screen): every corner then lies on the
-        #    screen. The chip's drawing area is set to the same edges, so its pixels stop there too.
-        # 2. IN PERSPECTIVE, CUT INTO SQUARES of the screen, along every 32nd row and column (every 8th
-        #    for `perspective: :every_pixel`): each new corner's place on the picture is worked out
+        #    screen. The chip's drawing area is set to the same edges, so its pixels stop there too. A
+        #    face without perspective already on the screen is not clipped (#on_screen_without_perspective?): the
+        #    drawing area alone holds it to its edges.
+        # 2. IN PERSPECTIVE, CUT INTO SQUARES, along every 32nd row and column from its top left corner
+        #    (every 8th for `perspective: :every_pixel`): each new corner's place on the picture is worked out
         #    exactly (the place over the distance, times the distance, as Reference#place_in_perspective
         #    does), and the chip steps straight between. That is how the console's own games drew a near
         #    wall. A screen covered by one face is then about 75 squares, or about 1200 at every pixel,
@@ -111,6 +113,9 @@ module VBlank
           # How far a piece's place on the picture may run: a byte's worth past its least.
           PICTURE_REACH = 256
 
+          # The screen every PlayStation build draws on, in pixels.
+          SCREEN_WIDTH, SCREEN_HEIGHT = Console::PLAYSTATION.screen_size
+
           # One triangle as the chip is sent it: three corners [x, y, u, v], x and y whole pixels on the
           # screen, u and v the texel in the picture's page; and on a lit face the +level+ of light it is
           # drawn at (nil on a face that is not lit).
@@ -127,15 +132,31 @@ module VBlank
             return [] if left >= right || top >= bottom
 
             face = corners.map { |corner| corner_from_list(*corner.first(Nodes::FillFace::CORNER_NUMBERS), spans, levels) }
-            face = keep_side(face, X, Int32.mul(left, 16), :above, spans)
-            face = keep_side(face, X, Int32.mul(right, 16), :below, spans)
-            face = keep_side(face, Y, Int32.mul(top, 16), :above, spans)
-            face = keep_side(face, Y, Int32.mul(bottom, 16), :below, spans)
+            unless on_screen_without_perspective?(face, spans)
+              face = keep_side(face, X, Int32.mul(left, 16), :above, spans)
+              face = keep_side(face, X, Int32.mul(right, 16), :below, spans)
+              face = keep_side(face, Y, Int32.mul(top, 16), :above, spans)
+              face = keep_side(face, Y, Int32.mul(bottom, 16), :below, spans)
+            end
             return [] if face.length < 3
 
             sent = []
             each_cell(face, spans) { |piece| send_cut_on_picture(piece, width, height, levels, sent) }
             sent
+          end
+
+          # Whether +face+ is sent without being clipped to its edges (step 1 of the module's note): a face
+          # without perspective whose corners are all on the screen, so every triangle of it is well inside
+          # what the chip draws. The chip's drawing area, set to the same edges, then holds its pixels to
+          # them, as the console's own games left a polygon on the screen to the chip; clipping it on the
+          # processor first costs a cut for each edge, and gives more corners, so more triangles, to send.
+          def on_screen_without_perspective?(face, spans)
+            return false unless spans == Nodes::FillFace::PERSPECTIVE_NONE
+
+            [[X, SCREEN_WIDTH], [Y, SCREEN_HEIGHT]].all? do |number, side|
+              least, most = face.map { |corner| corner[number] }.minmax
+              least >= 0 && most <= side * 16
+            end
           end
 
           # The corner a face's corner becomes (see the module's note). Its shade is its light held to
@@ -217,20 +238,29 @@ module VBlank
           end
 
           # Each piece of +face+ in turn: the face itself without perspective; in perspective, the face cut
-          # along every CELL_PIXELS-th row of the screen it crosses, top down, and each strip along every
-          # CELL_PIXELS-th column, left to right.
+          # along every CELL_PIXELS-th row from its top corner, top down, and each strip along every
+          # CELL_PIXELS-th column from its leftmost corner, left to right.
+          #
+          # THE SQUARES START AT THE FACE'S OWN CORNER, not at the screen's: a face of a far room is a
+          # few squares wide, and lined up on the screen it would cross a line wherever it fell,
+          # however small, and be sent in two pieces or four. Every strip of a face is cut along the
+          # same columns, so a corner made on the line between two strips is a corner of the pieces on
+          # both sides, and the chip leaves no crack between them.
           def each_cell(face, spans, &block)
             return yield(face) if spans == Nodes::FillFace::PERSPECTIVE_NONE
 
             side = Int32.mul(spans == 1 ? EVERY_PIXEL_CELL_PIXELS : CELL_PIXELS, 16)
-            each_strip(face, Y, side, spans) { |strip| each_strip(strip, X, side, spans, &block) }
+            left = face.map { |corner| corner[X] }.min
+            top = face.map { |corner| corner[Y] }.min
+            each_strip(face, Y, side, top, spans) { |strip| each_strip(strip, X, side, left, spans, &block) }
           end
 
-          # +piece+ cut along every line of +number+ a multiple of +side+ strictly inside it, the part
-          # before each line in turn, then the rest. A part of fewer than three corners is left out.
-          def each_strip(piece, number, side, spans)
+          # +piece+ cut along every line of +number+ +start+ and a multiple of +side+ on, strictly inside
+          # it, the part before each line in turn, then the rest. +start+ is at or before the piece's
+          # least. A part of fewer than three corners is left out.
+          def each_strip(piece, number, side, start, spans)
             least, most = piece.map { |corner| corner[number] }.minmax
-            line = Int32.add(Int32.bit_and(least, Int32.sub(0, side)), side)
+            line = Int32.add(Int32.add(start, Int32.bit_and(Int32.sub(least, start), Int32.sub(0, side))), side)
             rest = piece
             while line < most
               part, rest = cut(rest, number, line, spans)

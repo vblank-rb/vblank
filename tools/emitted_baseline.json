@@ -46,7 +46,7 @@
       "data": 0
     },
     "cube3d": {
-      "code": 34632,
+      "code": 35320,
       "data": 0
     },
     "dive": {
@@ -118,7 +118,7 @@
       "data": 2370
     },
     "lit_corridor": {
-      "code": 38744,
+      "code": 39432,
       "data": 0
     },
     "maze": {
@@ -246,7 +246,7 @@
       "data": 3730
     },
     "two_rooms": {
-      "code": 36410,
+      "code": 37078,
       "data": 0
     },
     "wanderers": {

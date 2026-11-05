@@ -14,16 +14,19 @@ module VBlank
         # game's numbers are. A sum of two works the left-hand side out into v0 and the right-hand side
         # into v1 — straight from where it is when it is a number written in the program or a variable,
         # and otherwise worked out first, pushed on the stack, and pulled into v1 once the left-hand side
-        # is in v0 — and one instruction puts the answer in v0. Adding and subtracting are ADDU and SUBU,
-        # which wrap as IR::Int32 does and never stop the processor (ADD would). A runtime routine
-        # taking several numbers has them in Runtime::ARGUMENTS. Nothing is kept in a register from one
-        # statement to the next, so a statement never has to know what came before it.
+        # is in v0 — and one instruction puts the answer in v0. A side worked out while another waits
+        # keeps the waiting one in a saved register (#emit_keep_temporary). Adding and subtracting are
+        # ADDU and SUBU, which wrap as IR::Int32 does and never stop the processor (ADD would). A runtime
+        # routine taking several numbers has them in Runtime::ARGUMENTS. Nothing is kept in a register
+        # from one statement to the next, but a variable read by the very instruction after the store
+        # that set it (#emit_load_variable), so a statement never has to know what came before it.
         #
         # WHERE THINGS LIVE. The game's variables, and each routine's own numbers — a loop's count, a
-        # `case`'s reading — are places in the game's region of RAM (Memory) fixed while the program is
-        # built, so a routine cannot call itself, and a program in which one can is refused. Every
-        # place is named as a distance from gp. Every routine is called with JAL and keeps its return
-        # address on the stack, since it may call others.
+        # `case`'s reading — are places fixed while the program is built, in the scratchpad while it has
+        # room and in the game's region of RAM after (Memory), so a routine cannot call itself, and a
+        # program in which one can is refused. Every place is named as a distance from fp (the
+        # scratchpad) or gp (the region). Every routine is called with JAL and keeps its return address
+        # on the stack, since it may call others.
         #
         # It makes the kinds in its two tables, and refuses by name a program that reaches one it does
         # not make yet (NOT_LOWERED_YET), and one a PlayStation cannot do at all in the words its
@@ -155,17 +158,12 @@ module VBlank
             @scenes = @plan.scenes
             @lists = {}
             @lists_dropped_from_front = program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }.uniq
-            @direct_slot_sizes = []
             @variables = {}
             @locals = {}
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @section_routines = {}
           end
-
-          # The slot sizes, in bytes, whose direct routines the game calls, so the runtime carries only
-          # those (Runtime::Lists#emit_fixed_front_access). Known once #sections has run.
-          def direct_slot_sizes = @direct_slot_sizes.sort
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and the
           # program itself.
@@ -175,8 +173,8 @@ module VBlank
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_parts!
-            (Reach.variables(@program) | loop_variables).each do |name|
-              @variables[name] = @memory.reserve("the variable #{name.inspect}", 4)
+            variables_most_read_first.each do |name|
+              @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4)
             end
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
@@ -230,6 +228,16 @@ module VBlank
           # The variables the game loops keep of their own, in the console's order (IR::Frames::ConsoleLoop).
           def loop_variables = @plan.game_loops.flat_map { |node| console_loop(node).variables }
 
+          # Every variable the program keeps, those its code reads in the most places first, so the
+          # scratchpad (Memory#reserve_scratchpad) goes to the ones read most. Read in more places is not
+          # read more often, but the numbers a drawing's or a loop's every step reads are read all
+          # through it, and a variable set once and shown is read in one.
+          def variables_most_read_first
+            reads = Hash.new(0)
+            @program.walk.each { |node| reads[node.name] += 1 if node.kind == :var_ref }
+            (Reach.variables(@program) | loop_variables).each_with_index.sort_by { |name, at| [-reads[name], at] }.map(&:first)
+          end
+
           # --- the data ---
 
           # The places that do not start at nought (each an address and a number, a word each, and an
@@ -275,6 +283,8 @@ module VBlank
           def routine_section(label, body, routine:)
             @section_routines[label] = routine
             @asm = R3000.new(label, holds: ROUTINES_HOLDING)
+            @stored = nil
+            @index_faults = {}
             @routine = label
             @routine_words = routine
             @labels = 0
@@ -284,6 +294,7 @@ module VBlank
             yield if block_given?
             emit_pop(:ra)
             @asm.jr(:ra)
+            emit_index_faults
             @asm.section
           end
 
@@ -297,7 +308,7 @@ module VBlank
           # variable. +start+ is what it holds from power-on.
           def keep_local(what, start: 0)
             name = :"#{@routine || 'game'}.#{what}#{@locals.length + 1}"
-            @locals[name] = @memory.reserve("the game's number #{name}", 4)
+            @locals[name] = @memory.reserve_scratchpad("the game's number #{name}", 4)
             @starts << [@locals[name], start] unless start.zero?
             name
           end
@@ -307,9 +318,13 @@ module VBlank
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
 
-          # [distance, register] that names +address+ in a load or a store: a distance from gp where it
-          # reaches, and otherwise from `at`, given the top half of the address first.
+          # [distance, register] that names +address+ in a load or a store: a distance from fp for a place
+          # in the scratchpad, from gp where it reaches, and otherwise from `at`, given the top half of the
+          # address first.
           def base_and_distance(address)
+            fast = Memory.distance_from_scratchpad(address)
+            return [fast, :fp] if fast
+
             distance = Memory.distance_from_base(address)
             return [distance, :gp] if distance
 
@@ -321,8 +336,25 @@ module VBlank
           def emit_load_word(register, address) = @asm.lw(register, *base_and_distance(address))
           def emit_store_word(register, address) = @asm.sw(register, *base_and_distance(address))
 
-          def emit_load_variable(name, register = :v0) = emit_load_word(register, place_of(name))
-          def emit_store(name, register = :v0) = emit_store_word(register, place_of(name))
+          # A variable read straight after it was stored is taken from the register it was stored from, with
+          # no load: a load from main RAM waits several cycles, and a statement that sets a variable is
+          # often followed by one that reads it (`set base`, then a table read at `base`). Only straight
+          # after, with no label between, so no other way into the code can arrive with the register
+          # holding something else.
+          def emit_load_variable(name, register = :v0)
+            name_stored, from, at = @stored
+            if name_stored == name && at == @asm.here && !@asm.labelled_here?
+              @asm.move(register, from) unless register == from
+              return
+            end
+
+            emit_load_word(register, place_of(name))
+          end
+
+          def emit_store(name, register = :v0)
+            emit_store_word(register, place_of(name))
+            @stored = [name, register, @asm.here]
+          end
 
           def runtime_place(name) = @memory[name]
 
@@ -334,6 +366,27 @@ module VBlank
           def emit_pop(register)
             @asm.lw(register, 0, :sp)
             @asm.addiu(:sp, :sp, 4)
+          end
+
+          # WHERE A VALUE WAITS WHILE THE NEXT ONE IS WORKED OUT: the saved registers, in turn, and the stack
+          # only past the last of them. A value is worked out with no call to the game's own routines, and
+          # every runtime routine a value calls keeps s0 to s7 as it found them (Runtime), so a number kept
+          # there is still there when it is taken back; keeping it on the stack is a store and a load of
+          # main RAM. The game's routines use them unsaved, which is safe only because none is ever called
+          # while a value is being worked out: rt_wait_vblank runs the timers' routines, and it is a
+          # statement. Taken back last kept, first.
+          TEMPORARIES = %i[s0 s1 s2 s3 s4 s5 s6 s7].freeze
+
+          def emit_keep_temporary(register)
+            @temporaries ||= []
+            place = TEMPORARIES[@temporaries.length]
+            place ? @asm.move(place, register) : emit_push(register)
+            @temporaries.push(place)
+          end
+
+          def emit_restore_temporary(register)
+            place = @temporaries.pop
+            place ? @asm.move(register, place) : emit_pop(register)
           end
 
           def call_routine(label) = @asm.jal(label)
@@ -572,19 +625,78 @@ module VBlank
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
-          def emit_list_set(node) = list_call(list_routine("rt_list_set", node), node, node.index, node.value)
-          def value_of_list_get(node) = list_call(list_routine("rt_list_get", node), node, node.index)
+          def emit_list_set(node)
+            return emit_slot_write(node) unless @lists_dropped_from_front.include?(node.name)
+
+            list_call("rt_list_set", node, node.index, node.value)
+          end
+
+          def value_of_list_get(node)
+            return emit_slot_read(node) unless @lists_dropped_from_front.include?(node.name)
+
+            list_call("rt_list_get", node, node.index)
+          end
+
           def value_of_list_len(node) = list_call("rt_list_length", node)
 
-          # The routine that reads or writes an item of the list +node+ names: for a list whose first item
-          # is always in its first slot, the one for its slots' size, which goes straight to the slot
-          # (Runtime::Lists#emit_fixed_front_access); for any other, +routine+ itself.
-          def list_routine(routine, node)
-            return routine if @lists_dropped_from_front.include?(node.name)
+          # AN ITEM OF A LIST WHOSE FIRST ITEM IS ALWAYS IN ITS FIRST SLOT, read or written in place: the
+          # index checked against the list's length, as rt_list_get does (an index past the end stops the
+          # game, Reference#check_list_index!), then the slot at the list's place, its header and the index
+          # scaled to the slot's size. The list's place is known as the program is built, so nothing is
+          # handed to a routine and no call is made: a call and its return are four instructions a read
+          # and the arguments two more, and a drawing reads its lists dozens of times a face.
+          def emit_slot_read(node)
+            list = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
+            emit_value(node.index)
+            distance, base = emit_slot_place(list)
+            @asm.public_send(Runtime::Lists::LOADS.fetch(list.slot_bytes), :v0, distance, base)
+          end
 
-            bytes = @lists.fetch(node.name).slot_bytes
-            @direct_slot_sizes |= [bytes]
-            "#{routine}_#{Runtime::Lists::SLOT_SUFFIXES.fetch(bytes)}"
+          # The index and the value worked out in the order rt_list_set takes them (#runtime_call): the
+          # index first unless it needs nothing worked out.
+          def emit_slot_write(node)
+            list = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
+            if simple?(node.value)
+              emit_value(node.index)
+              emit_load_simple(node.value, :v1)
+            elsif simple?(node.index)
+              emit_value(node.value)
+              @asm.move(:v1, :v0)
+              emit_load_simple(node.index, :v0)
+            else
+              emit_value(node.index)
+              emit_keep_temporary(:v0)
+              emit_value(node.value)
+              @asm.move(:v1, :v0)
+              emit_restore_temporary(:v0)
+            end
+            distance, base = emit_slot_place(list)
+            @asm.public_send(Runtime::Lists::STORES.fetch(list.slot_bytes), :v1, distance, base)
+          end
+
+          # The index in v0 checked against +list+'s length, and the slot it names put in t9: [distance,
+          # register] that name the slot in a load or a store. Changes t6 to t9 and at.
+          def emit_slot_place(list)
+            lists = Runtime::Lists
+            @asm.lhu(:t6, *base_and_distance(list.address + lists::LENGTH))
+            @asm.sltu(:t7, :v0, :t6)
+            fault = @index_faults[list.address] ||= fresh_label("index_past_end")
+            @asm.beq(:t7, :zero, fault) { @asm.move(:t8, :v0) }
+            shift = list.slot_bytes.bit_length - 1
+            shift.zero? ? @asm.move(:t9, :v0) : @asm.sll(:t9, :v0, shift)
+            distance, base = base_and_distance(list.address + lists::HEADER)
+            @asm.addu(:t9, :t9, base)
+            [distance, :t9]
+          end
+
+          # After the routine's return, for each list it reads or writes in place, where an index past the
+          # end goes: the list's place handed to the runtime's fault, the index already in t8.
+          def emit_index_faults
+            @index_faults.each do |address, label|
+              @asm.label(label)
+              @asm.li(:a0, address)
+              @asm.j("rt_list_index_fault")
+            end
           end
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its entries,
@@ -879,6 +991,7 @@ module VBlank
             return if node.op == :% && emit_remainder_by_power_of_two(node)
             return runtime_call(CALLED_SUMS.fetch(node.op), [node.lhs, node.rhs]) if CALLED_SUMS.key?(node.op)
             return if emit_sum_with_number(node)
+            return if node.op == :* && emit_multiply_by_shifts(node)
 
             with_right_operand(node.lhs, node.rhs) do
               if node.op == :*
@@ -933,7 +1046,26 @@ module VBlank
             return false unless immediate && fits
 
             emit_value(node.lhs)
-            @asm.public_send(immediate, :v0, :v0, number)
+            # Adding nought, or putting in or turning over no bit, leaves the number as it is.
+            @asm.public_send(immediate, :v0, :v0, number) unless number.zero? && op != :&
+            true
+          end
+
+          # A MULTIPLY BY A NUMBER WRITTEN IN THE PROGRAM WITH ONE OR TWO BITS SET (an index scaled by the
+          # size of what it counts: 3, 6, 17), as shifts and an add. MULT leaves its answer in LO a dozen
+          # cycles later, and MFLO waits for it; two shifts and an ADDU take three. The low 32 bits of
+          # the product are the same either way, so it wraps as IR::Int32 has it. True when done so.
+          def emit_multiply_by_shifts(node)
+            number = folded(node.rhs)
+            other = node.lhs
+            number, other = folded(node.lhs), node.rhs unless number
+            return false unless number&.between?(1, 0x7FFF_FFFF) && number.digits(2).count(1) <= 2
+
+            low, high = (0..30).select { |bit| number[bit] == 1 }
+            emit_value(other)
+            @asm.sll(:t0, :v0, high) if high
+            @asm.sll(:v0, :v0, low) unless low.zero?
+            @asm.addu(:v0, :v0, :t0) if high
             true
           end
 
@@ -990,15 +1122,17 @@ module VBlank
 
           # Reference#clamp_value: held at the floor, then at the ceiling.
           def value_of_clamped(node)
+            return if emit_clamp_from_nought(node)
+
             emit_value(node.operand)
             [[node.min, :floor], [node.max, :ceiling]].each do |bound, side|
               if simple?(bound)
                 emit_load_simple(bound, :v1)
               else
-                emit_push(:v0)
+                emit_keep_temporary(:v0)
                 emit_value(bound)
                 @asm.move(:v1, :v0)
-                emit_pop(:v0)
+                emit_restore_temporary(:v0)
               end
               within = fresh_label("within")
               side == :floor ? @asm.slt(:t0, :v0, :v1) : @asm.slt(:t0, :v1, :v0)
@@ -1006,6 +1140,26 @@ module VBlank
               @asm.move(:v0, :v1)
               @asm.label(within)
             end
+          end
+
+          # A NUMBER HELD TO NOUGHT TO A CEILING WRITTEN IN THE PROGRAM, as a table's index is: one compare of
+          # it as a number that cannot be negative, which a negative number fails as one too big does, and
+          # only a number outside takes the rest. The sign spread over every bit is all ones below nought
+          # and nought above the ceiling, so its opposite masks the ceiling down to nought or keeps it
+          # whole. True when done so.
+          def emit_clamp_from_nought(node)
+            floor = folded(node.min)
+            ceiling = folded(node.max)
+            return false unless floor&.zero? && ceiling&.between?(0, 0x7FFE)
+
+            within = fresh_label("within")
+            emit_value(node.operand)
+            @asm.sltiu(:t0, :v0, ceiling + 1)
+            @asm.bne(:t0, :zero, within) { @asm.sra(:t0, :v0, 31) }
+            @asm.nor(:t0, :t0, :zero)
+            @asm.andi(:v0, :t0, ceiling)
+            @asm.label(within)
+            true
           end
 
           # A shift right by a number written in the program is one instruction; any other count is the
@@ -1077,9 +1231,9 @@ module VBlank
               emit_load_simple(left, :v0)
             else
               emit_value(right)
-              emit_push(:v0)
+              emit_keep_temporary(:v0)
               emit_value(left)
-              emit_pop(:v1)
+              emit_restore_temporary(:v1)
             end
             yield
           end
@@ -1105,22 +1259,22 @@ module VBlank
           end
 
           # A runtime routine taking +args+ in Runtime::ARGUMENTS. Each that needs working out is worked out
-          # in order and pushed, but the last, which goes straight to its register since nothing is worked
-          # out after it; then the pushed ones are pulled into theirs, the last first; then the ones that
-          # are only a number, a variable or a label's address are put in theirs.
+          # in order and kept (#emit_keep_temporary), but the last, which goes straight to its register
+          # since nothing is worked out after it; then the kept ones are taken into theirs, the last first;
+          # then the ones that are only a number, a variable or a label's address are put in theirs.
           def runtime_call(name, args)
             registers = Runtime::ARGUMENTS
             worked = args.each_index.reject { |i| simple?(args[i]) }
             *pushed, last = worked
             pushed.each do |i|
               emit_value(args[i])
-              emit_push(:v0)
+              emit_keep_temporary(:v0)
             end
             if last
               emit_value(args[last])
               @asm.move(registers.fetch(last), :v0)
             end
-            pushed.reverse_each { |i| emit_pop(registers.fetch(i)) }
+            pushed.reverse_each { |i| emit_restore_temporary(registers.fetch(i)) }
             args.each_with_index { |arg, i| emit_load_simple(arg, registers.fetch(i)) unless worked.include?(i) }
             call_routine(name)
           end

@@ -67,9 +67,9 @@ class TestPlacesOnThePlayStation < Minitest::Test
   def test_a_face_wider_than_the_view_is_cut_at_its_edges
     screen = game_player.run(PlaceGames.square(x_scale: 3.0), frames: 2).screen
 
-    assert_equal tile(1, 3), screen.pixel(0, 79)
-    assert_equal tile(6, 3), screen.pixel(239, 79)
-    assert_equal BLACK, screen.pixel(240, 79), "past the view the game was laid out for"
+    assert_equal tile(1, 3), screen.pixel(0, 72)
+    assert_equal tile(6, 3), screen.pixel(239, 72)
+    assert_equal BLACK, screen.pixel(240, 72), "past the view the game was laid out for"
   end
 
   def test_a_face_half_behind_the_viewer_is_cut_at_the_near_limit
@@ -149,7 +149,7 @@ class TestPlacesOnThePlayStation < Minitest::Test
     small_first = game_player.run(PlaceGames.listed_faces([1, 0]), frames: 2).screen
 
     assert_includes [shown(:red), shown(:white)], small_last.pixel(120, 80), "the small square, drawn last, is on top"
-    assert_equal tile(3, 3), small_first.pixel(119, 79), "the big square, drawn last, covers the small one"
+    assert_equal tile(3, 3), small_first.pixel(112, 72), "the big square, drawn last, covers the small one"
   end
 
   # Right and bottom are just past the last pixel drawn, as `inside` counts them.
@@ -168,6 +168,14 @@ class TestPlacesOnThePlayStation < Minitest::Test
 
     assert_equal tile(0, 0), screen.pixel(60, 20)
     assert_equal tile(7, 7), screen.pixel(170, 130)
+  end
+
+  def test_a_drawing_after_the_viewer_moves_draws_from_where_it_is_now
+    screen = game_player.run(PlaceGames.seen_from_two_spots, frames: 2).screen
+
+    refute_equal BLACK, screen.pixel(65, 80), "the first drawing, from the middle"
+    assert_equal BLACK, screen.pixel(215, 80), "past the second drawing's face"
+    refute_equal BLACK, screen.pixel(200, 80), "the second drawing, half a whole to the left"
   end
 
   def test_each_face_keeps_its_own_picture_when_the_game_starts_over

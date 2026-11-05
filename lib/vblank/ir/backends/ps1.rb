@@ -71,11 +71,11 @@ module VBlank
         # +program+ as a PS-X EXE (Cartridge::PS1EXE), carrying its Places.
         def build(program, title: "VBLANK", cache: BuildCache.for(PS1, program))
           memory = Memory.new
-          Runtime.reserve(memory)
+          Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face })
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
-                                             direct_slot_sizes: lowering.direct_slot_sizes, faces: lowering.fills_faces?)
+                                             faces: lowering.fills_faces?)
           linked = Linker.new(runtime + game, room: Memory::PROGRAM_ROOM).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

@@ -46,21 +46,19 @@ module VBlank
               def number = KEPT.fetch(load)
             end
 
-            # A slot's size in bytes, by the end of the name of the routines that read and write slots of
-            # that size directly (#emit_fixed_front_access).
-            SLOT_SUFFIXES = { 1 => "byte", 2 => "half", 4 => "word" }.freeze
+            # How a slot of each size is read and written; the lowering reads and writes the slots of a list
+            # whose first item is always in its first slot in place (Lowering#emit_slot_read).
             LOADS = { 1 => :lb, 2 => :lh, 4 => :lw }.freeze
             STORES = { 1 => :sb, 2 => :sh, 4 => :sw }.freeze
 
             module_function
 
-            def emit(asm, memory, direct_slot_sizes: [])
+            def emit(asm, memory)
               emit_start(asm)
               emit_empty(asm)
               emit_push(asm)
               emit_drop(asm)
               emit_get_and_set(asm)
-              emit_fixed_front_access(asm, direct_slot_sizes)
               emit_fill(asm)
               emit_copy(asm)
               emit_sort(asm)
@@ -204,27 +202,6 @@ module VBlank
               emit_slot_of_offset(asm, :a1, "rt_list_set_within")
               emit_write_slot(asm, :a2, "rt_list_set_write")
               asm.jr(:ra)
-            end
-
-            # rt_list_get_byte (and _half, _word): rt_list_get for a list whose first item is always in its
-            # first slot, with slots of that size (Lowering#list_routine): the index checked and the slot
-            # read straight, with no ring to go round and no size to look up. rt_list_set_byte (and the
-            # rest) write the same way. Only the sizes in +slot_sizes+ are made: those the game's lists have.
-            def emit_fixed_front_access(asm, slot_sizes)
-              SLOT_SUFFIXES.slice(*slot_sizes).each do |bytes, suffix|
-                asm.label("rt_list_get_#{suffix}")
-                emit_index_check(asm, :a1)
-                asm.sll(:t9, :a1, bytes.bit_length - 1)
-                asm.addu(:t9, :t9, :a0)
-                asm.public_send(LOADS.fetch(bytes), :v0, HEADER, :t9)
-                asm.jr(:ra)
-
-                asm.label("rt_list_set_#{suffix}")
-                emit_index_check(asm, :a1)
-                asm.sll(:t9, :a1, bytes.bit_length - 1)
-                asm.addu(:t9, :t9, :a0)
-                asm.jr(:ra) { asm.public_send(STORES.fetch(bytes), :a2, HEADER, :t9) }
-              end
             end
 
             # rt_list_fill(list, from, count, value): count items from +from+ set to the value. A count of

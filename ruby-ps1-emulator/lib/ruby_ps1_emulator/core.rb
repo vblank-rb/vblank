@@ -39,6 +39,7 @@ module RubyPS1Emulator
     GPU_BUSY = 0x8008
 
     RAM_SIZE = 0x20_0000
+    SCRATCHPAD_SIZE = 0x400
     VRAM_WIDTH = 1024
     VRAM_HEIGHT = 512
 
@@ -189,6 +190,10 @@ module RubyPS1Emulator
     def ram_read32(address) = ram_bytes(address, 4).unpack1("V")
     def ram_bytes(address, count) = live(SYSTEM_RAM, RAM_SIZE)[address & (RAM_SIZE - 1), count]
     def ram_write32(address, value) = (live(SYSTEM_RAM, RAM_SIZE)[address & (RAM_SIZE - 1), 4] = [value & 0xFFFF_FFFF].pack("V"))
+
+    # The scratchpad read and written in place, +offset+ bytes from its start (1F800000h).
+    def scratchpad_bytes(offset, count) = live(SCRATCHPAD, SCRATCHPAD_SIZE)[offset & (SCRATCHPAD_SIZE - 1), count]
+    def scratchpad_write32(offset, value) = (live(SCRATCHPAD, SCRATCHPAD_SIZE)[offset & (SCRATCHPAD_SIZE - 1), 4] = [value & 0xFFFF_FFFF].pack("V"))
 
     # Unloads the program, shuts the core and lets go of its library.
     def destroy

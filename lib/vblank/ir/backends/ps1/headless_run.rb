@@ -143,11 +143,11 @@ module VBlank
             @check_of_shown = RunComparison.picture_check(shown)
           end
 
-          # The PlayStation's RAM, read and written by address.
-          def byte(address) = @core.ram_read8(address)
-          def half(address) = @core.ram_read16(address)
-          def read32(address) = @core.ram_read32(address)
-          def write32(address, value) = @core.ram_write32(address, value)
+          # The PlayStation's RAM and scratchpad, read and written by address.
+          def byte(address) = Diagnostics::PS1Memory.read8(@core, address)
+          def half(address) = Diagnostics::PS1Memory.read16(@core, address)
+          def read32(address) = Diagnostics::PS1Memory.read32(@core, address)
+          def write32(address, value) = Diagnostics::PS1Memory.write32(@core, address, value)
 
           def state = read32(runtime_place(Runtime::Frame::STATE))
           def waiting? = read32(runtime_place(Runtime::Frame::WAITING)) == 1

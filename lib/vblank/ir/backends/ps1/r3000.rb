@@ -115,8 +115,13 @@ module VBlank
 
             emit_word(0) if @loaded
             @labels[name] = here
+            @last_label_at = here
             name
           end
+
+          # Whether a label names the place the next instruction goes: code that jumps there may come from
+          # anywhere, so nothing the instructions just before it left in a register can be counted on.
+          def labelled_here? = @last_label_at == here
 
           # The section, padded to a whole number of words so the one placed after it starts on one.
           def section

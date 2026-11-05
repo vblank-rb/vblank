@@ -17,7 +17,7 @@ class TestPS1Profile < Minitest::Test
   # A routine too long for one frame: each pass takes two.
   SLOW = VBlank.game("SLOW", consoles: %i[ps1]) do
     total = 0
-    func(:too_much) { repeat(15_000) { total += 3 } }
+    func(:too_much) { repeat(30_000) { total += 3 } }
     game_loop { call :too_much }
   end
 

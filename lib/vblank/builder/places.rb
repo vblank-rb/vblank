@@ -139,7 +139,7 @@ module VBlank
                           lit: lit && !shape.shading.nil?)
         drawn = faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
         record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view),
-                                *place_clip(drawing, view, window_nodes), Build.add(drawing.drawing_var, 1), *drawn,
+                                *place_clip(drawing, view, window_nodes), Build.call(drawing.count_routine), *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
                                 both_sides: both_sides == true, faces: faces&.name, window: window_nodes))
       end
@@ -324,6 +324,7 @@ module VBlank
         declare_place_routine(drawing.face_routine, drawing.face_statements)
         declare_place_routine(drawing.point_routine, drawing.point_statements)
         declare_place_routine(drawing.corner_routine, drawing.corner_statements)
+        declare_place_routine(drawing.count_routine, drawing.drawing_count_statements)
       end
 
       # The routine that works out where one point lands, declared the first time a game asks, so

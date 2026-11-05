@@ -33,6 +33,7 @@ module VBlank
               asm.mtc0(:zero, R3000::COP0_STATUS) # every interrupt off
               asm.li(:sp, Memory::STACK_TOP)
               asm.li(:gp, Memory::BASE)
+              asm.lui(:fp, Memory::SCRATCHPAD_FIRST >> 16)
               emit_instruction_cache_on(asm, h)
               asm.lui(:s1, h::IO >> 16) # s1: the ports, for the rest of the boot
               emit_interrupts_quiet(asm, h)
@@ -160,15 +161,18 @@ module VBlank
               asm.sw(:t0, port & 0xFFFF, :s1)
             end
 
-            # The game's region of RAM, as far as the build used it, set to nought a word at a time.
+            # The game's region of RAM and of the scratchpad, as far as the build used each, set to nought a
+            # word at a time. The scratchpad holds whatever it held before power-on, as RAM does.
             def emit_region_cleared(asm, memory)
-              asm.li(:t0, Memory::FIRST)
-              asm.li(:t1, Memory::FIRST + memory.used)
-              asm.label("rt_boot_clear")
-              asm.beq(:t0, :t1, "rt_boot_cleared")
-              asm.sw(:zero, 0, :t0)
-              asm.b("rt_boot_clear") { asm.addiu(:t0, :t0, 4) }
-              asm.label("rt_boot_cleared")
+              [[Memory::FIRST, memory.used, "rt_boot_clear"], [Memory::SCRATCHPAD_FIRST, memory.scratchpad_used, "rt_boot_clear_fast"]].each do |first, used, label|
+                asm.li(:t0, first)
+                asm.li(:t1, first + used)
+                asm.label(label)
+                asm.beq(:t0, :t1, "#{label}_done")
+                asm.sw(:zero, 0, :t0)
+                asm.b(label) { asm.addiu(:t0, :t0, 4) }
+                asm.label("#{label}_done")
+              end
             end
 
             # The vertical blank's interrupt let through to the processor, and the processor told to take it.

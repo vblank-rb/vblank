@@ -21,6 +21,7 @@ require_relative "diagnostics/sound_recording" # what a game sounds like on the 
 require_relative "diagnostics/counted_passes" # ...the passes of a console whose runtime counts them
 require_relative "diagnostics/snes_memory" # ...its memory, work RAM and the Super FX chip's, by address
 require_relative "diagnostics/snes_probe" # ...a running Super Nintendo cartridge, as the reader asks of one
+require_relative "diagnostics/ps1_memory" # ...its memory, main RAM and the scratchpad, by address
 require_relative "diagnostics/ps1_probe" # ...and a running PlayStation program
 require_relative "diagnostics/runtime_lists" # ...a list as the Color's and the Super Nintendo's runtimes keep it
 require_relative "diagnostics/advance_reading" # ...what an Advance cartridge keeps its own way

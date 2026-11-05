@@ -20,33 +20,33 @@ module VBlank
         # `jr ra`. Their numbers are in ARGUMENTS (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
         # A routine may change at, v0, v1, the argument registers and t0 to t9, and keeps s0 to s7, gp
         # and sp as it found them; one that calls another keeps its own return address on the stack.
-        # gp points into the region the game keeps its numbers in (Memory::BASE) and nothing changes
-        # it; k0 and k1 are the interrupt's.
+        # gp points into the region the game keeps its numbers in (Memory::BASE), fp at the scratchpad
+        # (Memory::SCRATCHPAD_FIRST), and nothing changes either; k0 and k1 are the interrupt's.
         module Runtime
           ARGUMENTS = %i[a0 a1 a2 a3 t4 t5 t6 t7].freeze
 
           module_function
 
-          # The runtime's own places in RAM, asked for before the game's.
-          def reserve(memory)
+          # The runtime's own places in RAM, asked for before the game's; Faces's only for a game that
+          # fills faces (+faces+).
+          def reserve(memory, faces:)
+            Faces.reserve(memory) if faces
             Frame.reserve(memory)
             Paint.reserve(memory)
-            Faces.reserve(memory)
           end
 
           # The runtime's sections: the entry point, then everything else. +main+ is the label of the
           # game's main routine; +frame_begins+ the label of the game's routine run at each frame
-          # boundary (its timers moving on), or nil for none. +direct_slot_sizes+ are the slot sizes, in
-          # bytes, whose lists the game reads and writes directly (Lists#emit_fixed_front_access).
-          # +faces+ is whether the game fills the faces of a place, so carries Faces and its table.
-          def sections(memory, main:, frame_begins: nil, direct_slot_sizes: [], faces: false)
+          # boundary (its timers moving on), or nil for none. +faces+ is whether the game fills the
+          # faces of a place, so carries Faces and its table.
+          def sections(memory, main:, frame_begins: nil, faces: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             Boot.emit(asm, memory, main: main)
             Int32.emit(asm)
             Frame.emit(asm, memory)
             Pads.emit(asm, memory)
-            Lists.emit(asm, memory, direct_slot_sizes: direct_slot_sizes)
+            Lists.emit(asm, memory)
             Paint.emit(asm, memory)
             Faces.emit(asm, memory) if faces
             emit_start(asm)

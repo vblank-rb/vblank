@@ -266,6 +266,34 @@ module PlaceGames
     builder.program
   end
 
+  # The square face drawn twice a pass, by a viewer that moves between: from the middle, held to the
+  # left half of the screen, so it covers x 60 to 119 there; then from half a whole to the left, held
+  # to the right half, where it lands 30 pixels further right and covers x 120 to 209. A drawing that
+  # sees the place as the last one did reads the points that one turned (IR::PlaceDrawing::TURN_PARTS),
+  # so one that turned none afresh after the viewer moved would draw the second where the first was,
+  # up to x 179.
+  def self.seen_from_two_spots
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      place :wall do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        eye.at 0.0, 0.0, 0.0
+        draw_place :wall, seen_by: eye, window: [0, 0, 120, 160]
+        eye.at(-0.5, 0.0, 0.0)
+        draw_place :wall, seen_by: eye, window: [120, 0, 240, 160]
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # The points +spots+ ([x, y, z] each) of a place, each asked where it lands on the screen of a
   # viewer at the middle facing ahead, the answers kept in variables x0, y0 and behind0 onwards.
   def self.screen_spots(spots)

@@ -207,6 +207,14 @@ class TestPlacesOnTheAdvance < Minitest::Test
   end
 
   # A place whose part the game puts back as declared shows each face's own picture afterwards.
+  def test_a_drawing_after_the_viewer_moves_draws_from_where_it_is_now
+    screen = game_player.run(PlaceGames.seen_from_two_spots, frames: 2).screen
+
+    refute_equal BLACK, screen.pixel(65, 80), "the first drawing, from the middle"
+    assert_equal BLACK, screen.pixel(215, 80), "past the second drawing's face"
+    refute_equal BLACK, screen.pixel(200, 80), "the second drawing, half a whole to the left"
+  end
+
   def test_each_face_keeps_its_own_picture_when_the_game_starts_over
     screen = game_player.run(PlaceGames.two_faces(starting_over: true), frames: 3).screen
 
