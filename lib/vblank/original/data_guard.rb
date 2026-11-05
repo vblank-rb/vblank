@@ -44,6 +44,11 @@ module VBlank
         ps1: %w[bin cue iso img mcr]
       }.freeze
 
+      # KINDS THAT ARE ALSO EVERYDAY TEXT: a Genesis dump is often .md, and so is every Markdown file
+      # a repository keeps. Such a file is a cartridge only at a cartridge's size: no Genesis cartridge
+      # was smaller than 128 KB, and no README is that big.
+      TEXT_KINDS_LEAST_CARTRIDGE_BYTES = { "md" => 128 * 1024 }.freeze
+
       # The staged size past which a file is refused.
       MOST_BYTES = 512 * 1024
       # The setting that lets one commit past the guard, for a refusal that is wrong.
@@ -108,7 +113,7 @@ module VBlank
       private
 
       def data_files_message(staged)
-        found = staged.select { |file| original_kind?(file.path) || inside_named_folder?(file.path) }
+        found = staged.select { |file| original_kind?(file) || inside_named_folder?(file.path) }
         return if found.empty?
 
         "These staged files look like the original game's data:\n#{file_list(found)}\n" \
@@ -136,7 +141,13 @@ module VBlank
           "A file this big is usually art pulled from the original game. If it is, unstage it.#{skip_sentence}"
       end
 
-      def original_kind?(path) = @suffixes.include?(File.extname(path).delete_prefix(".").downcase)
+      # Whether +file+ is of a kind an original is kept in; one of the TEXT_KINDS only at a cartridge's size.
+      def original_kind?(file)
+        kind = File.extname(file.path).delete_prefix(".").downcase
+        return false unless @suffixes.include?(kind)
+
+        file.size >= TEXT_KINDS_LEAST_CARTRIDGE_BYTES.fetch(kind, 0)
+      end
 
       # Whether a folder +path+ is in matches a folder pattern the game names: anchored at the top
       # with a leading slash, at any depth without one.

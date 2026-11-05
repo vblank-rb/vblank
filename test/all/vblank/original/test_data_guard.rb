@@ -37,6 +37,15 @@ class TestDataGuard < Minitest::Test
     refute_empty guard(consoles: %i[gbc snes]).refusals([staged("test/fixtures/tiny.sfc")])
   end
 
+  # A Genesis dump is often .md, which is also every Markdown file a repository keeps. A text file
+  # that size is a document; a Genesis cartridge is never smaller than 128 KB.
+  def test_a_genesis_game_commits_its_markdown_but_not_a_cartridge_named_md
+    genesis = guard(consoles: %i[genesis])
+
+    assert_empty genesis.refusals([staged("README.md", size: 4_000), staged(".claude/rules/testing.md", size: 60_000)])
+    assert_match "Sonic.md", genesis.refusals([staged("Sonic.md", size: 512 * 1024 - 1)]).first
+  end
+
   def test_the_folders_and_kinds_the_game_names_are_refused
     rocket = guard(folders: %w[dumps/ /cache/ *.levels/ data/raw/], suffixes: %w[chr])
 
