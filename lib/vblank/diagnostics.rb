@@ -27,7 +27,8 @@ require_relative "diagnostics/advance_reading" # ...what an Advance cartridge ke
 require_relative "diagnostics/color_reading" # ...and what a Game Boy Color cartridge does
 require_relative "diagnostics/snes_reading" # ...and what a Super Nintendo cartridge does
 require_relative "diagnostics/genesis_reading" # ...and what a Genesis cartridge does
-require_relative "diagnostics/ps1_reading" # ...and what a PlayStation program doesrequire_relative "diagnostics/tearing"
+require_relative "diagnostics/ps1_reading" # ...and what a PlayStation program does
+require_relative "diagnostics/tearing"
 require_relative "diagnostics/flicker"
 require_relative "diagnostics/tick_rate"
 require_relative "diagnostics/sound_drops"
@@ -44,6 +45,7 @@ require_relative "diagnostics/tape_profile" # ...each frame of a tape read by it
 require_relative "diagnostics/gbc_profiler" # ...and where a Game Boy Color cartridge's frames went
 require_relative "diagnostics/snes_profiler" # ...and where a Super Nintendo cartridge's frames went
 require_relative "diagnostics/genesis_profiler" # ...and where a Genesis cartridge's frames went
+require_relative "diagnostics/ps1_profiler" # ...and where a PlayStation program's frames went
 require_relative "diagnostics/hand_overs" # which scenes run late on the frame the game hands over to them
 require_relative "diagnostics/routine_profile"
 require_relative "diagnostics/cartridge_file" # a cartridge that is only its file, with no record of its build

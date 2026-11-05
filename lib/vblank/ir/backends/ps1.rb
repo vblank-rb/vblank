@@ -51,11 +51,15 @@ module VBlank
         # by the game's name (its address in RAM), every list ([its address, its capacity, the bytes a
         # slot, its name]), where the runtime keeps how the run stands (Runtime::Frame's names), where
         # every label of the code went, and the program it was built from. +bytes+ says what the program's
-        # sections come to (ByteCounts).
-        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes) do
+        # sections come to (ByteCounts), and +routines+ where each of the game's routines went
+        # (GameRoutine), for a profile naming where a frame's time went.
+        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines) do
           # Where the runtime counts the times the game has waited for the screen.
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
         end
+
+        # One routine of the game's in RAM: the addresses its code takes, and what it is to the author.
+        GameRoutine = Data.define(:addresses, :routine)
 
         # What the program's sections come to: +code+, the bytes the processor runs, and +data+, the bytes
         # it only reads (the game's tables).
@@ -75,11 +79,19 @@ module VBlank
           linked = Linker.new(runtime + game, room: Memory::PROGRAM_ROOM).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
-                             source_program: program, code: linked.places, bytes: byte_counts(linked))
+                             source_program: program, code: linked.places, bytes: byte_counts(linked),
+                             routines: game_routines(lowering, linked))
           Cartridge::PS1EXE.new(linked.image, title: title, entry: linked.address_of("rt_boot"), built: built)
         end
 
         private
+
+        def game_routines(lowering, linked)
+          lowering.section_routines.map do |label, routine|
+            placed = linked.sections.fetch(label)
+            GameRoutine.new(addresses: placed.address...(placed.address + placed.section.size), routine: routine)
+          end
+        end
 
         # How many bytes of the program are code and how many are data: the sections that hold the game's
         # tables (Lowering::TABLES_HOLDING) are data, and the rest code.

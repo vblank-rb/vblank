@@ -132,8 +132,10 @@ module VBlank
 
           # Where each of the game's variables went, by its name, and each of its lists — [its place, its
           # capacity, the bytes a slot, its name] — once #sections has placed them; and the label of the
-          # routine the runtime runs at each frame boundary, or nil for a game with no timers.
-          attr_reader :variables, :lists, :frame_begins
+          # routine the runtime runs at each frame boundary, or nil for a game with no timers. And each
+          # section of the game's own routines, by its name, to what that routine is to the author ("scene
+          # :title", "the game loop"), for a profile naming where a frame went.
+          attr_reader :variables, :lists, :frame_begins, :section_routines
 
           include Paint
           include Faces
@@ -158,6 +160,7 @@ module VBlank
             @locals = {}
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
+            @section_routines = {}
           end
 
           # The slot sizes, in bytes, whose direct routines the game calls, so the runtime carries only
@@ -272,6 +275,7 @@ module VBlank
           # itself. Its return address is kept on the stack for its whole length, since what it calls
           # changes ra. +routine+ is what it is to the author.
           def routine_section(label, body, routine:)
+            @section_routines[label] = routine
             @asm = R3000.new(label, holds: ROUTINES_HOLDING)
             @routine = label
             @routine_words = routine

@@ -2,9 +2,10 @@
 
 module VBlank
   module Diagnostics
-    # WHERE EACH FRAME WENT WHILE A TAPE PLAYED, on the Game Boy Color, the Super Nintendo and the
-    # Genesis. Each console's profiler says how one frame is played and measured on its emulator (a
-    # meter: see .play); the tape, the frames, the readings and the report are the same for all.
+    # WHERE EACH FRAME WENT WHILE A TAPE PLAYED, on the Game Boy Color, the Super Nintendo, the
+    # Genesis and the PlayStation. Each console's profiler says how one frame is played and measured
+    # on its emulator (a meter: see .play); the tape, the frames, the readings and the report are the
+    # same for all.
     #
     # `rom.profile` measures a game standing still, or holding the same buttons the whole time, and
     # adds every frame it measured into one report. The frame worth looking at is usually one a
@@ -68,8 +69,10 @@ module VBlank
       end
 
       # THE METER OF A CONSOLE WHOSE EMULATOR ADDS UP TIME BY ADDRESS (Core#take_processor_time on
-      # the Super Nintendo and the Genesis), read as TimeByRoutine reads it. +shown_at+ and
-      # +passes_at+ are where its runtime keeps Frame::SHOWN and Frame::PASSES in work memory.
+      # the Super Nintendo, the Genesis and the PlayStation), read as TimeByRoutine reads it.
+      # +shown_at+ and +passes_at+ are where its runtime keeps Frame::SHOWN and Frame::PASSES in work
+      # memory. A console whose core names its buttons or its memory otherwise says so in a subclass
+      # (PS1Profiler::Meter).
       class ProcessorTimeMeter
         attr_reader :file_name
 
@@ -229,8 +232,8 @@ module VBlank
       def self.refuse_tape!(tape, console)
         return if tape.nil?
 
-        raise ArgumentError, "A #{console} profile cannot play a tape yet. A Game Boy Color, Super Nintendo or Genesis " \
-                             "profile can. To fix this, remove tape:. To hold buttons, use keys:."
+        raise ArgumentError, "A #{console} profile cannot play a tape yet. A Game Boy Color, Super Nintendo, Genesis or " \
+                             "PlayStation profile can. To fix this, remove tape:. To hold buttons, use keys:."
       end
 
       # The readings, for a person: a line for each frame, and under it its busiest routines.

@@ -40,10 +40,28 @@
  
     po = &PIOMem->data8[0x0800];
  
-@@ -7640,6 +7657,48 @@
-    return okay;
+@@ -4553,8 +4570,15 @@
+    va_end(va);
  }
  
++/* VBlank probe: the profiler's counts start again with each console (cpu.c,
++ * gpu.c). */
++extern void vblank_probe_profile_reset(void);
++extern uint64_t vblank_probe_gpu_busy;
++
+ void retro_init(void)
+ {
++   vblank_probe_profile_reset();
++   vblank_probe_gpu_busy = 0;
+    VCD_Init();
+ 
+    struct retro_log_callback log;
+@@ -7638,8 +7662,58 @@
+    okay           = MDFNSS_LoadSM(&st, 0, 0);
+    FastSaveStates = false;
+    return okay;
++}
++
 +/* VBlank probe: the console's memories beyond main RAM, for a test reading
 + * back what a program did. VRAM as the GPU keeps it (1024x512 halfwords at
 + * the 1x internal resolution), the GPU's display and drawing settings, the
@@ -52,7 +70,15 @@
 +#define VBLANK_PROBE_GPU       0x8002
 +#define VBLANK_PROBE_SCRATCH   0x8003
 +#define VBLANK_PROBE_CPU       0x8004
++/* Where the processor's time went since it was last asked, by address
++ * (cpu.c), and the cycles the graphics chip has spent drawing since power-on
++ * (gpu.c), a little-endian count of 64 bits. */
++#define VBLANK_PROBE_PROFILE   0x8007
++#define VBLANK_PROBE_GPU_BUSY  0x8008
 +extern PS_GPU GPU;
++extern uint8_t *vblank_probe_profile_bytes;
++extern uint32_t vblank_probe_profile_take(void);
++extern uint64_t vblank_probe_gpu_busy;
 +static uint32_t vblank_probe_gpu[16];
 +static uint32_t vblank_probe_cpu[35];
 +
@@ -75,8 +101,8 @@
 +   vblank_probe_gpu[14] = GPU.upscale_shift;
 +   vblank_probe_gpu[15] = GPU.scanline;
 +   return vblank_probe_gpu;
-+}
-+
+ }
+ 
 +static void *vblank_probe_cpu_state(void)
 +{
 +   if (!PSX_CPU)
@@ -89,7 +115,7 @@
  void *retro_get_memory_data(unsigned type)
  {
     /* This callback may be invoked before retro_load_game or after
-@@ -7647,6 +7706,14 @@
+@@ -7647,6 +7721,18 @@
      * libretro spec; the frontend must cope with that. */
     switch (type)
     {
@@ -101,10 +127,14 @@
 +         return ScratchRAM ? ScratchRAM->data8 : NULL;
 +      case VBLANK_PROBE_CPU:
 +         return vblank_probe_cpu_state();
++      case VBLANK_PROBE_PROFILE:
++         return vblank_probe_profile_bytes;
++      case VBLANK_PROBE_GPU_BUSY:
++         return &vblank_probe_gpu_busy;
        case RETRO_MEMORY_SYSTEM_RAM:
           return MainRAM ? MainRAM->data8 : NULL;
        case RETRO_MEMORY_SAVE_RAM:
-@@ -7666,6 +7733,14 @@
+@@ -7666,6 +7752,18 @@
  {
     switch (type)
     {
@@ -116,6 +146,142 @@
 +         return ScratchRAM ? 1024 : 0;
 +      case VBLANK_PROBE_CPU:
 +         return PSX_CPU ? sizeof(vblank_probe_cpu) : 0;
++      case VBLANK_PROBE_PROFILE:
++         return vblank_probe_profile_take();
++      case VBLANK_PROBE_GPU_BUSY:
++         return sizeof(vblank_probe_gpu_busy);
        case RETRO_MEMORY_SYSTEM_RAM:
           return 0x200000;
        case RETRO_MEMORY_SAVE_RAM:
+--- a/mednafen/psx/cpu.c
++++ b/mednafen/psx/cpu.c
+@@ -737,10 +737,78 @@
+ // Fill size of 2-words seems to work on a PS1, and even behaves as if the line size is 2 words in regards to clearing
+ // the valid bits(when the tag matches, of course), but is obviously not very efficient unless running code that's just endless branching.
+ //
++/* VBlank probe: where the processor's time goes, for a profiler. The cycles
++ * from one instruction's fetch to the next are added to the first one's
++ * address in main RAM (code outside it, the BIOS's, is counted at RAM's first
++ * word, where no program runs), stalls and waits included. Nothing is kept until the
++ * first time it is asked for. vblank_probe_profile_take hands over what was
++ * counted since it last was, each address (as 8xxxxxxxh) a little-endian
++ * word of 32 bits and its cycles one of 64. */
++#define VBLANK_PROBE_SLOTS (0x200000 >> 2)
++static uint64_t *vblank_probe_spent = NULL;
++static uint32_t *vblank_probe_touched = NULL;
++static uint32_t vblank_probe_touched_count = 0;
++static uint32_t vblank_probe_last_pc = 0;
++static int32_t vblank_probe_last_ts = 0;
++uint8_t *vblank_probe_profile_bytes = NULL;
++
++static INLINE void vblank_probe_count(uint32_t pc, int32_t ts)
++{
++   if (vblank_probe_spent && ts > vblank_probe_last_ts)
++   {
++      /* Main RAM is the first 2 MB of the physical addresses (KUSEG, KSEG0
++       * and KSEG1 alike); anything else, the BIOS above all, is slot 0. */
++      uint32_t physical = vblank_probe_last_pc & 0x1FFFFFFF;
++      uint32_t slot = physical < 0x200000 ? physical >> 2 : 0;
++      if (!vblank_probe_spent[slot])
++         vblank_probe_touched[vblank_probe_touched_count++] = slot;
++      vblank_probe_spent[slot] += (uint64_t)(ts - vblank_probe_last_ts);
++   }
++   vblank_probe_last_pc = pc;
++   vblank_probe_last_ts = ts;
++}
++
++/* Back to counting nothing, as at power-on. A library copy is used again by
++ * the next console that takes it, and its globals with it. */
++void vblank_probe_profile_reset(void)
++{
++   free(vblank_probe_spent);
++   free(vblank_probe_touched);
++   vblank_probe_spent = NULL;
++   vblank_probe_touched = NULL;
++   vblank_probe_touched_count = 0;
++   vblank_probe_last_pc = 0;
++   vblank_probe_last_ts = 0;
++}
++
++uint32_t vblank_probe_profile_take(void)
++{
++   uint32_t n, byte, size = vblank_probe_touched_count * 12;
++   if (!vblank_probe_spent)
++   {
++      vblank_probe_spent = (uint64_t*)calloc(VBLANK_PROBE_SLOTS, sizeof(*vblank_probe_spent));
++      vblank_probe_touched = (uint32_t*)calloc(VBLANK_PROBE_SLOTS, sizeof(*vblank_probe_touched));
++      return 0;
++   }
++   vblank_probe_profile_bytes = (uint8_t*)realloc(vblank_probe_profile_bytes, size + 12);
++   for (n = 0; n < vblank_probe_touched_count; n++)
++   {
++      uint32_t slot = vblank_probe_touched[n];
++      uint32_t address = 0x80000000 | (slot << 2);
++      uint64_t cycles = vblank_probe_spent[slot];
++      for (byte = 0; byte < 4; byte++) vblank_probe_profile_bytes[n * 12 + byte] = (uint8_t)(address >> (byte * 8));
++      for (byte = 0; byte < 8; byte++) vblank_probe_profile_bytes[n * 12 + 4 + byte] = (uint8_t)(cycles >> (byte * 8));
++      vblank_probe_spent[slot] = 0;
++   }
++   vblank_probe_touched_count = 0;
++   return size;
++}
++
+ static INLINE uint32_t ReadInstruction(int32_t *timestamp, uint32_t address)
+ {
+    uint32_t instr;
+ 
++   vblank_probe_count(address, *timestamp);
+    instr = ICache[(address & 0xFFC) >> 2].Data;
+ 
+    if (ICache[(address & 0xFFC) >> 2].TV != address)
+@@ -901,6 +969,10 @@
+ 
+    gte_ts_done += timestamp;
+    muldiv_ts_done += timestamp;
++
++   /* VBlank probe: the count starts again from where this run starts, since
++    * the console's clock is set back to nought between runs. */
++   vblank_probe_last_ts = timestamp;
+ 
+    BACKING_TO_ACTIVE;
+ 
+@@ -2880,6 +2952,9 @@
+ #endif
+  } while(MDFN_LIKELY(PSX_EventHandler(timestamp)));
+ 
++ /* VBlank probe: the last instruction's time, up to where the run stops. */
++ vblank_probe_count(PC, timestamp);
++
+  if(gte_ts_done > 0)
+   gte_ts_done -= timestamp;
+ 
+--- a/mednafen/psx/gpu.c
++++ b/mednafen/psx/gpu.c
+@@ -2236,6 +2236,9 @@
+    PSX_WakeVirtual(from_cpu);
+ }
+ 
++/* VBlank probe: see GPU_UpdateInt. */
++uint64_t vblank_probe_gpu_busy = 0;
++
+ static int32_t GPU_UpdateInt(const int32_t sys_timestamp, int mode)
+ {
+    int32_t gpu_clocks;
+@@ -2246,6 +2249,17 @@
+ 
+    if(!sys_clocks)
+       goto TheEnd;
++
++   /* VBlank probe: the processor's cycles the chip spent drawing. A command
++    * the chip takes costs drawing time it then owes (DrawTimeAvail below
++    * nought), and it takes no other until that is paid back, at two a
++    * processor cycle, so the cycles spent paying it back are the cycles it
++    * was busy drawing. */
++   if(GPU.DrawTimeAvail < 0)
++   {
++      int32_t owed = (-GPU.DrawTimeAvail + (1 << (1 + psx_gpu_overclock_shift)) - 1) >> (1 + psx_gpu_overclock_shift);
++      vblank_probe_gpu_busy += (uint64_t)(owed < sys_clocks ? owed : sys_clocks);
++   }
+ 
+    GPU.DrawTimeAvail += sys_clocks << (1 + psx_gpu_overclock_shift);
+ 

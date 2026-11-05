@@ -70,11 +70,29 @@ module VBlank
 
       def write(path) = ROM.write_bytes(path, @bytes)
 
-      # Where its frames went is not measured yet: Beetle PSX does not count the processor's time by
-      # address through ruby-ps1-emulator.
-      def profile(**)
-        raise ProfileError, "A PlayStation program cannot be profiled yet. To see where a game's frames go, " \
-                            "profile its Game Boy Advance build."
+      # HOW MANY FRAMES ITS PASSES TOOK, AND WHERE THE TIME WENT: the program run in the emulator
+      # (Diagnostics::PS1Profiler), reported for a person or as JSON. +keys+ are held from power-on, and
+      # +settle+ passes run before the +frames+ passes measured.
+      #
+      # With a +tape+, the tape is played from power-on and +frames+ is a range of its frames, each read
+      # by itself (Diagnostics::TapeProfile).
+      def profile(format: :human, out: $stdout, frames: Diagnostics::PS1Profiler::FRAMES,
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
+        Diagnostics::TapeProfile.refuse_scene!(scene, from, "PlayStation")
+        Diagnostics::TimeByRoutine.refuse_press!(press, "PlayStation")
+        if tape
+          return Diagnostics::TapeProfile.profile(self, Diagnostics::PS1Profiler, tape: tape, frames: frames, keys: keys,
+                                                                                  settle: settle, format: format, out: out)
+        end
+
+        result = Diagnostics::PS1Profiler.run(self, frames: frames, settle: settle || Diagnostics::PS1Profiler::SETTLE,
+                                                    keys: keys)
+        case format
+        when :human then Diagnostics::PS1Profiler.render(result, out: out)
+        when :json then out.puts(JSON.generate(result.to_h))
+        else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
+        end
+        result
       end
 
       private

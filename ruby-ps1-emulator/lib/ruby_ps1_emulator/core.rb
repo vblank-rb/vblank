@@ -8,7 +8,8 @@ module RubyPS1Emulator
   # ONE PLAYSTATION, PLAYED A FRAME AT A TIME with nobody watching: a program (a PS-X EXE) loaded into
   # Beetle PSX (a libretro core, see CoreLibrary), its buttons set from Ruby, and everything a test wants
   # to read back handed over as plain bytes — main RAM, video RAM and the picture shown in it, the
-  # graphics chip's display settings, the scratchpad and the processor's registers.
+  # graphics chip's display settings, the scratchpad and the processor's registers — and where the
+  # processor's time went, by address, and how long the graphics chip spent drawing, for a profiler.
   #
   #   core = RubyPS1Emulator::Core.new("game.exe")
   #   core.set_buttons(%i[right cross])
@@ -34,6 +35,8 @@ module RubyPS1Emulator
     GPU_STATE = 0x8002
     SCRATCHPAD = 0x8003
     CPU_REGISTERS = 0x8004
+    PROCESSOR_TIME = 0x8007
+    GPU_BUSY = 0x8008
 
     RAM_SIZE = 0x20_0000
     VRAM_WIDTH = 1024
@@ -160,6 +163,24 @@ module RubyPS1Emulator
     # The processor's registers by name (REGISTER_NAMES): the 32 general ones, LO, HI and the
     # program counter.
     def registers = REGISTER_NAMES.zip(memory(CPU_REGISTERS).unpack("L<*")).to_h
+
+    # --- the time ---
+
+    # WHERE THE PROCESSOR'S TIME WENT since this was last asked: each address an instruction started
+    # at (as 8xxxxxxxh, where a program runs), and the processor's cycles from its fetch to the next
+    # instruction's, whatever it stood still for included (a copy that stops it, a wait on the
+    # graphics chip). Code outside main RAM, the BIOS's, is all counted at 80000000h, where no
+    # program runs. The first ask starts the count and
+    # answers nothing.
+    def take_processor_time
+      bytes = memory(PROCESSOR_TIME)
+      bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
+    end
+
+    # HOW LONG THE GRAPHICS CHIP HAS SPENT DRAWING since power-on, in the processor's cycles. The chip
+    # draws while the processor goes on, so this is time of its own: a frame whose chip was busy for
+    # most of it is a frame the chip, not the processor, made long, once the processor waits for it.
+    def gpu_busy_cycles = memory(GPU_BUSY).unpack1("Q<")
 
     # Main RAM read in place, at +address+ (only its low 21 bits matter, so 80010000h, A0010000h and
     # 00010000h are the same byte), low byte first as the console keeps a number.

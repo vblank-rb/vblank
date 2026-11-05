@@ -464,6 +464,7 @@ module VBlank
       A game for one console is profiled on that console. A game for both needs
       --console. The Game Boy Color's report says where its frames went, by
       routine, the frame rate it played at, and how much of the time it slept.
+      The PlayStation's says the same, and how long its graphics chip drew.
 
       Examples:
         vblank profile game.rb
@@ -491,7 +492,8 @@ module VBlank
                                  report each frame of --frames by itself: its
                                  lines to spare, how much of it the game was
                                  awake, and its busiest routines. On the Game
-                                 Boy Color, the Super Nintendo and the Genesis.
+                                 Boy Color, the Super Nintendo, the Genesis and
+                                 the PlayStation.
         --frames N               Measure this many frames. Default: #{VBlank::Diagnostics::Profiler::FRAMES}.
                                  With --tape, a range of the tape's frames,
                                  counted from 1: --frames 590..610.
