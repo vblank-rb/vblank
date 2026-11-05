@@ -95,6 +95,27 @@ static inline void rg_list_fill(rg_list *list, int32_t from, int32_t count, int3
   for (int32_t i = 0; i < count; i++) list->items[rg_list_slot(list, from + i)] = rg_list_fit(list, value);
 }
 
+/* Every item put in order by the number +by+ holds at it, the smallest first (the biggest when
+ * +descending+ is not nought), as Reference#exec_list_sort. An insertion sort: an item moves back
+ * only past a number strictly beyond its own, so level items keep their order, and a list already
+ * in order is one compare an item. Each item's number is read through rg_list_get, so an item that
+ * is not a place in +by+ stops the program in the interpreter's words. */
+static inline void rg_list_sort(rg_list *list, const rg_list *by, int32_t descending) {
+  for (int32_t at = 1; at < list->length; at++) {
+    int32_t item = list->items[rg_list_slot(list, at)];
+    int32_t key = rg_list_get(by, item);
+    int32_t to = at;
+    while (to > 0) {
+      int32_t before = list->items[rg_list_slot(list, to - 1)];
+      int32_t other = rg_list_get(by, before);
+      if (descending ? other >= key : other <= key) break;
+      list->items[rg_list_slot(list, to)] = before;
+      to--;
+    }
+    list->items[rg_list_slot(list, to)] = item;
+  }
+}
+
 /* How a table's entries are kept: a table is kept at the width the game declared it, signed or
  * not (Native::Lowering#table_type). */
 enum { RG_TABLE_INT8, RG_TABLE_UINT8, RG_TABLE_INT16, RG_TABLE_UINT16, RG_TABLE_INT32 };

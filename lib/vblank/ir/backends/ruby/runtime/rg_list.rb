@@ -93,6 +93,30 @@ def rg_list_fill(list, from, count, value)
   count.times { |i| list.items[rg_list_slot(list, from + i)] = fitted }
 end
 
+# Every item put in order by the number +by+ holds at it, the smallest first (the biggest when
+# +descending+ is not nought), as rg_list.h's rg_list_sort: an insertion sort, moving an item back
+# only past a number strictly beyond its own, so level items keep their order.
+def rg_list_sort(list, by, descending)
+  falling = descending != 0
+  items = list.items
+  at = 1
+  while at < list.length
+    item = items[rg_list_slot(list, at)]
+    key = rg_list_get(by, item)
+    to = at
+    while to > 0
+      before = items[rg_list_slot(list, to - 1)]
+      other = rg_list_get(by, before)
+      break if falling ? other >= key : other <= key
+
+      items[rg_list_slot(list, to)] = before
+      to -= 1
+    end
+    items[rg_list_slot(list, to)] = item
+    at += 1
+  end
+end
+
 # The list made to hold exactly +count+ entries of a table, from entry +at+ on, held so the whole
 # run is inside the table. The program says how the table is kept (a byte, a half or a word,
 # signed or not) because a C table is read at that width; every table here is an Array of the

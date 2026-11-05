@@ -45,6 +45,7 @@ module VBlank
                                                list_new: :lower_list_new, list_push: :lower_list_push,
                                                list_drop: :lower_list_drop, list_set: :lower_list_set,
                                                list_fill: :lower_list_fill, list_copy: :lower_list_copy,
+                                               list_sort: :lower_list_sort,
                                                # the picture (Picture)
                                                screen: :lower_screen, clear_screen: :lower_clear_screen,
                                                fill_rect: :lower_fill_rect, dma_fill_rect: :lower_dma_fill_rect,
@@ -606,6 +607,12 @@ module VBlank
             kept = TABLE_KEPT_AS.fetch(table_type(table))
             [list_call("rg_list_copy", node, @names.of(:table, node.table), C::Int.new(kept), C::Int.new(table.values.length),
                        value(node.at), C::Int.new(node.count))]
+          end
+
+          # Reference#exec_list_sort, as one call: the runtime sorts the list in place by the
+          # numbers +by+ holds, stably.
+          def lower_list_sort(node)
+            [list_call("rg_list_sort", node, C::AddressOf.new(list(node.by)), C::Int.new(node.descending ? 1 : 0))]
           end
 
           def list_call(function, node, *args)
