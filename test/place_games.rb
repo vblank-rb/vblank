@@ -299,6 +299,68 @@ module PlaceGames
     builder.program
   end
 
+  # How many passes square_through_windows holds each window for.
+  WINDOW_PASSES = 3
+
+  # The square face (two wholes ahead, x 60 to 179 and y 20 to 139 seen straight on), seen by a
+  # viewer turned left by +spin+ degrees and standing +rise+ wholes up, so its corners land part
+  # way into a pixel. With +windows+ ([left, top, right, bottom] each) it is drawn through each in
+  # turn, WINDOW_PASSES passes each, the window read from a table as the game runs; without, on the
+  # whole screen.
+  def self.square_through_windows(spin:, rise:, windows: nil)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      place :wall do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      eye = viewer :eye, at: [0.0, rise, 0.0]
+      eye.turn :left, by: spin
+      if windows
+        edges = (0...4).map { |k| table(:"window_edge#{k}", windows.map { |window| window[k] }, width: :word) }
+        pass = var :pass, 0
+        game_loop do
+          clear_screen :black
+          at = pass / WINDOW_PASSES
+          draw_place :wall, seen_by: eye, window: edges.map { |edge| edge[at] }
+          pass += 1
+        end
+      else
+        game_loop do
+          clear_screen :black
+          draw_place :wall, seen_by: eye
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # A face whose lowest corners land half a pixel into row 79: a strip a whole wide, from a whole
+  # up to a quarter up, 55 wholes ahead of a viewer facing ahead (a quarter up lands eight
+  # sixteenths of a pixel above the middle row, 80). It is drawn through a window whose top is row
+  # 79, so the only row of it inside the window is the one its lowest corners reach halfway into.
+  def self.strip_reaching_into_window_row
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      place :wall do
+        face point(-1.0, 1.0, 55.0), point(1.0, 1.0, 55.0), point(1.0, 0.25, 55.0), point(-1.0, 0.25, 55.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        draw_place :wall, seen_by: eye, window: [0, 79, 240, 160]
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # The angles the second robot of moved_shapes turns left by, one a change, round and round: it
   # swings to 30 degrees left and back past nought to 30 right, with a fraction of a degree on the way.
   ROBOT_SPINS = Ractor.make_shareable([10.5, 19.5, -30.0, -30.0, 30.0])

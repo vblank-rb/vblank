@@ -289,4 +289,48 @@ class TestPlacesOnTheAdvance < Minitest::Test
     assert_equal tile(0, 0), screen.pixel(30, 50)
     assert_equal shown(:red), screen.pixel(150, 105)
   end
+
+  # A face lying wholly outside its window is passed over before anything is worked out for it
+  # (IR::PlaceDrawing#corner_outcode_statement); one that reaches into the window by a pixel is not. So
+  # through a window that ends at the face's last pixel, or a pixel past it, or begins there, the
+  # picture is the face drawn on the whole screen, cut to the window, pixel for pixel. The face's
+  # corners land part way into a pixel, at a few turns and heights.
+  def test_a_window_hugging_a_face_shows_the_face_as_drawn_on_the_whole_screen
+    [[0.3, 0.013], [2.6, -0.021], [-1.7, 0.047]].each do |spin, rise|
+      whole = picture_of(game_player.run(PlaceGames.square_through_windows(spin: spin, rise: rise), frames: 2).screen)
+      windows = windows_hugging(whole)
+      seen = {}
+      player = game_player
+      player.each_vblank { |frame| seen[frame] = picture_of(player.screen) }
+      player.run(PlaceGames.square_through_windows(spin: spin, rise: rise, windows: windows),
+                 frames: windows.length * PlaceGames::WINDOW_PASSES)
+
+      windows.each_with_index do |window, k|
+        frame = ((k + 1) * PlaceGames::WINDOW_PASSES) - 1
+
+        assert_equal cut_to(whole, window), seen.fetch(frame), "turned #{spin}, #{rise} up, through #{window}"
+      end
+    end
+  end
+
+  # Every pixel of +screen+, row by row.
+  private def picture_of(screen) = (0...160).map { |y| (0...240).map { |x| screen.pixel(x, y) } }
+
+  # +picture+ with every pixel outside +window+ black.
+  private def cut_to(picture, window)
+    left, top, right, bottom = window
+    picture.each_with_index.map do |row, y|
+      row.each_with_index.map { |color, x| x >= left && x < right && y >= top && y < bottom ? color : BLACK }
+    end
+  end
+
+  # Windows whose edge is at the face's first or last pixel, or a pixel either side, on each side.
+  private def windows_hugging(picture)
+    drawn = picture.each_with_index.flat_map { |row, y| row.each_index.filter_map { |x| [x, y] unless row[x] == BLACK } }
+    left, right = drawn.map(&:first).minmax
+    top, bottom = drawn.map(&:last).minmax
+    [-1, 0, 1].flat_map do |by|
+      [[0, 0, left + by, 160], [right + 1 + by, 0, 240, 160], [0, 0, 240, top + by], [0, bottom + 1 + by, 240, 160]]
+    end
+  end
 end

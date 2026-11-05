@@ -77,7 +77,12 @@ class TestPS1ManyRoomsPace < Minitest::Test
     win_top = list :win_top, capacity: ROOMS, full_of: 0
     win_right = list :win_right, capacity: ROOMS, full_of: 0
     win_bottom = list :win_bottom, capacity: ROOMS, full_of: 0
-    drawn = list :drawn, capacity: 6
+    # With the setting, each room is drawn with the faces of the two rooms nearer than the one before it
+    # as well, as a game whose rooms list more faces than can be seen through a doorway does. Seen
+    # down the corridor those rooms lie round the doorway the room is seen through, wholly outside its
+    # window, and are passed over before anything is worked out for them.
+    neighbours = setting :neighbours, false
+    drawn = list :drawn, capacity: 16
 
     eye = viewer :eye, at: [0.0, 0.0, 0.5]
     phase = var :phase, 0
@@ -89,6 +94,8 @@ class TestPS1ManyRoomsPace < Minitest::Test
     bottom = var :bottom, 0
     behind = var :behind, 0
     at = var :at, 0
+    first = var :first, 0
+    past = var :past, 0
     each_face = var :each_face, 0
 
     eye.turn :right, by: 12
@@ -165,6 +172,17 @@ class TestPS1ManyRoomsPace < Minitest::Test
       repeat(seen) do |back|
         at = seen - 1 - back
         repeat(drawn.length) { drawn.pop }
+        if neighbours
+          first = at - 3
+          first = 0 if first < 0
+          past = at - 1
+          past = 0 if past < 0
+          each_face = face_start[first]
+          repeat(face_start[past] - face_start[first]) do
+            drawn.push face_number[each_face]
+            each_face += 1
+          end
+        end
         each_face = face_start[at]
         repeat(face_start[at + 1] - face_start[at]) do
           drawn.push face_number[each_face]
@@ -198,8 +216,21 @@ class TestPS1ManyRoomsPace < Minitest::Test
     assert_operator past.max, :<=, VBlank::Diagnostics::PS1Profiler::FRAME_LINES - SPARE_LINES, "lines past the first blank: #{past.minmax}"
   end
 
-  private def profile
-    rom = CORRIDOR.build_rom(console: :ps1, out: StringIO.new, err: StringIO.new, profile: false)
+  # A face wholly outside the window it is drawn through is passed over before it is cut, tested for
+  # which way it faces or sent: drawing each room with two more rooms' faces, nearly three times the
+  # faces, most of them outside its window, costs under a third again of the processor's time.
+  def test_faces_outside_a_rooms_window_cost_under_a_third_again
+    own = profile
+    with_neighbours = profile(neighbours: true)
+
+    assert_operator busy_frames(with_neighbours), :<, busy_frames(own) * 4 / 3.0
+  end
+
+  # How much of a frame the processor was at work for, a pass.
+  private def busy_frames(result) = (1 - result.idle_share) * result.frames / result.passes
+
+  private def profile(**settings)
+    rom = CORRIDOR.build_rom(console: :ps1, settings: settings, out: StringIO.new, err: StringIO.new, profile: false)
     rom.profile(out: StringIO.new, frames: 48)
   end
 end

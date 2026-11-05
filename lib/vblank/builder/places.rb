@@ -381,6 +381,7 @@ module VBlank
         declare_place_routine(drawing.point_routine, drawing.point_statements)
         declare_place_routine(drawing.corner_routine, drawing.corner_statements)
         declare_place_routine(drawing.count_routine, drawing.drawing_count_statements)
+        declare_place_routine(drawing.outcode_routine, drawing.outcode_routine_statements) unless drawing.looped_corners?
       end
 
       # The routine that works out where one point lands, declared the first time a game asks, so
@@ -401,18 +402,19 @@ module VBlank
         declare_func(name) { statements.each { |statement| record(statement) } }
       end
 
-      # The rectangle faces are held to: the view's own, or the game's window held inside it.
+      # The rectangle faces are held to: the view's own, or the game's window held inside it; and
+      # the lines a face lying wholly past one of its edges is told by (IR::PlaceDrawing::OUTCODE_EDGES).
       def place_clip(drawing, view, window)
         view_edges = [view.left, view.top, view.right, view.bottom]
-        IR::PlaceDrawing::CLIP_EDGES.each_with_index.map do |edge, k|
-          held = if window
-                   low, high = k.even? ? [view.left, view.right] : [view.top, view.bottom]
-                   Build.clamped(window[k], low, high)
-                 else
-                   Build.int(view_edges[k])
-                 end
-          Build.set(drawing.clip_var(edge), held)
+        held = IR::PlaceDrawing::CLIP_EDGES.each_with_index.to_h do |edge, k|
+          if window
+            low, high = k.even? ? [view.left, view.right] : [view.top, view.bottom]
+            [edge, Build.clamped(window[k], low, high)]
+          else
+            [edge, Build.int(view_edges[k])]
+          end
         end
+        held.map { |edge, node| Build.set(drawing.clip_var(edge), node) } + drawing.outside_line_statements(held)
       end
 
       # The view the place is drawn into: the `inside` area drawing is held to, or the screen.

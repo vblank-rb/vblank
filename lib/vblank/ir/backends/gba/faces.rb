@@ -203,14 +203,12 @@ module VBlank
             place_label(ROUTINE)
             start = pos
             emit(ASM.push(4, 5, 6, 7, 8, 9, 10, 11, 14))
-            emit_skip_face_outside_edges(:"#{ROUTINE}_out")
             emit_corners_in_perspective
             emit_corners_lit if @lit
             emit_edges
             @span_patches = []
             emit_branch(:bl, PATCH_ROUTINE)
             emit_rows
-            place_label(:"#{ROUTINE}_out")
             emit(ASM.pop(4, 5, 6, 7, 8, 9, 10, 11, 15))
             emit_span_pixels_routine
             emit_divide_by_count_routine
@@ -575,66 +573,6 @@ module VBlank
             emit(ASM.str_offset(0, 3, edge_offset(:first)))
             emit(ASM.str_offset(0, 3, edge_offset(:past)))
             place_label(done)
-          end
-
-          # A FACE WHOLLY PAST ONE EDGE OF WHAT MAY BE DRAWN draws nothing, and is left at once,
-          # before its edges are worked out: a division each. A face beside the view, or behind a
-          # doorway's window, is most of the faces of a place seen from inside.
-          #
-          # Its rows are the ones whose middles its corners' heights span, so a face whose lowest
-          # corner's row is above the top, or whose highest is at or below the bottom, has none.
-          # Across, where a row starts and ends is worked out along an edge, and can come out a
-          # pixel either way of where the corner itself lands, so the test across leaves a pixel to
-          # spare: a face it keeps may still draw nothing, and the rows find that out as before.
-          #
-          #   r4 the least across, r5 the most, r6 the least down, r7 the most; r0 the corners
-          #   left, r3 a corner's words
-          def emit_skip_face_outside_edges(out)
-            each = gensym
-            load_var(0, :_face_corners)
-            emit_number(3, var_addr(corner_word(:x, 0)))
-            emit(ASM.ldr_offset(4, 3, corner_offset(:x)))
-            emit(ASM.mov_reg(5, 4))
-            emit(ASM.ldr_offset(6, 3, corner_offset(:y)))
-            emit(ASM.mov_reg(7, 6))
-            emit(ASM.sub_imm(0, 0, 1))
-            place_label(each)
-            emit(ASM.add_imm(3, 3, CORNER_BYTES))
-            emit(ASM.ldr_offset(1, 3, corner_offset(:x)))
-            emit(ASM.cmp_reg(1, 4))
-            emit(ASM.mov_reg_cond(:lt, 4, 1))
-            emit(ASM.cmp_reg(1, 5))
-            emit(ASM.mov_reg_cond(:gt, 5, 1))
-            emit(ASM.ldr_offset(1, 3, corner_offset(:y)))
-            emit(ASM.cmp_reg(1, 6))
-            emit(ASM.mov_reg_cond(:lt, 6, 1))
-            emit(ASM.cmp_reg(1, 7))
-            emit(ASM.mov_reg_cond(:gt, 7, 1))
-            emit(ASM.subs_imm(0, 0, 1))
-            emit_branch(:bcond, each, cond: :ne)
-            [4, 5, 6, 7].each { |reg| emit_row_of(reg, reg) } # each as the pixel its middle reaches
-
-            emit_edge_bound(1, :_face_left, 0, :at_least)
-            emit(ASM.cmp_reg(5, 1))
-            emit_branch(:bcond, out, cond: :lt)
-            emit_edge_bound(1, :_face_right, SCREEN_WIDTH, :at_most)
-            emit(ASM.cmp_reg(4, 1))
-            emit_branch(:bcond, out, cond: :gt)
-            emit_edge_bound(1, :_face_top, 0, :at_least)
-            emit(ASM.cmp_reg(7, 1))
-            emit_branch(:bcond, out, cond: :le)
-            emit_edge_bound(1, :_face_bottom, SCREEN_HEIGHT, :at_most)
-            emit(ASM.cmp_reg(6, 1))
-            emit_branch(:bcond, out, cond: :ge)
-          end
-
-          # +reg+ = the edge in word +edge+, held to at least or at most +screen+ (r0 is spare, so
-          # the corner count is read again where it is needed).
-          def emit_edge_bound(reg, edge, screen, way)
-            load_var(reg, edge)
-            emit_number(0, screen)
-            emit(ASM.cmp_reg(reg, 0))
-            emit(ASM.mov_reg_cond(way == :at_least ? :lt : :gt, reg, 0))
           end
 
           # +into+ = the row whose middle is at or below the screen position in +from+ (in

@@ -27,6 +27,18 @@ class TestPS1PolygonFill < Minitest::Test
     assert PS1::CheckedRun.new.run(many, frames: 2)
   end
 
+  # The chip's corners are whole pixels, each rounded to the nearest, so a face whose lowest corners
+  # land halfway into row 79 reaches down to the row's end and the chip fills row 79. The test that
+  # passes over a face lying wholly outside its window (IR::PlaceDrawing#corner_outcode_statement) must not
+  # pass over this one through a window whose top is row 79, though the interpreter's fill, which takes
+  # a row only when the face covers its middle, draws nothing there.
+  def test_a_face_reaching_halfway_into_its_windows_first_row_fills_that_row
+    screen = PS1::CheckedRun.new.run(PlaceGames.strip_reaching_into_window_row, frames: 2).screen
+
+    refute_equal VBlank::Testing.shown(:black), screen.pixel(120, 79)
+    assert_equal VBlank::Testing.shown(:black), screen.pixel(120, 80)
+  end
+
   # The chip starts the place on the picture half a texel on (gpu_uv_seed). Without that, about half
   # the pixels of a picture stretched 15 times read the texel before.
   def test_a_model_without_the_half_texel_start_disagrees_with_the_chip
