@@ -37,30 +37,27 @@ module VBlank
         #    than 256 is cut at 256 past its least, as often as it takes. The picture repeats by the
         #    chip's texture window (GP0 E2h), so each piece's places are moved by whole pictures to
         #    start between 0 and the picture's size.
-        # 4. LIT BY A SHADING, CUT WHERE THE LEVEL OF LIGHT CHANGES: a lit face's light, times its
-        #    shading's levels, steps across the face like its place on the picture does (as the
-        #    interpreter's fill steps it). Wherever that crosses a whole level the piece is cut, so
-        #    every piece sent lies inside one level, and is sent with the colour table that level's
-        #    colours are in (TextureMemory#add_shaded_tables). The chip then draws every pixel in the
-        #    colour the game's own shading gives at that level: the shading's table lookup, not the
-        #    chip's own blending of corner colours, which only scales red, green and blue.
-        # 5. SENT as a fan of triangles from the piece's first corner, each corner rounded to the
+        # 4. SENT as a fan of triangles from the piece's first corner, each corner rounded to the
         #    nearest whole pixel; a triangle with no area is left out (the chip draws nothing of one).
+        #
+        # A FACE LIT BY A SHADING IS SHADED BY THE CHIP, as the console's own games lit their walls: each
+        # corner of a triangle carries a colour, the chip steps it across the triangle as it steps the
+        # place on the picture, and multiplies each texel's red, green and blue by it (GP0 34h, a shaded
+        # textured triangle; 80h is the texel as it is, nought is black). A corner's colour comes from its
+        # light, as bright as a shading that darkens evenly makes the level the light starts
+        # (#light_floor, #corner_color). So a lit face is cut no more than an unlit one, however many
+        # levels its shading has and however steeply its light falls across it. Between the corners the
+        # light changes smoothly, not a level at a time, so a pixel is within a level of the brightness
+        # the shading gives it; and the chip scales red, green and blue alike, so a shading that does
+        # anything else to a colour than darken it (a tint, a fog) is drawn as the colour darkened.
         #
         # A corner is NUMBERS numbers, by these places: X and Y, in sixteenths of a pixel; U_SOURCE,
         # V_SOURCE and NEARNESS, what the place on the picture is worked out from (without perspective
         # u and v themselves, with sixteen fraction bits, and no nearness; in perspective u and v over
         # the distance and one over the distance, as Reference::FaceEdges.in_perspective has them);
-        # TEXEL_U, TEXEL_V, the whole texel the corner sends; and SHADE, a lit face's light times its
-        # shading's levels, whose top sixteen bits are the level (Reference::Shade#shaded_corner), and
-        # nought on a face that is not lit. Every sum is IR::Int32's, so it wraps where the processor's
-        # does.
-        #
-        # WHERE A LIT PICTURE DIFFERS FROM THE INTERPRETER'S, and is the chip's: only along the line
-        # between two levels. The interpreter works a pixel's level out from its row's ends; here the
-        # line is cut straight across each piece and its new corners rounded to whole pixels, so a
-        # pixel beside the line can take the level next to the interpreter's. Every pixel's colour is
-        # still one the shading gives for its texel at one of the two levels.
+        # TEXEL_U, TEXEL_V, the whole texel the corner sends; and SHADE, a lit face's colour with sixteen
+        # bits of fraction (#corner_from_list), and nought on a face that is not lit. Every sum is IR::Int32's,
+        # so it wraps where the processor's does.
         #
         # WHERE A CUT CROSSES AN EDGE, the new corner is worked out once, from the end of the edge
         # below the line towards the end above it, and given to both sides; so the two pieces on either
@@ -78,18 +75,11 @@ module VBlank
           # The numbers a cut across the screen steps (#corner_between): x and y (the one cut on is then
           # the line), and what the texel is worked out from; the texel is worked out afresh.
           SCREEN_CUT_NUMBERS = [X, Y, U_SOURCE, V_SOURCE, NEARNESS, SHADE].freeze
-          # The numbers a cut on the picture or between levels steps.
+          # The numbers a cut on the picture steps.
           LATE_CUT_NUMBERS = [X, Y, TEXEL_U, TEXEL_V, SHADE].freeze
 
-          # One level of a shade: its whole part's one.
-          LEVEL_STEP = 1 << 16
-
-          # How far a corner made on a line between two levels is moved right, in sixteenths: half a
-          # pixel, so the chip, which rounds it to the nearest pixel, puts the line at the first pixel
-          # past it. The interpreter gives a pixel its level from the shade where the pixel starts, so
-          # a pixel takes the next level only once it starts past the line; without this the chip's
-          # line falls a pixel left of the interpreter's on every row.
-          LEVEL_LINE_NUDGE = 8
+          # A corner's colour at the brightest light: the texel as it is (#corner_color).
+          FULL_COLOR = 0x80
 
           # The most corners a piece keeps: a face's eight, one more for each of the four clipping
           # edges, the two lines of a square it is cut by each way and a cut each way on the picture,
@@ -117,16 +107,17 @@ module VBlank
           SCREEN_WIDTH, SCREEN_HEIGHT = Console::PLAYSTATION.screen_size
 
           # One triangle as the chip is sent it: three corners [x, y, u, v], x and y whole pixels on the
-          # screen, u and v the texel in the picture's page; and on a lit face the +level+ of light it is
-          # drawn at (nil on a face that is not lit).
-          Triangle = Data.define(:corners, :level)
+          # screen, u and v the texel in the picture's page, and on a lit face (+shaded+) a fifth, the
+          # corner's colour (#corner_color).
+          Triangle = Data.define(:corners, :shaded)
 
           module_function
 
           # The triangles one face is sent as, in the order they are sent: +corners+ the face's corners as
           # the list holds them ([x, y, u, v, w, light] each), +edges+ [left, top, right, bottom] already
           # held to the screen and the area drawing is held to, +spans+ the face's perspective, the
-          # picture's +width+ and +height+, and the +levels+ of the shading it is lit by (nought: not lit).
+          # picture's +width+ and +height+, and the +levels+ of the shading it is lit by (nought: not lit;
+          # how many there are does not matter to the chip's shading).
           def triangles(corners:, edges:, spans:, width:, height:, levels: 0)
             left, top, right, bottom = edges
             return [] if left >= right || top >= bottom
@@ -159,10 +150,11 @@ module VBlank
             end
           end
 
-          # The corner a face's corner becomes (see the module's note). Its shade is its light held to
-          # nought to FillFace::LIGHTEST, times +levels+, as Reference::Shade#shaded_corner makes it.
+          # The corner a face's corner becomes (see the module's note). On a lit face (+levels+ not nought)
+          # its shade is its colour with sixteen bits of fraction: its light held to nought to
+          # FillFace::LIGHTEST, times FULL_COLOR, and the light floor added (#light_floor).
           def corner_from_list(x, y, u, v, w, light, spans, levels)
-            shade = levels.zero? ? 0 : Int32.mul(light.clamp(0, Nodes::FillFace::LIGHTEST), levels)
+            shade = levels.zero? ? 0 : Int32.add(Int32.shift_left(light.clamp(0, Nodes::FillFace::LIGHTEST), 7), light_floor(levels))
             corner = if spans == Nodes::FillFace::PERSPECTIVE_NONE
                        [x, y, u, v, 0, 0, 0, shade]
                      else
@@ -221,8 +213,8 @@ module VBlank
           #
           # Only what is read again is stepped, the rest left as the start's. On a line across the screen
           # the texel is worked out afresh, so it is not stepped (SCREEN_CUT_NUMBERS). A cut on the picture
-          # or between levels comes after every cut across the screen, so nothing reads U_SOURCE, V_SOURCE
-          # or NEARNESS again (LATE_CUT_NUMBERS). Each multiply left out is one the runtime spares a corner.
+          # comes after every cut across the screen, so nothing reads U_SOURCE, V_SOURCE or NEARNESS again
+          # (LATE_CUT_NUMBERS). Each multiply left out is one the runtime spares a corner.
           def corner_between(from, to, from_side, to_side, number, line, spans)
             start, finish, start_side, finish_side = from_side.negative? ? [from, to, from_side, to_side] : [to, from, to_side, from_side]
             share = Int32.div(Int32.shift_left(Int32.sub(0, start_side), SHARE_BITS), Int32.sub(finish_side, start_side))
@@ -233,7 +225,6 @@ module VBlank
               Int32.add(start[part], Int32.mul_fix(Int32.sub(finish[part], start[part]), share, SHARE_BITS))
             end
             made[number] = line
-            made[X] = Int32.add(made[X], LEVEL_LINE_NUDGE) if number == SHADE
             [X, Y].include?(number) ? set_texel!(made, spans) : made
           end
 
@@ -271,14 +262,14 @@ module VBlank
           end
 
           # +piece+ cut on the picture until each part's places run no more than PICTURE_REACH across and
-          # down, and on a lit face (+levels+ not nought) until each lies inside one level, and each part
-          # sent (see the module's note). The part past a cut waits while the part before it is finished.
+          # down, and each part sent (see the module's note). The part past a cut waits while the part
+          # before it is finished.
           def send_cut_on_picture(piece, width, height, levels, sent)
             waiting = [piece]
             until waiting.empty?
               part = waiting.pop
               while part.length >= 3
-                number, line = find_picture_cut(part, width, height) || (find_level_cut(part) unless levels.zero?)
+                number, line = find_picture_cut(part, width, height)
                 unless number
                   send_fan(part, width, height, levels, sent)
                   break
@@ -301,30 +292,35 @@ module VBlank
             nil
           end
 
-          # Where +piece+ is cut between two levels of light, [SHADE, the line], or nil when it lies inside
-          # one: at the first whole level past its least shade.
-          def find_level_cut(piece)
-            least, most = piece.map { |corner| corner[SHADE] }.minmax
-            line = Int32.add(Int32.bit_and(least, Int32.sub(0, LEVEL_STEP)), LEVEL_STEP)
-            [SHADE, line] if most > line
-          end
-
           # +piece+ as a fan of triangles from its first corner, its places moved by whole pictures to
-          # start between nought and the picture's size, each held to a byte. On a lit face each is drawn at
-          # the level of the piece's least shade, held to the last of the +levels+.
+          # start between nought and the picture's size, each held to a byte. On a lit face (+levels+ not
+          # nought) each corner carries its colour.
           def send_fan(piece, width, height, levels, sent)
             u_base = Int32.bit_and(piece.map { |corner| corner[TEXEL_U] }.min, Int32.sub(0, width))
             v_base = Int32.bit_and(piece.map { |corner| corner[TEXEL_V] }.min, Int32.sub(0, height))
-            level = [Int32.shift_right(piece.map { |corner| corner[SHADE] }.min, 16), levels - 1].min unless levels.zero?
+            shaded = !levels.zero?
             sent_corners = piece.map do |corner|
               [Int32.shift_right(Int32.add(corner[X], 8), 4), Int32.shift_right(Int32.add(corner[Y], 8), 4),
-               [Int32.sub(corner[TEXEL_U], u_base), 255].min, [Int32.sub(corner[TEXEL_V], v_base), 255].min]
+               [Int32.sub(corner[TEXEL_U], u_base), 255].min, [Int32.sub(corner[TEXEL_V], v_base), 255].min,
+               *(shaded ? [corner_color(corner[SHADE])] : [])]
             end
             (1...(sent_corners.length - 1)).each do |at|
               triangle = [sent_corners[0], sent_corners[at], sent_corners[at + 1]]
-              sent << Triangle.new(corners: triangle, level: level) unless doubled_signed_area(triangle).zero?
+              sent << Triangle.new(corners: triangle, shaded: shaded) unless doubled_signed_area(triangle).zero?
             end
           end
+
+          # The colour a corner of +shade+ (#corner_from_list) is sent with, the same for red, green and
+          # blue: its whole part, held to FULL_COLOR.
+          def corner_color(shade) = [Int32.shift_right(shade, 16), FULL_COLOR].min
+
+          # WHAT THE DARKEST LIGHT ADDS TO A CORNER'S COLOUR, with sixteen bits of fraction, for a shading of
+          # +levels+ levels: one level's worth of FULL_COLOR. The interpreter shows light 0 at the shading's
+          # level nought, and a shading that darkens evenly makes level nought one level's worth bright, not
+          # black; level n is n + 1 levels' worth. So the colour at a light is FULL_COLOR times the light and
+          # one level more, which is the shading's brightness where each level starts, and the texel as it
+          # is from the last level on.
+          def light_floor(levels) = Int32.div(FULL_COLOR << 16, levels)
 
           # Twice the area of a triangle of corners [x, y, ...], signed.
           def doubled_signed_area(triangle)

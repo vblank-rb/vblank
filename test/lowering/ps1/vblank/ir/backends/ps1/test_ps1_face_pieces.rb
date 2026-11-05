@@ -3,57 +3,100 @@
 require "test_helper"
 require "place_games"
 
-# What the PlayStation sends the graphics chip for a lit face (PS1::FacePieces), drawn by the chip's
-# rules (PS1::CheckedRun's faces, which the checked run holds to Beetle PSX every pixel), set beside the
-# interpreter's own fill of the same face. The chip draws each piece of a lit face through the colour
-# table of one level of the game's shading, so its picture is the shading's own colours, and it can
-# differ from the interpreter's only where the light passes from one level to the next.
+require VBlank.root.join("examples/lit_corridor").to_s
+
+# What the PlayStation sends the graphics chip for a lit face (PS1::FacePieces). The chip shades a lit
+# face itself, as the console's own games lit their walls: each triangle's corners carry a colour, and
+# the chip multiplies every texel by the colour it steps across the triangle (PS1::PolygonFill, which
+# the checked run holds to Beetle PSX every pixel). So a lit face is sent as no more triangles than the
+# same face unlit, however many levels its shading has and however steeply its light falls.
 class TestPS1FacePieces < Minitest::Test
   PS1 = VBlank::IR::Backends::PS1
-  Reference = VBlank::IR::Backends::Reference
+  FacePieces = PS1::FacePieces
 
-  # Inside the face of PlaceGames.lit_square (x 60 to 179, y 20 to 139), a pixel in from its edges,
-  # where the chip's own rule for a face's edges does not come into it.
-  FACE_ROWS = 21...139
-  FACE_COLUMNS = 61...179
-
-  private def pictures(perspective, left: 0.0, right: 1.0)
-    game = PlaceGames.lit_square(left: left, right: right, perspective: perspective)
-    own = Reference.new.run(game, frames: 2).screen
-    by_chip = Reference.new.fill_faces_with(PS1::CheckedRun::FacesByChip.new(PS1::PolygonFill.new))
-                       .run(game, frames: 2).screen
-    [own, by_chip]
+  # A face filling much of the screen, its corners [x, y, u, v, w, light] as the corner list holds them
+  # (x and y in sixteenths, u and v with sixteen bits of fraction, w the nearness for perspective), lit
+  # from nothing at the left to full at the right.
+  private def wall(perspective)
+    w = perspective ? 1 << 22 : 0
+    [[16 * 16, 16 * 16, 0, 0, w, 0], [300 * 16, 16 * 16, 64 << 16, 0, w, 0xFFFF],
+     [300 * 16, 220 * 16, 64 << 16, 64 << 16, w, 0xFFFF], [16 * 16, 220 * 16, 0, 64 << 16, w, 0]]
   end
 
-  def test_a_lit_face_differs_from_the_interpreters_only_beside_a_line_between_two_levels
+  private def triangles(perspective, levels)
+    FacePieces.triangles(corners: wall(perspective), edges: [0, 0, 320, 240],
+                         spans: perspective ? 8 : VBlank::IR::Nodes::FillFace::PERSPECTIVE_NONE,
+                         width: 16, height: 16, levels: levels)
+  end
+
+  # Thirty-two levels, the light crossing every one of them: the same triangles as the face unlit, each
+  # corner carrying its colour.
+  def test_a_lit_face_is_sent_as_no_more_triangles_than_unlit
+    [false, true].each do |perspective|
+      lit = triangles(perspective, 32)
+      unlit = triangles(perspective, 0)
+
+      assert_equal unlit.length, lit.length, "perspective #{perspective}"
+      assert_equal(unlit.map { |each| each.corners.map { |corner| corner.first(4) } }, lit.map { |each| each.corners.map { |corner| corner.first(4) } })
+      assert(lit.all?(&:shaded))
+      assert(lit.flat_map(&:corners).all? { |corner| corner[4].between?(0, FacePieces::FULL_COLOR) })
+    end
+  end
+
+  # With eight levels, light nought is level nought, an eighth of the texel's brightness; light a half
+  # is level four, five eighths; and the brightest light is the texel as it is.
+  def test_a_corners_colour_is_the_brightness_of_the_level_its_light_starts
+    colour = lambda do |light|
+      FacePieces.corner_color(FacePieces.corner_from_list(0, 0, 0, 0, 0, light, VBlank::IR::Nodes::FillFace::PERSPECTIVE_NONE, 8)[FacePieces::SHADE])
+    end
+
+    assert_equal [0x10, 0x50, FacePieces::FULL_COLOR], [colour.call(0), colour.call(0x8000), colour.call(0xFFFF)]
+  end
+
+  # The lit corridor's shading darkens evenly over eight levels. Where the interpreter's shading makes a
+  # pixel some share of its picture's brightness, the chip makes the pixel it draws there within a level
+  # (an eighth) of that share of the texel it reads: the chip's place on the picture is its own, so each
+  # is set beside its own picture drawn unlit.
+  def test_a_lit_wall_is_within_a_level_of_the_shadings_brightness
+    own_lit, own_unlit, chip_lit, chip_unlit = [{}, { lit: false }].flat_map do |settings|
+      program = LitCorridor::GAME.program(console: :ps1, settings: settings)
+      [VBlank::IR::Backends::Reference.new, VBlank::IR::Backends::Reference.new.fill_faces_with(PS1::CheckedRun::FacesByChip.new(PS1::PolygonFill.new))]
+        .map { |player| player.run(program, frames: 2).screen }
+    end.values_at(0, 2, 1, 3)
+    red = ->(screen, x, y) { screen.pixel(x, y) & 31 }
+    pixels = (0...240).step(3).to_a.product((0...320).step(3).to_a).select { |y, x| red.call(own_unlit, x, y) >= 8 && red.call(chip_unlit, x, y) >= 8 }
+    far = pixels.reject do |y, x|
+      share = red.call(own_lit, x, y).fdiv(red.call(own_unlit, x, y))
+      (red.call(chip_lit, x, y) - (red.call(chip_unlit, x, y) * share)).abs <= (red.call(chip_unlit, x, y) / LitCorridor::LEVELS.to_f) + 1
+    end
+
+    refute_empty pixels
+    assert_operator far.length, :<=, pixels.length / 50, "more than a level away at #{far.first(5)}"
+  end
+
+  # The white face of PlaceGames.lit_square, lit from nought at the left to one at the right, goes from a
+  # level's worth of white (its shading has four levels, so a quarter) to white, a little brighter every
+  # few pixels rather than in the shading's four steps, grey alike in red, green and blue.
+  def test_a_face_is_lit_smoothly_by_the_chip
     %i[none every_8_pixels].each do |perspective|
-      own, by_chip = pictures(perspective)
-      differing = FACE_ROWS.to_a.product(FACE_COLUMNS.to_a).reject { |y, x| own.pixel(x, y) == by_chip.pixel(x, y) }
-      levels = FACE_COLUMNS.map { |x| own.pixel(x, 80) }.uniq
+      screen = game_player.run(PlaceGames.lit_square(left: 0.0, right: 1.0, perspective: perspective), frames: 2).screen
+      reds = (60..179).map { |x| screen.pixel(x, 80) & 0x1F }
 
-      assert_equal 4, levels.length, "#{perspective}: the face shows every level of the shading"
-      differing.each do |y, x|
-        beside = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].map { |at| own.pixel(*at) }
-
-        assert_includes beside, by_chip.pixel(x, y), "#{perspective}: (#{x}, #{y}) is a level away from a line"
-      end
-      assert_operator differing.length, :<=, FACE_ROWS.size * 3, "#{perspective}: at most a pixel a row along each line"
+      assert_includes 7..8, reds.first, "#{perspective}: a quarter bright at the left"
+      assert_operator reds.last, :>=, 30, "#{perspective}: bright at the right"
+      assert_equal reds.sort, reds, "#{perspective}: brighter towards the right"
+      assert_operator reds.uniq.length, :>, 16, "#{perspective}: in more steps than the shading's four levels"
+      assert((60..179).all? { |x| screen.pixel(x, 80) == (screen.pixel(x, 80) & 0x1F) * 0x0421 }, "#{perspective}: grey")
     end
   end
 
-  # The interpreter gives a pixel its level from the shade where the pixel starts. Lit evenly from
-  # nought at the left to one at the right, each of the four levels covers 30 pixels, and the light
-  # reaching just under one puts each line a hair past its pixel: the next level starts at x 91, 121
-  # and 151. Without FacePieces::LEVEL_LINE_NUDGE the chip's lines would fall a pixel left, at 90.
-  # The same with the light falling from the left to the right: the lines are where the interpreter's are.
-  def test_the_lines_between_levels_fall_where_the_interpreters_do
-    [[0.0, 1.0], [1.0, 0.0]].product(%i[none every_8_pixels]).each do |(left, right), perspective|
-      own, by_chip = pictures(perspective, left: left, right: right)
+  # ModTexel: each channel times the colour over 80h, held to 1Fh; 80h is the texel as it is.
+  def test_the_chip_multiplies_each_channel_by_the_colour
+    color = 0x1F | (0x10 << 5) | (0x02 << 10)
 
-      [21, 80, 138].each do |y|
-        assert_equal FACE_COLUMNS.map { |x| own.pixel(x, y) }, FACE_COLUMNS.map { |x| by_chip.pixel(x, y) }, "#{perspective}: row #{y}"
-        [91, 121, 151].each { |x| refute_equal own.pixel(x - 1, y), own.pixel(x, y), "#{perspective}: a line at #{x}" }
-      end
-    end
+    assert_equal color, PS1::PolygonFill.modulated(color, 0x80)
+    assert_equal 0x0F | (0x08 << 5) | (0x01 << 10), PS1::PolygonFill.modulated(color, 0x40)
+    assert_equal 0x1F | (0x1F << 5) | (0x03 << 10), PS1::PolygonFill.modulated(color, 0xFF)
+    assert_equal 0, PS1::PolygonFill.modulated(color, 0)
   end
 end

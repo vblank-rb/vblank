@@ -164,12 +164,16 @@ class TestPlacesOnThePlayStation < Minitest::Test
     (0...320).map { |x| screen.pixel(x, 120) }
   end
 
-  def test_a_face_is_lit_from_its_corners_through_the_shading
+  # Lit from its dark left corners to its bright right ones, the white face goes from dark to white,
+  # brighter towards the right (on the PlayStation's own run, as the chip shades it: test_ps1_face_pieces.rb).
+  def test_a_face_is_lit_from_its_corners
     %i[none every_8_pixels].each do |perspective|
       screen = game_player.run(PlaceGames.lit_square(left: 0.0, right: 1.0, perspective: perspective), frames: 2).screen
+      reds = (60..179).map { |x| screen.pixel(x, 80) & 0x1F }
 
-      assert_equal shown(0x0000), screen.pixel(62, 80), "#{perspective}: dark at the left"
-      assert_equal shown(0x7FFF), screen.pixel(175, 80), "#{perspective}: bright at the right"
+      assert_operator reds.first, :<=, 8, "#{perspective}: dark at the left"
+      assert_operator reds.last, :>=, 30, "#{perspective}: bright at the right"
+      assert_equal reds.sort, reds, "#{perspective}: brighter towards the right"
     end
   end
 

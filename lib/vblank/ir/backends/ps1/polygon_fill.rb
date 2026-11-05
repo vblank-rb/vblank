@@ -33,6 +33,11 @@ module VBlank
         #   one left out.
         # - THE DRAWING AREA (GP0 E3h, E4h) holds every pixel inside it, its right and bottom included.
         # - A TEXEL OF 0000h is left undrawn (the caller's to leave out).
+        # - A SHADED TRIANGLE (GP0 34h, a lit face's) carries a colour at each corner. It steps across the
+        #   triangle by the same sums as the place on the picture (CalcIDeltas' dr_dx, with the C
+        #   division), from the core corner's colour plus half a step (ig.r), and a pixel's colour is the
+        #   top eight bits. The chip multiplies each texel's red, green and blue by it, 80h being the texel
+        #   as it is (#self.modulated, ModTexel with dithering off).
         # - ONE OF THE EMULATOR'S OWN CORRECTIONS applies to these triangles too: a triangle one pixel tall
         #   whose place down the picture does not change across has its corners' v moved by one
         #   (Calc_UVOffsets_Adjust_Verts, "Wild Arms 2"), so it is modelled.
@@ -50,13 +55,22 @@ module VBlank
           # Half a texel at the slopes' scale: the seed the chip starts a place on the picture from.
           HALF_TEXEL = 1 << (SLOPE_FRACTION_BITS - 1)
 
-          # A corner as the chip holds it: whole pixels and whole texels (tri_vertex).
-          Vertex = Struct.new(:x, :y, :u, :v)
-          # How far u and v move a pixel across and a row down (i_deltas), each a word.
-          Slopes = Data.define(:du_dx, :du_dy, :dv_dx, :dv_dy)
+          # A corner as the chip holds it: whole pixels and whole texels, and the colour of a shaded
+          # triangle's corner, nil for one not shaded (tri_vertex; red, green and blue alike).
+          Vertex = Struct.new(:x, :y, :u, :v, :c)
+          # How far u and v, and a shaded triangle's colour, move a pixel across and a row down (i_deltas),
+          # each a word; the colour's nought on a triangle not shaded.
+          Slopes = Data.define(:du_dx, :du_dy, :dv_dx, :dv_dy, :dc_dx, :dc_dy)
           # One of a triangle's two halves as the edges are walked (tripart): its first row and the row it
           # stops at, its left and right edges' places and steps, and whether it is walked upward.
           Half = Struct.new(:y_coord, :y_bound, :x_coord, :x_step, :upward)
+
+          # The 15-bit +color+ a shaded triangle draws for a texel of that colour at colour +c+: each of red,
+          # green and blue times c, over 80h, held to 1Fh (ModTexel: the channel times c moved down four
+          # bits, then three in the dither table, whose undithered cell adds nought, held to 1Fh).
+          def self.modulated(color, c)
+            [0, 5, 10].sum { |shift| [((color >> shift) & 0x1F) * c >> 7, 0x1F].min << shift } | (color & 0x8000)
+          end
 
           # +texel_seed+ is what is added to the core corner's texel before stepping; a test hands another
           # to show the check goes red on a wrong rule.
@@ -64,11 +78,12 @@ module VBlank
             @texel_seed = texel_seed
           end
 
-          # The pixels the chip draws for a triangle of +corners+ ([x, y, u, v] each, as sent), held to
-          # +area+ ([left, top, right, bottom], the last two included). Yields each pixel's x, y and the
-          # texel the chip reads there (u, v, each 0 to 255), in the order the chip draws them.
+          # The pixels the chip draws for a triangle of +corners+ ([x, y, u, v] each, as sent, and a fifth,
+          # the colour, for a shaded triangle), held to +area+ ([left, top, right, bottom], the last two
+          # included). Yields each pixel's x, y, the texel the chip reads there (u, v, each 0 to 255) and
+          # the colour it multiplies it by (nil for a triangle not shaded), in the order the chip draws them.
           def fill(corners, area, &)
-            vertices = corners.map { |x, y, u, v| Vertex.new(x, y, u, v) }
+            vertices = corners.map { |x, y, u, v, c| Vertex.new(x, y, u, v, c) }
             adjust_one_pixel_tall!(vertices)
             draw_triangle(vertices, area, &)
           end
@@ -146,8 +161,12 @@ module VBlank
             seed_v = ((core.v << SLOPE_FRACTION_BITS) + @texel_seed) << SLOPE_PADDING_BITS
             seed_u = (seed_u + (slopes.du_dx * -core.x) + (slopes.du_dy * -core.y)) & WORD_MASK
             seed_v = (seed_v + (slopes.dv_dx * -core.x) + (slopes.dv_dy * -core.y)) & WORD_MASK
+            # The colour starts at the core corner's plus half a step, always (ig.r).
+            seed_c = ((((core.c || 0) << SLOPE_FRACTION_BITS) + HALF_TEXEL) << SLOPE_PADDING_BITS)
+            seed_c = (seed_c + (slopes.dc_dx * -core.x) + (slopes.dc_dy * -core.y)) & WORD_MASK
+            seeds = [seed_u, seed_v, (seed_c unless core.c.nil?)]
             halves(v, core_vertex).each do |half|
-              walk_half(half, area) { |y, x_start, x_bound| draw_span(y, x_start, x_bound, seed_u, seed_v, slopes, area, &each_pixel) }
+              walk_half(half, area) { |y, x_start, x_bound| draw_span(y, x_start, x_bound, seeds, slopes, area, &each_pixel) }
             end
           end
 
@@ -216,8 +235,10 @@ module VBlank
             end
           end
 
-          # DrawSpan: the pixels of row +y+ from +x_start+ up to +x_bound+, held to the drawing area.
-          def draw_span(y, x_start, x_bound, seed_u, seed_v, slopes, area)
+          # DrawSpan: the pixels of row +y+ from +x_start+ up to +x_bound+, held to the drawing area. +seeds+
+          # are u's, v's and the colour's (nil for a triangle not shaded).
+          def draw_span(y, x_start, x_bound, seeds, slopes, area)
+            seed_u, seed_v, seed_c = seeds
             left, _, right, = area
             x = x_start
             width = x_bound - x_start
@@ -230,23 +251,28 @@ module VBlank
 
             u = (seed_u + (slopes.du_dx * x) + (slopes.du_dy * y)) & WORD_MASK
             v = (seed_v + (slopes.dv_dx * x) + (slopes.dv_dy * y)) & WORD_MASK
+            c = seed_c && ((seed_c + (slopes.dc_dx * x) + (slopes.dc_dy * y)) & WORD_MASK)
+            whole = SLOPE_FRACTION_BITS + SLOPE_PADDING_BITS
             width.times do
-              yield x, y, u >> (SLOPE_FRACTION_BITS + SLOPE_PADDING_BITS), v >> (SLOPE_FRACTION_BITS + SLOPE_PADDING_BITS)
+              yield x, y, u >> whole, v >> whole, c && (c >> whole)
               x += 1
               u = (u + slopes.du_dx) & WORD_MASK
               v = (v + slopes.dv_dx) & WORD_MASK
+              c = (c + slopes.dc_dx) & WORD_MASK if c
             end
           end
 
-          # CalcIDeltas for u and v, or nil for a triangle with no area.
+          # CalcIDeltas for u and v, and for a shaded triangle its colour (the same sums), or nil for a
+          # triangle with no area.
           def texture_slopes(a, b, c)
-            cross = ->(p, q) { s32(s32((b[p] - a[p]) * (c[q] - b[q])) - s32((c[p] - b[p]) * (b[q] - a[q]))) }
+            cross = ->(p, q) { s32(s32(((b[p] || 0) - (a[p] || 0)) * ((c[q] || 0) - (b[q] || 0))) - s32(((c[p] || 0) - (b[p] || 0)) * ((b[q] || 0) - (a[q] || 0)))) }
             denom = cross.call(:x, :y)
             return nil if denom.zero?
 
             delta = ->(cis) { (s32(c_div(s32(cis * (1 << SLOPE_FRACTION_BITS)), denom)) << SLOPE_PADDING_BITS) & WORD_MASK }
             Slopes.new(du_dx: delta.call(cross.call(:u, :y)), du_dy: delta.call(cross.call(:x, :u)),
-                       dv_dx: delta.call(cross.call(:v, :y)), dv_dy: delta.call(cross.call(:x, :v)))
+                       dv_dx: delta.call(cross.call(:v, :y)), dv_dy: delta.call(cross.call(:x, :v)),
+                       dc_dx: delta.call(cross.call(:c, :y)), dc_dy: delta.call(cross.call(:x, :c)))
           end
 
           # MakePolyXFP: a corner's x as 32.32, a hair under one pixel on.

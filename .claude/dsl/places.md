@@ -112,13 +112,14 @@ a corridor whose lamp flickers.
 - **Each console**: the Advance looks each pixel up in a table the build makes from the shading, so
   every pixel is exactly the colour the shading gives. A lit pixel costs one load more than an unlit
   one: about two thirds again the unlit fill's cost with `:none`, and about a third again with
-  `:every_8_pixels`. A game that lights no place carries none of it. The PlayStation draws the
-  shading's own colours too, not its graphics chip's blend of corner colours (which only scales red,
-  green and blue, and so cannot give a shading's colours): the processor cuts each face where its
-  light passes a whole level, and the chip draws each piece through a list of that level's colours,
-  one list for each level of each lit picture's colours. So every pixel is a colour the shading gives,
-  and only a pixel beside a line between two levels can show the level across the line. A lit
-  picture there must have 256 colours or fewer (a friendly error otherwise).
+  `:every_8_pixels`. A game that lights no place carries none of it. The PlayStation lights a
+  face the way its own games did: its graphics chip shades each triangle, carrying a colour at each
+  corner from the corner's light and multiplying every texel's red, green and blue by the colour it
+  steps across the triangle. So the light falls smoothly rather than in the shading's steps, and a lit face
+  costs about what it does unlit however many levels its shading has and however steeply its light
+  falls. Where the shading darkens each colour evenly (a game's fade tables), a pixel is within a level
+  of the shading's colour; a shading that does anything else (a tint, a fog) is drawn as the colour
+  made darker. Any picture can be lit there.
 
 **How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`

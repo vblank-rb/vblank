@@ -33,39 +33,6 @@ class TestPS1TextureMemory < Minitest::Test
     assert_equal 2, memory.tables.length
   end
 
-  # A texture lit by a shading has a colour table for each level, a line apart, each holding what the
-  # shading makes of the texture's colours there; a colour the shading does not list stays as it is,
-  # and see-through stays see-through.
-  def test_a_lit_texture_has_a_table_for_each_level_of_its_shading_a_line_apart
-    memory = TextureMemory.new
-    texture = memory.add_texture(width: 4, height: 1, colors: [nil, 31, 992, 5])
-    shading = VBlank::IR::Nodes::Shading.new(name: :dim, colors: [31, 992, 1, 2], levels: [[2, 3, 2, 3], [0, 1, 2, 3]])
-    memory.add_shaded_tables(texture, shading, name: :wall)
-    memory.allocate!
-
-    field = memory.shaded_table_field(texture, :dim)
-    block = memory.textures.find(&:tables_block)
-
-    assert_equal [block.x / 16, block.y], [field & 0x3F, field >> 6]
-    assert_equal 0, block.x % 16
-    entries = texture.table.entries.map { |entry| entry & 0x7FFF }
-    dark, bright = block.texels.each_slice(block.width).map { |line| line.first(entries.length).map { |texel| texel & 0x7FFF } }
-
-    assert_equal(entries.map { |color| { 31 => 1, 992 => 2 }.fetch(color, color) }, dark)
-    assert_equal entries, bright
-    assert_equal(texture.table.entries.map(&:zero?), block.texels.first(entries.length).map(&:zero?))
-  end
-
-  def test_a_lit_texture_of_more_than_256_colours_is_refused_in_plain_words
-    memory = TextureMemory.new
-    texture = memory.add_texture(width: 20, height: 13, colors: (1..260).to_a)
-    shading = VBlank::IR::Nodes::Shading.new(name: :dim, colors: [1], levels: [[0]])
-    memory.add_shaded_tables(texture, shading, name: :wall)
-
-    error = assert_raises(VBlank::IR::Backends::PS1::LoweringError) { memory.allocate! }
-    assert_match(/256 colours or fewer/, error.message)
-  end
-
   # A see-through pixel is the table entry 0000h, which the chip does not draw, and black is 8000h, drawn.
   def test_see_through_is_nought_in_the_table_and_black_is_not
     memory = TextureMemory.new

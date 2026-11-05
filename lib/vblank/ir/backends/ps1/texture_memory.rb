@@ -64,19 +64,16 @@ module VBlank
 
           # One texture: its size in texels, its texels row by row (each a colour as the chip reads it), and
           # once allocated, its depth, its colour table (none at 15 bits) and its place in video RAM, in
-          # halfwords across and lines down. A block of colour tables (#add_shaded_tables) is kept as one
-          # too, its tables one to a line, so it is placed among the textures; +tables_block+ says so.
-          Texture = Struct.new(:width, :height, :texels, :aligned, :depth, :table, :x, :y, :tables_block) do
+          # halfwords across and lines down.
+          Texture = Struct.new(:width, :height, :texels, :aligned, :depth, :table, :x, :y) do
             def colors = texels.uniq
 
             # How many halfwords across one row of it takes.
             def width_halfwords = (width + TEXELS_A_HALFWORD.fetch(depth) - 1) / TEXELS_A_HALFWORD.fetch(depth)
 
             # Whether +column+ and +line+ suit it: for an aligned texture, where in its page it starts must
-            # be a multiple of its width across and of its height down; for a block of colour tables, the
-            # column a multiple of TABLE_STEP_HALFWORDS, where a colour table can start.
+            # be a multiple of its width across and of its height down.
             def aligned_at?(column, line)
-              return (column % TABLE_STEP_HALFWORDS).zero? if tables_block
               return true unless aligned
 
               (u_at(column) % width).zero? && ((line % PAGE_TEXELS) % height).zero?
@@ -131,7 +128,6 @@ module VBlank
 
               candidates = [free_column, ((free_column / PAGE_STEP_HALFWORDS) + 1) * PAGE_STEP_HALFWORDS]
               candidates.insert(1, aligned_column(texture)) if texture.aligned
-              candidates.insert(1, table_column) if texture.tables_block
               candidates.find { |column| texture.fits_at?(column) && texture.aligned_at?(column, top_line) }
             end
 
@@ -141,9 +137,6 @@ module VBlank
               step = [texture.width / TEXELS_A_HALFWORD.fetch(texture.depth), PAGE_STEP_HALFWORDS].min
               ((free_column + step - 1) / step) * step
             end
-
-            # The first column from the free one where a colour table can start.
-            def table_column = ((free_column + TABLE_STEP_HALFWORDS - 1) / TABLE_STEP_HALFWORDS) * TABLE_STEP_HALFWORDS
           end
 
           # A colour as a texel holds it: 0000h for nil (see-through), any other with its top bit set.
@@ -154,32 +147,6 @@ module VBlank
           def initialize
             @textures = []
             @tables = []
-            @shaded = []
-            # Each table's blocks by the shading's name. By the table itself, not its value: a table is
-            # given its place after its blocks are made.
-            @shaded_blocks = {}.compare_by_identity
-          end
-
-          # A texture to be given a shading's tables, and the picture's name for the error.
-          ShadedTexture = Data.define(:texture, :shading, :name)
-
-          # COLOUR TABLES FOR A TEXTURE LIT BY A SHADING (Nodes::Shading): one for each level of light,
-          # darkest first, each holding what the shading makes of every colour of the texture's own table
-          # at that level, the see-through entry left see-through. A piece of a lit face drawn at one
-          # level names that level's table, and the chip then draws the shading's own colours. The tables
-          # are made by #allocate!, once the texture's table is known, as one block of video RAM, a table
-          # to a line, so level n's table is n lines under level nought's (#shaded_table_field). Textures
-          # that share a table share its tables for a shading too. +name+ is the picture's, for the error
-          # when the texture has no table.
-          def add_shaded_tables(texture, shading, name:)
-            @shaded << ShadedTexture.new(texture: texture, shading: shading, name: name)
-          end
-
-          # The colour table field (as Table#field) of level nought of +texture+'s tables for the shading
-          # named +shading_name+.
-          def shaded_table_field(texture, shading_name)
-            block = @shaded_blocks.fetch(texture.table).fetch(shading_name)
-            (block.x / TABLE_STEP_HALFWORDS) | (block.y << 6)
           end
 
           # A texture of +width+ × +height+ texels, from +colors+ row by row (a 15-bit colour, or nil where it
@@ -206,7 +173,6 @@ module VBlank
           # once, after the last texture is added.
           def allocate!
             share_tables
-            add_shaded_blocks
             place_tables
             place_textures
           end
@@ -239,43 +205,6 @@ module VBlank
               texture.table = capacity && find_or_add_table(colors, capacity)
               texture.depth = texture.table ? TABLE_COLORS.key(capacity) : 15
             end
-          end
-
-          # Each lit texture's block of tables (#add_shaded_tables), made once its table is known and added
-          # to the textures to be placed among them.
-          def add_shaded_blocks
-            @shaded.each do |shaded|
-              table = shaded.texture.table
-              raise LoweringError, unshaded_message(shaded.name) unless table
-
-              blocks = (@shaded_blocks[table] ||= {})
-              next if blocks.key?(shaded.shading.name)
-
-              blocks[shaded.shading.name] = shaded_block(table, shaded.shading).tap { |block| textures << block }
-            end
-          end
-
-          # A block of +table+'s colours as +shading+ makes them at each of its levels, a line a level.
-          def shaded_block(table, shading)
-            places = shading.places
-            texels = shading.levels.flat_map do |level|
-              Array.new(table.capacity) do |i|
-                entry = table.entries[i]
-                next 0 if entry.nil? || entry.zero?
-
-                color = entry & 0x7FFF
-                place = places[color]
-                TextureMemory.texel_for_color(place ? shading.colors[level[place]] : color)
-              end
-            end
-            Texture.new(width: table.capacity, height: shading.levels.length, texels: texels, aligned: false, depth: 15,
-                        tables_block: true)
-          end
-
-          def unshaded_message(name)
-            "The picture #{name.inspect} is on a lit face of a place. On the PlayStation, a lit picture must have 256 " \
-              "colours or fewer. The pictures of the game must also leave room for lists of their colours. To fix " \
-              "this, use fewer colours in the picture, or fewer colours in all the pictures of the game."
           end
 
           # The first table of +capacity+ entries with room for +colors+, or a new one, given them; nil when

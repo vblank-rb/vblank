@@ -142,6 +142,10 @@ module VBlank
       # carrying the colour table in its top half and the second's the texture page (the draw mode's
       # bits 0 to 8). The place on the picture steps straight across it from the corners'.
       GP0_TEXTURED_TRIANGLE = 0x25 << 24
+      # A shaded textured triangle: each corner's colour (red, green and blue, a byte each, in the low 24
+      # bits; the first's in the command word itself) before its place, and each texel multiplied by the
+      # colour stepped across the triangle, 80h the texel as it is (psx-spx, "GPU Render Polygon Commands").
+      GP0_SHADED_TEXTURED_TRIANGLE = 0x34 << 24
       GP0_DRAW_MODE = 0xE1 << 24
       # The texture window: a power-of-two part of the page a texture repeats in. Bits 0-4 are which bits
       # of u are replaced (in eights of a texel's place: (256 - width) / 8), bits 5-9 the same of v, bits

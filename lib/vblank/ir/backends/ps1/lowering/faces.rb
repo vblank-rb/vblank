@@ -84,8 +84,8 @@ module VBlank
                 emit_value(value)
                 emit_store_word(:v0, face + at)
               end
-              @asm.li(:v0, shading ? shading.levels.length : 0)
-              emit_store_word(:v0, face + Runtime::Faces::LEVELS_OFFSET_BYTES)
+              @asm.li(:v0, shading ? FacePieces.light_floor(shading.levels.length) : 0)
+              emit_store_word(:v0, face + Runtime::Faces::LIGHT_FLOOR_OFFSET_BYTES)
               call_routine("rt_fill_face")
               @asm.label(too_few)
             end
@@ -97,11 +97,11 @@ module VBlank
             end
 
             # The picture +name+ a face shows lit by +shading+ (a Nodes::Shading, or nil), its record made
-            # once; lit, its texture is given the shading's colour tables.
+            # once. The chip shades a lit face's texels itself (Runtime::Faces), so lit or not the texture and
+            # its colour table are the picture's own.
             def register_face_picture(name, shading)
               face_pictures[[name, shading&.name]] ||= begin
                 texture = register_face_texture(name)
-                texture_memory.add_shaded_tables(texture, shading, name: name) if shading
                 image = @cache.image(picture_named(name))
                 FacePicture.new(label: "face picture #{face_pictures.length}", width: image.width, height: image.height,
                                 texture: texture, shading: shading&.name)
@@ -130,8 +130,7 @@ module VBlank
             end
 
             # A picture's record (Runtime::Faces's RECORD_ fields): its texture window, its colour table and
-            # page as a triangle's corners carry them, and its size as masks. Lit, the colour table is its
-            # shading's darkest level's; the runtime moves it down a line for each level up.
+            # page as a triangle's corners carry them, and its size as masks.
             def face_record(picture)
               h = Console::PS1Hardware
               texture = picture.texture
@@ -139,11 +138,7 @@ module VBlank
               v = texture.y % TextureMemory::PAGE_TEXELS
               window = h::GP0_TEXTURE_WINDOW | window_mask(texture.width) | (window_mask(texture.height) << 5) |
                        ((u >> 3) << 10) | ((v >> 3) << 15)
-              table = if picture.shading
-                        texture_memory.shaded_table_field(texture, picture.shading)
-                      else
-                        texture.table ? texture.table.field : 0
-                      end
+              table = texture.table ? texture.table.field : 0
               page = texture.draw_mode & 0x1FF
               [window, table << 16, page << 16, -picture.width & 0xFFFF_FFFF, -picture.height & 0xFFFF_FFFF]
             end

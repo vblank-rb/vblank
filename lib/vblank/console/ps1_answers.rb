@@ -67,10 +67,11 @@ module VBlank
                           "fills each face, by its own rules. Thus some pixels of a face's picture are one pixel or " \
                           "one picture pixel away from where the other consoles put them. In perspective, the " \
                           "processor cuts a face into squares of 32 pixels (8 for `perspective: :every_pixel`), " \
-                          "and the picture is exact at the corners of each square. A lit face shows the colours of the " \
-                          "game's shading: the processor cuts the face where its light goes from one level to the " \
-                          "next, and the graphics chip draws each part with the colours of its level. A pixel next " \
-                          "to such a line can show the level on the other side of the line."),
+                          "and the picture is exact at the corners of each square. The graphics chip lights a " \
+                          "face, as the console's own games did: it makes each picture pixel darker by the light, " \
+                          "which changes smoothly across the face. If the shading makes each colour darker evenly, " \
+                          "a pixel is one level or less from the shading's colour. If the shading changes colours " \
+                          "in another way, the pixel is the picture's colour made darker."),
         clear_screen: works,
         inside: works,
         grid: works,

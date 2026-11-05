@@ -19,12 +19,17 @@ class TestLitCorridorExampleOnThePlayStation < Minitest::Test
 
   private def program = LitCorridor::GAME.program(console: game_console)
 
-  def test_the_wall_under_the_lamp_is_its_own_colour_and_the_wall_far_from_it_darker
+  # The graphics chip lights the walls itself, the light changing smoothly across each (PS1::FacePieces):
+  # under the lamp the mortar is its own colour or a step darker, a little way from the lamp's ring.
+  def test_the_wall_under_the_lamp_is_nearly_its_own_colour_and_the_wall_far_from_it_darker
     played = game_player.run(program, frames: 1)
+    under = played.screen.pixel(*UNDER_LAMP)
 
     assert_equal 0, played[:flicker]
-    assert_equal MORTAR, played.screen.pixel(*UNDER_LAMP)
-    assert_operator brightness(played.screen.pixel(*NEAR_WALL)), :<, brightness(MORTAR)
+    [0, 5, 10].each do |shift|
+      assert_includes [(MORTAR >> shift) & 31, ((MORTAR >> shift) & 31) - 1], (under >> shift) & 31
+    end
+    assert_operator brightness(played.screen.pixel(*NEAR_WALL)), :<, brightness(under)
   end
 
   # Now and then the lamp dims by a number the game rolls: the wall under it changes with it, and the

@@ -26,13 +26,13 @@ class TestPlaceExamplesPaceOnThePlayStation < Minitest::Test
   end
 
   # Standing at the start of the corridor, the lamp's ring of walls lit and the rest dimmer: lit, a pass
-  # fits in two frames, as the corridor drawn unlit does, and lighting costs no more than a third again
-  # of the processor's time drawn unlit, as on the Advance (.claude/dsl/places.md).
+  # takes the frames the corridor drawn unlit takes, two at the most, and lighting costs no more than a
+  # third again of the processor's time drawn unlit, as on the Advance (.claude/dsl/places.md).
   def test_the_lit_corridor_runs_as_fast_as_unlit_and_lighting_costs_under_a_third_again
     lit = profile(LitCorridor)
     unlit = profile(LitCorridor, lit: false)
 
-    assert_equal({ 2 => 30 }, lit.passes_by_frames)
+    assert_operator lit.passes_by_frames.keys.max, :<=, 2, lit.passes_by_frames.inspect
     assert_equal unlit.passes_by_frames, lit.passes_by_frames
     assert_operator busy_frames(lit), :<, busy_frames(unlit) * 4 / 3.0
   end
