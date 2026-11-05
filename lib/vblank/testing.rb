@@ -153,6 +153,23 @@ module VBlank
     # It is the one choice for every game, so no game makes its own.
     def original_copy(game) = game.copy
 
+    # EVERY FILE OF +facts+ (an Original::Facts) KEPT TO ITS THREE RULES: it is laid out as its tool
+    # writes it, so nobody edited a value by hand; every key has a comment written above it; and
+    # every measured fact has a value, a source and a test, a file under +root+ (the folder the
+    # game's tests are named from) that is there.
+    def assert_facts_kept(facts, root:)
+      facts.files.each do |file|
+        name = File.basename(facts.path(file))
+        assert facts.kept?(file), "#{name} is not laid out as its tool writes it. Run the tool again to write its values."
+        assert_empty facts.uncommented(file), "#{name} has keys with no comment directly above them. Write a comment above each."
+        facts.measured_entries(file).each do |path, entry|
+          assert_equal %w[source test value], entry.is_a?(Hash) ? entry.keys.sort : [],
+                       "#{name}'s measured #{path} must have a value, a source and a test."
+          assert_path_exists File.join(root, entry.fetch("test")), "#{name}'s measured #{path} names a test that is not there."
+        end
+      end
+    end
+
     # A test of an example +game+ (a VBlank.game) skips on a console the game does not name yet: it is
     # laid out for its own consoles, so there is nothing to play.
     def skip_unless_written_for(game)
