@@ -450,6 +450,19 @@ module ConformanceFixture
       B.set(:acc, B.list_len(:primed)),
       B.set(:acc, B.list_get(:primed, 4)),
 
+      # ...and a list of places put in order by the numbers another list holds at them. Two of
+      # the numbers are level, so a sort that is not stable puts places 0 and 2 the wrong way
+      # round; one is below nothing, so a compare that is not signed puts it last. Rising
+      # [1, 4, 0, 2, 3], then falling from that [3, 0, 2, 4, 1].
+      B.list_new(:ranks, 5, width: :byte),
+      *[3, 0, 4, 1, 2].map { |place| B.list_push(:ranks, place) },
+      B.list_new(:heights, 5),
+      *[7, -2, 7, 30, 0].map { |height| B.list_push(:heights, height) },
+      B.list_sort(:ranks, by: :heights),
+      B.set(:rising, order_of_five(:ranks)),
+      B.list_sort(:ranks, by: :heights, descending: true),
+      B.set(:falling, order_of_five(:ranks)),
+
       # --- control flow: if+else, call, case, repeat ---
       if_else,
       B.call(:helper),
@@ -493,5 +506,11 @@ module ConformanceFixture
     branch = B.if_(B.binop(:>, B.var_ref(:x), B.int(0)), B.set(:acc, 1))
     branch.else = B.else_(B.set(:acc, 2))
     branch
+  end
+
+  # The five places +list+ holds as one number, a digit of five each, so one variable says the
+  # whole order: two places the wrong way round change it.
+  def self.order_of_five(list)
+    (0...5).reduce(B.int(0)) { |sum, at| B.binop(:+, B.binop(:*, sum, B.int(5)), B.list_get(list, at)) }
   end
 end

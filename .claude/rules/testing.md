@@ -130,6 +130,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `note_envelope_tests.rb` (recorded notes with a loudness shape falling away on their voices, played by each console that mixes them),
 `sound_effect_recording_tests.rb` (sound effects whose parts play a recording, sharing the voices by rank, played by each console that mixes them),
 `screen_backdrop_games.rb` (small tiled games for `screen ... backdrop:`),
+`draw_order_cost_games.rb` (a game of seven things in a `draw_in_order` and the same without, for each console's cost test),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
 records first),
 `speakers.rb` (which speaker a cartridge's voice is heard from),

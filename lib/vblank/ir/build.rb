@@ -1101,6 +1101,12 @@ module VBlank
         Nodes.build(:list_copy, name: name, table: table, at: to_value_node(at), count: count)
       end
 
+      # Put every item of the list in order by the number list +by+ holds at it, the smallest
+      # first, or the biggest with +descending+; level items keep their order (see ListSort).
+      def list_sort(name, by:, descending: false)
+        Nodes.build(:list_sort, name: name, by: by, descending: descending ? true : false)
+      end
+
       # Overwrite the item at `index` with a new value (the slot must already hold
       # one). `index` is a value operand.
       def list_set(name, index, value)

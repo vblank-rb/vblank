@@ -60,6 +60,25 @@ module DrawInOrderGames
     end
   end
 
+  # SEVEN THINGS IN ONE ORDER, each a small block of a colour of its own, all of them over one
+  # pixel, SEVEN_AT. Each stands a pixel right of the one before and +heights+ down, so which
+  # colour shows there says which of the seven is in front.
+  SEVEN_COLORS = %i[red green blue yellow cyan magenta white].freeze
+  SEVEN_AT = [66, 36].freeze
+
+  private def seven_program(heights, front: nil)
+    colors = SEVEN_COLORS
+    program do
+      screen :tiled
+      things = colors.each_with_index.map do |color, i|
+        image(:"small_#{color}", "#" => color) { (["#" * 8] * 8).join("\n") }
+        sprite :"small_#{color}", at: [60 + i, 30 + heights[i]]
+      end
+      front ? draw_in_order(*things, front: front) : draw_in_order(*things)
+      game_loop {}
+    end
+  end
+
   # TAKING TURNS. Three blocks in a row on one line, each four pixels right of the one before,
   # so neighbours overlap and all three overlap in the middle: red, then green, then blue,
   # named in that order. +turns+ is what `take_turns:` is given; with +count+ 2 only the first
@@ -125,6 +144,31 @@ class TestDrawInOrder < Minitest::Test
 
     assert_equal [RED, GREEN], seen
     [4, 14].each { |frames| assert_backends_agree(walking, frames: frames) }
+  end
+
+  # LEVEL THINGS KEEP THE ORDER THEY HAD LAST FRAME, not the order they were declared in. The hero
+  # is declared before the enemy, so standing level from the start the enemy covers him. Starting
+  # lower, in front, and walking up until he is level, he stays in front.
+  private def level_program(hero_from)
+    block = BLOCK
+    enemy_at = ENEMY_AT
+    program do
+      screen :tiled
+      image(:enemy, "#" => :red) { block }
+      image(:hero, "#" => :green) { block }
+      hero = sprite :hero, at: [enemy_at[0] + 8, hero_from]
+      enemy = sprite :enemy, at: enemy_at
+      draw_in_order hero, enemy
+      game_loop { hero.y -= 1 if hero.y > enemy_at[1] }
+    end
+  end
+
+  def test_level_things_keep_the_order_they_had_last_frame
+    assert_equal RED, shown(level_program(ENEMY_AT[1]), frames: 12), "level from the start: declared order"
+    walked = level_program(ENEMY_AT[1] + 6)
+
+    assert_equal GREEN, shown(walked, frames: 12), "walked up to level from in front: still in front"
+    assert_backends_agree(walked, frames: 12)
   end
 
   # THE NUMBER IS THE GAME'S TO WORK OUT. A puff of smoke starts a step nearer the front and
@@ -202,6 +246,29 @@ class TestDrawInOrder < Minitest::Test
     assert_equal RED, shown(puffs_program(ordered: false), frames: 3), "the older thing of a pool is in front"
     assert_equal GREEN, shown(puffs_program(ordered: true), frames: 3), "the higher thing is in front"
     assert_backends_agree(puffs_program(ordered: true), frames: 3)
+  end
+
+  # --- seven in one order ---
+
+  private def color_named(name) = VBlank::Graphics::Color.resolve(name)
+  private def seven_shown(prog) = game_player.run(prog, frames: 3).screen.pixel(*SEVEN_AT)
+
+  # Of seven standing in a muddle, the lowest is in front, wherever it was named.
+  def test_of_seven_the_lowest_is_in_front
+    assert_equal color_named(:green), seven_shown(seven_program([3, 6, 0, 5, 1, 4, 2]))
+    assert_equal color_named(:red), seven_shown(seven_program([6, 5, 4, 3, 2, 1, 0]))
+  end
+
+  # front: :lowest turns it round: the highest of the seven is in front.
+  def test_of_seven_the_highest_is_in_front_when_the_lowest_number_is
+    assert_equal color_named(:blue), seven_shown(seven_program([3, 6, 0, 5, 1, 4, 2], front: :lowest))
+  end
+
+  # Seven standing level keep the order they were declared in, whichever end is in front: the
+  # last one declared covers the rest, as it does with no order at all.
+  def test_seven_standing_level_keep_the_order_they_were_declared_in
+    assert_equal color_named(:white), seven_shown(seven_program([2] * 7))
+    assert_equal color_named(:white), seven_shown(seven_program([2] * 7, front: :lowest))
   end
 
   # --- taking turns in front, a frame each ---

@@ -22,11 +22,11 @@ module VBlank
     #
     # HOW IT WORKS, which is the same on every backend because it is written in the program
     # itself. Before each frame is drawn a routine works out every thing's number and puts
-    # the things in order in a list the program keeps — an insertion sort, starting from the
-    # order they were in last frame, so a frame where nobody passed anybody is one compare a
-    # thing. The frame's objects are then drawn with that run in the list's order. Things
-    # whose numbers are equal keep the order they were already in, so two characters
-    # standing level do not flicker in front of each other.
+    # the things in order in a list the program keeps — one sort, which each console writes in
+    # its own code, starting from the order they were in last frame, so a frame where nobody
+    # passed anybody is one compare a thing. The frame's objects are then drawn with that run
+    # in the list's order. Things whose numbers are equal keep the order they were already
+    # in, so two characters standing level do not flicker in front of each other.
     #
     # TAKING TURNS IN FRONT. Many console games draw their sprites in one order on one frame
     # and the other way round on the next, so where two overlap each shows half the time and
@@ -221,41 +221,20 @@ module VBlank
       end
 
       # WORK OUT EVERY NUMBER, THEN SORT. The list holds the objects back to front, so the
-      # one in front is last: for :highest the numbers rise along it. An insertion sort
-      # starting from last frame's order does a compare a thing on a frame where nobody
-      # passed anybody, and moves a thing only past the ones it passed. A thing moves back
-      # only past a number strictly beyond its own, so two level things keep their order.
+      # one in front is last: for :highest the numbers rise along it. The sort is one statement
+      # (IR list_sort), which each backend writes as a routine in its own machine's code, and
+      # it is stable: it starts from last frame's order and moves a thing back only past a
+      # number strictly beyond its own, so two level things keep their order, and a frame where
+      # nobody passed anybody moves nothing.
       def order_sort_nodes(order)
         return order_turn_nodes(order) if order.turns
 
         keys = order.keys_list
-        list = order.order_list
-        pass = order.part(:pass)
-        step = order.part(:step)
-        at = order.part(:at)
-        item = order.part(:item)
-        key = order.part(:key)
-        [pass, step, at, item, key].each { |var| ensure_var(var) }
-        count = object_names_in(order).length
-        ref = ->(name) { Build.var_ref(name) }
-        before = -> { Build.list_get(keys, Build.list_get(list, Build.binop(:-, ref.(at), Build.binop(:>, ref.(at), 0)))) }
-        stays = order.front == :highest ? :<= : :>=
-        leave = Build.binop(:|, Build.binop(:==, ref.(at), 0), Build.binop(stays, before.call, ref.(key)))
-
         by_name = order_keys(order)
         numbers = run_objects(order).each_with_index.map do |name, i|
           Build.list_set(keys, Build.int(i), by_name.fetch(name))
         end
-        sort = Build.repeat(Build.int(count - 1), pass,
-                            Build.set(at, Build.binop(:+, ref.(pass), 1)),
-                            Build.set(item, Build.list_get(list, ref.(at))),
-                            Build.set(key, Build.list_get(keys, ref.(item))),
-                            Build.repeat(ref.(at), step,
-                                         Build.list_set(list, ref.(at), Build.list_get(list, Build.binop(:-, ref.(at), 1))),
-                                         Build.sub(at, Build.int(1)),
-                                         stop_when: leave),
-                            Build.list_set(list, ref.(at), ref.(item)))
-        numbers + [sort]
+        numbers + [Build.list_sort(order.order_list, by: keys, descending: order.front == :lowest)]
       end
 
       # This frame's order copied from the table (#declare_turn_table), and the turn moved to the

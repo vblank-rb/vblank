@@ -1080,6 +1080,23 @@ module VBlank
         operands name: :name, table: :name, at: :value, count: :int
       end
 
+      # Every item the list holds put in order by a number another list keeps for it: each item
+      # is a place in +by+, and the number there is what it is ordered by, the smallest first
+      # (the biggest first when +descending+). Items whose numbers are equal keep the order they
+      # were in, so sorting again a list already in order moves nothing — a stable sort, and so
+      # its answer is the one answer every backend must give, whatever way it sorts.
+      #
+      # Every item must be a place in +by+. The interpreter stops the game at one that is not, as
+      # reading +by+ there would; a lowering need not look, since the framework only sorts lists
+      # of places it made. One statement, so a backend sorts in a routine of its own machine's
+      # code, where the same sort written as list reads and writes takes a call for each of them.
+      class ListSort
+        include Node
+        kind :list_sort
+        category :list
+        operands name: :name, by: :name, descending: :flag
+      end
+
       class Loop
         include Node
         kind :loop

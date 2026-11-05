@@ -735,6 +735,7 @@ module VBlank
           list_set: :exec_list_set,
           list_fill: :exec_list_fill,
           list_copy: :exec_list_copy,
+          list_sort: :exec_list_sort,
           blit: :exec_blit,
           blit_pose: :exec_blit_pose,
           save_region: :exec_save_region,
@@ -3779,6 +3780,20 @@ module VBlank
           values = @tables.fetch(node.table).values
           start = eval_value(node.at).clamp(0, values.length - node.count)
           list_for(node.name).replace(values[start, node.count])
+        end
+
+        # Every item put in order by the number +by+ holds at it, the smallest first (the biggest
+        # with +descending+). Level items keep the order they were in: each is ordered by its
+        # number and then by where it stood, so no two items are ever level. Every item is checked
+        # to be a place in +by+ before anything moves, as reading +by+ there would be.
+        def exec_list_sort(node)
+          list = list_for(node.name)
+          keys = list_for(node.by)
+          items = list.to_a
+          items.each { |item| check_list_index!(keys, node.by, item) }
+          direction = node.descending ? -1 : 1
+          placed = items.each_with_index.sort_by { |item, at| [direction * keys.get(item), at] }
+          list.replace(placed.map(&:first))
         end
 
         def value_of_list_get(node)
