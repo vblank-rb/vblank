@@ -6,14 +6,17 @@ require "stringio"
 # A DIVISION COSTS WHAT ITS NUMBERS NEED. The answers are test_snes_int32's and test_dsl_expression's;
 # these are about the time, read off the running cartridge.
 class TestSNESDivisionCost < Minitest::Test
-  # Divides a variable, so nothing can be worked out while building, by a divisor written in the game.
+  # Divides a variable, so nothing can be worked out while building, by a divisor written in the game,
+  # or by +ten+, a variable holding 10, so that the runtime's divide is the one that answers (a number
+  # under 65536 divided by a written byte is the console's divider in place: test_snes_constant_division).
   private def dividing_game(name, repeats:, &sum)
     VBlank.game(name, consoles: %i[snes]) do
       number = var :number, 1000
+      ten = var :ten, 10
       total = var :total, 0
       game_loop do
         number += 7
-        repeat(repeats) { total += sum.call(number) }
+        repeat(repeats) { total += sum.call(number, ten) }
       end
     end
   end
@@ -23,7 +26,7 @@ class TestSNESDivisionCost < Minitest::Test
   private def routines_of(result) = result.runtime.map { |spent| spent.routine.to_s }
 
   def test_a_small_number_divided_by_a_byte_walks_no_bits
-    routines = routines_of(profile(dividing_game("BY A BYTE", repeats: 20) { |number| number / 10 }))
+    routines = routines_of(profile(dividing_game("BY A BYTE", repeats: 20) { |number, ten| number / ten }))
 
     assert_includes routines, "rt_div32"
     refute_includes routines, "rt_udiv32_bit"

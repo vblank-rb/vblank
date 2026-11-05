@@ -1703,6 +1703,7 @@ module VBlank
             return if node.op == :* && emit_product_by_comparison(node)
             return if node.op == :% && emit_remainder_by_power_of_two(node)
             return if node.op == :/ && emit_quotient_by_power_of_two(node)
+            return if %i[/ %].include?(node.op) && emit_divide_by_written_byte(node)
             return if SHIFTS_IN_PLACE.key?(node.op) && emit_shift_by_written_count(node)
 
             if (routine = CALLED_SUMS[node.op])
@@ -2000,40 +2001,118 @@ module VBlank
             @asm.sta(@asm.direct(at + 2))
           end
 
-          # What is left after dividing by a positive power of two, as Int32.mod has it: the sign of
-          # the divisor, so it is the low bits alone (-1 % 16 is 15, and so is -1 & 15) — an AND of
-          # each half, where the runtime's division takes a loop of 32 steps. True when it was done so.
+          # What is left after dividing by a power of two written in the program, as Int32.mod has it:
+          # the sign of the divisor. By a positive one it is the low bits alone (-1 % 16 is 15, and so
+          # is -1 & 15) — an AND of each half, where the runtime's division takes a loop of 32 steps.
+          # By a negative one, low bits that are not nought are counted down from the divisor: 1 % -16
+          # is -15. True when it was done so.
           def emit_remainder_by_power_of_two(node)
             divisor = folded(node.rhs)
-            return false unless divisor&.positive? && (divisor & (divisor - 1)).zero?
+            size = divisor&.abs
+            return false unless divisor && ConstantDivisor.power_of_two_bits(size)
 
-            value(Build.binop(:&, node.lhs, Build.int(divisor - 1)))
+            value(Build.binop(:&, node.lhs, Build.int(size - 1)))
+            return true if divisor.positive?
+
+            done = fresh("remainder_signed")
+            @asm.lda(@asm.direct(R0))
+            @asm.ora(@asm.direct(R0 + 2))
+            @asm.beq(done)
+            @asm.sec
+            2.times do |half|
+              @asm.lda(@asm.direct(R0 + (2 * half)))
+              @asm.sbc((size >> (16 * half)) & 0xFFFF)
+              @asm.sta(@asm.direct(R0 + (2 * half)))
+            end
+            @asm.label(done)
             true
           end
 
-          # A quotient by a positive power of two written in the program, as a shift. A shift right
-          # rounds down and a quotient rounds towards nought, so a negative number has the divisor
-          # less one added first: -7 / 2 is (-7 + 1) >> 1, which is -3. True when it was done so.
+          # A quotient by a power of two written in the program, as a shift, turned round after for a
+          # negative one. A shift right rounds down and a quotient rounds towards nought, so a negative
+          # number has the size less one added first: -7 / 2 is (-7 + 1) >> 1, which is -3. True when
+          # it was done so.
           def emit_quotient_by_power_of_two(node)
             divisor = folded(node.rhs)
-            return false unless divisor&.positive? && (divisor & (divisor - 1)).zero?
+            size = divisor&.abs
+            places = divisor && ConstantDivisor.power_of_two_bits(size)
+            return false unless places
 
             value(node.lhs)
-            places = divisor.bit_length - 1
-            return true if places.zero?
-
             positive = fresh("positive")
             @asm.lda(@asm.direct(R0 + 2))
             @asm.bpl(positive)
             @asm.clc
             2.times do |half|
               @asm.lda(@asm.direct(R0 + (2 * half)))
-              @asm.adc(((divisor - 1) >> (16 * half)) & 0xFFFF)
+              @asm.adc(((size - 1) >> (16 * half)) & 0xFFFF)
               @asm.sta(@asm.direct(R0 + (2 * half)))
             end
             @asm.label(positive)
             emit_shift_right_of_r0(places)
+            emit_negate_r0 if divisor.negative?
             true
+          end
+
+          # THE CONSOLE DIVIDES 16 BITS BY A BYTE BY ITSELF: a number written to WRDIVL and WRDIVH and a
+          # byte to WRDIVB, and sixteen cycles later the quotient is at RDDIVL and the remainder at
+          # RDMPYL. So a `/` or `%` by a byte written in the program, of a number that turns out to be
+          # from nought to 65535 (a score, a count, a place on the screen: what a game divides by ten
+          # most), is that and nothing else, written where the sum is. By a negative byte the quotient
+          # is turned round, and a remainder that is not nought counted down from the divisor (Int32.mod:
+          # 1 % -10 is -9). Any other number, below nought or with a top half, goes to the runtime's
+          # rt_div32 or rt_mod32, which give every one its sign and divide a top half too. A power of two
+          # never gets here (#emit_quotient_by_power_of_two). True when it was done so.
+          def emit_divide_by_written_byte(node)
+            divisor = folded(node.rhs)
+            size = divisor&.abs
+            return false unless size&.between?(2, 0xFF)
+
+            h = Console::SNESHardware
+            wide = fresh("divide_wide")
+            done = fresh("divided")
+            value(node.lhs)
+            @asm.lda(@asm.direct(R0 + 2))
+            @asm.bne(wide)
+            @asm.lda(@asm.direct(R0))
+            @asm.sta(@asm.abs(h::WRDIVL)) # both bytes, this and WRDIVH
+            @asm.sep(0x20)
+            @asm.lda(size)
+            @asm.sta(@asm.abs(h::WRDIVB))
+            @asm.rep(0x20)
+            7.times { @asm.nop } # the sixteen cycles the divider takes, with the REP
+            @asm.lda(@asm.abs(node.op == :/ ? h::RDDIVL : h::RDMPYL))
+            @asm.sta(@asm.direct(R0))
+            emit_byte_quotient_signed(node.op, size) if divisor.negative?
+            @asm.bra(done)
+            @asm.label(wide)
+            @divides = true
+            @asm.lda(divisor & 0xFFFF)
+            @asm.sta(@asm.direct(R1))
+            if divisor.negative?
+              @asm.lda(0xFFFF)
+              @asm.sta(@asm.direct(R1 + 2))
+            else
+              @asm.stz(@asm.direct(R1 + 2))
+            end
+            call_routine(CALLED_SUMS.fetch(node.op))
+            @asm.label(done)
+            true
+          end
+
+          # The divider's answer in R0's low half, its top half nought, given a negative divisor's
+          # sign: the quotient turned round, or the remainder less the size unless it is nought.
+          def emit_byte_quotient_signed(op, size)
+            return emit_negate_r0 if op == :/
+
+            nought = fresh("remainder_nought")
+            @asm.beq(nought) # the flags are the remainder's, from the load before its store
+            @asm.sec
+            @asm.sbc(size)
+            @asm.sta(@asm.direct(R0))
+            @asm.lda(0xFFFF)
+            @asm.sta(@asm.direct(R0 + 2))
+            @asm.label(nought)
           end
 
           # A SHIFT BY A NUMBER WRITTEN IN THE PROGRAM is written in place, never as a call of
