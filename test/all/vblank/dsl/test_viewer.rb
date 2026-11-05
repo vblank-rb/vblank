@@ -83,15 +83,66 @@ class TestViewer < Minitest::Test
     assert_equal [-ONE, 0, 0], numbers(played, :ahead_x, :ahead_y, :ahead_z)
   end
 
-  def test_a_turn_by_a_number_the_game_works_out_is_refused
-    error = assert_raises(ArgumentError) do
-      game do |eye|
-        speed = var :speed, 2
-        eye.turn :left, by: speed
+  ARROWS = %i[right_x right_y right_z up_x up_y up_z ahead_x ahead_y ahead_z].freeze
+
+  # A game that makes one turn of +turns+ ([kind, direction, degrees] each) on each of its first
+  # passes: by the number written in the game, or (+worked_out+) by a variable the game sets to
+  # it on that pass, a whole one or (+fraction+) one that holds a fraction.
+  private def turning_game(turns, worked_out:, fraction: false)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      passes = var :passes, 0
+      spin = var :spin, fraction ? 0.0 : 0
+      game_loop do
+        turns.each_with_index do |(kind, direction, degrees), k|
+          if_eq(:passes, k) do
+            spin.store!(degrees)
+            eye.public_send(kind, direction, by: worked_out ? spin : degrees)
+          end
+        end
+        passes += 1
       end
     end
+    builder.finalize_program
+    builder.program
+  end
 
-    assert_match(/does not turn by a number the game works out/, error.message)
+  # The sines a turn by a worked-out angle reads are the ones a written whole number of degrees
+  # is turned by, so the two come out the same to the last bit: the wrong way round, past a whole
+  # turn, below nought, for a roll, and past the most degrees a fraction can hold.
+  def test_a_turn_by_a_whole_number_the_game_works_out_matches_the_same_number_written
+    turns = [[:turn, :left, 7], [:turn, :right, -13], [:turn, :up, 370], [:roll, :right, -400], [:turn, :down, 90],
+             [:roll, :left, 725], [:turn, :right, 40_000]]
+    worked_out = game_player.run(turning_game(turns, worked_out: true), frames: turns.length + 2)
+    written = game_player.run(turning_game(turns, worked_out: false), frames: turns.length + 2)
+
+    ARROWS.each { |name| assert_equal written[part(name)], worked_out[part(name)], name }
+    refute_equal ONE, worked_out[part(:ahead_z)], "the viewer did turn"
+  end
+
+  # A fraction of a degree is stepped to between the sines of the whole degrees either side.
+  def test_a_turn_by_a_fraction_of_a_degree_the_game_works_out_turns_that_far
+    played = game_player.run(turning_game([[:turn, :right, 2.5]], worked_out: true, fraction: true), frames: 3)
+    radians = 2.5 * Math::PI / 180
+
+    assert_in_delta Math.sin(radians) * ONE, played[part(:ahead_x)], 8
+    assert_in_delta Math.cos(radians) * ONE, played[part(:ahead_z)], 8
+    assert_equal 0, played[part(:ahead_y)]
+  end
+
+  # Turning left by minus 362 and a half degrees is turning right by two and a half.
+  def test_a_negative_fraction_past_a_whole_turn_is_the_same_turn_the_other_way
+    left = game_player.run(turning_game([[:turn, :left, -362.5]], worked_out: true, fraction: true), frames: 3)
+    right = game_player.run(turning_game([[:turn, :right, 2.5]], worked_out: true, fraction: true), frames: 3)
+
+    ARROWS.each { |name| assert_equal right[part(name)], left[part(name)], name }
+  end
+
+  def test_a_turn_by_something_that_is_not_a_number_is_refused
+    error = assert_raises(ArgumentError) { game { |eye| eye.turn :left, by: "two" } }
+
+    assert_match(/degrees/, error.message)
   end
 
   def test_a_direction_that_is_not_one_is_refused

@@ -27,6 +27,20 @@ class TestPlacesOnThePlayStation < Minitest::Test
     end
   end
 
+  # A viewer turned by angles the game works out, one a pass (PlaceGames.spins, fractions and
+  # whole degrees): the face's top left corner is drawn where screen_spot says it lands, pass
+  # after pass.
+  def test_a_viewer_turned_by_a_worked_out_angle_draws_the_face_where_its_corner_lands
+    [false, true].product((2..8).to_a).each do |whole, frames|
+      played = game_player.run(PlaceGames.turning_square(whole: whole), frames: frames)
+      x = played[:x0]
+      y = played[:y0]
+
+      assert_equal tile(0, 0), played.screen.pixel(x + 2, y + 2), "inside the corner after #{played[:frame]} turns"
+      assert_equal BLACK, played.screen.pixel(x - 2, y + 2), "left of the corner after #{played[:frame]} turns"
+    end
+  end
+
   def test_a_picture_repeats_past_its_edges_both_ways
     screen = game_player.run(PlaceGames.square(on_picture: [[-70, -70], [140, -70], [140, 140], [-70, 140]]),
                              frames: 2).screen

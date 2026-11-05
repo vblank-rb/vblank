@@ -909,6 +909,22 @@ module VBlank
       end
     end
 
+    # The table of sines a viewer turned by a worked-out angle reads (IR::ViewerMotion::SINES),
+    # declared the first time one is, with the scratch variables +scratch+ that turn works in. It
+    # goes at the top of the program wherever the turn is written, as a table a game declares
+    # does, so a game whose viewers only turn by written angles carries neither. An internal hook
+    # like #field_scratch_var, not a DSL verb.
+    def declare_viewer_sines_with_scratch(scratch)
+      scratch.each { |name| ensure_var(name) }
+      @viewer_sines ||= begin
+        name = Messages::MadeNames.make(:viewer_sines)
+        values = IR::ViewerMotion::SINES
+        (@table_values ||= {})[name] = values
+        @program.add_child(Build.table(name, values, width: :word, signed: true))
+        name
+      end
+    end
+
     # A {Condition} enters this "pending" set when it's built (Condition#initialize)
     # and leaves it when it's used (see #consume_condition). It's bookkeeping for
     # one guardrail only, never part of the program.

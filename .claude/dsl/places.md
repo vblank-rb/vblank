@@ -34,7 +34,12 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
     `:down`, by a number or a value the game works out (a whole number or a fraction).
   - `eye.turn :left, by: 2` — degrees, `:left`, `:right`, `:up` (tip up) or `:down`; `eye.roll :left,
     by: 2` rolls round the way it faces, `:left` or `:right`. The angle is a number written in the
-    game (one the game works out is refused as not made yet). **Every turn keeps the arrows square and
+    game, or a value the game works out (`eye.turn :right, by: spin`): whole or a fraction, below
+    nought or past a whole turn (a fraction holds no more than 32767 degrees either way). A written angle's sine and cosine are
+    settled while the game is built; a worked-out one reads them from a table of the sine of each
+    whole degree (1804 bytes, in the cartridge only of a game that turns by one), stepped between two
+    entries for a fraction of a degree, so a whole degree turns exactly as the same number written
+    does. **Every turn keeps the arrows square and
     of length one**, so a game can turn for as long as it likes and the place never comes out
     stretched: each turn ends by making ahead length one, taking from up whatever part of it lies along
     ahead, making up length one, and making right from the two.

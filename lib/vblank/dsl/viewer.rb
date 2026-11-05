@@ -15,6 +15,7 @@ module VBlank
     #
     #   eye.move :ahead, by: 0.05 if held(:a)    # along its own arrows
     #   eye.turn :left, by: 2 if held(:left)     # degrees, :left :right :up :down
+    #   eye.turn :right, by: spin                # or degrees the game works out
     #   eye.roll :right, by: 2 if held(:r)       # :left :right
     #   eye.at 0.0, 0.0, -4.0                    # put it somewhere
     #   eye.face right: [...], up: [...], ahead: [...]   # point it, three arrows of three numbers
@@ -81,14 +82,16 @@ module VBlank
         self
       end
 
-      # Turn the viewer +by+ degrees (a number written in the game) :left, :right, :up or :down.
+      # Turn the viewer +by+ degrees :left, :right, :up or :down: a number, or a value the game
+      # works out (whole or a fraction, below nought or past a whole turn; a fraction holds no
+      # more than 32767 degrees either way).
       def turn(direction, by:)
         refuse_unknown_direction!("turn", direction, IR::ViewerMotion::TURNS.keys)
         record_turn(:turn, direction, by)
       end
 
-      # Roll the viewer +by+ degrees (a number written in the game) round the way it faces, :left
-      # or :right.
+      # Roll the viewer +by+ degrees round the way it faces, :left or :right, a number or a value
+      # as #turn takes.
       def roll(direction, by:)
         refuse_unknown_direction!("roll", direction, IR::ViewerMotion::ROLL_SIGNS.keys)
         record_turn(:roll, direction, by)
@@ -98,14 +101,22 @@ module VBlank
 
       def read(part) = Value.new(@builder, IR::Build.var_ref(variable(part)), name: variable(part), fraction_bits: BITS)
 
+      # A written number is turned by its own sine and cosine, settled now; a value the game works
+      # out reads them from the table of sines as the game runs.
       def record_turn(kind, direction, degrees)
-        unless degrees.is_a?(Numeric)
-          raise ArgumentError, "eye.#{kind} was given by: #{degrees.inspect}. A turn is a number of degrees written " \
-                               "in the game, like by: 2. This build does not turn by a number the game works out " \
-                               "yet. To fix this, give a number."
-        end
-
-        @motion.turned(kind, direction, degrees).each { |statement| @builder.record_statement(statement) }
+        statements = case degrees
+                     when Numeric then @motion.turned_by_number(kind, direction, degrees)
+                     when Value
+                       whole = degrees.fraction_bits.nil?
+                       turn_node = whole ? degrees.node : fraction_node(degrees)
+                       scratch = IR::ViewerMotion::TURN_SCRATCH.map { |part| variable(part) }
+                       sines = @builder.declare_viewer_sines_with_scratch(scratch)
+                       @motion.turned_by_value(kind, direction, turn_node, sines, whole: whole)
+                     else
+                       raise ArgumentError, "eye.#{kind} was given by: #{degrees.inspect}. A turn is a number of " \
+                                            "degrees. To fix this, give a number, like by: 2, or a value from `var`."
+                     end
+        statements.each { |statement| @builder.record_statement(statement) }
         self
       end
 

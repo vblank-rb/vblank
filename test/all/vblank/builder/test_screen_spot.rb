@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "place_games"
 
 # `screen_spot`: where a point of a place lands on the screen as a viewer sees it, worked out as
 # the game runs. It is only sums, so every console works it out, on its own screen: the game keeps
@@ -65,5 +66,27 @@ class TestScreenSpot < Minitest::Test
 
     assert_equal (across - 0.5).ceil, played[:x0]
     assert_equal played[:height] / 2, played[:y0]
+  end
+
+  # Where the corner (-1, 1, 2) lands for a viewer turned left by +degrees+, as [x, y], by the
+  # same rule: the corner seen along the viewer's arrows, then a quarter of the width for every
+  # whole across or up at two ahead.
+  private def turned_corner(played, degrees)
+    radians = degrees * Math::PI / 180
+    across = -Math.cos(radians) + (2 * Math.sin(radians))
+    ahead = Math.sin(radians) + (2 * Math.cos(radians))
+    half = played[:width] / 2.0
+    [(half + (half * across / ahead) - 0.5).ceil, ((played[:height] / 2.0) - (half / ahead) - 0.5).ceil]
+  end
+
+  # A viewer turned by angles the game works out, one a pass: fractions of a degree and whole
+  # degrees, below nought and past a whole turn (PlaceGames.spins, coming to nought every sixth).
+  def test_a_point_lands_where_a_viewer_turned_by_a_worked_out_angle_sees_it
+    [false, true].product((2..8).to_a).each do |whole, frames|
+      played = game_player.run(PlaceGames.turning_square(draw: false, whole: whole), frames: frames)
+      turned = PlaceGames.spins(whole).cycle.take(played[:frame]).sum
+
+      assert_equal turned_corner(played, turned), [played[:x0], played[:y0]], "#{played[:frame]} turns, #{turned} degrees"
+    end
   end
 end

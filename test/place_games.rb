@@ -50,6 +50,64 @@ module PlaceGames
     end
   end
 
+  # The angles turning_square's viewer turns left by, one a turn, round and round: fractions of a
+  # degree, below nought and past a whole turn, coming to nought in all.
+  SPINS = Ractor.make_shareable([12.5, -372.5, 370.0, -10.0, -0.75, 0.75])
+
+  # The same in whole degrees, past the most a fraction can hold, coming to nought in all. Each
+  # list keeps the turn so far between a degree right and thirteen left, so the corner stays on
+  # the screen.
+  WHOLE_SPINS = Ractor.make_shareable([13, -40_333, 40_330, -10, -1, 1])
+
+  # The angles turning_square turns by, whole or not.
+  def self.spins(whole) = whole ? WHOLE_SPINS : SPINS
+
+  # The square face, seen by a viewer that turns left by the next of SPINS (or of WHOLE_SPINS,
+  # when +whole+) on every +passes+-th pass, the angle put in a variable the game reads from a
+  # table as it runs. Each pass the square's top left corner is asked where it lands, the answer
+  # kept in x0 and y0. The first turn swings the corner from the left quarter of the screen
+  # towards its middle; after every sixth the viewer faces ahead again, and the corner is back at
+  # x 60 and y 20. Without +draw+ the square is only asked about, never drawn, which every
+  # console can do.
+  def self.turning_square(passes: 1, draw: true, whole: false)
+    turns = spins(whole)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true if draw
+      image :tile, width: 8, height: 8, data: TILE
+      var :width, screen_width
+      var :height, screen_height
+      corner = nil
+      place :wall do
+        corner = point(-1.0, 1.0, 2.0)
+        face corner, point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      spins = table :spins, turns, width: :word
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      frame = var :frame, 0
+      spin = var :spin, whole ? 0 : 0.0
+      x = var :x0, -1
+      y = var :y0, -1
+      game_loop do
+        if (frame % passes) == 0
+          spin.store!(spins[(frame / passes) % turns.length])
+          eye.turn :left, by: spin
+        end
+        if draw
+          clear_screen :black
+          draw_place :wall, seen_by: eye
+        end
+        spot = screen_spot(:wall, corner, seen_by: eye)
+        x.store!(spot.x)
+        y.store!(spot.y)
+        frame += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # A game of one place, declared by the block, drawn every pass by a viewer at +at+.
   def self.one_place(both_sides: false, at: [0.0, 0.0, 0.0], facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] },
                      &shape)

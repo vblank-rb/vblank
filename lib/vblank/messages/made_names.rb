@@ -194,6 +194,8 @@ module VBlank
                              end),
         # The twelve variables a viewer is (DSL::Viewer).
         viewer_part: Kind.new(spelling: "__viewer_%{viewer}__%{part}", parts: { viewer: POOL, part: PLAIN }, words: nil),
+        # The table of sines every viewer turned by a worked-out angle reads (IR::ViewerMotion::SINES).
+        viewer_sines: Kind.new(spelling: "__viewer_sines", parts: {}, words: nil),
         # The routine `start_over :play` calls: part :play's things back as declared.
         start_over: Kind.new(spelling: "__start_over_%{part}", parts: { part: ANY },
                              words: ->(parts) { "putting part :#{parts[:part]} back as declared, for a new game" }),
