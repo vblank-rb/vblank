@@ -2,6 +2,7 @@
 
 require "digest"
 require "fileutils"
+require "json"
 
 module VBlank
   module Testing
@@ -39,6 +40,10 @@ module VBlank
     # cached run and a fresh one agree. A built cartridge may hold the original's data, so +folder+
     # must be one git ignores.
     #
+    # WHAT IT DID IS REPORTED at the end of a run (#report): every ask in every process and Ractor, a
+    # hit or a miss, and for each miss how long it built and which part of its key changed since the
+    # cartridge was last built, so a run that rebuilt more than a change should have says so.
+    #
     # A CartridgeCache holds nothing that changes, so one in a constant can be read from any Ractor.
     class CartridgeCache
       EXPIRE_DAYS = 7
@@ -55,51 +60,107 @@ module VBlank
       EMULATOR_ROOTS = Ractor.make_shareable(%w[ruby-gba-emulator ruby-snes-emulator ruby-genesis-emulator ruby-ps1-emulator]
                                               .filter_map { |name| Gem.loaded_specs[name]&.full_gem_path })
 
+      # WHAT A KEY IS MADE OF, each part's digest: the library's and emulators' files, the Ruby, the
+      # game (its program or its sources), its title, code, maker and options, and the extra inputs.
+      # A miss is explained by the parts that differ from the last key the same cartridge was built
+      # under.
+      KeyParts = Data.define(:library, :ruby, :game, :header, :inputs)
+      PART_WORDS = Ractor.make_shareable({ "library" => "VBlank or an emulator changed", "ruby" => "Ruby changed",
+                                           "game" => "the game changed", "header" => "its title, code, maker or options changed",
+                                           "inputs" => "an extra input changed" })
+      # One ask that reached the disk, as its log line holds it: the cartridge, whether it was read
+      # (hit) or built (miss), why a miss missed, and how long the key and the build took.
+      Ask = Data.define(:label, :result, :reason, :key_seconds, :build_seconds)
+
+      # Why a miss missed, when no part says it.
+      FIRST_BUILD_REASON = "not cached yet"
+      SKIPPED_CACHE_REASON = "NO_BUILD_CACHE"
+
       def initialize(folder, inputs: [], sources: nil, env: ENV)
-        framework = framework_digest
-        @folder = File.join(File.expand_path(folder), framework[0, 16])
+        library = library_digest
+        @base = File.expand_path(folder)
+        @folder = File.join(@base, library[0, 16])
         @fresh = !env[SKIP_SETTING].to_s.empty?
         @inputs = files_digest(inputs.map { File.expand_path(it) })
         @sources = sources && files_digest(sources.flat_map { Dir.glob(it) }.sort)
-        @framework = framework
+        @library = library
+        @ruby = "#{RUBY_VERSION} #{RUBY_PLATFORM}"
+        @made_at = Time.now - 1 # a second early, for a file system that keeps whole seconds
         Ractor.make_shareable(self)
       end
 
       # The cartridge +game+ (a VBlank.game) builds for +console+ (and +variant+) with +settings+,
-      # measured when +profile+ is true, as its build gives it back.
+      # measured when +profile+ is true, as its build gives it back. Each ask is counted, a hit or a
+      # miss, for #report.
       def cartridge(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
-        key = key_for(game, console, variant, settings, profile)
+        started = clock
+        key, parts = key_for(game, console, variant, settings, profile)
+        key_seconds = clock - started
+        label = label_for(game, console, variant, settings, profile)
         built = (::Ractor.current[:vblank_cartridge_cache] ||= {})
-        built[[@folder, key]] ||= read_or_build(key) do
+        kept = built[[object_id, key]]
+        return kept if kept
+
+        built[[object_id, key]] = read_or_build(key, label, parts, key_seconds) do
           game.build_rom(out: nil, err: nil, profile: profile, settings: settings, console: console, variant: variant)
         end
+      end
+
+      # WHAT THE CACHE DID THIS RUN, written to +out+, and its logs deleted: how many cartridges were
+      # read from disk (hits) and how many built (misses), in every process and Ractor that asked since
+      # this cache was made, how long working out their keys took, a line for each miss with how long
+      # it built and why it missed, and the building the hits saved. Asking again for a cartridge a
+      # Ractor already holds is neither. A game's test run calls it once, in the process the run
+      # started in, as the run ends (`Minitest.after_run { BUILDS.report }`). Nothing is written when
+      # nothing was asked. A log a stopped run left, a day old or more, is deleted unread.
+      def report(out = $stdout)
+        logs = Dir.glob(File.join(@base, "runs", "*.jsonl"))
+        stale, current = logs.partition { File.mtime(it) < Time.now - SECONDS_A_DAY }
+        current.select! { File.mtime(it) >= @made_at }
+        asks = current.flat_map { |log| File.readlines(log).map { Ask.new(**JSON.parse(it, symbolize_names: true)) } }
+        FileUtils.rm_f(stale + current)
+        return if asks.empty?
+
+        hits, misses = asks.partition { it.result == "hit" }
+        out.puts "", "Build cache: #{hits.size} hits, #{misses.size} misses " \
+                     "(working out the keys took #{format('%.1f', asks.sum(&:key_seconds))} s)"
+        misses.sort_by { -it.build_seconds }.each do |miss|
+          out.puts format("  miss %6.1f s  %-30s %s", miss.build_seconds, miss.reason, miss.label)
+        end
+        out.puts format("  hits saved about %.0f s of building", hits.sum(&:build_seconds)) unless hits.empty?
       end
 
       # The same cartridge as a file, for an emulator to open: written beside what is kept, once.
       def cartridge_path(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
         rom = cartridge(game, console: console, variant: variant, settings: settings, profile: profile)
-        path = entry_path(key_for(game, console, variant, settings, profile)).sub(/\.marshal\z/, Console.described(console).extension)
+        path = entry_path(key_for(game, console, variant, settings, profile).first).sub(/\.marshal\z/, Console.described(console).extension)
         rom.write(path) unless File.file?(path)
         path
       end
 
       # Whether a cartridge for these is kept on disk, so asking for it builds nothing.
       def cached?(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
-        !@fresh && File.file?(entry_path(key_for(game, console, variant, settings, profile)))
+        !@fresh && File.file?(entry_path(key_for(game, console, variant, settings, profile).first))
       end
 
       private
 
-      # The key, worked out once in each Ractor for each game and build: by the program, that is the
-      # slow part of asking.
+      # The key and its parts, worked out once in each Ractor for each game and build: by the program,
+      # that is the slow part of asking.
       def key_for(game, console, variant, settings, profile)
         keys = (::Ractor.current[:vblank_cartridge_cache_keys] ||= {})
-        keys[[game.object_id, @folder, console, variant, settings, profile]] ||= begin
-          what = @sources || Marshal.dump(game.program(settings: settings, console: console, variant: variant))
-          Digest::SHA256.new.update(@framework).update(Marshal.dump([game.title, game.code, game.maker, game.options.to_h,
-                                                                     console, variant, settings, profile]))
-                        .update(what).update(@inputs).hexdigest
+        keys[[game.object_id, @folder, @inputs, @sources, console, variant, settings, profile]] ||= begin
+          what = @sources || Digest::SHA256.hexdigest(Marshal.dump(game.program(settings: settings, console: console, variant: variant)))
+          header = Digest::SHA256.hexdigest(Marshal.dump([game.title, game.code, game.maker, game.options.to_h, console, variant,
+                                                          settings, profile]))
+          parts = KeyParts.new(library: @library, ruby: @ruby, game: what, header: header, inputs: @inputs)
+          [Digest::SHA256.hexdigest(parts.to_h.values.join(" ")), parts]
         end
+      end
+
+      # How a report names a cartridge: the game, the console, and the settings that make it one.
+      def label_for(game, console, variant, settings, profile)
+        [game.title, console, variant, (settings.sort.to_h unless settings.empty?), ("measured" if profile)].compact.join(" ")
       end
 
       def files_digest(paths)
@@ -108,36 +169,78 @@ module VBlank
 
       # Every file of the library and the emulators, wherever each was loaded from: an emulator a game
       # loads as a gem of its own is read where that gem is.
-      def framework_digest
+      def library_digest
         roots = [VBlank.root.to_s, *EMULATOR_ROOTS].uniq
         files = roots.flat_map { |root| FRAMEWORK_GLOBS.flat_map { |glob| Dir.glob(File.join(root, glob)) } }.select { File.file?(it) }.uniq.sort
-        files.each_with_object(Digest::SHA256.new) { |path, digest| digest << File.basename(path) << File.binread(path) }
-             .update("#{RUBY_VERSION} #{RUBY_PLATFORM}").hexdigest
+        files.each_with_object(Digest::SHA256.new) { |path, digest| digest << File.basename(path) << File.binread(path) }.hexdigest
       end
 
       def entry_path(key) = File.join(@folder, "#{key}.marshal")
+      def seconds_path(key) = File.join(@folder, "#{key}.seconds")
 
-      # The kept cartridge for +key+, or the block's, kept, when there is none or the run is fresh.
-      def read_or_build(key)
+      # The cartridge kept for +key+, or the block's, kept, when there is none or the run is fresh.
+      def read_or_build(key, label, parts, key_seconds)
         FileUtils.mkdir_p(@folder)
         path = entry_path(key)
         File.open("#{path}.lock", File::RDWR | File::CREAT) do |lock|
           lock.flock(File::LOCK_EX)
           if @fresh || !File.file?(path)
-            store(path, yield)
+            build_and_store(path, key, label, parts, key_seconds) { yield }
           else
             File.utime(Time.now, Time.now, path)
+            log_hit(label, key, key_seconds)
           end
           Marshal.load(File.binread(path)) # rubocop:disable Security/MarshalLoad -- written by this class
         end
       end
 
-      def store(path, cartridge)
+      def build_and_store(path, key, label, parts, key_seconds)
+        reason = @fresh ? SKIPPED_CACHE_REASON : miss_reason(label, parts)
+        started = clock
+        cartridge = yield
+        build_seconds = clock - started
         temporary = "#{path}.#{Process.pid}.#{::Ractor.current.object_id}"
         File.binwrite(temporary, Marshal.dump(cartridge))
         File.rename(temporary, path)
+        File.write(seconds_path(key), build_seconds.to_s)
+        write_last_parts(label, parts)
+        log_ask(Ask.new(label: label, result: "miss", reason: reason, key_seconds: key_seconds, build_seconds: build_seconds))
         prune
       end
+
+      # WHY A CARTRIDGE MISSED: the parts of its key that differ from the key it was last built under,
+      # by any run, or that it was never built.
+      def miss_reason(label, parts)
+        last = last_parts_path(label)
+        return FIRST_BUILD_REASON unless File.file?(last)
+
+        before = JSON.parse(File.read(last))
+        changed = parts.to_h.select { |name, digest| before[name.to_s] != digest }.keys
+        changed.empty? ? FIRST_BUILD_REASON : changed.map { PART_WORDS.fetch(it.to_s) }.join(" and ")
+      end
+
+      def write_last_parts(label, parts)
+        FileUtils.mkdir_p(File.dirname(last_parts_path(label)))
+        temporary = "#{last_parts_path(label)}.#{Process.pid}.#{::Ractor.current.object_id}"
+        File.write(temporary, JSON.generate(parts.to_h))
+        File.rename(temporary, last_parts_path(label))
+      end
+
+      def last_parts_path(label) = File.join(@base, "last", "#{Digest::SHA256.hexdigest(label)[0, 32]}.json")
+
+      def log_hit(label, key, key_seconds)
+        seconds = File.file?(seconds_path(key)) ? File.read(seconds_path(key)).to_f : 0.0
+        log_ask(Ask.new(label: label, result: "hit", reason: nil, key_seconds: key_seconds, build_seconds: seconds))
+      end
+
+      # One ask, appended to this process's and Ractor's log, which #report reads with every other's.
+      def log_ask(ask)
+        log = File.join(@base, "runs", "#{Process.pid}-#{::Ractor.current.object_id}.jsonl")
+        FileUtils.mkdir_p(File.dirname(log))
+        File.open(log, "a") { |file| file.puts(JSON.generate(ask.to_h)) }
+      end
+
+      def clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       # What another library built, and what no run has read for EXPIRE_DAYS. A lock another process
       # holds is left where it is, so nobody waiting on it builds the cartridge a second time.
@@ -155,6 +258,8 @@ module VBlank
         # A cartridge a run stopped before renaming into place, a day or more ago.
         stale_before = Time.now - SECONDS_A_DAY
         Dir.glob(File.join(@folder, "*.marshal.*.*")).each { |left| FileUtils.rm_f(left) if File.mtime(left) < stale_before }
+        # What a cartridge was last built from, for one no run has built for EXPIRE_DAYS.
+        Dir.glob(File.join(@base, "last", "*.json")).each { |last| FileUtils.rm_f(last) if File.mtime(last) < expired_before }
       end
 
       def remove_unheld_lock(path)

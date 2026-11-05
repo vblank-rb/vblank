@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "stringio"
 require "tmpdir"
 require "vblank/testing/cartridge_cache"
 
@@ -79,6 +80,45 @@ class TestCartridgeCache < Minitest::Test
 
       assert path.end_with?(".gba")
       assert_equal cache.cartridge(dot_game(:red), console: :gba).buffer, File.binread(path)
+    end
+  end
+
+  # A run ends with what the cache did: built twice is one miss and one hit; with an input changed,
+  # a miss that says so; and the report of a run is forgotten once written.
+  def test_a_run_s_report_counts_hits_and_misses_and_says_why_each_missed
+    Dir.mktmpdir do |folder|
+      input = File.join(folder, "copy.bin").tap { File.write(it, "first") }
+      game = dot_game(:red)
+      2.times { VBlank::Testing::CartridgeCache.new(folder, inputs: [input]).cartridge(game, console: :gba) }
+      File.write(input, "second")
+      cache = VBlank::Testing::CartridgeCache.new(folder, inputs: [input])
+      cache.cartridge(game, console: :gba)
+      out = StringIO.new
+
+      cache.report(out)
+
+      assert_match(/Build cache: 1 hits, 2 misses \(working out the keys took \d+\.\d s\)/, out.string)
+      assert_match(/miss +\d+\.\d s  not cached yet +DOT gba/, out.string)
+      assert_match(/miss +\d+\.\d s  an extra input changed +DOT gba/, out.string)
+      assert_match(/hits saved about \d+ s of building/, out.string)
+      cache.report(out.reopen)
+      assert_empty out.string
+    end
+  end
+
+  # A log a stopped run left days ago is not this run's, and is deleted unread.
+  def test_a_stopped_run_s_old_log_is_left_out_of_the_report
+    Dir.mktmpdir do |folder|
+      old = File.join(folder, "runs", "1-1.jsonl")
+      FileUtils.mkdir_p(File.dirname(old))
+      File.write(old, %({"label":"OLD","result":"miss","reason":"x","key_seconds":1,"build_seconds":9}\n))
+      File.utime(Time.now - (3 * 86_400), Time.now - (3 * 86_400), old)
+      out = StringIO.new
+
+      VBlank::Testing::CartridgeCache.new(folder).report(out)
+
+      assert_empty out.string
+      refute_path_exists old
     end
   end
 
