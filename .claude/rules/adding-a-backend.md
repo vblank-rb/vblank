@@ -176,6 +176,15 @@ routine it emits is ours to profile and change. Code two lowerings share is foun
 afterwards, from lowerings that exist, the way `LoweringPlan`, `BuildCache` and `RoutineCuts` were.
 A design pass for a console does not offer the C route as an option.
 
+**A console's lowering draws the way that console's hardware draws, and is not bent toward the
+other consoles' picture.** The operator's standing rule (2026-11-05, decided for the PlayStation's
+3D faces and lighting). What a game does — its numbers, where things are, which face is in front,
+`screen_spot` — stays exact against the interpreter. The picture is checked exactly against a model
+of that console's own drawing (for the PlayStation, `PS1::PolygonFill`, Beetle's fill in Ruby), and
+where drawing the console's way puts a pixel somewhere other than the interpreter's picture, that
+is the console's picture, not a mismatch: it is neither worked off at a cost in speed nor brought to
+the operator as a choice. Pick the way the console's own games drew, and make it fast.
+
 A new backend is named for the platform it targets (`JS`, not `Canvas` or `V8`), lives in
 `lib/vblank/ir/backends/<name>.rb` beside a folder of the same name, and is required from
 `lib/vblank/ir/backends.rb`.
