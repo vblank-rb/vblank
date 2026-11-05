@@ -26,10 +26,10 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 - `VBlank.game "NAME", consoles: %i[gba]` — the game and the consoles it is for (`%i[gba gbc]` for the Color too); `vblank build` makes a cartridge for each. `stack_room:`; `sprite_piece_size: { gbc: [8, 16] }` (taller sprite pieces); `menu: false` (no menu in a computer's window); `players: 4` (input).
 - `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default. `backdrop: :list` (`backdrop_place:`) — a backdrop that fades with a list.
-- `screen_width` / `screen_height` — the screen's size, to lay a game out from.
+- `screen_width` / `screen_height` — the size to lay a game out from.
 - `border` — round a Color game on the Advance (`:color_screen`).
 - `setting :floors, 60` — a value handed to one build (`settings:`, `--set`).
-- `built_for_computer?` — true in a computer's build, false in a cartridge's.
+- `built_for_computer?`, `built_for?(:snes)` — true on a computer, or that console.
 - `wait_vblank`, `halt`, `debug_halt` (cut a ROM to bisect).
 
 ## Drawing — `.claude/dsl/drawing.md`

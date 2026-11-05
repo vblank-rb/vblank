@@ -120,6 +120,7 @@ module VBlank
     def initialize(options: Cartridge::Options.new, progress: Messages::Progress.silent, settings: {})
       @frame_sync = options.frame_sync
       @for_computer = options.for_computer
+      @build_options = options # the console, variant and consoles `built_for?` answers from
       @save_memory = options.save_memory # kilobytes the game named, or nil to let its records decide
       @settings = settings.to_h.transform_keys(&:to_sym)
       @asked_settings = Set.new

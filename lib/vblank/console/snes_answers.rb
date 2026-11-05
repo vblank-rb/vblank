@@ -33,6 +33,7 @@ module VBlank
                       "not use the one layer a Super Nintendo can turn."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
+        built_for?: works("true when asked about :snes."),
         screen_width: works("256 on a Super Nintendo."),
         screen_height: works("224 on a Super Nintendo."),
         border: works("it does nothing on a Super Nintendo, which shows the game's screen whole."),

@@ -46,6 +46,7 @@ module VBlank
                       "a Game Boy Color cannot turn or resize a background."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
+        built_for?: works("true when asked about :gbc."),
         screen_width: works("160 on a Game Boy Color."),
         screen_height: works("144 on a Game Boy Color."),
         border: works("it does nothing on a Game Boy Color, which shows the game's screen whole. The same " \

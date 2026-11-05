@@ -20,6 +20,7 @@ module VBlank
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
         screen: works, setting: works, built_for_computer?: works("false on a cartridge."),
+        built_for?: works("true when asked about :gba."),
         screen_width: works("240 on a Game Boy Advance. 160 on a game built with " \
                             "`variants: { gba: :color_screen }`, which is laid out for a Game Boy Color."),
         screen_height: works("160 on a Game Boy Advance. 144 with `variants: { gba: :color_screen }`."),

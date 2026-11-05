@@ -156,7 +156,8 @@ module VBlank
                     profile: true, settings: {}, console: @consoles.first, variant: variant_for(console), cartridge: true,
                     for_computer: false)
         console = refuse_console_not_for!(console)
-        options = { code: @code, maker: @maker, **@options.with(console: console, variant: variant, for_computer: for_computer).to_h }
+        options = { code: @code, maker: @maker,
+                    **@options.with(console: console, variant: variant, for_computer: for_computer, consoles: @consoles).to_h }
         options = options.except(*(Console.console_settings - Console.for(console).console_settings))
         VBlank.build(@title, validate: validate, out: out, err: err, progress: progress, profile: profile,
                               settings: settings, cartridge: cartridge, **options, &@block)
@@ -210,7 +211,8 @@ module VBlank
       def evaluated(settings, console, variant)
         seen = (Ractor.current[:vblank_evaluated_games] ||= {})
         seen[[self, settings, console, variant]] ||=
-          EvaluatedGame.new(@block, options: @options.with(console: console, variant: variant), settings: settings)
+          EvaluatedGame.new(@block, options: @options.with(console: console, variant: variant, consoles: @consoles),
+                                    settings: settings)
       end
 
       # A GAME NAMES ITS CHIP WHERE IT NAMES ITS CONSOLES: `consoles: %i[gba snes], variants: {

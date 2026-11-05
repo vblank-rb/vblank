@@ -36,6 +36,7 @@ module VBlank
                       "works too: the chip draws the turned background as a textured shape."),
         setting: works,
         built_for_computer?: works("false on a PlayStation."),
+        built_for?: works("true when asked about :ps1."),
         screen_width: works("320 on a PlayStation."),
         screen_height: works("240 on a PlayStation."),
         border: works("it does nothing on a PlayStation, which shows the game's screen whole."),

@@ -40,6 +40,7 @@ module VBlank
                       "`screen :rotozoom` is refused: a Genesis cannot turn a background."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
+        built_for?: works("true when asked about :genesis."),
         screen_width: works("320 on a Genesis."),
         screen_height: works("224 on a Genesis."),
         border: works("it does nothing on a Genesis, which shows the game's screen whole."),

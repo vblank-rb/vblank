@@ -53,6 +53,18 @@
       "code": 55776,
       "data": 0
     },
+    "everywhere": {
+      "code": 2940,
+      "data": 0
+    },
+    "everywhere@gbc": {
+      "code": 8300,
+      "data": 3408
+    },
+    "everywhere@genesis": {
+      "code": 4550,
+      "data": 810
+    },
     "floating_digits": {
       "code": 11656,
       "data": 0

@@ -21,6 +21,33 @@ module VBlank
       #   music = var :music, built_for_computer? ? 1 : 0
       def built_for_computer? = @for_computer
 
+      # WHETHER THIS BUILD IS FOR +console+ (and, given one, its +variant+): a Ruby true or false
+      # while the game is built, as built_for_computer? is, for a choice of what the cartridge
+      # holds — a song left out of one console's, a title line only a bigger screen has room for.
+      #
+      #   song(:theme) { ... } unless built_for?(:snes)
+      #   draw_text "DELUXE", 8, 8, :white if built_for?(:snes, variant: :superfx)
+      #
+      # The answer is the console the game is BUILT for, whichever way it is then played: the
+      # game as C, in a web page or as Ruby, built for the Advance, answers for the Advance, as
+      # its cartridge does, so all of them play the same game. +variant+ left out asks about the
+      # console whatever chip its cartridge has; `variant: :none` asks about the plain console.
+      #
+      # Asking about a console the game's `consoles:` does not name is refused, since no build of
+      # the game could ever answer yes: it is almost always a misspelt name or a console not added.
+      # That refusal is why this `?` can raise, as `held(:jump)` does for a button there is none
+      # of: a question asked wrongly is the game's mistake, and false would hide it.
+      def built_for?(console, variant: nil)
+        kit = Console.for(console)
+        refuse_console_not_for_game!(kit)
+        # Read on every build, so a variant the console lacks is refused on the builds for other
+        # consoles too, not only on the one build that would have read it.
+        asked_variant = kit.variant(variant)&.name unless variant.nil?
+        return false unless kit.name == @build_options.console
+
+        variant.nil? || asked_variant == @build_options.variant
+      end
+
       # The value this build was given for +name+, or +default+ when it was given none. With
       # no default the setting has to be given.
       #
@@ -43,6 +70,20 @@ module VBlank
       NO_DEFAULT = Object.new.freeze
 
       private
+
+      def refuse_console_not_for_game!(kit)
+        consoles = @build_options.game_consoles
+        if consoles.empty?
+          raise ArgumentError, "The game asks `built_for?(:#{kit.name})`, and this build names no console. " \
+                               "To fix this, name the console when you build, for example `console: :gba`."
+        end
+        return if consoles.include?(kit.name)
+
+        raise ArgumentError, "The game asks `built_for?(:#{kit.name})`. :#{kit.name} is not one of the consoles " \
+                             "the game is for (#{consoles.map { |name| ":#{name}" }.join(', ')}), so the answer " \
+                             "is always false. To fix this, ask about one of those consoles, or add the " \
+                             "#{kit.title} where the game is named: `consoles: %i[#{(consoles + [kit.name]).join(' ')}]`."
+      end
 
       # The names this build gave, when there are any — a missing setting is most often one
       # given under another spelling.

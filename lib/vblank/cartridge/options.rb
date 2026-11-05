@@ -43,11 +43,17 @@ module VBlank
     #
     # +players+ is how many players the game takes, by console (Cartridge::Players), held as
     # { key => Range }; empty where the game said nothing.
+    #
+    # +consoles+ is every console the game is for, as its `consoles:` names them, so a game can ask
+    # `built_for?` about any of them and is told plainly when it asks about one it is not for. It is
+    # nil for a build that names only +console+ (`VBlank.build`); see #game_consoles.
     Options = Data.define(:frame_sync, :fast_cartridge, :fast_code, :save_memory, :stack_room, :console,
-                          :variant, :sprite_piece_size, :for_computer, :players) do
+                          :variant, :sprite_piece_size, :for_computer, :players, :consoles) do
       def initialize(frame_sync: :auto, fast_cartridge: nil, fast_code: nil, save_memory: nil, stack_room: nil,
-                     console: nil, variant: nil, sprite_piece_size: {}, for_computer: false, players: nil)
+                     console: nil, variant: nil, sprite_piece_size: {}, for_computer: false, players: nil,
+                     consoles: nil)
         console = Console.named(console) unless console.nil?
+        consoles = consoles&.map { |name| Console.named(name) }&.freeze
         sprite_piece_size = Console.refuse_unusable_sprite_piece_sizes!(sprite_piece_size).freeze
         players = Players.refuse_unusable!(players).freeze
         unless variant.nil?
@@ -66,6 +72,10 @@ module VBlank
 
         super
       end
+
+      # The consoles the game is for: the ones it names, or the one console this build names when it
+      # was given no list.
+      def game_consoles = consoles || [console].compact
     end
   end
 end
