@@ -22,8 +22,10 @@ module VBlank
           module Int32
             module_function
 
-            # Every routine, written into +asm+, and the quick memory they use (from +memory+).
-            def emit(asm, memory)
+            # Every routine, written into +asm+, and the quick memory they use (from +memory+);
+            # +byte_divides+ for a game that divides by a byte written in it (Lowering#divides_by_written_bytes?),
+            # which adds the routines that do that (#emit_divide_by_byte).
+            def emit(asm, memory, byte_divides: false)
               s = memory.scratch
               emit_sums(asm)
               emit_compare(asm, s)
@@ -32,6 +34,7 @@ module VBlank
               emit_multiply_by_byte(asm, s)
               emit_multiply_low_bytes(asm)
               emit_divide(asm, s)
+              emit_divide_by_byte(asm, s) if byte_divides
               emit_shifts(asm)
               emit_fractions(asm, s)
             end
@@ -629,6 +632,101 @@ module VBlank
               asm.or_a(:a)
               asm.ret(:z)
               asm.jump("rt_neg32")
+            end
+
+            # DIVIDING BY A BYTE WRITTEN IN THE GAME, 3 to 255 (Lowering#emit_divide_by_written_byte):
+            # BCDE ÷ A as Int32.div has it, and BCDE % A as Int32.mod has it for a divisor above
+            # nought. The lowering gives a negative divisor its sign.
+            #
+            # The long division is rt_udiv32's, a binary digit at a time, but what is over can never
+            # reach twice the divisor, so it fits A, and the divisor fits H: a step is a shift of one
+            # byte of the number and a compare of two registers, where rt_udiv32 shifts and subtracts
+            # four bytes in memory. The number goes through a byte at a time, top first, each byte
+            # turning into that byte of the quotient as its digits move out (#emit_byte_digits). And
+            # while nothing is over, a byte below the divisor is a quotient byte of nought with the
+            # byte itself over, which is all a small number's top bytes need.
+            def emit_divide_by_byte(asm, s)
+              # BCDE ÷ H, BCDE not below nought: the quotient in BCDE and what is over in A.
+              asm.label("rt_udiv32_by_byte")
+              asm.xor_a(:a)
+              %i[b c d e].each do |register|
+                digits = "rt_udiv32_by_byte_#{register}"
+                done = "rt_udiv32_by_byte_#{register}_done"
+                asm.or_a(:a)
+                asm.jump_relative(:nz, digits) # something over: every digit of this byte is needed
+                asm.load(:a, register)
+                asm.cp_a(:h)
+                asm.jump_relative(:c, "#{done}_small")
+                asm.xor_a(:a)
+                asm.label(digits)
+                asm.load(:l, register)
+                asm.call("rt_byte_digits")
+                asm.load(register, :l)
+                asm.jump_relative(done)
+                asm.label("#{done}_small") # the byte is what is over, and its quotient nought
+                asm.load(register, 0)
+                asm.label(done)
+              end
+              asm.ret
+
+              emit_byte_digits(asm)
+
+              # The numerator's size divided, its sign kept in s.sign_n.
+              asm.label("rt_sized_by_byte")
+              asm.load(:h, :a)
+              asm.load(:a, :b)
+              asm.and_a(0x80)
+              asm.load_high(s.sign_n, :a)
+              asm.call("rt_abs32")
+              asm.jump("rt_udiv32_by_byte")
+
+              # BCDE = BCDE ÷ A: the quotient of the sizes, turned round for a number below nought.
+              asm.label("rt_div32_by_byte")
+              asm.call("rt_sized_by_byte")
+              asm.load_high(:a, s.sign_n)
+              asm.or_a(:a)
+              asm.ret(:z)
+              asm.jump("rt_neg32")
+
+              # BCDE = BCDE % A: what is over, counted back from the divisor for a number below nought
+              # unless it is nought.
+              asm.label("rt_mod32_by_byte")
+              asm.call("rt_sized_by_byte")
+              asm.load(:bc, 0)
+              asm.load(:d, 0)
+              asm.load(:e, :a)
+              asm.or_a(:a)
+              asm.ret(:z)
+              asm.load_high(:a, s.sign_n)
+              asm.or_a(:a)
+              asm.ret(:z)
+              asm.load(:a, :h)
+              asm.sub_a(:e)
+              asm.load(:e, :a)
+              asm.ret
+            end
+
+            # rt_byte_digits: L's eight binary digits, top first, brought down after A (what is over,
+            # below H) and divided by H: L becomes that byte of the quotient and A what is over. A step
+            # moves L's top digit into A; where H then goes into A it is taken off, and a one goes into
+            # the bottom of L, which the shift left empty. A carry out of A means what is over passed
+            # 255, which only a divisor over 127 can make, and which H always goes into.
+            def emit_byte_digits(asm)
+              asm.label("rt_byte_digits")
+              8.times do |digit|
+                take = "rt_byte_digits_take_#{digit}"
+                stays = "rt_byte_digits_stays_#{digit}"
+                asm.sla(:l)
+                asm.rla
+                asm.jump_relative(:c, take)
+                asm.cp_a(:h)
+                asm.jump_relative(:c, stays)
+                asm.label(take)
+                asm.sub_a(:h)
+                asm.inc(:l)
+                asm.label(stays)
+              end
+              asm.ret
             end
 
             # SHIFTS. BCDE << (HL) and BCDE >> (HL), the second keeping the sign. A count below

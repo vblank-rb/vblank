@@ -93,10 +93,11 @@ module VBlank
           # says its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
           # sprite layer is on there. +indexes_in_banks+ says the tables of where its pictures, its
           # screens' tiles and colours and its maps are kept are in a bank (GBC#build_in_view).
+          # +byte_divides+ says it divides by a byte written in it (Lowering#divides_by_written_bytes?).
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
                        count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,
-                       sprites_over_picture: false, indexes_in_banks: false)
+                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
             # recording writes down every bank put in view, for the timer to put back (Runtime::Clips).
@@ -106,7 +107,7 @@ module VBlank
             Boot.emit(asm, main: "rt_main", clips: !shown.nil?, backdrop: art.backdrop_at_power_on, memory: memory)
             Boot.emit_display_off(asm)
             Boot.emit_clear(asm)
-            Int32.emit(asm, memory)
+            Int32.emit(asm, memory, byte_divides: byte_divides)
             Calls.emit(asm, memory)
             Frame.emit(asm, memory, together: together, count_at: count_at, songs: songs)
             Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues, half_queues: half_queues)

@@ -59,9 +59,10 @@ class TestConstantDivisor < Minitest::Test
     0x1234_5678, -0x1234_5678, Int32::MAX, Int32::MIN, Int32::MIN + 1, Int32::MAX - 1
   ].freeze
 
-  # Every sign, the digit and the minute, a divisor needing the numerator added back (7, 60), powers of
-  # two both ways, the ends of the range, and the three left to a divide routine (1, 0, -1).
-  DIVISORS = [3, -3, 7, 10, -10, 60, 100, 641, 1000, 4, -4, 16, -16, 1 << 30, Int32::MAX, Int32::MIN, 1, 0, -1].freeze
+  # Every sign, the digit and the minute, a divisor needing the numerator added back (7, 60), the top of
+  # a byte (255: what is over passes a byte as a byte-wide division goes), powers of two both ways, the
+  # ends of the range, and the three left to a divide routine (1, 0, -1).
+  DIVISORS = [3, -3, 7, 10, -10, 60, 100, 255, 641, 1000, 4, -4, 16, -16, 1 << 30, Int32::MAX, Int32::MIN, 1, 0, -1].freeze
 
   def test_dividing_by_a_written_number_gives_what_int32_gives
     wrong = wrong_answers(:/) { |n, d| Int32.div(n, d) }

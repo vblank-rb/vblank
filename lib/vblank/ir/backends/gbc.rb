@@ -29,6 +29,7 @@ require_relative "gbc/lowering/tile_runs"
 require_relative "gbc/lowering/sprite_tiles"
 require_relative "gbc/lowering/clock"
 require_relative "gbc/lowering/written_numbers"
+require_relative "gbc/lowering/division"
 require_relative "gbc/lowering/kept_variables"
 require_relative "gbc/lowering"
 require_relative "gbc/sound_log"
@@ -386,7 +387,8 @@ module VBlank
                                              byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?,
                                              half_queues: lowering.keeps_half_queues?,
                                              sprites_over_picture: IR::SpritesOverPicture.any?(program),
-                                             indexes_in_banks: view.indexes_in_banks)
+                                             indexes_in_banks: view.indexes_in_banks,
+                                             byte_divides: lowering.divides_by_written_bytes?)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           Lowered.new(lowering: lowering, memory: memory, sections: runtime + game + data)
         end

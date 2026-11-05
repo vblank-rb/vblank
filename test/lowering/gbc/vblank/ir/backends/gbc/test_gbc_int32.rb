@@ -26,10 +26,13 @@ class TestGBCInt32 < Minitest::Test
   VALUES = (EDGES + RANDOM).freeze
   SHIFTS = [-33, -1, 0, 1, 4, 7, 8, 9, 15, 16, 24, 31, 32, 33, 64, 256, 257].freeze
   FRACTION_BITS = [0, 1, 8, 12, 16, 31, 32].freeze
+  # Divisors for rt_div32_by_byte and rt_mod32_by_byte: small ones, the digit, and those over 127,
+  # where what is over can pass a byte between steps.
+  BYTE_DIVISORS = [3, 5, 7, 10, 12, 60, 100, 127, 129, 200, 254, 255].freeze
 
   # Each sum the cartridge knows, by the number the host writes for it.
   OPS = %w[add sub mul div mod bit_and bit_or bit_xor shift_left shift_right neg bit_not abs
-           lt le gt ge eq ne both either mul_fix div_fix].freeze
+           lt le gt ge eq ne both either mul_fix div_fix div_by_byte mod_by_byte].freeze
 
   # The cartridge's work memory: whether a batch is waiting (1) or done (2), how many sums it
   # holds, and the sums: each the op, a, b and c, and a word for the answer.
@@ -52,6 +55,8 @@ class TestGBCInt32 < Minitest::Test
     when "ne" then Int32.cmp(a, b).zero? ? 0 : 1
     when "both" then !a.zero? && !b.zero? ? 1 : 0
     when "either" then !a.zero? || !b.zero? ? 1 : 0
+    when "div_by_byte" then Int32.div(a, b)
+    when "mod_by_byte" then Int32.mod(a, b)
     else Int32.public_send(name, a, b)
     end
   end
@@ -62,7 +67,8 @@ class TestGBCInt32 < Minitest::Test
     one = %w[neg abs bit_not].product(VALUES.map { |a| [a, 0] })
     shifting = %w[shift_left shift_right].product(VALUES.product(SHIFTS))
     fractions = %w[mul_fix div_fix].product(EDGES.product(EDGES.first(20), FRACTION_BITS).map { |a, b, c| [a, b, c] })
-    (two + one + shifting).map { |name, (a, b)| [name, a, b, 0] } + fractions.map { |name, (a, b, c)| [name, a, b, c] }
+    by_byte = %w[div_by_byte mod_by_byte].product(VALUES.product(BYTE_DIVISORS))
+    (two + one + shifting + by_byte).map { |name, (a, b)| [name, a, b, 0] } + fractions.map { |name, (a, b, c)| [name, a, b, c] }
   end
 
   def test_every_sum_matches_int32
@@ -128,7 +134,7 @@ class TestGBCInt32 < Minitest::Test
     GBC::Runtime::Boot.emit(asm, main: "main")
     GBC::Runtime::Boot.emit_display_off(asm)
     GBC::Runtime::Boot.emit_clear(asm)
-    GBC::Runtime::Int32.emit(asm, memory)
+    GBC::Runtime::Int32.emit(asm, memory, byte_divides: true)
     asm.label("rt_start")
     asm.ret
     asm.label("rt_vblank_interrupt")
@@ -207,6 +213,11 @@ class TestGBCInt32 < Minitest::Test
       asm.call("rt_cmp32")
       asm.cp_a(k)
       asm.jump(bool)
+    end
+    { "div_by_byte" => "rt_div32_by_byte", "mod_by_byte" => "rt_mod32_by_byte" }.each do |name, routine|
+      asm.label("op_#{name}")
+      asm.load(:a, [:hl]) # the divisor's low byte, which is all of it
+      asm.jump(routine)
     end
   end
 end

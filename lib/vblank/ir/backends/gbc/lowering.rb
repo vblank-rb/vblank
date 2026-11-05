@@ -84,6 +84,7 @@ module VBlank
           include SpriteTiles
           include Clock
           include WrittenNumbers
+          include Division
           include KeptVariables
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
@@ -276,6 +277,10 @@ module VBlank
             @program.walk.any? { |node| node.kind == :var_ref && node.name == Frames::COUNT } &&
               @program.walk.any? { |node| node.kind == :wait_vblank }
           end
+
+          # Whether the game divides by a byte written in it (Division#emit_divide_by_number), so its
+          # runtime carries the routines that do that. Asked once the game's routines are made.
+          def divides_by_written_bytes? = @divides_by_written_bytes || false
 
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
@@ -1883,6 +1888,8 @@ module VBlank
             return if node.op == :& && emit_and_with_byte(node)
             return if %i[& | ^].include?(node.op) && emit_bitwise_with_written_number(node)
             return if %i[<< >>].include?(node.op) && emit_shift_by_written_count(node)
+            return if node.op == :/ && emit_divide_by_number(node)
+            return if node.op == :% && emit_remainder_by_number(node)
 
             sum_of_two(node.lhs, node.rhs, SUMS.fetch(node.op))
           end
