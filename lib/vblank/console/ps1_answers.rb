@@ -250,8 +250,7 @@ module VBlank
                                               color_walk],
         "sound" => %i[enable_sound define_sound beep noise wave stop_wave song play_song stop_music hold_music
                       release_music music_volume fade_music_in fade_music_out songs sound_effects sample instrument],
-        "save memory" => %i[save_var save_data saves_keep_everything],
-        "numbers with a fraction" => %i[var]
+        "save memory" => %i[save_var save_data saves_keep_everything]
       })
 
       # What the page says of the steps the PlayStation's build does not make yet: for each part, the
@@ -261,8 +260,7 @@ module VBlank
           not_yet.empty?
 
         "An answer above is what the PlayStation does with a verb. The build for it is still growing,\n" \
-          "and a game that reaches one of these steps is refused, naming the step, until it is made.\n" \
-          "`var` waits on its part only when it holds a number with a fraction (a Float).\n\n" +
+          "and a game that reaches one of these steps is refused, naming the step, until it is made.\n\n" +
           not_yet.map do |part, kinds|
             verbs = VERBS_NOT_MADE_YET.fetch(part, []).map { |verb| "`#{verb}`" }.join(", ")
             "- #{part}: the verbs #{verbs}; the steps #{kinds.map { |kind| "`#{kind}`" }.join(', ')}"

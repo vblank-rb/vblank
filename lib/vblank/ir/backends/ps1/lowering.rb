@@ -66,7 +66,8 @@ module VBlank
                                            list_len: :value_of_list_len, table_get: :value_of_table_get,
                                            timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
                                            data_byte: :value_of_data_byte, players_connected: :value_of_players_connected,
-                                           local_player: :value_of_local_player
+                                           local_player: :value_of_local_player, mul_fix: :value_of_mul_fix,
+                                           div_fix: :value_of_div_fix
                                          })
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the day
@@ -84,8 +85,7 @@ module VBlank
                                                                                           show_picture_group pixels_overlap],
                                                     "sound" => %i[enable_sound beep noise wave stop_wave play_song stop_music
                                                                   hold_music play_from_list play_sound_effect play_sample stop_sample],
-                                                    "save memory" => %i[save_init save_store save_write save_erase save_read save_sum],
-                                                    "numbers with a fraction" => %i[mul_fix div_fix]
+                                                    "save memory" => %i[save_init save_store save_write save_erase save_read save_sum]
                                                   })
 
           # Where a list went: the address of its header, how many items it holds, the bytes of a slot,
@@ -819,6 +819,32 @@ module VBlank
               end
             end
           end
+
+          # Int32.mul_fix: the two numbers multiplied by MULT, which leaves all 64 bits of the product, its
+          # sign included, in HI (the top half) and LO (the bottom). Brought down by the fraction's bits, the
+          # answer is the 32 bits that start that many bits up: LO's top bits below HI's bottom ones. Moving
+          # the whole 64 bits down keeps the sign, so a negative product too small to show is -1, rounded
+          # down as the interpreter's is; and the bits above the 32 kept are dropped, so an answer too big
+          # wraps as the interpreter's does.
+          def value_of_mul_fix(node)
+            bits = node.fraction_bits
+            with_right_operand(node.lhs, node.rhs) do
+              @asm.mult(:v0, :v1)
+              case bits
+              when 0 then @asm.mflo(:v0)
+              when 32 then @asm.mfhi(:v0)
+              else
+                @asm.mflo(:v0)
+                @asm.mfhi(:t0)
+                @asm.srl(:v0, :v0, bits)
+                @asm.sll(:t0, :t0, 32 - bits)
+                @asm.or(:v0, :v0, :t0)
+              end
+            end
+          end
+
+          # Int32.div_fix: the runtime's divide of a numerator wider than 32 bits (Runtime::Int32#emit_div_fix).
+          def value_of_div_fix(node) = runtime_call("rt_div_fix", [node.lhs, node.rhs, Build.int(node.fraction_bits)])
 
           # A sum with a number written in the program that fits in the instruction: ADDIU for adding a
           # number of 16 bits with its sign (and subtracting one, as adding its negative), ANDI, ORI and

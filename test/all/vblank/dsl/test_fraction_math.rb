@@ -79,6 +79,61 @@ class TestFractionMath < Minitest::Test
     assert_equal(-(2.25 * ONE), game_player.run(prog)[:out])
   end
 
+  MIN = -0x8000_0000
+  MAX = 0x7FFF_FFFF
+
+  # The awkward ends of multiplying: -1.0 times the lowest number is one past the highest, and wraps
+  # back round to the lowest; a product past 32 bits keeps its low bits (2**30 * 2**30 brought down by
+  # 16 is 2**44, whose low 32 bits are nought); and a negative product too small to show rounds DOWN, to
+  # -1, while the positive one rounds to nought.
+  def test_a_product_too_big_wraps_and_a_negative_one_rounds_down
+    run = game_player.run(fraction_program(
+                            minus_one_times_lowest: [:mul_fix, MIN, -ONE, 16],
+                            past_32_bits: [:mul_fix, 1 << 30, 1 << 30, 16],
+                            tiny_negative: [:mul_fix, -1, 1, 16],
+                            tiny_positive: [:mul_fix, 1, 1, 16],
+                            whole_numbers: [:mul_fix, -7, 6, 0],
+                            top_half_alone: [:mul_fix, 1 << 30, -8, 32]
+                          ))
+
+    assert_equal MIN, run[:minus_one_times_lowest]
+    assert_equal 0, run[:past_32_bits]
+    assert_equal(-1, run[:tiny_negative])
+    assert_equal 0, run[:tiny_positive]
+    assert_equal(-42, run[:whole_numbers])
+    assert_equal(-2, run[:top_half_alone], "2**30 * -8 is -2**33, and its top 32 bits are -2")
+  end
+
+  # Dividing: toward nought, never down (-1.0 / 3 is -0.33333, not -0.33334); an answer too big to hold
+  # is held at the end of the range (1.0 over the smallest fraction is 2**32), and so is the lowest number
+  # over -1, which a plain divide wraps; nought as the divisor gives 1, or -1 for a numerator below
+  # nought, and 1 for nought over nought.
+  def test_a_quotient_truncates_toward_nought_and_holds_at_the_ends
+    run = game_player.run(fraction_program(
+                            minus_a_third: [:div_fix, -ONE, 3 * ONE, 16],
+                            over_smallest: [:div_fix, ONE, 1, 16],
+                            under_smallest: [:div_fix, ONE, -1, 16],
+                            lowest_over_minus_one: [:div_fix, MIN, -1, 0],
+                            over_nought: [:div_fix, 3 * ONE, 0, 16],
+                            negative_over_nought: [:div_fix, -3 * ONE, 0, 16],
+                            nought_over_nought: [:div_fix, 0, 0, 16],
+                            near_nought: [:div_fix, ONE_AND_A_HALF, -3, 16],
+                            three_over_one_and_a_half: [:div_fix, 3 * ONE, ONE_AND_A_HALF, 16],
+                            highest_over_highest: [:div_fix, MAX, MAX, 31]
+                          ))
+
+    assert_equal(-21_845, run[:minus_a_third])
+    assert_equal MAX, run[:over_smallest]
+    assert_equal MIN, run[:under_smallest]
+    assert_equal MAX, run[:lowest_over_minus_one]
+    assert_equal 1, run[:over_nought]
+    assert_equal(-1, run[:negative_over_nought])
+    assert_equal 1, run[:nought_over_nought]
+    assert_equal MIN, run[:near_nought], "1.5 over -3/65536 is exactly the lowest number"
+    assert_equal 2 * ONE, run[:three_over_one_and_a_half]
+    assert_equal MAX, run[:highest_over_highest], "1.0 with 31 bits of fraction does not fit"
+  end
+
   # fraction_bits is settled while building, so a nonsensical one is a build error
   # rather than a ROM that shifts by a number the chip cannot encode.
   def test_an_impossible_number_of_fraction_bits_is_a_friendly_error
@@ -87,5 +142,18 @@ class TestFractionMath < Minitest::Test
     end
     assert_match(/fraction_bits/, err.message)
     assert_match(/0 to 32/, err.message)
+  end
+
+  private
+
+  # A program that sets a variable for each name to [kind, a, b, bits] worked out. The two numbers are
+  # variables first, so no build can work the answer out ahead of the game.
+  def fraction_program(sums)
+    build = VBlank::IR::Build
+    statements = sums.flat_map do |name, (kind, a, b, bits)|
+      [build.set(:"#{name}_a", a), build.set(:"#{name}_b", b),
+       build.set(name, build.public_send(kind, build.var_ref(:"#{name}_a"), build.var_ref(:"#{name}_b"), bits))]
+    end
+    build.program(*statements, build.halt)
   end
 end
