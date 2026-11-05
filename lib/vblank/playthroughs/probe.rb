@@ -244,7 +244,8 @@ module VBlank
 
         where = boundary == 2 ? "an even address" : "a multiple of #{boundary}"
         raise ArgumentError, "#{place} is at #{format('0x%X', at)}. A #{@kit.title} reads a value of #{width.bytes} " \
-                             "bytes only at #{where}. Use a smaller width, or the right address."
+                             "bytes only at #{where}, so its games keep none anywhere else. If the value " \
+                             "really is there, read or write it a byte at a time as :u8. Otherwise use the right address."
       end
 
       def refuse_unknown_label!(place)
