@@ -185,6 +185,19 @@ where drawing the console's way puts a pixel somewhere other than the interprete
 is the console's picture, not a mismatch: it is neither worked off at a cost in speed nor brought to
 the operator as a choice. Pick the way the console's own games drew, and make it fast.
 
+**A lowering replaces a shared piece only with a measured reason, written down where the
+override is, and every override is listed in one place a test checks.** The operator's standing
+rule (2026-11-05, after the off-window face skip moved into `IR::PlaceDrawing` and cost the Advance
+time and code it got back by keeping its own). Work shared in the IR or a shared module is the
+default for every lowering. A lowering that does the same job its own way says so beside its code,
+with the measurement that makes its way cheaper on its console, and names itself in the list, so
+"which consoles do this their own way, and why" is answered in one place. An override changes only
+how a console reaches the answer, never the answer: the checked runs hold every lowering to the
+interpreter (and the picture to the console's own model), so a wrong override fails its run. When a
+shared piece is improved, the list shows which consoles do not get the improvement and must be
+measured again. The same job written more than once with no entry in the list is drift, and is
+filed as a bug.
+
 A new backend is named for the platform it targets (`JS`, not `Canvas` or `V8`), lives in
 `lib/vblank/ir/backends/<name>.rb` beside a folder of the same name, and is required from
 `lib/vblank/ir/backends.rb`.
