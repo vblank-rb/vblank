@@ -18,8 +18,8 @@
       "data": 0
     },
     "breakout@gbc": {
-      "code": 11511,
-      "data": 48036
+      "code": 11703,
+      "data": 47950
     },
     "buffered_bounce": {
       "code": 4942,
@@ -34,8 +34,8 @@
       "data": 0
     },
     "chip_band@gbc": {
-      "code": 13393,
-      "data": 13928
+      "code": 13585,
+      "data": 13960
     },
     "clock": {
       "code": 25526,
@@ -74,7 +74,7 @@
       "data": 0
     },
     "flowers@gbc": {
-      "code": 6574,
+      "code": 6766,
       "data": 4832
     },
     "font_styles": {
@@ -114,7 +114,7 @@
       "data": 0
     },
     "level@genesis": {
-      "code": 4542,
+      "code": 4518,
       "data": 2370
     },
     "lit_corridor": {
@@ -126,7 +126,7 @@
       "data": 0
     },
     "maze@genesis": {
-      "code": 4008,
+      "code": 3992,
       "data": 2098
     },
     "meadow": {
@@ -138,8 +138,8 @@
       "data": 0
     },
     "pacman@gbc": {
-      "code": 8230,
-      "data": 14336
+      "code": 8422,
+      "data": 14512
     },
     "parallax": {
       "code": 2092,
@@ -170,8 +170,8 @@
       "data": 0
     },
     "pong_gbc@gbc": {
-      "code": 13582,
-      "data": 28000
+      "code": 13774,
+      "data": 28080
     },
     "raycaster": {
       "code": 6172,
@@ -239,10 +239,10 @@
     },
     "tower@gbc": {
       "code": 8604,
-      "data": 15840
+      "data": 16880
     },
     "tower@genesis": {
-      "code": 7392,
+      "code": 7336,
       "data": 3730
     },
     "two_rooms": {
@@ -255,7 +255,7 @@
     },
     "wanderers@gbc": {
       "code": 8018,
-      "data": 5600
+      "data": 5664
     }
   }
 }

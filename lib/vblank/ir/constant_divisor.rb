@@ -59,6 +59,11 @@ module VBlank
           value.bit_length - 1
         end
 
+        # How many places a divide by the size +size+ is a shift of: 0 for 1, which is the number as
+        # it is, and the bits of a power of two; nil for anything else. A lowering that shifts for a
+        # power of two asks this, so that a divide or remainder by 1 (or -1) costs no more.
+        def shift_bits(size) = size == 1 ? 0 : power_of_two_bits(size)
+
         # +numerator+ divided by the divisor +recipe+ was made for, truncating toward nought, step by
         # step as a lowering's instructions do it: the high half of the signed product, the numerator
         # added back for a recipe that asks, an arithmetic shift down (which rounds toward minus

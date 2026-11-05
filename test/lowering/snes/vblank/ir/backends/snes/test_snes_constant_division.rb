@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "stringio"
+require "constant_division_games"
 
 # Dividing by a number written in the game on the Super Nintendo: a number under 65536 by a byte goes
 # straight to the console's divider where the sum is, and a power of two of either sign is a shift or
@@ -9,45 +10,36 @@ require "stringio"
 # test/all/vblank/ir/test_constant_divisor.rb's; this is that the shortcut is taken, read from where
 # bsnes says the time went.
 class TestSNESConstantDivision < Minitest::Test
+  include ConstantDivisionGames
+
   DIVIDE_ROUTINES = /\Art_(div|mod|udiv)32/
 
-  # A score under 65536 pulled apart into digits, as drawing a number does: each pass a divide and a
-  # remainder, by ten or by a power of two, a hundred times.
-  private def digits(divisor)
-    VBlank.game("DIGITS", consoles: %i[snes]) do
-      total = var :total, 0
-      n = var :n, 0
-      d = var :d, 10
-      game_loop do
-        n = (n + 7919) & 0x7FFF
-        repeat(100) do |i|
-          total += case divisor
-                   when :worked_out then ((n + i) / d) % d
-                   when :power_of_two then ((n + i) / -16) % -16
-                   else ((n + i) / 10) % 10
-                   end
-        end
-      end
-    end
-  end
-
-  private def profile(game)
+  # +settle+ passes first: without +small+, ten take the numbers past 65536.
+  private def profile(divisor, small: true, settle: 2)
+    game = digits_game(:snes, divisor, repeats: 100, small: small)
     rom = game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
-    rom.profile(out: StringIO.new, settle: 2, frames: 4)
+    rom.profile(out: StringIO.new, settle: settle, frames: 4)
   end
 
-  private def divide_share(result) = result.runtime.select { |spent| spent.routine.to_s.match?(DIVIDE_ROUTINES) }.sum(&:share)
-
-  def test_a_written_byte_never_reaches_the_divide_routine
-    assert_equal 0, divide_share(profile(digits(:written)))
+  def test_a_number_under_65536_by_a_written_byte_never_reaches_the_divide_routine
+    assert_equal 0, divide_share(profile(:written), DIVIDE_ROUTINES)
   end
 
   def test_a_written_negative_power_of_two_never_reaches_the_divide_routine
-    assert_equal 0, divide_share(profile(digits(:power_of_two)))
+    assert_equal 0, divide_share(profile(:power_of_two, small: false), DIVIDE_ROUTINES)
   end
 
-  # ...where a divisor the game works out does, so the profile would have shown it.
+  # ...where a divisor the game works out does, so the profile would have shown it; and the pass of
+  # it takes two frames where the written divisor's takes one.
   def test_a_worked_out_divisor_still_divides
-    assert_operator divide_share(profile(digits(:worked_out))), :>, 0
+    worked_out = profile(:worked_out)
+
+    assert_operator divide_share(worked_out, DIVIDE_ROUTINES), :>, 0
+    assert_operator worked_out.fps, :<, profile(:written).fps
+  end
+
+  # A number with a top half by a written byte is the runtime's, which divides it.
+  def test_a_wide_number_by_a_written_byte_reaches_the_divide_routine
+    assert_operator divide_share(profile(:written, small: false, settle: 10), DIVIDE_ROUTINES), :>, 0
   end
 end

@@ -11,8 +11,8 @@ module VBlank
           # The runtime's rt_div32 and rt_mod32 work a quotient out a bit at a time, 32 turns of a loop of
           # seven instructions whatever the numbers are. The 68000 has a divide of its own, DIVU, which
           # takes a 32-bit number and a 16-bit divisor and leaves a 16-bit quotient beside the 16-bit
-          # remainder in one instruction, about as long as four turns of that loop: what the console's
-          # own games used for a score's digits. Its one catch is the quotient's size. A quotient that will not fit 16 bits
+          # remainder in one instruction, about as long as four turns of that loop. Its one catch is the
+          # quotient's size. A quotient that will not fit 16 bits
           # sets a flag and leaves the number as it was, so a number the divisor goes into 65536 times or
           # more is divided as on paper in two pieces: its top half first, then the remainder of that in
           # front of its bottom half. Each piece's quotient fits, since what comes down in front of the
@@ -23,8 +23,8 @@ module VBlank
           # takes the divisor's (Int32.mod, Ruby's meaning). The lowest number's size, 2**31, is a number
           # DIVU reads correctly, since it reads the register as unsigned.
           #
-          # A power of two is a shift, and a divisor past 16 bits, which DIVU cannot take, still goes to
-          # the runtime; so do 1, 0 and -1, which are not worth a case of their own.
+          # A power of two is a shift, and 1 or -1 the number itself or turned round. A divisor past 16
+          # bits, which DIVU cannot take, still goes to the runtime, and so does 0.
           module Division
             # The biggest divisor DIVU takes.
             WIDEST_DIVU_DIVISOR = 0xFFFF
@@ -38,7 +38,7 @@ module VBlank
 
               size = divisor.abs
               value(node.lhs)
-              bits = ConstantDivisor.power_of_two_bits(size)
+              bits = ConstantDivisor.shift_bits(size)
               return emit_quotient_by_power_of_two(bits, size, negated: divisor.negative?) if bits
 
               emit_size_of_d0
@@ -59,7 +59,7 @@ module VBlank
 
               size = divisor.abs
               value(node.lhs)
-              return emit_remainder_by_power_of_two(size, negative: divisor.negative?) if ConstantDivisor.power_of_two_bits(size)
+              return emit_remainder_by_power_of_two(size, negative: divisor.negative?) if ConstantDivisor.shift_bits(size)
 
               emit_size_of_d0
               emit_unsigned_divide_by_word(size)
@@ -68,23 +68,25 @@ module VBlank
               true
             end
 
-            # A divisor this file divides by: a power of two, or a number DIVU takes, either sign.
+            # A divisor this file divides by: 1, a power of two, or a number DIVU takes, either sign.
             def written_divisor?(divisor)
-              return false unless divisor && divisor.abs > 1
+              return false if divisor.nil? || divisor.zero?
 
-              ConstantDivisor.power_of_two_bits(divisor.abs) || divisor.abs <= WIDEST_DIVU_DIVISOR
+              ConstantDivisor.shift_bits(divisor.abs) || divisor.abs <= WIDEST_DIVU_DIVISOR
             end
 
-            # D0 divided by 2**+bits+ (+size+), truncating toward nought, and turned round when +negated+.
-            # An arithmetic shift rounds toward minus infinity, so a number below nought has one less
-            # than the size added first: -7 / 2 is (-7 + 1) >> 1, which is -3. True.
+            # D0 divided by 2**+bits+ (+size+, 1 for none), truncating toward nought, and turned round
+            # when +negated+. An arithmetic shift rounds toward minus infinity, so a number below nought
+            # has one less than the size added first: -7 / 2 is (-7 + 1) >> 1, which is -3. True.
             def emit_quotient_by_power_of_two(bits, size, negated:)
-              positive = fresh("positive")
-              @asm.tst(:l, @asm.d(0))
-              @asm.branch(:pl, positive)
-              emit_add_to_d0(size - 1)
-              @asm.label(positive)
-              emit_shift_of_d0(:asr, bits)
+              unless bits.zero?
+                positive = fresh("positive")
+                @asm.tst(:l, @asm.d(0))
+                @asm.branch(:pl, positive)
+                emit_add_to_d0(size - 1)
+                @asm.label(positive)
+                emit_shift_of_d0(:asr, bits)
+              end
               @asm.neg(:l, @asm.d(0)) if negated
               true
             end

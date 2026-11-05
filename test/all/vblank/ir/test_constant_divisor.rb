@@ -52,6 +52,10 @@ class TestConstantDivisor < Minitest::Test
     assert_equal [nil, nil, nil, nil], [1, 0, 10, -16].map { |value| ConstantDivisor.power_of_two_bits(value) }
   end
 
+  def test_a_size_of_one_is_a_shift_of_none
+    assert_equal [0, 1, 4, nil, nil], [1, 2, 16, 0, 10].map { |size| ConstantDivisor.shift_bits(size) }
+  end
+
   # --- the game, on every lowering -------------------------------------------------------------------
 
   NUMERATORS = [

@@ -634,7 +634,7 @@ module VBlank
               asm.jump("rt_neg32")
             end
 
-            # DIVIDING BY A BYTE WRITTEN IN THE GAME, 3 to 255 (Lowering#emit_divide_by_written_byte):
+            # DIVIDING BY A BYTE WRITTEN IN THE GAME, 3 to 255 (Lowering::Division#emit_divide_by_number):
             # BCDE ÷ A as Int32.div has it, and BCDE % A as Int32.mod has it for a divisor above
             # nought. The lowering gives a negative divisor its sign.
             #
@@ -671,8 +671,8 @@ module VBlank
 
               emit_byte_digits(asm)
 
-              # The numerator's size divided, its sign kept in s.sign_n.
-              asm.label("rt_sized_by_byte")
+              # The numerator's absolute value divided by A, its sign kept in s.sign_n.
+              asm.label("rt_udiv32_abs_by_byte")
               asm.load(:h, :a)
               asm.load(:a, :b)
               asm.and_a(0x80)
@@ -682,7 +682,7 @@ module VBlank
 
               # BCDE = BCDE ÷ A: the quotient of the sizes, turned round for a number below nought.
               asm.label("rt_div32_by_byte")
-              asm.call("rt_sized_by_byte")
+              asm.call("rt_udiv32_abs_by_byte")
               asm.load_high(:a, s.sign_n)
               asm.or_a(:a)
               asm.ret(:z)
@@ -691,7 +691,7 @@ module VBlank
               # BCDE = BCDE % A: what is over, counted back from the divisor for a number below nought
               # unless it is nought.
               asm.label("rt_mod32_by_byte")
-              asm.call("rt_sized_by_byte")
+              asm.call("rt_udiv32_abs_by_byte")
               asm.load(:bc, 0)
               asm.load(:d, 0)
               asm.load(:e, :a)
