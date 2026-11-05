@@ -26,3 +26,4 @@ require_relative "playthroughs/comparison_report" # ...and the folder it writes 
 require_relative "playthroughs/comparison_drift_report" # ......of a drift on a frame, on the same tape
 require_relative "playthroughs/comparison_moment_report" # ......and of a drift at a moment, on the same script
 require_relative "playthroughs/command_line" # what `vblank run` with a script or tape, and `vblank compare`, do
+require_relative "playthroughs/probe" # any cartridge driven a frame at a time by hand, read by its memory's labels

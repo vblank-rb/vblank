@@ -341,6 +341,37 @@ module VBlank
         self
       end
 
+      # WRITE THE CONSOLE'S WHOLE STATE to the file +path+, for #load_state to put it back: every
+      # byte of its memory and where its processor is. It is how a moment that took long to reach is
+      # asked several questions, each from the moment itself.
+      #
+      # @return [self]
+      def save_state(path)
+        ensure_rendered!
+        unless @probe.respond_to?(:save_state)
+          raise ArgumentError, "A #{Console.for(@rom.console).title} cartridge cannot save its state here. " \
+                               "Play it to the moment again instead."
+        end
+
+        @probe.save_state(path.to_s)
+        self
+      end
+
+      # WRITE A 32-BIT WORD to the bus at +address+ (a multiple of four), in the processor's byte
+      # order, into the game while it runs: how a state no drive reaches cheaply is reached.
+      #
+      # @return [self]
+      def write32(address, value)
+        ensure_rendered!
+        unless @probe.respond_to?(:write32)
+          raise ArgumentError, "A #{Console.for(@rom.console).title} cartridge cannot have its memory written here. " \
+                               "Reach the state by playing to it."
+        end
+
+        @probe.write32(address, value)
+        self
+      end
+
       # Check if the entire screen is black (nothing rendered).
       #
       # THIS ONE IS ASKED OF WHAT THE EMULATOR HOLDS, eight bits a channel, and so it is
