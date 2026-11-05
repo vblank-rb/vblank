@@ -82,7 +82,8 @@ module VBlank
         @folder = File.join(@base, library[0, 16])
         @fresh = !env[SKIP_SETTING].to_s.empty?
         @inputs = files_digest(inputs.map { File.expand_path(it) })
-        @sources = sources && files_digest(sources.flat_map { Dir.glob(it) }.sort)
+        # A glob such as "lib/**/*" matches the folders as well as the files; only files have contents.
+        @sources = sources && files_digest(sources.flat_map { Dir.glob(it) }.select { File.file?(it) }.uniq.sort)
         @library = library
         @ruby = "#{RUBY_VERSION} #{RUBY_PLATFORM}"
         @made_at = Time.now - 1 # a second early, for a file system that keeps whole seconds

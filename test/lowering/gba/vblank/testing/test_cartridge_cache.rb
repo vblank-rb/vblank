@@ -72,6 +72,21 @@ class TestCartridgeCache < Minitest::Test
     end
   end
 
+  # "lib/**/*" matches the folders under lib as well as its files; a folder has no contents to key on.
+  def test_sources_given_as_a_whole_tree_key_on_its_files_and_pass_over_its_folders
+    Dir.mktmpdir do |folder|
+      FileUtils.mkdir_p(File.join(folder, "lib", "rocket"))
+      source = File.join(folder, "lib", "rocket", "ship.rb")
+      File.write(source, "first")
+      tree = File.join(folder, "lib", "**", "*")
+      VBlank::Testing::CartridgeCache.new(folder, sources: [tree]).cartridge(dot_game(:red), console: :gba)
+
+      assert VBlank::Testing::CartridgeCache.new(folder, sources: [tree]).cached?(dot_game(:blue), console: :gba)
+      File.write(source, "second")
+      refute VBlank::Testing::CartridgeCache.new(folder, sources: [tree]).cached?(dot_game(:red), console: :gba)
+    end
+  end
+
   def test_a_cartridge_is_written_as_a_file_for_an_emulator
     Dir.mktmpdir do |folder|
       cache = VBlank::Testing::CartridgeCache.new(folder)
