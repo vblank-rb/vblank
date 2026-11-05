@@ -200,6 +200,7 @@ module VBlank
       @present_nodes = []      # every frame's present-objects node, filled with the full object list at finalize
       @frame_boundaries = []   # each frame's wait node, the anchor the scroll writes are inserted after at finalize
       @backgrounds = {}          # name → a DeclaredBackground, everything the build learns about one (see Builder::Tiled)
+      @background_handles = []   # every DSL::Background made, in the order declared
       @inline_scroll_nodes = []  # scroll nodes recorded at their call site, dropped once a frame boundary exists
       @inline_affine_nodes = []  # affine_background nodes recorded at their call site, moved to the frame boundary
       @inline_map_nodes = []     # show_map nodes recorded at their call site, dropped once a frame boundary exists

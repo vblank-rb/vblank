@@ -99,6 +99,14 @@ module VBlank
         # (Bitmap#list_drawn_from): its name and its colours.
         def drawn_lists = palettes.each_with_index.map { |colors, at| [palette_names&.at(at), colors] }
 
+        # Which of #drawn_lists is drawn with the list it +follows+: the only one, or, beside other
+        # lists, the one of that name (every other stays as drawn). nil on a background that follows none.
+        def followed_list_index
+          return nil unless follows
+
+          palettes.one? ? 0 : palette_names.index(follows)
+        end
+
         # Which of #drawn_lists a tile drawn from +drawn+ (its name and colours) takes its other
         # colours from: its own, or — for a tile given the colours themselves, beside tiles given
         # the list by name — the list of the layer that holds them.

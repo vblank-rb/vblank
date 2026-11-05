@@ -59,6 +59,9 @@ module RecolorGames
                                               moon: [[61, 41], [65, 41]], lamp: [[81, 41], [85, 41]],
                                               spark: [[101, 41], [105, 41]], backdrop: [[100, 100]] })
 
+  # Where #four_lists_game's text tile stands on the machine background, given text: true.
+  TEXT_PIXELS = Ractor.make_shareable([[17, 1], [21, 1]])
+
   # The pass that first tells :screen_colors and :light_colors to hold other colours.
   FOUR_LISTS_RECOLOR_PASS = 3
 
@@ -70,7 +73,11 @@ module RecolorGames
   # - :spark_colors, drawn by the spark sprite.
   # Each picture is 8x8, its left half the list's first colour after place 0 and its right half
   # the next (FOUR_LISTS_PIXELS). The sky makes two backgrounds at once, which the Color does not show.
-  private def four_lists_game(sky: false)
+  #
+  # +text+ puts a tile drawn from :screen_colors on the machine background beside its plate (at
+  # TEXT_PIXELS), and tells the background to draw that tile's list with :screen_colors and to keep
+  # its plate as drawn: words written in a changing list beside letters in a list that never changes.
+  private def four_lists_game(sky: false, text: false)
     builder = Builder.new
     builder.instance_eval do
       colors :screen_colors, SCREEN
@@ -87,9 +94,16 @@ module RecolorGames
         background(:sky, tiles: :sky_set, map: ["# "]).draw_with :screen_colors
       end
       image :plate, width: 8, height: 8, data: halves.(MACHINE[1], MACHINE[2]), colors: :machine_colors
-      tiles :machine_set, "#" => :plate
-      machine = background :machine, tiles: :machine_set, map: [" #"]
-      machine.draw_with :machine_colors
+      if text
+        image :letter, width: 8, height: 8, data: halves.(SCREEN[1], SCREEN[2]), colors: :screen_colors
+        tiles :machine_set, "#" => :plate, "o" => :letter
+        machine = background :machine, tiles: :machine_set, map: [" #o"]
+        machine.draw_with({ screen_colors: :screen_colors })
+      else
+        tiles :machine_set, "#" => :plate
+        machine = background :machine, tiles: :machine_set, map: [" #"]
+        machine.draw_with :machine_colors
+      end
       { bean: [:machine_colors, MACHINE[2], MACHINE[3], 40], moon: [:screen_colors, SCREEN[1], SCREEN[2], 60],
         lamp: [:light_colors, LIGHT[1], LIGHT[2], 80], spark: [:spark_colors, SPARK[1], SPARK[2], 100] }
         .each do |name, (list, left, right, x)|
@@ -558,5 +572,36 @@ class TestRecolor < Minitest::Test
                    bean: shown_all(MACHINE[2], MACHINE[3]), moon: shown_all(DUSK[1], DUSK[2]),
                    lamp: shown_all(GLOW[1], GLOW[2]), spark: shown_all(SPARK[1], SPARK[2]),
                    backdrop: shown_all(DUSK[0]) }, four_lists_shown(FOUR_LISTS_RECOLOR_PASS))
+  end
+
+  # The machine background's plate and text tile, and the moon, once pass +pass+ is drawn.
+  private def text_beside_letters_shown(pass)
+    screen = game_player.run(four_lists_game(text: true), frames: pass + framework_drawing_lag).screen
+    spot = ->(spots) { spots.map { |x, y| screen.pixel(x, y) } }
+    { plate: spot.(FOUR_LISTS_PIXELS[:machine]), text: spot.(TEXT_PIXELS), moon: spot.(FOUR_LISTS_PIXELS[:moon]) }
+  end
+
+  # A BACKGROUND DRAWN FROM TWO LISTS, ONE OF WHICH THE GAME CHANGES: each tile shows its own list's
+  # colours on every frame. The text tile follows :screen_colors with the moon, and the plate keeps
+  # :machine_colors. On a console whose backgrounds and sprites read one table of four lists (the
+  # Genesis), the text and the moon take one of the four between them, or the game does not fit.
+  def test_a_background_follows_a_changing_list_for_its_tiles_of_that_list_alone
+    assert_equal({ plate: shown_all(MACHINE[1], MACHINE[2]), text: shown_all(SCREEN[1], SCREEN[2]),
+                   moon: shown_all(SCREEN[1], SCREEN[2]) }, text_beside_letters_shown(FOUR_LISTS_RECOLOR_PASS - 1))
+    assert_equal({ plate: shown_all(MACHINE[1], MACHINE[2]), text: shown_all(DUSK[1], DUSK[2]),
+                   moon: shown_all(DUSK[1], DUSK[2]) }, text_beside_letters_shown(FOUR_LISTS_RECOLOR_PASS))
+  end
+
+  # Tiles drawn from a list the game changes, on a background not told to draw with it, would show
+  # the colors the list held at power-on whatever it holds now.
+  def test_a_background_drawn_from_a_changing_list_and_not_told_to_follow_it_says_so
+    message = assert_raises(ArgumentError) do
+      background_and_ship_drawn_with_the_list do |_plates|
+        game_loop { recolor :slot, :warm }
+      end
+    end.message
+
+    assert_match(/background :plates/, message)
+    assert_match(/draw_with :slot/, message)
   end
 end

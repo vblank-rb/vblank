@@ -116,7 +116,9 @@ module VBlank
                       "background told `draw_with` that list use the same one."),
         recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
                        "game, written over in the blank. The sprites and the backgrounds drawn with it are drawn " \
-                       "from that one list, however many sets it holds in turn. A sprite whose pictures are drawn " \
+                       "from that one list, however many sets it holds in turn. A background with tiles from other " \
+                       "lists too draws only its tiles of that list from it, since each cell names its own list. " \
+                       "A sprite whose pictures are drawn " \
                        "in the list's colours, and drawn with that list alone, keeps no list for its own colours. " \
                        "A sprite drawn with several lists " \
                        "(`draw_with [...], showing:`) takes one of the four for each list."),

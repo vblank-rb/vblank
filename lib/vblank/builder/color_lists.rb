@@ -207,9 +207,14 @@ module VBlank
       # It runs before the backgrounds' colour writes are moved to the gap between frames, which
       # is where the background's is made. A program with no gap writes the background's colours
       # where the list was told what to hold, as it writes the list's.
+      #
+      # A background with tiles drawn from a changing list that was never told to draw with it
+      # would show the list's power-on colours whatever it holds, so it is refused, naming the list.
       def link_backgrounds_to_changing_lists
         @changing_color_lists.each do |name, list|
-          @lists_backgrounds_draw_with.fetch(name, []).each do |background|
+          following = @lists_backgrounds_draw_with.fetch(name, [])
+          (@background_handles - following).each { |background| background.refuse_unfollowed_changing_list!(name) }
+          following.each do |background|
             background.follow_changing_list!(name, list.recolors.names_by_number, list.shown)
             next unless @frame_boundaries.empty?
 

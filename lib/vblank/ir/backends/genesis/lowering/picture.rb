@@ -459,12 +459,12 @@ module VBlank
             # is drawn from has no palette, and nothing to show.
             def emit_background_colors(node) = for_background(node) { |bg| emit_background_colors_of(bg, node) }
 
-            # A background that follows a list the game changes draws from the list's own palette, which the
-            # list's write fills (#emit_color_list_holds), so it has nothing of its own to write.
+            # The tiles of a background that follow a list the game changes are drawn from the list's own palette,
+            # which the list's write fills (#emit_color_list_holds), so they have nothing of their own to write.
             def emit_background_colors_of(bg, node)
-              return if bg.follows
-
               bg.drawn_lists.each_index do |index|
+                next if index == bg.followed_list_index
+
                 palette = @art.held_palette_of([:background, bg.object_id, index]) or next
 
                 steps = bg.recolors.map { |step| step.fetch(index) }
@@ -587,8 +587,9 @@ module VBlank
             # its tiles were drawn from, written over with the colours of the list the game's number names for it
             # (Reference#background_swap). The tile is made of the places of its own list.
             #
-            # A BACKGROUND THAT FOLLOWS A LIST THE GAME CHANGES (`recolor`) is drawn from that list's palette, the
-            # one its sprites are drawn from. A Genesis keeps one table of colours for its backgrounds and its
+            # A BACKGROUND THAT FOLLOWS A LIST THE GAME CHANGES (`recolor`) draws the tiles drawn from that list
+            # from the list's palette, the one its sprites are drawn from; a cell's palette is its own, so tiles of
+            # its other lists beside them keep palettes of their own at no cost. A Genesis keeps one table of colours for its backgrounds and its
             # sprites together, four palettes of sixteen, so a title whose picture and sprites step through any
             # number of sets of colours costs one palette, written over in the blank, and leaves three for the rest.
             #
@@ -602,9 +603,10 @@ module VBlank
                 raise LoweringError, "a tile of the background #{bg.name.inspect} is drawn from a list of colours it was not given"
               index = bg.drawn_lists.index(list)
               colors = bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF }
-              return @art.ordered_palette(colors) if !bg.follows && unchanging_colors?(bg, index, colors)
+              followed = index == bg.followed_list_index
+              return @art.ordered_palette(colors) if !followed && unchanging_colors?(bg, index, colors)
 
-              key = bg.follows ? [:sprites, bg.follows] : [:background, bg.object_id, index]
+              key = followed ? [:sprites, bg.follows] : [:background, bg.object_id, index]
               @art.reserve_held_palette(key, colors)
             end
 

@@ -528,7 +528,9 @@ module VBlank
           declared.scroll_x = scroll_x
           declared.scroll_y = scroll_y
         end
-        DSL::Background.new(self, name: name, scroll_x: scroll_x, scroll_y: scroll_y,
+        # Kept for the check, once the whole program is declared, that a background with tiles drawn
+        # from a list the game changes was told to follow it (ColorLists#link_backgrounds_to_changing_lists).
+        @background_handles << DSL::Background.new(self, name: name, scroll_x: scroll_x, scroll_y: scroll_y,
                              walls: wall_rects(img_rows, set),
                              # The biggest map's size each way, which is every map's where they
                              # are one size. The walls of each map are laid out at this size, so
@@ -550,6 +552,7 @@ module VBlank
                              walks_areas: !sets.nil?,
                              held: held,
                              tile_pictures: sets ? tile_names.uniq : (set[:by_key].values + set[:by_number].values).uniq)
+        @background_handles.last
       end
 
       public
