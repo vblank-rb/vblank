@@ -46,6 +46,47 @@ class TestComparisonLayersAndMemories < Minitest::Test
     assert_match ":backgrounds", error.message
   end
 
+  # Two backgrounds, the first the console's BG0 and the second its BG1, each filled with one
+  # colour. +first+ is the colour of the first.
+  private def two_fields(first:, second:)
+    VBlank.build("FIELDS", console: :gba, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:one, "." => first) { "........\n" * 8 }
+      image(:two, "." => second) { "........\n" * 8 }
+      tiles :ones, "." => :one
+      tiles :twos, "." => :two
+      background :front, tiles: :ones, map: Array.new(20) { "." * 30 }
+      background :back, tiles: :twos, map: Array.new(20) { "." * 30 }
+      game_loop {}
+    end
+  end
+
+  # A LAYER FOR EACH: a port draws its room on other layers than the original, so each side
+  # shows its own. Here the sea is on BG0 of the first cartridge and on BG1 of the second.
+  def test_each_cartridge_shows_its_own_layers
+    sea_first = two_fields(first: :blue, second: :green)
+    sea_second = two_fields(first: :green, second: :blue)
+
+    assert_raises(Minitest::Assertion) { assert_plays_alike sea_first, sea_second, stand, layers: [%i[bg0], %i[bg0]] }
+    assert_plays_alike sea_first, sea_second, stand, layers: [%i[bg0], %i[bg1]]
+    assert_plays_alike sea_first, sea_second, stand, layers: [{ only: %i[bg0] }, { without: %i[bg0 sprites] }]
+  end
+
+  def test_a_layer_for_each_that_is_not_two_is_refused
+    error = assert_raises(ArgumentError) { stand.compare(nil, nil, layers: [%i[bg0]]) }
+
+    assert_match "`layers:`", error.message
+    assert_match "one for each", error.message
+  end
+
+  def test_a_layer_the_console_does_not_have_names_the_side
+    error = assert_raises(ArgumentError) do
+      stand.compare(field, field, layers: [%i[bg0], %i[bg9]])
+    end
+
+    assert_match "second cartridge", error.message
+  end
+
   # WHICH VIDEO MEMORIES DIFFER, each with its first difference: the colours for a sea another
   # colour, the sprite table for a box a pixel off. The memories that agree are not named.
   def test_a_drift_names_the_colours_when_a_colour_differs

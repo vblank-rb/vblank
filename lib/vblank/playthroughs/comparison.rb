@@ -171,7 +171,10 @@ module VBlank
       # share no bytes.
       #
       # +layers+ is which of the picture is compared: nil for all of it, `:backgrounds` for the
-      # picture without its sprites, `:sprites` for the sprites alone (see LAYERS).
+      # picture without its sprites, `:sprites` for the sprites alone (see LAYERS). Or a list of
+      # two, one for each cartridge, for a port that draws on other layers than its original:
+      # each a list of the layers to keep in the reader's own names (`%i[bg0 bg1]`), the reader's
+      # `{ only: }` or `{ without: }`, one of those two words, or nil for all of it.
       # +forgiving_torn_frames_of+ is the cartridge whose torn frames are forgiven where the
       # other already shows what they settle on (see TornFrames), `:first` or `:second`, or nil.
       #
@@ -202,8 +205,8 @@ module VBlank
         @compared = Compared.new(comparing, @likeness, @readings)
         refuse_non_boolean_carrying_on!(carrying_on)
         @carrying_on = carrying_on
-        refuse_unknown_layers!(layers)
         @layers = layers
+        @shown_layers = shown_layers_for_each(layers)
         @torn_side = forgiving_torn_frames_of
         TornFrames.refuse_unknown_side!(@torn_side)
         @same = same
@@ -413,10 +416,10 @@ module VBlank
       # playing. A console whose emulator draws every layer together cannot, and is refused
       # saying which cartridge it was.
       private def show_layers_asked_for(consoles)
-        return unless @layers
+        return unless @shown_layers
 
-        consoles.zip(%w[first second], cartridges).each do |console, which, cartridge|
-          console.showing(**LAYERS.fetch(@layers))
+        consoles.zip(%w[first second], cartridges, @shown_layers).each do |console, which, cartridge, shown|
+          console.showing(**shown) if shown
         rescue ArgumentError => e
           raise ArgumentError, "`layers:` was #{@layers.inspect}, and the #{which} cartridge is for a " \
                                "#{Console.for(cartridge.console).title}. #{e.message} Remove `layers:`, or leave the " \
@@ -617,11 +620,30 @@ module VBlank
                              "#{said.size == 1 ? 'that setting' : 'those settings'}, or compare on the same tape."
       end
 
-      private def refuse_unknown_layers!(given)
-        return if given.nil? || LAYERS.key?(given)
+      # What each console is told to show, the first's and then the second's, as the reader's
+      # `showing` takes it, nil for all of it; nil for both when `layers:` was not given.
+      private def shown_layers_for_each(given)
+        return nil if given.nil?
+        return [LAYERS.fetch(given)] * 2 if LAYERS.key?(given)
 
-        raise ArgumentError, "`layers:` was #{given.inspect}. It must be `:backgrounds`, for the picture without its " \
-                             "sprites, or `:sprites`, for the sprites alone."
+        unless given.is_a?(Array) && given.size == 2 && !given.all?(Symbol)
+          raise ArgumentError, "`layers:` was #{given.inspect}. It must be `:backgrounds`, for the picture without its " \
+                               "sprites, or `:sprites`, for the sprites alone; or a list of two, one for each cartridge, " \
+                               "like `layers: [%i[bg0 bg1], %i[bg1 bg2]]`."
+        end
+
+        %w[first second].zip(given).map { |which, one| shown_layers(one, which) }
+      end
+
+      private def shown_layers(one, which)
+        return nil if one.nil?
+        return LAYERS.fetch(one) if LAYERS.key?(one)
+        return { only: one } if one.is_a?(Array) && one.all?(Symbol)
+        return one if one.is_a?(Hash) && one.size == 1 && %i[only without].include?(one.keys.first)
+
+        raise ArgumentError, "`layers:` for the #{which} cartridge was #{one.inspect}. It must be a list of the layers " \
+                             "to keep, like `%i[bg0 bg1]`, `{ only: [...] }` or `{ without: [...] }`, `:backgrounds`, " \
+                             "`:sprites`, or nil for all of the picture."
       end
 
       # Leaving out every moment leaves nowhere to compare, the same as naming none, and

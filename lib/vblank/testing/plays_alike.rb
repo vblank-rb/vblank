@@ -27,7 +27,8 @@ module VBlank
     # pictures and what differed).
     # `looking_at:` and `ignoring_rectangles:` take a list for each stretch of frames, or a block that
     # works the part out on each frame (a part that slides with the scenery); `pixels_apart:` looks at
-    # every few pixels only; `layers:` compares the picture without its sprites or the sprites alone;
+    # every few pixels only; `layers:` compares the picture without its sprites or the sprites alone,
+    # or each cartridge's own layers (`layers: [%i[bg0 bg1], %i[bg1 bg2]]`);
     # and `forgiving_torn_frames_of: :second` forgives the original a torn frame only where ours
     # already shows the frame it settles on. `by_passes:` lines the two up by the game's own passes
     # and not by frames, for an original that takes two frames over a pass now and then: each
