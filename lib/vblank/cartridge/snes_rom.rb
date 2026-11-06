@@ -21,7 +21,7 @@ module VBlank
     # the vertical blank's interrupt (NMI) and the rest are the native ones from then on.
     #
     # THE BOARD. A plain cartridge is ROM alone (with battery-backed RAM when the game saves). A
-    # cartridge with a Super FX 2 is a board of its own, and its header says so, because an emulator
+    # cartridge with a Super FX 2 is a board of its own, and its header declares it, because an emulator
     # or a flash cart reads the header to know which board to be:
     #
     #   - the map mode is LoROM read SLOWLY ($20): the chip shares the cartridge's ROM with the
@@ -29,8 +29,8 @@ module VBlank
     #     banks $80 and up as well as $00 and up (bsnes's board table, GSU-RAM), so the code sits
     #     where it does on a plain cartridge; only nothing asks for the faster speed.
     #   - the cartridge type is $14, "ROM, a Super FX and its RAM" ($15 when a battery keeps that
-    #     RAM): the high four bits $1 say Super FX, which is how bsnes picks the board.
-    #   - the extended header says how much RAM the chip has: 64K, seen by the console at $70:0000,
+    #     RAM): the high four bits $1 mark Super FX, which is how bsnes picks the board.
+    #   - the extended header gives how much RAM the chip has: 64K, seen by the console at $70:0000,
     #     or 128K for a game that saves, the second 64K at $71:0000 (SUPER_FX says why).
     #   - the ROM is at most 2 megabytes, banks $00-$3F, which is all the chip can read.
     #
@@ -43,7 +43,7 @@ module VBlank
 
       SMALLEST = 0x8000
 
-      # A kind of cartridge board: its +name+, the +map_mode+ its header says, whether the console
+      # A kind of cartridge board: its +name+, the +map_mode+ its header holds, whether the console
       # may read it at the faster speed (+fast+), the most 32K banks it holds, how much RAM a chip
       # on it has of its own (+chip_ram_bytes+, nought for none), and the bank the console sees a
       # save in (+save_bank+).
@@ -52,7 +52,7 @@ module VBlank
         # all the save; on a chip's board, past the bank or banks the chip works in.
         def save_offset = (save_bank - SRAM_BANK) << 16
 
-        # How much RAM a chip on the board has, as the extended header says it: its own, and with
+        # How much RAM a chip on the board has, as the extended header gives it: its own, and with
         # a save (+save_bytes+ not nought) the bank the save is kept in as well.
         def chip_ram_bytes_with(save_bytes)
           return chip_ram_bytes if save_bytes.zero?
@@ -89,14 +89,14 @@ module VBlank
       # back, or nil.
       attr_reader :built
 
-      # A size as the header says it, a byte: the power of two of its kilobytes (32K is 5); and the
-      # bytes a header's byte says. SNESReading's save file is the size the header says.
+      # A size as the header holds it, a byte: the power of two of its kilobytes (32K is 5); and the
+      # bytes a header's byte stands for. SNESReading's save file is the size the header gives.
       def self.size_byte(bytes) = Math.log2(bytes / 1024).to_i
       def self.bytes_of_size_byte(byte) = 1024 << byte
 
       # How far into the cartridge's RAM, and so into the emulator's save file, the save starts,
       # read from a cartridge's header: SUPER_FX's save offset on a Super FX board whose extended
-      # header says more RAM than the chip works in (one VBlank built for a game that saves), and
+      # header declares more RAM than the chip works in (one VBlank built for a game that saves), and
       # nought on any other, a Super FX game of the day included.
       def self.save_offset_of(bytes)
         place = header_place_of(bytes)
@@ -108,8 +108,8 @@ module VBlank
         chip_ram > SUPER_FX.chip_ram_bytes ? SUPER_FX.save_offset : 0
       end
 
-      # Whether a cartridge's header says its RAM is kept by a battery, so is a save at all. The low
-      # half of the type byte says what is on the board: 2 is RAM and a battery, 5 and 6 a chip with
+      # Whether a cartridge's header marks its RAM as kept by a battery, so is a save at all. The low
+      # half of the type byte gives what is on the board: 2 is RAM and a battery, 5 and 6 a chip with
       # a battery (with RAM and without), 9 and $A those with a clock too. A Super FX board's RAM is
       # there either way, the chip's working memory; only with a battery is any of it a save.
       BATTERY_KINDS = [0x2, 0x5, 0x6, 0x9, 0xA].freeze
@@ -142,7 +142,7 @@ module VBlank
       def size = @bytes.bytesize
 
       # Where a cartridge file's header can be, for each of the two usual layouts: how much further
-      # into the file it is than a LoROM file's, and the map mode that layout's header says, its
+      # into the file it is than a LoROM file's, and the map mode that layout's header holds, its
       # fast bit aside. LoROM is first, so a file whose bytes read as a header at both places, as
       # one VBlank builds might by chance, is read as the LoROM cartridge it is.
       HeaderPlace = Data.define(:shift, :map_mode)
@@ -151,7 +151,7 @@ module VBlank
       FAST_BIT = LOROM_FAST ^ LOROM_SLOW
 
       # The console a cartridge of this kind is for; whether +bytes+ are one (a header whose
-      # checksum and complement agree, at the place of the layout its map mode says); and its
+      # checksum and complement agree, at the place of the layout its map mode names); and its
       # title field.
       def self.console = :snes
 

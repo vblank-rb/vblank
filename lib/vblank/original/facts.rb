@@ -16,7 +16,7 @@ module VBlank
     #
     # In each file:
     #
-    # - the values outside `measured:` are what the original's code and tables say, written by the
+    # - the values outside `measured:` are what the original's code and tables hold, written by the
     #   game's own tool from the player's copy (an extractor), never by hand;
     # - `measured:` is what was worked out by playing the original, written by hand: each entry a
     #   value, its source and the test that holds it to the original, nested as deep as the game likes;

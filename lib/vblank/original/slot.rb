@@ -8,7 +8,7 @@ module VBlank
     # The shape and the size are the game's, written in its code, and never worked out from the
     # bytes. That is what lets a game be built with no copy present and filled from one later: the
     # code that reads a slot of sixteen colours is the same code whatever the sixteen colours are.
-    # So a slot of numbers says its width and whether they can be below zero, where a `table` given
+    # So a slot of numbers names its width and whether they can be below zero, where a `table` given
     # plain numbers works that out from them.
     #
     # A SHAPE NAMES THE LAYOUT THE ORIGINAL KEEPS THAT DATA IN, and the pack holds the bytes as the
@@ -23,7 +23,7 @@ module VBlank
     # original whose data is in no console's layout, a computer game's, has its port's unpacking
     # routine turn the data into one of the shapes.
     #
-    # Where the bytes are (+at+) says a slot is copied out of the copy as the bytes are there. A
+    # Where the bytes are (+at+) marks a slot as copied out of the copy as the bytes are there. A
     # slot whose bytes are packed in the copy, or spread over it, has no +at+ (nil): the game's
     # own unpacking routine fills it (`slots.fill_from_copy`, Builder::DataPacks), and it keeps its shape
     # and size all the same.
@@ -50,8 +50,8 @@ module VBlank
         def self.decode(_slot, bytes) = IR::Assets.places_packed_in(bytes).each_slice(PIXELS).to_a
       end
 
-      # NUMBERS: one, two or four bytes each, as +width+ says, low byte first; below zero only when
-      # +signed+ says so. A width is the size a table's element of that width is, read as a table's
+      # NUMBERS: one, two or four bytes each, as +width+ gives, low byte first; below zero only when
+      # +signed+ asks for it. A width is the size a table's element of that width is, read as a table's
       # elements are (IR::Build::ELEMENT_BYTES, IR::Build.elements_of), so a slot and a table never
       # disagree about one.
       module Numbers

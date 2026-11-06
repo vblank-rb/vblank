@@ -8,7 +8,7 @@ module VBlank
     # handed: what differs from one console to the next is the lowering, and the kit names it.
     #
     # Measuring, quick memory and the ROM validation are the Advance's and are not asked for, and a
-    # build that says one of the Advance's settings is refused before it gets here
+    # build that sets one of the Advance's settings is refused before it gets here
     # (Cartridge::AdvanceBuild::SETTINGS). A routine asked to be listed (`dump_func`) is listed by
     # the lister the kit names (Console::Kit#routine_lister), and refused in the words of the
     # console's own answers where it names none.

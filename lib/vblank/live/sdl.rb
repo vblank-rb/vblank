@@ -25,14 +25,14 @@ module VBlank
     # THE MENU is drawn over the picture in the window's own pixels, not the game's: the picture is
     # the console's few pixels made big and square, and the menu over it is as sharp as the screen
     # can show, a Retina screen's two pixels a point included (the window asks SDL for them). Menu
-    # says where each box and word goes; the boxes are drawn here as triangles with their edges
+    # gives where each box and word goes; the boxes are drawn here as triangles with their edges
     # faded over a pixel, as Dear ImGui draws them, and each letter is copied out of the menu
     # font's picture (Graphics::MenuFont), which is put on the screen's card when the window
     # opens.
     #
     # THE SOUND goes to the computer's speaker through an SDL audio stream, a queue the speaker
     # plays from at its own steady rate while the game puts a frame's samples in at the end of
-    # each pass. The window says how much is waiting (#sound_waiting), and the session paces the
+    # each pass. The window reports how much is waiting (#sound_waiting), and the session paces the
     # play by it, so the game keeps the speaker's time and the queue holds steady at a few frames:
     # one clock, the speaker's, and nothing to drift. A game far ahead of the speaker — played
     # uncapped — has the frames past a few thrown away. A computer with no sound plays the game
@@ -69,8 +69,8 @@ module VBlank
       EVENT_KEY_DOWN = 0x300
       EVENT_KEY_UP = 0x301
       KEY_SCANCODE_AT = 24 # Where in a key's event the key is, as a scancode (4 bytes)
-      KEY_DOWN_AT = 36 # Where in a key's event it says whether the key went down (1 byte)
-      KEY_REPEAT_AT = 37 # Where it says whether this is a held key heard again (1 byte)
+      KEY_DOWN_AT = 36 # Where in a key's event it marks whether the key went down (1 byte)
+      KEY_REPEAT_AT = 37 # Where it marks whether this is a held key heard again (1 byte)
       EVENT_BYTES = 128 # An SDL_Event is a union of at most this many bytes
       BLENDMODE_BLEND = 0x1 # What is drawn lets what is under it show through, as much as it is clear
       WINDOW_FLAGS_FULLSCREEN = 0x1
@@ -142,7 +142,7 @@ module VBlank
       end)
 
       # The console's buttons a gamepad holds: +down+, SDL's numbers for the buttons down on it, and
-      # the left stick's two ways, up being below nought. +pads+ says which console button each of
+      # the left stick's two ways, up being below nought. +pads+ gives which console button each of
       # its buttons is, by SDL's number.
       def self.pad_buttons(down:, stick_x:, stick_y:, pads: PAD_BUTTONS)
         held = down.filter_map { |button| pads[button] }
@@ -173,7 +173,7 @@ module VBlank
       # +settings_file+ is where the player's settings are read from and written to: :usual, the
       # files the desktop build keeps too (SettingsFile); a path, that one file alone; or nil, none,
       # so the settings start as the desktop build's and nothing is written (as a test wants).
-      # What a file says that cannot be used is in #settings_problems.
+      # What a file holds that cannot be used is in #settings_problems.
       #
       # A window that cannot be opened all the way is closed again before the error comes out.
       #
@@ -195,7 +195,7 @@ module VBlank
         scale ||= @player_settings.window.scale
         @kept_from_game = [] # keys pressed for the menu, kept from the game until they come up
         @pads = {} # the gamepads plugged in, by SDL's number for each
-        @pad_down = Hash.new { |downs, id| downs[id] = [] } # the buttons down on each, as SDL said
+        @pad_down = Hash.new { |downs, id| downs[id] = [] } # the buttons down on each, as SDL reported
         @pad_kept = [] # gamepad buttons pressed for the menu, kept from the game until they come up
         @shown_this_second = 0
         @second_began = now
@@ -212,7 +212,7 @@ module VBlank
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
       end
 
-      # What the settings file said that could not be used, a sentence to a line, each file's
+      # What the settings file held that could not be used, a sentence to a line, each file's
       # sentences under its name; empty when all of it could.
       attr_reader :settings_problems
 
@@ -292,7 +292,7 @@ module VBlank
       # heard, and Session shows each picture before it asks).
       def stop? = @closed || @sdl.SDL_GetKeyboardState(nil)[ESCAPE] != 0
 
-      # The speed the menu says while Tab is held, as SDL last heard it (#show reads what SDL has
+      # The speed the menu sets while Tab is held, as SDL last heard it (#show reads what SDL has
       # heard), and 1 while it is not, whichever pass it is asked for.
       def fast_forward_speed(_pass) = @fast_forward ? @settings.fast_forward_speed : 1
 
@@ -315,7 +315,7 @@ module VBlank
         true
       end
 
-      # The window's size on the screen, in the computer's pixels, as SDL says it is.
+      # The window's size on the screen, in the computer's pixels, as SDL reports it.
       def window_size
         size = Fiddle::Pointer.malloc(8, Fiddle::RUBY_FREE)
         @sdl.SDL_GetWindowSize(@window, size, size + 4)
@@ -323,7 +323,7 @@ module VBlank
       end
 
       # How loud the speaker plays, from 0 (silent) to 1 (as loud as the game made it), as SDL
-      # says; nil before the first frame's sound opens it.
+      # reports; nil before the first frame's sound opens it.
       def speaker_volume = (@sdl.SDL_GetAudioStreamGain(@speaker) if live?(@speaker))
 
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -582,7 +582,7 @@ module VBlank
         @sdl.SDL_RenderPresent(@renderer)
       end
 
-      # What the menu says to draw, in the window's own pixels: the picture was drawn through the
+      # What the menu asks to draw, in the window's own pixels: the picture was drawn through the
       # game's own size (the logical presentation, which scales it by a whole number with bars where
       # the window is the wrong shape), which is put aside while the menu draws and put back after.
       def draw_menu_and_status
@@ -654,7 +654,7 @@ module VBlank
         end
       end
 
-      # Each letter of +words+ copied from the letters' card to where Menu said, in its colour.
+      # Each letter of +words+ copied from the letters' card to where Menu put it, in its colour.
       def draw_words(words)
         red, green, blue, opacity = words.color
         @sdl.SDL_SetTextureColorMod(@letters, red, green, blue)
@@ -674,7 +674,7 @@ module VBlank
         @second_began = now
       end
 
-      # The window made as the menu now says, where that is not as it was, and the player's settings
+      # The window made as the menu now sets it, where that is not as it was, and the player's settings
       # changed with it: written to their file once nothing has changed for SETTINGS_QUIET, as the
       # desktop build waits, so moving along a slider is one write.
       def apply_menu_settings
@@ -764,7 +764,7 @@ module VBlank
       end
 
       # A gamepad plugged in is opened and read from then on, and one pulled out is let go. SDL
-      # says the same of every pad already plugged in when the window opens.
+      # reports the same of every pad already plugged in when the window opens.
       def open_or_close_pad(type)
         id = @event[PAD_ID_AT, 4].unpack1("L")
         if type == EVENT_GAMEPAD_ADDED
@@ -816,7 +816,7 @@ module VBlank
           !(PAD_OPENERS_TOGETHER - @pad_kept).empty?
       end
 
-      # A key meant for the menu, and the window made as the menu then says. Resume carries on,
+      # A key meant for the menu, and the window made as the menu then sets it. Resume carries on,
       # even from a pause before the menu was opened; closing the menu (the gamepad's B) leaves
       # such a pause as it was, as F1 does.
       def press_menu(key)

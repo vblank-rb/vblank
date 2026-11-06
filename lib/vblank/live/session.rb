@@ -6,7 +6,7 @@ module VBlank
     # this process (IR::Backends::Ruby#live_game). At the end of each of its frames it hands the
     # session the picture and the frame's sound; the session waits for that frame to end, shows
     # the device the picture, hands it the sound, asks it whether to stop, and gives the game the
-    # buttons for the next pass. The play ends when the device says so, or when the game itself ends.
+    # buttons for the next pass. The play ends when the device asks to stop, or when the game itself ends.
     #
     # A device answers:
     #
@@ -59,7 +59,7 @@ module VBlank
       # The game is built as Ruby here from +program+, before any device is opened, so a game the
       # Ruby runtime cannot play yet is refused (IR::Backends::Ruby::RuntimeGap) before a window
       # comes up.
-      # +stop_after_passes+ is how many passes to play at most, whatever the device says. +game+, in
+      # +stop_after_passes+ is how many passes to play at most, whatever the device asks. +game+, in
       # place of a program, is a game built as Ruby already (IR::Backends::Ruby::LiveGame), which is
       # how a game written out as one Ruby file (Ruby#script) plays with no builder to hand.
       # +collect_garbage+ runs one full collection once the game has set itself up
@@ -79,7 +79,7 @@ module VBlank
       # Whether this play runs the full collection after setup: asked for, and not uncapped.
       def collects_garbage? = @collect_garbage
 
-      # Plays once, on +device+, until it says stop or the game ends, and gives back how fast it
+      # Plays once, on +device+, until it asks to stop or the game ends, and gives back how fast it
       # went (Rate). A game that does something its rules refuse (a push onto a full list) stops
       # the play with IR::ProgramError, in the words the interpreter would use.
       def play(device)
@@ -114,7 +114,7 @@ module VBlank
       # Asked by the game as each of its frames ends, with the picture as the screen shows it and
       # the frame's sound: shows the device the picture, hands it the sound, and gives back the
       # buttons held for the pass that starts, one number a bit each for each connected player
-      # (IR::Buttons.masks) — or nil when the device says stop. The
+      # (IR::Buttons.masks) — or nil when the device asks to stop. The
       # pass waits once: on the speaker, after its sound, where the device has one; on the clock,
       # for its frame to end, before its picture, where it has none.
       #
@@ -208,7 +208,7 @@ module VBlank
 
       # A GAME THAT STOPPED ITSELF — it halted, or came to its end — leaves its last picture on the
       # screen, as the console does: the picture is shown a frame at a time, the window still read
-      # and pause and its menu still working, until the device says stop. A play told how many
+      # and pause and its menu still working, until the device asks to stop. A play told how many
       # passes to go on for counts each picture shown here as one of them, so it still ends. The
       # game runs no pass, so none of this is in the play's rate.
       def keep_showing(pixels)

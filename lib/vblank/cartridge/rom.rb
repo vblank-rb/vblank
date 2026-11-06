@@ -87,7 +87,7 @@ module VBlank
 
       # +code+ and +maker+ are the cartridge bureaucracy, and a game need not know they
       # exist: left out, the code is worked out from the title (see {GameCode}) and the
-      # cartridge says it has no commercial publisher, which is true.
+      # cartridge declares no commercial publisher, which is true.
       def initialize(title:, code: nil, maker: nil, built: nil)
         @built = built
         @buffer = ("\x00".b) * [512, HEADER_SIZE].max

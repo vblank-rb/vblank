@@ -20,7 +20,7 @@ module VBlank
     #   04Ch  text, which a Sony disc uses for the licence region; here it is the game's title, and never
     #         Sony's text
     #
-    # The code follows at 800h, exactly as many bytes as 01Ch says (an emulator refuses a file longer or
+    # The code follows at 800h, exactly as many bytes as 01Ch gives (an emulator refuses a file longer or
     # shorter than that).
     class PS1EXE
       include Console::PS1Hardware

@@ -24,7 +24,7 @@ module VBlank
     # without the list still has every other task. The rest are drawn from +test_files+, the test
     # files beneath the list's own folder unless set (`test_*.rb` and `*_test.rb`), and +sample+ is
     # the share drawn. The block is handed the TestTask that plays the files, the GBA lowering's run,
-    # to set what any test task takes. The task is `test:golden` unless +name+ says otherwise.
+    # to set what any test task takes. The task is `test:golden` unless +name+ sets another.
     class GoldenTask < Rake::TaskLib
       def initialize(list:, from: ".", name: "test:golden", test_files: nil, sample: GoldenSample::SHARE, &configure)
         super()

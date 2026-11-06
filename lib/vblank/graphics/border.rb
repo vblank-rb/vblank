@@ -12,7 +12,7 @@ module VBlank
     # own with `border`, in any form `image` takes, and a picture smaller than the whole screen is
     # repeated across it, so text art of a few characters makes a pattern.
     #
-    # What a border can hold is the console's to say, and here it is what the Advance's lowering
+    # What a border can hold is the console's to decide, and here it is what the Advance's lowering
     # draws it with: sprites of sixteen colours each, one of them see-through. So a border has no
     # see-through pixel (nothing would be behind it but the backdrop) and fifteen colours at the
     # most, which is also all that it takes from the sprites' colours: one group of sixteen of

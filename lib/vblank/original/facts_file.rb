@@ -20,7 +20,7 @@ module VBlank
     #
     # WHAT A MERGE DOES NOT KEEP, by design: a comment with a blank line between it and its key (a
     # comment belongs to the key right below it), and a comment inside an item of a list of mappings
-    # (the list's key says what each item holds, so the items' keys carry no comments of their own).
+    # (the list's key names what each item holds, so the items' keys carry no comments of their own).
     # A key with a capital letter in it is a label of the original's (a table keyed by the
     # decompilation's names), which is data, explained by its mapping's comment.
     module FactsFile

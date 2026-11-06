@@ -24,7 +24,7 @@ module VBlank
     # is played as a Color cartridge, a Super Nintendo program as a Super Nintendo one, and a
     # program that names no console as an Advance one.
     #
-    # The interpreter is the answer key: it says what the program MEANS. Any disagreement is a bug
+    # The interpreter is the answer key: it shows what the program MEANS. Any disagreement is a bug
     # in the cartridge the console's lowering built (or, now and then, in the interpreter's model
     # of the hardware — either way it is a real disagreement worth a look).
     #
@@ -219,7 +219,7 @@ module VBlank
       # real game has a map to upload and a cast to declare, reaches its loop a frame later, and
       # is then one pass behind for the whole run however fast the game itself is. To the picture
       # that is the same thing as being slow — a pass fewer to show — and the pass count already
-      # says so, whichever of the two it was.
+      # shows it, whichever of the two it was.
       #
       # A game whose picture cannot be caught half-drawn can be lined up this way (see
       # #shows_finished_passes?). A single-buffered bitmap game caught mid-pass has a half-drawn
@@ -256,7 +256,7 @@ module VBlank
       # A game of big pixels (Console::Description#bigger_pixels?) is played by the interpreter on
       # its small screen, so the cartridge's picture is read a pixel of the game's at a time: the
       # top left of each square the console shows it as. That the other three of the square match it
-      # is the lowering's own test's to say (test/lowering/gba/).
+      # is the lowering's own test's to check (test/lowering/gba/).
       def game_screen_of(program, picture)
         console = program.described_console
         return pixel_squares_of(console, picture) if console.bigger_pixels?
@@ -358,7 +358,7 @@ module VBlank
 
       # How many frames to run the console so its picture lines up with the interpreter's after
       # +frames+. A program that switches display mode mid-run (a bitmap title handing off to a
-      # tiled game) has no single answer, so it has to say which it wants.
+      # tiled game) has no single answer, so it has to name which it wants.
       def console_frames_for(program, frames)
         modes = program.walk.select { |n| n.kind == :screen }.map { |n| n.mode }.uniq
         if modes.length > 1
@@ -379,7 +379,7 @@ module VBlank
       # A failure that says WHERE they disagree, not just how many pixels. The map is the whole
       # screen squashed to a small grid, so a glance says "the sprite is in the wrong place" vs
       # "the right edge is torn" vs "everything below the map". +picture+ is the interpreter's, which
-      # says how big the screen is; left out, it is the Advance's.
+      # gives how big the screen is; left out, it is the Advance's.
       def mismatch_message(bad, frames, console_frames, picture: nil)
         width = picture ? picture_width(picture) : SCREEN_W
         height = picture ? picture.length / width : SCREEN_H

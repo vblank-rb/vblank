@@ -45,7 +45,7 @@ module VBlank
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
 
       # The schemes a packed block can name in the top half of its first byte, the formats of the
-      # Game Boy Advance BIOS, and what each is called. BiosCompress, which packs them, says both.
+      # Game Boy Advance BIOS, and what each is called. BiosCompress, which packs them, names both.
       Packer = IR::Backends::GBA::BiosCompress
       SCHEME_NAMES = { Packer::TYPE_LZ77 => Packer::SCHEME_NAMES.fetch(:lz77),
                        Packer::TYPE_RLE => Packer::SCHEME_NAMES.fetch(:rle) }.freeze

@@ -20,11 +20,11 @@ module VBlank
       # wrote them. A game built for one it is not for is refused.
       attr_reader :consoles
 
-      # Whether the game's window, played on a computer, has a menu: it does unless the game says not.
+      # Whether the game's window, played on a computer, has a menu: it does unless the game asks for none.
       def menu? = @menu
 
       # +options+ is part of what the cartridge is — how much save memory it has, how quickly
-      # it reads — so like +code+ it is said where the game is named. +menu+ false is a game whose
+      # it reads — so like +code+ it is set where the game is named. +menu+ false is a game whose
       # window, played on a computer, opens no menu over the picture.
       def initialize(title, consoles:, code: nil, maker: nil, block:, options: Options.new, menu: true, variants: {})
         @title = title
@@ -145,7 +145,7 @@ module VBlank
       # +console+ is the console the cartridge is for, the first the game names unless set: a
       # Game Boy Advance cartridge (Cartridge::ROM) or a Game Boy Color one (Cartridge::GBCROM).
       #
-      # A console setting the game says that +console+ does not have is for another of the game's
+      # A console setting the game sets that +console+ does not have is for another of the game's
       # consoles, and this cartridge is built without it. A saved +profile+ handed here is this
       # build's own, so on a console that cannot use one it is refused.
       #
@@ -202,7 +202,7 @@ module VBlank
 
       private
 
-      # The console settings this game says, by name, to their values.
+      # The console settings this game sets, by name, to their values.
       def console_settings_said = Console.console_settings_said(code: @code, maker: @maker, **@options.to_h)
 
       # This game's block, run — the tree and what the run learned besides.
@@ -220,7 +220,7 @@ module VBlank
 
       # A GAME NAMES ITS CHIP WHERE IT NAMES ITS CONSOLES: `consoles: %i[gba snes], variants: {
       # snes: :superfx }`. A chip is part of what the cartridge is, as much as which console it goes
-      # in, so it is said in the same line and not left to whoever builds it; `vblank build
+      # in, so it is named in the same line and not left to whoever builds it; `vblank build
       # --variant` still overrides it for one build. +variants+ is keyed by console, since one game
       # can be for several consoles and only some of them have variants. Each must be one of the
       # game's consoles and one of that console's variants (Console::Kit#variants).
@@ -328,13 +328,13 @@ module VBlank
     # handle. Building and writing are left to the caller — see Game — except for the
     # `ruby game.rb` convenience above.
     #
-    # +frame_sync+, +fast_cartridge+, +fast_code+, +save_memory+ and +stack_room+ say how it is
+    # +frame_sync+, +fast_cartridge+, +fast_code+, +save_memory+ and +stack_room+ set how it is
     # built, the same five {VBlank.build} takes; see {Cartridge::Options}.
     #
-    # +consoles+ are the consoles the game is for (see Console::DESCRIPTIONS), and every game says
+    # +consoles+ are the consoles the game is for (see Console::DESCRIPTIONS), and every game names
     # them: `consoles: %i[gba]` for the Game Boy Advance alone, `consoles: %i[gba gbc]` for the
     # Game Boy Color too. NOTHING IS TAKEN TO BE FOR THE ADVANCE, because the command line builds
-    # a cartridge for each console a game names, and a game that said nothing would be built for
+    # a cartridge for each console a game names, and a game that named none would be built for
     # whichever console the framework happened to start with.
     #
     # A console setting, one only some consoles have (+code+, +maker+, +fast_cartridge+,

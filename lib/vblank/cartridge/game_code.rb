@@ -28,11 +28,11 @@ module VBlank
     # screen to say why.
     #
     # Nobody has to pick one. {for} works a free code out from the game's own name, so
-    # a program says what its game is called and never mentions this at all.
+    # a program names its game and never mentions this at all.
     module GameCode
       LENGTH = 4
 
-      # Nintendo used the first character to say what kind of cartridge it was: "A"
+      # Nintendo used the first character to mark what kind of cartridge it was: "A"
       # and "B" for ordinary games, and a handful of others for the ones with extra
       # hardware inside (Boktai's light sensor, Drill Dozer's rumble). These letters it
       # never used, on any cartridge in the list below — so a code that starts with one
@@ -47,7 +47,7 @@ module VBlank
       ALPHABET = Ractor.make_shareable(("0".."9").to_a.concat(("A".."Z").to_a))
 
       # "01" is Nintendo's, and it is what the usual homebrew tools write by default.
-      # A game built here is nobody's licensee, so it says so.
+      # A game built here is nobody's licensee, so it names no publisher.
       NO_PUBLISHER = "00"
 
       DATA_FILE = VBlank.root.join("lib", "vblank", "data", "known_game_codes.txt").to_s.freeze

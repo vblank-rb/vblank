@@ -8,9 +8,9 @@ module VBlank
     #
     # ITS CLOCK MOVES ONLY WHEN SOMETHING SAYS IT DOES, so a test never waits for real time.
     # Waiting moves it straight to the moment waited for, and every pass then takes
-    # +pass_seconds+ — none unless the test says otherwise, a machine infinitely fast — or, given
+    # +pass_seconds+ — none unless the test asks otherwise, a machine infinitely fast — or, given
     # something callable, what it answers for the pass's number (1, 2, 3, …). Kept as an exact
-    # fraction, so a pass said to take two frames takes two and not a hair more.
+    # fraction, so a pass set to take two frames takes two and not a hair more.
     #
     # WITH +speaker: true+ IT HAS A SPEAKER, which plays what it is handed on the same clock, a
     # second of samples in a second: #sound_waiting is how much is left to play, #gaps how many
@@ -44,7 +44,7 @@ module VBlank
         @pictures = []
         @notices = []
         @sounds = []
-        @sound_rate = nil # until the first frame's sound says it
+        @sound_rate = nil # until the first frame's sound gives it
         @now = 0r
         @passes = 0
         @gaps = 0
@@ -57,7 +57,7 @@ module VBlank
         @pictures << Picture.new(pixels: pixels.dup, width: width, height: height)
       end
 
-      # The left speaker's sound is kept. The right one's is as long, so it says nothing more about
+      # The left speaker's sound is kept. The right one's is as long, so it shows nothing more about
       # when the speaker runs out.
       def play_sound(samples, rate, _right = samples)
         @sounds << samples

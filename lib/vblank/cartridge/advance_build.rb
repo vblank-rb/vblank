@@ -8,7 +8,7 @@ module VBlank
       module_function
 
       # THE SETTINGS ONLY THE ADVANCE HAS (its console settings), by the name each is set with. A
-      # game for the Advance and the Color says them once, and its Color cartridge is built without
+      # game for the Advance and the Color sets them once, and its Color cartridge is built without
       # them; a build for the Color alone that sets one is refused
       # (Console.refuse_unusable_console_settings!).
       #
@@ -35,8 +35,8 @@ module VBlank
         refuse_unusable_stack_room!(said[:stack_room]) if said.key?(:stack_room)
       end
 
-      # What the lowering is told, from +options+ (a Cartridge::Options): what the game said, and
-      # for what it did not, what the Advance does when nothing is said. A finished cartridge
+      # What the lowering is told, from +options+ (a Cartridge::Options): what the game set, and
+      # for what it did not, what the Advance does when nothing is set. A finished cartridge
       # records the same (BuildRecord#build_options), which is what builds it the same way again.
       def lowering_options(options)
         { fast_cartridge: options.fast_cartridge != false, fast_code: options.fast_code != false,
@@ -92,7 +92,7 @@ module VBlank
       end
 
       # The cartridge for +program+ alone, titled +title+: lowered as the Advance does when nothing
-      # is said, with no guardrails and no validation. What a test that plays a cartridge builds
+      # is set, with no guardrails and no validation. What a test that plays a cartridge builds
       # (Testing::Pictures).
       def cartridge_for(program, title:)
         backend = IR::Backends::GBA.new

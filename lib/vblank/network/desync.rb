@@ -5,8 +5,8 @@ module VBlank
     # WHAT TWO MACHINES DISAGREED ABOUT. +pass+ is the first checkpoint at which their game states
     # differ, and +last_agreed_pass+ the checkpoint before it where every machine's state was the
     # same (0 when there was none), so the first pass that went wrong lies between the two. +crcs+
-    # says what each player's machine had at +pass+, by player number. +tape+ is the presses of the
-    # match up to there, a Playthroughs::Tape of passes: played on the interpreter, it says which
+    # holds what each player's machine had at +pass+, by player number. +tape+ is the presses of the
+    # match up to there, a Playthroughs::Tape of passes: played on the interpreter, it shows which
     # machine's state is the one the game really reaches.
     DesyncReport = Data.define(:pass, :last_agreed_pass, :crcs, :tape) do
       def to_s

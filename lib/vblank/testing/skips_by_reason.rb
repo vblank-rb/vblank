@@ -5,8 +5,8 @@ module VBlank
     # WHAT A RUN DID NOT PLAY, said at the end of the run: its skips counted by reason.
     #
     # A skip means one of two things in a run: the run's lowering lacks a feature the test plays
-    # (MissingFeature), which the checked player says itself or a test says with skip_on_native and
-    # its siblings; or the machine lacks what the test needs (NotOnThisMachine), which a test says
+    # (MissingFeature), which the checked player marks itself or a test marks with skip_on_native and
+    # its siblings; or the machine lacks what the test needs (NotOnThisMachine), which a test marks
     # with skip_on_this_machine, as a game does whose data cannot ship with it. What a skip can do
     # is pile up unseen: minitest prints one letter for each, so a run that skips forty tests looks
     # much like one that skips four. Said as a count per reason on every run, the pile is in plain

@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # HOW MANY PLAYERS A GAME TAKES, as it said where it is named:
+    # HOW MANY PLAYERS A GAME TAKES, as it is set where the game is named:
     #
     #   VBlank.game "PARTY", consoles: %i[gba snes], players: 4               # 1 to 4, on every build
     #   VBlank.game "PARTY", consoles: %i[gba snes], players: 2..4            # at least 2, at most 4
@@ -13,8 +13,8 @@ module VBlank
     # others do not name). A computer build reads `computer:`, then its console's, then `else:`; a
     # cartridge its console's, then `else:`.
     #
-    # Saying nothing is fine: the game reads whichever players its lines name, and each console
-    # refuses what it cannot seat. Saying it lets the build check every line against it, and refuse
+    # Setting none is fine: the game reads whichever players its lines name, and each console
+    # refuses what it cannot seat. Setting it lets the build check every line against it, and refuse
     # a console that cannot seat that many even where no line names the last player yet (a game
     # that reads `player: :any` would otherwise lose players quietly). The fewest is kept for a
     # game's joining screen to wait for; nothing else reads it yet.

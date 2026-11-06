@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # WHICH LOWERING A RUN OF A SUITE TESTS, said in one setting, and which test files that run
+    # WHICH LOWERING A RUN OF A SUITE TESTS, named in one setting, and which test files that run
     # loads. Both the rake tasks (RakeTasks) and the tests themselves (Testing.lowering) read it
     # from here, so the two cannot answer differently.
     #
@@ -40,7 +40,7 @@ module VBlank
       #   yjit   whether YJIT, Ruby's compiler of hot methods to machine code, makes the run
       #            faster, as measured: it does for the native and JavaScript runs and makes the
       #            Game Boy Color's slower. A run in Ractors is played without it whatever this
-      #            says (TestTask#yjit?)
+      #            holds (TestTask#yjit?)
       Run = Data.define(:name, :title, :console, :checked, :does, :needs, :player, :yjit) do
         alias_method :checked?, :checked
         alias_method :yjit?, :yjit
@@ -51,7 +51,7 @@ module VBlank
         # Whether the run can play a game as any console: one built for a runtime (C, JavaScript,
         # Ruby), which is told the console when the game is built. The interpreter's run and a
         # cartridge's play their own console alone. +console+ above is then the one it plays as
-        # when nothing says otherwise.
+        # when nothing asks otherwise.
         def plays_any_console? = checked && !player.nil?
 
         # Whether the run plays a game as +played+: any console, for a run that plays any; its own and no
@@ -123,7 +123,7 @@ module VBlank
       # them on a runtime's run, and the run's own console on the rest.
       def consoles_for(run, consoles) = consoles.select { |played| run.plays?(played) }
 
-      # The lowering +env+ says, refusing one there is not.
+      # The lowering +env+ names, refusing one there is not.
       def from(env)
         lowering = env.fetch(SETTING, "gba").to_sym
         return lowering if NAMES.include?(lowering)

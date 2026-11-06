@@ -26,7 +26,7 @@ module VBlank
     #   each slot            1 byte of length and its name, then 4 bytes: how many bytes it holds
     #   each slot's bytes    in the order the slots are listed
     #
-    # The three at the top are what says whether a pack kept on a player's machine can still be
+    # The three at the top are what shows whether a pack kept on a player's machine can still be
     # read: a format this build does not know, another copy, or another build of the game each
     # mean the pack is made again.
     Pack = Data.define(:format_version, :rom_sha1, :build_version, :slots)

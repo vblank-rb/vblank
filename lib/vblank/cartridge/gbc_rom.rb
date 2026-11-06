@@ -61,7 +61,7 @@ module VBlank
 
       def hidden_variables = @hidden_variables || []
 
-      # +banks+ is the linked cartridge, bank 0 first, each 16K. +rumble+ says it carries a motor.
+      # +banks+ is the linked cartridge, bank 0 first, each 16K. +rumble+ marks that it carries a motor.
       def initialize(banks, title:, save_bytes: 0, clock: false, rumble: false, built: nil)
         @built = built
         unless RAM_SIZE_CODES.key?(save_bytes)
@@ -75,7 +75,7 @@ module VBlank
 
       def size = @bytes.bytesize
 
-      # Whether its header says it carries a clock chip.
+      # Whether its header declares a clock chip.
       def clock? = [MBC3_TIMER_BATTERY, MBC3_TIMER_RAM_BATTERY].include?(@bytes.getbyte(CARTRIDGE_TYPE_AT))
 
       # WHAT EVERY GAME BOY CARTRIDGE'S HEADER SAYS, the Color's too, whoever made it — asked of a

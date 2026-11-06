@@ -10,7 +10,7 @@ module VBlank
     # the other machines let it, and in a match that is as fast as the slowest of them, since every
     # machine waits for every other's buttons.
     #
-    # The play ends after +passes+ passes if that is given, when the bot says it is done (#stop? asks it),
+    # The play ends after +passes+ passes if that is given, when the bot reports it is done (#stop? asks it),
     # or when the match or the game does. +keep_picture+ keeps the last picture, for a test to look at.
     class BotDevice
       attr_reader :view, :last_picture, :notices
@@ -25,7 +25,7 @@ module VBlank
         @shown = 0
       end
 
-      # The session says which game this device is playing, and how the match is set up, before the first pass.
+      # The session names which game this device is playing, and how the match is set up, before the first pass.
       def watch(game, player:, players:, input_delay:)
         @view = Bots::GameView.new(game, player: player, players: players, input_delay: input_delay)
       end

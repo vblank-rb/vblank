@@ -15,7 +15,7 @@ module VBlank
       # Only TEXT messages are kept (the format is text). A message sent in pieces is joined.
       class Client
         # Connects to the relay at +url+ (`ws://host:port/path`, or `wss://` for TLS, which checks the relay's
-        # certificate and name) and does the opening handshake. +ssl_context+ is for a test to say whom to
+        # certificate and name) and does the opening handshake. +ssl_context+ is for a test to name whom to
         # trust; it is the system's own by default.
         def self.connect(url, ssl_context: nil)
           uri = URI.parse(url)

@@ -61,7 +61,7 @@ module VBlank
         def relay_message! = @relay_message = true
         def relay_message? = @relay_message == true
 
-        # The message the fields of a decoded object say. A missing field is a KeyError.
+        # The message the fields of a decoded object describe. A missing field is a KeyError.
         def from_wire(fields) = new(**members.to_h { |member| [member, fields.fetch(member.to_s)] })
       end
 

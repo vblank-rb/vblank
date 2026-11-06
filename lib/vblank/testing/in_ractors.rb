@@ -21,7 +21,7 @@ module VBlank
     #   cannot be frozen or must stay with the core that made it (a file handle, a booted console).
     #
     # A file whose tests change the whole process on purpose (registering something, declaring a
-    # class) or start a child process, which hangs inside a Ractor, says minitest-ractor's own
+    # class) or start a child process, which hangs inside a Ractor, writes minitest-ractor's own
     # `runs_on_the_main_ractor!` at the top, with a line saying why.
     #
     # It needs a minitest-ractor that makes minitest's own state shareable (Minitest::Ractor::

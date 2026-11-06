@@ -25,7 +25,7 @@ module VBlank
       # A line under a heading: its +label+, and what it is.
       # - :action does what +does+ names (:resume, :quit) when it is chosen with Enter.
       # - :slider holds a number of +setting+'s within +range+, changed +step+ at a time with left
-      #   and right, and written as +written+ says: :times ("4x"), :percent ("90%"), or :window
+      #   and right, and written as +written+ names: :times ("4x"), :percent ("90%"), or :window
       #   ("3x  (720 × 480)", the size the window is then).
       # - :check holds +setting+ on or off, switched with Enter.
       # - :button and :hotkey show what number +place+ among the console's buttons or the window's
@@ -50,7 +50,7 @@ module VBlank
       BUTTON_NAMES = %w[A B Select Start Right Left Up Down R L].freeze
       HOTKEY_NAMES = ["Pause", "Step one frame", "Show frame rate", "Fullscreen", "Mute", "Show menu", "Fast forward"].freeze
 
-      # The most times the picture's size a window can be made. A frontend may say fewer: the most
+      # The most times the picture's size a window can be made. A frontend may set fewer: the most
       # that fits on the screen it is on.
       SCALES = (1..10)
 
@@ -94,7 +94,7 @@ module VBlank
 
       # WHAT A FRONTEND DRAWS, in the window's own pixels, from the top left: boxes with round
       # corners of +radius+, and words, each letter copied from the font's picture
-      # (Graphics::MenuFont) as +letters+ says, in +color+.
+      # (Graphics::MenuFont) as +letters+ gives, in +color+.
       Box = Data.define(:x, :y, :width, :height, :radius, :color)
       Words = Data.define(:text, :color, :letters)
     end

@@ -9,7 +9,7 @@ module VBlank
     #
     # +movement+ answers whether anything could happen in a round that did not happen in this one: a
     # message that is on its way, or something the test scheduled. When no copy finishes in a round and
-    # +movement+ says no, every copy waits for what will never come, and #play raises Stalled and names who
+    # +movement+ answers no, every copy waits for what will never come, and #play raises Stalled and names who
     # waits, so a test that would hang says why instead. +before_round+ is called with the round's
     # number as each round begins, which is where a test cuts or restores a link.
     class Scheduler

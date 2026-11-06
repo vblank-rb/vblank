@@ -14,7 +14,7 @@ module VBlank
     class StandInRelayServer
       attr_reader :port, :relay
 
-      # +port+ 0 lets the system choose, and #port says which it chose.
+      # +port+ 0 lets the system choose, and #port returns which it chose.
       def initialize(relay: StandInRelay.new, host: "127.0.0.1", port: 0)
         @relay = relay
         @listener = TCPServer.new(host, port)

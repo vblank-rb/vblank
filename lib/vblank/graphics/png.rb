@@ -28,10 +28,10 @@ module VBlank
     module PNG
       SIGNATURE = Ractor.make_shareable([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A].pack("C*"))
 
-      # How a pixel is stored, as the header says it: eight bits a channel; red, green and blue
+      # How a pixel is stored, as the header gives it: eight bits a channel; red, green and blue
       # with no table of colours between, or those three and how solid the pixel is. The three
       # noughts after that name the one way the format has of squeezing the rows and of
-      # filtering them, and say the rows come in order and not interlaced.
+      # filtering them, and mark the rows as coming in order and not interlaced.
       SOLID_PIXELS = Ractor.make_shareable([8, 2, 0, 0, 0].pack("C5"))
       PIXELS_WITH_ALPHA = Ractor.make_shareable([8, 6, 0, 0, 0].pack("C5"))
 

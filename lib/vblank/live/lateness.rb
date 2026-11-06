@@ -18,7 +18,7 @@ module VBlank
     #
     # +passes+ leaves out the pass the game set itself up in and the passes played in fast forward
     # (+fast_forward_passes+), which are meant to run long. +collection_timed+ is false on a Ruby that
-    # cannot say how long it spends collecting (no GC.total_time), and the collection numbers are then
+    # cannot report how long it spends collecting (no GC.total_time), and the collection numbers are then
     # nought. +setup_collection_seconds+ is the full collection run after setup, or nil if none was.
     Lateness = Data.define(:passes, :late_passes, :late_because_of_collection, :most_late_seconds,
                            :collection_seconds_in_late, :fast_forward_passes, :collection_timed,
@@ -56,7 +56,7 @@ module VBlank
       COLLECTION_TIMED = GC.respond_to?(:total_time)
       NANOSECONDS_A_SECOND = 1_000_000_000 # GC.total_time counts in these
 
-      # The nanoseconds Ruby has spent collecting since it started, or nought where it cannot say.
+      # The nanoseconds Ruby has spent collecting since it started, or nought where it cannot report it.
       def self.collection_clock = COLLECTION_TIMED ? GC.total_time : 0
 
       # The seconds Ruby spent collecting since #collection_clock read +began+.

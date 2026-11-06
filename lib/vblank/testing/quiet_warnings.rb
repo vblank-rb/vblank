@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# HOW A TEST RUN'S WARNINGS STAY WORTH READING. A test's game says `reads = 0` and the game rewrite
+# HOW A TEST RUN'S WARNINGS STAY WORTH READING. A test's game writes `reads = 0` and the game rewrite
 # makes a variable of it (DSL::PlainRuby), which the test reads back by name, so Ruby sees a local
 # nothing uses and warns, some hundreds of times a run. Renaming one `_reads` would rename the game's
 # variable, so that one warning is left out, for test files alone. Loaded ahead of the test files

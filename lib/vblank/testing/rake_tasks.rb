@@ -215,7 +215,7 @@ module VBlank
 
       # The runs of +chosen+ that CONSOLE leaves, one after the other, ending with a line for each.
       # With +golden+, a list of files, each run plays those of them it loads. With +progress+, a
-      # run plays what that record says is left of it.
+      # run plays what that record shows is left of it.
       def play_runs(chosen, golden: nil, progress: nil)
         chosen = chosen_by_console(chosen)
         labels = chosen.map { |lowering, console| label(lowering, console) }
@@ -235,7 +235,7 @@ module VBlank
         abort "rake test: a lowering's run failed" if results.any? { |_, outcome| outcome == :failed }
       end
 
-      # What the record says is left of one run. The test that stopped it is played first and alone,
+      # What the record shows is left of one run. The test that stopped it is played first and alone,
       # which starts in seconds where the whole run takes minutes to load, and then the rest.
       def play_recorded_run(progress, lowering, console, name)
         left = progress.left_in(lowering, console)
@@ -301,7 +301,7 @@ module VBlank
       end
 
       # One run: whether it passed and how long it took. Every one is played whatever the one
-      # before found, unless FAIL_FAST says otherwise (#play_runs).
+      # before found, unless FAIL_FAST asks otherwise (#play_runs).
       def play_run(lowering, console, name, listed: false)
         named = ENV["TEST"]&.delete_prefix("./")
         return [name, :not_played, 0] if listed ? named.to_s.empty? : named && !files(lowering, console).include?(named)
@@ -310,13 +310,13 @@ module VBlank
         passed = begin
           Rake::Task[task_name(lowering, console)].invoke
           true
-        rescue RuntimeError # a test task whose tests failed says so by raising
+        rescue RuntimeError # a test task whose tests failed reports it by raising
           false
         end
         [name, passed ? :passed : :failed, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started]
       end
 
-      # Each run is a TestTask, which says how a run for that lowering is played: one for each of
+      # Each run is a TestTask, which sets how a run for that lowering is played: one for each of
       # Lowering::RUNS that plays the game's consoles, and for each console it plays them as, so a
       # new lowering is a record there and not a task written here. A lowering playing several
       # consoles has a task of its own besides, playing them one after the other.

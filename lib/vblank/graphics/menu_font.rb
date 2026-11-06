@@ -9,7 +9,7 @@ module VBlank
     # into pictures by tools/make_menu_font.rb and kept in lib/vblank/data/menu_font/, so no frontend
     # needs a font library or a font file. A frontend puts a density's picture of every letter
     # (#atlas) on the screen's card once, then writes a word by copying each letter out of it to
-    # where #layout says.
+    # where #layout puts it.
     #
     # There are pictures at two densities: one pixel a point, for an ordinary screen, and two, for a
     # Retina one. A screen of any other density is written with the nearer of the two, scaled, so a
@@ -58,7 +58,7 @@ module VBlank
       # width, height, left, top and advance, in the picture's own pixels.
       def glyphs(density) = measures_at(density).fetch("glyphs")
 
-      # The pairs of letters that sit closer, or further apart, than their advances say, by the two
+      # The pairs of letters that sit closer, or further apart, than their advances give, by the two
       # letters together: how many of the picture's pixels to move the second.
       def kerning(density) = measures_at(density).fetch("kerning")
 
@@ -66,7 +66,7 @@ module VBlank
       def line_height(density) = (measures_at(density).fetch("line_height") * scale(density)).round
 
       # How wide +words+ are at +density+, in pixels: the pen's walk from the first letter to the end
-      # of the last, closer or further apart where the font says a pair of letters goes.
+      # of the last, closer or further apart where the font puts a pair of letters.
       def width(words, density) = pen_walk(words, density) { nil }.round
 
       # Each letter of +words+, written with the top left of their line at +x+, +y+ (pixels), at

@@ -5,7 +5,7 @@ module VBlank
     # THE MENU OVER THE WINDOW a game is played in (WindowMenu says what it holds and how it
     # looks): how it behaves, and where each of its boxes and words goes. Nothing here knows about
     # a window, so it is played in tests with none; the window hands it the keys meant for it
-    # (#press), draws what it says (#drawing), and does what its settings say.
+    # (#press), draws what it asks for (#drawing), and does what its settings ask for.
     #
     # It is the first of three. The desktop build has this same menu written in C, line for line
     # from this one (runtime/rg_window_menu.c), and test_native_window_menu.rb holds the two to

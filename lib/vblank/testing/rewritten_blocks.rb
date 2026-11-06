@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # A test's game block is run through DSL::PlainRuby as a game's is, so a test can say what it
+    # A test's game block is run through DSL::PlainRuby as a game's is, so a test can write what it
     # means in normal Ruby. A test starts its game on a Builder by hand, with `instance_eval`, and
     # a helper runs the rest a test hands it with `instance_exec`, so those two are the places
     # every such block passes. The checks stay out: a test names its own helpers and fixtures, and

@@ -8,7 +8,7 @@ module VBlank
     # cannot tell the difference. The host's own machine is one more member of the room: #host_line is its link.
     #
     # A machine that joins connects a socket (TCP, or a UNIX socket in a test) and joins the one room, which
-    # has a fixed code (CODE), since the address already says which room. The host is player 1 and the others
+    # has a fixed code (CODE), since the address already names which room. The host is player 1 and the others
     # are numbered as they arrive.
     #
     # NOTHING HERE RUNS ON ITS OWN. The room moves text between its sockets and its relay when the host's

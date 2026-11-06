@@ -158,7 +158,7 @@ module VBlank
         end
 
         # The next test to a child that asked. One that died between asking and being answered
-        # leaves its test for the next child; its closed pipe says so in a moment.
+        # leaves its test for the next child; its closed pipe shows it in a moment.
         def hand_next_test(child)
           child.asked_for_work = true
           klass, name = @waiting.shift

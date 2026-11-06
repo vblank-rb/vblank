@@ -5,7 +5,7 @@ require "yaml"
 
 module VBlank
   module Original
-    # SOMETHING IS WRONG WITH THE PLAYER'S COPY OF THE ORIGINAL, or nothing says where it is. The
+    # SOMETHING IS WRONG WITH THE PLAYER'S COPY OF THE ORIGINAL, or nothing sets where it is. The
     # message says what to set, so a caller that turns this into words for a person rescues this
     # one class.
     class CopyError < StandardError; end
@@ -41,7 +41,7 @@ module VBlank
       def kind_words = folder ? "a folder" : "a file"
     end
 
-    # ONE RELEASE OF THE ORIGINAL, as a decompilation's versions file says it: its name, its SHA-1,
+    # ONE RELEASE OF THE ORIGINAL, as a decompilation's versions file lists it: its name, its SHA-1,
     # and if known its MD5, its size in bytes, and whether the game reads it. A release with an MD5
     # and no SHA-1 is one a person might have, and can be named, but is never read.
     Release = Data.define(:name, :sha1, :md5, :size, :read) do
@@ -129,7 +129,7 @@ module VBlank
       end
 
       # The path the game names +name+ (one of +paths+), found as the copy is. NotSet when nothing
-      # says where it is, WrongPath when what is named is not there or is not the kind it must be.
+      # sets where it is, WrongPath when what is named is not there or is not the kind it must be.
       def path(name)
         entry = @paths.fetch(name.to_sym) { refuse_unknown_path_name!(name) }
         named = named_path(entry.setting, entry.key, WrongPath)

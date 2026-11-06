@@ -72,7 +72,7 @@ module VBlank
       # (hit) or built (miss), why a miss missed, and how long the key and the build took.
       Ask = Data.define(:label, :result, :reason, :key_seconds, :build_seconds)
 
-      # Why a miss missed, when no part says it.
+      # Why a miss missed, when no part names it.
       FIRST_BUILD_REASON = "not cached yet"
       SKIPPED_CACHE_REASON = "NO_BUILD_CACHE"
 

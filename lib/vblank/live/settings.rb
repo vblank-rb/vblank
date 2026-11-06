@@ -62,7 +62,7 @@ module VBlank
       def self.starting_key(hotkey) = HOTKEYS.find { |each| each.setting == hotkey }.key
 
       # Which console button each of a gamepad's buttons is, by SDL's number for it, as the block
-      # (given a console button, its gamepad button) says.
+      # (given a console button, its gamepad button) returns.
       def self.pad_map = BUTTONS.to_h { |button| [PAD_BUTTONS.index(yield(button.setting)), button.setting] }
 
       def initialize(key_names:)
@@ -94,7 +94,7 @@ module VBlank
       # Which console button each of a gamepad's buttons is, by SDL's number for it.
       def pad_map = @pad_map ||= self.class.pad_map { |button| pad_of(button) }
 
-      # The console buttons whose keys are down, as +down+ (given a scancode) says.
+      # The console buttons whose keys are down, as +down+ (given a scancode) returns.
       def buttons_held(&down)
         BUTTONS.filter_map { |button| button.setting if keys_of(button.setting).any?(&down) }
       end
@@ -224,7 +224,7 @@ module VBlank
       def mark_written = @unwritten = false
 
       # Every setting so far came from the file every game shares, and is not the own of the file
-      # read next, a game's: that file keeps only what it says, and what changes while it plays.
+      # read next, a game's: that file keeps only what it holds, and what changes while it plays.
       def mark_inherited = @owned.clear
 
       # THE SETTINGS AS TEXT for the file: every one, for the file every game shares, or with
@@ -435,7 +435,7 @@ module VBlank
       end
 
       # No key is two things: where two have one, the later loses it and it is said. Two keys of
-      # the same button are the same thing said twice, and are not a clash.
+      # the same button are the same thing set twice, and are not a clash.
       def clear_clashing_keys
         slots = key_slots
         slots.each_with_index do |(later, later_owner), at|

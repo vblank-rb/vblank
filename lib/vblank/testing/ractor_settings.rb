@@ -15,13 +15,13 @@ module VBlank
     #
     # --ractor GOES INTO TESTOPTS rather than a task's own options, because rake reads TESTOPTS IN
     # PLACE OF those options when it is set: `TESTOPTS="--name=/x/"` would play that one test without
-    # Ractors, and a test could pass alone that the suite would refuse. Options that already say
+    # Ractors, and a test could pass alone that the suite would refuse. Options that already name
     # --ractor or --no-ractor (for chasing one failure the plain way) are left as they are, matched as
-    # whole words, so a pattern that happens to say "ractor" is not taken for the flag. The native
+    # whole words, so a pattern that happens to contain "ractor" is not taken for the flag. The native
     # and other checked runs take it out again themselves (TestTask), since they cannot play in
     # Ractors.
     #
-    # HALF THE MACHINE'S CORES, unless MT_RACTOR_WORKERS says otherwise. A run on every core holds the
+    # HALF THE MACHINE'S CORES, unless MT_RACTOR_WORKERS asks otherwise. A run on every core holds the
     # whole machine for its length, and is not much quicker: so much of a test run waits on things
     # other than arithmetic that half the workers finish in about the time all of them do.
     #

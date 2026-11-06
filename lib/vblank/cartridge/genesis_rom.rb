@@ -8,7 +8,7 @@ module VBlank
     # the console reads in front of it.
     #
     # The 68000 reads its first two long words at power-on: the place the stack starts, and the place
-    # to start running. The 62 vectors after them say where it goes when something goes wrong (an
+    # to start running. The 62 vectors after them give where it goes when something goes wrong (an
     # address error, a division by zero, an instruction it does not know) and when an interrupt
     # comes: the horizontal blank (level 4) and the vertical blank (level 6) are the ones a game
     # uses. All 64 are four bytes each, big-endian, so the vectors fill the first 256 bytes of the

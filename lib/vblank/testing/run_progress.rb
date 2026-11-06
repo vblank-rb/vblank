@@ -112,7 +112,7 @@ module VBlank
         def add(line) = File.open(@path, "a") { |file| file.puts(line) }
       end
 
-      # Puts the tests a record says passed out of the run, keeping the order of the rest.
+      # Puts the tests a record marks as passed out of the run, keeping the order of the rest.
       module LeaveOutPassed
         def filter_runnable_methods(options = {})
           super.reject { |name| RunProgress.passed_tests.include?("#{self.name}##{name}") }

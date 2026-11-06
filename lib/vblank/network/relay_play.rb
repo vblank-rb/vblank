@@ -14,7 +14,7 @@ module VBlank
 
       module_function
 
-      # The relay's address: +given+ if it says one, else the environment's. Raises ConnectionFailed in
+      # The relay's address: +given+ if it names one, else the environment's. Raises ConnectionFailed in
       # plain words when neither does.
       def url_from(given, environment: ENV)
         url = given.to_s.empty? ? environment[RELAY_URL_VARIABLE].to_s : given

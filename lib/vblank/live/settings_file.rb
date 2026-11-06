@@ -6,7 +6,7 @@ module VBlank
     # finds them, so the two share them: settings.txt in the folder the operating system keeps for
     # "vblank" and each person — one folder every game shares, "(all games)", and one for each
     # game, named from its title. The shared file is read first; a game that has a file of its own
-    # has that read over it, and then keeps only what that file says and what changes while it
+    # has that read over it, and then keeps only what that file holds and what changes while it
     # plays, so a change to the shared file still reaches it. Changes are written where the player
     # last looked: the game's own file when it has one, the shared one when not.
     #

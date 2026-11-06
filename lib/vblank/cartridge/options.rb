@@ -2,16 +2,16 @@
 
 module VBlank
   module Cartridge
-    # HOW A GAME IS BUILT, as one value: what a game says about its cartridge beside its name.
+    # HOW A GAME IS BUILT, as one value: what a game sets for its cartridge beside its name.
     #
-    # A game says these where it is named (`VBlank.game "NAME", consoles: %i[gba], save_memory: 128`) or where it
+    # A game sets these where it is named (`VBlank.game "NAME", consoles: %i[gba], save_memory: 128`) or where it
     # is built (`VBlank.build`), and they are needed a long way from there — the frame pacing and
     # the save memory by the Builder running the game's block, the two speed settings by the
     # lowering. Passed as loose keywords they had to be written into every signature on the way
     # down, and a new one meant six edits; as one value a new setting is a field here, and every
     # step between the game and the place that reads it carries it without knowing it is there.
     #
-    # Checked as it is made, so a setting that cannot be right is refused at the line that said
+    # Checked as it is made, so a setting that cannot be right is refused at the line that set
     # it, before anything is read off disk.
     #
     # +frame_sync+ is :auto (the framework paces each game_loop) or :manual (the game places
@@ -19,13 +19,13 @@ module VBlank
     # (8, 32, 64 or 128), or nil to let the game's save_data records decide. 8 is the EEPROM, which
     # only a game that asks for it gets (see IR::SaveLayout::EEPROM).
     # +console+ names the console the game is built for (see Console::Kit), held as its Symbol
-    # however it was written. It is nil until something names one: a game says its consoles where it
+    # however it was written. It is nil until something names one: a game names its consoles where it
     # is named and is built for one of them, and VBlank.build refuses a build that names none.
     #
     # +fast_cartridge+, +fast_code+ and +stack_room+ are SETTINGS ONLY THE ADVANCE HAS, and only its
-    # build reads them: what each means, what it is when nothing is said, and which values it can
+    # build reads them: what each means, what it is when nothing is set, and which values it can
     # take are Cartridge::AdvanceBuild's, and so is refusing a value it cannot use. Each is nil when
-    # the game says nothing, so that a build for another console can tell a setting it does not
+    # the game sets none, so that a build for another console can tell a setting it does not
     # have from one nobody asked for (see Console.refuse_unusable_console_settings!).
     #
     # +variant+ names the hardware this copy of the console has beyond the plain one (a chip on a
@@ -37,12 +37,12 @@ module VBlank
     # (Console::Kit#sprite_piece_sizes). It is by console because each has sizes of its own, so one
     # game for two consoles can name a size for each. A size a console does not draw is refused here.
     #
-    # +for_computer+ says the game is being built to play on a computer (as C, for a web page, or as
+    # +for_computer+ marks that the game is being built to play on a computer (as C, for a web page, or as
     # Ruby) rather than as a cartridge. It changes nothing by itself: the game asks with
     # `built_for_computer?` and picks its own default.
     #
     # +players+ is how many players the game takes, by console (Cartridge::Players), held as
-    # { key => Range }; empty where the game said nothing.
+    # { key => Range }; empty where the game set none.
     #
     # +consoles+ is every console the game is for, as its `consoles:` names them, so a game can ask
     # `built_for?` about any of them and is told plainly when it asks about one it is not for. It is

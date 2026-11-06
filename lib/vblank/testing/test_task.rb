@@ -33,7 +33,7 @@ module VBlank
     #
     # A NATIVE RUN is played differently, and this is all of how. Every test starts zig and the
     # program it builds, which Ruby cannot do from inside a Ractor, so it is plain minitest's
-    # whatever the game says about Ractors (no --ractor, no MT_RACTOR); its tests are spread over
+    # whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests are spread over
     # several processes instead (Processes) — TEST_PROCESSES of them, or as many as the Ractor run
     # has workers, or half the machine's cores — each playing one test at a time (MT_CPU=1). And
     # zig is asked for before any test is played, so a missing or wrong one stops the run with
@@ -132,9 +132,9 @@ module VBlank
       def in_ractors? = !checked? && option_list.split.include?("--ractor")
 
       # Is the run played with YJIT, Ruby's compiler of hot methods to machine code? Where its
-      # record says YJIT makes it faster (Lowering::Run#yjit), and never in Ractors: with several
-      # running at once it makes a run many times slower. Off is said on Ruby's command line,
-      # which wins over a --yjit in RUBYOPT; on is said in the environment (#run_settings), which
+      # record shows YJIT makes it faster (Lowering::Run#yjit), and never in Ractors: with several
+      # running at once it makes a run many times slower. Off is set on Ruby's command line,
+      # which wins over a --yjit in RUBYOPT; on is set in the environment (#run_settings), which
       # the processes a checked run starts for its tests inherit. A Ruby built without YJIT takes
       # both and ignores them.
       def yjit? = Lowering.run_named(lowering).yjit? && !in_ractors?
@@ -144,8 +144,8 @@ module VBlank
       def without_ractor(options) = (options.split - %w[--ractor]).join(" ")
 
       # What the run is handed. A checked run's own copy of TESTOPTS loses --ractor
-      # too, since a test that starts a run of its own hands that copy on. YJIT as #yjit? says.
-      # The console is always said, as VBLANK_CONSOLE, and CONSOLE is not handed on
+      # too, since a test that starts a run of its own hands that copy on. YJIT as #yjit? returns.
+      # The console is always set, as VBLANK_CONSOLE, and CONSOLE is not handed on
       # (Lowering::PLAYED_AS_SETTING says why).
       def run_settings
         shared = { "RUBY_YJIT_ENABLE" => yjit? ? "1" : nil, Lowering::PLAYED_AS_SETTING => console.to_s,
