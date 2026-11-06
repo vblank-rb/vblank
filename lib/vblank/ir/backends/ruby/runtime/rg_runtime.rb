@@ -199,7 +199,8 @@ def rg_start_file_open(called, rules)
 end
 
 # How each way a table is kept (RG_TABLE_INT8...) reads its entries from the file.
-RG_START_FILE_READS = ["c*", "C*", "s<*", "v*", "l<*"].freeze
+# Must be shareable: a game made in a Ractor (a test's) cannot set a constant that is not.
+RG_START_FILE_READS = Ractor.make_shareable(["c*", "C*", "s<*", "v*", "l<*"])
 RG_START_FILE_ENTRY_BYTES = [1, 1, 2, 2, 4].freeze
 
 def rg_start_file_fill_table(table, kept, count, at)
