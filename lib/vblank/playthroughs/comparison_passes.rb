@@ -26,9 +26,14 @@ module VBlank
       # then played on until its own count shows that pass too, and the two are compared there,
       # each on the first frame it showed it. The second is held, on each frame it plays, the
       # buttons the first held on the frame it showed that pass, so a press lands on the same
-      # pass on both, wherever it lands in frames. A game reads its buttons once a pass, so what
-      # the first is held on the later frames of a slow pass it never reads, and the second is
-      # not given it either: a press of one frame that falls there reaches neither game.
+      # pass on both, wherever it lands in frames. A game that reads its buttons once a pass never
+      # reads what the first is held on the later frames of a slow pass, and the second is not
+      # given it either: a press of one frame that falls there reaches neither game. A game that
+      # reads them every frame does read it, and with `reads_buttons_every_frame: true` the second
+      # is given every frame's buttons in turn (see LinedUp, THE BUTTONS).
+      #
+      # AFTER A LEAD-IN (`lead_ins:`), the pass each cartridge is part way through is not compared,
+      # since its first frame is behind it: comparing starts at the next pass.
       #
       # A count that comes back round is told from one the game sets back (a new game) only by
       # `pass_count_wraps_at:`: with it, any fall is a lap; without it, a fall is an error.
@@ -56,26 +61,28 @@ module VBlank
         SIDES = %w[first second].freeze
         private_constant :SIDES
 
-        # The count of +by_passes+, or nil for a comparison frame by frame.
-        def self.from(by_passes, wraps_at)
+        # The count of +by_passes+, or nil for a comparison frame by frame. +every_frame+ is
+        # `reads_buttons_every_frame:` (see LinedUp, THE BUTTONS).
+        def self.from(by_passes, wraps_at, every_frame: false)
           if by_passes.nil?
-            return nil if wraps_at.nil?
+            return nil if wraps_at.nil? && !every_frame
 
-            raise ArgumentError, "`pass_count_wraps_at:` was given, and `by_passes:` was not. `pass_count_wraps_at:` says " \
-                                 "where a count of passes comes back round to nought. Give `by_passes:` too, or remove " \
-                                 "`pass_count_wraps_at:`."
+            given = wraps_at.nil? ? "`reads_buttons_every_frame:`" : "`pass_count_wraps_at:`"
+            raise ArgumentError, "#{given} was given, and `by_passes:` was not. It is a setting of a comparison lined up " \
+                                 "by the game's passes. Give `by_passes:` too, or remove #{given}."
           end
 
-          new(by_passes, wraps_at)
+          new(by_passes, wraps_at, every_frame)
         end
 
-        def initialize(way, wraps_at)
+        def initialize(way, wraps_at, every_frame)
           refuse_malformed_way!(way)
           refuse_unusable_wrap!(wraps_at)
           ways = way.is_a?(Array) ? way : [way, way]
           @game_loop_sides = ways.each_index.select { |side| ways[side] == true }
           @reading = Readings.new(COUNT => ways.map { |one| one == true ? GameLoopCount.new : one })
           @wraps_at = wraps_at
+          @every_frame = every_frame == true
         end
 
         # Whether the cartridge on +side+ (0 or 1) is read by the game loop's own count, which
@@ -99,7 +106,8 @@ module VBlank
         # (A pass is counted by the game, so +_part+, the part of the screen looked at, has
         # nothing to say about it.)
         def lined_up_on(first, second, _part)
-          LinedUp.new(Count.new(@reading, 0, @wraps_at, first), Count.new(@reading, 1, @wraps_at, second), passes: true)
+          LinedUp.new(Count.new(@reading, 0, @wraps_at, first), Count.new(@reading, 1, @wraps_at, second), passes: true,
+                                                                                                  every_frame: @every_frame)
         end
 
         # The setting's name, for an error about settings it cannot be used with.

@@ -24,11 +24,16 @@ class TestComparisonByPasses < Minitest::Test
       screen :bitmap
       passes = var :passes, 0
       x = var :x, 20
+      frames_into = var :frames_into, 0 # which frame of its pass the game waits on: 0, or 1 on a slow pass's second
       game_loop do
         wait_vblank
         if late
-          wait_vblank if passes % 5 == 4
+          if passes % 5 == 4
+            frames_into = 1
+            wait_vblank
+          end
         end
+        frames_into = 0
         if stops_at
           passes += 1 if passes < stops_at
         else
@@ -150,8 +155,74 @@ class TestComparisonByPasses < Minitest::Test
     end
   end
 
+  # A GAME THAT READS ITS BUTTONS EVERY FRAME, as one reading them in its frame interrupt does: a
+  # tap on a slow pass's later frame is caught, and counted on the pass. +late+ as `passing`.
+  private def tapping(late: false)
+    VBlank.build("TAPPING", console: :gba, frame_sync: :manual, out: StringIO.new, err: StringIO.new) do
+      screen :bitmap
+      passes = var :passes, 0
+      caught = var :caught, 0
+      taps = var :taps, 0
+      game_loop do
+        wait_vblank
+        caught = 1 if held(:a)
+        if late
+          if passes % 5 == 4
+            wait_vblank
+            caught = 1 if held(:a)
+          end
+        end
+        passes += 1
+        if caught == 1
+          taps += 1
+          caught = 0
+        end
+      end
+    end
+  end
+
+  # A one-frame tap after +frames+ frames.
+  private def tap_after(frames)
+    VBlank.playthrough("tap") do
+      wait frames: frames
+      hold :a, frames: 1
+      wait frames: 20
+    end
+  end
+
+  # Given only each pass's first frame's buttons, the second never sees a tap that fell on a
+  # later frame of one of the first's slow passes; told the game reads them every frame, it is
+  # given every frame's buttons in turn and catches every tap the first did.
+  def test_a_game_that_reads_buttons_every_frame_is_given_every_frames_buttons
+    taps = (10..22).map { |frames| tap_after(frames) }
+    late = tapping(late: true)
+    quick = tapping
+
+    dropped = taps.count { |tap| tap.compare(late, quick, by_passes: :passes, readings: { taps: :taps }).drift }
+    assert_operator dropped, :>, 0, "a tap on a slow pass's later frame should reach the second only every frame"
+    taps.each do |tap|
+      assert_plays_alike late, quick, tap, by_passes: :passes, reads_buttons_every_frame: true, readings: { taps: :taps }
+    end
+  end
+
+  # AFTER A LEAD-IN a pass can be under way on either cartridge, and its first frame is behind
+  # it, so it is not compared: comparing starts at the next pass, each on its first frame.
+  def test_a_pass_under_way_when_the_lead_ins_end_is_not_compared
+    quick = passing
+    late = passing(late: true)
+    long = VBlank.playthrough("long") { wait frames: 60 }
+    slow_begins = first_frame(late, long.play(late).tape) { |game| game.var(:passes) == 4 } # pass 4 takes two frames
+    begins_there = first_frame(quick, long.play(quick).tape) { |game| game.var(:passes) == 4 }
+    into_first = ->(game) { game.var(:frames_into) }
+    leads = [VBlank.playthrough("quick lead") { wait frames: begins_there - 1 },
+             VBlank.playthrough("late lead") { wait frames: slow_begins }]
+
+    assert_plays_alike quick, late, watch, by_passes: :passes, lead_ins: leads, readings: { into: into_first }
+  end
+
   def test_a_wrap_with_no_count_and_a_count_that_is_no_way_are_refused
     assert_match "`by_passes:`", assert_raises(ArgumentError) { watch.compare(nil, nil, pass_count_wraps_at: 8) }.message
+    assert_match "`by_passes:`", assert_raises(ArgumentError) { watch.compare(nil, nil, reads_buttons_every_frame: true) }.message
     assert_match "`by_passes:`", assert_raises(ArgumentError) { watch.compare(nil, nil, by_passes: 3) }.message
     assert_match "`pass_count_wraps_at:`",
                  assert_raises(ArgumentError) { watch.compare(nil, nil, by_passes: :passes, pass_count_wraps_at: 1) }.message

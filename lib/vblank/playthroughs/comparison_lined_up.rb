@@ -13,7 +13,11 @@ module VBlank
       # THE BUTTONS depend on what a step is. A game reads its buttons once a pass, so where the
       # steps are passes the second is held, on each frame it plays, the buttons the first held
       # on the frame that pass began on: the ones the first read. The first's buttons on its
-      # other frames of that pass are given to neither (see Passes). Where the steps are frames
+      # other frames of that pass are given to neither (see Passes). A game that reads them on
+      # every frame instead (in its frame interrupt, say; `reads_buttons_every_frame: true`) is
+      # held, on every frame toward a pass, each button the first held on any of its frames since
+      # the pass before: a press is caught by the same pass on both, though two quick presses
+      # inside one pass become one. Where the steps are frames
       # whose picture changed, the game reads its buttons on the still frames too (a title screen
       # waits for START on one), so the second is held the first's buttons of every frame since
       # the step before, in order, one a frame: the last of them again if it takes more frames,
@@ -38,10 +42,13 @@ module VBlank
         # How many frames the second cartridge has played.
         attr_reader :second_frames
 
-        def initialize(first, second, passes:)
+        # +every_frame+ says the game reads its buttons on every frame and not once a pass (see
+        # THE BUTTONS); it matters only where the steps are passes.
+        def initialize(first, second, passes:, every_frame: false)
           @first = first
           @second = second
           @passes = passes
+          @every_frame = every_frame
           @shown = nil
           @second_frames = 0
           @both_shown = 0
@@ -51,10 +58,20 @@ module VBlank
         # Whether a step is a pass of the game loop.
         def passes? = @passes
 
+        # AFTER A LEAD-IN, a pass can be under way on either cartridge, and the frame it began on
+        # is behind it, so it cannot be compared on its first frame. Each count is read as the
+        # lead-ins left it, and comparing starts at the first pass after both, each compared on
+        # the first frame its cartridge shows it.
+        def skip_passes_under_way!
+          return unless @passes
+
+          @shown = [@first.read_after_frame!, @second.read_after_frame!].max
+        end
+
         # The step the first cartridge took on the frame it has just played, holding +keys+, or
         # nil when it shows one it has shown before.
         def read_step_begun_on_first!(keys)
-          @buttons_since_step = [] if @passes
+          @buttons_since_step = [] if @passes && !@every_frame
           @buttons_since_step << keys
           step = @first.read_after_frame!
           return nil if @shown && step <= @shown
@@ -69,6 +86,10 @@ module VBlank
         def play_second_to_step!(step)
           buttons = @buttons_since_step
           @buttons_since_step = []
+          # A game that reads every frame is held, on each frame toward the pass, every button the
+          # first held on any frame since its pass before, so a press on one of those frames is caught
+          # by the same pass on both.
+          buttons = [buttons.compact.reduce(0, :|)] if @every_frame && @passes
           still = 0
           until @second.current_step && @second.current_step >= step
             before = @second.current_step

@@ -180,15 +180,16 @@ module VBlank
       #
       # +by_passes+ is how each cartridge counts its passes, for two lined up by the game's own
       # passes and not by frames, and +pass_count_wraps_at+ where that count comes back round to
-      # nought (see Passes). +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
+      # nought (see Passes), and +reads_buttons_every_frame+ true for a game that reads its buttons on
+      # every frame and not once a pass. +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
       # cartridges whose frames that show the picture of the frame before are skipped (see
       # StillFrames). Nil for a comparison frame by frame.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
                      same: :tape, frames_apart: nil, save: nil, saves: nil, lead_ins: nil, reports_in: nil, layers: nil,
                      forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil, skipping_still_frames_of: nil,
-                     **how_alike)
+                     reads_buttons_every_frame: false, **how_alike)
         refuse_unknown_settings!(how_alike.keys)
-        passes = Passes.from(by_passes, pass_count_wraps_at)
+        passes = Passes.from(by_passes, pass_count_wraps_at, every_frame: reads_buttons_every_frame)
         still_frames = StillFrames.from(skipping_still_frames_of)
         refuse_two_step_counts!(passes, still_frames)
         @step_count = passes || still_frames
@@ -390,10 +391,11 @@ module VBlank
         refuse_screens_not_described!(consoles)
         show_layers_asked_for(consoles)
         reporter = ->(drift, pictures, part) { drift_with_report(drift, pictures, part, tape) } if @reports_in
+        lined_up = @step_count&.lined_up_on(*consoles, @likeness.looked_at.fixed_part)
+        lined_up&.skip_passes_under_way! if @lead_ins.any?
         pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),
                                                              torn: TornFrames.for(@torn_side, @likeness),
-                                                             carrying_on: @carrying_on, reporter: reporter,
-                                                             lined_up: @step_count&.lined_up_on(*consoles, @likeness.looked_at.fixed_part))
+                                                             carrying_on: @carrying_on, reporter: reporter, lined_up: lined_up)
         # A pair that has stopped plays no more frames, and is still told a moment that
         # names the very frame it stopped on: that one it reached. +due+ is the frame the
         # tape is on after each step, so a step is past where the pair stopped when it is
@@ -554,7 +556,8 @@ module VBlank
       # Every setting a comparison has: the ones that say how alike, and the ones of its own.
       def self.settings
         [*how_alike_settings, :ignoring_frames, :layers, :forgiving_torn_frames_of, :readings, :comparing, :carrying_on, :same,
-         :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :skipping_still_frames_of]
+         :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :reads_buttons_every_frame,
+         :skipping_still_frames_of]
       end
 
       # Passes and still frames are two counts of steps (see LinedUp), and a comparison lines the

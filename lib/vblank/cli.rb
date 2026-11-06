@@ -577,6 +577,9 @@ module VBlank
                                  both; FIRST,SECOND is one for each.
         --pass-count-wraps-at N  Where the count comes back round to 0, like
                                  256 for a count kept in a byte.
+        --reads-buttons-every-frame
+                                 With --by-passes: the game reads its buttons
+                                 every frame, not once a pass.
         --skipping-still-frames-of WHICH
                                  first, second or both: skip that cartridge's
                                  frames whose picture is the one before's, as
@@ -637,6 +640,7 @@ module VBlank
     option :frames_apart, type: :numeric, banner: "N"
     option :by_passes, banner: "COUNT"
     option :pass_count_wraps_at, type: :numeric, banner: "N"
+    option :reads_buttons_every_frame, type: :boolean
     option :skipping_still_frames_of, banner: "WHICH", enum: %w[first second both]
     option :save, banner: "PATH"
     option :saves, type: :array, banner: "PATH"
