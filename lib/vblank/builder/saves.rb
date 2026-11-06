@@ -255,7 +255,7 @@ module VBlank
       # records answer when there are any, since only they know what they need.
       def save_memory = @saves ? @saves.save_memory : IR::SaveLayout.chosen(@save_memory, nil)
 
-      # Say in the program how much save memory it has, so every backend runs it on the same
+      # Declare in the program how much save memory it has, so every backend runs it on the same
       # kind. A game that saves nothing has none to speak of.
       def declare_save_memory
         return if @persisted.empty? && @saves.nil?

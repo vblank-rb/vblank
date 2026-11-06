@@ -75,7 +75,7 @@ module VBlank
 
       private def list_layout = IR::Backends::GBC::Runtime::Lists
 
-      # A VARIABLE THE GAME SAID IS NARROW is kept in a byte or two here, with the next variable
+      # A VARIABLE THE GAME DECLARED NARROW is kept in a byte or two here, with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.
       private def variable_kept_at(name, address)
         width = @rom.source_program&.kept_width_of(name) or return super

@@ -23,7 +23,7 @@ module VBlank
 
       attr_reader :buffer, :code_offset
 
-      # WHAT EVERY ADVANCE CARTRIDGE'S HEADER SAYS, whoever made the cartridge — asked of a
+      # WHAT EVERY ADVANCE CARTRIDGE'S HEADER HOLDS, whoever made the cartridge — asked of a
       # cartridge file too (Diagnostics::CartridgeFile), which has nothing but its bytes.
       #
       # The console a cartridge of this kind is for; whether +bytes+ are one (every Advance

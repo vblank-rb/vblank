@@ -30,7 +30,7 @@ module VBlank
       # More frames than any playing gets to: the playing decides when it is over (#finish).
       UNENDING = 1 << 30
 
-      # Said into the run's Fiber to end a run the playing has finished with.
+      # Raised into the run's Fiber to end a run the playing has finished with.
       class Finished < StandardError; end
 
       # +speaker+ marks that somebody is listening, so a way that makes its sound as a file hands it over

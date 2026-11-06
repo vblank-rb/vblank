@@ -66,7 +66,7 @@ module VBlank
         @console || (run.plays_any_console? && Lowering.named_console(ENV)) || run.console
       end
 
-      # Said inside the block, where the task is being made: a native run is made with the
+      # Set inside the block, where the task is being made: a native run is made with the
       # process runner loaded, which is settled as the task is defined.
       def lowering=(lowering)
         refuse_lowering_after_definition!

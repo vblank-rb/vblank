@@ -14,7 +14,7 @@ module VBlank
     # The sound is the game's own on the emulator and the computer builds. The interpreter makes
     # none a speaker can play, so it hands the speaker silence, which paces it the same.
     #
-    # THE FRAME RATE SAYS HOW OFTEN THE GAME MAKES A NEW PICTURE. The emulator is stepped a screen
+    # THE FRAME RATE SHOWS HOW OFTEN THE GAME MAKES A NEW PICTURE. The emulator is stepped a screen
     # refresh at a time, sixty a second whatever the game does, and a game whose pass takes two
     # frames shows the same picture for two of them. So each refresh that finished no pass of the
     # game is told to the device as a repeat (+repeating_picture=+, the one thing asked of a device

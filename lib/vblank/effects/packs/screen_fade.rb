@@ -421,7 +421,7 @@ module VBlank
         #
         # The pack is one ramp — one level, one color, one routine that walks them — and
         # its place in the stack is the same kind of thing: what a game means by "the
-        # screen fading". Said on any of the verbs, it holds for all of them, so a
+        # screen fading". Set on any of the verbs, it holds for all of them, so a
         # `fade_out under: :ui` is undone by a plain `fade_in`.
         #
         # Two different places is a friendly error rather than a choice, and the reason is

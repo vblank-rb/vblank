@@ -57,7 +57,7 @@ module VBlank
       #
       #   image :link, from: "link.png", colors: [:transparent, :white, :green, ...]
       #
-      # Say it and the framework keeps that order rather than working one out. Say
+      # Set it and the framework keeps that order rather than working one out. Set
       # nothing, which is almost always right, and it works one out from the colors in
       # the art.
       # A slot of the game's data pack can stand for either list: `colors: pack[:palette]`,

@@ -183,7 +183,7 @@ module VBlank
 
         private
 
-        # THE FIRST STEP OF A WALK SAID IN PIXELS, taken on the frame the walk is called, as the
+        # THE FIRST STEP OF A WALK GIVEN IN PIXELS, taken on the frame the walk is called, as the
         # game being copied takes it: the light holds the first size at the end of that frame and
         # draws it on the next picture. The walk's own routine runs where each frame starts, so
         # by the time the game calls the walk this frame's has already run; it shows the size it

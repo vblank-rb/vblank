@@ -17,7 +17,7 @@ module VBlank
       # SAID ONCE, a menu is: an ordered list of items, one of them picked, up and down
       # moving the pick and wrapping at both ends, and a button running the picked item's
       # block. Everything else — which colour is which, what the cursor looks like, how
-      # far apart the rows are — is decoration the game SAYS rather than builds.
+      # far apart the rows are — is decoration the game NAMES rather than builds.
       #
       # This is a pack, so every line below is written in public DSL verbs — `var`,
       # `held`, `pressed`, `if`, `draw_text`. Nothing here is new capability, which is

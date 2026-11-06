@@ -13,7 +13,7 @@ module VBlank
       # is like with like. `frames_in_a_row:` only forgives a difference for a few frames, which
       # is not the same thing.
       #
-      # SO EACH CARTRIDGE SAYS ITS OWN COUNT OF PASSES, read after every frame, the way a reading
+      # SO EACH CARTRIDGE REPORTS ITS OWN COUNT OF PASSES, read after every frame, the way a reading
       # is read (see Readings): a variable's name, a block handed the running cartridge, or one
       # of those for each. `true` is the game loop's own count, which a cartridge built here keeps
       # (Diagnostics::Verifier#passes). An original keeps a counter somewhere in its memory, and a

@@ -198,7 +198,7 @@ module VBlank
         end
       end
 
-      # A RECORD WITH MORE COPIES THAN ITS ROW SAYS keeps the ones it had. It grows where it is
+      # A RECORD WITH MORE COPIES THAN ITS ROW GIVES keeps the ones it had. It grows where it is
       # when the room after it is free; otherwise its copies move to room big enough for all of
       # them, and the table is written once they are there. With no such room anywhere the
       # records are slid down together, and those above this one are then lifted by as much as

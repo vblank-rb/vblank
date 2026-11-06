@@ -133,7 +133,7 @@ module VBlank
       # @param faces [DSL::List] which faces to draw, in order; all of them when not given
       # @param window [Array] four numbers or Values: the edges faces are held to as the game runs
       # @param lit [Boolean] for a place with a shading, draw it lit (the default) or as its pictures are
-      # A SHAPE DRAWN WHERE THE GAME SAYS, a robot flying in a room: +at+ is where the place's own
+      # A SHAPE DRAWN WHERE THE GAME PUTS IT, a robot flying in a room: +at+ is where the place's own
       # middle stands now, three numbers or values the game works out, and +facing+ which way the
       # place's own arrows point, as `viewer` takes them (`bot.facing` hands a viewer's over). Each
       # drawing stands it afresh, so one shape is drawn as many times a pass as the game likes.

@@ -36,7 +36,7 @@ module VBlank
 
         # Shake the screen — the impact effect for a hit, an explosion, a life lost.
         #
-        # Say how hard and how long, and the framework does the rest: it jitters the
+        # Set how hard and how long, and the framework does the rest: it jitters the
         # camera for you every frame from here on, then puts the picture back exactly
         # where it was. You call this once, at the moment of impact, and nothing else.
         #

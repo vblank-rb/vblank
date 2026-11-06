@@ -6,7 +6,7 @@ module VBlank
     # handed, holds the buttons a script gives it by frame (+buttons+, frame number to the buttons
     # held on it), and stops the play after +frames+ pictures.
     #
-    # ITS CLOCK MOVES ONLY WHEN SOMETHING SAYS IT DOES, so a test never waits for real time.
+    # ITS CLOCK MOVES ONLY WHEN SOMETHING MOVES IT, so a test never waits for real time.
     # Waiting moves it straight to the moment waited for, and every pass then takes
     # +pass_seconds+ — none unless the test asks otherwise, a machine infinitely fast — or, given
     # something callable, what it answers for the pass's number (1, 2, 3, …). Kept as an exact

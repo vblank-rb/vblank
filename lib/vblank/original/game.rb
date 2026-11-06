@@ -10,7 +10,7 @@ module VBlank
     # one class.
     class CopyError < StandardError; end
 
-    # NOTHING SAYS WHERE THE COPY IS: neither the setting nor the settings file names one. A fresh
+    # NOTHING NAMES WHERE THE COPY IS: neither the setting nor the settings file names one. A fresh
     # clone of a game is like this. A build can carry on without the original's data; a test stops,
     # saying what to set (Testing#original_copy). Every other CopyError is a mistake to fix.
     class NotSet < CopyError; end
@@ -54,7 +54,7 @@ module VBlank
       end
     end
 
-    # WHAT A GAME MADE FROM AN ORIGINAL SAYS ABOUT ITS COPY, and the one way to ask for it.
+    # WHAT A GAME MADE FROM AN ORIGINAL DECLARES ABOUT ITS COPY, and the one way to ask for it.
     #
     # No game made from a retail original may ship that original, so each one reads the copy the
     # player already owns. Every such game has to answer the same three questions before it reads a

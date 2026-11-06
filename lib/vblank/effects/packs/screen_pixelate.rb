@@ -219,7 +219,7 @@ module VBlank
         end
 
         # WHERE THIS GAME'S PIXELATE SITS, and there is one of it — which things are drawn
-        # in blocks is settled before the game runs (see `pixelate`). Said on either verb
+        # in blocks is settled before the game runs (see `pixelate`). Set on either verb
         # it holds for both.
         def place_screen_pixelate!(under)
           if @screen_pixelate_place && @screen_pixelate_place != under

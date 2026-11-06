@@ -70,7 +70,7 @@ module VBlank
       # own `show` or `hide`, which paint it or take it off the picture as well as set the flag.
       SpriteShown = Data.define(:sprite, :shown)
 
-      # Say which part what the game declares belongs to: from this line on, or, given a block,
+      # Set which part what the game declares belongs to: from this line on, or, given a block,
       # inside the block.
       #
       # @param name [Symbol] the part's name, which `start_over` takes

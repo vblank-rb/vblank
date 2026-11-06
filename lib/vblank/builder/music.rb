@@ -38,7 +38,7 @@ module VBlank
         record(Build.song(name, voices: ctx.voices, total_frames: ctx.total_frames, loop_frame: ctx.loop_frame))
       end
 
-      # Say which song is playing now. It plays from its start, loops, and keeps the
+      # Name which song is playing now. It plays from its start, loops, and keeps the
       # tempo it was written at whatever the game is doing — the framework moves it on
       # once for every frame the screen shows, so a game too heavy for a frame still
       # hears it at the right speed.

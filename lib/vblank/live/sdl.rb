@@ -301,7 +301,7 @@ module VBlank
       # or the play is stopped. It waits on SDL for the next thing to happen to the window, so a
       # pause takes no time from the computer, and draws the picture again after each, so a window
       # resized while paused is not left blank. A step (N) lets the game play one frame, and the
-      # pause holds again at the end of it. Says whether it held.
+      # pause holds again at the end of it. Returns whether it held.
       def hold_while_paused
         return false unless held?
 

@@ -68,7 +68,7 @@ module VBlank
       # where the recording does, which is both too early and a click — the sound stops at
       # whatever the wave was doing.
       #
-      # Said as a time in seconds (a Float) or as a sample number (a whole number), which is the
+      # Given as a time in seconds (a Float) or as a sample number (a whole number), which is the
       # same Float-or-Integer rule the rest of the framework uses — and which matters here
       # because a recording taken out of another game arrives with a sample number and nothing
       # else.

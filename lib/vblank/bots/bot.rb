@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module VBlank
-  # Says a bot: `VBlank.bot "chaser", plays: "wanderers.rb" do |game| ... end`. +plays+ is the game file the
+  # Declares a bot: `VBlank.bot "chaser", plays: "wanderers.rb" do |game| ... end`. +plays+ is the game file the
   # bot plays, found beside the bot's own file. The block is asked once a pass and answers the buttons to hold.
   def self.bot(name, plays: nil, &decide) = Bots::Bot.define(name, plays: plays, &decide)
 

@@ -6,7 +6,7 @@ module VBlank
     # bot which buttons to hold. The session hands it the game it runs (#watch), so the bot can read it, and
     # asks it once a pass for the buttons held (#held_buttons), which is when the bot looks at the game.
     #
-    # ITS CLOCK MOVES ONLY WHEN SOMETHING SAYS IT DOES, so it never waits for real time: a bot plays as fast as
+    # ITS CLOCK MOVES ONLY WHEN SOMETHING MOVES IT, so it never waits for real time: a bot plays as fast as
     # the other machines let it, and in a match that is as fast as the slowest of them, since every
     # machine waits for every other's buttons.
     #
