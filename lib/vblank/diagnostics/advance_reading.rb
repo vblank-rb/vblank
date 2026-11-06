@@ -18,6 +18,16 @@ module VBlank
       # draws from — so these are what turns "group 4" into a place in the table.
       PALETTE = Verifier::PaletteLayout.new(half: 256, group: 16)
 
+      # THE SOUND CHIP'S REGISTERS, a byte at a time, for Verifier#watch_sound: the four voices'
+      # settings and the mixer's, SOUND1CNT_L at 0x0400_0060 to SOUNDBIAS at 0x0400_0088. The wave
+      # voice's own memory (from 0x0400_0090) and the recorded sound's FIFOs (from 0x0400_00A0) are
+      # left out: the FIFOs are written thousands of times a second and start no note.
+      SOUND_REGISTER_ADDRESSES = (0x0400_0060..0x0400_0089)
+      def sound_register_addresses = SOUND_REGISTER_ADDRESSES
+      # A game writes these registers sixteen bits at a time, and a write is listed at its even
+      # address with the sixteen bits written (the emulator hands them over widened to 32 with the sign).
+      def sound_write_mask = 0xFFFF
+
       # THE VIDEO REGISTERS THAT CAN BE READ BACK, by the manual's names: which layers and mode
       # are on, each background's settings, the windows, and the blending. The scroll registers
       # cannot be read back on the console, so the scroll is a memory of its own below, read from

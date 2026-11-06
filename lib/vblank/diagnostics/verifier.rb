@@ -623,6 +623,54 @@ module VBlank
       def sprite_table = probe_table(:sprite_table)
       def sound_registers = probe_table(:sound_registers)
 
+      # One write a cartridge made to its sound chip: the register's address, and the value written, as
+      # wide as the console writes it (a byte on the Color, sixteen bits on the Advance).
+      SoundWrite = Data.define(:address, :value)
+
+      # EVERY WRITE A CARTRIDGE MAKES TO ITS SOUND CHIP, from now on, so a test can see each note it
+      # starts. #sound_registers says what the registers hold after a step, and that cannot say when a
+      # note started: a voice starts when the top bit of its last register is written, and that bit
+      # reads back the same whether or not one did, and a register written twice in a frame shows only
+      # the second value. Gives back what the registers hold now, by address; after each #step,
+      # #sound_writes is what that step wrote.
+      #
+      # A write that leaves a register holding what it held is not listed: the emulator's watch sees
+      # only a change. A start bit is listed even so, as it reads back as 1.
+      #
+      # The Advance and the Color, which play in mGBA, list them; another console's reader cannot yet,
+      # and says so. Watching costs the emulator some speed (RubyGBAEmulator::Probe#watch).
+      #
+      # @return [Hash{Integer => Integer}]
+      def watch_sound
+        ensure_rendered! # opens the emulator, which is what is asked whether it can watch
+        refuse_unlisted_sound_writes!
+        sound_register_addresses.each { |address| @probe.watch(address) }
+        @sound_writes_seen = @probe.changes.size
+        @sound_writes = []
+        sound_register_addresses.to_h { |address| [address, @probe.read8(address)] }
+      end
+
+      # The writes the last #step made to the sound chip, oldest first, as SoundWrites. Empty until
+      # #watch_sound.
+      #
+      # @return [Array<SoundWrite>]
+      def sound_writes = @sound_writes || []
+
+      private def take_sound_writes
+        all = @probe.changes
+        @sound_writes = all.drop(@sound_writes_seen).map do |change|
+          SoundWrite.new(address: change.address, value: change.now & sound_write_mask)
+        end
+        @sound_writes_seen = all.size
+      end
+
+      private def refuse_unlisted_sound_writes!
+        return if respond_to?(:sound_register_addresses) && @probe.respond_to?(:watch)
+
+        raise ArgumentError, "This reader cannot list the writes to a #{kit.title} cartridge's sound chip yet. " \
+                             "Read the registers as they stand after a step (`sound_registers`) instead."
+      end
+
       private def probe_table(table)
         ensure_rendered!
         unless @probe.respond_to?(table)
@@ -978,6 +1026,7 @@ module VBlank
           @sound.keep(@probe.audio_by_frame)
           @played += frames
         end
+        take_sound_writes if @sound_writes_seen
         # The picture is read from the emulator only when something asks for it (#picture): a
         # caller stepping a frame at a time and reading memory would otherwise copy the whole
         # screen into Ruby on every frame, several times what playing the frame costs.

@@ -129,4 +129,63 @@ class TestProbe < Minitest::Test
       end
     end
   end
+
+  # A game that starts two notes in one pass: a beep on the second square voice, and the wave voice.
+  NOTES_PASS = 20
+  private def two_notes_game
+    VBlank.game("NOTES", consoles: %i[gba gbc]) do
+      screen :bitmap
+      clear_screen :black
+      enable_sound
+      count = var :count, 0
+      game_loop do
+        count += 1
+        if count == NOTES_PASS
+          beep 880, duty: :half, decay: :none, volume: 12
+          wave :sawtooth, :A3, volume: :half
+        end
+      end
+    end
+  end
+
+  # Each frame's writes, oldest first, as [frame, address, value], after the probe has started
+  # listing them.
+  private def sound_writes_by_frame(console, frames:)
+    VBlank::Playthroughs::Probe.open(two_notes_game.build_rom(console: console, out: nil, err: nil)) do |probe|
+      probe.watch_sound
+      (1..frames).flat_map do |frame|
+        probe.step
+        probe.sound_writes.map { |write| [frame, write.address, write.value] }
+      end
+    end
+  end
+
+  # A NOTE'S START reads back the same whether or not one started, so only the writes say when a
+  # note did. On the Advance a voice starts when the top bit of its last register (SOUND2CNT_H,
+  # SOUND3CNT_X) is written, sixteen bits at a time. The Color's is TestProbeOnTheColor's.
+  def test_the_writes_an_advance_game_made_to_its_sound_chip_are_listed_by_frame_in_order
+    assert_two_starts_in_one_frame(:gba, { 0x0400_006C => 0x8000, 0x0400_0074 => 0x8000 })
+  end
+
+  # The game's first passes take more than a frame each as it sets up, so its notes start some
+  # frames after NOTES_PASS.
+  private def assert_two_starts_in_one_frame(console, start_bits)
+    writes = sound_writes_by_frame(console, frames: NOTES_PASS * 2)
+    starts = writes.select { |_, address, value| start_bits.key?(address) && value.anybits?(start_bits[address]) }
+
+    assert_equal start_bits.keys, starts.map { |_, address, _| address }, "the beep's start, then the wave's: #{starts.inspect}"
+    assert_equal 1, starts.map(&:first).uniq.size, "both in one frame"
+    assert(writes.all? { |_, _, value| value.between?(0, 0xFFFF) }, "a value is the bits written")
+  end
+
+  def test_a_game_that_writes_no_sound_lists_no_writes
+    with_walker_file do |path, labels|
+      VBlank::Playthroughs::Probe.open(path, labels: labels) do |probe|
+        probe.watch_sound
+        probe.step(3)
+
+        assert_empty probe.sound_writes
+      end
+    end
+  end
 end

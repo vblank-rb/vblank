@@ -171,6 +171,21 @@ module VBlank
         self
       end
 
+      # LIST EVERY WRITE THE GAME MAKES TO ITS SOUND CHIP from now on, which is how a port sees each note
+      # its original starts: a voice starts when the top bit of its last register is written, and that
+      # bit reads back the same whether or not one did. Gives back what the registers hold now, by
+      # address; after each #step, #sound_writes is what it wrote. The Advance and the Color only, for
+      # now (Diagnostics::Verifier#watch_sound says why and what it leaves out).
+      #
+      #   registers = probe.watch_sound
+      #   probe.step
+      #   probe.sound_writes.each { |write| registers[write.address] = write.value }
+      def watch_sound = @reader.watch_sound
+
+      # The writes the last #step made to the sound chip, oldest first: each a
+      # Diagnostics::Verifier::SoundWrite (address, value as written). Empty until #watch_sound.
+      def sound_writes = @reader.sound_writes
+
       # Write the console's whole state to +path+, to come back to with #load_state.
       def save_state(path)
         @reader.save_state(path.to_s)

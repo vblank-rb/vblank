@@ -27,6 +27,13 @@ module VBlank
       SCROLL_REGISTERS = { SCY: 0xFF42, SCX: 0xFF43, WY: 0xFF4A, WX: 0xFF4B }.freeze
       VIDEO_REGISTERS = { LCDC: 0xFF40 }.freeze
 
+      # THE SOUND CHIP'S REGISTERS, for Verifier#watch_sound: NR10 to NR51, the four voices' and the
+      # mixer's. NR52 (the switch for the whole chip) and the wave voice's own memory are left out.
+      SOUND_REGISTER_ADDRESSES = (0xFF10..0xFF25)
+      def sound_register_addresses = SOUND_REGISTER_ADDRESSES
+      # The Color's processor writes a byte at a time.
+      def sound_write_mask = 0xFF
+
       # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
       # AdvanceReading#video_memories says it: the 64 colours, the sprite table by its bytes,
       # the scroll and the window's place, and the register that switches the parts on.

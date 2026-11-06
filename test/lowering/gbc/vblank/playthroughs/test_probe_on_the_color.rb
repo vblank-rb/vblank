@@ -53,4 +53,37 @@ class TestProbeOnTheColor < Minitest::Test
       assert_equal expected.pack("C*"), probe.read_bytes(first, BYTES.size)
     end
   end
+
+  # A NOTE'S START reads back the same whether or not one started, so only the writes say when a
+  # note did: a voice starts when bit 7 of its last register (NR24, NR34) is written. The game starts
+  # a beep and the wave voice in one pass; its first passes take more than a frame each as it sets
+  # up, so the notes start some frames after that pass. (The Advance's is TestProbe's.)
+  NOTES_PASS = 20
+  STARTS = { 0xFF19 => 0x80, 0xFF1E => 0x80 }.freeze
+
+  private def two_notes_game
+    VBlank.build("NOTES", console: :gbc, out: StringIO.new, err: StringIO.new) do
+      enable_sound
+      count = var :count, 0
+      game_loop do
+        count += 1
+        if count == NOTES_PASS
+          beep 880, duty: :half, decay: :none, volume: 12
+          wave :sawtooth, :A3, volume: :half
+        end
+      end
+    end
+  end
+
+  def test_the_writes_a_game_made_to_its_sound_chip_are_listed_by_frame_in_order
+    writes = VBlank::Playthroughs::Probe.open(two_notes_game) do |probe|
+      probe.watch_sound
+      (1..(NOTES_PASS * 2)).flat_map { |frame| probe.step.sound_writes.map { |write| [frame, write.address, write.value] } }
+    end
+    starts = writes.select { |_, address, value| STARTS.key?(address) && value.anybits?(STARTS[address]) }
+
+    assert_equal STARTS.keys, starts.map { |_, address, _| address }, "the beep's start, then the wave's: #{starts.inspect}"
+    assert_equal 1, starts.map(&:first).uniq.size, "both in one frame"
+    assert(writes.all? { |_, _, value| value.between?(0, 0xFF) }, "a value is the byte written")
+  end
 end
