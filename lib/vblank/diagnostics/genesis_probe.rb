@@ -9,7 +9,7 @@ module VBlank
     #
     # What differs underneath stops here. The core hands each pixel over as the console's own colour,
     # three bits a channel, and the reader takes four bytes a pixel with red in the low byte. The reader
-    # says buttons as the Advance's bits, and the core takes the pad's names. And the 68000 keeps a
+    # gives buttons as the Advance's bits, and the core takes the pad's names. And the 68000 keeps a
     # number high byte first, so memory is read that way: an address is one in work RAM, $FF0000 to
     # $FFFFFF, where a game keeps everything it changes.
     class GenesisProbe
@@ -17,7 +17,7 @@ module VBlank
       WORK_RAM = Console::GenesisHardware::WRAM
       WORK_RAM_BYTES = Console::GenesisHardware::WRAM_SIZE
 
-      # The video chip's registers that say where the sprite table is in video memory (5) and how wide
+      # The video chip's registers that hold where the sprite table is in video memory (5) and how wide
       # the screen is (12): a screen 320 wide has 80 entries of eight bytes, one 256 wide has 64.
       # Register 5 holds the table's place in 512-byte steps; on a wide screen its lowest bit is
       # ignored, as the table must start on a 1K boundary there.
@@ -49,7 +49,7 @@ module VBlank
       end
 
       # The picture as four bytes a pixel: red, green, blue and one unused, each of the console's
-      # three-bit channels widened to five, as every console's colours are said, and then to eight.
+      # three-bit channels widened to five, as every console's colours are given, and then to eight.
       def frame_buffer
         @core.colors.map { |color| PIXELS.fetch(color) }.pack("V*")
       end

@@ -19,7 +19,7 @@ module VBlank
     # frames shows the same picture for two of them. So each refresh that finished no pass of the
     # game is told to the device as a repeat (+repeating_picture=+, the one thing asked of a device
     # here that a Session does not ask), and a window leaves it out of its count. The other ways
-    # play a pass a step and never repeat, and a cartridge that cannot say its passes (one built
+    # play a pass a step and never repeat, and a cartridge that cannot report its passes (one built
     # elsewhere, or one that waits for the screen in places of its own on a console that counts the
     # waits) reads as the refresh rate.
     class WatchedGame
@@ -67,7 +67,7 @@ module VBlank
       private
 
       # Did the step just played finish no pass of the game loop? Always false for a game that plays
-      # a pass a step, or cannot say.
+      # a pass a step, or cannot report them.
       def no_pass_finished?
         return false unless @game.respond_to?(:passes)
 
@@ -75,7 +75,7 @@ module VBlank
         (passes == @passes_seen).tap { @passes_seen = passes }
       end
 
-      # How many passes the game has finished, or nil where it cannot say.
+      # How many passes the game has finished, or nil where it cannot report it.
       def passes_so_far
         @game.passes
       rescue ArgumentError

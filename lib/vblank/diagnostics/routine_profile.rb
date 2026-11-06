@@ -49,7 +49,7 @@ module VBlank
       # EACH SCENE'S OWN COUNTS, by the scene's name: instructions a frame of that scene ran in
       # each routine. Empty for a game with no scenes, and for a profile saved before these
       # were kept. The added-up counts rank a routine by what it is worth over the whole game;
-      # these say what it is worth to any ONE frame, which is what a scene's own share of the
+      # these give what it is worth to any ONE frame, which is what a scene's own share of the
       # quick memory is chosen by (see GBA::QuickMemoryPlan).
       attr_reader :scenes
 
@@ -167,14 +167,14 @@ module VBlank
 
       # +names+ ordered by what a frame was measured to spend in each, dearest first. A routine
       # the profile never saw goes last, in the order it was given — it is new since the
-      # measuring, and nothing here can say what it costs.
+      # measuring, and nothing here knows what it costs.
       def order_by_work(names)
         measured, unmeasured = names.partition { |name| measured?(name) }
         measured.sort_by { |name| [-work.fetch(name), name.to_s] } + unmeasured
       end
 
       # A routine has to do enough work to be worth the room. The same job WORTH_MOVING did for
-      # the estimate, said against a measurement instead of a price.
+      # the estimate, set against a measurement instead of a price.
       #
       # WHERE THE FLOOR COMES FROM: a call that crosses between the two memories is four
       # instructions where a plain one is a single branch, so moving a routine costs about three

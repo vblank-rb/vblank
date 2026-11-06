@@ -34,7 +34,7 @@ module VBlank
       # so as it nears that ceiling it stops being an exact number.
       FRAME_SCANLINES = 228
       # At or above this the reading is no longer an exact count. That is a fact about the
-      # MEASUREMENT and says nothing yet about whether the program fits — a frame can very
+      # MEASUREMENT and shows nothing yet about whether the program fits — a frame can very
       # nearly fill and still meet every one. It means "go and count the frames instead".
       SATURATED = 200
       SETTLE = 8            # Frames to run before reading, so the game reaches steady state
@@ -333,7 +333,7 @@ module VBlank
       end
 
       # What to hold, one attempt at a time: nothing, then each button the program reads,
-      # then ALL of them together. The game says which buttons matter — a game that reads
+      # then ALL of them together. The game decides which buttons matter — a game that reads
       # none is measured at rest, and no attempt holds a button the game would ignore.
       #
       # THE LAST ATTEMPT IS THE WORST FRAME, and without it this could not reach one. A game
@@ -382,7 +382,7 @@ module VBlank
       # window gives what one pass really cost. A game taking two frames a pass comes out about
       # 456, one taking four about 912, and the number keeps its meaning however far over budget
       # the game is. Below saturation a pass IS a frame and this agrees with the per-frame
-      # reading, so it is measured only where it says something new.
+      # reading, so it is measured only where it shows something new.
       #
       # Empty when there is no game loop to count.
       # THE CARTRIDGE MEASURED IS THE CARTRIDGE THAT SHIPS. The passes used to be counted by

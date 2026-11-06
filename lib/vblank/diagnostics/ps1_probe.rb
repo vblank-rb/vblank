@@ -9,8 +9,8 @@ module VBlank
     #
     # What differs underneath stops here. The picture is read from video RAM where the graphics chip is
     # told to show it, at the size it shows, as 15-bit colours, and the reader takes four bytes a pixel
-    # with red in the low byte. The reader says buttons as one number with a bit each, and the core takes the pad's own
-    # names (PS1::HeadlessRun::PAD_BUTTONS says which is which). And the build makes no sound yet, so
+    # with red in the low byte. The reader gives buttons as one number with a bit each, and the core takes the pad's own
+    # names (PS1::HeadlessRun::PAD_BUTTONS lists which is which). And the build makes no sound yet, so
     # every frame's sound is silence.
     class PS1Probe
       def initialize(path, save_dir: nil)

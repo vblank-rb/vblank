@@ -9,9 +9,9 @@ module VBlank
       # WHAT THEY ARE FOR. Two games can show the same screen and be a long way apart
       # underneath — a position a pixel out behind a wall, a counter that will run out a
       # second early. And where the pictures do differ, "the hero is at 61 on one and 60 on
-      # the other" says what went wrong where two screenshots only say that something did.
+      # the other" shows what went wrong where two screenshots only show that something did.
       #
-      # A READING IS A NAME AND A WAY TO READ IT, and there are three ways to say the way:
+      # A READING IS A NAME AND A WAY TO READ IT, and there are three ways to give the way:
       #
       #   readings: {
       #     paces:  :paces,                                             # a variable, on both
@@ -22,7 +22,7 @@ module VBlank
       # ONE WAY FOR EACH is the form that matters to somebody rebuilding a game, because the
       # two cartridges are not the same program: the rebuilt one keeps the hero's position
       # in a variable with a name, and the original keeps it at an address somebody found.
-      # The reading is "the hero's position" all the same, and each side says where it is.
+      # The reading is "the hero's position" all the same, and each side names where it is.
       #
       # A VARIABLE'S NAME only means something on a cartridge this framework built, since
       # which variable is where is what the build worked out and is kept beside a cartridge,
@@ -72,7 +72,7 @@ module VBlank
           ours.to_h { |name, value| [name, [value, theirs.fetch(name)]] }
         end
 
-        # Every reading on one running cartridge, each name with its value. +side+ says
+        # Every reading on one running cartridge, each name with its value. +side+ marks
         # which of the two it is, 0 for the first and 1 for the second, since a reading
         # can be read its own way from each.
         def values_from(game, side)
@@ -83,9 +83,9 @@ module VBlank
         # `values_on` hands back.
         def self.differing(values) = values.reject { |_name, (ours, theirs)| same?(ours, theirs) }.keys
 
-        # Two values are the same when Ruby says they are equal — and when both are the
+        # Two values are the same when Ruby finds them equal — and when both are the
         # number that is not a number, which a block that divides nought by nought gives
-        # back on both cartridges and which Ruby says is equal to nothing, itself included.
+        # back on both cartridges and which Ruby finds equal to nothing, itself included.
         def self.same?(ours, theirs)
           ours == theirs || [ours, theirs].all? { |value| value.is_a?(Float) && value.nan? }
         end

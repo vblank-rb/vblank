@@ -7,13 +7,13 @@ module VBlank
     # built once it has been written to a file — what the build knew is in the program that
     # built it and never in the file.
     #
-    # It can be run, and its screen and its memory read. What it cannot do is say what
+    # It can be run, and its screen and its memory read. What it cannot do is name what
     # anything in it is called: no variable has a name and no sprite does, because the
     # names were the build's. A reader that is asked for one says so (see Verifier).
     #
     # It answers what a running console asks of a cartridge — which console it is for, its
     # title, its bytes, and to be written to a file for the emulator to open — with nothing
-    # where a build record would be. What a cartridge can only say of itself with a record
+    # where a build record would be. What a cartridge can only report of itself with a record
     # (its size by routine, its profile) it does not answer at all.
     class CartridgeFile
       # The kinds of cartridge a file can be, one a console, each knowing its own header.

@@ -28,7 +28,7 @@ module VBlank
       FILE_NAME = "game.gbc"
 
       # One routine and its share of every cycle measured, from 0 to 1: the same as the other
-      # consoles' profiles say it.
+      # consoles' profiles give it.
       Spent = TimeByRoutine::Spent
 
       # What a run came to: the frames measured, how many passes of the game loop they held, the

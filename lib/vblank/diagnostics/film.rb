@@ -43,7 +43,7 @@ module VBlank
       PART_END_HOLD_SECONDS = 0.8
       SHORTEST_FILM_SECONDS = 3
 
-      # Each picture is shown at twice the console's size unless +scale:+ says otherwise: at its
+      # Each picture is shown at twice the console's size unless +scale:+ sets another: at its
       # own size a frame is a postage stamp on a computer's screen. The MP4's way of keeping colour
       # needs an even width and height, which every console's screen has, and so has any whole
       # number of times it.

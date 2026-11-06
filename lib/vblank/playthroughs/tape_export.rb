@@ -26,7 +26,7 @@ module VBlank
       module_function
 
       # The file `Tools > Scripting` in mGBA 0.10 or later loads. It starts the game again from
-      # power-on and holds the tape's buttons a frame at a time. mGBA says a frame is done and then
+      # power-on and holds the tape's buttons a frame at a time. mGBA reports that a frame is done and then
       # takes the buttons for the next, so the first frame's are set as it starts. +pictures_in+ is
       # a folder for it to write the screen at each moment into, as a PNG named for the moment.
       def mgba_script(tape, pictures_in: nil)
@@ -132,7 +132,7 @@ module VBlank
         body + directory + ending
       end
 
-      # What a zip says of a file twice over: the version, no flags, stored, no time, the checksum,
+      # What a zip records of a file twice over: the version, no flags, stored, no time, the checksum,
       # the sizes and the length of the name.
       def zip_entry_fields(name, text)
         size = text.bytesize

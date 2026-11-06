@@ -10,7 +10,7 @@ module VBlank
     #   parts 1..90, 200..240           # frames to show, counted from where each side starts
     #   hold :right, on: 10..80         # a button down on those frames
     #   hold %i[a b], on: 85            # two buttons, on one frame
-    #   keys { |frame| :start if frame == 210 }  # or say the buttons of any frame in Ruby
+    #   keys { |frame| :start if frame == 210 }  # or give the buttons of any frame in Ruby
     #
     # The file is Ruby, so it can `require` what the game's tests use to reach a moment, and these
     # are the words it has besides:
@@ -19,7 +19,7 @@ module VBlank
     #   hold :a, on: 4..5               buttons down on a frame or a range of them; as many as needed
     #   keys { |frame| ... }            the buttons down on a frame: a name, a list, or nil. A Hash
     #                                   of frame to buttons works too (`keys LAUNCH`), as does a lambda.
-    #                                   What `hold` and `keys` say for one frame are held together.
+    #                                   What `hold` and `keys` give for one frame are held together.
     #   start_from tape: "walk.tape"    every side plays a tape's presses first (from power-on)
     #   start_from state: { "ours" => "ours.ss1", "retail" => "retail.ss1" }
     #                                   each side starts from a state an emulator saved of it
@@ -39,7 +39,7 @@ module VBlank
     #
     #   film sides: { "ours" => -> { ... } }, parts: [1..110], keys: ->(frame) { ... }
     class FilmScript
-      # What a film file said, once read: made into an MP4 by #make.
+      # What a film file asks for, once read: made into an MP4 by #make.
       Plan = Data.define(:parts, :holds, :keys, :sides, :tape, :states, :scale, :console, :lowering) do
         # Write the film to +path+, handed back. +search_path+ is where ImageMagick and ffmpeg are
         # looked for (see Film.make).
@@ -48,7 +48,7 @@ module VBlank
           Film.make(path, sides: openers, parts: parts, keys: method(:buttons_on), scale: scale, search_path: search_path)
         end
 
-        # The buttons down on +frame+: what `keys` says, and every hold over that frame.
+        # The buttons down on +frame+: what `keys` gives, and every hold over that frame.
         def buttons_on(frame)
           held = holds.select { |hold| hold.frames.cover?(frame) }.flat_map(&:buttons)
           (Array(keys&.call(frame)) + held).uniq
@@ -58,7 +58,7 @@ module VBlank
 
         # A side's game, opened at the moment before the film's first frame. A block or lambda
         # is called first; what it gives back that is already running is filmed as it stands. The
-        # console and lowering are the side's own where the film file said them, else the film's.
+        # console and lowering are the side's own where the film file named them, else the film's.
         def open_side(label, side)
           side = Side.new(game: side, console: nil, lowering: nil) unless side.is_a?(Side)
           cartridge = side.game.respond_to?(:call) ? side.game.call : side.game
@@ -78,7 +78,7 @@ module VBlank
       # Buttons down on a range of frames.
       Hold = Data.define(:buttons, :frames)
 
-      # A side the film file names, with the console and lowering it says (nil where it names none).
+      # A side the film file names, with the console and lowering it names (nil where it names none).
       Side = Data.define(:game, :console, :lowering)
 
       # The film in the file at +path+, with +sides+ (label to cartridge) the ones its Rakefile names.
@@ -141,7 +141,7 @@ module VBlank
         keys(keys) if keys
       end
 
-      # What the file said, refused here if it never said which frames to show.
+      # What the file asks for, refused here if it never names which frames to show.
       def plan
         if @parts.nil?
           raise ArgumentError, "The film #{@path} does not say which frames to show. Add a line like `parts 1..90`."

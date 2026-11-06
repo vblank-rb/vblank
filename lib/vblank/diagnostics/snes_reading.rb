@@ -18,7 +18,7 @@ module VBlank
       PALETTE = Verifier::PaletteLayout.new(half: 128, group: 16)
 
       # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
-      # AdvanceReading#video_memories says it: the 256 colours, and the sprite table by its
+      # AdvanceReading#video_memories gives it: the 256 colours, and the sprite table by its
       # bytes. The Super Nintendo's scroll and video registers cannot be read back on the
       # console, and bsnes does not hand them over here, so they are not among them.
       def video_memories
@@ -29,11 +29,11 @@ module VBlank
 
       # THE SPRITE TABLE AS BOXES (SpriteBox), one for each of the 128 entries that reaches the screen,
       # in the table's order. Nothing here needs a build record, so it is how a cartridge with none
-      # says where its sprites are.
+      # shows where its sprites are.
       #
       # +sizes+ is [small, large], each [width, height]: the two sizes the game set the register
-      # OBSEL to, and an entry's bit in the upper table says which of the two it is. bsnes here does
-      # not hand OBSEL over, so the game says it ([[8, 8], [16, 16]] is OBSEL's sizes 0, and what
+      # OBSEL to, and an entry's bit in the upper table marks which of the two it is. bsnes here does
+      # not hand OBSEL over, so the game gives it ([[8, 8], [16, 16]] is OBSEL's sizes 0, and what
       # VBlank's own build sets). An entry's across is nine bits, its top bit in the upper table, and
       # wraps at 512; its down wraps at 256. The console draws a sprite a line below its down, and
       # its picture starts a line down too, so the down kept is the row of the picture it is on. The
@@ -66,7 +66,7 @@ module VBlank
       end
 
       # bsnes keeps a cartridge's battery-backed RAM in a .srm file of its own, nothing after it,
-      # as big as the header says: the size the header's byte says for the save memory a game has
+      # as big as the header gives: the size the header's byte gives for the save memory a game has
       # (IR::Backends::SNES::Runtime::Saving), worked out the way the header is written
       # (Cartridge::SNESROM.size_byte), so the two cannot differ. test_snes_saves.rb holds it to a
       # built header and to the save RAM bsnes gives the cartridge.
@@ -83,7 +83,7 @@ module VBlank
       # The layout of the save file of the cartridge whose bytes are +bytes+, read from its header.
       def self.save_file_of(bytes) = Cartridge::SNESROM.save_offset_of(bytes).zero? ? SAVE_FILE : SUPER_FX_SAVE_FILE
 
-      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them (Reference#sprites),
+      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them (Reference#sprites),
       # from the list the runtime keeps of what it placed, which the checked run compares with the
       # interpreter after every pass. See ColorReading#sprites.
       #

@@ -3,7 +3,7 @@
 module VBlank
   module Diagnostics
     # WHERE EACH FRAME WENT WHILE A TAPE PLAYED, on the Game Boy Color, the Super Nintendo, the
-    # Genesis and the PlayStation. Each console's profiler says how one frame is played and measured
+    # Genesis and the PlayStation. Each console's profiler defines how one frame is played and measured
     # on its emulator (a meter: see .play); the tape, the frames, the readings and the report are the
     # same for all.
     #
@@ -71,7 +71,7 @@ module VBlank
       # THE METER OF A CONSOLE WHOSE EMULATOR ADDS UP TIME BY ADDRESS (Core#take_processor_time on
       # the Super Nintendo, the Genesis and the PlayStation), read as TimeByRoutine reads it.
       # +shown_at+ and +passes_at+ are where its runtime keeps Frame::SHOWN and Frame::PASSES in work
-      # memory. A console whose core names its buttons or its memory otherwise says so in a subclass
+      # memory. A console whose core names its buttons or its memory otherwise gives its own in a subclass
       # (PS1Profiler::Meter).
       class ProcessorTimeMeter
         attr_reader :file_name
@@ -176,7 +176,7 @@ module VBlank
       end
 
       # THE TAPE AND THE FRAMES, checked before the console is switched on. +keys+ and +settle+ are
-      # what else the profile was given: a tape says the buttons and where to start.
+      # what else the profile was given: a tape gives the buttons and where to start.
       def self.refuse_unplayable!(tape, frames, keys:, settle:)
         unless tape.is_a?(Playthroughs::Tape)
           raise ArgumentError, "tape: must be a tape. To get one, take `played.tape` from a playthrough, or read a " \

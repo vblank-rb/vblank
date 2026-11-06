@@ -45,7 +45,7 @@ module VBlank
 
       # Profile the cartridge, reported on +out+, and answer what the profile answers. +tape_name+ is
       # a tape in #tapes or a path to one, or nil for the profile standing still; +frames+ is what
-      # FRAMES= says.
+      # FRAMES= sets.
       def profile(tape_name: nil, frames: nil, format: :human, out: $stdout)
         load_game
         tape = (Playthroughs::Tape.read(tape_path(tape_name)) if tape_name)

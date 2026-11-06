@@ -7,7 +7,7 @@ module VBlank
     # THE FOOTGUN THIS IS ABOUT. `timer :beat, per_second: N` raises an interrupt N times a
     # second and `on_tick` is what it runs. There is NO QUEUE: a tick that arrives while the
     # last one is still being answered is dropped. So a game can quietly run at a fraction of
-    # the rate it asked for, and nothing on screen says so — the sound is just slower, or the
+    # the rate it asked for, and nothing on screen shows it — the sound is just slower, or the
     # reading just coarser, than it should be. This puts the number in front of somebody.
     #
     # HOW IT IS COUNTED, and it is a count rather than an estimate. The profiling loop steps
@@ -43,7 +43,7 @@ module VBlank
     # than saying nothing, because it looks like an answer.
     module TickRate
       # WHAT A RUN SAW, for one timer. +asked+ is the rate the program wanted and +got+ the
-      # rate that arrived. A reading that could not be taken says so with #measured? false, so
+      # rate that arrived. A reading that could not be taken shows it with #measured? false, so
       # "we could not tell" never reads as "nothing was wrong".
       Reading = Data.define(:name, :asked, :got) do
         def self.unmeasured(name, asked) = new(name: name, asked: asked, got: nil)

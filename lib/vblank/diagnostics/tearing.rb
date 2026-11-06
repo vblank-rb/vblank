@@ -25,13 +25,13 @@ module VBlank
     # row, and the game's. A fill that starts at the top when the gap starts can overrun the
     # gap and still stay ahead of the display the whole way down, and nothing tears —
     # measured at 92 rows' worth of drawing against a 68-row gap. So the estimate is
-    # deliberately the cautious one, and this says what really happened.
+    # deliberately the cautious one, and this shows what really happened.
     #
     # WHAT IT CANNOT ANSWER. It reads a framebuffer, so it needs a screen that has one and
     # only one: a direct-color bitmap screen. A tear-free screen keeps two pages and shows
     # the finished one, so it cannot tear and there is nothing to measure. A tiled screen
     # has no framebuffer at all — the console builds the picture from tiles as it draws.
-    # Both answer {Reading.none}, which says "not measured here" rather than "no tear".
+    # Both answer {Reading.none}, which means "not measured here" rather than "no tear".
     #
     # AND A CLEAN PIXEL TEST IS NOT PROOF OF NO TEAR, which is worth knowing before hunting
     # one. A differential test compares the picture at rest, so a program whose drawing
@@ -52,7 +52,7 @@ module VBlank
       # WHAT A RUN SAW. +rows+ is how many of the visible rows the display showed before the
       # game had finished them — 0 for a picture that held together. +first+ and +last+ are
       # where the seam ran, which is what a person wants to look at. A reading that does not
-      # apply to this screen says so with #measured? false, so "we did not look" can never be
+      # apply to this screen shows it with #measured? false, so "we did not look" can never be
       # mistaken for "nothing was wrong".
       Reading = Data.define(:rows, :first, :last) do
         def self.none = new(rows: nil, first: nil, last: nil)
@@ -70,7 +70,7 @@ module VBlank
         !modes.any_buffered? && !modes.any_tiled? && !modes.any_affine?
       end
 
-      # Read one frame of +probe+ — already stepped to a frame boundary — and say how much of
+      # Read one frame of +probe+ — already stepped to a frame boundary — and measure how much of
       # the picture the display showed stale. The probe must be sitting at the boundary,
       # where the game has finished the frame being judged; that is where a step leaves it.
       def read(probe)

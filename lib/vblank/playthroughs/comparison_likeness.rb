@@ -3,7 +3,7 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # HOW ALIKE TWO PICTURES HAVE TO BE to count as the same. With nothing said, every pixel
+      # HOW ALIKE TWO PICTURES HAVE TO BE to count as the same. With nothing set, every pixel
       # has to be the same colour: the strict comparison.
       #
       # That is the right question of a framework change, and the wrong one of a game being
@@ -13,7 +13,7 @@ module VBlank
       # +share_may_differ+ is the share of the pixels that ARE looked at that may be a
       # different colour, from 0 to 1, before a frame counts as differing. +frames_in_a_row+ is
       # how many frames running have to differ before it is drift, so that one frame of flicker
-      # is not. Which pixels are looked at is the LookedAt's to say, a frame at a time, and each
+      # is not. Which pixels are looked at is the LookedAt's to decide, a frame at a time, and each
       # question here is asked of one frame's Part.
       class Likeness
         SETTINGS = %i[share_may_differ frames_in_a_row].freeze

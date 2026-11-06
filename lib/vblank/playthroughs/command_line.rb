@@ -50,8 +50,8 @@ module VBlank
         @build = build
       end
 
-      # Play the script or the tape on the game the block gives (an UnbuiltGame) the way +on+ says
-      # (a word of WAYS), in a window if +window+ says so, say the frames and the moments, and write
+      # Play the script or the tape on the game the block gives (an UnbuiltGame) the way +on+ names
+      # (a word of WAYS), in a window if +window+ asks for one, say the frames and the moments, and write
       # what was asked for. The block is called once what was written has been found good, since
       # it builds the game, and that takes a while. +export_cartridge+ makes the Advance's
       # cartridge, which only a tape written out for another emulator needs. +progress+ is told
@@ -183,7 +183,7 @@ module VBlank
                        "--write-mgba-script or --write-bk2. The run is then counted in passes."
       end
 
-      # A tape says for itself what it counts.
+      # A tape records for itself what it counts.
       def refuse_in_passes_beside_tape!
         return unless options[:in_passes] && options[:tape]
 
@@ -220,7 +220,7 @@ module VBlank
         @build.call(file)
       end
 
-      # What says which buttons to press: the tape, where one was given, or else the
+      # What decides which buttons to press: the tape, where one was given, or else the
       # playthrough picked from the script file. +lead_in_flag+ is the option this command
       # takes a lead-in by, which a tape recorded after one needs.
       def tape_or_playthrough(lead_in_flag:)
@@ -237,7 +237,7 @@ module VBlank
                        "Give the script with --script in place of --tape, or leave --same out."
       end
 
-      # A tape says what it was recorded from, and the same presses from anywhere else are a
+      # A tape records what it was recorded from, and the same presses from anywhere else are a
       # different game. What it needs is asked for by its flag, before anything is built.
       def refuse_tape_missing_start!(tape, lead_in_flag)
         if tape.recorded_from_save? && lead_in_flag == :lead_in
@@ -298,7 +298,7 @@ module VBlank
       def playthrough_names = declared_playthroughs.map { |declared| declared.name.to_s.inspect }.join(", ")
 
       # A lead-in is a playthrough from the script file, by its name, and `-` or nothing
-      # said is none. A tape says what to press and declares no playthrough, so a lead-in
+      # given is none. A tape holds what to press and declares no playthrough, so a lead-in
       # needs the script file whatever the presses come from.
       def lead_in_named(name)
         return nil if name.nil? || name == "-"
@@ -363,10 +363,10 @@ module VBlank
         say "Wrote the BizHawk movie to #{played.tape.write_bizhawk_movie(cartridge, options[:write_bk2])}." if options[:write_bk2]
       end
 
-      # Every setting that was said, as `compare` takes them from Ruby: each is the option of
+      # Every setting that was given, as `compare` takes them from Ruby: each is the option of
       # the same name, and the ones a command line can only give as text are read here. One
       # that was not given is left out, so that what it is with nothing given stays the
-      # library's to say.
+      # library's to decide.
       def comparison_settings
         said = Comparison.settings.to_h { |setting| [setting, options[setting]] }.compact
         said.to_h do |setting, written|

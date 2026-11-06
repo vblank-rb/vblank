@@ -4,7 +4,7 @@ require "tmpdir" # here and not where it is used: see the note at the top of the
 
 module VBlank
   module Playthroughs
-    # A GAME DRIVEN WITH NOBODY AT THE CONTROLS, from a script that says what to press.
+    # A GAME DRIVEN WITH NOBODY AT THE CONTROLS, from a script that sets out what to press.
     #
     #   walk = VBlank.playthrough "walk to the signpost" do
     #     wait frames: 10
@@ -113,11 +113,11 @@ module VBlank
       end
 
       # Play the script on +first+ to learn its presses, then play +first+ and +second+ side
-      # by side on those presses, comparing the two pictures after every frame. +settings+ say
+      # by side on those presses, comparing the two pictures after every frame. +settings+ set
       # how alike they have to be, and which stretches of the playthrough are not looked at
       # (see Comparison). They are read before the script is played, so one that makes no
       # sense does not cost a playing to find — a stretch that names a moment included,
-      # since a script says its moments where it is declared.
+      # since a script names its moments where it is declared.
       #
       # Or, asked for `same: :script`, play the script on each of the two by itself and
       # compare them at each named moment.
@@ -143,7 +143,7 @@ module VBlank
       # cartridge's save memory holds. It is a copy that goes into the console, so the one
       # handed over is as it was afterwards and can start another.
       #
-      # +count_passes+ keeps count of the game's passes (Verifier#passes) where the cartridge can say
+      # +count_passes+ keeps count of the game's passes (Verifier#passes) where the cartridge can report
       # them, which one built elsewhere cannot.
       def self.power_on(cartridge, save: nil, count_passes: false)
         cartridge = cartridge_from(cartridge)
@@ -162,7 +162,7 @@ module VBlank
       # frames are not counted and its presses are on no tape: frame 1 is the first frame
       # after it.
       #
-      # +on+ and +window+ are as for #play, and +count_passes+ says the playing will ask for them.
+      # +on+ and +window+ are as for #play, and +count_passes+ marks that the playing will ask for them.
       def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false)
         refuse_unbuilt_game_on_emulator!(cartridge, on)
         game = if on && on != LoweredGame::EMULATOR
@@ -188,7 +188,7 @@ module VBlank
                              "(`game.build_rom`) and play that."
       end
 
-      # The game inside +cartridge+ run the way +on+ says. That takes the game, so a cartridge
+      # The game inside +cartridge+ run the way +on+ names. That takes the game, so a cartridge
       # somebody else made, which is only its bytes, plays on the emulator alone.
       def self.lowered_game(cartridge, on, save, speaker: false)
         cartridge = cartridge_from(cartridge)
@@ -206,8 +206,8 @@ module VBlank
       # WHAT A PLAYING CAN COUNT IN PASSES. The same buttons on the same pass give the same game only
       # for a game that moves by its passes. A game cannot be seen to, but one that reads the frame
       # clock moves by frames, and one that waits for the screen in places of its own has more waits
-      # than passes. For both, a variable the game counts is the way to say what counts, and that
-      # is the game's to answer for. A cartridge file has no passes it can say, and no names.
+      # than passes. For both, a variable the game counts is the way to name what counts, and that
+      # is the game's to answer for. A cartridge file has no passes it can report, and no names.
       def self.refuse_unusable_pass_count!(cartridge, in_passes)
         return if in_passes.nil?
 
@@ -269,7 +269,7 @@ module VBlank
       end
 
       # THE SAVE THAT WAS HANDED OVER, as save memory: the save another playing handed back,
-      # or the path of a save file, read as a SaveFile until the cartridge says where its save
+      # or the path of a save file, read as a SaveFile until the cartridge gives where its save
       # memory is in it. Nothing handed over is no save, and a cartridge nobody has played.
       #
       # A save the framework has a model of is copied, so what was handed over is left as it
@@ -293,7 +293,7 @@ module VBlank
 
       # A SAVE FILE READ FROM A PATH, which can be the emulator's own file and not the save memory
       # alone: a Super FX board's file has the chip's working RAM before the save, and a clock's
-      # file the clock's bytes after it. Where the save memory is in it is the cartridge's to say
+      # file the clock's bytes after it. Where the save memory is in it is the cartridge's to give
       # (Console::Kit#save_file_of), so it becomes a save once the cartridge is known.
       SaveFile = Data.define(:bytes, :from) do
         def memory_for(cartridge)
@@ -308,9 +308,9 @@ module VBlank
         memory unless memory.nil? || memory.empty?
       end
 
-      # +save+ MADE TO FIT +cartridge+, or refused. A cartridge this framework built says how
+      # +save+ MADE TO FIT +cartridge+, or refused. A cartridge this framework built records how
       # much save memory it has, and a chip cannot change size: a save of another size came
-      # from another game, or is not a save at all. A cartridge it did not build says
+      # from another game, or is not a save at all. A cartridge it did not build records
       # nothing, so its save is taken as it comes.
       def self.save_fitted_to(cartridge, save)
         save = save.memory_for(cartridge) if save.is_a?(SaveFile)
@@ -384,9 +384,9 @@ module VBlank
         # +game+ is the console, running, with +cartridge+ in it. +save+ is what the
         # cartridge's save memory held as the console was switched on, or nil for a
         # cartridge nobody has played, and +led_in+ whether a lead-in was played first:
-        # both are what the tape says of where it started. +folder+ is where the picture
+        # both are what the tape records of where it started. +folder+ is where the picture
         # at each moment is written (see PictureFolder), or nil for none to be written.
-        # +in_passes+ says what the counts are counted in, for the tape to say (see Tape), and
+        # +in_passes+ names what the counts are counted in, for the tape to record (see Tape), and
         # +progress+ is told the frame reached as each hold ends and a phase at each moment.
         def initialize(title, cartridge, game, at_each_moment, save:, folder:, led_in: false, in_passes: nil,
                        progress: Messages::Progress.silent)
@@ -411,7 +411,7 @@ module VBlank
           @progress.show_detail("frame #{@taping.frames}")
         end
 
-        # Play a frame at a time with +buttons+ down, until the block says yes of the game.
+        # Play a frame at a time with +buttons+ down, until the block answers yes of the game.
         # The game is asked after each frame, so this stops on the first frame the answer is
         # yes. After +within+ frames of no it gives up (see GaveUp).
         def hold_until(buttons, words, within)
@@ -425,7 +425,7 @@ module VBlank
                            picture: write_picture_of_frame)
         end
 
-        # Ask the block what to press, a frame at a time, until it says it is done. The block is
+        # Ask the block what to press, a frame at a time, until it answers that it is done. The block is
         # asked before each frame, so what it sees is the frame just played, and what it answers
         # is down for the next one. Every frame goes on the tape, which is why a tape of a steered
         # script needs no block. After +within+ frames it gives up (see GaveUp).
@@ -540,7 +540,7 @@ module VBlank
       def self.in_console_order(buttons) = IR::Buttons::HOLDABLE & buttons
 
       # Buttons kept down for a number of frames — none at all, for a wait. It is also a line
-      # of a tape, and says the three things a tape asks of a line: the moments it names
+      # of a tape, and gives the three things a tape asks of a line: the moments it names
       # (none), the text it is written as, and itself made longer when the frames after it
       # have the same buttons down.
       Hold = Data.define(:buttons, :frames) do
@@ -597,7 +597,7 @@ module VBlank
       end
 
       # THE STEPS OF A SCRIPT, as the block writes them. Each word here is one a script can
-      # say; what they add up to is a plain list, in order: buttons held for a count of frames,
+      # use; what they add up to is a plain list, in order: buttons held for a count of frames,
       # buttons held until something is true of the game, and moments named along the way.
       #
       # The block is run with this as itself, so `press` and `hold` need nothing written in
@@ -638,11 +638,11 @@ module VBlank
           self
         end
 
-        # How many frames a step that watches the game goes on asking, unless it says: ten
+        # How many frames a step that watches the game goes on asking, unless it sets its own: ten
         # seconds of play.
         LONGEST_WAIT = 600
 
-        # Let frames go by with nothing pressed until the block says yes of the game. +words+
+        # Let frames go by with nothing pressed until the block answers yes of the game. +words+
         # say what is being waited for, in the middle of a sentence: "the file menu is up".
         # The block is handed the running cartridge and asked after every frame, so the script
         # carries on from the first frame the answer is yes. It always plays one frame at least.

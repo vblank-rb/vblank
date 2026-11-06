@@ -8,14 +8,14 @@ module VBlank
       #
       # ONE TAPE, UNLESS THE TWO WERE STARTED DIFFERENTLY. The presses are the same for
       # both, so where both started the same way there is one tape and it plays either of
-      # them to that frame again. A tape also says where it starts, though, and a
+      # them to that frame again. A tape also records where it starts, though, and a
       # cartridge that was led in is not started as one that was not: then there are two
       # tapes, the same presses under two headings, and each plays its own cartridge.
       #
       # The folder is named for the frame, so the reports of different drifts can share one
       # place and sort in the order the drifts happened.
       #
-      # +tapes+ is the presses both were played on, once for each cartridge, each said to
+      # +tapes+ is the presses both were played on, once for each cartridge, each set to
       # start the way that cartridge was started.
       class DriftReport < Report
         TAPE = "to-the-drift.tape"

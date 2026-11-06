@@ -11,7 +11,7 @@ module VBlank
     # The buttons change once the count has moved, which is after a pass has ended and before the
     # next has read them.
     #
-    # +counted+ says what counts: true for the passes of the game loop, or the name of a variable the
+    # +counted+ chooses what counts: true for the passes of the game loop, or the name of a variable the
     # game adds to itself, for a game with stretches that keep to the frame (a fade, a tally) around
     # the part that counts.
     class PassSteppedGame

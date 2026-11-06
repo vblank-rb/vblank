@@ -5,7 +5,7 @@ module VBlank
     class Comparison
       # WHICH PIXELS OF THE SCREEN A COMPARISON LOOKS AT, frame by frame.
       #
-      # With nothing said it is every pixel. Three settings narrow it, and they go together:
+      # With nothing set it is every pixel. Three settings narrow it, and they go together:
       #
       #   looking_at:           the parts to look within; everything outside them is left out
       #   ignoring_rectangles:  the parts to leave out, inside whatever is looked within
@@ -13,7 +13,7 @@ module VBlank
       #
       # WHY A PORT NEEDS MORE THAN FIXED RECTANGLES. A rebuilt game matches its original one
       # part at a time: the room before the status bar, the status bar before the menus. What
-      # is ready changes with the stretch of the game, so a part can be said for a stretch of
+      # is ready changes with the stretch of the game, so a part can be given for a stretch of
       # frames. And a part that belongs to the scenery moves when the view scrolls, so a part
       # can be worked out on every frame from the two running cartridges, by a block.
       #
@@ -97,7 +97,7 @@ module VBlank
         def pixels = @width * @height
 
         # Whether the part looked at can be different on different frames: a stretch or a
-        # block. Only a comparison frame by frame has frames to say it of.
+        # block. Only a comparison frame by frame has frames to give it for.
         def changes_with_frame? = choices.any?(&:changes_with_frame?)
 
         # Whether every pixel is looked at on every frame.

@@ -133,7 +133,7 @@ module VBlank
       # the console can draw in one go; +poses+ is each picture with the first tile of each of its
       # pieces.
       #
-      # +held+ says what is in that run. :whole is every picture it shows, put there as its scene
+      # +held+ names what is in that run. :whole is every picture it shows, put there as its scene
       # takes over and left alone. The rest are rewritten while the game runs: :one_frame is room
       # for the frame it is showing, copied in as it changes; :shared_rooms is a room for each of
       # the sprites of its scene showing these pictures, which they take turns at; :painted is a
@@ -175,7 +175,7 @@ module VBlank
       # with pictures whose groups are never up with its own, and is copied there as one of its
       # groups comes up.
       #
-      # +groups+ is each group (see Group). +up_together+ is each set of groups up_together: says
+      # +groups+ is each group (see Group). +up_together+ is each set of groups up_together: declares
       # can be up at once, with what their pictures come to (see UpTogether), and +worst+ is the
       # set whose pictures come to the most, counting each group alone too: the least room the
       # groups could take. The room is never less, and is more where the pictures could not be

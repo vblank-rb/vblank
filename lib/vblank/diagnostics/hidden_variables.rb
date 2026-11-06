@@ -51,7 +51,7 @@ module VBlank
 
       def place(source) = source ? File.basename(source) : "the library"
 
-      # What the author wrote there, which says more than a line number on its own.
+      # What the author wrote there, which shows more than a line number on its own.
       def line_text(source)
         path, line = source.to_s.split(/:(\d+)\z/)
         return "" unless line && File.file?(path)

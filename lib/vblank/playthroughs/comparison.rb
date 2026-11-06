@@ -26,7 +26,7 @@ module VBlank
     # stops at the first drift unless it is told to carry on. One frame out is nearly always
     # every frame after it out too, so the first is the one worth having — and where it is
     # not, `carrying_on: true` plays to the end and `result.drifts` lists every stretch of
-    # drift, which says whether the two came back into step.
+    # drift, which shows whether the two came back into step.
     #
     # OR THE SAME SCRIPT ON EACH, asked for with `same: :script`: each cartridge played by
     # the script on its own, and the two compared at each named moment (see AtMoments).
@@ -35,10 +35,10 @@ module VBlank
     #
     # AND NAMED READINGS, where it is given any: numbers read off both running cartridges
     # after every frame, each its own way (see Readings). Which of the two is compared —
-    # the picture, the readings, or both — is a list said where the comparison is made (see
+    # the picture, the readings, or both — is a list given where the comparison is made (see
     # Compared).
     #
-    # OR LINED UP BY THE GAME'S OWN PASSES, asked for with `by_passes:`: each cartridge says its
+    # OR LINED UP BY THE GAME'S OWN PASSES, asked for with `by_passes:`: each cartridge gives its
     # count of passes, and the two are compared on the first frame each shows each pass, so a
     # pass that takes two frames on one and one on the other is still like with like (see
     # Passes). Or with each cartridge's own still frames skipped, asked for with
@@ -147,16 +147,16 @@ module VBlank
       end
 
       # +moments+ is the names of the moments the playthrough declares, in order: what the
-      # script or the tape says they are, and not a setting a caller can give.
+      # script or the tape names they are, and not a setting a caller can give.
       # +ignoring_frames+ is the stretches of it that are not looked at (see IgnoredFrames),
       # and +how_alike+ what a Likeness takes: how alike two pictures have to be. +readings+
       # is the named readings (see Readings) and +comparing+ the list of what is compared
-      # (see Compared), nil for nothing given. +carrying_on+ says whether to play on past the
+      # (see Compared), nil for nothing given. +carrying_on+ chooses whether to play on past the
       # first drift and list every stretch of it. +reports_in+ is a folder to write a
       # report of each drift into (see DriftReport), or nil for none. All of it is read
       # here, so a setting that makes no sense is refused before a frame is played.
       #
-      # +same+ says how the second cartridge is fed: `:tape`, the same presses on the same
+      # +same+ chooses how the second cartridge is fed: `:tape`, the same presses on the same
       # frames as the first, or `:script`, the same script playing each by itself (see
       # AtMoments). +frames_apart+ is for the same script only: how many frames apart the
       # two may reach a moment, nil for not checked.
@@ -238,7 +238,7 @@ module VBlank
       # console is switched on, and the lead-in played on it first — the save one that
       # fits this cartridge, and a copy of its own. +which+ is `first` or `second`, for an
       # error to say which of the two it was about.
-      # +count_passes+ says the console keeps the game loop's count of passes (see Passes).
+      # +count_passes+ marks that the console keeps the game loop's count of passes (see Passes).
       Start = Data.define(:which, :cartridge, :save, :lead_in, :count_passes) do
         # A console switched on with the cartridge in it, and led in.
         def console
@@ -252,7 +252,7 @@ module VBlank
           saying_which_cartridge { playthrough.play(cartridge, save: save, lead_in: lead_in, &at_each_moment) }
         end
 
-        # +tape+ as it is said to start for this cartridge, which is how the tape has to
+        # +tape+ as it is set to start for this cartridge, which is how the tape has to
         # be played to be where the comparison was.
         def tape_said(tape) = tape.started_from(save: save, led_in: !lead_in.nil?)
 
@@ -320,7 +320,7 @@ module VBlank
         @compared = Compared.new(@comparing, @likeness, @readings)
       end
 
-      # The screen each running console draws, which the emulator says, against the size the
+      # The screen each running console draws, which the emulator reports, against the size the
       # comparison was laid out for: a cartridge that draws another size (a mode with more lines,
       # say) would be compared a row out of line, so it is refused.
       private def refuse_screens_not_described!(consoles)
@@ -332,7 +332,7 @@ module VBlank
       end
 
       # The screen's size as soon as it can be known without opening a cartridge: a built cartridge
-      # says its console, and with none given the size is the Advance's, so a setting that cannot
+      # names its console, and with none given the size is the Advance's, so a setting that cannot
       # be right is refused at once. A cartridge given by its path is looked at with the other.
       private def early_screen_size(first)
         return Console.described(first.console).screen_size if first.respond_to?(:console) && first.console
@@ -438,7 +438,7 @@ module VBlank
       PICTURE_SETTINGS = %i[ignoring_rectangles looking_at pixels_apart save saves lead_ins].freeze
 
       # The comparison that plays the two for a picture of one frame (see PictureRequest),
-      # which takes those settings and no others. A part of the screen said for a stretch of
+      # which takes those settings and no others. A part of the screen given for a stretch of
       # frames or by a block is refused there: one frame is marked by one fixed part.
       def self.for_picture(first, second, moments, **settings)
         unknown = settings.keys - PICTURE_SETTINGS
@@ -511,7 +511,7 @@ module VBlank
 
       # A drift with its report written, and the folder it went into noted on it.
       # +pictures+ is the two screens on the frame it began and +part+ the part of the screen
-      # looked at there. The tape is handed over once for each cartridge, said to start the
+      # looked at there. The tape is handed over once for each cartridge, set to start the
       # way that cartridge was started.
       private def drift_with_report(drift, pictures, part, tape)
         report = DriftReport.new(drift, screen_pair(pictures, part), tapes: starts.map { |start| start.tape_said(tape) },
@@ -530,7 +530,7 @@ module VBlank
       private def what_any_report_has(settings) = { cartridges: cartridges, settings: settings + starting_sentences }
 
       # A comparison lines two screens up, and frames rectangles on them, at the size the console's
-      # description says. A console whose cartridge the reader cannot play, or whose screen changes
+      # description gives. A console whose cartridge the reader cannot play, or whose screen changes
       # size as its program runs, is refused rather than compared wrong
       # (Console::Kit#compared_side_by_side?).
       private def refuse_cartridges_not_compared!(pair)
@@ -553,7 +553,7 @@ module VBlank
                              "Write it like `lead_ins: [nil, past_the_logos]`."
       end
 
-      # Every setting a comparison has: the ones that say how alike, and the ones of its own.
+      # Every setting a comparison has: the ones that set how alike, and the ones of its own.
       def self.settings
         [*how_alike_settings, :ignoring_frames, :layers, :forgiving_torn_frames_of, :readings, :comparing, :carrying_on, :same,
          :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :reads_buttons_every_frame,
@@ -589,11 +589,11 @@ module VBlank
                              "Remove #{said.size == 1 ? 'it' : 'them'}, or remove #{setting} to compare frame by frame."
       end
 
-      # The settings that say how alike two pictures have to be and which of them is looked at.
+      # The settings that set how alike two pictures have to be and which of them is looked at.
       def self.how_alike_settings = [*Likeness::SETTINGS, *LookedAt::SETTINGS]
 
       # What the two ways of feeding the second cartridge each make no sense with. On the
-      # same script there is no frame the two share, so nothing can be said in frames in a
+      # same script there is no frame the two share, so nothing can be given in frames in a
       # row or in frame numbers; and with no moment named there is nowhere to compare. On
       # the same tape the two are always on the same frame, so they cannot be frames apart.
       private def refuse_settings_wrong_for_same!(how_alike)
@@ -757,7 +757,7 @@ module VBlank
       #
       # A FRAME IS SEEN, THEN DECIDED. Each frame is looked at as soon as it is played, and
       # what can only be asked then is kept (an Observation). With the strict rule for torn
-      # frames (TornFrames) a frame is decided a frame later, once the frame after it says
+      # frames (TornFrames) a frame is decided a frame later, once the frame after it shows
       # whether it was torn, and a run of torn frames once it settles; without, at once.
       class SideBySide
         attr_reader :frames
@@ -766,7 +766,7 @@ module VBlank
         attr_reader :drifts
 
         # The frame each moment that has been reached was named on, as a pair: both
-        # cartridges are on the same frame here, and a result says it for each.
+        # cartridges are on the same frame here, and a result gives it for each.
         attr_reader :moments
 
         # ONE FRAME AS IT WAS SEEN: its number, the moment named before it, what was seen
@@ -867,7 +867,7 @@ module VBlank
         # The frame just played, looked at. The part of the screen is asked for on every frame
         # the two are on together, one `ignoring_frames:` leaves out included, so a block that
         # chooses it is asked in order and what it keeps from the frame before is never stale.
-        # +step+ is the step the two are lined up on, or nil frame by frame; +passed_over+ says
+        # +step+ is the step the two are lined up on, or nil frame by frame; +passed_over+ marks that
         # the second went past it without showing it.
         private def observe(step: nil, passed_over: false)
           @steps += 1

@@ -19,7 +19,7 @@ module VBlank
       # The way with nothing to see or hear, for a bot playing one long run many times.
       LOGIC = "logic"
 
-      # The ways, by the word `on:` takes, and the run each is (`vblank run --on` says "js" for "web":
+      # The ways, by the word `on:` takes, and the run each is (`vblank run --on` uses "js" for "web":
       # see CommandLine::WAYS).
       RUNS = { "interpreter" => -> { IR::Backends::Reference }, "native" => -> { IR::Backends::Native::HeadlessRun },
                "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun },
@@ -27,13 +27,13 @@ module VBlank
 
       def self.ways = [EMULATOR, *RUNS.keys]
 
-      # More frames than any playing gets to: the playing says when it is over (#finish).
+      # More frames than any playing gets to: the playing decides when it is over (#finish).
       UNENDING = 1 << 30
 
       # Said into the run's Fiber to end a run the playing has finished with.
       class Finished < StandardError; end
 
-      # +speaker+ says somebody is listening, so a way that makes its sound as a file hands it over
+      # +speaker+ marks that somebody is listening, so a way that makes its sound as a file hands it over
       # a frame at a time (#last_frame_samples).
       def initialize(program, way, speaker: false)
         @console = program.described_console
@@ -72,8 +72,8 @@ module VBlank
       # game that has ended finishes no more.
       def passes = @frames
 
-      # :yjit or :none, as the Ruby that plays a game built as Ruby says of itself; nil for a way that
-      # does not say (the interpreter runs in this Ruby, C needs no compiler, node's is always on).
+      # :yjit or :none, as the Ruby that plays a game built as Ruby reports of itself; nil for a way that
+      # does not report it (the interpreter runs in this Ruby, C needs no compiler, node's is always on).
       def running_jit = (@run.running_jit if @run.respond_to?(:running_jit))
 
       def var(name) = @run[name]

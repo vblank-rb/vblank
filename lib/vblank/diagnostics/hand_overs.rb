@@ -7,7 +7,7 @@ module VBlank
     # A scene's pictures go into video memory as it takes over, on the same pass as its first
     # pass of game, so a scene with a lot of art can run that one pass past the end of its frame
     # while every pass after it fits — and the game is a frame late from there. Nothing in the
-    # program says so, and the more art a scene holds the likelier it is, so a game that adds
+    # program shows it, and the more art a scene holds the likelier it is, so a game that adds
     # rooms meets it without changing a line of the scene. `scene :x, loads_first: true` gives
     # the copy a pass of its own (see IR::SceneHandover::Arrival#loads_first?), and this is
     # what points an author at it.
@@ -18,7 +18,7 @@ module VBlank
     # of the game loop. A scene that misses only on its hand-over is late; one that misses on
     # every frame is a slow scene, which the build says already, and is left to that.
     module HandOvers
-      # A scene whose hand-over ran past its frame. +loads_first+ says the scene already copies
+      # A scene whose hand-over ran past its frame. +loads_first+ marks that the scene already copies
       # its pictures on a pass of their own, and that pass is the one that did not fit.
       Late = Data.define(:scene, :loads_first)
 

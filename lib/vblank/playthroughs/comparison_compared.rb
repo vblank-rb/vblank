@@ -11,7 +11,7 @@ module VBlank
       #
       # WHY THE PICTURE CAN BE LEFT OUT. Somebody rebuilding a game gets its numbers right
       # long before its pictures: the hero walks at the right speed weeks before the scenery
-      # is drawn. Comparing the readings alone says whether the game underneath has drifted
+      # is drawn. Comparing the readings alone shows whether the game underneath has drifted
       # while every frame of the picture still differs.
       #
       # WHY READINGS CAN BE GIVEN AND NOT COMPARED. They are still read, and a drift says

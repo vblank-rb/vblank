@@ -35,7 +35,7 @@ module VBlank
       def sound_write_mask = 0xFF
 
       # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
-      # AdvanceReading#video_memories says it: the 64 colours, the sprite table by its bytes,
+      # AdvanceReading#video_memories gives it: the 64 colours, the sprite table by its bytes,
       # the scroll and the window's place, and the register that switches the parts on.
       def video_memories
         ensure_rendered!
@@ -46,10 +46,10 @@ module VBlank
       end
 
       # THE SPRITE TABLE AS BOXES (SpriteBox), one for each of the forty entries the console draws, in
-      # the table's order. Nothing here needs a build record, so it is how a cartridge with none says
+      # the table's order. Nothing here needs a build record, so it is how a cartridge with none shows
       # where its sprites are. An entry is four bytes: its down plus 16, its across plus 8, its tile
       # and its settings. So a sprite at nought either way is wholly off the screen, which is how a game
-      # hides one. Every entry is 8 wide and 8 tall, or 16 tall when the register LCDC says so (bit 2),
+      # hides one. Every entry is 8 wide and 8 tall, or 16 tall when the register LCDC asks for it (bit 2),
       # drawing from an even tile and the one after.
       #
       # @return [Array<SpriteBox>]
@@ -84,14 +84,14 @@ module VBlank
         number >= 1 << ((bytes * 8) - 1) ? number - (1 << (bytes * 8)) : number
       end
 
-      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them
+      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
       # (Reference#sprites): a DrawnSprite for each, with its +name+, +x+, +y+ and +picture+, back
       # to front, where the game put them. Name one and only that sprite's rows come back. The
-      # Color's own table of forty eight-pixel pieces cannot say whose a piece is, so this reads the
+      # Color's own table of forty eight-pixel pieces does not record whose a piece is, so this reads the
       # list the runtime keeps of what it placed (GBC::Places#drawn_sprite_rows), which the Color's
       # checked run compares with the interpreter after every pass.
       #
-      # A cartridge with no build record cannot say whose a sprite is, and says so.
+      # A cartridge with no build record cannot name whose a sprite is, and says so.
       #
       # @param name [Symbol, nil] keep only this declared sprite's rows; nil for every row
       # @return [Array<DrawnSprite>]

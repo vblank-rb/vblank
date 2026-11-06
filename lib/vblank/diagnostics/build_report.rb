@@ -10,7 +10,7 @@ module VBlank
     #
     # WHY THIS IS NOT THE PROFILER'S JOB, and cannot be. A profile runs the finished cartridge
     # and watches where the console was; by then these facts are gone. Nothing in a running ROM
-    # can say that a routine missed the quick memory by four tenths of a kilobyte, or that a
+    # can show that a routine missed the quick memory by four tenths of a kilobyte, or that a
     # helper was emitted sixty-four times, or that a font ships forty-three letters and the game
     # draws thirty. Those are decisions the build made, and the build is the only witness.
     #
@@ -61,7 +61,7 @@ module VBlank
         tearing_line(program, printer)
       end
 
-      # WHAT RATE THE RECORDED SOUND CAME OUT AT, which nobody wrote and nothing else can say.
+      # WHAT RATE THE RECORDED SOUND CAME OUT AT, which nobody wrote and nothing else knows.
       #
       # A game names the rate its recordings were MADE at; the rate they are PLAYED at is the
       # build's business, because the sound hardware can only be clocked so that a whole number
@@ -216,7 +216,7 @@ module VBlank
                      "blend: :#{layer} is solid until it lifts"
       end
 
-      # HOW FINE THE GAME'S FADES GO, which nothing in the program says. A long fade walks the
+      # HOW FINE THE GAME'S FADES GO, which nothing in the program shows. A long fade walks the
       # colours in 257 levels where the display's own fade has 17 and costs nothing, so its
       # price is worth a line; a long fade placed in the stack cannot, and the line says what
       # it gives up. A game whose fades are all short hears nothing (see IR::Fading).
@@ -324,13 +324,13 @@ module VBlank
           parts << "#{area.small} of #{area.small + area.big} stored small, saving #{format_bytes(area.saved)}"
           parts << "#{area.big} use more colours than a small one holds" unless area.big.zero?
         end
-        # Nothing in a tileset says which of its tiles are really the same picture, so this is
+        # Nothing in a tileset marks which of its tiles are really the same picture, so this is
         # the one line that says how much of it was repeats.
         parts << "#{area.shared} were the same picture as another and stored once" if area.shared.positive?
         # ...and which were another tile reversed, which a map cell draws for nothing.
         parts << "#{area.mirrored} were another tile mirrored and are drawn from it turned round" if area.mirrored.positive?
         # A part one pose shares with another — the head and the still arm of a walk cycle —
-        # is stored once. Nothing in the program says which parts those are, so this is the
+        # is stored once. Nothing in the program shows which parts those are, so this is the
         # only place the number appears.
         parts << "#{format_bytes(area.repeats)} more saved where poses share a part" if area.repeats.positive?
         # A character with more frames than this memory holds keeps one here and the rest in the
@@ -426,8 +426,8 @@ module VBlank
 
       # WHICH SAVE MEMORY THE CARTRIDGE HAS, and what takes it. The build picks 32K, or 64K or
       # 128K of flash, from the save_data records unless the game named a size, and nothing in
-      # the program says which it got. So this says the size and how it came about, then each
-      # thing laid out in it: the block kept for save_var on 32K, the table that says where
+      # the program shows which it got. So this says the size and how it came about, then each
+      # thing laid out in it: the block kept for save_var on 32K, the table that records where
       # each record lives, each record's copies (two halves each, so a save cut off half way
       # keeps the last), and what is free.
       #
@@ -508,7 +508,7 @@ module VBlank
           "game really spends its frames on, build it with `VBlank.game`, which measures."
       end
 
-      # WHAT EACH SCENE WAS MEASURED DOING, for a scene that said (`measure_holding:`). The same
+      # WHAT EACH SCENE WAS MEASURED DOING, for a scene that named them (`measure_holding:`). The same
       # cartridge measured standing still and measured in a fight are measurements of different
       # code, so a reader is told which one chose the list, as `rom.profile` says what it held.
       def measured_presses_lines(placement, program, printer)
@@ -526,7 +526,7 @@ module VBlank
 
       # ...AND WHAT DID NOT FIT, which is the actionable half. A routine the frame spends real
       # time in that just missed is exactly where a program loses that speed, and nothing in a
-      # finished cartridge can say so afterwards.
+      # finished cartridge can show it afterwards.
       def passed_over_lines(placement, program, printer, emitted)
         return if placement.passed_over.empty?
 

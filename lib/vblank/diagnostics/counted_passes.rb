@@ -10,7 +10,7 @@ module VBlank
     # WHAT THE RUNTIME COUNTS is the times the game waited for the screen, which is the passes
     # only for a game loop that waits for it once, at its top — the way `game_loop` waits unless
     # it is told `frame_sync: :manual`. It is then one ahead: the first wait comes before the first
-    # pass has run at all, so after the bodies of thirty passes the count says thirty-one, whether
+    # pass has run at all, so after the bodies of thirty passes the count reads thirty-one, whether
     # the run stopped at the next wait or part way through the next body. A game that waits
     # anywhere else is refused the count, since the waits are then not the passes.
     module CountedPasses

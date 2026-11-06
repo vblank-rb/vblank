@@ -7,19 +7,19 @@ module VBlank
   module Playthroughs
     # ANY CARTRIDGE DRIVEN A FRAME AT A TIME BY SOMEBODY WATCHING IT, and read by the names its
     # decompilation gave to what it keeps in memory. It is how a port measures its original: the
-    # decompilation says what the game does, and this says how much, frame by frame, from the real
+    # decompilation shows what the game does, and this measures how much, frame by frame, from the real
     # cartridge in the emulator.
     #
     #   labels = { "wMode" => 0xC0A0, "wShipX" => [0xC0B4, :u16] }
     #   Probe.open("rocket.gbc", labels: labels) do |probe|
     #     probe.press_until(:a, "the first level", within: 600) { probe.read("wMode") == 3 }
-    #     probe.read("wShipX")   # => 1234, read as the label says
+    #     probe.read("wShipX")   # => 1234, read as the label gives
     #     probe.reader.screenshot("level.png")
     #   end
     #
     # IT WAITS ON THE GAME, never on a count of frames: step_until and press_until play until the
-    # block says yes, so the drive keeps working when a screen takes a frame longer than it did. One
-    # that never says yes within its frames raises NeverHappened, naming what was waited for, the
+    # block answers yes, so the drive keeps working when a screen takes a frame longer than it did. One
+    # that never answers yes within its frames raises NeverHappened, naming what was waited for, the
     # frame it stopped on, and the values of the labels it was told to watch.
     #
     # WHAT THE GAME SUPPLIES: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
@@ -98,9 +98,9 @@ module VBlank
         step(RELEASE_FRAMES)
       end
 
-      # Play a frame at a time holding +holding+ (as #step takes it) until the block says yes, at most
+      # Play a frame at a time holding +holding+ (as #step takes it) until the block answers yes, at most
       # +within+ frames. The block is asked before each frame, so a game already there plays none.
-      # +what+ says what is waited for, and +watch+ the labels whose values the error gives if it never
+      # +what+ names what is waited for, and +watch+ the labels whose values the error gives if it never
       # happens.
       def step_until(what, within:, holding: nil, watch: [])
         within.times do
@@ -113,8 +113,8 @@ module VBlank
         raise NeverHappened, never_happened_message(what, "#{within} frames", watch)
       end
 
-      # Press +button+ again and again until the block says yes, at most +within+ presses. The block
-      # is asked on every frame, so the probe stops on the frame it first says yes, part way through
+      # Press +button+ again and again until the block answers yes, at most +within+ presses. The block
+      # is asked on every frame, so the probe stops on the frame it first answers yes, part way through
       # a press if that is when.
       def press_until(button, what, within:, watch: [])
         within.times do
@@ -131,7 +131,7 @@ module VBlank
         raise NeverHappened, never_happened_message(what, "#{within} presses of #{button}", watch)
       end
 
-      # The value at +place+ (a label or an address) now, read +as+ one of WIDTHS (as the label says,
+      # The value at +place+ (a label or an address) now, read +as+ one of WIDTHS (as the label gives,
       # or one byte unsigned), in the console's own byte order, as its processor keeps it. Where a
       # value of two or more bytes can be, and whether three bytes are one value, is the processor's
       # rule too (Console::Kit#words_at_any_address?); a read it would not make is refused. Three
@@ -232,7 +232,7 @@ module VBlank
         Label.new(address: Integer(at), as: as || :u8)
       end
 
-      # The address of +place+ and the width to read it as: +as+ if said, else the label's, else a byte.
+      # The address of +place+ and the width to read it as: +as+ if given, else the label's, else a byte.
       def located(place, as)
         label = place.is_a?(Integer) ? Label.new(address: place, as: :u8) : @labels.fetch(place.to_s) { refuse_unknown_label!(place) }
         width = width_of(as || label.as)

@@ -5,7 +5,7 @@ module VBlank
     # WHERE A SEGA GENESIS CARTRIDGE'S FRAMES WENT, measured by running it.
     #
     # A pass of the game loop is meant to fit in one frame. One that does not shows the same
-    # picture twice and the game runs at half speed for that pass, with nothing on screen to say
+    # picture twice and the game runs at half speed for that pass, with nothing on screen to show
     # why. The runtime counts the frames each pass took as its wait ends, so those numbers are the
     # ones the game really played at, and nothing is added to the cartridge to get them.
     #
@@ -28,7 +28,7 @@ module VBlank
       # The labels of what runs while the game has nothing to do but wait for the screen.
       WAITS = /\Art_(sleep_until_vblank|stopped)/
 
-      # The labels of the game's own code, which is all the build says of whose it is.
+      # The labels of the game's own code, which is all the build records of whose it is.
       GAME_LABELS = /\A(routine |main\b)/
 
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is,

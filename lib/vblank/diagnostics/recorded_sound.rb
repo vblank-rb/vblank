@@ -27,7 +27,7 @@ module VBlank
     # and nearly every run does.
     #
     # The file is a Tempfile, so it goes when this object is collected and, failing that, when
-    # the program ends. It is made in the machine's temporary files unless +folder+ says
+    # the program ends. It is made in the machine's temporary files unless +folder+ names
     # where — which matters on a machine that keeps its temporary files in memory, where
     # writing the sound there moves it nowhere.
     #

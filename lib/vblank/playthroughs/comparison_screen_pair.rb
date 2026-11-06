@@ -31,7 +31,7 @@ module VBlank
         private_constant :MARK, :SCALE, :STRIP_WIDTH, :STRIP_COLOUR
 
         # THE DIFFERENCE AS A SCREEN: the first screen with its colour taken out and dimmed,
-        # so it is only there to say where on the screen things are, and every pixel that
+        # so it is only there to show where on the screen things are, and every pixel that
         # differs in the mark's colour.
         def difference_screen
           marked = first.map { |colour| greyed(colour) }
@@ -41,7 +41,7 @@ module VBlank
 
         # WRITE ONE PICTURE OF IT ALL at +path+, a PNG: the first screen, the second, and the
         # difference, left to right, each at SCALE times the console's size with a strip
-        # between. +with_difference+ says whether the last is there, for somebody who wants
+        # between. +with_difference+ chooses whether the last is there, for somebody who wants
         # the two screens alone. The path is handed back.
         def write_side_by_side(path, with_difference: true)
           screens = with_difference ? [first, second, difference_screen] : [first, second]

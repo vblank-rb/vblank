@@ -8,7 +8,7 @@ module VBlank
     #
     # A Genesis cartridge plays in Genesis Plus GX (ruby-genesis-emulator), through GenesisProbe: its
     # picture, its work RAM by address, the console's tables, the passes the game finished, from the
-    # runtime's own count (CountedPasses), and its sound. It cannot yet say which of the game's
+    # runtime's own count (CountedPasses), and its sound. It cannot yet name which of the game's
     # sprites each one is; the lowering's own run (IR::Backends::Genesis::HeadlessRun) reads that,
     # and the question here says so.
     module GenesisReading
@@ -30,7 +30,7 @@ module VBlank
 
       # THE SPRITE TABLE AS BOXES (SpriteBox), one for each entry that reaches the screen, in the
       # order the video chip draws them: from entry 0, each entry naming the next (its link), until
-      # one names entry 0. Nothing here needs a build record, so it is how a cartridge with none says
+      # one names entry 0. Nothing here needs a build record, so it is how a cartridge with none shows
       # where its sprites are.
       #
       # An entry is eight bytes, high byte first: its down (nine bits; a tenth only in the

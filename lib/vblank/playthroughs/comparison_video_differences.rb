@@ -12,7 +12,7 @@ module VBlank
       # see Diagnostics::Verifier#video_memories), +at+ where in it, and +first+ and +second+
       # what each cartridge held there.
       #
-      # WHY IT IS SAID. Two pictures that differ say where on the screen and nothing about why.
+      # WHY IT IS SAID. Two pictures that differ show where on the screen and nothing about why.
       # The console builds its picture out of a few memories — the colours it draws from, the
       # table of where each sprite stands, how far each background is scrolled, the registers
       # that switch each part on — and which of those differ is most of the answer: a colour

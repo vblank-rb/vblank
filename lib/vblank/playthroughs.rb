@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# PLAYING A FINISHED CARTRIDGE WITH NOBODY AT THE CONTROLS: from a script that says what to
+# PLAYING A FINISHED CARTRIDGE WITH NOBODY AT THE CONTROLS: from a script that sets out what to
 # press or a tape of the presses that were made, and two cartridges side by side to find the
 # frame where they stop matching.
 #

@@ -18,13 +18,13 @@ module VBlank
     #
     # THIS IS THE EXACT COMPLEMENT OF {Tearing}. That one asks whether a game drawing into
     # the single picture the display is reading got caught halfway; it applies only to a
-    # direct-color screen and says so. This one applies only to a tear-free screen. A game
+    # direct-color screen and shows it. This one applies only to a tear-free screen. A game
     # has one screen or the other, so exactly one of the two questions can be asked of it,
     # and neither is ever asked where it has no meaning.
     #
     # HOW IT IS MEASURED, and why nothing has to track writes. Take both pictures at a
     # frame boundary, and both again TWO boundaries later. Two boundaries, not one: only
-    # one picture is drawn into per frame, so a single frame apart says nothing about the
+    # one picture is drawn into per frame, so a single frame apart shows nothing about the
     # other one. Over two frames each picture has had its turn. A pixel where the two
     # pictures DISAGREE and NEITHER of them changed is a pixel no frame is going to fix —
     # the disagreement is permanent, and the player is watching it flicker.
@@ -51,7 +51,7 @@ module VBlank
       # WHAT A RUN SAW. +pixels+ is how many are stuck disagreeing between the two
       # pictures with nothing coming to fix them — 0 for a game whose drawing all arrives.
       # +first+ is where to look, as [x, y], so a person has somewhere to start. A reading
-      # that does not apply to this screen says so with #measured? false, so "we did not
+      # that does not apply to this screen shows it with #measured? false, so "we did not
       # look" can never be mistaken for "nothing was wrong".
       Reading = Data.define(:pixels, :first) do
         def self.none = new(pixels: nil, first: nil)

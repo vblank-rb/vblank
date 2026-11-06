@@ -11,7 +11,7 @@ module VBlank
       #   tape.write_side_by_side_picture(ours, theirs, "door.png", at: 46)
       #   walk.write_side_by_side_picture(ours, theirs, "door.png", at: :at_the_door)
       #
-      # WHAT THE PICTURE IS FOR. A frame number says two cartridges parted and nothing about
+      # WHAT THE PICTURE IS FOR. A frame number shows that two cartridges parted and nothing about
       # how. The two screens beside each other, with the pixels that differ marked, is what
       # a person looks at to see it — and a drift report holds one for the frame it reports
       # (see ScreenPair, which puts the picture together). This is the same picture for any
@@ -24,7 +24,7 @@ module VBlank
       # found after the first cartridge has played it.
       #
       # +path+ is the file to write. +at+ is the frame: its number, counted from 1, or the
-      # name of a moment, which is the frame that moment names. +difference+ says whether
+      # name of a moment, which is the frame that moment names. +difference+ chooses whether
       # the picture has its third panel, the one that marks where the two differ.
       class PictureRequest
         def initialize(path, at:, difference:)
@@ -48,7 +48,7 @@ module VBlank
           raise ArgumentError, "`at:` was #{@at}, and the playthrough is #{tape.frames} frames long. #{give}"
         end
 
-        # +names+ is the moments a playthrough names. A script says them where it is
+        # +names+ is the moments a playthrough names. A script names them where it is
         # declared, so a moment it does not have is known before the script is played.
         def refuse_moment_not_among!(names)
           return unless @at.is_a?(Symbol) && !names.include?(@at)

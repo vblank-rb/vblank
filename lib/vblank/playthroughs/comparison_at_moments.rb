@@ -16,7 +16,7 @@ module VBlank
       # finds a game that LOOKS different.
       #
       # So there is no frame the two share, and nothing is compared frame by frame: only at
-      # the moments the script names, which are the places it says both should be the same.
+      # the moments the script names, which are the places it declares both should be the same.
       #
       # HOW LONG EACH TOOK IS ALWAYS SAID and is only drift when a limit was given: the
       # frame each cartridge reached each moment on comes back with the result, and

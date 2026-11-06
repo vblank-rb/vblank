@@ -16,14 +16,14 @@ module VBlank
       #                           presses, what was compared and how alike it had to be
       #   a tape, or two          every press up to there
       #
-      # WHY A TAPE AND NOT ONLY A PICTURE. A picture says what the two screens were. A tape
+      # WHY A TAPE AND NOT ONLY A PICTURE. A picture shows what the two screens were. A tape
       # plays a cartridge to that exact place again, with a debugger on it or a script that
       # asks it things — which is where finding out WHY starts.
       #
       # THERE ARE TWO KINDS, for the two ways a comparison is made, and this is what they
       # share. A DriftReport is of a drift on a frame both cartridges were on, played on
       # one tape. A MomentReport is of a drift at a named moment each cartridge reached in
-      # its own time. Each says what its folder is called, which tapes go in it, and the
+      # its own time. Each gives what its folder is called, which tapes go in it, and the
       # parts of the text that are about where the drift was.
       class Report
         FIRST_PICTURE = "first.png"
@@ -166,7 +166,7 @@ module VBlank
 
         # Every named reading on both cartridges, the ones that agree as well: a number a
         # pixel out is easier to chase than a picture that looks wrong, and the ones that
-        # agree say what the difference is NOT.
+        # agree show what the difference is NOT.
         def readings_lines
           return [] if @drift.readings.empty?
 

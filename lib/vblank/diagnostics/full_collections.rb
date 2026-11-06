@@ -11,8 +11,8 @@ module VBlank
     # fills it. Nothing works out where that happens; the build measures it instead, with each
     # collection held at its capacity (see Profiler.survey_scenes).
     #
-    # HOLDING ONE FULL is writing the numbers that say how many it holds. A list keeps its length
-    # in a variable, so that is the capacity. A pool says which of its slots are live a byte each,
+    # HOLDING ONE FULL is writing the numbers that record how many it holds. A list keeps its length
+    # in a variable, so that is the capacity. A pool marks which of its slots are live a byte each,
     # and keeps a count and a stack of the free slots beside them, so every slot is marked live,
     # the count is the capacity and the stack is empty. Its walk follows a chain through the live
     # slots in the order they were spawned, so the chain is written too, through every slot from

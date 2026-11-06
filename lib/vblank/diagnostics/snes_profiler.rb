@@ -5,7 +5,7 @@ module VBlank
     # WHERE A SUPER NINTENDO CARTRIDGE'S FRAMES WENT, measured by running it.
     #
     # A pass of the game loop is meant to fit in one frame. One that does not shows the same
-    # picture twice and the game runs at half speed for that pass, with nothing on screen to say
+    # picture twice and the game runs at half speed for that pass, with nothing on screen to show
     # why. The runtime counts the frames each pass took as its wait ends, so those numbers are the
     # ones the game really played at, and nothing is added to the cartridge to get them.
     #

@@ -44,7 +44,7 @@ module VBlank
           end
         end
 
-        # The stretches as ranges of frame numbers of +tape+, whose moments say which frame
+        # The stretches as ranges of frame numbers of +tape+, whose moments give which frame
         # each name stands for.
         #
         # Two moments can name the same frame, and three dots between those leave out the
@@ -105,7 +105,7 @@ module VBlank
           "from #{from} to #{'just before ' if stretch.exclude_end?}the moment #{stretch.end}"
         end
 
-        # A range of moment names as the same range of numbers: the block says what number a
+        # A range of moment names as the same range of numbers: the block gives what number a
         # name stands for, and an end left open stays open.
         def between(stretch, &number_of)
           first, last = [stretch.begin, stretch.end].map { |name| name && number_of.call(name) }

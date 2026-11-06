@@ -4,7 +4,7 @@ module VBlank
   module Diagnostics
     # A SAVE STARTED FOR THE SAKE OF MEASURING IT. A measured build plays each scene with nobody at
     # the controls, so nobody ever saves, and the routines that write a save a piece a pass measured
-    # as nothing. A game that wanted them in the quick memory had to say `fast: true`, which puts
+    # as nothing. A game that wanted them in the quick memory had to set `fast: true`, which puts
     # them ahead of everything the build chooses — the routine every frame runs among them.
     #
     # So a scene whose code asks for a save, an erase or a copy of a record is measured again with a

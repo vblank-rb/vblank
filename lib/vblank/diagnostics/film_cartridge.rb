@@ -19,13 +19,13 @@ module VBlank
     # cartridge, or a game to build (what `VBlank.game` hands back). A game to build is built once and
     # not measured; a side that wants the measured cartridge builds it itself (`-> { GAME.build_rom }`).
     #
-    # +console:+ (a console's name, :gba, :gbc, :snes, :genesis or :ps1) says which console a game to
+    # +console:+ (a console's name, :gba, :gbc, :snes, :genesis or :ps1) names which console a game to
     # build is built for: the first one it names unless set. A built cartridge or a cartridge file is
-    # already for one console, which says which emulator plays it (Console::Kit#open_probe), so there
+    # already for one console, which decides which emulator plays it (Console::Kit#open_probe), so there
     # +console:+ only checks: a side that names another console is refused, saying which the file is
     # for.
     #
-    # +lowering:+ says how the game is shown (Playthroughs::CommandLine::SHOWN_WAYS): the cartridge in
+    # +lowering:+ chooses how the game is shown (Playthroughs::CommandLine::SHOWN_WAYS): the cartridge in
     # its console's emulator unless set, or the game played as the interpreter, native, js or ruby
     # plays it (Playthroughs::LoweredGame). Those take the game itself, so a cartridge file is shown
     # only in the emulator. They play the game the cartridge holds — `built_for_computer?` answers
@@ -138,7 +138,7 @@ module VBlank
       end
 
       # The checked program a lowering plays, as the cartridge holds it: the game's, for the console
-      # said, or the one a built cartridge was made from. A cartridge file holds none.
+      # given, or the one a built cartridge was made from. A cartridge file holds none.
       def program_from(game, console)
         return game.checked_program(for_computer: false, **{ console: console }.compact) if game_to_build?(game)
 

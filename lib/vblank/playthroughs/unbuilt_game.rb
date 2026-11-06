@@ -12,7 +12,7 @@ module VBlank
     #
     # It answers what a playing asks of what it plays: the program, the console, a title and a
     # checksum for the tape's heading. It has no bytes, so the emulator cannot play it, a save has
-    # nowhere to go, and a tape made on it says so only by its checksum, which is of the game's
+    # nowhere to go, and a tape made on it shows it only by its checksum, which is of the game's
     # source and settings and not of a cartridge's bytes.
     class UnbuiltGame
       attr_reader :source_program, :checksum

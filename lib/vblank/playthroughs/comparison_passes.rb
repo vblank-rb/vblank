@@ -203,8 +203,8 @@ module VBlank
       end
       private_constant :Passes
 
-      # A COUNT OF PASSES THAT WENT DOWN, on a cartridge `by_passes:` lines up, where nothing said
-      # it comes back round. The message says which cartridge and how to say where it wraps.
+      # A COUNT OF PASSES THAT WENT DOWN, on a cartridge `by_passes:` lines up, where nothing set where
+      # it comes back round. The message says which cartridge and how to set where it wraps.
       class PassCountFell < StandardError; end
 
       # THE SECOND CARTRIDGE NEVER SHOWED A PASS THE FIRST DID: its count stood still for a minute

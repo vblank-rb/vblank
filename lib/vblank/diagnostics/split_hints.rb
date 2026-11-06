@@ -12,7 +12,7 @@ module VBlank
     # The build does not take a game's routine apart on its own: cutting code out of the middle
     # of somebody's routine is a place for bugs to hide, and the author knows where the seams in
     # their own game are. So a measured run says it instead. The build keeps, for each routine
-    # that missed, where each of its statements' code is and the line that wrote it; the run says
+    # that missed, where each of its statements' code is and the line that wrote it; the run measures
     # how long the console spent at each address; and between them each statement has a share of
     # the routine's time and a size. The part worth a `func` is the one holding the most time
     # that still fits.

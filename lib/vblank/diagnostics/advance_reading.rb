@@ -60,7 +60,7 @@ module VBlank
 
       # THE SPRITE TABLE AS BOXES (SpriteBox), one for each entry switched on that reaches the
       # screen, in the table's order. Nothing here needs a build record, so it is how a cartridge
-      # with none says where its sprites are. A turned entry is the size of its picture, not of the
+      # with none shows where its sprites are. A turned entry is the size of its picture, not of the
       # doubled box a turned sprite can be drawn in. Across wraps at 512 and down at 256, as the
       # console wraps them.
       #
@@ -147,7 +147,7 @@ module VBlank
       #
       # +colors+ IS THE COLOURS IT IS WEARING, ready to compare against — no group number and no
       # arithmetic, and right for a picture stored either of the two ways (see #colors_drawn_from,
-      # and +color_count+, which says which way).
+      # and +color_count+, which marks which way).
       #
       # +x+ AND +y+ ARE WHERE THE PICTURE STARTS — the corner of the canvas the art was drawn
       # on, which is where the game put the sprite. That is NOT the number the console carries,
@@ -165,13 +165,13 @@ module VBlank
       # background, or from one a pixel off the edge. A sprite the game has switched off is left
       # out, which is the answer a test wants.
       #
-      # WHAT THE NAME SAVES is the guessing. The console's table says which of its 128 places a
+      # WHAT THE NAME SAVES is the guessing. The console's table holds which of its 128 places a
       # sprite is in and nothing else, so a test with a cast otherwise picks its hero by a place
       # number (which moves the day the game declares something earlier), by position (which
       # needs the game to keep its own position in a variable, and is a pixel or two out exactly
       # while the thing is moving), or by which colours it draws from (no use at all for a sprite
       # whose colours are being swapped). The build gave out the places and the cartridge carries
-      # that, so the rows can say whose they are.
+      # that, so the rows can name whose they are.
       #
       # A PICTURE TOO BIG for the console to draw in one go is several rows with the same name,
       # not one merged row: which piece is which is the framework's business, and a test asking
@@ -261,7 +261,7 @@ module VBlank
 
       # The pitch the wave voice is playing at, as the rate a game writes for it. Ask this rather
       # than reading the register back: the console makes those bits write-only, so {#mem16}
-      # there says 0 whatever note is playing. See Probe#wave_rate.
+      # there reads 0 whatever note is playing. See Probe#wave_rate.
       def wave_rate
         ensure_rendered!
         @probe.wave_rate
@@ -349,14 +349,14 @@ module VBlank
       # handing over "the sixteen at that group" would be quietly wrong for a sprite drawn from
       # more than fifteen colours rather than obviously wrong.
       #
-      # +color_count+ says which kind, so this can simply take the right run: the group for a
+      # +color_count+ marks which kind, so this can simply take the right run: the group for a
       # picture that has one, and the whole table for a picture that draws from all of it.
       def colors_drawn_from(row, table)
         from = row[:color_count] == PALETTE.group ? row[:palette] * PALETTE.group : 0
         table[from, row[:color_count]]
       end
 
-      # WHICH POSE A ROW IS HOLDING, said the way the build wrote that place's trims down (see
+      # WHICH POSE A ROW IS HOLDING, given the way the build wrote that place's trims down (see
       # IR::Backends::GBA#pose_key, the other end of this).
       #
       # Nearly every sprite keeps all its pictures in sprite memory at once, and then the row tells
@@ -364,10 +364,10 @@ module VBlank
       # pose, so those two are the answer.
       #
       # A sprite with more pictures than fit keeps ONE of them there at a time, and then the row
-      # cannot: every pose is copied into the same room, so it says that one place whichever pose
+      # cannot: every pose is copied into the same room, so it shows that one place whichever pose
       # is in it. The cartridge keeps the pose number in a variable of its own for exactly that
       # reason — it is how it knows whether the frame already in the room is still the right one —
-      # and the build says where, so this reads it rather than guessing from a row that cannot
+      # and the build records where, so this reads it rather than guessing from a row that cannot
       # know. A room nothing has been copied into yet holds no pose at all, and no pose finds no
       # trim; a row being drawn always has one, because the frame goes in before the row is
       # written.
@@ -378,7 +378,7 @@ module VBlank
       end
 
       # ...the same, for a sprite taking its turn at a place (see BuildRecord#sprite_turns),
-      # which says itself where its pose is kept when it keeps one frame at a time.
+      # which itself records where its pose is kept when it keeps one frame at a time.
       def turn_pose_key(row, turn)
         return [row[:tile], row[:mirrored_across], row[:mirrored_down]] if turn.pose_var.nil?
 
@@ -386,7 +386,7 @@ module VBlank
       end
 
       # Which places the build gave each declared sprite. A cartridge with no build record
-      # cannot say.
+      # cannot know.
       def sprite_slots!
         refuse_missing_build_record!("which of its sprites is which")
         @rom.built.sprite_slots
@@ -394,7 +394,7 @@ module VBlank
 
       # Where a routine's first instruction really is while the cartridge runs — which is not
       # where it sits in the cartridge when it was copied into the console's quick memory, so
-      # only the build record can say.
+      # only the build record holds it.
       def routine_start!(routine)
         refuse_missing_build_record!("where its routines are")
         span = @rom.built.routines[routine] or

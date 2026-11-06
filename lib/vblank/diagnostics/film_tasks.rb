@@ -28,8 +28,8 @@ module VBlank
     # so a game with no retail cartridge to set beside it films two builds of its own. A film file
     # can name sides of its own (FilmScript#side).
     #
-    # CONSOLE AND LOWERING. `rake film NAME=door CONSOLE=ps1 LOWERING=ruby` says them for one film,
-    # over what the Rakefile says (an empty one says nothing); a side the film file names with its own
+    # CONSOLE AND LOWERING. `rake film NAME=door CONSOLE=ps1 LOWERING=ruby` sets them for one film,
+    # over what the Rakefile sets (an empty one sets nothing); a side the film file names with its own
     # keeps its own. The console is the one a game to build is built for (the first the game names
     # unless set); a built cartridge or a file is for one console already, and a side that names
     # another is refused. The lowering is how the game is shown: the cartridge in its console's
@@ -86,7 +86,7 @@ module VBlank
         end
       end
 
-      # What the command line says for +key+, or nil where it says nothing: `CONSOLE=` empty is unsaid,
+      # What the command line gives for +key+, or nil where it gives nothing: `CONSOLE=` empty is unset,
       # and leaves the Rakefile's.
       def setting_from_environment(key)
         value = ENV.fetch(key, nil)

@@ -13,7 +13,7 @@ module VBlank
     # that has never run the game cannot know. This puts the number in front of somebody.
     #
     # WHY THE SPLIT IS THE INTERESTING HALF. A drop means every voice was busy, so counting how
-    # many were sounding says nothing: it is all of them, every time. What the author cannot know
+    # many were sounding shows nothing: it is all of them, every time. What the author cannot know
     # without measuring is WHOSE they were. The music and the game's sounds share the voices, each
     # taking one only while it sounds, and a song with many recorded parts can be holding most of
     # them at the moment an explosion asks for one. That is a decision the author can revisit — a
@@ -32,7 +32,7 @@ module VBlank
       # WHAT A RUN SAW. +dropped+ is how many plays, and notes of songs and sound effects, found no
       # voice, +music_held+ the most voices songs and sound effects held at one of those moments,
       # +voices+ how many there are in all. A run
-      # that could not be read says so with #measured? false, so "we could not tell" never reads
+      # that could not be read shows it with #measured? false, so "we could not tell" never reads
       # as "nothing was wrong".
       Reading = Data.define(:dropped, :music_held, :voices) do
         def self.unmeasured = new(dropped: nil, music_held: nil, voices: nil)

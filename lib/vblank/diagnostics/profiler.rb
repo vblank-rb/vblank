@@ -46,7 +46,7 @@ module VBlank
 
       # How the measured moment was reached. A profile without this is not reproducible: the same
       # cartridge measured on its title screen and measured in its boss fight are different
-      # numbers about different code, and nothing in the numbers themselves says which you have.
+      # numbers about different code, and nothing in the numbers themselves shows which you have.
       Reached = Data.define(:how, :detail) do
         def to_s
           case how
@@ -70,7 +70,7 @@ module VBlank
       # Reading one costs a bus read per pixel — 38,400 of them — where the profiling itself
       # costs nothing per frame. And a tear is not a rare accident: it is a frame that does more
       # drawing than fits in the gap between frames, so a game that tears tears steadily. A few
-      # frames answer it; sixty would only cost sixty times as much to say the same thing.
+      # frames answer it; sixty would only cost sixty times as much to show the same thing.
       TEAR_FRAMES = 6
 
       # A finished tear-free game keeps two pictures, and lost drawing shows up as a pixel the
@@ -115,7 +115,7 @@ module VBlank
         # or wrote each list, by its name. +late_hand_overs+ are the scenes that run late on the
         # frame the game hands over to them (see HandOvers). +pages_shown_at_once+ is how many
         # pages a tear-free screen showed as soon as they were done although they were late for
-        # their break, because its `late:` said to (see IR::LatePages) — each a frame that was
+        # their break, because its `late:` asked for it (see IR::LatePages) — each a frame that was
         # not a whole frame late. +pages_shown_part_way+ is how many of those it showed part way
         # down the picture, which is each a frame that can have torn; the rest were shown in the
         # break between pictures, where nothing tears. +colors_short+ is how many times a sprite
@@ -129,7 +129,7 @@ module VBlank
 
         def dropping_frames? = fps < 59.5
 
-        # Instructions a frame — what the game actually does, where a share only says how that
+        # Instructions a frame — what the game actually does, where a share only shows how that
         # work was divided up. A game asleep most of every frame can still have one routine at
         # 100 per cent of the little it runs.
         def samples_per_frame = frames.zero? ? 0.0 : samples / frames.to_f
@@ -168,13 +168,13 @@ module VBlank
       # went — whether the game tore, and whether it is losing half its drawing. Exactly one of
       # those two applies to any game (see {Flicker}), and both cost a bus read per pixel, which
       # is the dearest thing here by a wide margin. The run the BUILD makes of itself to choose
-      # what goes in the quick memory wants the routine counts and nothing else, so it says no —
-      # and to the hand-over of each scene as well (see HandOvers), which it asks once itself.
+      # what goes in the quick memory wants the routine counts and nothing else, so it turns this down —
+      # and the hand-over of each scene as well (see HandOvers), which it asks once itself.
       # +holding+ is words written before every frame, [address, value], to hold the game in a
       # state it reaches only in play (see FullCollections). nil starts the game from power-on;
       # a list, even an empty one, starts it the way a held game is started, so two held runs
       # compare like with like.
-      # +split_hints+ says whether to work out which parts of the routines that missed the quick
+      # +split_hints+ chooses whether to work out which parts of the routines that missed the quick
       # memory are worth a `func` (see SplitHints). Only the printed report says so, and working
       # it out reads every address the run touched, so the build's own runs of each scene leave
       # it off.
@@ -266,8 +266,8 @@ module VBlank
         [(60.0 * (profile.passes.size + shown_at_once) / profile.frames).round(1), 60.0].min
       end
 
-      # How many times the run went through any of +sites+ — each an instruction the build says
-      # runs once per thing worth counting — leaving out one in a scene's own routine while
+      # How many times the run went through any of +sites+ — each an instruction the build marks as
+      # running once per thing worth counting — leaving out one in a scene's own routine while
       # another scene's set was in its place (see #video_copies_in).
       def self.count_at_sites(profile, sites, loaded_sets = 0)
         sites.reject { |site| site[:set] && loaded_sets[site[:set]].zero? }.sum { |site| profile.pc.fetch(site[:at], 0) }
@@ -395,7 +395,7 @@ module VBlank
 
       # DID THE PICTURE ACTUALLY TEAR — the question the build can only ask, not answer.
       #
-      # The build says whether a game CAN tear, which is a fact about the screen it chose: a
+      # The build records whether a game CAN tear, which is a fact about the screen it chose: a
       # game that draws straight into the one picture the display is reading can, and a
       # double-buffered or tiled game cannot, however slow it is. Whether one that can does is a
       # race between the display's row and the game's, and only running it settles that.
@@ -576,8 +576,8 @@ module VBlank
         end
       end
 
-      # Each scene's {ScenePresses}, by the scene's name, for the scenes of +program+ that say
-      # `measure_holding:`. A scene that says nothing is not in it, and is measured standing still.
+      # Each scene's {ScenePresses}, by the scene's name, for the scenes of +program+ that set
+      # `measure_holding:`. A scene that sets none is not in it, and is measured standing still.
       def self.scene_presses(program)
         program.walk.each_with_object({}) do |node, by_scene|
           next unless node.kind == :func && node.measure_holding && node.name.to_s.start_with?("_scene_")
@@ -649,7 +649,7 @@ module VBlank
         dispatch = Analyzer.scenes(rom.built.source_program)
         address = dispatch && rom.built.var_addresses[dispatch[:selector]]
         scenes = address ? dispatch[:scenes].to_h { |name, value| [name, [[address, value]]] } : { nil => [] }
-        # What a scene says to press while it is measured (`measure_holding:`); one held in
+        # What a scene names to press while it is measured (`measure_holding:`); one held in
         # nobody's hands otherwise stands still, and what only a press runs measures at nothing.
         presses = address ? scene_presses(rom.built.source_program) : {}
         saving = {}
@@ -925,7 +925,7 @@ module VBlank
 
       # A routine's line says which memory it ran from, because that is worth about two and a
       # third times its speed and an author never chose it. What is not a routine says nothing —
-      # its own name already says where it was.
+      # its own name already shows where it was.
       def self.label_for(line)
         return line.label if OUTSIDE.key?(line.name)
 

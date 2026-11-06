@@ -7,7 +7,7 @@ module VBlank
     # THE PRESSES OF A PLAYTHROUGH, WRITTEN DOWN: which buttons were down on each frame, and
     # the frame each named moment fell on.
     #
-    # A script says what to do; a tape says what was done. The difference matters the moment
+    # A script sets out what to do; a tape records what was done. The difference matters the moment
     # a script watches the game: "walk right until the door" is as many frames as THIS game
     # took to reach the door, and the tape holds that number. So a tape is the same presses
     # on the same frames whatever it is played on — which is what lets two cartridges be
@@ -35,10 +35,10 @@ module VBlank
     # naming the frame the line before it ended on.
     #
     # WHAT IT WAS RECORDED ON IS FOR A PERSON. The cartridge's title and a checksum of its
-    # bytes say which game and which build the tape came from. Nothing checks them against
+    # bytes show which game and which build the tape came from. Nothing checks them against
     # the cartridge it is played on: playing a tape on a different cartridge is the point.
     #
-    # WHERE IT STARTED IS HELD TO. The third line says `power-on`, or `a save` for a
+    # WHERE IT STARTED IS HELD TO. The third line reads `power-on`, or `a save` for a
     # cartridge that held one when the console was switched on, and either can end
     # ` after a lead-in`. The same presses from anywhere else are a different game, so a
     # tape recorded from a save is played from one, and one recorded after a lead-in
@@ -49,7 +49,7 @@ module VBlank
     #
     # A TAPE CAN COUNT PASSES OF THE GAME LOOP IN PLACE OF FRAMES (+in_passes+, and see
     # PassSteppedGame), and then a line's count is passes and a moment names a pass. One extra
-    # line of heading says so, `counts: passes`, or `counts: variable steps` for a variable of the
+    # line of heading marks it, `counts: passes`, or `counts: variable steps` for a variable of the
     # game. Such a tape plays the same game at any speed on any way of running it, where a tape of
     # frames holds its presses to one cartridge's timing. A tape of frames does not have the line.
     Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes)
@@ -61,26 +61,26 @@ module VBlank
       # How a stretch of frames with no button down is written.
       NOTHING_DOWN = "-"
 
-      # The line of heading a tape of passes has, and what it can say.
+      # The line of heading a tape of passes has, and what it can hold.
       COUNTS = "counts: "
       COUNTS_PASSES = "passes"
       COUNTS_VARIABLE = "variable "
 
-      # Where a playthrough starts, as the tape says it: the console switched on with a
-      # cartridge nobody has played, or with one holding a save. A save is said with a
+      # Where a playthrough starts, as the tape records it: the console switched on with a
+      # cartridge nobody has played, or with one holding a save. A save is recorded with a
       # checksum of its bytes, like the cartridge's, for a person to tell which save the
       # tape goes with. The save itself is not in the tape: a tape is the presses, and
       # played on another cartridge it wants that one's own.
       #
-      # And it says whether a lead-in was played first, with ` after a lead-in` on the
+      # And it records whether a lead-in was played first, with ` after a lead-in` on the
       # end of either. The lead-in's presses are not on the tape — a lead-in is how THIS
       # cartridge gets to where the playing begins, and another cartridge has its own —
-      # so all the tape can say is that there was one.
+      # so all the tape can record is that there was one.
       POWER_ON = "power-on"
       A_SAVE = /\Aa save 0x\h{8}\z/
       AFTER_A_LEAD_IN = " after a lead-in"
 
-      # The tape of +steps+ played on +cartridge+. What it says it was recorded on is the
+      # The tape of +steps+ played on +cartridge+. What it records as its cartridge is the
       # title in the cartridge's own header and a checksum of every byte of it. +save+ is
       # the save memory the cartridge held when the console was switched on, or nil, and
       # +led_in+ whether a lead-in was played before the first of the steps. +in_passes+ is
@@ -90,7 +90,7 @@ module VBlank
         new(title: title, checksum: checksum, starts_from: start_said(save: save, led_in: led_in), steps: steps, in_passes: in_passes)
       end
 
-      # Where a playing started, as a tape says it. +save+ is the save memory the
+      # Where a playing started, as a tape records it. +save+ is the save memory the
       # cartridge held as the console was switched on, or nil, and +led_in+ whether a
       # lead-in was played first.
       def self.start_said(save:, led_in:)
@@ -98,20 +98,20 @@ module VBlank
         "#{from}#{AFTER_A_LEAD_IN if led_in}"
       end
 
-      # Whether +said+ is a way a tape can say where it started.
+      # Whether +said+ is a way a tape can record where it started.
       def self.valid_start?(said)
         from = said.delete_suffix(AFTER_A_LEAD_IN)
         from == POWER_ON || A_SAVE.match?(from)
       end
 
-      # The same presses, said to have started somewhere else: what a comparison writes
+      # The same presses, marked as started somewhere else: what a comparison writes
       # down for a cartridge it started its own way.
       def started_from(save:, led_in:) = with(starts_from: Tape.start_said(save: save, led_in: led_in))
 
       # What a person tells one cartridge from another by: the title in its own heading,
-      # and a checksum of every byte of it, which says which build of that game it is.
+      # and a checksum of every byte of it, which shows which build of that game it is.
       # Each kind of cartridge keeps its title somewhere else in its header, so it is asked.
-      # A game that was not built into a cartridge has no bytes, and says a checksum of its own.
+      # A game that was not built into a cartridge has no bytes, and gives a checksum of its own.
       def self.title_and_checksum_of(cartridge)
         checksum = cartridge.is_a?(UnbuiltGame) ? cartridge.checksum : Zlib.crc32(cartridge.buffer)
         [printable(cartridge.header_title), checksum]
@@ -138,7 +138,7 @@ module VBlank
         parse(File.read(path), from: path)
       end
 
-      # The tape +text+ is. +from+ says where the text came from, for an error to name.
+      # The tape +text+ is. +from+ names where the text came from, for an error to name.
       def self.parse(text, from: "This text") = Reader.new(text, from).read_tape
 
       # A tape holds nothing but names and numbers, and is made so that every core can read
@@ -164,7 +164,7 @@ module VBlank
       end
 
       # Play the tape on +first+ and on +second+ together, comparing the two pictures after
-      # every frame. +settings+ say how alike they have to be, and which stretches of the
+      # every frame. +settings+ set how alike they have to be, and which stretches of the
       # tape are not looked at (see Comparison).
       #
       # A tape recorded from a save is compared from one (`save:`), and one recorded after
@@ -376,7 +376,7 @@ module VBlank
         (heading + steps.map(&:tape_line)).join("\n") << "\n"
       end
 
-      # What a tape of passes says it counts, and nothing for a tape of frames.
+      # What a tape of passes records that it counts, and nothing for a tape of frames.
       private def counts_line
         return [] unless in_passes
 
@@ -461,7 +461,7 @@ module VBlank
                                     "Either can end with `#{AFTER_A_LEAD_IN.strip}`.")
         end
 
-        # What the optional fourth line says the tape counts, or nil for frames.
+        # What the optional fourth line names as what the tape counts, or nil for frames.
         def read_counts
           line = @lines[HEADING_LINES].to_s
           return unless line.start_with?(COUNTS)

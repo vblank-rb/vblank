@@ -5,7 +5,7 @@ module VBlank
     # WHERE A PLAYSTATION PROGRAM'S FRAMES WENT, measured by running it.
     #
     # A pass of the game loop is meant to fit in one frame. One that does not shows the same picture
-    # twice and the game runs at half speed for that pass, with nothing on screen to say why. The
+    # twice and the game runs at half speed for that pass, with nothing on screen to show why. The
     # runtime counts the frames each pass took as its wait ends (Runtime::Frame::STEPS), so those numbers
     # are the ones the game really played at, and nothing is added to the program to get them.
     #
@@ -54,7 +54,7 @@ module VBlank
       # from 1 at power-on as a tape counts them.
       #
       # A pass waits for the NEXT blank, so one that ends a line after a blank began while it ran waits a
-      # whole frame for the one after. +lines_past_blank+ says, by the frames each took, how many lines
+      # whole frame for the one after. +lines_past_blank+ gives, by the frames each took, how many lines
       # past that blank each pass of more than a frame ran: the lines sooner it had to end to take a
       # frame fewer, in the order they ran. +late_passes+ is the same lines for the passes that went to
       # sleep inside the blank itself, a few lines late, as the Advance's profile has it

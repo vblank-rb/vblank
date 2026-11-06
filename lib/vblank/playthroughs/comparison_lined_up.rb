@@ -32,7 +32,7 @@ module VBlank
       # `read_after_frame!` (the step it shows after the frame just played, read once a frame),
       # `current_step` (that step again), `step_and_read!(keys)` (one frame played and read),
       # `counted_words` (what a step is, in words) and `refuse_stood_still!(wanted)` (the error
-      # for a count that stopped short). +passes+ says whether a step is a pass, which a drift
+      # for a count that stopped short). +passes+ marks whether a step is a pass, which a drift
       # names.
       class LinedUp
         # How many frames the second cartridge can play with its count standing still, short of
@@ -42,7 +42,7 @@ module VBlank
         # How many frames the second cartridge has played.
         attr_reader :second_frames
 
-        # +every_frame+ says the game reads its buttons on every frame and not once a pass (see
+        # +every_frame+ marks that the game reads its buttons on every frame and not once a pass (see
         # THE BUTTONS); it matters only where the steps are passes.
         def initialize(first, second, passes:, every_frame: false)
           @first = first

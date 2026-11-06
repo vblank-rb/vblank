@@ -85,7 +85,7 @@ module VBlank
           decided
         end
 
-        # The frames still waiting when the tape runs out, which have no frame after them to say
+        # The frames still waiting when the tape runs out, which have no frame after them to show
         # how they settle: each is taken as it was seen.
         def waiting_observations = @waiting.map(&:observation)
 

@@ -255,7 +255,7 @@ module VBlank
 
       # Open an emulator core on a ROM file path.
       #
-      # +save_dir+ says where the cartridge's battery-backed save memory is kept. The core
+      # +save_dir+ names where the cartridge's battery-backed save memory is kept. The core
       # keeps no opinion: leave it out and the emulator writes a .sav beside the ROM, and
       # creates one if it is not there. {probe} is the layer that has an opinion about that.
       def open(rom_path, save_dir: nil, bios_path: nil)
@@ -271,7 +271,7 @@ module VBlank
       # without. Its bytes go in as the .sav file the emulator keeps that memory in, and what the
       # play left there comes back into the same image once the core is shut — the emulator writes
       # the file as it shuts — so one image handed to two plays is a power cycle. Where the save
-      # memory is in that file (after a chip's own RAM, before a clock's state) is the kit's to say
+      # memory is in that file (after a chip's own RAM, before a clock's state) is the kit's to give
       # (Console::Kit#save_file_of).
       def with_cartridge(rom, file_name:, save: nil)
         kit = Console.for(rom.console)
@@ -295,7 +295,7 @@ module VBlank
       # memory, and measures how many of a frame's scanlines the CPU burns. The analyzer
       # profiles through this.
       #
-      # It writes no save file beside the ROM unless +save_dir+ says to, so profiling a game
+      # It writes no save file beside the ROM unless +save_dir+ asks for one, so profiling a game
       # twice profiles the same game — a saved high score carried from one run into the next
       # would quietly make them different games.
       def probe(rom_path, save_dir: nil, bios_path: nil)
