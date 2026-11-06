@@ -937,12 +937,20 @@ module VBlank
           # as the sort above does.
           KeyedSort = Data.define(:order, :keys, :count, :entries, :descending)
 
-          # Which sorts are kept in a table of their own, and where each table is.
+          # Which sorts are kept in a table of their own, and where each table is. The table is only
+          # a faster way to the same order, so a game whose work RAM has no room left for one keeps
+          # the sort above instead of stopping with memory full, as the SNES does.
           def keep_order_tables
-            @keyed_sorts = @plan.sorts_kept_apart.transform_values do |node|
+            @keyed_sorts = {}
+            @plan.sorts_kept_apart.each do |name, node|
               count = @declared_lists.fetch(node.name).capacity
-              KeyedSort.new(order: node.name, keys: node.by, count: count, descending: node.descending,
-                            entries: @memory.reserve("the items of the order #{node.name.inspect}", count * 2))
+              entries = begin
+                @memory.reserve("the items of the order #{node.name.inspect}", count * 2)
+              rescue Memory::Full
+                next
+              end
+              @keyed_sorts[name] = KeyedSort.new(order: node.name, keys: node.by, count: count,
+                                                 descending: node.descending, entries: entries)
             end
           end
 
