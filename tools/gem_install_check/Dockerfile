@@ -10,7 +10,7 @@
 # same bytes as the last run reuses everything, since it passed. What can't be kept is the install
 # itself, which builds both emulators and is the thing being proved.
 
-ARG RUBY_VERSION=4.0.7
+ARG RUBY_VERSION=4.0.9
 
 # Nothing but Ruby. The packages are downloaded here and not installed, so this machine still has
 # no compiler, and a later step can install them without fetching them again.

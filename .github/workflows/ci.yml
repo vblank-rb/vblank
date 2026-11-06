@@ -25,7 +25,7 @@ defaults:
     # The machine keeps its tools in mise. The versions are named here because the checkout's
     # own mise.toml is not in the repository. Everything below is already installed on the
     # machine, the C compiler and libmgba (Homebrew) included, so nothing is downloaded per run.
-    shell: /opt/homebrew/bin/mise exec ruby@4.0.7 zig@0.17.0 node@24.6.0 -- bash --noprofile --norc -eo pipefail {0}
+    shell: /opt/homebrew/bin/mise exec ruby@4.0.9 zig@0.17.0 node@24.6.0 -- bash --noprofile --norc -eo pipefail {0}
 
 jobs:
   test:
