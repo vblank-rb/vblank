@@ -584,6 +584,7 @@ module VBlank
 
       Where the two start:
         --save PATH              Start both from this save file.
+        --saves FIRST SECOND     A save file for each, or - for none.
         --lead-ins FIRST SECOND  A playthrough for each to play first and not
                                  count, or - for none. Needs --script.
 
@@ -638,6 +639,7 @@ module VBlank
     option :pass_count_wraps_at, type: :numeric, banner: "N"
     option :skipping_still_frames_of, banner: "WHICH", enum: %w[first second both]
     option :save, banner: "PATH"
+    option :saves, type: :array, banner: "PATH"
     option :lead_ins, type: :array, banner: "NAME"
     option :reports_in, banner: "DIR"
     def compare(first_file, second_file)

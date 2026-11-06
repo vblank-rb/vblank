@@ -245,8 +245,9 @@ module VBlank
                          "starts every game from power-on, so it does not play this tape. To play it, start the " \
                          "cartridge from that save in Ruby: `tape.play(cartridge, save: \"game.sav\")`."
         end
-        if tape.recorded_from_save? && !options[:save]
-          raise Refused, "The tape #{options[:tape]} was recorded from a save. Give that save with --save."
+        if tape.recorded_from_save? && !options[:save] && !Array(options[:saves]).then { it.size == 2 && it.none?("-") }
+          raise Refused, "The tape #{options[:tape]} was recorded from a save. Give that save with --save, or a save " \
+                         "for each cartridge with --saves."
         end
         return unless tape.recorded_after_lead_in? && !options[lead_in_flag]
 
@@ -315,6 +316,14 @@ module VBlank
                        "It was given #{names.size}. Write - for a cartridge with no lead-in, for example --lead-ins intro -."
       end
 
+      # The save file of each cartridge, the first one's and then the second's; - is none.
+      def save_files_named(paths)
+        return paths.map { |path| path == "-" ? nil : path } if paths.size == 2
+
+        raise Refused, "--saves needs two save files, the first cartridge's and then the second's. " \
+                       "It was given #{paths.size}. Write - for a cartridge with no save, for example --saves ours.sav -."
+      end
+
       # A tape and a save are written after the whole playing, so a place that cannot be
       # written to is refused before a frame is played.
       def refuse_unwritable_file!(flag)
@@ -370,6 +379,7 @@ module VBlank
                     when :comparing then written.map(&:to_sym)
                     when :same then written.to_sym
                     when :lead_ins then lead_ins_named(written)
+                    when :saves then save_files_named(written)
                     else written
                     end]
         end

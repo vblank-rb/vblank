@@ -171,7 +171,7 @@ module VBlank
       # a lead-in with a lead-in for each cartridge (`lead_ins:`).
       def compare(first, second, **settings)
         refuse_compare_of_passes!
-        refuse_missing_save!(settings[:save], "tape.compare(first, second, save: ...)")
+        refuse_missing_save!(save_for_both(settings), "tape.compare(first, second, save: ...)")
         refuse_missing_lead_in!(Array(settings[:lead_ins]).compact.first, "tape.compare(first, second, lead_ins: [..., ...])")
         refuse_settings_of_scripts!(settings)
         Comparison.new(first, second, moments.keys, **settings).run(self)
@@ -188,7 +188,8 @@ module VBlank
       # comparison.
       def write_side_by_side_picture(first, second, path, at: nil, difference: true, **settings)
         refuse_compare_of_passes!
-        refuse_missing_save!(settings[:save], "tape.write_side_by_side_picture(first, second, path, at: ..., save: ...)")
+        refuse_missing_save!(save_for_both(settings),
+                             "tape.write_side_by_side_picture(first, second, path, at: ..., save: ...)")
         refuse_missing_lead_in!(Array(settings[:lead_ins]).compact.first,
                                 "tape.write_side_by_side_picture(first, second, path, at: ..., lead_ins: [..., ...])")
         request = Comparison::PictureRequest.new(path, at: at, difference: difference)
@@ -279,6 +280,15 @@ module VBlank
       def recorded_after_lead_in? = starts_from.end_with?(AFTER_A_LEAD_IN)
 
       # +how+ is how the call that was made is written with the save in it.
+      # A comparison's save as far as a tape recorded from a save needs one: `save:`, or `saves:`
+      # when it gives one to each cartridge, since each plays the tape from its own start.
+      private def save_for_both(settings)
+        saves = settings[:saves]
+        return settings[:save] unless saves.is_a?(Array) && saves.size == 2
+
+        saves if saves.all?
+      end
+
       private def refuse_missing_save!(save, how = "tape.play(cartridge, save: ...)")
         return unless recorded_from_save? && save.nil?
 

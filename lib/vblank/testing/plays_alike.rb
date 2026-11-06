@@ -22,7 +22,9 @@ module VBlank
     # a change torn for a frame while it copies it in), `share_may_differ:`, `readings:` (numbers read
     # off each and compared by name: a block for each side, handed the running cartridge, so the
     # original's is read by address, `game.mem16(0xD4B4)`, and ours by a variable's name, `:lives`),
-    # `comparing:`, `lead_ins:` and `reports_in:` (a folder for the two pictures and what differed).
+    # `comparing:`, `lead_ins:`, `save:` or `saves:` (one save both start from, or one for each:
+    # the original's in its own format and ours in ours), and `reports_in:` (a folder for the two
+    # pictures and what differed).
     # `looking_at:` and `ignoring_rectangles:` take a list for each stretch of frames, or a block that
     # works the part out on each frame (a part that slides with the scenery); `pixels_apart:` looks at
     # every few pixels only; `layers:` compares the picture without its sprites or the sprites alone;

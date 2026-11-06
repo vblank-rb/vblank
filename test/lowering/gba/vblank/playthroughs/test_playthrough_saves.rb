@@ -244,6 +244,65 @@ class TestPlaythroughSaves < Minitest::Test
     assert_match(/\Astarts from: a save 0x\h{8} after a lead-in\z/, played.tape.to_s.lines[2].chomp)
   end
 
+  # A SAVE FOR EACH CARTRIDGE: a port and its original keep the same moment in saves that share
+  # no bytes, so each starts from its own. One save holds a walk of twenty steps and the other
+  # of eight, and each cartridge's file screen shows the walk its own save holds, whichever way
+  # round the two are given; nil starts that one from power-on.
+  def test_each_cartridge_starts_from_its_own_save
+    cartridge = hero
+    twenty = walk_and_save(20).play(cartridge).save
+    eight = walk_and_save(8).play(cartridge).save
+    file_read = VBlank.playthrough "hero: the file screen" do
+      wait frames: 20
+      moment :read
+    end
+    settings = { same: :script, readings: { shown: :shown0 }, comparing: [:readings] }
+
+    assert_equal [20, 8], file_read.compare(cartridge, cartridge, saves: [twenty, eight], **settings).drift.readings.fetch(:shown)
+    assert_equal [8, 20], file_read.compare(cartridge, cartridge, saves: [eight, twenty], **settings).drift.readings.fetch(:shown)
+    assert_equal [0, 8], file_read.compare(cartridge, cartridge, saves: [nil, eight], **settings).drift.readings.fetch(:shown)
+  end
+
+  # On the same tape, with a save file on disk for one side and a save handed back for the other.
+  def test_each_cartridge_on_one_tape_starts_from_its_own_save
+    cartridge = hero
+    file_read = VBlank.playthrough "hero: the file screen" do
+      wait frames: 20
+      moment :read
+      wait frames: 5
+    end
+
+    Dir.mktmpdir("saves") do |folder|
+      path = walk_and_save(20).play(cartridge).save.write_sav(File.join(folder, "walk.sav"))
+      eight = walk_and_save(8).play(cartridge).save
+      settings = { readings: { shown: :shown0 }, comparing: [:readings], ignoring_frames: [(..:read)] }
+
+      assert_equal [20, 8], file_read.compare(cartridge, cartridge, saves: [path, eight], **settings).drift.readings.fetch(:shown)
+    end
+  end
+
+  # One save for both and a save for each cannot both be meant, and a save for each is two.
+  def test_saves_given_wrongly_are_refused
+    both = assert_raises(ArgumentError) { file_screen.compare(nil, nil, save: "a.sav", saves: ["a.sav", "b.sav"]) }
+    one = assert_raises(ArgumentError) { file_screen.compare(nil, nil, saves: ["a.sav"]) }
+    neither = assert_raises(ArgumentError) { file_screen.compare(nil, nil, saves: [42, nil]) }
+
+    assert_match(/`save:` or `saves:`/, both.message)
+    assert_match(/list of two/, one.message)
+    assert_match(/first cartridge/, neither.message)
+  end
+
+  # A save that does not fit its cartridge is refused, naming which of the two it was for.
+  def test_a_save_for_one_cartridge_that_does_not_fit_names_that_cartridge
+    Dir.mktmpdir("saves") do |folder|
+      cartridge = hero
+      tape = walk_and_save(4).play(cartridge).tape.write(File.join(folder, "walk.tape"))
+      err = assert_raises(ArgumentError) { file_screen.compare(cartridge, cartridge, saves: [nil, tape]) }
+
+      assert_match(/second cartridge/, err.message)
+    end
+  end
+
   # A save that is not one is refused before anything is played, as it is for one cartridge.
   def test_a_save_for_both_that_is_not_one_is_refused
     err = assert_raises(ArgumentError) { file_screen.compare(nil, nil, save: 42) }

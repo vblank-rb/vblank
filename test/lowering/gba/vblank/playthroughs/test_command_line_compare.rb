@@ -246,10 +246,14 @@ class TestCommandLineCompare < Minitest::Test
       refused, without = cli(*from_a_save, dir: dir)
       agreed, with = cli(*from_a_save, "--save", "walked.sav", dir: dir)
       not_a_save, with_a_script = cli(*from_a_save, "--save", "walk.rb", dir: dir)
+      each_saved, with_each = cli(*from_a_save, "--saves", "walked.sav", "walked.sav", dir: dir)
+      one_saved, with_one = cli(*from_a_save, "--saves", "walked.sav", "-", dir: dir)
 
       assert_equal NOT_COMPARED, without.exitstatus, refused
       assert_match(/recorded from a save.*--save/, refused)
       assert_equal AGREED, with.exitstatus, agreed
+      assert_equal AGREED, with_each.exitstatus, each_saved
+      assert_equal NOT_COMPARED, with_one.exitstatus, "the second has no save for a tape recorded from one: #{one_saved}"
       assert_equal NOT_COMPARED, with_a_script.exitstatus, "the save is handed to the cartridges: #{not_a_save}"
 
       refused, without = cli(*led_in, dir: dir)
@@ -286,6 +290,7 @@ class TestCommandLineCompare < Minitest::Test
         %w[--frames-in-a-row many] => /--frames-in-a-row/,
         %w[--lead-ins nobody -] => /no playthrough named "nobody"/,
         ["--lead-ins", "five frames"] => /--lead-ins needs two names/,
+        %w[--saves walked.sav] => /--saves needs two save files/,
         %w[--tape walk.rb] => /tape/,
       }.each do |wrong, says|
         out, status = cli("compare", "walker.rb", "walker.gba", "--script", "walk.rb", *wrong, dir: dir)

@@ -165,7 +165,10 @@ module VBlank
       # save both cartridges hold as their consoles are switched on, and a lead-in for
       # each — a playthrough played on it first and not counted (see
       # Playthrough.power_on_and_lead_in) — the first cartridge's and then the second's,
-      # either of them nil for none.
+      # either of them nil for none. +saves+ is a save for each instead, the first
+      # cartridge's and then the second's, either nil for none: a port and the original it
+      # is made from keep the same moment of the game in saves of their own shapes, which
+      # share no bytes.
       #
       # +layers+ is which of the picture is compared: nil for all of it, `:backgrounds` for the
       # picture without its sprites, `:sprites` for the sprites alone (see LAYERS).
@@ -178,7 +181,7 @@ module VBlank
       # cartridges whose frames that show the picture of the frame before are skipped (see
       # StillFrames). Nil for a comparison frame by frame.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
-                     same: :tape, frames_apart: nil, save: nil, lead_ins: nil, reports_in: nil, layers: nil,
+                     same: :tape, frames_apart: nil, save: nil, saves: nil, lead_ins: nil, reports_in: nil, layers: nil,
                      forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil, skipping_still_frames_of: nil,
                      **how_alike)
         refuse_unknown_settings!(how_alike.keys)
@@ -188,7 +191,7 @@ module VBlank
         @step_count = passes || still_frames
         refuse_settings_wrong_for_lined_up!(same: same, torn: forgiving_torn_frames_of, reports_in: reports_in)
         @moments = moments
-        @save = Playthrough.save_from(save)
+        @saves = saves_for_each(save, saves)
         refuse_malformed_lead_ins!(lead_ins)
         @lead_ins = lead_ins || [nil, nil]
         @ignored = IgnoredFrames.new(ignoring_frames, moments)
@@ -263,7 +266,7 @@ module VBlank
       # when both started from power-on with nothing played first.
       private def starting_sentences
         said = []
-        said << "Both cartridges started from the same save." if @save
+        said.concat(save_sentences)
         led_in = starts.select(&:lead_in)
         case led_in.size
         when 2 then said << "Each cartridge was led in before frame 1, by these playthroughs: #{led_in.map { |start| start.lead_in.name }.join(', ')}."
@@ -292,7 +295,7 @@ module VBlank
           @readings.refuse_unreadable_on!(pair)
           @step_count&.refuse_unreadable_on!(pair)
           pair.zip(%w[first second], @lead_ins).each_with_index.map do |(cartridge, which, lead_in), side|
-            Start.new(which: which, cartridge: cartridge, save: save_fitted_to(cartridge, which), lead_in: lead_in,
+            Start.new(which: which, cartridge: cartridge, save: save_fitted_to(cartridge, which, @saves[side]), lead_in: lead_in,
                       count_passes: @step_count&.game_loop_count?(side) || false)
           end
         end
@@ -334,11 +337,47 @@ module VBlank
         nil
       end
 
-      # A copy of the save both start from, made to fit +cartridge+, or nil for none.
-      private def save_fitted_to(cartridge, which)
-        @save && Playthrough.save_fitted_to(cartridge, @save.dup)
+      # A copy of +save+, the one this cartridge starts from, made to fit +cartridge+, or nil
+      # for none.
+      private def save_fitted_to(cartridge, which, save)
+        save && Playthrough.save_fitted_to(cartridge, save.dup)
       rescue ArgumentError => e
-        raise ArgumentError, "The #{which} cartridge of the comparison cannot start from the save. #{e.message}"
+        raise ArgumentError, "The #{which} cartridge of the comparison cannot start from #{@one_save ? 'the' : 'its'} save. " \
+                             "#{e.message}"
+      end
+
+      # The save each cartridge starts from, the first's and then the second's: one save both
+      # hold (`save:`), or one for each (`saves:`). Each is read as `save:` is for one cartridge.
+      private def saves_for_each(save, saves)
+        unless save.nil? || saves.nil?
+          raise ArgumentError, "A comparison was given `save:` and `saves:`. Give `save:` or `saves:`: `save:` is one save " \
+                               "both cartridges start from, and `saves:` is a save for each."
+        end
+        @one_save = !save.nil?
+        return [Playthrough.save_from(save)] * 2 if saves.nil?
+
+        refuse_malformed_saves!(saves)
+        %w[first second].zip(saves).map do |which, given|
+          Playthrough.save_from(given)
+        rescue ArgumentError => e
+          raise ArgumentError, "The save for the #{which} cartridge in `saves:` is wrong. #{e.message}"
+        end
+      end
+
+      private def refuse_malformed_saves!(given)
+        return if given.is_a?(Array) && given.size == 2
+
+        raise ArgumentError, "`saves:` was #{given.inspect}. It must be a list of two, one for each cartridge. Each is a " \
+                             "save, the path of a save file, or nil for none. Write it like `saves: [our_save, nil]`."
+      end
+
+      # What a report says of the saves the two started from.
+      private def save_sentences
+        return ["Both cartridges started from the same save."] if @one_save
+        return [] if @saves.none?
+        return ["Each cartridge started from a save of its own."] if @saves.all?
+
+        ["The #{@saves.first ? 'first' : 'second'} cartridge started from a save, and the other from power-on."]
       end
 
       # Play both on +tape+ and compare them, and say what was found.
@@ -388,7 +427,7 @@ module VBlank
       # THE SETTINGS OF A COMPARISON THAT A PICTURE OF ONE FRAME HAS A USE FOR, each meaning
       # what it means of a comparison: the parts of the screen that are not looked at,
       # which are never marked, and where the two cartridges start.
-      PICTURE_SETTINGS = %i[ignoring_rectangles looking_at pixels_apart save lead_ins].freeze
+      PICTURE_SETTINGS = %i[ignoring_rectangles looking_at pixels_apart save saves lead_ins].freeze
 
       # The comparison that plays the two for a picture of one frame (see PictureRequest),
       # which takes those settings and no others. A part of the screen said for a stretch of
@@ -509,7 +548,7 @@ module VBlank
       # Every setting a comparison has: the ones that say how alike, and the ones of its own.
       def self.settings
         [*how_alike_settings, :ignoring_frames, :layers, :forgiving_torn_frames_of, :readings, :comparing, :carrying_on, :same,
-         :frames_apart, :save, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :skipping_still_frames_of]
+         :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :skipping_still_frames_of]
       end
 
       # Passes and still frames are two counts of steps (see LinedUp), and a comparison lines the
