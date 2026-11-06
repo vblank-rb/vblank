@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 # Small games of places made of flat faces, kept once for every console's test of what a place
 # draws (test/console/gba/vblank/builder/test_places_on_the_advance.rb,
 # test/console/ps1/vblank/builder/test_places_on_the_playstation.rb) and for the test of the
@@ -652,6 +654,52 @@ module PlaceGames
         draw_place :hall, seen_by: eye
         drawn.store!(pass)
         pass += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # The points and faces of a small lit place, as a game reads them from a level file: a square of
+  # the tile on the left, lit brighter on its right, a white triangle sharing its right edge, picture
+  # 0 by number, and a white floor reaching behind the viewer, cut at the near limit.
+  DATA_POINTS = Ractor.make_shareable([[-3.0, 1.0, 4.0], [-1.0, 1.0, 4.0], [-1.0, -1.0, 4.0], [-3.0, -1.0, 4.0],
+                                       [2.0, -1.0, 4.0], [-2.0, -1.0, 1.0], [2.0, -1.0, -1.0], [-2.0, -1.0, -1.0]])
+  DATA_FACES = Ractor.make_shareable(
+    [{ points: [0, 1, 2, 3], picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: [0.3, 1.0, 1.0, 0.3] },
+     { points: [1, 4, 2], picture: 0, on_picture: [[0, 0], [8, 8], [0, 8]], light: 0.6 },
+     { points: [5, 4, 6, 7], picture: :white, on_picture: [[0, 0], [8, 0], [8, 32], [0, 32]],
+       light: [1.0, 0.5, 0.0, 0.2] }]
+  )
+
+  # The place of DATA_POINTS and DATA_FACES, declared by data (+data+) or by `point` and `face`
+  # calls with the same numbers, lit and drawn in perspective: the same place, so the same picture.
+  # The data comes as a level file gives it, read as JSON, so its pictures are named by strings.
+  def self.declared_by_data(data:)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      image :white, width: 8, height: 8, data: Array.new(64, SHADES[0])
+      shading :fade, colors: SHADES, levels: SHADE_LEVELS
+      if data
+        level = JSON.parse(JSON.generate({ points: DATA_POINTS, faces: DATA_FACES, pictures: %w[white] }),
+                           symbolize_names: true)
+        place :level, shading: :fade, **level
+      else
+        place :level, shading: :fade do
+          pictures :white
+          numbers = DATA_POINTS.map { |x, y, z| point(x, y, z) }
+          DATA_FACES.each do |shown|
+            face(*shown[:points].map { |k| numbers[k] }, picture: shown[:picture] == 0 ? :white : shown[:picture],
+                                                          on_picture: shown[:on_picture], light: shown[:light])
+          end
+        end
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        draw_place :level, seen_by: eye, perspective: :every_8_pixels
       end
     end
     builder.finalize_program

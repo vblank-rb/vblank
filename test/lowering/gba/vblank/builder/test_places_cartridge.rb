@@ -25,6 +25,14 @@ class TestPlacesCartridge < Minitest::Test
     assert_backends_agree(PlaceGames.square(x_scale: 3.0), frames: 3, console_frames: 30, name: "WIDE")
   end
 
+  # A place declared from data is the place the calls make, so its cartridge is the same bytes.
+  def test_a_place_declared_by_data_builds_the_same_cartridge_as_one_declared_by_calls
+    by_data = assemble_rom(PlaceGames.declared_by_data(data: true)).buffer
+    by_calls = assemble_rom(PlaceGames.declared_by_data(data: false)).buffer
+
+    assert_equal by_calls, by_data
+  end
+
   def test_two_faces_with_their_own_pictures_agree
     assert_backends_agree(PlaceGames.two_faces, frames: 3, console_frames: 30, name: "PAIR")
   end

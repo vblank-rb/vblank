@@ -51,7 +51,7 @@ class TestPlaces < Minitest::Test
   def test_a_face_of_five_points_is_refused
     message = refusal do
       place :room do
-        points = 5.times.map { |k| point(k.to_f, 0.0, 2.0) }
+        points = Array.new(5) { |k| point(k.to_f, 0.0, 2.0) }
         face(*points, picture: :wall, on_picture: [[0, 0]] * 5)
       end
     end
@@ -258,6 +258,90 @@ class TestPlaces < Minitest::Test
     end
 
     assert_match(/no such image/, message)
+  end
+
+  # A place declared from data (`place :room, points: [...], faces: [...]`), as a game reads it
+  # from a level file. Each refusal names the face or point by its number in the list.
+  SQUARE_POINTS = [[-1.0, 1.0, 2.0], [1.0, 1.0, 2.0], [1.0, -1.0, 2.0], [-1.0, -1.0, 2.0]].freeze
+
+  private def square_face(**changes)
+    { points: [0, 1, 2, 3], picture: :wall, on_picture: [[0, 0], [2, 0], [2, 2], [0, 2]] }.merge(changes)
+  end
+
+  private def data_refusal(points: SQUARE_POINTS, faces: [square_face], **settings)
+    refusal { place :room, points: points, faces: faces, **settings }
+  end
+
+  def test_a_face_naming_a_point_past_the_points_is_refused
+    message = data_refusal(faces: [square_face, square_face(points: [0, 1, 4])])
+
+    assert_match(/face 1 \(in faces:\)/, message)
+    assert_match(/no point 4/, message)
+    assert_match(/0 to 3/, message)
+  end
+
+  def test_a_face_of_too_few_or_too_many_points_is_refused
+    corner = [0, 0]
+    [[0, 1], [0, 1, 2, 3, 0]].each do |points|
+      message = data_refusal(faces: [square_face(points: points, on_picture: [corner] * points.length)])
+
+      assert_match(/face 0 \(in faces:\) with #{points.length} points/, message)
+      assert_match(/3 or 4 points/, message)
+    end
+  end
+
+  def test_a_face_whose_picture_the_place_does_not_list_is_refused
+    by_number = data_refusal(faces: [square_face(picture: 2)], pictures: %i[wall])
+    by_name = data_refusal(faces: [square_face(picture: :lava)])
+
+    assert_match(/face 0 \(in faces:\) with the picture 2/, by_number)
+    assert_match(/lists 1 picture/, by_number)
+    assert_match(/no such image/, by_name)
+  end
+
+  def test_a_face_in_a_block_whose_picture_number_the_place_does_not_list_is_refused
+    message = refusal do
+      place :room do
+        pictures :wall
+        face point(0.0, 0.0, 2.0), point(1.0, 0.0, 2.0), point(1.0, 1.0, 2.0), picture: 1,
+                                                                                on_picture: [[0, 0], [2, 0], [2, 2]]
+      end
+    end
+
+    assert_match(/a face with the picture 1/, message)
+    assert_match(/lists 1 picture/, message)
+  end
+
+  def test_a_point_that_is_not_three_numbers_is_refused
+    message = data_refusal(points: [*SQUARE_POINTS.first(3), [1.0, 2.0]])
+
+    assert_match(/point 3 \(in points:\)/, message)
+    assert_match(/three numbers/, message)
+  end
+
+  def test_a_face_that_is_not_a_hash_of_known_keys_is_refused
+    not_a_hash = data_refusal(faces: [[0, 1, 2, 3]])
+    unknown_key = data_refusal(faces: [square_face(colour: :red)])
+    string_keys = data_refusal(faces: [square_face.transform_keys(&:to_s)])
+    no_picture = data_refusal(faces: [square_face.except(:picture)])
+
+    assert_match(/face 0 \(in faces:\)/, not_a_hash)
+    assert_match(/points:, picture:, on_picture:/, not_a_hash)
+    assert_match(/colour/, unknown_key)
+    assert_match(/symbolize_names: true/, string_keys)
+    assert_match(/with no picture:/, no_picture)
+  end
+
+  def test_a_place_given_both_data_and_a_block_or_only_half_its_data_is_refused
+    shape = square
+    faces = [square_face]
+    both = refusal { place(:room, points: SQUARE_POINTS, faces: faces, &shape) }
+    no_faces = refusal { place :room, points: SQUARE_POINTS }
+    no_block = refusal { place :room }
+
+    assert_match(/both/, both)
+    assert_match(/faces:/, no_faces)
+    assert_match(/points: and faces:/, no_block)
   end
 
   def test_a_facing_that_is_not_three_square_arrows_is_refused

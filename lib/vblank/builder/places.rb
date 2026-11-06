@@ -36,12 +36,22 @@ module VBlank
       # their light (`face ..., light: [...]`), the place's point_lights add to it as the game runs,
       # and each pixel is the colour the shading says for the light it has reached.
       #
+      # A PLACE FROM DATA, as a game reads a level from a file, is the same place without the block:
+      # +points+ each [x, y, z], and +faces+ each a Hash of what `face` takes, with its points by their
+      # number in +points+. +pictures+ lists pictures first, as `pictures` does in the block, so a
+      # face can name its picture by its number among them, as a level file numbers its pictures:
+      #
+      #   place :mine, points: [[-1.0, 1.0, 2.0], ...], pictures: %i[rock moss],
+      #                faces: [{ points: [0, 1, 2, 3], picture: 1, on_picture: [...], light: 0.5 }, ...]
+      #
       # @param name [Symbol] the place's name
       # @param shading [Symbol, nil] the shading the place is lit by
+      # @param points [Array<Array<Numeric>>, nil] each point's [x, y, z], for a place from data
+      # @param faces [Array<Hash>, nil] each face's points:, picture:, on_picture: and light:, for a place from data
+      # @param pictures [Array<Symbol>] pictures the place lists before its faces name any
       # @return [DSL::Place]
-      def place(name, shading: nil, &block)
-        raise ArgumentError, "place :#{name} needs a block that declares its points and faces." unless block
-
+      def place(name, shading: nil, points: nil, faces: nil, pictures: [], &block)
+        refuse_unfit_place_source!(name, block, points, faces)
         refuse_unfit_name!("place", name)
         if (@places ||= {}).key?(name)
           raise ArgumentError, "There is already a place :#{name}. To fix this, give each place its own name."
@@ -49,7 +59,8 @@ module VBlank
         refuse_unknown_shading!(name, shading)
 
         shape = DSL::Place.new(name, @images)
-        shape.instance_exec(&block)
+        shape.pictures(*pictures)
+        block ? shape.instance_exec(&block) : shape.declare_from_data(points, faces)
         refuse_empty_place!(shape)
         declare_place_data(shape)
         if shading
@@ -290,7 +301,26 @@ module VBlank
       def refuse_empty_place!(shape)
         return unless shape.faces.empty?
 
-        raise ArgumentError, "place :#{shape.name} has no faces. To fix this, add a face with `face`."
+        raise ArgumentError, "place :#{shape.name} has no faces. To fix this, add a face with `face`, or give " \
+                             "faces: one face or more."
+      end
+
+      # A place is declared by a block or from points: and faces:, one way and not both.
+      def refuse_unfit_place_source!(name, block, points, faces)
+        data = !points.nil? || !faces.nil?
+        if block && data
+          raise ArgumentError, "place :#{name} was given both a block and data (points: or faces:). To fix this, " \
+                               "declare the place one way: with a block, or with points: and faces:."
+        end
+        return if block || (!points.nil? && !faces.nil?)
+
+        unless data
+          raise ArgumentError, "place :#{name} needs a block that declares its points and faces, or points: and " \
+                               "faces:. To fix this, give one of them."
+        end
+        given, missing = points.nil? ? %w[faces: points:] : %w[points: faces:]
+        raise ArgumentError, "place :#{name} was given #{given} and no #{missing}. A place from data needs both " \
+                             "points: and faces:. To fix this, give #{missing} too."
       end
 
       def refuse_unknown_viewer!(name, seen_by)

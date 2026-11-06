@@ -74,6 +74,16 @@ class TestPlacesOnThePlayStation < Minitest::Test
     assert_equal declared, moved
   end
 
+  # The answer key: a lit place declared from data, as a level file gives it, is the same picture as
+  # the place declared by point and face calls with the same numbers.
+  def test_a_place_declared_by_data_is_drawn_as_the_same_place_declared_by_calls
+    by_data = pixels_of(PlaceGames.declared_by_data(data: true))
+    by_calls = pixels_of(PlaceGames.declared_by_data(data: false))
+
+    assert_operator by_calls.count { |color| color != BLACK }, :>, 5000, "the place declared by calls is drawn"
+    assert_equal by_calls, by_data
+  end
+
   private def pixels_of(program)
     screen = game_player.run(program, frames: 2).screen
     (0...160).flat_map { |y| (0...240).map { |x| screen.pixel(x, y) } }

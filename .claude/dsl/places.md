@@ -20,10 +20,30 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   -8191 to 8191 picture pixels. The place is written into the cartridge as it is declared and does not
   change shape as the game runs. **Each face shows its picture through a slot**, one for each picture
   the place lists, named after it; a place declared in a scene or a `part` the game starts over shows
-  each slot its own picture again. Friendly errors: no block, no faces, a face of other than three or
+  each slot its own picture again. Friendly errors: neither a block nor data (the next entry), no faces, a face of other than three or
   four points, a point the place does not have, a picture that is not declared, `on_picture:` that does
   not give one spot for each point, a number out of range, a name with two underscores in a row or one
   at its end, and a second place of the same name.
+- **A place from data**, as a game reads a level from a file: `place :mine, points: [[x, y, z], ...],
+  faces: [{ points: [0, 1, 2, 3], picture: :rock, on_picture: [[0, 0], [64, 0], [64, 64], [0, 64]],
+  light: 0.5 }, ...]`, with no block. Each face is a hash of what `face` takes, its points by their
+  number in `points:` (from 0); `light:` may be left out. `pictures: %i[rock moss]` lists pictures
+  first, as `pictures` does in a block (it works beside a block too), so a face can name its picture
+  by its number among them (`picture: 1`), as a level file numbers its pictures; `face` in a block
+  takes a number the same way. `shading:` works as for a block. The place is the one the same `point`
+  and `face` calls make, checked the same way, and builds the same bytes. A JSON file read with
+  `JSON.parse(text, symbolize_names: true)` gives faces as they are wanted: its picture names come as
+  strings, and a picture's name may be a string here and in `face` and `pictures`. Friendly errors, each
+  naming the point or face by its number in its list: a face naming a point past the points, a face
+  of other than 3 or 4 points, a picture number the place does not list or a picture name that is not
+  declared, a point that is not three numbers, a face that is not a hash, a key it does not take (or
+  string keys), a face with no `points:`, `picture:` or `on_picture:`, both a block and data, and
+  `points:` without `faces:` or the other way round. **What it costs**: building costs what the block form
+  costs, a small part of a second for a place of about a thousand faces on any console. Drawn whole,
+  a place that size takes many frames a drawing on the Advance and the PlayStation, the most of it in
+  each face's own work (its turned points read back, cut and tested) rather than the turning or the
+  fill; the commit that added the data form has the numbers. A game of that size draws only the
+  faces it can see (`faces:` and `window:` below).
 - **Walls whose picture changes**: a door sliding through its frames, a wall of lava, a forcefield.
   Inside the place, `pictures :door0, :door1, :door2` lists pictures the place can show, numbered in a
   row after those listed before (a face's `picture:` lists its picture too, where it first names it);
