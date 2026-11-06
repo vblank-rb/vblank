@@ -304,6 +304,18 @@ module PackAtStartTests
     end
   end
 
+  def test_a_picture_taking_a_bank_of_colors_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("a bank of colors from the pack") do |pack|
+      image :banked, width: 8, height: 8, colors: pack[:palette].bank(0, size: 8), places: TILE_PLACES[1]
+      image :second_bank, width: 8, height: 8, colors: pack[:palette].bank(1, size: 8), places: TILE_PLACES[0]
+      game_loop do
+        wait_vblank
+        blit :banked, 30, 30
+        blit :second_bank, 60, 30
+      end
+    end
+  end
+
   def test_a_picture_taking_only_its_places_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
     assert_pictures_play_alike("places from the pack") do |pack|
       own = [:transparent, :white, :red, :green, :blue, :yellow, :cyan, :magenta, :orange, :gray, rgb(5, 10, 15), rgb(30, 3, 9)]

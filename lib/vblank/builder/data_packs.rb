@@ -214,7 +214,7 @@ module VBlank
                                   colors: table.map { |value| value || 0x0000 }, places: held_places.pack("C*"),
                                   colors_name: colors_name)
         node.from_file = IR::StartFile::Picture.new(
-          colors_at: (@pack_slot_starts.fetch(colors.layout.name) if colors_from_file), colors_count: table.length,
+          colors_at: (colors_in_pack(colors) if colors_from_file), colors_count: table.length,
           places_at: (places_in_pack(places) if places_from_file), across: places_from_file ? places.across : 1
         )
         record_picture(node)
@@ -225,6 +225,11 @@ module VBlank
       def refuse_pack_places_without_colors!(name)
         raise ArgumentError, "image :#{name} was given places: from the data pack and no colors:. A place is a place in a " \
                              "list of colors, so give the list too: `colors: pack[:palette]`, or `colors: [:transparent, ...]`."
+      end
+
+      # Where in the file the first colour that +colors+ (a DSL::PackSlot on colours) reads is.
+      def colors_in_pack(colors)
+        @pack_slot_starts.fetch(colors.layout.name) + ((colors.first_color || 0) * Original::Slot::Colors.item_bytes(colors.layout))
       end
 
       # Where in the file the first tile that +places+ (a DSL::PackSlot on tiles) reads is.
@@ -261,7 +266,7 @@ module VBlank
       end
       # The name of the list of colours a picture read from the pack is drawn from: the colour
       # slot's, written so no list a game declares (`colors :sea`) can have it.
-      def pack_colors_name(handle) = :"data pack slot :#{handle.layout.name}"
+      def pack_colors_name(handle) = :"data pack slot :#{handle.layout.name}#{" bank from #{handle.first_color}" if handle.bank?}"
 
       def refuse_too_many_pack_colors!(name, handle)
         return if handle.count <= IR::StartFile::PLACES
@@ -425,6 +430,7 @@ module VBlank
         refuse_slot_read_wrongly!(handle, wanted, where)
         refuse_slot_read_while_left_out!(handle, where)
         values = handle.layout.decode(@data_pack_contents.bytes_of(handle.layout.name))
+        return values.slice(handle.first_color, handle.color_count) if handle.bank?
         return values unless handle.one_tile?
 
         IR::Assets.picture_places_of_tiles(values.slice(handle.tile_index, handle.count).flatten, across: handle.across)

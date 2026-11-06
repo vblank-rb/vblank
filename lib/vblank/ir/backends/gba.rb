@@ -600,6 +600,18 @@ module VBlank
           @has_objects = false   # does the program declare any composited objects (sprites)?
         end
 
+        # Every blob laid down after the code (Cartridge::BuildRecord#data_assets). A blob that was
+        # packed is told by its packed size; the unpacked size is what the build remembered.
+        def data_assets
+          @emit.data_blobs.map do |name, bytes|
+            codec = @blob_codecs.fetch(name, :none)
+            VBlank::Cartridge::BuildRecord::DataAsset.new(
+              name: name, at: VBlank::Cartridge::ROM::ENTRY_OFFSET + @emit.data_positions.fetch(name), size: bytes.bytesize,
+              codec: codec, unpacked_size: codec == :none ? bytes.bytesize : @blob_raw_bytes.fetch(name)
+            )
+          end
+        end
+
         # A summary of the asset packing this build did (see BiosCompress::Report),
         # tallied from the blobs that packed and how small they got. Valid after
         # #lower. When nothing packed, the report's `any?` is false and there is no
@@ -640,6 +652,7 @@ module VBlank
           VBlank::Cartridge::BuildRecord.new(source_program: program, placement: iwram_report,
                                    var_addresses: var_addresses, loop_shapes: loop_shapes,
                                    runtime: @bookkeeping ? @bookkeeping.places(var_addresses) : {},
+                                   data_assets: data_assets,
                                    palette_entries: palette_entries,
                                    column_stretches: @stretched_columns&.to_h || {},
                                    compression: compression_report,

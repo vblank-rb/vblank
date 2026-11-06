@@ -125,17 +125,41 @@ module VBlank
     #
     # A handle on tiles is +across+ tiles wide and +down+ tiles tall, starting at +tile_index+ and
     # counting left to right and then top to bottom, as a sprite keeps its tiles: a picture of
-    # 16x16 pixels is 2 across and 2 down.
-    PackSlot = Data.define(:layout, :tile_index, :across, :down) do
-      def initialize(layout:, tile_index: nil, across: 1, down: 1) = super
+    # 16x16 pixels is 2 across and 2 down. A handle on a bank is +color_count+ colours of a slot of
+    # colours from colour +first_color+, as a console's palette keeps them in banks of 16.
+    PackSlot = Data.define(:layout, :tile_index, :across, :down, :first_color, :color_count) do
+      def initialize(layout:, tile_index: nil, across: 1, down: 1, first_color: nil, color_count: nil) = super
 
       def shape = layout.shape
 
-      # How many the handle reads: the slot's count, or the tiles of a handle on tiles.
-      def count = tile_index ? across * down : layout.count
+      # How many the handle reads: the slot's count, or the tiles of a handle on tiles, or the
+      # colours of a bank.
+      def count
+        return across * down if tile_index
+
+        first_color ? color_count : layout.count
+      end
+
+      # Whether the handle is on a bank of colours.
+      def bank? = !first_color.nil?
 
       # Whether the handle is on tiles, one or more.
       def one_tile? = !tile_index.nil?
+
+      # A handle on bank +index+ (0 first) of a slot of colours, +size+ colours to a bank, for an
+      # image's `colors:`.
+      def bank(index, size: 16)
+        unless shape == :colors && !bank?
+          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `bank` picks a bank of a slot of colours. " \
+                               "To fix this, call it on a slot of colours."
+        end
+        unless [index, size].all?(Integer) && size.positive? && index >= 0 && (index + 1) * size <= layout.count
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} colors. There is no bank #{index.inspect} of " \
+                               "#{size.inspect} colors in it."
+        end
+
+        with(first_color: index * size, color_count: size)
+      end
 
       # A handle on tile +index+ (0 first) of a slot of tiles, for an image's `places:`.
       def tile(index) = tiles(index, across: 1, down: 1)

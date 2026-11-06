@@ -104,6 +104,10 @@ module VBlank
     # copy's came to it. It gives where the cartridge notes, a half a row, which of the copy's
     # rows each holds, and where it counts the rows left out of a full table. nil for a game
     # whose rows fit.
+    # +data_assets+ is each piece of data the build laid down in the cartridge after the code, by
+    # name (DataAsset): where it starts in the file, how many bytes it takes there, how it is packed
+    # (:lz77, :rle, or :none) and how many bytes it is unpacked. It is what a port of the cartridge
+    # reads its facts from, since the bytes alone do not say where one asset stops and the next starts.
     # +colors_short_at+ is where the console counts each time a sprite drawn with a list of
     # colours that borrows a group found none free, and was drawn in another list's colours
     # (see IR::Backends::GBA::ScreenLayout::LentColors) — a hidden variable, like the dropped
@@ -115,15 +119,20 @@ module VBlank
                                     :sprite_slots, :sprite_offsets, :streamed_sprite_pose_vars,
                                     :video_copies, :late_pages, :lists, :sprite_runs, :scene_sets,
                                     :missed_routine_parts, :colors_short_at, :sprite_turns, :held_sprites,
-                                    :runtime)
+                                    :runtime, :data_assets)
       def initialize(findings: [], emitted: nil, routines: {}, video_memory: nil,
                      roomy_memory: nil, timer_handlers: {}, voices: nil, sound_drops: nil,
                      sprite_slots: {}, sprite_offsets: {}, streamed_sprite_pose_vars: {},
                      video_copies: [], late_pages: [], lists: {}, sprite_runs: [], scene_sets: nil,
                      missed_routine_parts: {}, colors_short_at: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
-                     **rest)
+                     data_assets: [], **rest)
         super
       end
+
+      # One piece of data in the cartridge (see +data_assets+): +at+ is the byte it starts at in the
+      # file, +size+ how many bytes it takes there (packed, when it is), +codec+ is :lz77, :rle or
+      # :none, and +unpacked_size+ how many bytes it is once unpacked.
+      DataAsset = Data.define(:name, :at, :size, :codec, :unpacked_size)
 
       # Where a game keeping more rows than the console's table notes which of them each of the
       # console's rows holds, and where it counts the rows left out (see +held_sprites+).
