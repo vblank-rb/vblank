@@ -99,7 +99,8 @@ cannot be built this way yet. What reads a slot that way:
   from the pack, drawn however a picture is: a background's tile, a sprite, `blit`, a face of a place,
   drawn in other colours (`draw_with`, a background's recolours), `mirror`/`upside_down`. `pack[:sprites]
   .tiles(0, across: 2, down: 2)` takes the places of tiles side by side, for a picture 8 pixels wider
-  and taller for each. A picture can take only one list from the pack, the other being `colors: [...]`
+  and taller for each; `pack[:palette].bank(1)` takes the second bank of 16 colours of a slot of colours, as
+  a console's palette keeps them. A picture can take only one list from the pack, the other being `colors: [...]`
   or `places: [...]` in the game. The program holds zeros of the picture's size, and the runtime fills
   them at power-on. **The build sees a whole box**: a default hitbox, a cut into blocks or the pieces a
   console draws it in follow the box of its size, not the see-through pixels in it, so a game that
@@ -113,6 +114,12 @@ A cartridge build told `pack_at_start:` is refused at `data_pack`, and `vblank b
 for a cartridge before anything is built; every cartridge lowering refuses a program that reads a start
 file (`Backends.refuse_start_file_on_cartridge!`). The unpacking checks only its copy's size; checking
 the copy's SHA-1 is the shell's. Worked example: `test/pack_at_start_tests.rb`.
+
+**A whole port, end to end** — `test/fixtures/pacman_port/`: `pacman.gba` (the cartridge `examples/pacman.rb` builds,
+checked in with its SHA-1 as a stand-in original; `ruby tools/make_pacman_fixture.rb` makes it again and refuses a
+cartridge that packs nothing or with one scheme only), `pacman_facts.yml` (where each asset is, from
+`BuildRecord#data_assets`), and `pacman_port.rb`, whose routine undoes both LZ77 and RLE. Its shell test is
+`test/lowering/ruby/vblank/live/test_pacman_port_shell.rb`.
 
 **The shell** — `vblank run game.rb --shell` (`--pack-folder DIR`), `vblank build game.rb --format ruby
 --shell`, `Original::Shell.build(game)` — is the port as a player gets it: no copy is read (every

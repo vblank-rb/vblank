@@ -1,0 +1,113 @@
+# Where Pac-Man's data is in pacman.gba, the cartridge built from examples/pacman.rb. Written by
+# tools/make_pacman_fixture.rb from the cartridge build's own record, never by hand.
+
+# The cartridge these facts are about.
+rom:
+  # The SHA-1 of pacman.gba, 40 hex digits: the release a port accepts.
+  sha1: 147926c5019d543b90b82dd755d0dcb648dca5a8
+  # The size of pacman.gba in bytes.
+  size: 16384
+
+# Every piece of data the cartridge holds after its code: its build name, the byte it starts at, the
+# bytes it takes there, how it is packed (lz77, rle or none), and its bytes once unpacked.
+assets:
+  - name: wall
+    at: 11220
+    size: 128
+    codec: none
+    unpacked_size: 128
+  - name: floor
+    at: 11348
+    size: 128
+    codec: none
+    unpacked_size: 128
+  - name: __pixmask_0
+    at: 11476
+    size: 2048
+    codec: none
+    unpacked_size: 2048
+  - name: __pixmask_1
+    at: 13524
+    size: 64
+    codec: none
+    unpacked_size: 64
+  - name: __pixmask_2
+    at: 13588
+    size: 256
+    codec: none
+    unpacked_size: 256
+  - name: __bg_map_room
+    at: 13844
+    size: 260
+    codec: lz77
+    unpacked_size: 2048
+  - name: __bg_shared_pal
+    at: 14104
+    size: 20
+    codec: rle
+    unpacked_size: 64
+  - name: __bg_shared_char
+    at: 14124
+    size: 52
+    codec: lz77
+    unpacked_size: 128
+  - name: __obj_palette
+    at: 14176
+    size: 24
+    codec: rle
+    unpacked_size: 96
+  - name: __obj_tiles___obj2
+    at: 14200
+    size: 16
+    codec: lz77
+    unpacked_size: 32
+  - name: __obj_tiles___obj1
+    at: 14216
+    size: 168
+    codec: lz77
+    unpacked_size: 640
+  - name: __poses___obj1
+    at: 14384
+    size: 32
+    codec: none
+    unpacked_size: 32
+  - name: __recolor_banks_2_1
+    at: 14416
+    size: 8
+    codec: none
+    unpacked_size: 8
+  - name: __obj_tiles___obj7
+    at: 14424
+    size: 52
+    codec: lz77
+    unpacked_size: 128
+  - name: __obj_tiles___hud8
+    at: 14476
+    size: 24
+    codec: lz77
+    unpacked_size: 32
+  - name: __obj_tiles___hud9
+    at: 14500
+    size: 24
+    codec: lz77
+    unpacked_size: 32
+  - name: __obj_tiles___hud10
+    at: 14524
+    size: 20
+    codec: lz77
+    unpacked_size: 32
+  - name: __obj_tiles___hud11
+    at: 14544
+    size: 24
+    codec: lz77
+    unpacked_size: 32
+  - name: __obj_tiles___hud12
+    at: 14568
+    size: 28
+    codec: lz77
+    unpacked_size: 32
+  - name: __obj_tiles___hud13
+    at: 14596
+    size: 120
+    codec: lz77
+    unpacked_size: 352
