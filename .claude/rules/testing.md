@@ -133,6 +133,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `draw_order_cost_games.rb` (a game of seven things in a `draw_in_order` and the same without, for each console's cost test),
 `place_games.rb` (small games of places made of flat faces, played by each console that draws a place),
 `called_routine_area_tests.rb` (a routine called inside an area, played by each console that keeps the area as it runs),
+`palette_walk_tests.rb` (a fade or tint walked and repeated, played by each console that walks its colours itself),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
 records first),
 `speakers.rb` (which speaker a cartridge's voice is heard from),
