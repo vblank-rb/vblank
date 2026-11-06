@@ -1180,21 +1180,32 @@ module VBlank
               asm.addu(:t0, :t0, :t1) # times SENT_CORNER_BYTES, twenty
               asm.li(:s7, sent)
               asm.addu(:s7, :s7, :t0)
+              # THE FIRST CORNER IS IN EVERY TRIANGLE, and the corners sent are in main RAM, which has no
+              # cache: every load from it waits for the bus. So its words are read once, into registers the
+              # corners above no longer need, and so are the picture's colour table and page, which its
+              # record in main RAM holds: s0 and s1 its x and y, s3 its place as the chip takes it, s4 its u
+              # and v with the colour table, a3 its colour on a lit face, and s5 the page.
+              asm.li(:t5, sent)
+              asm.lw(:s0, 0, :t5)
+              asm.lw(:s1, 4, :t5)
+              asm.lw(:s3, 12, :t5)
+              asm.lw(:s4, 8, :t5)
+              asm.lw(:t0, RECORD_TABLE_OFFSET_BYTES, :s2)
+              asm.lw(:a3, 16, :t5)
+              asm.or(:s4, :s4, :t0)
+              asm.lw(:s5, RECORD_PAGE_OFFSET_BYTES, :s2)
               asm.label("rt_face_fan_triangle")
               asm.slt(:t0, :s6, :s7)
               asm.beq(:t0, :zero, "rt_face_fan_done")
-              asm.li(:t5, sent)
               # Twice its area, signed: (bx - ax)(cy - ay) - (cx - ax)(by - ay).
-              asm.lw(:t0, 0, :t5)
-              asm.lw(:t1, 4, :t5)
               asm.lw(:t2, 0, :s6)
               asm.lw(:t3, 4, :s6)
               asm.lw(:t4, SENT_CORNER_BYTES, :s6)
               asm.lw(:t6, SENT_CORNER_BYTES + 4, :s6)
-              asm.subu(:t2, :t2, :t0)
-              asm.subu(:t3, :t3, :t1)
-              asm.subu(:t4, :t4, :t0)
-              asm.subu(:t6, :t6, :t1)
+              asm.subu(:t2, :t2, :s0)
+              asm.subu(:t3, :t3, :s1)
+              asm.subu(:t4, :t4, :s0)
+              asm.subu(:t6, :t6, :s1)
               asm.mult(:t2, :t6)
               asm.mflo(:t7)
               asm.mult(:t4, :t3)
@@ -1202,21 +1213,15 @@ module VBlank
               asm.beq(:t7, :t8, "rt_face_fan_next")
               asm.label("rt_face_fan_send")
               # The words after the command, ready before it goes, as rt_gp0_word changes only t1 to t3.
-              asm.lw(:a0, 16, :t5) # the first corner's colour, on a lit face
-              asm.lw(:t4, 12, :t5) # the first corner
-              asm.lw(:t5, 8, :t5)
-              asm.lw(:t0, RECORD_TABLE_OFFSET_BYTES, :s2)
-              asm.or(:t5, :t5, :t0)
               asm.lw(:t6, 12, :s6) # the second
               asm.lw(:t7, 8, :s6)
-              asm.lw(:t0, RECORD_PAGE_OFFSET_BYTES, :s2)
-              asm.or(:t7, :t7, :t0)
               asm.lw(:t8, SENT_CORNER_BYTES + 12, :s6) # the third
+              asm.or(:t7, :t7, :s5)
               asm.lw(:t9, SENT_CORNER_BYTES + 8, :s6)
               asm.bne(:v1, :zero, "rt_face_fan_shaded")
               asm.label("rt_face_fan_raw")
               asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
-              %i[t4 t5 t6 t7 t8 t9].each { |word| asm.sw(word, port, :t1) }
+              %i[s3 s4 t6 t7 t8 t9].each { |word| asm.sw(word, port, :t1) }
               asm.b("rt_face_fan_next")
               # A lit face's: GP0 34h with the first corner's colour, then each corner's place and texel,
               # and the next corner's colour before its place.
@@ -1224,8 +1229,8 @@ module VBlank
               asm.lw(:a1, 16, :s6) # the second's colour
               asm.lw(:a2, SENT_CORNER_BYTES + 16, :s6) # the third's colour
               asm.lui(:t0, h::GP0_SHADED_TEXTURED_TRIANGLE >> 16)
-              asm.jal("rt_gp0_word") { asm.or(:a0, :a0, :t0) }
-              %i[t4 t5 a1 t6 t7 a2 t8 t9].each { |word| asm.sw(word, port, :t1) }
+              asm.jal("rt_gp0_word") { asm.or(:a0, :a3, :t0) }
+              %i[s3 s4 a1 t6 t7 a2 t8 t9].each { |word| asm.sw(word, port, :t1) }
               asm.label("rt_face_fan_next")
               asm.b("rt_face_fan_triangle") { asm.addiu(:s6, :s6, SENT_CORNER_BYTES) }
               asm.label("rt_face_fan_done")
@@ -1300,11 +1305,14 @@ module VBlank
               asm.subu(:t2, :zero, :t2)
               asm.sll(:t2, :t2, FacePieces::SHARE_BITS)
               asm.div(:t2, :t3)
-              # The corner made goes in the pool's next free place, while the divide works.
+              # THE DIVIDE TAKES DOZENS OF CYCLES, and the processor goes on beside it until the share is
+              # asked for (MFLO), which waits for what is left. So the corner made goes in the pool's next
+              # free place, which way the cut goes is decided, and the first number to step is read and
+              # its difference taken, all before the share is asked for: the first step of each way asks
+              # for it (#emit_step_number, +share_from_divide+).
               asm.lw(:v0, at + POOL_NEXT_OFFSET_BYTES, FACE_BASE)
               asm.addiu(:a0, :v0, CORNER_BYTES)
               asm.sw(:a0, at + POOL_NEXT_OFFSET_BYTES, FACE_BASE)
-              asm.mflo(:t8) # the share of the way along
               # On a line across the screen, only the numbers read again are stepped
               # (FacePieces::SCREEN_CUT_NUMBERS): the other of x and y, and what the texel is worked out
               # from. The texel itself is worked out where the corner is, below, and the number cut on is
@@ -1341,10 +1349,10 @@ module VBlank
               asm.label("rt_face_cut_screen")
               asm.bne(:s3, :zero, "rt_face_cut_down")
               asm.label("rt_face_cut_across")
-              emit_step_number(asm, y)
+              emit_step_number(asm, y, share_from_divide: true)
               asm.b("rt_face_cut_sources")
               asm.label("rt_face_cut_down")
-              emit_step_number(asm, x)
+              emit_step_number(asm, x, share_from_divide: true)
               asm.label("rt_face_cut_sources")
               emit_step_number(asm, FacePieces::U_SOURCE)
               emit_step_number(asm, FacePieces::V_SOURCE)
@@ -1368,10 +1376,16 @@ module VBlank
             # a face not lit it is nought at both ends); the rest the start's (FacePieces::LATE_CUT_NUMBERS).
             def emit_late_cut_corner(asm, at)
               asm.label("rt_face_cut_late")
+              # The share is taken from the divide by the first step every corner makes, x's or y's, since
+              # the others' steps can be passed over.
+              share_taken = false
               FacePieces::NUMBERS.times do |number|
                 if [FacePieces::X, FacePieces::Y].include?(number)
-                  emit_step_number(asm, number)
+                  emit_step_number(asm, number, share_from_divide: !share_taken)
+                  share_taken = true
                 elsif FacePieces::LATE_CUT_NUMBERS.include?(number)
+                  raise "a late cut steps #{number} before x or y, so the divide's share is not taken yet" unless share_taken
+
                   copied = "rt_face_cut_late_copied_#{number}"
                   stepped = "rt_face_cut_late_stepped_#{number}"
                   asm.li(:t2, NUMBER_OFFSETS.fetch(number))
@@ -1395,11 +1409,13 @@ module VBlank
             end
 
             # +number+ of the corner at t0 stepped the share t8 of the way to the one at t1, into the corner
-            # at v0. Changes a0, a1 and t9.
-            def emit_step_number(asm, number)
+            # at v0. Changes a0, a1 and t9. With +share_from_divide+, the share is taken into t8 from the
+            # divide working it out once the number is read, rather than before.
+            def emit_step_number(asm, number, share_from_divide: false)
               asm.lw(:a0, number * 4, :t0)
               asm.lw(:a1, number * 4, :t1)
               asm.subu(:a1, :a1, :a0)
+              asm.mflo(:t8) if share_from_divide
               emit_mul_fix(asm, :a1, :a1, :t8, FacePieces::SHARE_BITS)
               asm.addu(:a0, :a1, :a0)
               asm.sw(:a0, number * 4, :v0)
