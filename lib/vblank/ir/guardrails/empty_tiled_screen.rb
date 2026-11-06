@@ -68,7 +68,7 @@ module VBlank
               "A tiled screen shows backgrounds and sprites only. With neither one, " \
               "every frame stays black. There is no crash or error to point at it.\n\n" \
               "To fix this, add a background. A background takes three steps:\n\n" \
-              "    image :brick, \"#\" => :brown do ... end   # the picture for one tile\n" \
+              "    image :brick, \"#\" => :orange do ... end  # the picture for one tile\n" \
               "    tiles :ground, \"#\" => :brick             # a set of tiles\n" \
               "    background :level, tiles: :ground, map: \"##########\"\n\n" \
               "Or add a `sprite`. To draw with `pixel` or `fill_rect` instead, use " \

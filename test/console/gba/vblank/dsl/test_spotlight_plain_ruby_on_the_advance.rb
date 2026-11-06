@@ -9,6 +9,10 @@ class TestSpotlightPlainRubyOnTheAdvance < Minitest::Test
     builder = Builder.new
     game = VBlank::DSL::PlainRuby.rewrite(proc do
       screen :tiled
+      # Something for the screen to show, or every build refuses the game as a black screen.
+      image(:floor, "#" => :orange) { "########\n" * 8 }
+      tiles :ground, "#" => :floor
+      background :level, tiles: :ground, map: "#"
       light = spotlight at: [0, 0], radius: 8, dark: 50
       x = 30
       y = 40
