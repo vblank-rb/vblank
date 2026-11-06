@@ -25,7 +25,7 @@ module VBlank
         "`#{written}` does not change a variable. To change it, write `#{fix}`.#{instead}#{at}"
       end
 
-      # A word the library keeps for itself. A game says these in plain Ruby.
+      # A word the library keeps for itself. A game writes these in plain Ruby.
       def old_verb_refusal(word, at: "")
         "A game does not need `#{word}`. To fix this, change the variable with plain Ruby: " \
           "`hp = 5`, `hp += 1`, `hp -= 1`.#{at}"

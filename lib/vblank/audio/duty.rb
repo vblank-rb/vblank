@@ -33,8 +33,8 @@ module VBlank
       # One shape, every frame.
       def self.one(shape) = new(shapes: ([named(shape)] * FRAMES).freeze)
 
-      # THE SHAPE A NOTE SAID: a shape's name (:eighth, :quarter, :half, :three_quarter), or a list
-      # of two or four of them to step through, or nil when it gave nothing. +where+ names who said
+      # THE SHAPE A NOTE GAVE: a shape's name (:eighth, :quarter, :half, :three_quarter), or a list
+      # of two or four of them to step through, or nil when it gave nothing. +where+ names who gave
       # it, as the start of a sentence.
       def self.said(value, where:)
         return nil if value.nil?
@@ -45,7 +45,7 @@ module VBlank
         new(shapes: (names * (FRAMES / names.length)).freeze)
       end
 
-      # WHAT A PART SAID OF ITS DUTY, as a part keeps it: its one shape, and its shapes when it gave a
+      # WHAT A PART GAVE AS ITS DUTY, as a part keeps it: its one shape, and its shapes when it gave a
       # list to step through (nil when it gave one shape, which is what a part always did).
       def self.of_part(value, where:)
         return [value, nil] unless value.is_a?(Array)
@@ -69,7 +69,7 @@ module VBlank
       private_class_method :refuse_unknown!
 
       # Only a square voice has a shape to change. +who+ names the part, as the start of a sentence;
-      # +by_part+ says the part gave the list, and not a note.
+      # +by_part+ marks that the part gave the list, and not a note.
       def self.refuse_off_square!(who, by_part:)
         if by_part
           raise ArgumentError, "#{who} says a list of duties, but the part does not play the square wave. Only a " \

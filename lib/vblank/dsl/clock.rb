@@ -75,7 +75,7 @@ module VBlank
       def one_if_equal(a, b) = Value.new(@builder, IR::Build.binop(:==, a.node, Value.node_for(b)))
 
       # How many days +month+ of +year+ has. The months alternate thirty-one and thirty from
-      # January, starting again at August, which is what the bit test says; February takes two
+      # January, starting again at August, which is what the bit test gives; February takes two
       # off that, or one in a leap year. Every fourth year between 2000 and 2099 is one.
       def days_in_month(year, month)
         february = one_if_equal(month, 2)

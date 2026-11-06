@@ -6,7 +6,7 @@ module VBlank
     #
     # The console has two speakers (or the two sides of a pair of headphones), and it sends each of
     # its voices to the left one, the right one or both by a switch per voice and per side. Every
-    # voice is sent to both at power-on, and a part that says nothing stays there. The music player
+    # voice is sent to both at power-on, and a part that names no side stays there. The music player
     # sets a voice's switches as each note starts, so a part can move from side to side, and the
     # game's own `beep`, `noise` and `wave` send their voice to both again. A recording is mixed
     # into one stream the console plays from both, so a part that plays one cannot pan.
@@ -19,8 +19,8 @@ module VBlank
 
       SIDES = { left: LEFT, right: RIGHT, center: CENTER }.freeze
 
-      # The side a part or a note SAID: :left, :right or :center, or nil when it gave nothing.
-      # +where+ names who said it, as the start of a sentence.
+      # The side a part or a note GAVE: :left, :right or :center, or nil when it gave nothing.
+      # +where+ names who gave it, as the start of a sentence.
       def self.said(side, where:)
         return nil if side.nil?
 
@@ -46,7 +46,7 @@ module VBlank
       end
 
       # The two bits a note keeps its side in: 1 for the left alone, 2 for the right alone, and
-      # nought for both, so a note that says nothing is a note that plays from both.
+      # nought for both, so a note that names no side is a note that plays from both.
       LEFT_BITS = 1
       RIGHT_BITS = 2
 

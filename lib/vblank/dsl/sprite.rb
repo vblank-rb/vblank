@@ -104,7 +104,7 @@ module VBlank
       # Where this sprite sits in the stack — the layer it was declared in, or nil in a
       # game that names no layers. A software sprite is painted into the one framebuffer
       # rather than handed to stacking hardware, so its layer is the order it is painted
-      # in; the name is what says what that order has to be.
+      # in; the name is what sets what that order has to be.
       attr_reader :layer
 
       # The scene this sprite was declared inside, or nil for one every scene shows.
@@ -174,7 +174,7 @@ module VBlank
       #   hero.move 2, -1            # or a raw (dx, dy) nudge, for velocity/physics
       #
       # The named form turns a direction into the x/y arithmetic for you, so pressing
-      # left just says "move left" — see {Direction}. `by:` is the speed (1 by
+      # left just reads "move left" — see {Direction}. `by:` is the speed (1 by
       # default). The raw form takes a dx and dy directly.
       def move(direction_or_dx, dy = nil, by: 1)
         if direction_or_dx.is_a?(Symbol)
@@ -359,7 +359,7 @@ module VBlank
       # the work they do is this sprite's, so that is where a cost report should point.
       #
       # WHETHER A SPRITE IS SHOWN AND WHETHER IT IS ON THE PICTURE ARE TWO QUESTIONS, and each
-      # sprite keeps a variable for each. Shown is what the game says with `hide` and `show`.
+      # sprite keeps a variable for each. Shown is what the game sets with `hide` and `show`.
       # On the picture is a fact about the pixels: the sprite was drawn, what it covered is
       # remembered, and nothing has replaced that part of the picture since. They come apart
       # in two ways. A scene's sprite is shown the whole game and painted only while its scene
@@ -382,7 +382,7 @@ module VBlank
         Build.if_(all_hold(@painted_while, active_is(1)), *paint_nodes).default_source!(@source)
       end
 
-      # Say this sprite is not on the picture any more, without putting back what it covered.
+      # Mark this sprite as not on the picture any more, without putting back what it covered.
       # For a sprite whose picture was replaced under it: the game cleared the screen, or a
       # scene on another kind of screen took over, and the pixels it remembers belong to a
       # picture that is gone.
@@ -451,12 +451,12 @@ module VBlank
         [Build.set(@active, Build.int(1)), *painting]
       end
 
-      # Draw the sprite where it is now and say it is on the picture.
+      # Draw the sprite where it is now and mark it as on the picture.
       def paint_nodes
         [*save_and_draw_nodes, Build.set(@painted, Build.int(1))]
       end
 
-      # Put back what the sprite covered, if it is on the picture, and say it no longer is.
+      # Put back what the sprite covered, if it is on the picture, and mark that it no longer is.
       def take_off_picture
         Build.if_(on_picture, Build.restore_region(@buffer, ref(@old_x), ref(@old_y)),
                   Build.set(@painted, Build.int(0)))

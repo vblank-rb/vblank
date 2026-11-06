@@ -4,7 +4,7 @@ module VBlank
   module DSL
     module PlainRuby
       # What a write does, whatever its spelling: `x = 1`, `x += 1`, `@x = 1`, `h[:x] = 1`,
-      # `o.x = 1`. The rewrite says which place and which value, and this decides.
+      # `o.x = 1`. The rewrite gives which place and which value, and this decides.
       module Writes
         # What `+=` and its relatives are on a game variable, where one exists. Any other
         # operator is the variable set to the sum.
@@ -213,7 +213,7 @@ module VBlank
 
         # `@a = @b` in code the game runs, where @a was only handed its variable. Copying into it
         # would change a variable that belongs to something else, and moving it would leave a line
-        # that looks like a copy recording nothing, so the author says which.
+        # that looks like a copy recording nothing, so the author chooses which.
         def refuse_move_in_game_code!(label, current, value)
           return unless Builder.in_use&.recording_game_code?
 

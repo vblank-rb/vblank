@@ -4,7 +4,7 @@ module VBlank
   module DSL
     # A RUN OF TILES THE GAME PAINTS ITSELF, handed back by `tiles :box, from: list, count: n`.
     #
-    # The pixels live in the game's own list; this is how the game says they moved. Writing
+    # The pixels live in the game's own list; this is how the game marks that they moved. Writing
     # into the list changes nothing on screen by itself, because the screen draws its tiles
     # out of video memory, not out of the list. `changed` asks for the list to be copied there
     # in the gap before the next frame, so the player never sees a picture half copied. Saying

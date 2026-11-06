@@ -18,7 +18,7 @@ module VBlank
     #
     # A VIBRATO THAT +carries+ keeps its swing from one note to the next — which side of the pitch
     # it is on, and how long it has still to hold there — and only its wait starts again. That is how
-    # some Game Boy games' music engines wobble, so a song converted from one says it. A note that
+    # some Game Boy games' music engines wobble, so a song converted from one asks for it. A note that
     # starts part way through a swing holds its own pitch until the swing runs out, then turns. A
     # rest, or a note that holds still, leaves the swing where it was; a note whose vibrato does not
     # carry starts it over.
@@ -26,14 +26,14 @@ module VBlank
 
     class Vibrato
       def initialize(depth:, speed:, after:, carries: false) = super
-      # The most a wobble can say, as the four, four and eight bits a note keeps it in — the speed
+      # The most a wobble can ask for, as the four, four and eight bits a note keeps it in — the speed
       # kept less one, since it is never nought, so a converted engine's slowest swing fits: that
       # engine counts a swing down from fifteen to nought, which is sixteen frames.
       DEEPEST = 15
       SLOWEST = 16
       LONGEST_WAIT = 255
 
-      # The words a game can say: how far it wobbles, in the voice's pitch steps, and how many
+      # The words a game can give: how far it wobbles, in the voice's pitch steps, and how many
       # frames each swing holds.
       DEPTHS = { slight: 2, medium: 4, wide: 8 }.freeze
       SPEEDS = { fast: 2, medium: 4, slow: 8 }.freeze
@@ -44,18 +44,18 @@ module VBlank
       # Does the pitch move? A depth of nought holds it still.
       def moves? = depth.positive?
 
-      # Whether +vibrato+ — said, or nil for nothing given — moves the pitch.
+      # Whether +vibrato+ — as given, or nil for nothing given — moves the pitch.
       def self.moves?(vibrato) = !vibrato.nil? && vibrato.moves?
 
       # How far the pitch number goes above where the note began, and below it.
       def above = (depth + 1) / 2
       def below = depth / 2
 
-      # THE WOBBLE A PART OR NOTE SAID: :none, or a Hash of +depth+ (:slight, :medium, :wide, or
+      # THE WOBBLE A PART OR NOTE GAVE: :none, or a Hash of +depth+ (:slight, :medium, :wide, or
       # 1 to 15 pitch steps), +speed+ (:fast, :medium, :slow, or the frames each swing holds, 1 to
       # 16) and +after+ (the frames before it starts, 0 to 255, or a note length when +frames+ can
       # turn one into frames). What a Hash leaves out is :medium, :medium and nought. Nil when it
-      # said nothing. +where+ names who said it, as the start of a sentence.
+      # gave nothing. +where+ names who gave it, as the start of a sentence.
       def self.said(said, where:, frames: nil)
         return nil if said.nil?
         return NONE if said == :none

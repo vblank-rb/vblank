@@ -14,7 +14,7 @@ module VBlank
     # rows of tiles, and a sound chip of two kinds: square voices and a noise voice (the PSG), and
     # six voices of frequency-modulated sound (the YM2612).
     #
-    # A GAME SAYS WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba genesis]`), and is
+    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba genesis]`), and is
     # laid out from `screen_width` and `screen_height` rather than from 240 and 160, so the same game
     # fills each screen.
     #

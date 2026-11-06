@@ -6,7 +6,7 @@ module VBlank
     #
     # Underneath it is the list a `tiles ..., from: list` run or an `image ..., from: list`
     # picture paints from, and the canvas keeps that list for you: it fills it, packs each
-    # pixel into the half of a byte the console wants, and says `changed` after every word,
+    # pixel into the half of a byte the console wants, and calls `changed` after every word,
     # so the picture shows on the next frame. What a game holds is the words — a pixel, a
     # rectangle, a picture stamped on, a letter, a line of text, a number — in colour names.
     #
@@ -37,10 +37,10 @@ module VBlank
       end
 
       # The list the pixels live in, packed the way the console keeps them, for a game that
-      # wants to write bytes itself. Say `changed` after.
+      # wants to write bytes itself. Call `changed` after.
       def list = @list
 
-      # Show what the list holds on the next frame. Every drawing word says it already. With
+      # Show what the list holds on the next frame. Every drawing word calls it already. With
       # +now+, on this frame, copied here (see TileRun#changed).
       def changed(now: false) = @run.changed(now: now)
 

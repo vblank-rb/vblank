@@ -47,7 +47,7 @@ module VBlank
     #                           packing and placement
     #   compared_side_by_side?  whether two of its cartridges can be compared side by side
     #                           (Playthroughs::Comparison, at the console's screen size): one the
-    #                           reader plays whose screen is the size its description says
+    #                           reader plays whose screen is the size its description gives
     #   open_core(path, save_dir:)
     #                           the emulator its cartridges play in, opened on a cartridge file
     #   save_file_extension     how that emulator names the file it keeps battery-backed RAM in
@@ -359,13 +359,13 @@ module VBlank
     def self.console_settings = kits.flat_map(&:console_settings).uniq
 
     # Of +values+ (a setting's name to its value, as a game or a build was given them), the
-    # console settings that were said: the ones that are not nil.
+    # console settings that were given: the ones that are not nil.
     def self.console_settings_said(values) = values.slice(*console_settings).compact
 
-    # A SETTING SAID FOR A CONSOLE THAT DOES NOT HAVE IT is refused, rather than dropped: the author
+    # A SETTING GIVEN FOR A CONSOLE THAT DOES NOT HAVE IT is refused, rather than dropped: the author
     # asked for something the cartridge would not have.
     #
-    # +said+ is the console settings that were said, by name, to their values
+    # +said+ is the console settings that were given, by name, to their values
     # (console_settings_said); +consoles+ the consoles the game or the build is for; +title+ the
     # game's; and +named_in+ the keyword those consoles were named with (`consoles:` for a game,
     # `console:` for a build), so the fix says where to add one. A setting is refused when none of

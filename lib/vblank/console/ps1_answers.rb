@@ -12,7 +12,7 @@ module VBlank
     # sprites on a row. Its colours are 15 bits, as the Advance's are, through lists of 16 or 256
     # colours kept in video RAM. It has no clock chip, and its pad has more buttons than the Advance's.
     #
-    # A GAME SAYS WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba ps1]`), and is laid out
+    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba ps1]`), and is laid out
     # from `screen_width` and `screen_height` rather than from 240 and 160, so the same game fills each
     # screen.
     #
@@ -254,7 +254,7 @@ module VBlank
 
       # THE VERBS WHOSE STEPS THE BUILD DOES NOT MAKE YET, by the part of the build they wait on — the
       # parts of Backends::PS1::Lowering::NOT_LOWERED_YET, and the other parts it refuses by name
-      # (Lowering#refuse_unmade_parts!). A verb is here when a game that says it reaches a step of the
+      # (Lowering#refuse_unmade_parts!). A verb is here when a game that uses it reaches a step of the
       # part; test_ps1_kind_coverage.rb holds the parts to the lowering's.
       VERBS_NOT_MADE_YET = Ractor.make_shareable({
         "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen sprite],

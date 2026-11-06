@@ -7,7 +7,7 @@ module VBlank
     #
     # A place is POINTS — spots in space, each three numbers: across (x, to the right), up (y)
     # and ahead (z) — and FACES, each a flat side joining three or four of the points in order,
-    # with a picture on it. A face's CORNERS say where on its picture each of its points falls
+    # with a picture on it. A face's CORNERS set where on its picture each of its points falls
     # (`on_picture:`, in the picture's own pixels, across then down). The picture repeats past
     # its edges like wallpaper, so a corner may fall at 200 on a picture 64 pixels wide, or at -70.
     #
@@ -88,7 +88,7 @@ module VBlank
       end
 
       # A flat side joining +points+ (three or four, from `point`, in order round the face), showing
-      # +picture+, its corners falling on it where +on_picture+ says ([across, down] for each
+      # +picture+, its corners falling on it where +on_picture+ sets ([across, down] for each
       # point, in the same order). +light+ is how lit each corner is, from 0 (dark) to 1 (as
       # bright as the shading goes), one for each point, or one for them all; a place drawn with a
       # shading blends it across the face.

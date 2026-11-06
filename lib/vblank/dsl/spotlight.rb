@@ -69,7 +69,7 @@ module VBlank
       # light otherwise shows a picture later, like a sprite's place, because its rows are
       # worked out in the gap before a frame. A game whose own light is handed to the display
       # while the picture is drawn shows a change at once — an iris that opens on the frame it
-      # is asked for — and this is how a game copying one says so.
+      # is asked for — and this is how a game copying one asks for it.
       #
       #   light.radius = 4
       #   light.show_now

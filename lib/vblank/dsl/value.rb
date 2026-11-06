@@ -46,7 +46,7 @@ module VBlank
       # Asking after the class instead gets the second group right and the first group wrong:
       # a literal that had already been wrapped answered "the game works it out" and took the
       # run-time path for nothing. The report and the reference call these two fixed and
-      # worked out, so the code says fixed too.
+      # worked out, so the code uses fixed too.
       def self.fixed_number(operand)
         node = operand.is_a?(Value) ? operand.node : operand
         return node if node.is_a?(Integer)
@@ -60,7 +60,7 @@ module VBlank
       # @param fraction_bits [Integer, nil] how many fraction bits it carries; nil for a
       #   plain whole number (see {Fraction} for what carrying a fraction means)
       # +declaring+ is how to tell somebody to declare THIS kind of thing with a fraction,
-      # given the number they wrote. A variable and a list say it differently, and the rules
+      # given the number they wrote. A variable and a list declare it differently, and the rules
       # for lining two scales up are otherwise the same — so the rules live here once and
       # only the advice changes.
       #
@@ -86,7 +86,7 @@ module VBlank
 
       # A NUMBER THE FRAMEWORK BUILDS TO HAND TO AN AUTHOR'S BLOCK: the row a bend is working
       # out, the instance a pool's routine runs on. A block is free to ignore what it is
-      # handed — a bend the same on every row, a routine with nothing to say about its
+      # handed — a bend the same on every row, a routine with nothing to do with its
       # instance — and a number the author never asked for is not one the author threw away.
       # So it is not tracked as one (see Builder#track_expression), and every number the
       # block works out FROM it still is.
@@ -403,7 +403,7 @@ module VBlank
       #
       # Both sides must carry the SAME number of fraction bits, and so does the answer.
       #
-      # Nothing checks that for you: you say the number of bits at each multiply, and
+      # Nothing checks that for you: you give the number of bits at each multiply, and
       # the framework has no idea which of your variables hold fractions. That is a
       # deliberate stopping point rather than an oversight. The alternative is for the
       # scale to travel WITH the value, so `a * b` does the right thing because the
@@ -516,7 +516,7 @@ module VBlank
         REFUSAL
       end
 
-      # The words a game used to change a variable with, which plain Ruby says better. The library
+      # The words a game used to change a variable with, which plain Ruby expresses better. The library
       # has #store!, #increase! and #decrease!.
       %i[set! add! sub!].each do |word|
         class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
@@ -656,7 +656,7 @@ module VBlank
 
       # A number that HOLDS A FRACTION keeps that fraction in its own low bits, so a bit
       # operation on one changes the fraction rather than the number the author can see —
-      # and nothing in the answer would say so. Refuse it and say which side is at fault.
+      # and nothing in the answer would show it. Refuse it and say which side is at fault.
       def whole_numbers_only!(op, other)
         return unless fraction? || Fraction.bits_of(other)
 

@@ -7,7 +7,7 @@ module VBlank
     # turned into a place in the list, with a friendly error for one the list does not have. A
     # number the game works out passes through untouched, for the player to check as it runs.
     #
-    # The class including it says what one entry is called (#entry_noun), for the errors.
+    # The class including it sets what one entry is called (#entry_noun), for the errors.
     module ScoreList
       def initialize(builder, name, keys)
         @builder = builder

@@ -23,7 +23,7 @@ module VBlank
       SLOWEST = 7
       FINEST = 7
 
-      # The speeds a game can say, as how many 128ths of a second each step waits. All three move
+      # The speeds a game can give, as how many 128ths of a second each step waits. All three move
       # by the same part of the pitch at each step: a 32nd, which from a middle note climbs off
       # the top in a handful of steps and falls about two octaves over a second.
       EVERY = { fast: 1, medium: 3, slow: SLOWEST }.freeze
@@ -36,15 +36,15 @@ module VBlank
       # A note that does not slide, written over a part that does.
       NONE = upward(every: 0, shift: 0)
 
-      # Does the pitch move? Only NONE holds it, since a slide said in words or numbers waits at
-      # least one 128th and shifts at least one place. `:none` is said — the log names it — but it
-      # asks nothing of the voice, so any part may say it and it costs a game nothing.
+      # Does the pitch move? Only NONE holds it, since a slide given in words or numbers waits at
+      # least one 128th and shifts at least one place. `:none` is given — the log names it — but it
+      # asks nothing of the voice, so any part may give it and it costs a game nothing.
       def moves? = self != NONE
 
-      # Whether +slide+ — said, or nil for nothing given — moves the pitch.
+      # Whether +slide+ — as given, or nil for nothing given — moves the pitch.
       def self.moves?(slide) = !slide.nil? && slide.moves?
 
-      # THE SLIDE A PART OR NOTE SAID, from the two words a song writes it with: +up+ to slide it up
+      # THE SLIDE A PART OR NOTE GAVE, from the two words a song writes it with: +up+ to slide it up
       # and +down+ to slide it down. Each is a speed (:fast, :medium or :slow), :none, or the
       # voice's own two numbers ({ every: 1..7, shift: 1..7 }). Nil when it gave neither.
       def self.said(up:, down:, where:)
@@ -76,7 +76,7 @@ module VBlank
       private_class_method :voice_numbers?
 
       # Only the first square voice has the circuit, and only a song's first square part plays on it.
-      # +who+ names the part, as the start of a sentence; +wave+ and +noise+ say which other voice it
+      # +who+ names the part, as the start of a sentence; +wave+ and +noise+ mark which other voice it
       # plays, and neither is a recording.
       def self.refuse_off_square!(who, wave:, noise:)
         plays = (wave && "the wave voice") || (noise && "the noise voice") || "a recording"

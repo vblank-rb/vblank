@@ -115,7 +115,7 @@ module VBlank
       #
       # A pad is read through a port of three bytes: data, control and serial, at odd addresses (the
       # chip is on the processor's low byte). Port 1 is $A10003 data and $A10009 control; port 2 is
-      # $A10005 and $A1000B. The control byte says which pins the processor drives: $40 makes pin 6
+      # $A10005 and $A1000B. The control byte sets which pins the processor drives: $40 makes pin 6
       # (TH) an output, which the pad uses to choose which half of its buttons it shows. With TH
       # high the pad shows, in bits 5-0, C, B, right, left, down, up, and with TH low it shows
       # start and A in bits 5 and 4 (and down and up as before). A pressed button reads 0.
@@ -138,7 +138,7 @@ module VBlank
       # four bits that is not 0) refuses to show the cartridge's picture until the cartridge has
       # written the four letters SEGA to $A14000: the TMSS, a trademark check. An earlier console has
       # none, and a write there goes nowhere. The write is made at power-on, and only when the version
-      # says to.
+      # calls for it.
       TMSS_PORT = 0xA14000
       TMSS_LICENSE = 0x53454741 # "SEGA"
       TMSS_VERSION_MASK = 0x0F

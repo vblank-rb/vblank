@@ -11,7 +11,7 @@ module VBlank
     # Reference: https://problemkaputt.de/gbatek.htm
     #
     # What the interpreter needs to know as well — the screen's size, how long a frame is, how
-    # the sound is handed over — is Console::ADVANCE's to say, so it reads the same numbers for
+    # the sound is handed over — is Console::ADVANCE's to give, so it reads the same numbers for
     # whichever console a game is played as.
     module Hardware
       # The sizes a sprite is drawn at, in pixels across and down, each mapped to the two shape and
@@ -225,8 +225,8 @@ module VBlank
       # toward black ("brightness decrease") as it draws, which costs nothing and
       # redraws nothing — a fade is two register writes, whatever is on screen.
       #
-      # BLDCNT says WHICH layers the effect applies to (the low six bits) and WHICH
-      # effect (bits 6-7). BLDY says HOW FAR, from 0 (untouched) to 16 (fully white
+      # BLDCNT sets WHICH layers the effect applies to (the low six bits) and WHICH
+      # effect (bits 6-7). BLDY sets HOW FAR, from 0 (untouched) to 16 (fully white
       # or fully black); values above 16 act as 16.
       # ========================================================================
 
@@ -425,7 +425,7 @@ module VBlank
       # Screen
       # ========================================================================
 
-      # The GBA screen size, in pixels. Console::ADVANCE says the same to everything but the
+      # The GBA screen size, in pixels. Console::ADVANCE gives the same to everything but the
       # Advance's own lowering, and test_ir_contracts.rb holds the two to agreeing.
       SCREEN_WIDTH  = 240
       SCREEN_HEIGHT = 160

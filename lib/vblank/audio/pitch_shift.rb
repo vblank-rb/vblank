@@ -26,8 +26,8 @@ module VBlank
       VOICE_CLOCKS = Ractor.make_shareable({ square: [Sound::SQUARE_CLOCK_HZ, Sound::SQUARE_LONGEST_WAVE],
                                              wave: [Sound::WAVE_CLOCK_HZ, Sound::WAVE_LONGEST_WAVE] })
 
-      # THE SHIFT A PART SAID, +transpose+ semitones and +pitch_offset+ pitch steps, nil for each it did
-      # not say. +where+ names the part, as the start of a sentence.
+      # THE SHIFT A PART GAVE, +transpose+ semitones and +pitch_offset+ pitch steps, nil for each it did
+      # not give. +where+ names the part, as the start of a sentence.
       def self.said(transpose:, pitch_offset:, where:)
         new(transpose: checked_amount(transpose, MOST_SEMITONES, "transpose", "semitones", where),
             pitch_offset: checked_amount(pitch_offset, Sound::SQUARE_LONGEST_WAVE - 1, "pitch_offset", "pitch steps", where))

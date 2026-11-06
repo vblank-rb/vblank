@@ -35,7 +35,7 @@ module VBlank
       # bar covers the screen from there to the bottom, so a row at the bottom of the screen or
       # past it puts the whole bar out of view, and a row above the top is the top.
       #
-      # Like a scroll, it is shown from the gap between frames, so a game can say it anywhere
+      # Like a scroll, it is shown from the gap between frames, so a game can set it anywhere
       # in a frame, as many times as it likes, and the picture never shows the bar in two
       # places at once.
       def move_to(row)
@@ -61,7 +61,7 @@ module VBlank
                                         ))
       end
 
-      # The row the bar's top is at, as the game last said it, as a {Value}.
+      # The row the bar's top is at, as the game last set it, as a {Value}.
       def top = Value.new(@builder, Build.var_ref(@top_var), name: @top_var)
 
       # PUT A DIFFERENT TILE IN ONE CELL OF THE BAR: a digit of the score, a heart lost. The

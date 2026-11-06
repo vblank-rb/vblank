@@ -82,7 +82,7 @@ module VBlank
       CGB_ONLY = 0xC0
       # MBC5 with its own memory and a battery to keep it: the controller that switches banks.
       MBC5_RAM_BATTERY = 0x1B
-      # 0x33 in the old licensee byte says the new one (two letters) is used.
+      # 0x33 in the old licensee byte marks that the new one (two letters) is used.
       USE_NEW_LICENSEE = 0x33
 
       # --- the memory bank controller (MBC5), written by storing into the cartridge's address range ---

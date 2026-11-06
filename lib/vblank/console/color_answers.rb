@@ -10,7 +10,7 @@ module VBlank
     # mostly made of things it CAN do — tiles, sprites, the square, wave and noise voices, which the
     # Advance inherited from it — and the Color build is limited and does not pretend.
     #
-    # A GAME SAYS WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba gbc]`), and is
+    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba gbc]`), and is
     # built for the Color only when it names it. A game written for a 240×160 screen that is
     # built for a 160×144 one has a third of its picture cut away, which no warning would make
     # right; so reaching the second console is a decision the author makes once, in the game's

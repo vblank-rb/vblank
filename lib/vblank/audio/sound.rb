@@ -99,7 +99,7 @@ module VBlank
         base.with(**{ duty: duty, decay: decay, volume: volume }.compact)
       end
 
-      # Built-in noise presets — the percussion voice, as plain intent. A game says
+      # Built-in noise presets — the percussion voice, as plain intent. A game writes
       # `noise :explosion` and gets a rumble; the numbers are the framework's job.
       # +pitch+ is how high the hiss sits (:low rumble … :high hiss), +decay+ how
       # fast it fades, +metallic+ a tighter, more tonal rattle (for a snare/hat).
@@ -166,7 +166,7 @@ module VBlank
       # of 131,072 ticks a second and one wave lasts a whole number of them, 1 to 2048 — so 440 Hz
       # is played as 298 ticks a wave, a hair under 440. Every backend has to round the same way
       # or two voices in tune on one are a beat apart on the other. 2048 ticks is the bottom, 64 Hz,
-      # which each console says for itself (Console::Description#lowest_square_hz). (The wave voice
+      # which each console gives for itself (Console::Description#lowest_square_hz). (The wave voice
       # reaches an octave lower, which is most of why a tune puts its bass there.)
       SQUARE_CLOCK_HZ = 131_072
       SQUARE_LONGEST_WAVE = 2048
@@ -185,7 +185,7 @@ module VBlank
       # second; `:none` never fades.
       FADE_STEP_SIXTY_FOURTHS = { fast: 1, medium: 3, slow: 5, none: 0 }.freeze
 
-      # A fade or a swell said by its speed, or by the step itself (0 to 7, which a song converted
+      # A fade or a swell given by its speed, or by the step itself (0 to 7, which a song converted
       # from another game's music arrives holding), as the step.
       def self.fade_step(speed)
         return speed if speed.is_a?(Integer) && speed.between?(0, 7)
@@ -273,7 +273,7 @@ module VBlank
       # hat.
       def self.noise_register_bits(metallic) = metallic ? 7 : 15
 
-      # WHAT THE WAVE VOICE PLAYS, which is one of two things a game can say.
+      # WHAT THE WAVE VOICE PLAYS, which is one of two things a game can give.
       #
       # A NAME is the usual answer — `wave :triangle, :C4`, `plays: :sine` — and the samples are
       # the framework's job. Four names cover the timbres most games reach for.

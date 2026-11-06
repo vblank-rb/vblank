@@ -3,7 +3,7 @@
 module VBlank
   module DSL
     # The four (and four diagonal) screen directions, as plain names a game reads in —
-    # so you can say "move left" instead of "subtract from x". A direction is a unit
+    # so you can write "move left" instead of "subtract from x". A direction is a unit
     # step from the player's point of view: +up+ is toward the top of the screen,
     # +down+ toward the bottom, +left+/+right+ as you'd expect. Each maps to a
     # [dx, dy] step of -1, 0, or +1 per axis, which a caller scales by a speed.

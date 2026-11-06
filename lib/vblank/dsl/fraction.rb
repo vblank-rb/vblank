@@ -17,12 +17,12 @@ module VBlank
     # Three things showed up there, and they are what these rules answer:
     #
     #   1. The scale was written into every line that touched a position. `(3 * FIXED)
-    #      + (FIXED / 2)` to say "three and a half". `rx / FIXED` to ask which cell. The
-    #      author cannot say the thing they mean.
+    #      + (FIXED / 2)` to write "three and a half". `rx / FIXED` to ask which cell. The
+    #      author cannot write the thing they mean.
     #
     #   2. Of the three multiplies of two fractions in that file, only ONE actually
     #      overflowed. The other two were safe only because the walking speed happened
-    #      to be small. Nothing said which was which — knowing meant working out the
+    #      to be small. Nothing showed which was which — knowing meant working out the
     #      range of both operands in your head, and being wrong was silent. This is the
     #      strongest argument for the type: not that `fraction_bits: 16` is tedious to
     #      type, but that a person cannot reliably tell when they need it.
@@ -72,7 +72,7 @@ module VBlank
     # because neither of them sees one, and a fraction costs nothing at run time that
     # the hand-written version did not also cost.
     module Fraction
-      # How many bits of fraction a Float gets when the program does not say otherwise.
+      # How many bits of fraction a Float gets when the program does not ask for another.
       # 16 leaves about four decimal places and room for positions across a large world;
       # it is the scale most GBA games use for anything that moves.
       DEFAULT_BITS = 16
@@ -87,7 +87,7 @@ module VBlank
       end
 
       # The number of fraction bits an operand carries, or nil if it is a plain whole
-      # number. A Float carries the default scale — writing one is how you say so.
+      # number. A Float carries the default scale — writing one is how you ask for it.
       def bits_of(operand)
         case operand
         when Value then operand.fraction_bits

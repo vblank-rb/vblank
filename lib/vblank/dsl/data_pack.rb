@@ -32,7 +32,7 @@ module VBlank
       # +count+ tiles of 8x8 pixels in sixteen colours, 32 bytes each.
       def tiles(name, count:, at: nil) = add(Original::Slot.tiles(name, at: at, count: count))
 
-      # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ says whether they can be
+      # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ sets whether they can be
       # below zero.
       def numbers(name, count:, width:, signed:, at: nil)
         add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed))
@@ -70,7 +70,7 @@ module VBlank
     #   image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
     #   table :speeds, pack[:speeds]
     #
-    # The game never holds what a slot holds: a handle says the slot's shape and size, and the verb
+    # The game never holds what a slot holds: a handle gives the slot's shape and size, and the verb
     # given it reads the slot. So nothing the game does while it is built can depend on the
     # original's bytes, and a build that reads the pack only as the game starts takes the same game.
     class DataPack
@@ -110,7 +110,7 @@ module VBlank
     # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
     # left out reads each table from a slot this way, and its unpacking reads the copy this way;
-    # the game must read such a file (`data_pack` with the pack left out says it does).
+    # the game must read such a file (`data_pack` with the pack left out declares it does).
     StartFileEntries = Data.define(:at, :count)
 
     # A HANDLE ON ONE SLOT OF A DATA PACK, or on one tile of a slot of tiles: the slot's layout (an

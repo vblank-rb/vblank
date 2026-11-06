@@ -19,7 +19,7 @@ module VBlank
     # (Console::AdvanceKit::COLOR_SCREEN). It is the same thing to the builder and the checks: the
     # console's description with some of what a game can tell about it changed.
     #
-    # Each console's kit says which variants it has (Kit#variants); most have none. Asking for one
+    # Each console's kit names which variants it has (Kit#variants); most have none. Asking for one
     # a console does not have is refused, naming the ones it does. A build that names none gets the
     # console as it is.
     #

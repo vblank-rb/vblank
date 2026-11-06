@@ -27,15 +27,15 @@ module VBlank
     # key is let go. A bowed or blown one climbs, holds where it is, and stops soon after. Both are
     # these four numbers.
     #
-    # TWO WAYS TO SAY THEM, and they are for two different people.
+    # TWO WAYS TO WRITE THEM, and they are for two different people.
     #
-    # Write a Hash and say it in TIME, which is what somebody writing music means:
+    # Write a Hash and give it in TIME, which is what somebody writing music means:
     #
     #   envelope: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.25 }
     #
     # The three times are in seconds, and +sustain+ is a fraction of full loudness (0.0 silent,
     # 1.0 as loud as the note was asked to be). Everything you leave out stays where it was, so
-    # `envelope: { release: 0.2 }` says the one thing most music needs and nothing else.
+    # `envelope: { release: 0.2 }` sets the one thing most music needs and nothing else.
     #
     # Or build one of these directly and give the four numbers the console's own sound engine
     # keeps, 0 to 255 each:
@@ -197,7 +197,7 @@ module VBlank
       end
 
       # The four numbers the console's own sound engine keeps, 0 to 255 each. A Hash of times is
-      # the other way to say this (see .of), and is what a hand-written song wants.
+      # the other way to write this (see .of), and is what a hand-written song wants.
       def initialize(attack: MOST, decay: 0, sustain: MOST, release: 0)
         { attack: attack, decay: decay, sustain: sustain, release: release }.each do |name, value|
           next if value.is_a?(Integer) && value.between?(0, MOST)
@@ -235,7 +235,7 @@ module VBlank
       end
 
       # The four packed into one word, which is how a sounding voice carries them. Never 0 as a
-      # whole, so a voice can say it has no envelope by holding nothing at all: an envelope that
+      # whole, so a voice can show it has no envelope by holding nothing at all: an envelope that
       # packed to 0 would be a note that never sounds, and #initialize's own floor keeps attack
       # above it.
       def packed = attack | (decay << 8) | (sustain << 16) | (release << 24)

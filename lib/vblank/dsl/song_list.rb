@@ -6,10 +6,10 @@ module VBlank
     #
     #   music = songs :music, [title_theme, file_select, forest]
     #   music.play 0          # the title theme
-    #   music.play track      # whichever one a number the game holds says
+    #   music.play track      # whichever one a number the game holds names
     #   music.stop
     #
-    # Playing works the way `play_song` does: it says which song is playing now, so naming the
+    # Playing works the way `play_song` does: it sets which song is playing now, so naming the
     # one already playing changes nothing, and naming another starts that one from its first
     # note. A number the game works out that names no song leaves the music as it is — the same
     # as `show_map` with a number naming no map.

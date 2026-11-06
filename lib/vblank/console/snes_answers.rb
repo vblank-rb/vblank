@@ -10,7 +10,7 @@ module VBlank
     # the Advance's painted screen (every picture is tiles), a sprite that turns or resizes, more
     # than one layer that turns, and the Advance's square, wave and noise voices.
     #
-    # A GAME SAYS WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba snes]`), and is
+    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba snes]`), and is
     # laid out from `screen_width` and `screen_height` rather than from 240 and 160, so the same
     # game fills each screen.
     #

@@ -120,7 +120,7 @@ module VBlank
       end
 
       # Which column +block+ starts at, which only matters when two start on one line. Ruby can
-      # say, but asking from several Ractors at once crashes or hangs it, since they share the
+      # answer, but asking from several Ractors at once crashes or hangs it, since they share the
       # block's code. A held file lock is the only lock Ractors can share.
       def block_start_column(block)
         File.open(__FILE__) do |file|
@@ -571,7 +571,7 @@ module VBlank
         end
 
         # The same for an instance variable, a slot or an attribute, which any method can read, so
-        # nothing can say it is not read afterwards. A place written some other way than by a plain name
+        # nothing can show it is not read afterwards. A place written some other way than by a plain name
         # and plain keys is left: if it turns out to need following, Writes.write stops the build.
         def place_promotion_text(place, given)
           case place
@@ -804,7 +804,7 @@ module VBlank
 
         def other_side(node) = node.is_a?(Prism::UnlessNode) ? node.else_clause : node.subsequent
 
-        # How a side ends. +kept+ says what its value is for: nothing, the value of the whole
+        # How a side ends. +kept+ marks what its value is for: nothing, the value of the whole
         # conditional, a method's answer (:tail), or the name of a game variable to go straight
         # into, which needs nothing to hold it on the way.
         def side_close_text(answer, kept, body)

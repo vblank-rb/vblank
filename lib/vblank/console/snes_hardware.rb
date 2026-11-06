@@ -119,7 +119,7 @@ module VBlank
       MDMAEN = 0x420B # Start copying on these channels (a bit each)
       HDMAEN = 0x420C # Copy on these channels a line at a time, as the screen is drawn
       MEMSEL = 0x420D # Bit 0: read banks $80-$FF of the cartridge at the faster speed
-      RDNMI = 0x4210 # Reading it says (bit 7) a vertical blank began since it was last read
+      RDNMI = 0x4210 # Reading it shows (bit 7) a vertical blank began since it was last read
       TIMEUP = 0x4211
       HVBJOY = 0x4212 # Bit 7: in the vertical blank; bit 0: the buttons are still being read
       RDIO = 0x4213

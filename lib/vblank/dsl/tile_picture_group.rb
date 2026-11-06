@@ -3,7 +3,7 @@
 module VBlank
   module DSL
     # A GROUP OF TILES TAKING TURNS THROUGH PICTURES HELD IN THE CARTRIDGE, handed back by
-    # `tile_pictures`. A map or a tileset names one of its tiles by `group[:key]`, and `show` says
+    # `tile_pictures`. A map or a tileset names one of its tiles by `group[:key]`, and `show` sets
     # which picture the whole group shows.
     class TilePictureGroup
       attr_reader :name

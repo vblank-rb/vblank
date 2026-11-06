@@ -45,8 +45,8 @@ module VBlank
                   names: names)
       end
 
-      # How to make THIS field hold a fraction: say so in the default it is declared with,
-      # which is the same way a variable says it.
+      # How to make THIS field hold a fraction: declare it in the default it is declared with,
+      # which is the same way a variable declares it.
       def self.fraction_declaration_advice(pool, field)
         lambda { |other|
           "declare the field with one — `pool :#{pool}, #{field}: #{other}` rather than " \

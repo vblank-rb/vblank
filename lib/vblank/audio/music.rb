@@ -161,10 +161,10 @@ module VBlank
       # (PitchSlide#moves?).
       def self.slides_said?(slide, events) = PitchSlide.moves?(slide) || events.any? { |event| PitchSlide.moves?(event[Part::SLIDE_SLOT]) }
 
-      # AN EVENT, OR A LOG ENTRY, IS READ BY POSITION, and what a note did not say is left off the
+      # AN EVENT, OR A LOG ENTRY, IS READ BY POSITION, and what a note did not give is left off the
       # end rather than written as nil — so the shape a note can have costs nothing to a note that
       # has none, and a song written before it existed is what it always was. A nil before
-      # something said stays, to keep its place.
+      # something given stays, to keep its place.
       def self.without_trailing_nils(said)
         said = said.dup
         said.pop while !said.empty? && said.last.nil?
@@ -195,7 +195,7 @@ module VBlank
       # each note's pitch), +wave+ (a timbre for the console's wave voice), +noise+ (the hiss).
       # Naming none of those is the square wave.
       #
-      # THE DEFAULTS ARE HERE, not at the places that read them. +decay+ and +metallic+ say how a
+      # THE DEFAULTS ARE HERE, not at the places that read them. +decay+ and +metallic+ set how a
       # hit fades and whether it rattles, and only a part on the noise voice is ever asked — so
       # every other part carries the answer a drum would have given and nobody looks. That is the
       # trade an optional field makes: one harmless value on every part, against a `|| :fast`
@@ -203,25 +203,25 @@ module VBlank
       # +envelope+ shapes how each of this part's notes starts and ends — read only by a part that
       # plays a recording, since the console's own voices shape their own notes.
       # +fade+ is how they do that: how each note of a part on a square or the noise voice fades
-      # out or swells in by itself (a NoteFade), unless the note says its own. Nil leaves it to the
-      # voice — a drum rings out as +decay+ says, a square note holds (see IR::Tunes.said_fade).
+      # out or swells in by itself (a NoteFade), unless the note sets its own. Nil leaves it to the
+      # voice — a drum rings out as +decay+ sets, a square note holds (see IR::Tunes.said_fade).
       #
       # +slide+ is how each note of the song's first square part slides its pitch by itself (a
-      # PitchSlide), unless the note says its own; nil slides nothing. +vibrato+ is how each note
-      # of a square or wave part wobbles its pitch (a Vibrato), unless the note says its own. +pan+
-      # is the speaker each note plays from (a Pan), unless the note says its own; nil is both.
+      # PitchSlide), unless the note sets its own; nil slides nothing. +vibrato+ is how each note
+      # of a square or wave part wobbles its pitch (a Vibrato), unless the note sets its own. +pan+
+      # is the speaker each note plays from (a Pan), unless the note sets its own; nil is both.
       # +duties+ is a square part's shapes when it gave a list of them to step through (a Duty, whose
       # first is +duty+), and nil when it gave one.
       #
-      # AN EVENT CAN SAY ITS OWN in a sixth place, after the envelope, its own slide in a seventh,
+      # AN EVENT CAN SET ITS OWN in a sixth place, after the envelope, its own slide in a seventh,
       # its own wobble in an eighth, its own side in a ninth and its own shape in a tenth: [frame,
       # frequency, instrument, volume, envelope, fade, slide, vibrato, pan, duty].
       Part = Data.define(:events, :duty, :volume, :instrument, :wave, :noise, :decay, :metallic,
                          :name, :envelope, :fade, :slide, :vibrato, :pan, :duties)
 
       class Part
-        # WHAT A PART CARRIES WHEN IT SAYS NOTHING — every optional field's answer, in one place,
-        # so the declaration and anything asking whether a part actually SAID so (the IR dumper,
+        # WHAT A PART CARRIES WHEN IT SETS NOTHING — every optional field's answer, in one place,
+        # so the declaration and anything asking whether a part actually SET one (the IR dumper,
         # writing a part back as the call that builds it) cannot drift apart. +events+ is not
         # here: a part with no notes in it is a part nobody wrote.
         DEFAULTS = { duty: :half, volume: 12, instrument: nil, wave: nil,
@@ -234,10 +234,10 @@ module VBlank
         # move (Vibrato.refuse_without_pitch!), a side on a recording (Pan.refuse_recorded!), a shape
         # off the square voices (Duty.refuse_off_square!), and a note that both slides and wobbles.
         # +who+ names
-        # the part, as the start of a sentence — a Score says its own, which is its place.
+        # the part, as the start of a sentence — a Score gives its own, which is its place.
         #
         # +shift+ moves every note's pitch higher or lower (a PitchShift), worked into the events
-        # here, so the part carries the pitches it plays and nothing that says how they were moved.
+        # here, so the part carries the pitches it plays and nothing that shows how they were moved.
         def initialize(events:, who: nil, shift: PitchShift::NONE, **said)
           fields = DEFAULTS.merge(said)
           label = who || (fields[:name] ? "The part #{fields[:name].inspect}" : "A part")
@@ -245,7 +245,7 @@ module VBlank
           refuse_unplayable_shapes!(label)
         end
 
-        # Where an event keeps what a note says of its own, after its frame, pitch, instrument,
+        # Where an event keeps what a note sets of its own, after its frame, pitch, instrument,
         # volume and envelope.
         FADE_SLOT = 5
         SLIDE_SLOT = 6
@@ -257,7 +257,7 @@ module VBlank
         # ...and true on a recorded note that carries on the one sounding (Score::Note#glides).
         GLIDE_SLOT = 11
 
-        # Does this part, or a note of it, say a slide?
+        # Does this part, or a note of it, set a slide?
         def slides? = Music.slides_said?(slide, events)
 
         private
@@ -282,7 +282,7 @@ module VBlank
 
         def wobbles? = Vibrato.moves?(vibrato) || events.any? { |event| Vibrato.moves?(event[VIBRATO_SLOT]) }
 
-        # A part built from what its author said it PLAYS — an instrument's name, a wave shape,
+        # A part built from what its author wrote it PLAYS — an instrument's name, a wave shape,
         # :noise, or nothing for the square wave. One reader for that word (Music.resolve_plays),
         # so the two ways a song reaches the IR cannot disagree about which voice a part is on.
         def self.playing(plays, **rest) = new(**rest, **Music.resolve_plays(plays))
@@ -308,12 +308,12 @@ module VBlank
           @volume = 12
           @decay = :fast     # a drum hit, for a part on the noise voice
           @metallic = false  # ...and whether it rattles (a snare, a hat) or thuds (a kick)
-          @fade = nil        # how every note fades or swells, when the part says (a NoteFade)
-          @slide = nil       # how every note slides its pitch, when the part says (a PitchSlide)
-          @vibrato = nil     # how every note wobbles its pitch, when the part says (a Vibrato)
-          @pan = nil         # the speaker every note plays from, when the part says (a Pan)
+          @fade = nil        # how every note fades or swells, when the part sets one (a NoteFade)
+          @slide = nil       # how every note slides its pitch, when the part sets one (a PitchSlide)
+          @vibrato = nil     # how every note wobbles its pitch, when the part sets one (a Vibrato)
+          @pan = nil         # the speaker every note plays from, when the part sets one (a Pan)
           @duties = nil      # the shapes every note steps through, when the part gives a list (a Duty)
-          @transpose = nil   # the semitones every note moves, when the part says (see PitchShift)
+          @transpose = nil   # the semitones every note moves, when the part sets them (see PitchShift)
           @pitch_offset = nil # ...and the voice's pitch steps it moves after that
           @events = []       # [[frame_offset, freq_hz], ...]
           @current_frame = 0
@@ -330,8 +330,8 @@ module VBlank
 
         # HOW FAST EACH NOTE FADES OUT — :fast, :medium, :slow, or :none to hold, or the 64ths of
         # a second each step of loudness lasts (0 to 7). The same words `noise` and `beep` take.
-        # A drum part fades :fast when it says nothing; a square part holds its notes until the
-        # next, like an organ, unless it says how they fade.
+        # A drum part fades :fast when it sets nothing; a square part holds its notes until the
+        # next, like an organ, unless it sets how they fade.
         def decay(d = nil)
           return @decay if d.nil?
 
@@ -377,7 +377,7 @@ module VBlank
         end
 
         # WHICH SPEAKER EACH NOTE PLAYS FROM — :left, :right, or :center for both, which is what a
-        # part that says nothing does. The square parts, the wave part and the drums can.
+        # part that sets nothing does. The square parts, the wave part and the drums can.
         def pan(side)
           @pan = Pan.said(side, where: "The part #{part_label.inspect}")
         end
@@ -407,7 +407,7 @@ module VBlank
         # +swell+ how it fades out or swells in instead of how the part's notes do (see #decay),
         # +slide_up+ or +slide_down+ how it slides its pitch (see #slide_up), +vibrato+ how it
         # wobbles (see #vibrato), +pan+ the speaker it plays from (see #pan), and +duty+ its shape,
-        # or the shapes it steps through (see #duty). A note that says nothing leaves the later slots
+        # or the shapes it steps through (see #duty). A note that sets nothing leaves the later slots
         # off its event (Music.without_trailing_nils).
         def note(pitch, duration, envelope: nil, volume: nil, decay: nil, swell: nil, slide_up: nil, slide_down: nil,
                  vibrato: nil, pan: nil, duty: nil)
@@ -519,13 +519,13 @@ module VBlank
         # Add a part, played alongside the others. Name it for readability; the framework decides
         # which channel it sounds on — you never name a channel.
         #
-        # `plays:` says what the part SOUNDS LIKE, and there are three answers. An instrument's
+        # `plays:` sets what the part SOUNDS LIKE, and there are three answers. An instrument's
         # name (`plays: :piano`) plays that recording at each note's pitch. `plays: :wave` — or a
         # shape, :sine, :triangle, :sawtooth — plays the console's wave voice, which is rounder
         # than a square wave and reaches an octave lower, so it is the pad and the bass.
         # `plays: :noise` plays the hiss, which is the drums: a low note is a kick and a high one
-        # a hat, and the part says how fast a hit fades (`decay`) and whether it rattles
-        # (`metallic`). Say nothing and the part plays the square wave, as it always did.
+        # a hat, and the part sets how fast a hit fades (`decay`) and whether it rattles
+        # (`metallic`). Name none and the part plays the square wave, as it always did.
         #
         # The last two cost NO mixer voice — the console makes those sounds itself — so a busy
         # song reaches for them before it reaches for another recording.

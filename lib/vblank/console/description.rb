@@ -9,7 +9,7 @@ module VBlank
     # build checks and the interpreter read these, so a game is laid out, checked and played for the
     # screen it will be shown on.
     #
-    # It says nothing about HOW the console is driven — register addresses, memory, the processor —
+    # It holds nothing about HOW the console is driven — register addresses, memory, the processor —
     # which is each lowering's own business (Console::Hardware is the Advance's). A program carries
     # the name of the console it was built for, and anything that reads it asks
     # Program#described_console.
@@ -30,8 +30,8 @@ module VBlank
     # pieces eight pixels wide in its table's order, until that way is drawn too.
     # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
-    # where one turns. +bar_is_a_background+ says whether a status bar is one of those layers, or a
-    # layer the console keeps beside them. +turning_sprites+ says whether a sprite can turn and resize.
+    # where one turns. +bar_is_a_background+ marks whether a status bar is one of those layers, or a
+    # layer the console keeps beside them. +turning_sprites+ marks whether a sprite can turn and resize.
     # +sprite_sizes+ is the sizes one sprite of the console is drawn at whole, in pixels across and
     # down, which a picture the game paints from a list has to be; nil where its build draws every
     # sprite's picture in pieces of 8×8, so such a picture can be any size in whole pieces.
@@ -39,15 +39,15 @@ module VBlank
     # in the console's own form (`console_format: true`) holds as they are: eight bytes a plane, a
     # row's two planes side by side and the second pair after the first. nil where the console
     # keeps a tile as a list already holds one, two pixels a byte, so there is nothing to choose.
-    # +blends+ says whether its display can mix colours as it draws —
+    # +blends+ marks whether its display can mix colours as it draws —
     # fade the finished picture, mix one layer into another — rather than only change the colours
-    # in its lists. +fades_by_brightness+ says whether a fade to black is its display's own brightness,
-    # in the sixteen levels Backends::FadeSteps.dimmed says. +mixes_by_half+ says whether, without blending by degrees, it can still show a
+    # in its lists. +fades_by_brightness+ marks whether a fade to black is its display's own brightness,
+    # in the sixteen levels Backends::FadeSteps.dimmed gives. +mixes_by_half+ marks whether, without blending by degrees, it can still show a
     # layer half see-through — the Super Nintendo's colour math adds what is behind a layer to it
     # and halves the sum — which an amount the build rounds to an even half asks for, and nothing
     # else. +list_colors+ is how many places a list of colours holds. +painted_pages+ is
     # how many pictures a tear-free painted screen keeps: two where one is drawn while the other
-    # is shown, one where the console only ever shows a picture whole. +clock_keeps_date+ says
+    # is shown, one where the console only ever shows a picture whole. +clock_keeps_date+ marks
     # whether the clock chip its cartridges carry holds the date and time, or only counts the days
     # and the time of day since it started (IR::Clock). +extension+ ends the name of a cartridge
     # file for it.
@@ -62,11 +62,11 @@ module VBlank
     # which anything that keeps real seconds by counting frames needs. Neither console shows
     # exactly sixty a second. +samples_a_copy+ is how many samples of mixed sound one copy hands
     # the console's sound hardware, which decides the rates a mix can run at
-    # (Console::SampleClock), or nil where the processor hands it no samples. The timer that says when
+    # (Console::SampleClock), or nil where the processor hands it no samples. The timer that marks when
     # the next sample is due counts in +sample_timer_step+ of those cycles at a time, and at most
     # +sample_timer_counts+ of them, so it can only wait a whole number of steps up to that many.
     # +recordings_at_once+ is how many recordings sound together; a play past that is dropped.
-    # +mixes_recordings+ says whether a recording can be shaped (`envelope:`), its loudness moved
+    # +mixes_recordings+ marks whether a recording can be shaped (`envelope:`), its loudness moved
     # sample by sample: the processor adds them up into a stream of its own, or the sound chip's
     # voices do that themselves. One that does neither plays a recording a sample at a time, all
     # or nothing, on a voice of the sound chip. +recording_voice_hz+ is, for a console whose
@@ -87,23 +87,23 @@ module VBlank
     # +work_memory_bytes+ is the memory every variable lives in, +work_memory_kept_bytes+ how much
     # of it the build keeps for itself (the stack, the copy of the sprite table), and
     # +roomier_memory_bytes+ the memory beside it that lists and pools can move to, 0 where there is
-    # none. +variables_go_far+ says the variables can move there too, when the work memory cannot
+    # none. +variables_go_far+ marks that the variables can move there too, when the work memory cannot
     # hold them all: where false, every variable must fit the work memory.
     #
-    # +sprites_placed_before_wait+ says where a game loop's pass places the frame's sprites and
+    # +sprites_placed_before_wait+ marks where a game loop's pass places the frame's sprites and
     # scroll (IR::Frames.loop_in_console_order). A console that writes them straight into its display
     # in the gap between frames places them after the wait, from the pass just ended. One that
     # sends them from a copy as the wait ends places them before it, or they would show a frame
     # later than the pass that moved them.
     #
-    # +changes_cells_while_drawing+ says a pass can write a cell of a background into the display's
+    # +changes_cells_while_drawing+ marks that a pass can write a cell of a background into the display's
     # memory as a frame is drawn, for rows the screen has not reached yet. One whose display locks
     # that memory until the frame is drawn cannot.
     #
-    # +rumbles+ says a game's `rumble` is felt: the cartridge carries a motor the game turns on and
+    # +rumbles+ marks that a game's `rumble` is felt: the cartridge carries a motor the game turns on and
     # off. Where it is not, the verb does nothing, since a game plays the same without it.
     #
-    # +plays_bios_start_up+ says a desktop build plays the console's own start-up before the game
+    # +plays_bios_start_up+ marks that a desktop build plays the console's own start-up before the game
     # (its logo and chime, run from the player's own copy of the console's BIOS, where the player has
     # one: runtime/rg_bios_boot.c). Where it is false the game starts at once, as it always does
     # without the BIOS.
@@ -115,15 +115,15 @@ module VBlank
     # interpreter plays; how the border is drawn is the console's lowering's own business. nil for
     # every console as it is, whose game's screen is the whole screen.
     #
-    # +holds_background_above_row+ says a background can be kept to the rows above a row (`above_row:`),
+    # +holds_background_above_row+ marks that a background can be kept to the rows above a row (`above_row:`),
     # and +glides_recordings+ that a recorded note can carry on at a new pitch (`glides: true`).
     #
-    # +background_box+ says how a background is held to a box the game moves (`show_only_inside`):
+    # +background_box+ sets how a background is held to a box the game moves (`show_only_inside`):
     # :shared_windows where the display's windows do it and the light, a status bar and a fade held
     # to part of the screen use the same windows (the Advance); :own_window where a window does it
     # that nothing else in the game uses (the Super Nintendo); nil where nothing can.
     #
-    # +area_clips_called_routines+ says a routine called from inside `inside` has its drawing held to
+    # +area_clips_called_routines+ marks that a routine called from inside `inside` has its drawing held to
     # that area, as the interpreter holds it: the console's build keeps the area as numbers in memory
     # while the game runs, and every drawing routine reads them, wherever it was built. Where it is
     # false the build works each shape's clipping out from the edges as it writes the shape (the
@@ -161,11 +161,11 @@ module VBlank
       # console whose fill puts the corners on whole pixels first, which can draw such a face's row.
       #
       # +pixel_size+ is how many of the console's pixels across, and as many down, one pixel of the
-      # game's picture is shown as: 1 for a game that says nothing, 2 for a game that draws a picture
+      # game's picture is shown as: 1 for a game that sets nothing, 2 for a game that draws a picture
       # half as wide and half as tall and has the console show each pixel as a square of four
       # (`screen :bitmap, pixel_size: 2`, #with_pixel_size). The screen size above is then the
       # game's small picture, which is what the game lays itself out on and what the interpreter
-      # plays. +shows_bigger_pixels+ says whether the console's hardware can show it that way.
+      # plays. +shows_bigger_pixels+ marks whether the console's hardware can show it that way.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, **rest) = super
 
@@ -219,7 +219,7 @@ module VBlank
       end
 
       # Whether it has a clock to play a recording by: voices that read one, or a timer that hands
-      # the sound samples. A console with neither cannot say how a recording plays yet.
+      # the sound samples. A console with neither cannot give how a recording plays yet.
       def sample_clock? = !recording_voice_hz.nil? || !samples_a_copy.nil?
 
       # Whether any of its backgrounds can turn and resize.
@@ -508,9 +508,9 @@ module VBlank
 
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 
-    # The consoles a game says it is for, as a frozen list of names: one name or a list of them.
+    # The consoles a game names as the ones it is for, as a frozen list of names: one name or a list of them.
     # A name no console has, or no name at all, is refused, since no console is the one a game is
-    # for when it does not say. +setting+ is what the game wrote them in (`consoles:` where the
+    # for when it names none. +setting+ is what the game wrote them in (`consoles:` where the
     # game is named, `t.consoles` in its Rakefile), so both are checked alike and the refusal says
     # which.
     def self.refuse_unknown_consoles!(consoles, setting:)

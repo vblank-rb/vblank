@@ -29,10 +29,10 @@ module VBlank
       # A note that holds at its volume.
       HOLD = fading(0)
 
-      # THE SHAPE A PART OR NOTE SAID, from the two words a song writes it with: +decay+ to fade
+      # THE SHAPE A PART OR NOTE GAVE, from the two words a song writes it with: +decay+ to fade
       # each note out, +swell+ to bring it in. Each is a speed (:fast, :medium, :slow or :none) or
       # the step itself, 0 to 7. Nil when it gave neither, which leaves the note to its voice: a
-      # drum fades as its part says, a square note holds.
+      # drum fades as its part sets, a square note holds.
       def self.said(decay:, swell:, where:)
         return nil if decay.nil? && swell.nil?
         unless decay.nil? || swell.nil?
@@ -52,9 +52,9 @@ module VBlank
       end
       private_class_method :step_of
 
-      # A WHOLE PART'S FADE, from what it said: a part on the noise voice keeps its fade-out as its
+      # A WHOLE PART'S FADE, from what it gave: a part on the noise voice keeps its fade-out as its
       # own `decay`, as a drum always did, so only a swell is a fade of its own there. Every other
-      # part's is what it said.
+      # part's is what it gave.
       def self.for_part(said, drum:) = drum && !said&.swells? ? nil : said
 
       # A recording and the wave voice have no counting of their own to fade a note with: the

@@ -60,7 +60,7 @@ module VBlank
       end
 
       # Record the write that makes +choice+ (a variable, or a pool's field) name what +which+
-      # says: one list, one of a set picked by +showing+, or the sprite's own colours.
+      # names: one list, one of a set picked by +showing+, or the sprite's own colours.
       def draw_with(choice, which, showing)
         write_choice(choice, requested_lists!(which, showing), showing)
       end
@@ -125,8 +125,8 @@ module VBlank
       # DRAWN WITH THE CHANGING LIST +name+ FOR GOOD, when that is what the game wrote: a single
       # sprite only ever told `draw_with name`, never `:own` or another list, and its pictures
       # drawn in +name+'s own colours (+drawn_in_list+ asks that of a picture). Its colours are
-      # then the list's whatever the game says when, so it is told so from power-on (its choice
-      # set at boot), and each object says which list it follows: a target whose sprites and
+      # then the list's whatever the game sets when, so it is told so from power-on (its choice
+      # set at boot), and each object names which list it follows: a target whose sprites and
       # backgrounds share one table of colours keeps no place in it for the sprite's own
       # colours, which are the list's. Anything else drawn with the list is left as it was.
       #

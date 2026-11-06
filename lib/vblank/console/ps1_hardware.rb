@@ -9,7 +9,7 @@ module VBlank
     # THE PROCESSOR IS A MIPS R3000A, AND IT IS LITTLE-ENDIAN like the Advance's: a number's low byte
     # is at the lower address. It sees 4 gigabytes of addresses, and the console's memory is in them
     # three times over: from 00000000h, from 80000000h (KSEG0, through the instruction cache, where
-    # code runs) and from A0000000h (KSEG1, never cached). The low 29 bits say which byte it is.
+    # code runs) and from A0000000h (KSEG1, never cached). The low 29 bits give which byte it is.
     #
     #   80000000h-801FFFFFh  main RAM, 2 megabytes. The first 64K belong to the BIOS's kernel, and a
     #                        program (a PS-X EXE) is loaded at 80010000h by convention.
@@ -70,8 +70,8 @@ module VBlank
       SPU_CONTROL = 0x1F80_1DAA
       # The second of the three timers: its count, 16 bits that turn round, and how it counts. Told to
       # count the ends of lines (TIMER1_COUNTS_LINES, the clock source bits set to the horizontal
-      # retrace) and never to stop or start again, it says how many lines the screen has drawn, so two
-      # readings say how many lines went by between them (psx-spx, "Timers").
+      # retrace) and never to stop or start again, it counts how many lines the screen has drawn, so two
+      # readings show how many lines went by between them (psx-spx, "Timers").
       TIMER1_COUNT = 0x1F80_1110
       TIMER1_MODE = 0x1F80_1114
       TIMER1_COUNTS_LINES = 0x0100

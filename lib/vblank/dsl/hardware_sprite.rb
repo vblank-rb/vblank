@@ -273,7 +273,7 @@ module VBlank
       # at run time).
       #
       #   ship.face_angle 90        # point to the right
-      #   ship.face_angle aim       # point the way `aim` says
+      #   ship.face_angle aim       # point the way `aim` holds
       #
       # The first turn makes this a rotating sprite; one that never turns draws upright and
       # costs nothing extra. The angle wraps, so 370 is the same as 10, and -90 the same as
@@ -316,7 +316,7 @@ module VBlank
       # when you collect it, an enemy that shrinks into the distance.
       #
       #   coin.scale 1.6                 # half again as big
-      #   coin.scale size                # whatever `size` says this frame
+      #   coin.scale size                # whatever `size` holds this frame
       #   coin.scale.approach! 1.0, 0.05  # ease it back down to normal
       #
       # With no argument it hands back the size as a {Value} you can read, compare and

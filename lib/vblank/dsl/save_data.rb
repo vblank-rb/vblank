@@ -26,7 +26,7 @@ module VBlank
 
       # Add to what the record keeps: variables and lists, after the ones it already keeps.
       # Written by the code that owns them, anywhere in the program — so a file screen can be
-      # declared first and use the record, and the gameplay declared after it says what goes in.
+      # declared first and use the record, and the gameplay declared after it names what goes in.
       # The order things are kept in is the record's shape, and a save made with another shape
       # reads as empty.
       def keep(*things)

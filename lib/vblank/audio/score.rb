@@ -17,7 +17,7 @@ module VBlank
     # TIME IS COUNTED IN TICKS, the way sequenced music is stored everywhere: a beat is
     # +ticks_per_beat+ of them, and the tempo is how many beats a minute. The framework turns
     # ticks into frames once, when the game is built — so a decoder hands over what its format
-    # says and never does the sum. The tempo can change as the song goes:
+    # holds and never does the sum. The tempo can change as the song goes:
     # `tempo: [[0, 120], [960, 140]]` is 120 from the start and 140 from tick 960.
     #
     # A PART is one line of music: a note at a time, each lasting until the next one starts or
@@ -29,22 +29,22 @@ module VBlank
     # change from a square wave to a recording halfway through: it plays one or the other. A note
     # on the noise voice can give `hz:` instead of a key, for a hiss faster than any key reaches.
     #
-    # A SONG WITH AN INTRODUCTION says where its loop starts: `loop_from: 384` plays the first 384
+    # A SONG WITH AN INTRODUCTION sets where its loop starts: `loop_from: 384` plays the first 384
     # ticks once, then everything from there to the end over and over. Without it, the whole song
     # repeats.
     #
-    # A SONG THAT ENDS says `plays_once: true`: at its end its parts go quiet and it is not heard
+    # A SONG THAT ENDS sets `plays_once: true`: at its end its parts go quiet and it is not heard
     # again until the game stops the music and names it, or names another song first. Music
     # decoded off a cartridge knows which kind each song is, since a track there ends either with
     # a mark that sends it back or with one that stops it. A sound effect plays once whatever
-    # this says.
+    # this sets.
     #
     # PRIORITY decides who sounds when a sound effect and the song, or two sound effects, want
     # the same one of the console's voices at once: the higher number takes it (see
     # IR::Tunes.song_rank). A cartridge's own sound engine carries one on every sequence, so a decoder
     # hands it straight over.
     #
-    # A GROUP says which sound effects cut each other off: effects with the same +group+ play one at
+    # A GROUP sets which sound effects cut each other off: effects with the same +group+ play one at
     # a time, the way a character has one voice. Asked for while another of its group sounds, an
     # effect of at least that priority stops it and starts; one of lower priority is not played. A
     # cartridge's engine plays each effect on one of a few players, and the player is the group.
@@ -53,13 +53,13 @@ module VBlank
     # under C2, and plays a lower note AT 64 Hz; the build warns about such a note, because in music
     # written by hand it is a mistake. A cartridge's own sound engine does the same before the
     # console sees the note, so music decoded off one plays exactly what the original did, and
-    # `low_notes_intended: true` says so: the warning is left out for this Score alone. The sound
+    # `low_notes_intended: true` marks that: the warning is left out for this Score alone. The sound
     # does not change — the note is played at the bottom either way.
     #
     # A SOUND EFFECT THAT KEEPS ITS VOICES. A rest or a note at volume 0 gives its voice to the song
     # at once. `keeps_voices: true` on an effect's Score holds each voice it has taken through such a
     # silence until the effect ends, the way a cartridge's own sound engine can, so a song note
-    # falling in that silence is lost. It says nothing of a song.
+    # falling in that silence is lost. It means nothing for a song.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
                         :low_notes_intended, :keeps_voices)
 
@@ -109,13 +109,13 @@ module VBlank
 
       class Part
         # +decay+ is how fast each note fades out, and +swell+ how fast it swells in, as a `song`
-        # block's part says them (Music::VoiceContext#decay): a speed, or the step itself, 0 to 7.
-        # A part on the noise voice (`plays: :noise`) that says nothing rings out :fast; a square
-        # part that says nothing holds each note until the next. +metallic+ is the noise voice's
+        # block's part sets them (Music::VoiceContext#decay): a speed, or the step itself, 0 to 7.
+        # A part on the noise voice (`plays: :noise`) that sets nothing rings out :fast; a square
+        # part that sets nothing holds each note until the next. +metallic+ is the noise voice's
         # alone: whether a hit rattles or thuds.
         #
         # +slide_up+ and +slide_down+ are how each note slides its pitch, as a song block's part
-        # says them (Music::VoiceContext#slide_up), and only the song's first square part can.
+        # sets them (Music::VoiceContext#slide_up), and only the song's first square part can.
         # +vibrato+ is how each note wobbles its pitch, :none or { depth:, speed:, after: } with the
         # wait in frames (Audio::Vibrato.said), and the square parts and the wave part can. +pan+ is
         # the speaker each note plays from, :left, :right or :center (Audio::Pan.said), and every
@@ -126,7 +126,7 @@ module VBlank
         # offset.
         #
         # +envelope+ shapes how each of this part's notes starts and ends — read only by a part
-        # that plays a recording, since the console's own voices shape their own. A part that says
+        # that plays a recording, since the console's own voices shape their own. A part that sets
         # nothing takes whatever the instrument it plays was declared with.
         def initialize(notes:, plays: nil, volume: 12, duty: :half, decay: nil, swell: nil, metallic: false,
                        envelope: nil, slide_up: nil, slide_down: nil, vibrato: nil, pan: nil, transpose: nil,
@@ -166,10 +166,10 @@ module VBlank
         # number the voice itself is tuned by, 0 to 2047, where each step up makes a wave a tick of
         # the voice's clock shorter (the same steps a part's `pitch_offset` counts). Another Game Boy
         # game's music engine keeps a table of these, and its notes are often a step away from the
-        # pitch a key comes to, so a song converted from it says the number to sound the same.
+        # pitch a key comes to, so a song converted from it gives the number to sound the same.
         #
         # A NOTE ON THE NOISE VOICE CAN GIVE +hz+ IN PLACE OF A KEY: how many times a second its
-        # hiss steps. A key cannot say most of them. The voice steps up to 524,288 times a second,
+        # hiss steps. A key cannot name most of them. The voice steps up to 524,288 times a second,
         # and the highest MIDI key is 12,543 Hz — so a drum that wants a thin, fast hiss, which is
         # most drums another game's sound engine plays, has no key to ask for it with. The voice
         # still plays the rung of its ladder nearest the rate (Sound.noise_rung), as it does for a
@@ -181,7 +181,7 @@ module VBlank
         # is told the setting itself is told this one, as the game the song came from told it.
         #
         # A NOTE ON A RECORDING CAN GIVE +hz+ IN PLACE OF A KEY too, for a pitch no key reaches: the
-        # recording's own note, as a frequency, reads it at the rate it was recorded. And it can say
+        # recording's own note, as a frequency, reads it at the rate it was recorded. And it can set
         # +glides: true+: it does not strike. The note sounding on its part carries on from where
         # it has got to, fading as it was, at this pitch from here. If the part has no note sounding
         # by then, nothing sounds.
@@ -191,22 +191,22 @@ module VBlank
           super
         end
 
-        # How this note fades or swells, when it says (an Audio::NoteFade), or nil. +part+ names its
+        # How this note fades or swells, when it sets one (an Audio::NoteFade), or nil. +part+ names its
         # part, for a friendly error.
         def fade(part) = NoteFade.said(decay: decay, swell: swell, where: "The note at tick #{at} of #{part.downcase}")
 
-        # How this note slides its pitch, when it says (an Audio::PitchSlide), or nil.
+        # How this note slides its pitch, when it sets one (an Audio::PitchSlide), or nil.
         def slide(part)
           PitchSlide.said(up: slide_up, down: slide_down, where: "The note at tick #{at} of #{part.downcase}")
         end
 
-        # How this note wobbles its pitch, when it says (an Audio::Vibrato), or nil.
+        # How this note wobbles its pitch, when it sets one (an Audio::Vibrato), or nil.
         def wobble(part) = Vibrato.said(vibrato, where: "The note at tick #{at} of #{part.downcase}")
 
-        # The speaker this note plays from, when it says (an Audio::Pan), or nil.
+        # The speaker this note plays from, when it sets one (an Audio::Pan), or nil.
         def side(part) = Pan.said(pan, where: "The note at tick #{at} of #{part.downcase}")
 
-        # This note's shape, or the shapes it steps through, when it says (an Audio::Duty), or nil.
+        # This note's shape, or the shapes it steps through, when it sets them (an Audio::Duty), or nil.
         def shape(part) = Duty.said(duty, where: "The note at tick #{at} of #{part.downcase}")
 
         # How high the note is, in Hz — 0 for a rest. A note that gives +hz+ is that; a MIDI note
@@ -317,7 +317,7 @@ module VBlank
                                "ends, and does not loop. Remove one of them."
         end
 
-        # A word a Score says with true or false.
+        # A word a Score sets with true or false.
         def true_or_false!(word, said)
           return if [true, false].include?(said)
 
@@ -410,8 +410,8 @@ module VBlank
         NOISE_CLOCK_HZ_TEXT = Ractor.make_shareable(Sound::NOISE_CLOCK_HZ.digits.each_slice(3).map(&:join)
                                                                          .join(",").reverse)
 
-        # A note that says +glides+ plays a recording and has a pitch to glide to. Everything else
-        # about the note it carries on is that note's, so it says nothing else: an instrument, a
+        # A note that sets +glides+ plays a recording and has a pitch to glide to. Everything else
+        # about the note it carries on is that note's, so it sets nothing else: an instrument, a
         # volume or a shape here would have nothing to act on.
         def refuse_bad_glide!(note, where, voice)
           unless [true, false].include?(note.glides)

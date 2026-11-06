@@ -114,8 +114,8 @@ module VBlank
 
       private
 
-      # How to declare this kind of place so that it holds a fraction. A variable says it
-      # with its starting value; a list and a pool field say it their own way.
+      # How to declare this kind of place so that it holds a fraction. A variable declares it
+      # with its starting value; a list and a pool field declare it their own way.
       def declaring_advice(other)
         return @declaring.call(other) if @declaring
 

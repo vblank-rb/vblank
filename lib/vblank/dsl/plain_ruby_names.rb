@@ -81,7 +81,7 @@ module VBlank
           def plain_name? = parameter? || !variable?
 
           # Does this name hold nil, or both a number and true or false? One kept number cannot
-          # say which of those it is.
+          # show which of those it is.
           def keeps_truth?
             kinds = @writes.map { |write| LocalNames.kind_written(write.node) }
             return false if holds_only_yes_or_no?(kinds)
@@ -121,7 +121,7 @@ module VBlank
              Prism::NilNode].include?(write.value.class)
         end
 
-        # What a write says it gives a name. Only a value written out can say, so a name given
+        # What a write shows it gives a name. Only a value written out can show it, so a name given
         # another name is left to what it starts as.
         def self.kind_written(write)
           return unless write.is_a?(Prism::LocalVariableWriteNode)
@@ -133,7 +133,7 @@ module VBlank
           end
         end
 
-        # A number written out, or something only running the line can say is one: `state = PLAYING`,
+        # A number written out, or something only running the line can show is one: `state = PLAYING`,
         # `x = WIDTH / 2`. See Rewriter#declaration.
         def self.starts_from_value?(write)
           number?(write) || (write.is_a?(Prism::LocalVariableWriteNode) && made_of_constants?(write.value))
@@ -261,7 +261,7 @@ module VBlank
         private
 
         # The places +node+ reads: a local, an instance variable, or one slot or attribute of one,
-        # `ball[:hp]` or `hero.x`, as written. A change to `ball[:x]` says nothing about `ball[:hp]`.
+        # `ball[:hp]` or `hero.x`, as written. A change to `ball[:x]` is no change to `ball[:hp]`.
         def names_read_by(node)
           return [name_key(node)] if NAMES.any? { |kind| node.is_a?(kind) }
           return [[name_key(node.receiver), node.slice]] if place_read?(node)

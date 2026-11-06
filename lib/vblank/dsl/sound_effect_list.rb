@@ -7,7 +7,7 @@ module VBlank
     #
     #   sfx = sound_effects :sfx, { hit: HIT, spark: SPARK }
     #   sfx.play :hit
-    #   sfx.play which        # whichever one a number the game holds says
+    #   sfx.play which        # whichever one a number the game holds names
     #
     # Each plays once, over the song that is playing, from the frame after it is asked for. Asked
     # for again while it is still sounding, it starts again from its first note. A number the game

@@ -18,8 +18,8 @@ module VBlank
     # step, the way a game counting its own passes steps its effects. `once_a_frame` is the
     # other one, for an effect timed in real time.
     class PassJob
-      # Built by Builder#each_pass: the routine that takes one step, the variable that says
-      # whether the job is running, 1 or 0, and the one that says whether a step is being taken
+      # Built by Builder#each_pass: the routine that takes one step, the variable that holds
+      # whether the job is running, 1 or 0, and the one that holds whether a step is being taken
       # right now.
       def initialize(builder, routine:, running:, stepping:)
         @builder = builder

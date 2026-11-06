@@ -3,7 +3,7 @@
 module VBlank
   module DSL
     # A SCENE'S SPRITE PICTURES IN GROUPS, handed back by `picture_groups`: a room's things,
-    # in a scene made of many rooms. The game says which groups are up with #show, from
+    # in a scene made of many rooms. The game sets which groups are up with #show, from
     # numbers it works out — the room it is in, and the room beside while the screen slides.
     class PictureGroups
       attr_reader :name
@@ -15,7 +15,7 @@ module VBlank
         @slots = slots
       end
 
-      # Say which groups are up from now on:
+      # Set which groups are up from now on:
       #
       #   rooms.show here            # one group up
       #   rooms.show here, beside    # two, while the screen slides from one room to the next
