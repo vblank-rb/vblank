@@ -4,8 +4,9 @@ require "json"
 
 module VBlank
   module Network
-    # A RELAY IN RUBY, standing in for the real one in the tests (the real one is a Cloudflare Worker in
-    # another repository). It does what docs/network/protocol.md says and nothing else: it makes a room
+    # A RELAY IN RUBY, standing in for the real one in the tests. The real relay is another program
+    # that VBlank knows only by its address and what it says on the wire: nothing here assumes how or
+    # where it runs. This one does what docs/network/protocol.md says and nothing else: it makes a room
     # with a code, puts machines in rooms, and hands each message of a machine to the other machines of
     # its room, with the sender's number added. It never runs the game and never reads the buttons: it
     # reads only the JSON object's +type+, to tell its own messages from a match's, and +v+, for the version.
