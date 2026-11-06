@@ -30,10 +30,7 @@ module VBlank
 
       # The files drawn, out of how many there were to draw from, and the seed that drew them.
       Draw = Data.define(:files, :drawn_from, :seed) do
-        def message
-          "The golden path drew #{files.size} of #{drawn_from} more test files at random. " \
-            "To play the same ones again, set #{SEED_SETTING}=#{seed}."
-        end
+        def message = "Golden: #{files.size} of #{drawn_from} other files at random (#{SEED_SETTING}=#{seed} to repeat)"
       end
 
       module_function

@@ -947,8 +947,7 @@ module VBlank
       # The game moves on one frame for each picture, so the pictures a second are its speed. A
       # game that stopped itself before its first picture has no speed to say.
       if rate.passes.positive?
-        say format("Showed %<pictures>d pictures in %<seconds>.1f seconds, %<per_second>.1f a second. " \
-                   "The console shows %<console>.1f a second.",
+        say format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
                    pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
                    console: 1 / program.described_console.frame_seconds)
       end
@@ -1615,7 +1614,8 @@ module VBlank
     end
 
     def refuse_one_output_for_two_consoles!(game)
-      raise Thor::Error, "--output names one file, and #{consoles_choice_message(game, 'write', game.consoles)}"
+      raise Thor::Error, "--output writes one file, but #{game.title} builds for #{game.consoles.size} consoles " \
+                         "(#{game.consoles.join(', ')}). Add --console to pick one."
     end
 
     # The console a command that runs one cartridge runs +game+ on: the one --console names, or the
@@ -1779,7 +1779,7 @@ module VBlank
     def placement_line(rom)
       placement = rom.placement
       routines = placement.funcs.length
-      format("Quick memory: %d routine%s (%.1fK), %.1fK of 32K free",
+      format("#{VBlank::Messages::PlainWords::QUICK_MEMORY.capitalize}: %d routine%s, %.1f KB; %.1f KB of 32 KB free",
              routines, routines == 1 ? "" : "s",
              placement.code_bytes / 1024.0, placement.free_bytes / 1024.0)
     end

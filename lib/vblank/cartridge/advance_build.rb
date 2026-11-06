@@ -63,7 +63,7 @@ module VBlank
         # because the decision does not exist until the build has made it. Its findings join the
         # ones from the first pass and print together at the end.
         unless evaluated.debug_halted?
-          request.progress.step("the guardrails that need the build")
+          request.progress.step("Checking the build for mistakes")
           checks = IR::Guardrails.build_checks(record.placement)
           priced = IR::Guardrails::Validator.new(checks: checks, progress: request.progress)
                                             .run(program, autofix: false)
@@ -72,7 +72,7 @@ module VBlank
         # The findings ride on the record too, so a report asked for as data carries them.
         record = record.with(findings: request.findings.findings) if request.findings
 
-        request.progress.step("assembling the cartridge")
+        request.progress.step("Assembling cartridge")
         # The cartridge carries what the build worked out about it — the program it came from,
         # which routines went in the console's quick memory, where the variables landed, and so
         # on — so that a finished ROM can report on itself (see BuildRecord and rom.profile).

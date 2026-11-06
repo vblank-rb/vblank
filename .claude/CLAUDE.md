@@ -519,6 +519,14 @@ strings the user reads. It does **not** apply to code comments — those stay
 conversational and explain the hardware generously (see above). The friendly,
 teaching tone stays; the skill only makes it clear and consistent.
 
+**How often a line is seen decides how long it is.** A line printed on every build or run
+(a progress phase, a summary at the end) is a terse status line that starts with a capital
+and reads like a label: `Compiling`, `Checking for mistakes  63/63`,
+`600 frames in 10.0 s (60.0 fps; the console shows 59.7)`. One name and one unit spelling
+per thing (`quick memory`, `KB`). A simple usage mistake gets a short message saying what to
+add. A mistake that would otherwise be a silent black screen keeps its full, friendly
+explanation, and leads with what went wrong and where.
+
 ### Claude Memory
 - Don't use it, period. Material knowledge for VBlank goes in code comments
 - Code style should be Rubocop or similar

@@ -77,7 +77,7 @@ class TestGameSuite < Minitest::Test
       out, passed, = rake("test:golden", env: { "CONSOLE" => "gba", "GAME_SUITE_GOLDEN_SAMPLE" => "1" }, game: game)
 
       assert passed, out
-      assert_match(/drew 1 of 1 more test files at random.*GOLDEN_SEED=\d+/, out)
+      assert_match(/Golden: 1 of 1 other files at random \(GOLDEN_SEED=\d+ to repeat\)/, out)
       assert_match(/\b3 runs\b/, out, "the walker's two tests and the drawn cartridge test")
     end
   end
@@ -87,7 +87,7 @@ class TestGameSuite < Minitest::Test
       out, passed, = rake("test:golden", env: { "CONSOLE" => "gba", "GAME_SUITE_GOLDEN_SAMPLE" => "0" }, game: game)
 
       assert passed, out
-      assert_match(/drew 0 of 1/, out)
+      assert_match(/Golden: 0 of 1 other/, out)
       assert_match(/\b2 runs\b/, out, "the walker's two tests alone")
     end
   end

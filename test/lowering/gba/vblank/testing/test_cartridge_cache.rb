@@ -147,7 +147,7 @@ class TestCartridgeCache < Minitest::Test
 
       cache.report(out)
 
-      assert_match(/Build cache: 1 hits, 2 misses \(working out the keys took \d+\.\d s\)/, out.string)
+      assert_match(/Build cache: 1 hits, 2 misses \(keys \d+\.\d s\)/, out.string)
       assert_match(/miss +\d+\.\d s  not cached yet +DOT gba/, out.string)
       assert_match(/miss +\d+\.\d s  an extra input changed +DOT gba/, out.string)
       assert_match(/hits saved about \d+ s of building/, out.string)

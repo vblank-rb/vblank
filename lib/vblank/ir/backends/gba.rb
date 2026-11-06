@@ -916,7 +916,7 @@ module VBlank
           # The throwaway measuring pass keeps the phase its caller named, since from the
           # outside it IS that phase — it is not lowering the program, it is finding out how
           # big the routines come out.
-          @progress.step("lowering it to machine code") if fast_funcs.nil?
+          @progress.step("Compiling") if fast_funcs.nil?
           # Nothing counted so far belongs to this pass. A backend lowered twice reports what
           # it emitted the second time, not the two runs added together.
           @attribution.reset

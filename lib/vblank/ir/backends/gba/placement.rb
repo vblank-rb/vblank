@@ -333,14 +333,14 @@ module VBlank
           # a different measurement — of the program with some collections moved out, or some
           # variables moved nearer — so a build that says the same words twice looks as if it ran
           # a phase twice by mistake.
-          MEASURING_AFTER = { lists: "measuring again, collections moved out",
-                              scene_blocks: "measuring again, each scene's loop work its own routine",
-                              variables: "measuring again, variables moved nearer" }.freeze
+          MEASURING_AFTER = { lists: "Measuring again, collections moved out",
+                              scene_blocks: "Measuring again, scene loops split out",
+                              variables: "Measuring again, variables moved nearer" }.freeze
 
-          def measuring_phase_name = MEASURING_AFTER.fetch(@measuring_after, "measuring the routines")
+          def measuring_phase_name = MEASURING_AFTER.fetch(@measuring_after, "Measuring routines")
 
           def choosing_phase_name
-            @measuring_after ? "choosing again" : "choosing what goes in the quick memory"
+            @measuring_after ? "Placing routines again" : "Placing routines in #{Messages::PlainWords::QUICK_MEMORY}"
           end
 
           # The variables the routine +name+ names, read off this pass.

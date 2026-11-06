@@ -74,7 +74,7 @@ class TestCommandLineRun < Minitest::Test
       assert_match(/\ANo window\b.*Ruby #{Regexp.escape(RUBY_VERSION)}, with YJIT.*--window/o, out.lines.first)
       assert_operator out.index("Building WALKER"), :<, out.index("Played"), "it says it builds before it plays"
       assert_match(/^  playing from power-on +[\d.]+s +frame 10$/, out)
-      assert_match(/^  playing on from the moment standing +[\d.]+s +frame 30$/, out)
+      assert_match(/^  Playing on from standing +[\d.]+s +frame 30$/, out)
       assert_match(/Played 60 frames of "walk" on WALKER\./, out)
       assert_match(/standing +frame 10$/, out)
       assert_match(/walked +frame 30$/, out)

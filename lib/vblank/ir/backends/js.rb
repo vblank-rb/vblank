@@ -243,7 +243,7 @@ module VBlank
         def write_output(game, path, console:, settings:, data:, err:, progress:)
           refuse_folder!(path)
           program = checked_program(game, console: console, settings: settings, err: err, progress: progress)
-          progress.step("the game as JavaScript")
+          progress.step("Writing JavaScript")
           text, data_file = factory_and_data_file(program, title: game.title, data: data, menu: game.menu?)
           File.write(path, yield(text, data_file, program.described_console))
           File.binwrite(File.join(File.dirname(path), data_file_name(path)), data_file) if data_file

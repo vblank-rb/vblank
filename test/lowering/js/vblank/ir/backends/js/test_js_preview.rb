@@ -159,7 +159,7 @@ class TestJSPreview < Minitest::Test
         end
         assert_match(/<title>SLOW<\/title>/, page.value.body.force_encoding(Encoding::UTF_8))
       end
-      assert_match(/Building game\.rb\n.*the guardrails.*\nBuilt game\.rb\n/m, said.string, "the build's progress comes between the two")
+      assert_match(/Building game\.rb\n.*Checking for mistakes.*\nBuilt game\.rb\n/m, said.string, "the build's progress comes between the two")
       refute_includes said.string, "vblank-preview", "the folder a page is built in is nobody's business"
     end
   end

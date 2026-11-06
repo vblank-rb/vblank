@@ -87,7 +87,7 @@ class TestProgress < Minitest::Test
       halt
     end
 
-    refute_match(/lowering|the guardrails|checking the tree/, err.string,
+    refute_match(/Compiling|Checking for mistakes|Checking program/, err.string,
                  "a build that did not ask for progress should not talk about itself")
   end
 
@@ -119,14 +119,17 @@ class TestProgress < Minitest::Test
     assert_match(/lowering\s+41\.0s/, out.string)
   end
 
+  # While it runs the line names what it is working on, so a slow phase says which; the line it
+  # leaves says only the count.
   def test_a_countable_phase_says_where_it_got_to
     out = a_terminal
-    progress = Progress::Printed.new(out, clock: FakeClock.new)
-    progress.step("the guardrails")
+    progress = Progress::Printed.new(out, clock: FakeClock.new, refresh: 0)
+    progress.step("Checking for mistakes")
     progress.report_count(27, 27, "IwramBudget")
     progress.done
 
-    assert_match(/the guardrails.*27 of 27\s+IwramBudget/, out.string)
+    assert_match(%r{Checking for mistakes.*27/27\s+IwramBudget}, out.string)
+    assert_match(%r{27/27\s*\n\z}, out.string)
   end
 
   # --- A PHASE THAT REPORTS TENS OF THOUSANDS OF TIMES -----------------------------------------
@@ -298,7 +301,7 @@ class TestProgress < Minitest::Test
     said = phases_in(out).find { |phase| phase.name == "laying out the rows" }
 
     refute_nil said, "the pack's phase should be among the build's own"
-    assert_equal "4 of 4  row 3", said.where
+    assert_equal "4/4", said.where
   end
 
   # ...and what a pack SAYS may never change what it BUILDS. Progress is an observation: a pack
@@ -324,17 +327,17 @@ class TestProgress < Minitest::Test
       halt
     end
 
-    assert_equal "3 of 3  floor 2",
+    assert_equal "3/3",
                  phases_in(out).find { |phase| phase.name == "reading the floors" }.where
   end
 
   # --- THROUGH A REAL BUILD --------------------------------------------------------------------
 
   def test_a_real_build_names_every_phase_in_order
-    assert_equal ["reading the game", "checking the tree", "the guardrails",
-                  "measuring the routines", "choosing what goes in the quick memory",
-                  "lowering it to machine code", "the guardrails that need the build",
-                  "assembling the cartridge"],
+    assert_equal ["Reading game", "Checking program", "Checking for mistakes",
+                  "Measuring routines", "Placing routines in quick memory",
+                  "Compiling", "Checking the build for mistakes",
+                  "Assembling cartridge"],
                  phases_of_a_build.map(&:name)
   end
 
@@ -343,8 +346,8 @@ class TestProgress < Minitest::Test
   def test_the_counted_phases_count_all_the_way_up
     where = where_each_phase_got_to
 
-    assert_match(/\A(\d+) of \1\b/, where["the guardrails"])
-    assert_match(/\A(\d+) of \1\b/, where["choosing what goes in the quick memory"])
+    assert_match(%r{\A(\d+)/\1\z}, where["Checking for mistakes"])
+    assert_match(%r{\A(\d+)/\1\z}, where["Placing routines in quick memory"])
   end
 
   # ...and the two with no count say how far they got the only way they honestly can: nothing
@@ -352,16 +355,16 @@ class TestProgress < Minitest::Test
   def test_the_uncounted_phases_report_the_code_they_have_emitted
     where = where_each_phase_got_to
 
-    assert_match(/\A\d+ bytes\z/, where["lowering it to machine code"])
-    assert_match(/\A\d+ bytes\z/, where["measuring the routines"])
+    assert_match(/\A\d+ bytes\z/, where["Compiling"])
+    assert_match(/\A\d+ bytes\z/, where["Measuring routines"])
   end
 
   # The guardrails are a list of checks, so the phase can name the one it is on — which is the
   # answer to "why are the guardrails the slow part of my build".
   def test_the_guardrail_phase_names_the_check_it_is_on
-    out = StringIO.new
-    progress = Progress.to(out)
-    progress.step("the guardrails")
+    out = a_terminal
+    progress = Progress::Printed.new(out, clock: FakeClock.new, refresh: 0)
+    progress.step("Checking for mistakes")
     checks = [VBlank::IR::Guardrails::Checks::Termination.new,
               VBlank::IR::Guardrails::Checks::IwramBudget.new]
     VBlank::IR::Guardrails::Validator.new(checks: checks, progress: progress)
@@ -370,8 +373,10 @@ class TestProgress < Minitest::Test
 
     # ...and named the way a person hears it, from the name the check declares for itself. Its
     # identifier is `iwram_budget`, which is the console's quick memory said in hardware, and
-    # spelling that out is what the progress line used to do.
-    assert_equal "2 of 2  the quick memory budget", phases_in(out).first.where
+    # spelling that out is what the progress line used to do. The line the phase leaves says the
+    # count alone.
+    assert_match(%r{2/2  the quick memory budget}, out.string)
+    assert_match(%r{2/2\s*\n\z}, out.string)
   end
 
   # A build that dies half way through a phase still closes its line, so the message explaining
@@ -387,7 +392,7 @@ class TestProgress < Minitest::Test
       end
     end
 
-    assert_equal "the guardrails", phases_in(out).last.name
+    assert_equal "Checking for mistakes", phases_in(out).last.name
   end
 
   # WHAT THE GUARDRAILS FOUND IS SAID AFTER THE BUILD, not in the middle of it. A paragraph of
@@ -419,28 +424,28 @@ class TestProgress < Minitest::Test
     game.build_rom(out: StringIO.new, err: StringIO.new, progress: Progress.to(out))
     phases = phases_in(out)
 
-    assert_equal ["a first build, to measure", "playing each scene to measure it", "reading the game",
-                  "checking the tree", "the guardrails", "measuring the routines",
-                  "choosing what goes in the quick memory", "lowering it to machine code",
-                  "the guardrails that need the build", "assembling the cartridge"],
+    assert_equal ["Building once to measure", "Measuring each scene", "Reading game",
+                  "Checking program", "Checking for mistakes", "Measuring routines",
+                  "Placing routines in quick memory", "Compiling",
+                  "Checking the build for mistakes", "Assembling cartridge"],
                  phases.map(&:name)
     assert_equal "", phases[0].where, "the first build's line ends saying only how long it took"
-    assert_equal "1 of 1  the game", phases[1].where, "the playing counts the scenes"
+    assert_equal "1/1", phases[1].where, "the playing counts the scenes"
   end
 
   # A phase made of phases: what it is doing now is its line's detail, and nothing else is said.
   def test_a_phase_made_of_phases_is_one_line
     out = StringIO.new
     progress = Progress::Printed.new(out, clock: FakeClock.new)
-    inner = progress.as_one_line("a first build, to measure")
-    inner.step("reading the game")
+    inner = progress.as_one_line("Building once to measure")
+    inner.step("Reading game")
     inner.report_count(3, 7, "a check")
-    inner.step("lowering it to machine code")
+    inner.step("Compiling")
     inner.done
-    progress.step("reading the game")
+    progress.step("Reading game")
     progress.done
 
-    assert_equal ["a first build, to measure", "reading the game"], phases_in(out).map(&:name)
+    assert_equal ["Building once to measure", "Reading game"], phases_in(out).map(&:name)
   end
 
   # A game whose frame runs over: the build that measures it warns, and the warning is said
@@ -457,7 +462,7 @@ class TestProgress < Minitest::Test
     lines = said.string.lines
     phase_lines = lines.take_while { |line| line.start_with?("  ") }
 
-    assert_equal "assembling the cartridge", phases_in(StringIO.new(phase_lines.join)).last.name
+    assert_equal "Assembling cartridge", phases_in(StringIO.new(phase_lines.join)).last.name
     assert_match(/frames a second, not 60/, lines.drop(phase_lines.length).join, "the warning, after them")
   end
 
@@ -474,10 +479,10 @@ class TestProgress < Minitest::Test
     game.build_rom(out: StringIO.new, err: StringIO.new, progress: Progress.to(out))
     names = phases_in(out).map(&:name)
 
-    assert_equal ["a first build, to measure", "playing each scene to measure it"], names.first(2)
-    assert_equal 1, names.count("measuring the routines")
-    assert_equal 1, names.count("measuring again, variables moved nearer")
-    assert_equal 1, names.count("reading the game")
+    assert_equal ["Building once to measure", "Measuring each scene"], names.first(2)
+    assert_equal 1, names.count("Measuring routines")
+    assert_equal 1, names.count("Measuring again, variables moved nearer")
+    assert_equal 1, names.count("Reading game")
   end
 
   # A build measures its routines a second time when a routine it keeps in the quick memory uses
@@ -493,9 +498,9 @@ class TestProgress < Minitest::Test
     end
     names = phases_in(out).map(&:name)
 
-    assert_includes names, "measuring the routines"
-    assert_includes names, "measuring again, variables moved nearer"
-    assert_equal 1, names.count("measuring the routines"), "the first time is said once"
+    assert_includes names, "Measuring routines"
+    assert_includes names, "Measuring again, variables moved nearer"
+    assert_equal 1, names.count("Measuring routines"), "the first time is said once"
   end
 
   def test_a_game_can_be_asked_to_report_when_it_builds_its_rom
@@ -507,6 +512,6 @@ class TestProgress < Minitest::Test
     end
     game.build_rom(out: StringIO.new, err: StringIO.new, progress: Progress.to(out))
 
-    assert_match(/reading the game/, out.string)
+    assert_match(/Reading game/, out.string)
   end
 end

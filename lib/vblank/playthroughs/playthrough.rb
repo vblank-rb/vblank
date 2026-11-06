@@ -492,7 +492,7 @@ module VBlank
           @taping.moment(name)
           @pictures[name] = @game.frame_gba
           @picture_files[name] = write_screen(@folder, name, @pictures[name]) if @folder
-          @progress.step("playing on from the moment #{name}")
+          @progress.step("Playing on from #{name}")
           @at_each_moment&.call(name, @game)
         end
 

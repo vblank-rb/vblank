@@ -27,7 +27,7 @@ module VBlank
                           "`dump_func`, or build for the Game Boy Advance alone to see it."
         end
 
-        request.progress.step("lowering for the #{kit.title}")
+        request.progress.step("Compiling for the #{kit.title}")
         lowering = kit.lowering.new
         cartridge = lowering.build(request.program, title: request.title)
         if request.findings

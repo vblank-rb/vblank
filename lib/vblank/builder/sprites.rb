@@ -113,15 +113,15 @@ module VBlank
           return clip_sprite(name, at: at, poses: poses, clips: clips, durations: durations, width: width, height: height, shown: shown, hitbox: hitbox)
         end
         if facing_from
-          raise ArgumentError, "sprite :#{name} has both facing: and facing_from:. They both set the facing poses. Use only one." if facing
-          raise ArgumentError, "sprite :#{name} has both facing_from: and frames:. They both set the sprite's pose. Use only one." if frames
-          raise ArgumentError, "sprite :#{name} has both facing_from: and frames_from:. They both slice a sheet for the pose. Use only one." if frames_from
+          raise ArgumentError, "Sprite :#{name} has both facing: and facing_from:. They both set the facing poses. Use only one." if facing
+          raise ArgumentError, "Sprite :#{name} has both facing_from: and frames:. They both set the sprite's pose. Use only one." if frames
+          raise ArgumentError, "Sprite :#{name} has both facing_from: and frames_from:. They both slice a sheet for the pose. Use only one." if frames_from
 
           facing = import_facing(name: name, path: facing_from, tile: tile, dirs: dirs, transparent: transparent,
                                  colors: colors)
         end
         if frames_from
-          raise ArgumentError, "sprite :#{name} has both frames: and frames_from:. They both supply the frames. Use only one." if frames
+          raise ArgumentError, "Sprite :#{name} has both frames: and frames_from:. They both supply the frames. Use only one." if frames
 
           frames = import_frames(name: name, path: frames_from, tile: tile, transparent: transparent, colors: colors)
         end
@@ -696,7 +696,7 @@ module VBlank
         return unless other
 
         raise ArgumentError,
-              "sprite :#{name} has both from_aseprite: and #{other.first}. They both set the sprite's pose. Use only one."
+              "Sprite :#{name} has both from_aseprite: and #{other.first}. They both set the sprite's pose. Use only one."
       end
 
       # Turn a frame's duration (milliseconds) into a whole number of game frames (the

@@ -130,7 +130,7 @@ module VBlank
 
         hits, misses = asks.partition { it.result == "hit" }
         out.puts "", "Build cache: #{hits.size} hits, #{misses.size} misses " \
-                     "(working out the keys took #{format('%.1f', asks.sum(&:key_seconds))} s)"
+                     "(keys #{format('%.1f', asks.sum(&:key_seconds))} s)"
         misses.sort_by { -it.build_seconds }.each do |miss|
           out.puts format("  miss %6.1f s  %-30s %s", miss.build_seconds, miss.reason, miss.label)
         end

@@ -162,7 +162,7 @@ module VBlank
                             progress: progress, settings: settings, **options.to_h, &block)
     end
 
-    progress.step("reading the game")
+    progress.step("Reading game")
     evaluated = Cartridge::EvaluatedGame.new(block, options: options, progress: progress, settings: settings)
     program = evaluated.program
 
@@ -172,7 +172,7 @@ module VBlank
     # raises loudly rather than joining the friendly guardrail report below. It
     # runs before the guardrails and the backend so a malformed tree can't reach
     # them and fail cryptically two passes downstream.
-    progress.step("checking the tree")
+    progress.step("Checking program")
     IR::Verifier.verify!(program)
 
     # Run the guardrails over the finished IR and collect every finding — its
@@ -191,7 +191,7 @@ module VBlank
     # A finding is worth reading either way; where it is worth reading is after the
     # build has finished saying what it did.
     unless evaluated.debug_halted?
-      progress.step("the guardrails")
+      progress.step("Checking for mistakes")
       # The default checks — the always-on builtins plus anything registered (an
       # effect pack's own guardrails) — walk the IR. The rest are appended per build
       # because they report from what the run learned rather than from the tree:
@@ -320,7 +320,7 @@ module VBlank
   def self.build_once_to_measure(built, err, progress)
     held = StringIO.new
     first = built.call(profile: false, out: StringIO.new, err: held,
-                       progress: progress.as_one_line("a first build, to measure"))
+                       progress: progress.as_one_line("Building once to measure"))
     progress.show_detail(nil) # finished: its line says how long it took and nothing about its last phase
     first
   rescue StandardError
@@ -332,7 +332,7 @@ module VBlank
   # Play each scene of the first build in the emulator, saying which, and close the line if that
   # fails, so what is printed next is not printed into it.
   def self.play_each_scene(first, progress)
-    progress.step("playing each scene to measure it")
+    progress.step("Measuring each scene")
     Diagnostics::Profiler.survey_scenes(first, progress: progress)
   rescue StandardError, LoadError
     progress.done

@@ -44,8 +44,7 @@ module VBlankScript
     rate = VBlank::Live::Session.new(game: game, uncapped: options[:uncapped], stop_after_passes: options[:pictures])
                                 .play(window)
     if rate.passes.positive?
-      puts format("Showed %<pictures>d pictures in %<seconds>.1f seconds, %<per_second>.1f a second. " \
-                  "The console shows %<console>.1f a second.",
+      puts format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
                   pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
                   console: 1 / game.frame_seconds)
     end

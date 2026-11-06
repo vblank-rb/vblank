@@ -277,7 +277,7 @@ class TestCLI < Minitest::Test
       RUBY
       out, status = cli("build", "loopy.rb", "--stats", dir: dir)
       assert status.success?, out
-      assert_match(/Quick memory: \d+ routines? \([\d.]+K\), [\d.]+K of 32K free/, out)
+      assert_match(/Quick memory: \d+ routines?, [\d.]+ KB; [\d.]+ KB of 32 KB free/, out)
     end
   end
 
@@ -590,8 +590,8 @@ class TestCLI < Minitest::Test
       assert status.success?, out
       assert_match(/DEMO for the Game Boy Advance in Ruby #{Regexp.escape(RUBY_VERSION)} with (YJIT|ZJIT|no JIT)\./o, out)
       assert_match(/DEMO is for the Game Boy Advance and the Game Boy Color\. This plays it as the Game Boy Advance\. To play it as the Game Boy Color, add --console gbc\./, out)
-      assert_match(/Showed 5 pictures in [\d.]+ seconds/, out)
-      assert_match(/The console shows 59\.7 a second/, out)
+      assert_match(/5 frames in [\d.]+ s/, out)
+      assert_match(/the console shows 59\.7\)/, out)
     end
   end
 
@@ -667,7 +667,7 @@ class TestCLI < Minitest::Test
 
         assert status.success?, played
         assert_match(/Playing DEMO/, played)
-        assert_match(/Showed 3 pictures/, played)
+        assert_match(/3 frames in/, played)
       end
     end
   end
@@ -705,7 +705,7 @@ class TestCLI < Minitest::Test
 
       assert status.success?, out
       assert_match(/COLORONLY for the Game Boy Color/, out)
-      assert_match(/Showed 3 pictures/, out)
+      assert_match(/3 frames in/, out)
     end
   end
 
@@ -854,7 +854,7 @@ class TestCLI < Minitest::Test
       out, status = cli("build", "both.rb", "-o", "game.gba", dir: dir)
 
       refute status.success?
-      assert_match(/--console gba or --console gbc/, out)
+      assert_match(/2 consoles \(gba, gbc\)\. Add --console to pick one/, out)
       refute File.exist?(File.join(dir, "game.gba"))
 
       built, built_status = cli("build", "both.rb", "-o", "game.gba", "--console", "gba", dir: dir)

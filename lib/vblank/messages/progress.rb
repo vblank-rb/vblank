@@ -11,7 +11,7 @@ module VBlank
     #
     # THREE METHODS, because a build has three kinds of thing to say:
     #
-    #   progress.step "the guardrails"      a named phase begins
+    #   progress.step "Checking for mistakes"      a named phase begins
     #   progress.report_count 14, 27, "draw budget"   ...and where it has got to, when that can be counted
     #   progress.tick                       ...or only that it is still going, when it cannot
     #
@@ -118,10 +118,12 @@ module VBlank
         end
 
         # Where a countable phase has got to. Cheap enough to call from a loop: it remembers the
-        # numbers and only writes when a line is due.
+        # numbers and only writes when a line is due. +name+, the item being worked on, shows while
+        # the phase runs, so a slow one says which; the line the phase leaves says only the count.
         def report_count(done, total, name = nil)
           @lock.synchronize do
-            @where = name ? "#{done} of #{total}  #{name}" : "#{done} of #{total}"
+            @counted = "#{done}/#{total}"
+            @where = name ? "#{@counted}  #{name}" : @counted
             show_if_due
           end
           nil
@@ -196,9 +198,11 @@ module VBlank
         def finish
           return unless @name
 
+          @where = @counted if @counted
           @out.print("\r") if @live
           @out.puts(@live ? pad_over_last_line(line) : line)
           @name = nil
+          @counted = nil
           @drawn = 0 # a new line starts at the left, with nothing of the old one to cover
         end
 
@@ -226,7 +230,7 @@ module VBlank
           text.ljust(was)
         end
 
-        # "  the guardrails      4.5s   27 of 27  draw budget" — the phase, how long it took, and
+        # "  Checking for mistakes      4.5s   27/27" — the phase, how long it took, and
         # where it has got to.
         #
         # THE TIME SITS NEXT TO THE NAME, in a column of its own, because the question a run of
@@ -262,7 +266,7 @@ module VBlank
         end
 
         def report_count(done, total, name = nil)
-          @around.show_detail([@phase, "#{done} of #{total}", name].compact.join("  "))
+          @around.show_detail([@phase, "#{done}/#{total}", name].compact.join("  "))
         end
 
         # Ticks are counted by the line around, which only asks for the label when it draws.
