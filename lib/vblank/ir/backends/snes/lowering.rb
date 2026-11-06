@@ -218,6 +218,7 @@ module VBlank
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
           def sections
+            Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
             refuse_unlowered_kinds!
             refuse_what_snes_lacks!
             @plan.refuse_routines_that_call_themselves!

@@ -372,6 +372,10 @@ extern const int32_t rg_game_see_through[];
  * number, since a tile's color is fifteen bits. */
 #define RG_SEE_THROUGH 0xFFFFu
 extern const uint16_t rg_game_tile_pixels[];
+/* The +count+ tile pixels the picture is drawn from, as an array that can be written: a copy of
+ * rg_game_tile_pixels, made the first time this is asked, which the picture is drawn from from then
+ * on. For a tile read from the file the game is handed as it starts (rg_start_file_fill_tile). */
+uint16_t *rg_screen_tile_pixels_to_fill(int32_t count);
 
 /* Each background is RG_BG_FIELDS numbers in rg_game_backgrounds, in the order the stack draws
  * them. Its scene is the number the game counts that scene by, RG_EVERY_SCENE for scenery every

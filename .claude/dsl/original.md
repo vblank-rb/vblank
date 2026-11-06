@@ -18,7 +18,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
   no `at:` and no routine is refused.
 - **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack. It is **game
   code**, a program of its own (`Original::Unpacking`), so the same routine fills the pack as the game is
-  built (played to its `halt` on the interpreter) and, in a shell to come, on the player's machine. The
+  built (played to its `halt` on the interpreter) and on the player's machine (see "With the pack left
+  out" below). The
   slots with `at:` are copied first, then the routine runs. Inside it, normal Ruby works as in a game block
   (`while` on a number read from the copy is a loop in the routine), and:
   - `copy.byte(at)` (0 to 255), `copy.half(at)`, `copy.word(at)`: low byte first; `big_endian: true` for
@@ -72,13 +73,42 @@ other consoles' layouts (the Color's 4-colour tiles, the Super Nintendo's tiles,
 colours) are shapes still to add. A computer game's data is in no console's layout, so its port's
 unpacking routine turns it into one of the shapes.
 
-**Every build is all-in-one today.** The pack is made from the copy as the game is built (by the routine on
+**All-in-one, unless told otherwise.** The pack is made from the copy as the game is built (by the routine on
 the interpreter, where there is one), written as its
 file and read back, and each verb given a handle takes what the slot holds as if the game had written
-it. So the game plays as one holding the data on every backend, and a cartridge keeps it that way for
-good: a console's cartridge holds its data. A machine with no copy stops at `data_pack` with
+it. So the game plays as one holding the data on every backend, and a cartridge is always built this
+way: a console's cartridge holds its data. A machine with no copy stops at `data_pack` with
 `Original::NotSet`, saying what to set; a slot that runs past the end of the copy is `Original::WrongCopy`
 naming the slot.
+
+**With the pack left out** — `vblank build game.rb --format native|web|ruby --pack-at-start`, or
+`pack_at_start: true` on `VBlank.build` and `Cartridge::Options` — a build for a computer (C, JavaScript,
+Ruby) reads no copy, builds on a machine with none, and holds none of the original's bytes. The program
+reads its pack from a file it is handed as it starts (`IR::StartFile`): the desktop program's
+`--data-pack PATH`, `--start-file FILE` on the headless programs, and in a test the interpreter's,
+checked runs' and headless runs' `hand_file(bytes)`. The web page and the Ruby file have no way to be
+handed one yet: that is the shell's Load ROM, still to come. Handed none, a pack of the wrong size, or
+one made for another build version or slot list, the game stops at once with an `IR::ProgramError` in
+plain words. A Game Boy Advance desktop program, which plays the console's start-up from the cartridge,
+cannot be built this way yet. What reads a slot that way:
+
+- `table :speeds, pack[:speeds]` — written as its size alone and filled from the file at power-on; the
+  build never looks at its entries. `table :name, DSL::StartFileEntries.new(at:, count:), width:,
+  signed:` is the same for any place in the file.
+- `image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)` — both lists
+  from the pack, 8x8, and only as a background's tile so far. As a sprite, a blit, a face or a
+  recoloured tile the lowering refuses it naming the picture; `mirror`/`upside_down` of it, a picture
+  taking only one list from the pack, and any other verb that reads a slot's bytes are refused at the line.
+- `pack.unpacking(copy_size: SIZE)` — the unpacking program for a copy of that many bytes (the
+  release's size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
+  after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.
+  Playing it inside the shipped game before the game starts, keeping the pack on the player's machine
+  and checking the copy's SHA-1 are the shell's, still to come.
+
+A cartridge build told `pack_at_start:` is refused at `data_pack`, and `vblank build --pack-at-start`
+for a cartridge before anything is built; every cartridge lowering refuses a program that reads a start
+file (`Backends.refuse_start_file_on_cartridge!`). The unpacking checks only its copy's size; checking
+the copy's SHA-1 is the shell's. Worked example: `test/pack_at_start_tests.rb`.
 
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a

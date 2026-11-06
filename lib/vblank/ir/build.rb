@@ -1316,6 +1316,14 @@ module VBlank
       # same three names mean the same three sizes wherever they are written.
       ELEMENT_BYTES = { byte: 1, half: 2, word: 4 }.freeze
 
+      # ELEMENTS KEPT AS BYTES, low byte first, as a data pack keeps a slot of numbers and as a
+      # table read from a file is read (IR::StartFile): +bytes+ read as elements of +width+, below
+      # zero only when +signed+.
+      ELEMENT_READS = Ractor.make_shareable({ [:byte, false] => "C*", [:byte, true] => "c*", [:half, false] => "v*",
+                                              [:half, true] => "s<*", [:word, false] => "V*", [:word, true] => "l<*" })
+
+      def elements_of(bytes, width:, signed:) = bytes.unpack(ELEMENT_READS.fetch([width, signed ? true : false]))
+
       # ...and the smallest and largest number one element of that width can hold.
       #
       # A NARROW ELEMENT ALWAYS GOES BELOW NOTHING, and there is deliberately no way to ask for

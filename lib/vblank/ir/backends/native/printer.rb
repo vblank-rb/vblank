@@ -25,6 +25,8 @@ module VBlank
             when C::Include then line(0, "#include \"#{item.header}\"")
             when C::Global then line(0, "static #{item.type} #{item.name.text} = #{expression(C::Int.new(item.value))};")
             when C::ConstArray then print_const_array(item)
+            # Zeros until the start file fills it: a static array with no initializer.
+            when C::StartFileArray then line(0, "static #{item.type} #{item.name.text}[#{[item.count, 1].max}];")
             when C::Prototype then line(0, "#{linkage(item)}void #{item.name.text}(void);")
             when C::Function then print_function(item)
             when C::FunctionTable then print_function_table(item)

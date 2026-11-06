@@ -2,10 +2,13 @@
  * What rg_runtime.h promises the game, handed to the driver that started the program (see
  * rg_driver.h). Nothing here knows whether there is a window.
  */
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "rg_runtime.h"
 #include "rg_console.h"
 #include "rg_driver.h"
+#include "rg_list.h"
 #include "rg_mix.h"
 #include "rg_pacing.h"
 #include "rg_screen.h"
@@ -342,3 +345,102 @@ int32_t rg_local_player(void) { return 1; }
 
 /* The match's shared seed: nought, since the desktop build plays no match yet. */
 int32_t rg_match_seed(void) { return 0; }
+
+/* THE FILE THE GAME IS HANDED AS IT STARTS (see rg_runtime.h): its bytes, a copy of the
+ * driver's, or none yet. */
+static uint8_t *start_file;
+static int32_t start_file_size = -1;
+
+void rg_start_file_hand(const uint8_t *bytes, int32_t size) {
+  free(start_file);
+  start_file = malloc(size > 0 ? (size_t)size : 1);
+  if (!start_file) rg_fault("there is no room for the %d bytes of the file handed to the game", (int)size);
+  if (size > 0) memcpy(start_file, bytes, (size_t)size);
+  start_file_size = size;
+}
+
+int rg_start_file_read(const char *path) {
+  FILE *file = fopen(path, "rb");
+  if (!file) return 0;
+  uint8_t *bytes = NULL;
+  size_t size = 0;
+  size_t room = 0;
+  int ok = 1;
+  for (;;) {
+    if (size == room) {
+      room = room ? room * 2 : 65536;
+      uint8_t *more = realloc(bytes, room);
+      if (!more) {
+        ok = 0;
+        break;
+      }
+      bytes = more;
+    }
+    size_t got = fread(bytes + size, 1, room - size, file);
+    size += got;
+    if (got == 0) break;
+  }
+  if (ferror(file) || size > INT32_MAX) ok = 0;
+  fclose(file);
+  if (ok) rg_start_file_hand(bytes, (int32_t)size);
+  free(bytes);
+  return ok;
+}
+
+/* Every refusal ends the same way: what to do. */
+#define START_FILE_FIX "Hand it the %s this build was made for."
+
+void rg_start_file_open(const char *called, const int32_t *rules) {
+  if (start_file_size < 0)
+    rg_fault("This game reads its %s as it starts, and no %s was handed to it. Start the game with its %s.", called,
+             called, called);
+  if (start_file_size != rules[0])
+    rg_fault("The %s handed to the game is %d bytes. This build reads a %s of %d bytes. " START_FILE_FIX, called,
+             (int)start_file_size, called, (int)rules[0], called);
+  const int32_t *check = rules + 2;
+  for (int32_t each = 0; each < rules[1]; each++) {
+    int32_t at = check[0];
+    int32_t length = check[1];
+    for (int32_t i = 0; i < length; i++) {
+      if (start_file[at + i] != (uint8_t)check[2 + i])
+        rg_fault("This file is not the %s this build reads: bytes %d to %d are not what it holds there. " START_FILE_FIX,
+                 called, (int)at, (int)(at + length - 1), called);
+    }
+    check += 2 + length;
+  }
+}
+
+/* The number +width+ bytes from +at+ in the file hold, low byte first. */
+static uint32_t start_file_number(int32_t at, int32_t width) {
+  uint32_t number = 0;
+  for (int32_t i = width - 1; i >= 0; i--) number = (number << 8) | start_file[at + i];
+  return number;
+}
+
+void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at) {
+  for (int32_t i = 0; i < count; i++) {
+    switch (kept) {
+    case RG_TABLE_INT8: ((int8_t *)table)[i] = (int8_t)start_file_number(at + i, 1); break;
+    case RG_TABLE_UINT8: ((uint8_t *)table)[i] = (uint8_t)start_file_number(at + i, 1); break;
+    case RG_TABLE_INT16: ((int16_t *)table)[i] = (int16_t)start_file_number(at + (i * 2), 2); break;
+    case RG_TABLE_UINT16: ((uint16_t *)table)[i] = (uint16_t)start_file_number(at + (i * 2), 2); break;
+    default: ((int32_t *)table)[i] = (int32_t)start_file_number(at + (i * 4), 4); break;
+    }
+  }
+}
+
+void rg_start_file_fill_tile(int32_t tile_pixels, int32_t start, int32_t count, int32_t colors_at, int32_t colors_count,
+                             int32_t places_at) {
+  uint16_t *pixels = rg_screen_tile_pixels_to_fill(tile_pixels);
+  for (int32_t i = 0; i < count; i++) {
+    uint8_t both = start_file[places_at + (i / 2)];
+    int32_t place = (i % 2 == 0) ? (both & 0x0F) : (both >> 4);
+    uint16_t color = 0;
+    if (place == 0) {
+      color = RG_SEE_THROUGH;
+    } else if (place < colors_count) {
+      color = (uint16_t)(start_file_number(colors_at + (place * 2), 2) & 0x7FFFu);
+    }
+    pixels[start + i] = color;
+  }
+}

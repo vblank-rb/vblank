@@ -45,14 +45,32 @@ module VBlank
       # The pack in the file at +path+.
       def self.read(path) = from_bytes(File.binread(path))
 
+      # WHERE EVERYTHING IS IN THE FILE of a pack of +slots+ (Original::Slot), made for
+      # +build_version+, worked out from the slots' names, shapes and sizes alone: a game built with
+      # its pack left out knows this much and no more. +size+ is the whole file's, +slot_starts+
+      # where each slot's bytes start, by name, and +checks+ the bytes (IR::StartFile::Check) every such
+      # pack holds and a pack for another build or another format does not: the mark and the
+      # format, and the build version with the list of slots. Only the copy's SHA-1, between the
+      # two, and the slots' bytes are not known.
+      Layout = Data.define(:size, :slot_starts, :checks)
+
+      def self.layout(slots, build_version:)
+        header = header_bytes(sha1: "0" * 40, build_version: build_version.to_s,
+                              sizes: slots.to_h { |slot| [slot.name, slot.byte_size] })
+        known = [IR::StartFile::Check.new(at: 0, bytes: header.byteslice(0, SHA1_AT)),
+                 IR::StartFile::Check.new(at: BUILD_VERSION_AT, bytes: header.byteslice(BUILD_VERSION_AT..))]
+        Layout.new(size: header.bytesize + slots.sum(&:byte_size), checks: known,
+                   slot_starts: Unpacking.places_of(slots).transform_values { |at| header.bytesize + at })
+      end
+
       # The pack +bytes+ hold. WrongPack when they are not a pack this build can read.
       def self.from_bytes(bytes)
         refuse_unless_pack!(bytes.b)
         reader = Reader.new(bytes.b)
         reader.bytes(MAGIC.bytesize)
-        version = reader.number(2)
+        version = reader.number(FORMAT_VERSION_BYTES)
         refuse_unknown_format!(version)
-        sha1 = reader.bytes(20).unpack1("H*")
+        sha1 = reader.bytes(SHA1_BYTES).unpack1("H*")
         build_version = reader.bytes(reader.number(1)).force_encoding(Encoding::UTF_8)
         sizes = Array.new(reader.number(2)) { [reader.bytes(reader.number(1)).to_sym, reader.number(4)] }
         new(format_version: version, rom_sha1: sha1, build_version: build_version,
@@ -81,13 +99,26 @@ module VBlank
       # The bytes slot +name+ holds.
       def bytes_of(name) = slots.fetch(name.to_sym)
 
+      # Where the fixed part of the file is (the layout atop the class): the format version after
+      # the mark, the copy's SHA-1 after that, and the build version, which starts the part whose
+      # length depends on the text in it.
+      FORMAT_VERSION_BYTES = 2
+      SHA1_AT = MAGIC.bytesize + FORMAT_VERSION_BYTES
+      SHA1_BYTES = 20
+      BUILD_VERSION_AT = SHA1_AT + SHA1_BYTES
+
+      # The file up to the first slot's bytes, for a pack made from the copy whose SHA-1 is +sha1+
+      # by the build +build_version+, holding slots of +sizes+ (bytes, by name, in the pack's order).
+      def self.header_bytes(sha1:, build_version:, sizes:)
+        index = sizes.map { |name, size| [name.to_s.bytesize].pack("C") + name.to_s.b + [size].pack("V") }
+        [MAGIC, [FORMAT_VERSION].pack("v"), [sha1].pack("H*"), [build_version.bytesize].pack("C"), build_version.b,
+         [sizes.size].pack("v"), *index].join.b
+      end
+
       # The pack as its file holds it.
       def to_bytes
-        names = slots.keys.map { |name| name.to_s.b }
-        header = [MAGIC, [format_version].pack("v"), [rom_sha1].pack("H*"), [build_version.bytesize].pack("C"),
-                  build_version.b, [slots.size].pack("v")]
-        index = names.zip(slots.values).map { |name, bytes| [name.bytesize].pack("C") + name + [bytes.bytesize].pack("V") }
-        (header + index + slots.values).join.b
+        header = Pack.header_bytes(sha1: rom_sha1, build_version: build_version, sizes: slots.transform_values(&:bytesize))
+        [header, *slots.values].join.b
       end
 
       # The pack written to the file at +path+.

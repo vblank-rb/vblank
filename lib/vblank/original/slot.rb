@@ -37,7 +37,7 @@ module VBlank
       module Colors
         def self.item_bytes(_slot) = 2
 
-        def self.decode(_slot, bytes) = bytes.unpack("v*")
+        def self.decode(_slot, bytes) = IR::Assets.colors_packed_in(bytes)
       end
 
       # TILES, the Advance's: 8x8 pixels of sixteen colours, 32 bytes each, two pixels a byte with the left one in
@@ -47,19 +47,17 @@ module VBlank
 
         def self.item_bytes(_slot) = PIXELS / 2
 
-        def self.decode(_slot, bytes) = bytes.unpack("C*").flat_map { |both| [both & 0x0F, both >> 4] }.each_slice(PIXELS).to_a
+        def self.decode(_slot, bytes) = IR::Assets.places_packed_in(bytes).each_slice(PIXELS).to_a
       end
 
       # NUMBERS: one, two or four bytes each, as +width+ says, low byte first; below zero only when
-      # +signed+ says so. A width is the size a table's element of that width is
-      # (IR::Build::ELEMENT_BYTES), so a slot and a table never disagree about one.
+      # +signed+ says so. A width is the size a table's element of that width is, read as a table's
+      # elements are (IR::Build::ELEMENT_BYTES, IR::Build.elements_of), so a slot and a table never
+      # disagree about one.
       module Numbers
-        UNSIGNED_READS = { byte: "C*", half: "v*", word: "V*" }.freeze
-        SIGNED_READS = { byte: "c*", half: "s<*", word: "l<*" }.freeze
-
         def self.item_bytes(slot) = IR::Build::ELEMENT_BYTES.fetch(slot.width)
 
-        def self.decode(slot, bytes) = bytes.unpack((slot.signed ? SIGNED_READS : UNSIGNED_READS).fetch(slot.width))
+        def self.decode(slot, bytes) = IR::Build.elements_of(bytes, width: slot.width, signed: slot.signed)
       end
 
       SHAPES = { colors: Colors, tiles: Tiles, numbers: Numbers }.freeze
@@ -101,10 +99,17 @@ module VBlank
       # The slot's bytes in +copy+ (the copy's whole file as a binary String). WrongCopy when the
       # copy ends before the slot does. Only a slot with a place in the copy has bytes there.
       def cut_from(copy)
-        raise ArgumentError, "Slot :#{name} has no place in the copy. Its routine fills it." if filled_by_routine?
-        return copy.byteslice(at, byte_size) if at + byte_size <= copy.bytesize
+        refuse_past_end!(copy.bytesize)
+        copy.byteslice(at, byte_size)
+      end
 
-        raise WrongCopy, "Slot :#{name} is #{byte_size} bytes from #{at}, and the copy is #{copy.bytesize} bytes. The slot " \
+      # WrongCopy when the slot ends after a copy of +copy_size+ bytes does; ArgumentError for a slot
+      # with no place in the copy.
+      def refuse_past_end!(copy_size)
+        raise ArgumentError, "Slot :#{name} has no place in the copy. Its routine fills it." if filled_by_routine?
+        return if at + byte_size <= copy_size
+
+        raise WrongCopy, "Slot :#{name} is #{byte_size} bytes from #{at}, and the copy is #{copy_size} bytes. The slot " \
                          "ends after the copy ends. Correct at: or count: for this release."
       end
 

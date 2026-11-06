@@ -97,8 +97,9 @@ module VBlank
         # The library files are carried as they are, so a fix to the window or the session reaches
         # the next script built; SCRIPT_PARTS lists them, and a script that names something none of
         # them defines fails when it gets there (test_ruby_script.rb plays one).
-        def build_script(game, path, console:, settings: {}, err: $stderr)
-          program = game.build_rom(profile: false, settings: settings, console: console, err: err, for_computer: true).source_program
+        # +pack_at_start+ leaves the game's data pack out (Native#checked_program).
+        def build_script(game, path, console:, settings: {}, err: $stderr, pack_at_start: false)
+          program = Native.new.checked_program(game, console: console, settings: settings, err: err, pack_at_start: pack_at_start)
           File.write(path, script(program, title: game.title, menu: game.menu?))
           path
         end

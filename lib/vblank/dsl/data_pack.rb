@@ -74,23 +74,28 @@ module VBlank
     # given it reads the slot. So nothing the game does while it is built can depend on the
     # original's bytes, and a build that reads the pack only as the game starts takes the same game.
     class DataPack
-      # +header+ is the Original::Pack the build read (only its copy's SHA-1 and build version are
-      # asked of it here), +slots+ the Original::Slot list it was made with. +make_unpacking+ makes
-      # the Original::Unpacking that fills such a pack, the first time something asks for it: a
-      # pack whose every slot is copied as it is never needs its program built as the game is.
-      def initialize(header, slots, make_unpacking:)
-        @rom_sha1 = header.rom_sha1
-        @build_version = header.build_version
+      # +rom_sha1+ is the SHA-1 of the copy the build made the pack from (nil for a build that
+      # leaves the pack out, which reads no copy), +build_version+ the build it names, +slots+ the
+      # Original::Slot list. +make_unpacking+ makes the Original::Unpacking that fills such a pack,
+      # handed the copy's size, the first time something asks for it: a pack whose every slot is
+      # copied as it is never needs its program built as the game is.
+      def initialize(rom_sha1:, build_version:, slots:, make_unpacking:)
+        @rom_sha1 = rom_sha1
+        @build_version = build_version
         @slots = slots.to_h { |slot| [slot.name, slot] }
         @make_unpacking = make_unpacking
+        @unpackings = {}
       end
 
       # The SHA-1 of the copy the pack was made from, and the build version it names.
       attr_reader :rom_sha1, :build_version
 
       # The pack's unpacking as a program of its own (an Original::Unpacking): what a shell runs on
-      # the player's machine to make the pack, and what a test plays on each run.
-      def unpacking = @unpacking ||= @make_unpacking.call
+      # the player's machine to make the pack, and what a test plays on each run. A build that
+      # leaves the pack out reads no copy, so its unpacking is built for a copy of +copy_size+
+      # bytes, the release's size, which it is handed as it starts; an all-in-one build's holds the
+      # copy it read, and needs no size.
+      def unpacking(copy_size: nil) = @unpackings[copy_size] ||= @make_unpacking.call(copy_size)
 
       # The handle of the slot named +name+.
       def [](name)
@@ -101,6 +106,12 @@ module VBlank
         PackSlot.new(layout: slot, tile_index: nil)
       end
     end
+
+    # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
+    # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
+    # left out reads each table from a slot this way, and its unpacking reads the copy this way;
+    # the game must read such a file (`data_pack` with the pack left out says it does).
+    StartFileEntries = Data.define(:at, :count)
 
     # A HANDLE ON ONE SLOT OF A DATA PACK, or on one tile of a slot of tiles: the slot's layout (an
     # Original::Slot: its name, shape, size and place in the copy) and, for one tile, which. It never

@@ -131,17 +131,20 @@ module VBlank
   # +players+ is how many players the game takes (`4`, `2..4`, or by console); see {Cartridge::Players}.
   # +consoles+ is every console the game is for, which `built_for?` may ask about; left out, it is
   # +console+ alone. A Game hands its `consoles:` here.
+  # +pack_at_start+ leaves the game's data pack out of a build for a computer; see {Cartridge::Options}.
   def self.build(title, code: nil, maker: nil, validate: true, frame_sync: :auto, fast_cartridge: nil,
                  fast_code: nil, out: $stdout, err: $stderr, progress: Messages::Progress.silent,
                  profile: false, settings: {}, save_memory: nil, stack_room: nil, console: nil, variant: nil,
-                 sprite_piece_size: {}, cartridge: true, for_computer: false, players: nil, consoles: nil, &block)
+                 sprite_piece_size: {}, cartridge: true, for_computer: false, players: nil, consoles: nil,
+                 pack_at_start: false, &block)
     block = DSL::PlainRuby.game_block(block) if block
     # The settings that say how the game is built travel as one value from here on (see
     # {Cartridge::Options}), checked now so a setting that cannot be right stops the build first.
     options = Cartridge::Options.new(frame_sync: frame_sync, fast_cartridge: fast_cartridge,
                                      fast_code: fast_code, save_memory: save_memory, stack_room: stack_room,
                                      console: console, variant: variant, sprite_piece_size: sprite_piece_size,
-                                     for_computer: for_computer, players: players, consoles: consoles)
+                                     for_computer: for_computer, players: players, consoles: consoles,
+                                     pack_at_start: pack_at_start)
     refuse_unnamed_console!(title) if options.console.nil?
     # A measurement taken earlier is a console setting; true and false only say whether to measure.
     said = Console.console_settings_said(code: code, maker: maker, **options.to_h,

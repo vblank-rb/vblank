@@ -83,7 +83,12 @@ module VBlank
         # A pose drawn from tiles of a set the game loads (see SpriteTiles).
         return define_tile_pose(name, opts) if opts.key?(:tiles_from)
 
-        # A slot of the game's data pack in colors: or places: is read here (DataPacks).
+        # A slot of the game's data pack in colors: or places: is read here (DataPacks), or, in a
+        # build that reads its pack as the game starts, read from the pack then.
+        if pack_left_out? && !block && [opts[:colors], opts[:places]].any?(DSL::PackSlot)
+          return define_picture_from_start_file(name, opts)
+        end
+
         opts = opts_with_pack_slots_read(name, opts)
         one_source_of_pixels!(name, opts, block)
         # A list given by name keeps its name with the picture (IR::Assets::Image#colors_name).
@@ -478,6 +483,12 @@ module VBlank
                   "know its pixels, so #{verb} cannot #{motion}. To show it turned, paint the turned " \
                   "pixels into a list of its own."
           end
+          if picture_from_start_file?(source)
+            raise ArgumentError,
+                  "#{verb} names the picture :#{source}, which is read from the data pack as the game starts. The " \
+                  "build does not know its pixels, so #{verb} cannot #{motion}. Build the game all-in-one to " \
+                  "show it turned."
+          end
           picture = @pictures[source] ||
                     raise(ArgumentError,
                           "#{verb} names the picture :#{source}, which is not defined. Define it first " \
@@ -585,9 +596,9 @@ module VBlank
         table = color_table(name, colors || [])
         refuse_bad_places!(name, places: places, width: width, height: height, table: table)
 
-        drawn = places.map { |place| place.zero? ? TRANSPARENT_PIXEL : table[place] }
-        marker = places.include?(0) ? TRANSPARENT_PIXEL : nil
-        record_picture(Build.bitmap(name, width: width, height: height, pixels: drawn.pack("v*"),
+        pixels, marker = IR::Assets.placed_pixels(places, table)
+        drawn = pixels.unpack("v*")
+        record_picture(Build.bitmap(name, width: width, height: height, pixels: pixels,
                                             transparent: marker, colors: table.map { |value| value || 0x0000 },
                                             places: places.pack("C*"), colors_name: colors_name, pieces: pieces))
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)

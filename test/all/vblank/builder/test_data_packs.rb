@@ -13,7 +13,10 @@ require "tmpdir"
 # Boy Advance cartridge keeps its data in, with a SHA-1 worked out from them. The answer key is
 # the same game holding the same data itself, written from the numbers the made-up original was
 # written from, so the two can only agree if the pack is cut and read right.
-class TestDataPacks < Minitest::Test
+#
+# The made-up original and the game are MadeUpOriginal's, which test/pack_at_start_tests.rb shares:
+# the same game built with its data left out, handed its pack as it starts.
+module MadeUpOriginal
   # Sixteen colours: place 0 see-through, then red, green, blue, white and a run of greys.
   PALETTE = [0x0000, 0x001F, 0x03E0, 0x7C00, 0x7FFF, *(1..11).map { |grey| grey * 0x0421 }].freeze
   # Two 8x8 tiles as their places: stripes of three colours, and a diagonal over two greys. Each
@@ -57,6 +60,10 @@ class TestDataPacks < Minitest::Test
   end
   SHA1 = Digest::SHA1.hexdigest(COPY)
 
+  # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
+  # a Ractor and these are a module's.
+  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+
   private def original(folder)
     path = File.join(folder, "made_up.gba")
     File.binwrite(path, COPY)
@@ -67,9 +74,9 @@ class TestDataPacks < Minitest::Test
 
   # The game: the two tiles laid out as a background, and a marker whose place across the screen
   # is read from the table each frame. +data+ hands over the colours, each tile's places and the
-  # table, from the pack or held directly.
-  private def game_program(data)
-    b = Builder.new
+  # table, from the pack or held directly. +options+ are the build's (Cartridge::Options).
+  private def game_program(data, options: VBlank::Cartridge::Options.new)
+    b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :bitmap
       clear_screen :black
@@ -109,6 +116,25 @@ class TestDataPacks < Minitest::Test
       [PALETTE, TILE_PLACES[0], TILE_PLACES[1], builder.table(:speeds, SPEEDS, width: :byte, signed: false)]
     end
   end
+
+  # A PORT'S OWN UNPACKING ROUTINE. The tiles and the heights are packed in the made-up original,
+  # so their slots say no place in the copy, and the routine fills them: the same routine the
+  # build runs on the interpreter, and a player's machine runs as the shell starts.
+  private def unpacked_pack(builder, folder)
+    builder.data_pack(from: original(folder), version: "1") do |slots|
+      slots.colors :palette, at: PALETTE_AT, count: 16
+      slots.tiles :walls, count: 2
+      slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+      slots.fill_from_copy do |copy, pack|
+        copy.unpack_lz77 at: LZ77_AT, into: pack[:walls]
+        copy.unpack_rle at: RLE_AT, into: pack[:heights]
+      end
+    end
+  end
+end
+
+class TestDataPacks < Minitest::Test
+  include MadeUpOriginal
 
   def test_a_game_reading_its_tiles_and_table_through_the_pack_plays_as_one_holding_them
     Dir.mktmpdir do |folder|
@@ -222,23 +248,9 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # A PORT'S OWN UNPACKING ROUTINE. The tiles and the heights are packed in the made-up original,
-  # so their slots say no place in the copy, and the routine fills them: the same routine the
-  # build runs on the interpreter, and a player's machine runs as the shell starts.
-  private def unpacked_pack(builder, folder)
-    builder.data_pack(from: original(folder), version: "1") do |slots|
-      slots.colors :palette, at: PALETTE_AT, count: 16
-      slots.tiles :walls, count: 2
-      slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
-      slots.fill_from_copy do |copy, pack|
-        copy.unpack_lz77 at: LZ77_AT, into: pack[:walls]
-        copy.unpack_rle at: RLE_AT, into: pack[:heights]
-      end
-    end
-  end
-
-  # Played on each run's own build of the routine, checked against the interpreter's on every
-  # frame there, and its slots read back from what it wrote.
+  # The unpacking routine (MadeUpOriginal#unpacked_pack), played on each run's own build of it,
+  # checked against the interpreter's on every frame there, and its slots read back from what it
+  # wrote.
   def test_the_routine_unpacks_an_lz77_block_and_an_rle_block_into_the_same_pack_on_every_run
     Dir.mktmpdir do |folder|
       unpacking = unpacked_pack(Builder.new, folder).unpacking
@@ -446,6 +458,50 @@ class TestDataPacks < Minitest::Test
       end
 
       assert_match "did not get to its end", refused.message
+    end
+  end
+
+  # A cartridge holds its own data, and nothing hands a cartridge a file as it starts, so a build
+  # for a console's cartridge cannot leave its pack out (test/pack_at_start_tests.rb plays the
+  # builds for a computer that do).
+  def test_a_cartridge_build_cannot_leave_its_pack_out
+    Dir.mktmpdir do |folder|
+      builder = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc, pack_at_start: true))
+      refused = assert_raises(ArgumentError) { made_up_pack(builder, folder) }
+
+      assert_match "cartridge", refused.message
+      assert_match "all-in-one", refused.message
+    end
+  end
+
+  # The build that reads its pack as the game starts (test/pack_at_start_tests.rb plays it), for a
+  # computer: built here only, never played, so on every run.
+  READS_PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+
+  # The pixels of a picture read from the pack are not known as the game is built, so nothing can
+  # be worked out from them: turning it is refused, as turning a picture the game paints is.
+  def test_a_picture_read_from_the_pack_as_the_game_starts_cannot_be_turned
+    Dir.mktmpdir do |folder|
+      builder = Builder.new(options: READS_PACK_AT_START)
+      pack = made_up_pack(builder, folder)
+      builder.image(:wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0))
+      refused = assert_raises(ArgumentError) { builder.mirror(:wall) }
+
+      assert_match ":wall", refused.message
+      assert_match "data pack as the game starts", refused.message
+    end
+  end
+
+  # Read from the pack as the game starts, a picture takes both its colours and its places from it.
+  def test_a_picture_reading_part_of_itself_from_the_pack_as_the_game_starts_is_refused
+    Dir.mktmpdir do |folder|
+      builder = Builder.new(options: READS_PACK_AT_START)
+      pack = made_up_pack(builder, folder)
+      refused = assert_raises(ArgumentError) do
+        builder.image(:wall, width: 8, height: 8, colors: pack[:palette], places: TILE_PLACES[0])
+      end
+
+      assert_match "both colors: and places:", refused.message
     end
   end
 

@@ -179,6 +179,7 @@ module VBlank
             pixels = []
             info = []
             @images.each_key do |name, colors|
+              refuse_picture_from_start_file!(name, "a sprite, a blit or a face")
               image = picture_named(name)
               info.push(pixels.length, image.width, image.height)
               drawn = if colors == SHADING_PLACES
@@ -292,7 +293,7 @@ module VBlank
           def lower_load_sprite_tiles(node)
             set = @sprite_tile_sets.fetch(node.name)
             table = @tables.fetch(node.table)
-            bounds = LoweringPlan.sprite_tile_load_bounds(node, table_bytes: table.values.length, set_count: set.count)
+            bounds = LoweringPlan.sprite_tile_load_bounds(node, table_bytes: table.entry_count, set_count: set.count)
             return [] unless bounds
 
             from, to = %w[load_from load_to].map { |what| local_name(what) }
@@ -414,7 +415,13 @@ module VBlank
               tiles_start = tile_pixels.length
               steps = color_swaps(bg)
               [nil, *steps].each do |swaps|
-                bg.tiles.each { |tile| tile_pixels.concat(tile_colors(tile, swaps)) }
+                bg.tiles.each do |tile|
+                  if (read_at_start = picture_from_start_file(tile))
+                    refuse_picture_from_start_file!(tile, "a tile drawn in other colours") if swaps
+                    record_start_file_tile_fill(tile_pixels.length, read_at_start)
+                  end
+                  tile_pixels.concat(tile_colors(tile, swaps))
+                end
               end
               painted_start, colors_start = painted_tiles_of(bg, steps, painted_tiles, run_colors)
               first_map = maps.length / MAP_FIELDS
@@ -431,6 +438,7 @@ module VBlank
                bg.tiles.length, steps.length, shown_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
                painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR]
             end
+            @tile_pixel_count = tile_pixels.length # what the runtime copies them by, to fill a tile read from the start file
             [runtime_array("tile_pixels", "uint16_t", tile_pixels), runtime_array("backgrounds", "int32_t", fields),
              runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
              runtime_array("painted_tiles", "int32_t", painted_tiles), runtime_array("run_colors", "uint16_t", run_colors)]

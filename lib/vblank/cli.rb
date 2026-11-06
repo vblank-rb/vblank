@@ -371,6 +371,10 @@ module VBlank
                                  Default: what the game names
                                  in variants:. A game for more than one
                                  console needs --console too.
+        --pack-at-start          With --format native, web or ruby: leave the
+                                 game's data pack out. The game reads the pack
+                                 from a file as it starts (a program takes
+                                 --data-pack PATH). A cartridge cannot do this.
         #{SET}
 
       Measuring (see vblank profile --help):
@@ -431,8 +435,10 @@ module VBlank
     option :js, default: "page", enum: %w[page module script]
     option :global, banner: "NAME"
     option :data, default: "inline", enum: %w[inline separate]
+    option :pack_at_start, type: :boolean, default: false
     def build(game_file)
       refuse_web_options_out_of_place!
+      refuse_pack_at_start_on_cartridge!
       case options[:format]
       when "game" then build_cartridges(game_file)
       when "ir" then build_ir(game_file)
@@ -1725,7 +1731,7 @@ module VBlank
       end
       say "Building #{File.basename(path)} for #{target ? options[:target] : 'this computer'} - Please wait."
       VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
-                                                                 strip: options[:strip])
+                                                                 strip: options[:strip], pack_at_start: options[:pack_at_start])
       say "Built #{path}"
     rescue VBlank::BuildError, VBlank::IR::Backends::Native::Zig::Error => e
       raise Thor::Error, e.message
@@ -1739,7 +1745,8 @@ module VBlank
       game = load_game(game_file)
       console = console_to_play(game)
       path = options[:output] || file_beside(game, game_file, console, "-ruby.rb")
-      VBlank::IR::Backends::Ruby.new.build_script(game, path, console: console, settings: given_settings)
+      VBlank::IR::Backends::Ruby.new.build_script(game, path, console: console, settings: given_settings,
+                                                  pack_at_start: options[:pack_at_start])
       say "Built #{path}. To play it, run: ruby #{File.basename(path)}"
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot write #{game.title} as Ruby yet. The game needs a part of VBlank " \
@@ -1767,6 +1774,15 @@ module VBlank
       raise Thor::Error, "--template works only with the page (--js=page). Remove --js, or remove --template."
     end
 
+    # --pack-at-start leaves a game's data pack out, which only a build for a computer can do: a
+    # cartridge holds its own data (Builder::DataPacks).
+    def refuse_pack_at_start_on_cartridge!
+      return unless options[:pack_at_start] && !%w[native web ruby].include?(options[:format])
+
+      raise Thor::Error, "--pack-at-start works only with --format native, web or ruby. A cartridge holds its own " \
+                         "data, so it cannot read its data pack as it starts. Remove --pack-at-start, or add --format."
+    end
+
     # What --js names, and the ending of the file each is written to.
     WEB_OUTPUTS = { "page" => ".html", "module" => ".mjs", "script" => ".js" }.freeze
 
@@ -1782,12 +1798,15 @@ module VBlank
       data = options[:data].to_sym
       progress = VBlank::Messages::Progress.to($stderr)
       case js
-      when "module" then web.build_module(game, path, console: console, settings: given_settings, data: data, progress: progress)
+      when "module" then web.build_module(game, path, console: console, settings: given_settings, data: data, progress: progress,
+                                                      pack_at_start: options[:pack_at_start])
       when "script" then web.build_script(game, path, name: options[:global] || File.basename(path, ".*"),
-                                                      console: console, settings: given_settings, data: data, progress: progress)
+                                                      console: console, settings: given_settings, data: data, progress: progress,
+                                                      pack_at_start: options[:pack_at_start])
       else
         template = options[:template] ? File.expand_path(options[:template]) : VBlank::IR::Backends::JS::Page::DEFAULT
-        web.build_page(game, path, console: console, settings: given_settings, template: template, data: data, progress: progress)
+        web.build_page(game, path, console: console, settings: given_settings, template: template, data: data, progress: progress,
+                                   pack_at_start: options[:pack_at_start])
       end
       say "Built #{path}"
     rescue VBlank::BuildError => e

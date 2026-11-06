@@ -1091,6 +1091,17 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A cartridge holds its own data, so leaving the data pack out is for a computer's builds alone.
+  def test_pack_at_start_is_refused_for_a_cartridge
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      out, status = cli("build", "demo.rb", "--pack-at-start", dir: dir)
+      refute status.success?, "--pack-at-start on a cartridge should fail"
+      assert_match(/--pack-at-start works only with --format native, web or ruby/, out)
+      assert_match(/cartridge holds its own/, out)
+    end
+  end
+
   # A computer there is no build for is refused before anything is built, in the command's own
   # words for the ones there are.
   def test_format_native_rejects_an_unknown_target

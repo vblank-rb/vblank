@@ -19,6 +19,7 @@ module VBlank
           include Picture
           include Sound
           include Saving
+          include StartFileFills
 
           # The operators of a binop, by the rg_int32.h function that does each one.
           OPERATORS = Ractor.make_shareable({
@@ -158,6 +159,7 @@ module VBlank
             # gathers them before running), so its storage is the first declaration's.
             @lists = by_name(@reachable.reverse, :list_new)
             @scenes = scene_numbers
+            @start_file_tile_fills = [] # what the routine reading the start file writes into the tiles (StartFileFills)
             prepare_picture
             prepare_sound
           end
@@ -188,7 +190,7 @@ module VBlank
             routines = @called.map { |name| C::Function.new(name: routine(name), body: body_of(@funcs.fetch(name))) }
             answers = [see_through_amounts, bend_offsets, work_out_bends, shade_span, shade_amount, timer_ticks,
                        sprites_over_picture_routine]
-            main = C::Function.new(name: @names.own("main"), body: [*power_on, *lower(@program)], exported: true)
+            main = C::Function.new(name: @names.own("main"), body: [*build_start_file_reads, *power_on, *lower(@program)], exported: true)
             [C::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
              C::Include.new("rg_int32.h"), C::Include.new("rg_runtime.h"), C::Include.new("rg_list.h"),
              C::Include.new("rg_screen.h"), C::Include.new("rg_sound.h"), C::Include.new("rg_mix.h"),
@@ -200,9 +202,9 @@ module VBlank
              *held_colors_globals, *sprites_hidden_globals,
              *constant_arrays, *picture_data, *@drawing_arrays, title_array, *sound_tables,
              save_memory_table,
-             *@called.map { |name| C::Prototype.new(name: routine(name)) },
+             *@called.map { |name| C::Prototype.new(name: routine(name)) }, *build_start_file_prototypes,
              *routine_table_declarations,
-             *routines, *answers, main,
+             *routines, *answers, main, *build_start_file_routines,
              C::Function.new(name: @names.own("dump_state"), body: dump_state, exported: true),
              *(@program.several_players? ? [C::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)] : [])]
           end
@@ -252,20 +254,34 @@ module VBlank
 
           # The numbers fixed when the program is built that a run reads: tables, and the bytes
           # of data and pictures.
+          #
+          # A table read from the file the program is handed as it starts is written as its size
+          # alone, and filled from the file before the game's first statement (StartFileFills).
           def constant_arrays
-            read = @reachable.filter_map do |node|
+            tables_read.map do |table|
+              name = @names.of(:table, table.name)
+              next C::StartFileArray.new(name: name, type: table_type(table), count: table.entry_count) if table.from_file
+
+              C::ConstArray.new(name: name, type: table_type(table), values: table_entries(table))
+            end + @data.values.select { |data| arrays_read.include?(data.name) }.map do |data|
+              refuse_picture_from_start_file!(data.name, "a piece of data read a byte at a time")
+              bytes = data.kind == :data ? data.bytes : data.pixels
+              C::ConstArray.new(name: @names.of(:data, data.name), type: "uint8_t", values: bytes.bytes)
+            end
+          end
+
+          # The names of the tables and the data a run reads, by an entry or by copying a run of them.
+          def arrays_read
+            @arrays_read ||= @reachable.filter_map do |node|
               case node.kind
               when :table_get, :data_byte then node.name
               when :list_copy, :load_sprite_tiles then node.table
               end
             end.uniq
-            @tables.values.select { |table| read.include?(table.name) }.map do |table|
-              C::ConstArray.new(name: @names.of(:table, table.name), type: table_type(table), values: table_entries(table))
-            end + @data.values.select { |data| read.include?(data.name) }.map do |data|
-              bytes = data.kind == :data ? data.bytes : data.pixels
-              C::ConstArray.new(name: @names.of(:data, data.name), type: "uint8_t", values: bytes.bytes)
-            end
           end
+
+          # The tables a run reads.
+          def tables_read = @tables.values.select { |table| arrays_read.include?(table.name) }
 
           # The C type a table's entries are kept in, by the width the game declared and whether
           # they are signed, with the range that type holds.
@@ -605,7 +621,7 @@ module VBlank
           def lower_list_copy(node)
             table = @tables.fetch(node.table)
             kept = TABLE_KEPT_AS.fetch(table_type(table))
-            [list_call("rg_list_copy", node, @names.of(:table, node.table), C::Int.new(kept), C::Int.new(table.values.length),
+            [list_call("rg_list_copy", node, @names.of(:table, node.table), C::Int.new(kept), C::Int.new(table.entry_count),
                        value(node.at), C::Int.new(node.count))]
           end
 
@@ -699,8 +715,7 @@ module VBlank
           # it: a table whose length is a power of two wraps the index (what an angle wants),
           # any other clamps it to the ends.
           def value_of_table_get(node)
-            values = @tables.fetch(node.name).values
-            count = values.length
+            count = @tables.fetch(node.name).entry_count
             index = value(node.index)
             safe = if count.positive? && (count & (count - 1)).zero?
                      call("rg_and", index, C::Int.new(count - 1))

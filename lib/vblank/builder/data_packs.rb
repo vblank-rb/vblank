@@ -26,14 +26,28 @@ module VBlank
     # themselves (#pack_slot_values). So a game cannot branch on the original's bytes while it is
     # built, and a build that leaves the bytes out changes only what those verbs do with a handle.
     #
-    # WHAT A BUILD DOES WITH THE PACK TODAY: every build is all-in-one. The pack is made from the
-    # copy here, written as its file would be and read back from those bytes, so the game reads
-    # exactly what a pack file holds; each verb given a handle then takes what the slot holds as if
-    # the game had written it. So the interpreter, the cartridges and the builds for computers all
-    # play the game as one that holds the data itself, and nothing below the builder knows a pack
-    # was there. A cartridge stays this way for good: a console's cartridge holds its data, and
-    # there is no player's machine to make a pack on. Only a computer's shell build will leave the
-    # bytes out and read the pack as the game starts.
+    # TWO WAYS TO BUILD WITH THE PACK.
+    #
+    # ALL-IN-ONE, the way every build goes unless told otherwise: the pack is made from the copy
+    # here, written as its file would be and read back from those bytes, so the game reads exactly
+    # what a pack file holds; each verb given a handle then takes what the slot holds as if the game
+    # had written it. So the interpreter, the cartridges and the builds for computers all play the
+    # game as one that holds the data itself, and nothing below the builder knows a pack was there.
+    # A cartridge is always built this way: a console's cartridge holds its data, and nothing hands
+    # a cartridge a file as it starts.
+    #
+    # WITH THE PACK LEFT OUT, for a build for a computer told `pack_at_start: true`
+    # (Cartridge::Options): no copy is read, so the game builds on a machine that has none, and the
+    # program holds none of the original's bytes. It reads its pack from a file it is handed as it
+    # starts (IR::StartFile). The pack's layout follows from the slots' shapes and sizes alone
+    # (Original::Pack.layout), so the build knows where each slot will be in the file: a table given
+    # a slot is read from there (#table_from_start_file), and so is a picture given a slot of colours
+    # and one tile of a slot of tiles (#define_picture_from_start_file). The program holds none of
+    # a table's entries and zeros for a picture's pixels, and nothing the build works out may depend
+    # on what a slot holds: a table read from the file is not one whose entries a build looks at (a
+    # pose stepped through by a table's entries), and a picture read from the file
+    # is drawn as a whole box of its size, never cut or turned by its pixels. What a game cannot do
+    # with a slot this way yet is refused in plain words, naming the line.
     #
     # A SLOT THE ORIGINAL KEEPS PACKED has no `at:`, and the game's own unpacking routine fills it:
     #
@@ -59,10 +73,12 @@ module VBlank
       # names (or an Original::Copy already accepted), the block names the slots (DSL::PackSlots),
       # and +version+ names this build of the game in the pack's header, so a pack a player keeps is
       # made again when the game changes. Hands back a DSL::DataPack. A machine with no copy stops
-      # here with Original::NotSet, saying what to set.
-      def data_pack(from:, version: nil)
+      # here with Original::NotSet, saying what to set, unless the build leaves the pack out.
+      def data_pack(from:, version: nil, &)
         refuse_second_data_pack!
         refuse_missing_pack_version!(version)
+        return declare_pack_read_at_start(version, &) if @build_options.pack_at_start
+
         copy = from.is_a?(Original::Copy) ? from : from.copy
         refuse_copy_without_hash!(copy)
         slots = DSL::PackSlots.new
@@ -76,20 +92,156 @@ module VBlank
         made = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version)
         @data_pack_contents = Original::Pack.from_bytes(made.to_bytes)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
-        @data_pack = DSL::DataPack.new(@data_pack_contents, slots.list,
-                                       make_unpacking: -> { unpacking || unpacking_program(bytes, slots.list, nil) })
+        @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
+                                       slots: slots.list,
+                                       make_unpacking: ->(_) { unpacking || unpacking_program(bytes, slots.list, nil) })
       end
 
       private
+
+      # THE PACK LEFT OUT (see the top of this file): the slots named, the copy never read, and the
+      # program told the file it is handed as it starts, a pack of these slots for +version+.
+      def declare_pack_read_at_start(version)
+        refuse_pack_left_out_of_cartridge!
+        slots = DSL::PackSlots.new
+        yield slots
+        refuse_unfilled_slots!(slots)
+        layout = Original::Pack.layout(slots.list, build_version: version)
+        @program.start_file = IR::StartFile.new(called: PACK_FILE_TITLE, size: layout.size, checks: layout.checks)
+        @pack_slot_starts = layout.slot_starts
+        @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
+        @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list,
+                                       make_unpacking: ->(copy_size) { unpacking_program(nil, slots.list, slots.routine, copy_size: copy_size) })
+      end
+
+      # What a player is told the file is (IR::StartFile#called): the one a game is handed, and the
+      # one its unpacking is handed.
+      PACK_FILE_TITLE = "data pack"
+      COPY_FILE_TITLE = "copy of the original"
+
+      # Whether this build leaves its pack out, so a slot is read from the file handed at start.
+      def pack_left_out? = !@pack_slot_starts.nil?
+
+      def refuse_pack_left_out_of_cartridge!
+        return if @for_computer
+
+        raise ArgumentError, "This build is a cartridge, and a cartridge holds its own data. Nothing hands a cartridge " \
+                             "a data pack as it starts. Build the cartridge all-in-one (no pack_at_start:), or build " \
+                             "the game for a computer to read its pack as it starts."
+      end
+
+      # `table :name, DSL::StartFileEntries.new(at:, count:)`: a table of +count+ entries, each
+      # +width+ wide and +signed+ or not, read from the file the program is handed as it starts, from
+      # byte +at+ on. The program holds none of them (Nodes::Table#entries_in_file), and they are
+      # not kept for the build to look at (Builder#always_within? reads those), since nothing known
+      # while building may depend on them. Hands back its DSL::Table.
+      def table_from_start_file(name, entries, width:, signed:)
+        unless @program.start_file
+          raise ArgumentError, "table :#{name} reads its entries from a file the game is handed as it starts, and this " \
+                               "game reads no such file. Read the table from a data pack, or give it its numbers."
+        end
+
+        node = Build.table(name, [], width: width, signed: signed)
+        node.from_file = entries.at
+        node.entries_in_file = entries.count
+        record(node)
+        DSL::Table.new(self, name, entries.count, fraction_bits: nil, width: width)
+      end
+
+      # `table :name, pack[:slot]` with the pack left out: the slot read from the file.
+      def table_from_pack_slot(name, handle)
+        refuse_slot_from_elsewhere!(handle, "table :#{name}")
+        refuse_slot_read_wrongly!(handle, :numbers, "table :#{name}")
+        slot = handle.layout
+        table_from_start_file(name, DSL::StartFileEntries.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count),
+                              width: slot.width, signed: slot.signed)
+      end
+
+      # `image :name, colors: pack[:palette], places: pack[:walls].tile(0)` with the pack left out:
+      # an 8x8 picture whose colours and places are read from the file (IR::StartFile::Picture). In
+      # the program its places are all 1 and its colours nought, so the build treats it as a solid
+      # square. Its list of colours is named for the slot it comes from (#pack_colors_name), so two
+      # pictures from one slot are drawn from one list and two from different slots from two, as
+      # they are when the lists hold what the slots hold.
+      def define_picture_from_start_file(name, opts)
+        colors = opts[:colors]
+        places = opts[:places]
+        refuse_picture_not_wholly_from_pack!(name, opts)
+        refuse_slot_from_elsewhere!(colors, "image :#{name}'s colors:")
+        refuse_slot_read_wrongly!(colors, :colors, "image :#{name}'s colors:")
+        refuse_slot_from_elsewhere!(places, "image :#{name}'s places:")
+        refuse_slot_read_wrongly!(places, :tile, "image :#{name}'s places:")
+        width = opts[:width]
+        height = opts[:height]
+        positive_dims!(name, width, height)
+        refuse_picture_not_one_tile!(name, width, height)
+        refuse_too_many_pack_colors!(name, colors)
+
+        node = Build.bitmap(name, width: width, height: height, pixels: Array.new(width * height, 0).pack("v*"),
+                                  transparent: nil, colors: Array.new(colors.count, 0),
+                                  places: Array.new(width * height, 1).pack("C*"), colors_name: pack_colors_name(colors))
+        node.from_file = IR::StartFile::Picture.new(
+          colors_at: @pack_slot_starts.fetch(colors.layout.name), colors_count: colors.count,
+          places_at: @pack_slot_starts.fetch(places.layout.name) + (places.tile_index * Original::Slot::Tiles.item_bytes(places.layout))
+        )
+        record_picture(node)
+        (@pictures_from_start_file ||= Set.new) << name
+        record_visible_bounds(name: name, width: width, height: height, cells: [], transparent: nil)
+      end
+
+      # Whether the picture +name+ is read from the file the program is handed as it starts.
+      def picture_from_start_file?(name) = @pictures_from_start_file&.include?(name) || false
+
+      # With the pack left out, a picture reads from the pack only as a slot of colours and one tile
+      # of places, both from the pack: the build knows nothing else of it that does not depend on the
+      # bytes.
+      def refuse_picture_not_wholly_from_pack!(name, opts)
+        both = opts[:colors].is_a?(DSL::PackSlot) && opts[:places].is_a?(DSL::PackSlot)
+        others = opts.keys - %i[colors places width height]
+        return if both && others.empty?
+
+        raise ArgumentError, "image :#{name} reads a slot of the data pack, and this build reads its pack as the game " \
+                             "starts. Such a picture must take both colors: and places: from the pack, and nothing " \
+                             "else: `image :#{name}, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)`. " \
+                             "Or build the game all-in-one."
+      end
+
+      # The name of the list of colours a picture read from the pack is drawn from: the colour
+      # slot's, written so no list a game declares (`colors :sea`) can have it.
+      def pack_colors_name(handle) = :"data pack slot :#{handle.layout.name}"
+
+      def refuse_too_many_pack_colors!(name, handle)
+        return if handle.count <= IR::StartFile::PLACES
+
+        raise ArgumentError, "image :#{name} takes its colors from slot :#{handle.layout.name}, which holds " \
+                             "#{handle.count} colors. A picture given places picks from #{IR::StartFile::PLACES} colors " \
+                             "at most. Give it a slot of #{IR::StartFile::PLACES} colors or fewer."
+      end
+
+      def refuse_picture_not_one_tile!(name, width, height)
+        return if width * height == Original::Slot::Tiles::PIXELS
+
+        raise ArgumentError, "image :#{name} is #{width}x#{height}, and one tile of a slot has " \
+                             "#{Original::Slot::Tiles::PIXELS} places. Make the picture 8x8."
+      end
 
       # THE UNPACKING PROGRAM (Original::Unpacking says why it is a program of its own): the copy's
       # +bytes+ as a table, the pack's bytes as one list, each of +slots+ copied as it is or filled
       # by +routine+, the game's `slots.fill_from_copy` block, run as game code on a builder of its
       # own. A pack with no routine has one too, which only copies: it is what a shell runs for any pack.
-      def unpacking_program(bytes, slots, routine)
+      #
+      # With the pack left out there are no +bytes+: the program is built for a copy of +copy_size+
+      # bytes, the size of the release it unpacks, and reads the copy from the file it is handed as
+      # it starts, so it holds none of the copy either.
+      def unpacking_program(bytes, slots, routine, copy_size: nil)
+        copy_size = refuse_unsized_unpacking!(copy_size) unless bytes
         Builder.keeping_builder_in_use do
           maker = Builder.new
-          copy = maker.table(Original::Unpacking::COPY, bytes.bytes, width: :byte, signed: false)
+          copy = if bytes
+                   maker.table(Original::Unpacking::COPY, bytes.bytes, width: :byte, signed: false)
+                 else
+                   declare_copy_table_from_start_file(maker, slots, copy_size)
+                 end
           list = maker.list(Original::Unpacking::BYTES, capacity: slots.sum(&:byte_size), width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = DSL::UnpackingFaults.new(maker)
@@ -106,8 +258,25 @@ module VBlank
           finished.store!(1)
           maker.halt
           maker.finalize_program
-          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes.bytesize)
+          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes ? bytes.bytesize : copy_size)
         end
+      end
+
+      # The unpacking's copy, declared on +maker+ as a table read from the file the unpacking is
+      # handed as it starts, and handed back: a copy of +copy_size+ bytes, which every slot copied
+      # as it is must lie inside, as it must inside a copy that is there.
+      def declare_copy_table_from_start_file(maker, slots, copy_size)
+        slots.reject(&:filled_by_routine?).each { |slot| slot.refuse_past_end!(copy_size) }
+        maker.program.start_file = IR::StartFile.new(called: COPY_FILE_TITLE, size: copy_size, checks: [])
+        maker.table(Original::Unpacking::COPY, DSL::StartFileEntries.new(at: 0, count: copy_size), width: :byte, signed: false)
+      end
+
+      def refuse_unsized_unpacking!(copy_size)
+        return copy_size if copy_size.is_a?(Integer) && copy_size.positive?
+
+        raise ArgumentError, "This build reads its data pack as the game starts, so its unpacking reads no copy as it " \
+                             "is built. It is built for a copy of one size. Say the size of the release it unpacks: " \
+                             "`pack.unpacking(copy_size: 1_048_576)`."
       end
 
       # How far a routine may go on the interpreter before it is taken to be stuck. A routine reads
@@ -163,6 +332,7 @@ module VBlank
       def pack_slot_values(handle, wanted, where)
         refuse_slot_from_elsewhere!(handle, where)
         refuse_slot_read_wrongly!(handle, wanted, where)
+        refuse_slot_read_while_left_out!(handle, where)
         values = handle.layout.decode(@data_pack_contents.bytes_of(handle.layout.name))
         handle.one_tile? ? values.fetch(handle.tile_index) : values
       end
@@ -173,6 +343,15 @@ module VBlank
         read[:colors] = pack_slot_values(opts[:colors], :colors, "image :#{name}'s colors:") if opts[:colors].is_a?(DSL::PackSlot)
         read[:places] = pack_slot_values(opts[:places], :tile, "image :#{name}'s places:") if opts[:places].is_a?(DSL::PackSlot)
         read
+      end
+
+      # A verb that reads what a slot holds as the game is built, in a build that leaves its pack out.
+      def refuse_slot_read_while_left_out!(handle, where)
+        return unless pack_left_out?
+
+        raise ArgumentError, "#{where} reads what slot :#{handle.layout.name} holds as the game is built, and this " \
+                             "build reads its data pack as the game starts. Read the slot with `table` or with " \
+                             "`image colors:, places:`, or build the game all-in-one."
       end
 
       def refuse_second_data_pack!

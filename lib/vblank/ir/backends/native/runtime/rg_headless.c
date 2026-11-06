@@ -28,7 +28,11 @@
  * compares every frame pixel by pixel. Without it a frame is a few lines rather than a hundred
  * and fifty thousand characters, which is what lets a long run be driven a frame at a time.
  *
- * The options are --every-picture, and the seven below.
+ * The options are --every-picture, and the eight below.
+ *
+ * With --start-file FILE the game is handed FILE as it starts (rg_start_file_read): the data pack
+ * of a game built with its pack left out, or the copy of the original its unpacking reads. A game
+ * that reads such a file and is handed none stops at its first statement, saying so.
  *
  * With --clock-at SECONDS TICKS SET the cartridge has a clock, which reads SECONDS from the start
  * of 1970 and TICKS of the console's 2^24 a second more at power-on, and was set when SET is 1
@@ -375,6 +379,11 @@ int rg_headless_main(int argc, char **argv) {
       int64_t seconds = strtoll(argv[++i], NULL, 10);
       int64_t ticks = strtoll(argv[++i], NULL, 10);
       rg_clock_starts_at(seconds, ticks, (int32_t)strtol(argv[++i], NULL, 10));
+    } else if (strcmp(argv[i], "--start-file") == 0 && i + 1 < argc) {
+      if (!rg_start_file_read(argv[++i])) {
+        fprintf(stderr, "the file at %s could not be read\n", argv[i]);
+        return 2;
+      }
     }
   }
   rg_active_driver = &headless;

@@ -424,7 +424,9 @@ module VBlank
     #
     # A slot of numbers from the game's data pack is given in place of the array
     # (`table :speeds, pack[:speeds]`), and then its width and sign are the slot's, never
-    # inferred from what the copy holds (see Builder::DataPacks).
+    # inferred from what the copy holds (see Builder::DataPacks). So can a DSL::StartFileEntries,
+    # for a table read from the file the game is handed as it starts; its width and sign are then
+    # the ones given (a half, not signed, unless said).
     #
     # @param name [Symbol] the table's name
     # @param values [Array<Integer>, DSL::PackSlot] the whole numbers to store, computed at build time
@@ -432,8 +434,12 @@ module VBlank
     # @param signed [Boolean, nil] force signedness; nil infers it from the values
     # @return [Table] a handle to index with []
     def table(name, values, width: nil, signed: nil)
+      return table_from_start_file(name, values, width: width || :half, signed: signed || false) if values.is_a?(DSL::StartFileEntries)
+
       if values.is_a?(DSL::PackSlot)
         refuse_table_unlike_slot!(name, values, width, signed)
+        return table_from_pack_slot(name, values) if pack_left_out?
+
         width = values.layout.width
         signed = values.layout.signed
         values = pack_slot_values(values, :numbers, "table :#{name}")

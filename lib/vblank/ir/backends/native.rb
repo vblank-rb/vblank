@@ -14,6 +14,7 @@ require_relative "native/picture"
 require_relative "native/sound_log"
 require_relative "native/sound"
 require_relative "native/saving"
+require_relative "native/start_file_fills"
 require_relative "native/lowering"
 require_relative "native/headless_run"
 require_relative "native/rules_run" # ...and a game's rules alone, read only as asked
@@ -59,7 +60,17 @@ module VBlank
         # The cartridge is for +console+, one the game names, and the first it names when that is
         # left out. The program is then built as that console: the runtime's screen is its size
         # (ConsoleNumbers), and the program does what the game does on it.
-        def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent)
+        #
+        # With +pack_at_start+ the game's data pack is left out (Cartridge::Options), and no cartridge
+        # is made, since a cartridge holds its data: the program is checked as a build checks it,
+        # every guardrail on, without one (Cartridge::Game#checked_program).
+        def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent,
+                            pack_at_start: false)
+          if pack_at_start
+            return game.checked_program(err: err, progress: progress, settings: settings, console: console || game.consoles.first,
+                                        pack_at_start: true)
+          end
+
           checked_cartridge(game, console: console, settings: settings, err: err, progress: progress).source_program
         end
 
@@ -116,14 +127,16 @@ module VBlank
         # names another computer to build for (see TARGETS), and left out it is this one. +console+
         # is the one it plays the game as (#checked_program). +strip+ leaves the program's debugging
         # data out: a far smaller file, and far poorer crash reports.
-        def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, err: $stderr)
+        def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, pack_at_start: false, err: $stderr)
           if File.directory?(path)
             raise LoweringError, "#{path} is a folder, so the program cannot be written there. Name a file instead."
           end
           refuse_unknown_target!(target)
 
-          cartridge = checked_cartridge(game, console: console, settings: settings, err: err)
-          program = cartridge.source_program
+          cartridge = (checked_cartridge(game, console: console, settings: settings, err: err) unless pack_at_start)
+          program = cartridge&.source_program ||
+                    checked_program(game, console: console, settings: settings, err: err, pack_at_start: true)
+          refuse_start_up_without_cartridge!(program) unless cartridge
           source = lower(program, title: game.title)
           Dir.mktmpdir("vblank-native") do |dir|
             src = File.join(dir, "src")
@@ -141,6 +154,17 @@ module VBlank
           end
           FileUtils.chmod(0o755, path)
           path
+        end
+
+        # A console whose start-up the desktop build plays reads the start of the game's cartridge
+        # (CartridgeStart), and a build with its data pack left out makes no cartridge.
+        def refuse_start_up_without_cartridge!(program)
+          console = program.described_console
+          return unless console.plays_bios_start_up
+
+          raise LoweringError, "A #{console.title} program plays the console's start-up, which reads the game's cartridge. " \
+                               "A build that leaves its data pack out makes no cartridge, so it cannot make this program " \
+                               "yet. Build the program all-in-one, or as a web page or a Ruby file."
         end
 
         def refuse_unknown_target!(target)

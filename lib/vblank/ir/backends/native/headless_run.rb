@@ -204,6 +204,13 @@ module VBlank
             self
           end
 
+          # Hand the program a file as it starts, as the interpreter's #hand_file does: +bytes+, which
+          # the program is given as a file of its own (--start-file). Gives back self.
+          def hand_file(bytes)
+            @handed_file = bytes
+            self
+          end
+
           # Drive input that changes over time: the block is called for each frame with its
           # number (1, 2, 3, …) and gives back the buttons held during it. It may read the game
           # (#[], #screen, #sprites) as it stands at the end of the frame before. Gives back self.
@@ -383,7 +390,7 @@ module VBlank
                 @sound_read = 0
                 @pass_buttons = IR::Buttons::PassButtons.new
                 play_frames(exe, frames, [*frame_options(pictures.path), *sound_options(dir), *save_options(dir),
-                                          *held_options, *clock_options])
+                                          *held_options, *clock_options, *start_file_options(dir)])
               end
               read_sound(File.join(dir, "sound")) if @records_sound && !@sounds_as_played
               @save.replace_with_sav(File.binread(save_file(dir)), from: "The save memory the program wrote") if @keeps_save
@@ -413,6 +420,16 @@ module VBlank
 
             File.binwrite(save_file(dir), @save.to_sav)
             ["--save", save_file(dir), *(["--save-cut-after", @save.power_left.to_s] if @save.power_left)]
+          end
+
+          # The file handed over (#hand_file), written beside the run's other files for the program
+          # to read; nothing when none was.
+          def start_file_options(dir)
+            return [] unless @handed_file
+
+            path = File.join(dir, "start_file")
+            File.binwrite(path, @handed_file)
+            ["--start-file", path]
           end
 
           # Buttons held for the whole run are down from power-on, before the game's first

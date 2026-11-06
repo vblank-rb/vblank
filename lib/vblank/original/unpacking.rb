@@ -17,14 +17,14 @@ module VBlank
     # table, a byte list, loops, routines, `wait_vblank`, `halt`), so every run plays it as it plays
     # any game, checked against the interpreter, and nothing new is asked of a backend.
     #
-    # WHAT A SHELL BUILD MUST ADD, none of which is here yet. The copy is a table of constants made
-    # from the copy's file as the game is built (`File.binread` in `data_pack`), and `data_pack`
-    # stops with NotSet when there is no copy, before any program exists. A shell has no copy when
-    # it is built and must not hold the original's bytes, so it needs: the program built with no
-    # copy present, from the slots' shapes and sizes alone; a table whose bytes come in at start,
-    # from the player's file, in place of COPY; and the program played before the game, to its
-    # `halt`, with BYTES read back after it and written as the pack. The routine itself does not
-    # change for any of that.
+    # BUILT WITH THE PACK LEFT OUT. Built all-in-one, the copy is a table of constants made from
+    # the copy's file as the game is built. A build that leaves the pack out (`pack_at_start:`,
+    # Builder::DataPacks) has no copy and must not hold the original's bytes, so its program is
+    # built for a copy of a known size (`pack.unpacking(copy_size:)`, the release's size) and COPY
+    # is read from the file it is handed as it starts (IR::StartFile): the player's copy. Played to
+    # its `halt` on any computer's runtime handed that file, BYTES read back after it is the pack.
+    # The routine itself does not change for any of that. What a shell must still add is playing it
+    # inside the shipped game before the game, and keeping the pack it wrote.
     #
     # WHAT IS IN IT. The copy is a table of bytes (COPY). The pack is one list of bytes (BYTES),
     # every slot in it one after another in the pack's order (#places), as the pack file keeps them.

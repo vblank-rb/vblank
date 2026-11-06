@@ -90,6 +90,11 @@ module VBlank
             end
           end
 
+          # An array of +count+ numbers of +type+ that the program is written without: they are read
+          # from the file it is handed as it starts (IR::StartFile), before the game's first statement,
+          # and never written after. So it is written as its size alone, where it can be written.
+          StartFileArray = Data.define(:name, :type, :count)
+
           # A routine taking nothing and giving nothing back. +exported+ is for the few the
           # runtime calls by name; the rest are private to the generated file.
           Function = Data.define(:name, :body, :exported) do

@@ -77,6 +77,13 @@ module VBlank
             self
           end
 
+          # The same file handed to both sides as the game starts.
+          def hand_file(bytes)
+            @native.hand_file(bytes)
+            @handed_file = bytes
+            self
+          end
+
           # The native run does the watching, so the block reads the game as C at each frame
           # boundary. This is what comes back, and not the native run: the run a test goes on to
           # make from here has to be the checked one.
@@ -151,9 +158,10 @@ module VBlank
           end
 
           # The interpreter starting from +save+, with the buttons held for the whole run down
-          # from power-on and the clock started where it was, as the game as C has them.
+          # from power-on, the clock started where it was and the file handed over, as the game as
+          # C has them.
           def interpreter_from(save)
-            interpreter = Reference.new(save: save).hold(*@held)
+            interpreter = Reference.new(save: save).hold(*@held).hand_file(@handed_file)
             @clock_started ? interpreter.clock_at(@clock_started, set: @clock_set) : interpreter
           end
 
@@ -190,8 +198,9 @@ module VBlank
             message = "#{lowering_name} and the interpreter disagree at #{difference}"
             return message unless difference.include?("picture")
 
-            want = reference_snapshots(program, frames: frames, buttons: @played, held: @held)
-            got = lowered_snapshots(program, frames: frames, buttons: @played, mode: :checked, held: @held)
+            want = reference_snapshots(program, frames: frames, buttons: @played, held: @held, start_file: @handed_file)
+            got = lowered_snapshots(program, frames: frames, buttons: @played, mode: :checked, held: @held,
+                                             start_file: @handed_file)
             first = want.zip(got).find { |reference, native| reference.picture != native.picture }
             return message unless first
 

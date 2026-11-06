@@ -61,6 +61,8 @@ module VBlank
         maybe_value: ->(v) { v.is_a?(Node) && v.value? },      # a value operand a game can leave out
         flag:    ->(v) { v == true || v == false },            # an on/off switch (e.g. double buffering)
         shape:   ->(v) { v.is_a?(Audio::Envelope) },                  # how a note starts and how it ends
+        start_file: ->(v) { v.is_a?(StartFile) && v.checks.all?(StartFile::Check) }, # a file the program is handed as it starts
+        file_picture: ->(v) { v.is_a?(StartFile::Picture) },          # ...and where a picture is in it
       })
 
       # Verify a whole program tree. Returns the node on success; raises

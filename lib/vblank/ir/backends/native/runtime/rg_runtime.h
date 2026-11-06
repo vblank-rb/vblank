@@ -113,4 +113,32 @@ void rg_dump_list(const struct rg_list *list);
  * a call goes to, and an entry of an array is not a name, so the entry is handed to this. */
 static inline void rg_call_routine(void (*routine)(void)) { routine(); }
 
+/* A FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile). A game built with its data pack left
+ * out reads its pack from one, and its unpacking reads the player's copy of the original; the
+ * program holds zeros where those numbers go.
+ *
+ * The driver hands the file over before the game starts: rg_start_file_read reads it from a path
+ * (0 when it cannot be read), and rg_start_file_hand takes bytes the driver already holds, copying
+ * them. The game's first statement is rg_start_file_open, which stops the game with rg_fault, in
+ * the words IR::StartFile#refusal says, when no file was handed over or it is not the one the game
+ * reads. +called+ is what the file is called to a player ("data pack"), and +rules+ the game's
+ * numbers for it: the file's size in bytes, how many checks, and each check as where it is, how
+ * many bytes, and those bytes, which the file must hold there. Then the game fills what it reads
+ * from the file, each once:
+ *
+ * rg_start_file_fill_table: +count+ entries of +table+, kept as +kept+ (RG_TABLE_INT8...), from
+ * byte +at+ on, each as wide as that, low byte first.
+ *
+ * rg_start_file_fill_tile: +count+ pixels of a tile from +start+ in the background tiles' pixels,
+ * of which there are +tile_pixels+ (rg_screen_tile_pixels_to_fill), from places two to a byte at
+ * +places_at+ (the left one in the low half) into +colors_count+ colours of two bytes at
+ * +colors_at+: RG_SEE_THROUGH where the place is 0, the colour's fifteen bits otherwise, and 0 for
+ * a place past the colours. */
+int rg_start_file_read(const char *path);
+void rg_start_file_hand(const uint8_t *bytes, int32_t size);
+void rg_start_file_open(const char *called, const int32_t *rules);
+void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at);
+void rg_start_file_fill_tile(int32_t tile_pixels, int32_t start, int32_t count, int32_t colors_at, int32_t colors_count,
+                             int32_t places_at);
+
 #endif

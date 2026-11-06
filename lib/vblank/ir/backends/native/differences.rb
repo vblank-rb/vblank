@@ -18,13 +18,21 @@ module VBlank
 
           # The snapshots the windowless program printed. +held+ is down from power-on, before
           # the game's first statement, and +buttons+ say what is held on each frame from the
-          # first on.
-          def lowered_snapshots(program, frames:, buttons:, mode:, held: [])
+          # first on. +start_file+ is the bytes of the file the program is handed as it starts
+          # (IR::StartFile), or nil for none.
+          def lowered_snapshots(program, frames:, buttons:, mode:, held: [], start_file: nil)
             pass_buttons = IR::Buttons::PassButtons.new
             from_power_on = held.empty? ? [] : ["--held-from-power-on", pass_buttons.headless_input_line(held)]
             input = (1..frames).map { |frame| "#{pass_buttons.headless_input_line(buttons.fetch(frame, []))}\n" }.join
-            parse_snapshots(run_headless_program(program, mode, args: [frames, "--every-picture", *from_power_on],
-                                                                input: input), program)
+            Dir.mktmpdir("vblank-snapshots") do |dir|
+              handed = []
+              if start_file
+                handed = ["--start-file", File.join(dir, "start_file")]
+                File.binwrite(handed.last, start_file)
+              end
+              parse_snapshots(run_headless_program(program, mode, args: [frames, "--every-picture", *from_power_on, *handed],
+                                                                  input: input), program)
+            end
           end
 
           # +program+ built to run with no window and run with +args+ and +input+, giving back what it
@@ -34,8 +42,8 @@ module VBlank
             Zig.run_program(Native.new.build_headless(program, mode: mode), args: args, input: input)
           end
 
-          def reference_snapshots(program, frames:, buttons:, held: [])
-            interpreter = Reference.new.hold(*held)
+          def reference_snapshots(program, frames:, buttons:, held: [], start_file: nil)
+            interpreter = Reference.new.hold(*held).hand_file(start_file)
             snapshots = []
             interpreter.input_each_frame { |frame| buttons.fetch(frame, []) }
                        .each_vblank { |frame| snapshots << reference_moment(interpreter, "frame #{frame}") }

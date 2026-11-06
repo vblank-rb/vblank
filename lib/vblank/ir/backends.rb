@@ -18,6 +18,7 @@ require_relative "backends/sections"
 require_relative "backends/sprite_pieces"
 require_relative "backends/song_table"
 require_relative "backends/cartridge_faults"
+require_relative "backends/cartridge_start_file" # a cartridge is never handed a file as it starts
 require_relative "backends/cartridge_headless_run"
 require_relative "backends/cartridge_checked_run"
 require_relative "backends/gba"

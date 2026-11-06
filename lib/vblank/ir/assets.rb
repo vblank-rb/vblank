@@ -45,6 +45,24 @@ module VBlank
       # What marks a pixel see-through where a picture has no marker yet (the sixteenth bit alone).
       SEE_THROUGH_MARKER = 0x8000
 
+      # A PICTURE GIVEN AS PLACES INTO A LIST OF COLOURS (`image colors:, places:`), as its pixels: a
+      # place's colour, or SEE_THROUGH_MARKER at place 0. Gives back the pixels, two bytes each, and
+      # the marker when a pixel is see-through, nil when none is. The build makes a picture so from
+      # the numbers a game holds, and the interpreter from a file it is handed (IR::StartFile), so a
+      # picture is the same pixels whichever way its numbers came.
+      def self.placed_pixels(places, colors)
+        pixels = places.map { |place| place.zero? ? SEE_THROUGH_MARKER : colors.fetch(place) }
+        [pixels.pack("v*"), places.include?(0) ? SEE_THROUGH_MARKER : nil]
+      end
+
+      # Places kept two to a byte, the left one in the low half, as sixteen-colour tiles keep them:
+      # every place of +bytes+, in order.
+      def self.places_packed_in(bytes) = bytes.unpack("C*").flat_map { |both| [both & 0x0F, both >> 4] }
+
+      # Colours kept two bytes each, low byte first, five bits a channel: each one's fifteen bits (the
+      # sixteenth is not a colour, Graphics::Color.resolve).
+      def self.colors_packed_in(bytes) = bytes.unpack("v*").map { |color| color & 0x7FFF }
+
       Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces) do
         def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil) = super
 

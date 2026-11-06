@@ -162,6 +162,13 @@ module VBlank
           raise RunComparison::AsksTheInterpreter, "for the person at this machine to be player #{player} (`local_player=`)"
         end
 
+        # A file handed to the game as it starts (IR::StartFile). A cartridge holds its own data and is
+        # never handed one; a cartridge build refuses a program that reads one.
+        def hand_file(_bytes)
+          raise RunComparison::AsksTheInterpreter, "for the game to be handed a file as it starts (`hand_file`), " \
+                                                   "which a cartridge never is"
+        end
+
         private
 
         def refuse_unanswered!(name)

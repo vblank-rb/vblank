@@ -197,6 +197,7 @@ module VBlank
           @clock_started = nil     # the moment the cartridge's clock read at power-on, or nil for no clock
           @clock_set = true        # ...and whether it was ever set (see #clock_at)
           @clock_keeps_date = nil  # ...and whether it keeps the date, when not the console's chip
+          @handed_file = nil       # the file the program is handed as it starts, or nil for none (see #hand_file)
           @frame = 0               # passes of the game loop finished (see @screen_frame for frames shown)
           @screen_mode = nil       # the mode a `screen` op selected, if any
           @backdrop = 0            # the colour shown wherever nothing is drawn (`screen ... backdrop:`), black unless said
@@ -286,6 +287,7 @@ module VBlank
         # budget: it stops the run wherever it has got to (at the next frame boundary
         # if the program has frames), and #stopped_at_budget? says that's what happened.
         def run(node, max_steps: nil, frames: nil)
+          node = StartFile.filled(node, @handed_file) if node.kind == :program
           frames = DEFAULT_FRAMES if frames.nil? && max_steps.nil?
           @frames_limit = frames
           @max_steps = max_steps || DEFAULT_MAX_STEPS
@@ -497,6 +499,16 @@ module VBlank
           @clock_started = time
           @clock_set = set
           @clock_keeps_date = keeps_date
+          self
+        end
+
+        # Hand the program a file as it starts (IR::StartFile): +bytes+, a String of the file's
+        # bytes, which a game built with its data pack left out reads its pack from. A program that
+        # reads one is played with the file's numbers in place (StartFile.filled), and stops with a
+        # ProgramError when it is handed none or the wrong one; a program that reads none never
+        # looks at it. Returns self.
+        def hand_file(bytes)
+          @handed_file = bytes
           self
         end
 

@@ -65,6 +65,7 @@ module VBlank
             when C::Include, C::Prototype then nil # a method is found wherever it is defined
             when C::Global then add_starting_value("@#{item.name.text} = #{integer(item.value)}")
             when C::ConstArray then print_const_array(item)
+            when C::StartFileArray then print_start_file_array(item)
             when C::Function then print_function(item)
             when C::FunctionTable then add_starting_value("@#{item.name.text} = [#{item.functions.map { |name| ":#{name.text}" }.join(', ')}].freeze")
             when C::ListStorage then add_starting_value("@#{item.name.text} = RgList.new(#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)})")
@@ -98,6 +99,12 @@ module VBlank
               rows = values.each_slice(16).map { |row| "#{INDENT * 2}#{row.join(', ')},\n" }.join
               @setup << "#{INDENT}#{name} = [\n#{rows}#{INDENT}].freeze\n"
             end
+          end
+
+          # An array the start file fills (C::StartFileArray): its size alone, zeros until the runtime
+          # puts the file's entries in it.
+          def print_start_file_array(item)
+            add_starting_value("@#{item.name.text} = Array.new(#{integer([item.count, 1].max)}, 0)")
           end
 
           # --- statements ---

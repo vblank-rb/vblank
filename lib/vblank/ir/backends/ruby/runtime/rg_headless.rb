@@ -45,6 +45,8 @@
 #                               with the low byte first
 #   --sound-voice N             only voice N is in it (1 and 2 the square voices, 3 the wave voice,
 #                               4 the noise voice), which is how a test hears one voice at a time
+#   --start-file FILE           the game is handed FILE as it starts: the data pack of a game built
+#                               with its pack left out, or the copy its unpacking reads
 
 require "zlib"
 
@@ -90,6 +92,13 @@ def rg_headless_main(argv)
     when "--sound-voice"
       i += 1
       rg_sound_hear_only(argv[i].to_i)
+    when "--start-file"
+      i += 1
+      unless File.file?(argv[i])
+        $stderr.puts "the file at #{argv[i]} could not be read"
+        exit 2
+      end
+      rg_start_file_hand(File.binread(argv[i]))
     end
     i += 1
   end

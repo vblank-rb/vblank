@@ -1,0 +1,114 @@
+# frozen_string_literal: true
+
+module VBlank
+  module IR
+    # A FILE A PROGRAM IS HANDED AS IT STARTS, which some of its data is read from rather than
+    # written into it. A port of a retail game must not ship the game's data, so a build for a
+    # computer can leave the data pack out (Builder::DataPacks): the program is the game's code
+    # alone, and the player's pack is handed to it when it starts. The program that makes the pack,
+    # the game's unpacking (Original::Unpacking), is built the same way and handed the player's copy
+    # of the original.
+    #
+    # What the program says about the file, on Nodes::Program#start_file: what it is +called+ in
+    # what a player is told ("data pack"), its +size+ in bytes, and the +checks+ (each a Check):
+    # bytes the file must hold at a place, which tell a file for this build from any other. The
+    # size and the checks are known when the program is built, since the file's layout follows
+    # from the shapes and sizes the game wrote (Original::Slot), never from what it holds.
+    #
+    # WHAT IS READ FROM IT, each at a place in the file fixed when the program is built:
+    #
+    # - a table (Nodes::Table#from_file, where its first entry starts, and #entries_in_file): its
+    #   entries one after another, each as wide as the table says, low byte first, below zero only
+    #   for a signed table (Build.elements_of);
+    # - a picture given as places into a list of colours (Nodes::Bitmap#from_file, a Picture): the
+    #   colours, two bytes each with five bits a channel, and the places, two to a byte with the
+    #   left one in the low half, place 0 see-through. That is what `image colors:, places:` makes
+    #   of the same numbers held in the game (Assets.placed_pixels).
+    #
+    # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
+    # the build works out may depend on them. Each backend that plays such a program reads the file
+    # before the program's first statement: the interpreter makes the program it plays with the
+    # file's numbers in place (StartFile.filled), and the runtimes for a computer (C, JavaScript,
+    # Ruby) fill the same arrays from the file at power-on. A cartridge is never handed a file, so
+    # every cartridge lowering refuses such a program (Backends.refuse_start_file_on_cartridge!).
+    StartFile = Data.define(:called, :size, :checks)
+
+    class StartFile
+      # Bytes the file must hold from +at+ on.
+      Check = Data.define(:at, :bytes)
+
+      # Where a picture's colours and places are in the file: +colors_at+, the first colour, of
+      # +colors_count+; and +places_at+, the byte holding its first two places.
+      Picture = Data.define(:colors_at, :colors_count, :places_at)
+
+      # The most colours a picture's places can pick from: a place is four bits.
+      PLACES = 16
+
+      # The words a program stops with when +bytes+ (a binary String, or nil when no file was
+      # handed over) is not the file it reads, or nil when it is. Every runtime says these words.
+      def refusal(bytes)
+        if bytes.nil?
+          return "This game reads its #{called} as it starts, and no #{called} was handed to it. " \
+                 "Start the game with its #{called}."
+        end
+        if bytes.bytesize != size
+          return "The #{called} handed to the game is #{bytes.bytesize} bytes. This build reads a #{called} of " \
+                 "#{size} bytes. Hand it the #{called} this build was made for."
+        end
+
+        wrong = checks.find { |check| bytes.byteslice(check.at, check.bytes.bytesize) != check.bytes }
+        return nil unless wrong
+
+        "This file is not the #{called} this build reads: bytes #{wrong.at} to #{wrong.at + wrong.bytes.bytesize - 1} " \
+          "are not what it holds there. Hand it the #{called} this build was made for."
+      end
+
+      # +program+ as it plays handed +bytes+: a copy, its tables and pictures from the file holding
+      # the file's numbers, and no file left to read. ProgramError, in #refusal's words, when
+      # +bytes+ is not the file +program+ reads. A program that reads no file is handed back as it is.
+      def self.filled(program, bytes)
+        file = program.start_file
+        return program unless file
+
+        refusal = file.refusal(bytes&.b)
+        if refusal
+          VBlank.logger.debug("start file") { "refused the #{file.called} handed over: #{refusal}" }
+          raise ProgramError, refusal
+        end
+
+        filled = program.copy
+        filled.start_file = nil
+        read = filled.walk.select { |node| %i[table bitmap].include?(node.kind) && node.from_file }
+        read.each { |node| node.kind == :table ? fill_table(node, bytes.b) : fill_picture(node, bytes.b) }
+        VBlank.logger.debug("start file") do
+          "read the #{file.called}, #{file.size} bytes, into #{read.map { |node| ":#{node.name}" }.join(', ')}"
+        end
+        filled
+      end
+
+      # A table's entries, read from where it says.
+      def self.fill_table(node, bytes)
+        count = node.entries_in_file
+        node.values = Build.elements_of(bytes.byteslice(node.from_file, count * Build::ELEMENT_BYTES.fetch(node.width)),
+                                        width: node.width, signed: node.signed)
+        node.from_file = nil
+        node.entries_in_file = nil
+      end
+
+      # A picture's colours and places, read from where it says, and its pixels made from them as
+      # `image colors:, places:` makes them. A place past the colours shows colour 0, as each
+      # runtime fills it.
+      def self.fill_picture(node, bytes)
+        where = node.from_file
+        count = node.width * node.height
+        places = Assets.places_packed_in(bytes.byteslice(where.places_at, count / 2))
+        colors = Assets.colors_packed_in(bytes.byteslice(where.colors_at, where.colors_count * 2))
+        node.pixels, node.transparent = Assets.placed_pixels(places, colors + ([0] * [PLACES - colors.length, 0].max))
+        node.colors = colors
+        node.places = places.pack("C*")
+        node.from_file = nil
+      end
+      private_class_method :fill_table, :fill_picture
+    end
+  end
+end

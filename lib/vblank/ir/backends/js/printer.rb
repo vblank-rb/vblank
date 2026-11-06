@@ -139,6 +139,7 @@ module VBlank
             when C::Include, C::Prototype then nil # JavaScript finds a function wherever it is declared
             when C::Global then line(0, "let #{item.name.text} = #{integer(item.value)};")
             when C::ConstArray then print_const_array(item)
+            when C::StartFileArray then print_start_file_array(item)
             when C::Function then print_function(item)
             when C::FunctionTable then line(0, "const #{item.name.text} = [#{item.functions.map(&:text).join(', ')}];")
             when C::ListStorage then print_list_storage(item)
@@ -177,6 +178,12 @@ module VBlank
               values.each_slice(16) { |row| line(1, "#{row.map { |v| integer(v) }.join(', ')},") }
               line(0, "]);")
             end
+          end
+
+          # An array the start file fills (C::StartFileArray): its size alone, zeros until then.
+          def print_start_file_array(item)
+            type = ARRAYS.fetch(item.type) { raise LoweringError, "the printer has no array for C's #{item.type}" }
+            line(0, "const #{item.name.text} = new #{type}(#{[item.count, 1].max});")
           end
 
           # The table's bytes in a template string, 76 characters a line, so the file stays one a

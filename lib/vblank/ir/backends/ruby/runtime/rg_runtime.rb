@@ -170,6 +170,60 @@ def rg_fault(message) = rg_driver_fault(message)
 def rg_dump_variable(name, value) = rg_driver_dump_variable(name, value)
 def rg_dump_list(list) = rg_driver_dump_list(list)
 
+# --- the file the game is handed as it starts (the C runtime's rg_runtime.h says the rest) ---
+
+# +bytes+, a String, is the file; until it is handed over there is none (@rg_start_file is nil).
+def rg_start_file_hand(bytes)
+  @rg_start_file = bytes.b
+end
+
+def rg_start_file_open(called, rules)
+  fix = "Hand it the #{called} this build was made for."
+  if @rg_start_file.nil?
+    rg_fault("This game reads its #{called} as it starts, and no #{called} was handed to it. Start the game with its #{called}.")
+  end
+  if @rg_start_file.bytesize != rules[0]
+    rg_fault("The #{called} handed to the game is #{@rg_start_file.bytesize} bytes. This build reads a #{called} of " \
+             "#{rules[0]} bytes. #{fix}")
+  end
+  check = 2
+  rules[1].times do
+    at = rules[check]
+    length = rules[check + 1]
+    if @rg_start_file.byteslice(at, length).bytes != rules[check + 2, length]
+      rg_fault("This file is not the #{called} this build reads: bytes #{at} to #{at + length - 1} are not what it holds " \
+               "there. #{fix}")
+    end
+    check += 2 + length
+  end
+end
+
+# How each way a table is kept (RG_TABLE_INT8...) reads its entries from the file.
+RG_START_FILE_READS = ["c*", "C*", "s<*", "v*", "l<*"].freeze
+RG_START_FILE_ENTRY_BYTES = [1, 1, 2, 2, 4].freeze
+
+def rg_start_file_fill_table(table, kept, count, at)
+  table.replace(@rg_start_file.byteslice(at, count * RG_START_FILE_ENTRY_BYTES[kept]).unpack(RG_START_FILE_READS[kept]))
+end
+
+# The game's tile pixels are frozen, so the first tile filled puts an unfrozen copy in their place;
+# the picture reads them from there on. +_tile_pixels+ is how many there are, which the C needs.
+def rg_start_file_fill_tile(_tile_pixels, start, count, colors_at, colors_count, places_at)
+  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+  pixels = @rg_game_tile_pixels
+  count.times do |i|
+    both = @rg_start_file.getbyte(places_at + (i / 2))
+    place = i.even? ? both & 0x0F : both >> 4
+    pixels[start + i] = if place.zero?
+                          RG_SEE_THROUGH
+                        elsif place < colors_count
+                          @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1("v") & 0x7FFF
+                        else
+                          0
+                        end
+  end
+end
+
 # --- timers (Reference @timers) ---
 
 # One timer: whether it has ever been started, whether it is running, its rate, and how far it has

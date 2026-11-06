@@ -115,10 +115,11 @@ module VBlank
       # their warnings printed to +err+, without making the cartridge (VBlank.build's +cartridge+).
       # +progress+, +settings+ and +console+ are as for #build_rom. +for_computer+ is what the game's
       # `built_for_computer?` answers: true, unless the run is to stand for the cartridge's game.
+      # +pack_at_start+ leaves the game's data pack out (Cartridge::Options).
       def checked_program(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first,
-                          for_computer: true)
+                          for_computer: true, pack_at_start: false)
         build_rom(out: nil, err: err, progress: progress, profile: false, settings: settings, console: console,
-                  cartridge: false, for_computer: for_computer)
+                  cartridge: false, for_computer: for_computer, pack_at_start: pack_at_start)
       end
 
       # The variant the game names for +console+ in `variants:`, or nil.
@@ -151,13 +152,15 @@ module VBlank
       # +variant+ is as for #program; the command line's `--variant` hands one here.
       #
       # +for_computer+ is for a build that goes on to play on a computer, which the game can ask
-      # about (`built_for_computer?`).
+      # about (`built_for_computer?`). +pack_at_start+ leaves the game's data pack out, for a build
+      # for a computer that makes no cartridge (+cartridge+ false); see Cartridge::Options.
       def build_rom(out: $stdout, err: $stderr, validate: true, progress: Messages::Progress.silent,
                     profile: true, settings: {}, console: @consoles.first, variant: variant_for(console), cartridge: true,
-                    for_computer: false)
+                    for_computer: false, pack_at_start: false)
         console = refuse_console_not_for!(console)
         options = { code: @code, maker: @maker,
-                    **@options.with(console: console, variant: variant, for_computer: for_computer, consoles: @consoles).to_h }
+                    **@options.with(console: console, variant: variant, for_computer: for_computer, consoles: @consoles,
+                                    pack_at_start: pack_at_start).to_h }
         options = options.except(*(Console.console_settings - Console.for(console).console_settings))
         VBlank.build(@title, validate: validate, out: out, err: err, progress: progress, profile: profile,
                               settings: settings, cartridge: cartridge, **options, &@block)

@@ -436,7 +436,11 @@ module VBlank
         category :data
         operands name: :name, width: :int, height: :int, pixels: :text, transparent: :int,
                  colors: :list, places: :text, colors_name: :name, pieces: :list,
-                 shading: :name, shading_places: :text
+                 shading: :name, shading_places: :text, from_file: :file_picture
+
+        # +from_file+ is where in the file the program is handed as it starts (StartFile) this
+        # picture's colours and places are, for a picture read from there; it holds zeros until
+        # then. Absent on every other picture.
 
         # The list of colours it was drawn from, as a background's recolouring keeps them apart
         # (Assets::Image#list_drawn_from).
@@ -1304,7 +1308,11 @@ module VBlank
         kind :program
         category :root
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list, players: :list,
-                 for_computer: :flag, border: :text, border_size: :list, pixel_size: :int
+                 for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
+                 start_file: :start_file
+
+        # +start_file+ is the file the program is handed as it starts, which some of its tables and
+        # pictures are read from (a StartFile), or absent for a program that reads none.
 
         # The most players the game said it takes on this build, or nil where it said nothing.
         def most_players = players&.last
@@ -1652,7 +1660,15 @@ module VBlank
         kind :table
         declaration!
         category :data
-        operands name: :name, values: :list, width: :option, signed: :flag
+        operands name: :name, values: :list, width: :option, signed: :flag, from_file: :int, entries_in_file: :int
+
+        # +from_file+ is where its first entry is in the file the program is handed as it starts
+        # (StartFile), for a table read from there, and +entries_in_file+ how many it has: its
+        # +values+ are empty, since a program is written with none of them. Both are absent on
+        # every other table.
+
+        # How many entries the table has, wherever they are.
+        def entry_count = from_file ? entries_in_file : values.length
       end
 
       class TableGet

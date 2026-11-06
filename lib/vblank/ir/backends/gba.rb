@@ -899,6 +899,8 @@ module VBlank
         # for one scene are made that scene's routines (see SceneQuickMemory#prepare_scene_loop_work).
         # +screen+ is the screen's layout when another pass already planned it for this program.
         def lower(program, fast_funcs: nil, variables_first: [], lists_to_roomy: Set.new, scene_blocks: false, screen: nil)
+          Backends.refuse_start_file_on_cartridge!(program, Console::ADVANCE, LoweringError)
+
           @planned_screen = screen
           # What is held back at the top of the quick memory, settled before anything has a place
           # there: the stack, and the divide routines this program needs.

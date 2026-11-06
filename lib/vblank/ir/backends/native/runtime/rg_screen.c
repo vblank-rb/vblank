@@ -59,6 +59,22 @@ static int32_t patches_room;
 static uint16_t scenery[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
 static int32_t scenery_kept;
 
+/* The background tiles' pixels the picture is drawn from: the game's own, which cannot be
+ * written, or for a game with tiles read from the file it is handed as it starts, a copy of them
+ * with those tiles filled in (rg_screen_tile_pixels_to_fill). */
+static const uint16_t *tile_pixels_drawn = rg_game_tile_pixels;
+static uint16_t *tile_pixels_filled;
+
+uint16_t *rg_screen_tile_pixels_to_fill(int32_t count) {
+  if (!tile_pixels_filled) {
+    tile_pixels_filled = malloc((size_t)(count > 0 ? count : 1) * sizeof *tile_pixels_filled);
+    if (!tile_pixels_filled) rg_fault("there is no room for the %d pixels of the background tiles", (int)count);
+    memcpy(tile_pixels_filled, rg_game_tile_pixels, (size_t)count * sizeof *tile_pixels_filled);
+    tile_pixels_drawn = tile_pixels_filled;
+  }
+  return tile_pixels_filled;
+}
+
 static int32_t held;            /* switched off until the first frame (Framebuffer#held=) */
 static int32_t frames_begun;    /* a frame boundary has been reached (Reference @uses_frames) */
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
@@ -870,7 +886,7 @@ static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t
   int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
   int64_t tile = (int64_t)tile_set_now(background) * background_field(background, RG_BG_TILES) + cell;
   int64_t at = background_field(background, RG_BG_TILES_START) + tile * tile_w * tile_h + ty * tile_w + tx;
-  return rg_game_tile_pixels[at];
+  return tile_pixels_drawn[at];
 }
 
 /* Reference#grid_repeats: how many times the grid is seen along one side of the screen. A grid of
@@ -1288,7 +1304,7 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
       int32_t slow = painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
       int64_t from = set_start + (int64_t)cell * tile_w * tile_h + tx;
       for (int64_t i = 0; i < run; i++) {
-        uint16_t color = slow ? tile_pixel(background, cell, tx + i, ty) : rg_game_tile_pixels[from + i];
+        uint16_t color = slow ? tile_pixel(background, cell, tx + i, ty) : tile_pixels_drawn[from + i];
         if (color == RG_SEE_THROUGH) continue;
         int64_t at = py * RG_SCREEN_WIDTH + px + i;
         if (onto_sheet) {

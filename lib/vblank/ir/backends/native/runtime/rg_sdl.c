@@ -1737,6 +1737,7 @@ static void print_usage(const char *program) {
   printf("Options:\n"
          "  --save-file PATH       Keep the save in PATH. A .sav file from an emulator\n"
          "                         works.\n"
+         "  --data-pack PATH       The data pack, for a game built with its pack left out.\n"
          "  --settings-file PATH   Read and write the settings in PATH only.\n"
          "  --config-dir DIR       Keep the settings files in DIR.\n"
          "  -h, --help             Print this.\n");
@@ -1769,6 +1770,9 @@ int main(int argc, char **argv) {
       scripted = 1;
       frames_to_play = strtol(argv[i + 1], NULL, 10);
     }
+    /* A game built with its data pack left out is handed the pack here (rg_start_file_read). */
+    if (strcmp(argv[i], "--data-pack") == 0 && i + 1 < argc && !rg_start_file_read(argv[i + 1]))
+      refuse_to_start("the data pack cannot be read");
   }
 
   if (!SDL_Init(SDL_INIT_VIDEO)) refuse_to_start("the display cannot be reached");
