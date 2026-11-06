@@ -336,6 +336,15 @@ module VBlank
           def write_save_copy(*) = refuse_unanswered!(:write_save_copy)
           def write_save_vars(*) = refuse_unanswered!(:write_save_vars)
 
+          # Which player the person at this machine is. A headless program plays no match, and its
+          # runtime answers the first player (rg_local_player), so that is the one answer it takes,
+          # as a cartridge's run does (CartridgeHeadlessRun#local_player=).
+          def local_player=(player)
+            return if player == 1
+
+            raise RunComparison::AsksTheInterpreter, "for the person at this machine to be player #{player} (`local_player=`)"
+          end
+
           # Which compiler the program's own language turns its code into machine code with, as the
           # program says itself before its first frame: :yjit or :none from the Ruby lowering's, and
           # nil from a program that does not say (C needs none, and node's is always on).
