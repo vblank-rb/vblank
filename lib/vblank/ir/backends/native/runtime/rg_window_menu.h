@@ -6,7 +6,7 @@
  * draw differently.
  *
  * There is no SDL here, and no window: rg_sdl.c hands it the keys meant for it and draws what it
- * says. Every setting it shows and changes is rg_window.c's, through the same functions a hotkey
+ * gives. Every setting it shows and changes is rg_window.c's, through the same functions a hotkey
  * and the settings file use, so the menu keeps nothing of its own but where it is.
  *
  * It opens on the bar along the top, on the first heading, with that heading's lines showing and
@@ -84,7 +84,7 @@ extern const rg_menu_sizes rg_menu_size;
 extern const rg_menu_colors rg_menu_color;
 /* The most times the picture's size a window can be made (Live::WindowMenu::SCALES). */
 extern const int rg_menu_scale_least, rg_menu_scale_most;
-/* Whether the game has a menu at all: a game that says menu: false has none. */
+/* Whether the game has a menu at all: a game that sets menu: false has none. */
 extern const int rg_game_has_menu;
 
 /* --- working it --- */

@@ -14,7 +14,7 @@ module VBlank
           # recording by setting that volume, full for a sample's 1 and nothing for its 0. The Color's
           # own games speak this way.
           #
-          # THE TIMER SAYS WHEN. It counts up from where it is told, and as it passes 255 it starts
+          # THE TIMER DECIDES WHEN. It counts up from where it is told, and as it passes 255 it starts
           # over and interrupts the game: told to start each count TIMER_COUNTS short of the top, it
           # interrupts 133 times a frame, which is the sample clock the interpreter mixes at
           # (Console::SampleClock). Each interrupt sets the volume for one sample and goes back to the
@@ -26,12 +26,12 @@ module VBlank
           # voices it has (Description#recordings_at_once). rt_clip_stop (A the recording's number, or
           # ALL) stops it, if it is that recording, at whichever note. A clip that reaches its end
           # stops itself, or goes back to where it holds from if it loops. The timer running is what
-          # says a clip is playing.
+          # shows a clip is playing.
           #
           # A LOOPING CLIP'S LAPS are counted a frame at a time with the music (rt_clip_lap), in
           # 65536ths of a sample of the recording, the interpreter's own count of where its walk is
           # (GBC::Clips::Laps): what is left to the end goes down by a frame's walk, and each time it
-          # falls below nought it goes up by what the loop goes back, and the lap is said at
+          # falls below nought it goes up by what the loop goes back, and the lap is reported at
           # rt_clip_came_round, with the recording's number in A, for the run's log.
           #
           # THE CLIP IS IN A BANK OF THE CARTRIDGE, and the interrupt comes between any two of the
@@ -49,7 +49,7 @@ module VBlank
             # sample with a 1 below the bits still to play, and the volume a 1 plays at.
             BITS = "rt clip bits"
             LEVEL = "rt clip level"
-            # ...and 1 from a clip's play to its end, which is what says one is playing to the music
+            # ...and 1 from a clip's play to its end, which is what shows one is playing to the music
             # and to the game's own sound. Not the timer running: in a game that counts the frames its
             # screen is off for, the timer counts those until the first frame (Frame#emit_dark_start),
             # and a clip played while the game sets up waits for it.
@@ -57,7 +57,7 @@ module VBlank
             # WHAT SOUNDS AS THE INTERPRETER COUNTS IT, beside the samples themselves: the frames the
             # recording sounding has left (0 for none, ALWAYS for one that loops) and its number, both
             # moved only at a frame's music (#emit_frame), as the interpreter's mix moves its voices at
-            # the frame boundary; and what the game said since — the frames and number of a clip it
+            # the frame boundary; and what the game asked for since — the frames and number of a clip it
             # played, and 1 where it stopped the one sounding — which that frame takes up first. A run
             # of the cartridge reads which recording sounds from these (GBC::HeadlessRun#active_samples).
             SOUNDING = "rt clip sounding"
@@ -94,7 +94,7 @@ module VBlank
 
             module_function
 
-            # +laps+ says the game loops a recording (GBC::Clips#loops?).
+            # +laps+ means the game loops a recording (GBC::Clips#loops?).
             def reserve(memory, laps: false)
               if laps
                 memory.reserve(LOOPING, 1)
@@ -127,7 +127,7 @@ module VBlank
 
             # +counts+ is how many of the timer's counts a sample lasts (GBC::Clips#timer_counts).
             # +entry_bytes+ is how many bytes an entry of the table takes (GBC::Clips#entry_bytes). +lines+
-            # says the game bends a background's rows (GBC::Clips#rows_bent?).
+            # means the game bends a background's rows (GBC::Clips#rows_bent?).
             def emit(asm, memory, counts:, entry_bytes:, lines: false)
               emit_play(asm, memory, counts, entry_bytes)
               emit_stop(asm, memory)
@@ -140,7 +140,7 @@ module VBlank
             # WHILE A RECORDING PLAYS THE WAVE VOICE IS ITS OWN: the music player's writes to it are
             # passed over. When the recording is over the music has it back on its next frame: a wave
             # note held across it is put back, waveform and all (Music#emit_wave_back), and a part
-            # that rested is heard at its next note. PLAYING is what says one is playing. A and the
+            # that rested is heard at its next note. PLAYING is what shows one is playing. A and the
             # flags are spent.
             def emit_return_while_recording_plays(asm, memory)
               asm.load_high(:a, memory[PLAYING])
@@ -367,7 +367,7 @@ module VBlank
             end
 
             # THE VOICE IS THE GAME'S AGAIN as a recording ends: the last `wave` or `stop_wave` the game
-            # said is written now (Sound::GAME_WAVE), and a wave note the music is holding is put back
+            # called is written now (Sound::GAME_WAVE), and a wave note the music is holding is put back
             # on its next frame (Music::WAVE_BACK). A, C and HL are spent.
             def emit_wave_back(asm, memory)
               asm.load(:a, [memory[Sound::GAME_WAVE]])
@@ -509,7 +509,7 @@ module VBlank
             end
 
             # A FRAME OF WHAT SOUNDS (SOUNDING), called with the music's frame and before it, as the
-            # interpreter's mix moves its voices before its tune: a stop the game said, then a clip it
+            # interpreter's mix moves its voices before its tune: a stop the game asked for, then a clip it
             # played, then a frame off the count of the one sounding — which a loop's never runs down.
             # Then, in a game that loops one, its laps. Every register is spent.
             def emit_frame(asm, memory)
@@ -572,7 +572,7 @@ module VBlank
               asm.bit(7, :a)
               asm.ret(:z)
               emit_lap_sum(asm, memory, BACK, :adc_a, "rt_clip_lap_back")
-              # Said with the timer's interrupt held off: one taken just as the processor reaches
+              # Reported with the timer's interrupt held off: one taken just as the processor reaches
               # the label comes back to it, and the run's reader would count the lap twice. Both
               # callers run with interrupts on, so they go back on after it.
               asm.di

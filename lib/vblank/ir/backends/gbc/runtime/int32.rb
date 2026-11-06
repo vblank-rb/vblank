@@ -743,7 +743,7 @@ module VBlank
               asm.dec(:hl)
               asm.dec(:hl)
               asm.scf
-              asm.ret(:nz) # the count's upper bytes say it is past 255 or below nought
+              asm.ret(:nz) # the count's upper bytes show it is past 255 or below nought
               asm.load(:a, [:hl])
               asm.cp_a(32)
               asm.ccf

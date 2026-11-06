@@ -24,7 +24,7 @@
  * still WAITS FOR A REFRESH there, so that the monitor never shows the top of one picture over
  * the bottom of the one before — but only on a monitor faster than the console, where the wait
  * is shorter than a frame. On a slower one (fifty a second) the wait would hold the game back to
- * the monitor's pace, and a monitor that does not say its rate could be either, so those are
+ * the monitor's pace, and a monitor that does not report its rate could be either, so those are
  * handed each picture as it is finished.
  *
  * This is a file of its own, with nothing of SDL in it, so the choice can be tested as plain
@@ -54,7 +54,7 @@ typedef struct {
 } rg_pacing;
 
 /* The pacing for a monitor that refreshes +refreshes_a_second+ times a second; nought, or less,
- * is a monitor that does not say. */
+ * is a monitor that does not report one. */
 static inline rg_pacing rg_pacing_for(double refreshes_a_second) {
   const rg_pacing unwaited = {0, 0, 1.0};
   if (!(refreshes_a_second >= RG_PACED_SLOWEST)) return unwaited;
@@ -76,7 +76,7 @@ static inline rg_pacing rg_pacing_for(double refreshes_a_second) {
  * every one); where it took only a wait for one refresh, the picture is drawn once for each of its
  * refreshes. +took_interval+ and +took_one+ are whether the display accepted each. A display that
  * accepted neither cannot be waited for, and a game on it is paced as for a monitor that does not
- * say its rate (+waits+ is nought). */
+ * report its rate (+waits+ is nought). */
 typedef struct {
   int draws;            /* drawings of the window for each picture */
   int refreshes_waited; /* refreshes the display waits for at each of them; 0 when it is not asked to wait */
@@ -101,7 +101,7 @@ static inline rg_handover rg_handover_for(rg_pacing pacing, int took_interval, i
  * would keep that queue from ever filling, so the monitor would never get to pace anything.
  *
  * How much faster is two parts in a hundred, and not less, because a monitor's rate is not always
- * said exactly: one a little under sixty a second can say fifty-nine, which is more than one part
+ * reported exactly: one a little under sixty a second can report fifty-nine, which is more than one part
  * in a hundred out, and a limit set from that with less room would hold the game below the
  * monitor's real pace. The stutter would be back.
  */

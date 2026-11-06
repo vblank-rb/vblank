@@ -15,7 +15,7 @@ module VBlank
           # there as one of its groups comes up, the way the console's own games load a room's
           # things as the room loads.
           #
-          # The game says which groups are up (Lowering::Picture#emit_show_picture_group), and as
+          # The game sets which groups are up (Lowering::Picture#emit_show_picture_group), and as
           # it places a pass's sprites it notes which groups those sprites need: the ones up then
           # (#emit_groups_wanted). The blank after copies in any group a slot wants that is not the
           # one it holds. Picture memory can be written only while the display is not reading it,
@@ -25,10 +25,10 @@ module VBlank
           # would be drawn from tiles only part copied.
           #
           # The tables, written by #emit_slot and #emit_chunk (for Lowering::Picture#emit_group_slots and
-          # Art#emit_group_tables), so their layout is said in this one place:
+          # Art#emit_group_tables), so their layout is written in this one place:
           # - game_group_slots: for each slot of each set, the place of the group it wants (a byte,
-          #   NONE for none, FOLLOW for the one the game says), the place of the one it holds, the
-          #   place of the number the game said (four bytes), the bank of its set's tiles, its set's
+          #   NONE for none, FOLLOW for the one the game names), the place of the one it holds, the
+          #   place of the number the game gave (four bytes), the bank of its set's tiles, its set's
           #   table of groups and how many groups the set has; then a word of nought.
           # - a set's table of groups: for each group, how many chunks it copies and where their
           #   list is.
@@ -46,8 +46,8 @@ module VBlank
 
             # A slot of a scene that was not up as the sprites were placed. The interpreter asks
             # nothing of such a scene's sprites (Reference#up_in_this_scene?), and the scene can
-            # take over later in the same pass and say which groups are up, as it does on its first
-            # pass: so the blank copies in the group the game says is up by then.
+            # take over later in the same pass and set which groups are up, as it does on its first
+            # pass: so the blank copies in the group the game sets up by then.
             FOLLOW = 0xFD
 
             # The most groups a set can have, numbered from 0 below the three numbers above.
@@ -76,7 +76,7 @@ module VBlank
             end
 
             # A slot's entry of game_group_slots: the places of the group it wants, the one it holds
-            # and the number the game said; the label of its set's tiles, for their bank; its set's
+            # and the number the game gave; the label of its set's tiles, for their bank; its set's
             # table of groups; and how many groups the set has. In that order, SLOT_UP to SLOT_COUNT saying where each is.
             def emit_slot(asm, wanted:, up:, said:, tiles:, groups:, count:)
               asm.data_words(wanted, up, said)
@@ -198,7 +198,7 @@ module VBlank
               asm.label("rt_groups_start_change")
               asm.load(:a, :c)
               asm.load([:de], :a)
-              (SLOT_BANK - SLOT_SAID).times { asm.inc(:hl) } # past the number the game said
+              (SLOT_BANK - SLOT_SAID).times { asm.inc(:hl) } # past the number the game gave
               asm.load(:a, [:hli]) # the bank of the set's tiles
               asm.load([job + 3], :a)
               asm.load(:a, [:hli]) # the set's table of groups
@@ -226,7 +226,7 @@ module VBlank
               asm.ret
 
               # rt_groups_follow, HL at the slot's place of the group it holds: C, the group the
-              # number the game said names, or NONE for one naming none — below nought, or past the
+              # number the game gave names, or NONE for one naming none — below nought, or past the
               # set's groups. HL is kept.
               asm.label("rt_groups_follow")
               asm.push(:hl)

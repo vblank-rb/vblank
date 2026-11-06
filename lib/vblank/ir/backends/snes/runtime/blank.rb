@@ -11,7 +11,7 @@ module VBlank
           # blank or with the screen switched off; written while the picture is being drawn, the
           # writes are lost (fullsnes, "SNES PPU Video Memory"). Switching the screen off for a big
           # change shows a black frame. So what a pass changed is copied with the screen on, a piece
-          # at a time, each piece only when the line the picture is on says it can be sent before the
+          # at a time, each piece only when the line the picture is on shows it can be sent before the
           # blank ends, and only while the blank has room for it: a change bigger than one blank
           # holds arrives over several, and the pass counts as shown once it is all there.
           #

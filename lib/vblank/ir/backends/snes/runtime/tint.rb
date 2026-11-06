@@ -32,7 +32,7 @@ module VBlank
           # those still walk.
           #
           #   rt_tint(toward, color, steps)   the fade in force noted, or nothing when nothing changed
-          #                                   (most frames of a game that says its fade every frame)
+          #                                   (most frames of a game that sets its fade every frame)
           #   rt_tint_prepare                 as a pass ends (JSL): the colours moved, if the fade changed
           #   rt_tint_upload                  in the blank (JSR): the moved colours, if they changed
           module Tint
@@ -54,7 +54,7 @@ module VBlank
             TABLE = 8
             STATE_BYTES = TABLE + (3 * 32)
 
-            # What CHANGED holds besides nought: a fade said this pass, whose colours are still to be
+            # What CHANGED holds besides nought: a fade set this pass, whose colours are still to be
             # moved (rt_tint_prepare), or colours moved and still to be sent (rt_tint_upload).
             TO_SEND = 1
             TO_WORK_OUT = 2
@@ -86,7 +86,7 @@ module VBlank
               memory.reserve(DIMMED, 2) if dims
             end
 
-            # In the blank: the display at the brightness the fade says. Leaves A wide.
+            # In the blank: the display at the brightness the fade sets. Leaves A wide.
             def emit_brightness(asm, memory)
               h = Console::SNESHardware
               asm.lda(h::FULL_BRIGHTNESS)
@@ -163,7 +163,7 @@ module VBlank
             # that copy. With no fade in force the copy is then ready, and only those colours were
             # touched, so changing a list costs what its colours cost and not one move of every
             # colour on the screen. With a fade in force the colours are moved as the pass ends, as
-            # a fade said this pass moves them, which writes over what went in the copy here, so
+            # a fade set this pass moves them, which writes over what went in the copy here, so
             # the two meet on the same pass whichever was given first. A fade that ended this pass
             # has its work still to do and keeps it. The table is a count, then each set's 24-bit
             # address in four bytes, the colours the game declared first: so a number naming none of
@@ -290,7 +290,7 @@ module VBlank
 
               # rt_tint_prepare (JSL, as a pass ends): the colours moved by the fade in force, if it
               # changed this pass. Only the fade in force as the pass ends is ever sent, so a pass
-              # that says several — a fade that catches up on the frames a slow pass took says one
+              # that sets several — a fade that catches up on the frames a slow pass took sets one
               # for each — moves the colours once, not once for each.
               asm.label("rt_tint_prepare")
               asm.lda(asm.abs(state + CHANGED))

@@ -34,7 +34,7 @@ module VBlank
             include CartridgeFaults
 
             # FAULT: what went wrong (a word), the list's place (three bytes and a spare), and two
-            # numbers that say how (four bytes each).
+            # numbers that give how (four bytes each).
             FAULT_LIST = 2
             FAULT_FIRST = 6
             FAULT_SECOND = 10
@@ -140,9 +140,9 @@ module VBlank
               asm.label("rt_vblank_interrupt")
               emit_interrupt_body(asm, memory) { asm.jsr(asm.abs("rt_pad_read")) }
 
-              # The end of a pass: count it, move on what keeps time by the frame, say the game is
+              # The end of a pass: count it, move on what keeps time by the frame, mark the game as
               # waiting, and wait for the screen. What keeps time by the frame moves on here, before
-              # the game is said to be waiting, because that is where the interpreter moves it on: at
+              # the game is marked as waiting, because that is where the interpreter moves it on: at
               # the frame boundary, before anything is read of the frame (Reference#advance_frame).
               asm.label("rt_wait_vblank")
               asm.inc(at.call(PASSES))
@@ -169,7 +169,7 @@ module VBlank
               emit_stopping(asm, memory)
             end
 
-            # The interrupt that says a frame has been drawn. Everything it touches is saved, and it
+            # The interrupt that signals a frame has been drawn. Everything it touches is saved, and it
             # works on a direct page of its own. The frame is counted and the buttons read (the
             # block emits the reading), so a pass that spans several frames answers for each of them,
             # as the interpreter's does.
@@ -439,7 +439,7 @@ module VBlank
             end
 
             # One controller's frame: the buttons read (the block emits that, leaving them in A), and
-            # what they say kept.
+            # what they show kept.
             def emit_controller_update(asm, at, pad, seen, pressed, held)
               yield
               asm.sta(asm.direct(pad))
@@ -455,7 +455,7 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or with the screen switched on, for a game
-            # that never got as far as a frame), SHOWN says the end is on the screen, and the
+            # that never got as far as a frame), SHOWN marks that the end is on the screen, and the
             # processor sleeps from then on. Going wrong is the same, with what went wrong written
             # down first (rt_fault, A = what went wrong, the list and the numbers already in FAULT).
             def emit_stopping(asm, memory)

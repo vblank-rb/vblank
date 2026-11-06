@@ -91,7 +91,7 @@ module VBlank
               emit_ask(asm, memory, effects)
             end
 
-            # The routines that say where things are, which everything below leans on.
+            # The routines that return where things are, which everything below leans on.
             def emit_places(asm, memory)
               now = memory[NOW]
               asm.label("rt_sfx_index") # A = an effect: HL at its row of the index
@@ -559,7 +559,7 @@ module VBlank
               asm.load(:hl, now + WALKED)
               asm.inc([:hl])
               asm.jump_relative("rt_sfx_decide_each")
-              # The one of its group sounding: of higher priority, it keeps on and carry says so.
+              # The one of its group sounding: of higher priority, it keeps on and carry marks it.
               asm.label("rt_sfx_decide_current")
               asm.load(:a, [now + WALKED])
               asm.call("rt_sfx_index")

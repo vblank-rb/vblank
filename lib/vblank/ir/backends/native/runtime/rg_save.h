@@ -25,7 +25,7 @@
 /* --- what the game provides --- */
 
 /* The save memory the game has, as four numbers the backend writes from IR::SaveLayout and
- * IR::SaveImage, so the rules are said once: how many bytes it is (nought for a game that never
+ * IR::SaveImage, so the rules are written once: how many bytes it is (nought for a game that never
  * reaches save memory), how many bytes are wiped together (nought for memory that takes any byte
  * at any time), what a byte nothing has written reads, and what a byte of a block still being
  * wiped reads. */
@@ -62,7 +62,7 @@ uint8_t *rg_save_bytes(void);
 int rg_save_unwritten(void);
 
 /* For a driver that keeps its file up to date while the game plays: asked once at the end of
- * every frame, and says whether the file wants writing now. A game saves over several frames, so
+ * every frame, and returns whether the file wants writing now. A game saves over several frames, so
  * the file is written once a frame has gone by with nothing saved — and, for a game that saves
  * on every frame without end, about once a second all the same. */
 int rg_save_file_is_due(void);

@@ -33,7 +33,7 @@ module VBlank
             # for it (Backends::CartridgeFaults).
             include CartridgeFaults
 
-            # FAULT: what went wrong, the list's place, and two numbers that say how, a word each.
+            # FAULT: what went wrong, the list's place, and two numbers that give how, a word each.
             FAULT_LIST = 4
             FAULT_FIRST = 8
             FAULT_SECOND = 12
@@ -153,9 +153,9 @@ module VBlank
               asm.jr(:k0) { asm.rfe }
             end
 
-            # The end of a pass: count it, move on what keeps time by the frame, say the game is waiting,
-            # and wait for the screen. What keeps time by the frame moves on here, before the game is said
-            # to be waiting, because that is where the interpreter moves it on: at the frame boundary,
+            # The end of a pass: count it, move on what keeps time by the frame, mark the game as waiting,
+            # and wait for the screen. What keeps time by the frame moves on here, before the game is marked
+            # as waiting, because that is where the interpreter moves it on: at the frame boundary,
             # before anything is read of the frame (Reference#advance_frame).
             def emit_wait(asm, at)
               asm.label("rt_wait_vblank")
@@ -238,7 +238,7 @@ module VBlank
               asm.label("rt_show_pass_on")
               asm.jal("rt_sleep_until_vblank_wait")
               asm.label("rt_show_pass_shown")
-              # A tear-free screen's pages trade places in the blank, before SHOWN says the pass is up.
+              # A tear-free screen's pages trade places in the blank, before SHOWN marks the pass as up.
               asm.jal("rt_paint_flip")
               asm.lw(:t0, at.call(Paint::SHOWN_PAGE_Y), :gp)
               asm.sw(:t0, at.call(Paint::PASS_SHOWN_PAGE_Y), :gp)
@@ -289,7 +289,7 @@ module VBlank
               asm.jr(:ra) { asm.sw(:t1, at.call(STEP_TAKEN), :gp) }
             end
 
-            # STOPPING. rt_halt stops the game where it is: SHOWN says the end is on the screen once the
+            # STOPPING. rt_halt stops the game where it is: SHOWN marks that the end is on the screen once the
             # blank after it has come, and the processor goes round a loop from then on, the interrupt still
             # counting frames. Going wrong is the same, with what went wrong written down first (rt_fault,
             # a0 = what went wrong, the list and the numbers already in FAULT).

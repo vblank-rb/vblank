@@ -54,7 +54,7 @@ end
 # --- the buttons ---
 
 # A button counts as pressed on the one frame it goes down, however long it is then held — the
-# edge the interpreter's read_buttons finds. A driver says which are down at every frame boundary,
+# edge the interpreter's read_buttons finds. A driver reports which are down at every frame boundary,
 # as a list of one number per connected player (IR::Buttons.masks). The list never shortens: a
 # player who is connected stays so, and one the driver leaves out holds nothing.
 def rg_buttons_read(now)
@@ -341,7 +341,7 @@ def rg_date_from_days(days)
   [year_of_era + (era * 400) + (month <= 2 ? 1 : 0), month, day]
 end
 
-# A window says what the computer's own clock reads instead, before the game starts and as each
+# A window gives what the computer's own clock reads instead, before the game starts and as each
 # frame boundary hands the game its next frame.
 def rg_clock_reads(year, month, day, hour, minute, second)
   @rg_clock_present = 1

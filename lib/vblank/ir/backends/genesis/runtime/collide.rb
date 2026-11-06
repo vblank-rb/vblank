@@ -12,7 +12,7 @@ module VBlank
           #
           # Each picture a sprite can show is kept for this as a MASK (Lowering::Collision): a bit for each
           # of its pixels, set where it draws, eight to a byte, leftmost pixel in the top bit, a row at a
-          # time. The table "collision pictures" says where each is, its width and its height, and a sprite's
+          # time. The table "collision pictures" holds where each is, its width and its height, and a sprite's
           # pictures are a list: how many, then each picture's mask number.
           #
           #   rt_pixels_overlap(a_list, a_pose, a_x, a_y, b_list, b_pose, b_x, b_y)    D0 = 1 or 0

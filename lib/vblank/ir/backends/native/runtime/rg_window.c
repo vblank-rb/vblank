@@ -121,7 +121,7 @@ static settings now;
 
 /* Which settings the file being written to holds for itself: a 1 in the place of each that a
  * line of it named, that settling a clash as it was read changed, or that was changed since. A
- * setting changed and then changed back to what the shared file says stays this file's own. A
+ * setting changed and then changed back to what the shared file sets stays this file's own. A
  * game's own file keeps only these (see rg_window_mark_settings_inherited); the rest go on coming
  * from the file every game shares. */
 static settings owned;
@@ -517,7 +517,7 @@ static int clear_clashing_keys(settings *in, char *problems, size_t room) {
     if (*key == RG_NO_KEY) continue;
     for (int earlier = 0; earlier < later; earlier++) {
       if (*key_slot(in, earlier) != *key) continue;
-      /* Two keys of the same button are the same thing said twice, and are not a clash. */
+      /* Two keys of the same button are the same thing set twice, and are not a clash. */
       if (later < BUTTON_KEY_SLOTS && earlier / RG_WINDOW_KEYS_A_BUTTON == later / RG_WINDOW_KEYS_A_BUTTON) {
         set_as_own(in, key, RG_NO_KEY);
         break;
@@ -693,7 +693,7 @@ size_t rg_window_settings_text(char *out, size_t room, rg_settings_part part) {
   size_t used = 0;
   int all = part == RG_SETTINGS_ALL;
   /* Each line is written as far as the room goes, and the length it wanted is counted all the
-   * same, as snprintf does: a result of +room+ or more says the text was cut short. */
+   * same, as snprintf does: a result of +room+ or more shows the text was cut short. */
 #define LINE(...)                                                                                      \
   do {                                                                                                 \
     int wrote = snprintf(used < room ? out + used : NULL, used < room ? room - used : 0, __VA_ARGS__); \

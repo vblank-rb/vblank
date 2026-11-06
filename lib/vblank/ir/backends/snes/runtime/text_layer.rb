@@ -827,9 +827,9 @@ module VBlank
             end
 
             # rt_paint_layer_replace (JSR, X a text's entry in the log, in PaintLog's
-            # rt_paint_apply_deferred_clear): the text on the layer again, its entry said to be so,
+            # rt_paint_apply_deferred_clear): the text on the layer again, its entry marked as so,
             # and A nought; or, where it cannot be (the layer full, or a text there already), its
-            # entry said to be painted, and A not nought. Keeps X.
+            # entry marked as painted, and A not nought. Keeps X.
             def emit_replace(asm, memory)
               log = memory[PaintLog::LOG]
               asm.label("rt_paint_layer_replace")

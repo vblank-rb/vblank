@@ -42,7 +42,7 @@ module VBlank
           #   The divisor is first moved up until its top bit is set, and the numerator with it, which
           #   changes no quotient. Then each of the answer's two digits is guessed by dividing the top of
           #   what is left by the divisor's top digit; the guess is never too small and at most two too
-          #   big, and the divisor's second digit says which, so it is taken down until it is right. Two
+          #   big, and the divisor's second digit shows which, so it is taken down until it is right. Two
           #   divides and a few multiplies, where a bit at a time was thirty-two times round a loop.
           # - An answer of 2**31 or more does not fit with its sign, and is held too: the highest number
           #   for a positive answer, the lowest for a negative one (where 2**31 is exactly the lowest).

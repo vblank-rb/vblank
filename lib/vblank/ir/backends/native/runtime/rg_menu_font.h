@@ -3,7 +3,7 @@
  * written again from): Inter at 15 points, drawn once into pictures by tools/make_menu_font.rb, and
  * handed to this file as C data by the build (rg_window_menu_data.c), so the program needs no font
  * library and no font file. The window puts a density's picture of every letter on the screen's
- * card once, then writes a word by copying each letter out of it to where rg_menu_font_layout says.
+ * card once, then writes a word by copying each letter out of it to where rg_menu_font_layout puts it.
  *
  * There are pictures at two densities: one pixel a point, for an ordinary screen, and two, for a
  * Retina one. A screen of any other density is written with the nearer of the two, scaled.
@@ -25,7 +25,7 @@ typedef struct {
   int x, y, width, height, left, top, advance;
 } rg_menu_glyph;
 
-/* Two letters that sit closer, or further apart, than their advances say. */
+/* Two letters that sit closer, or further apart, than their advances give. */
 typedef struct {
   uint32_t first, second;
   int amount;

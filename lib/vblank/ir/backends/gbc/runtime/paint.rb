@@ -571,7 +571,7 @@ module VBlank
               asm.ret
 
               # Onto the end of the list at HL (its count, then its entries): D, the tile in its
-              # bank, then E, the bank and anything said with it.
+              # bank, then E, the bank and anything given with it.
               asm.label("rt_paint_list_add")
               asm.load(:a, [:hli])
               asm.load(:c, :a)
@@ -2086,8 +2086,8 @@ module VBlank
               asm.load(:e, :a)
               asm.load(:a, [:hli])
               asm.load(:d, :a) # DE = the entry
-              # The list's end is looked for first, so a blank that sends the last run says the
-              # list is done, however little of the blank is left.
+              # The list's end is looked for first, so a blank that sends the last run marks the
+              # list as done, however little of the blank is left.
               asm.inc(:a)
               asm.jump(:z, "rt_paint_upload_done")
               asm.push(:hl)

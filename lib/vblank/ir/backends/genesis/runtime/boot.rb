@@ -14,7 +14,7 @@ module VBlank
           #
           # THE SECURITY CHECK. A console of the later kind refuses to show anything until the cartridge
           # has written the letters SEGA to a port, and only that kind has the port: the version
-          # register says which (Console::GenesisHardware's TMSS_PORT). The write is made only when the
+          # register shows which (Console::GenesisHardware's TMSS_PORT). The write is made only when the
           # version asks for it.
           #
           # THE SOUND PROCESSOR starts running memory nobody filled and can write noise into the sound

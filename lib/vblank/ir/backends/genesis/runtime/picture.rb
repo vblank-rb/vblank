@@ -11,7 +11,7 @@ module VBlank
           module Picture
             module_function
 
-            # +picture+ is how the game draws: :painted (Paint), :tiled (Tiles), or :none. +sprites+ says a
+            # +picture+ is how the game draws: :painted (Paint), :tiled (Tiles), or :none. +sprites+ means a
             # painted screen shows sprites over its picture (`sprite ..., over_picture: true`). +scene_tiles+
             # for a tiled game whose scenes each bring their own tiles in (Tiles#emit_scene_tiles).
             def reserve(memory, picture: :none, colors: false, sprites: false, scene_tiles: false)

@@ -33,7 +33,7 @@ module VBlank
             KEPT = { signed_byte: 0, byte: 1, signed_half: 2, half: 3, word: 4 }.freeze
 
             # A slot's size in bytes, by the end of the name of the routines that read and write
-            # slots of that size directly (#emit_fixed_front_access), and the size a MOVE says.
+            # slots of that size directly (#emit_fixed_front_access), and the size a MOVE names.
             SLOT_SUFFIXES = { 1 => "byte", 2 => "half", 4 => "long" }.freeze
             SLOT_SIZES = { 1 => :b, 2 => :w, 4 => :l }.freeze
 
@@ -70,7 +70,7 @@ module VBlank
             end
 
             # rt_list_empty: no items. rt_list_at_capacity: as many as it holds, from its first slot
-            # (rt_list_fill then says what they are). rt_list_length: D0 = how many it holds.
+            # (rt_list_fill then sets what they are). rt_list_length: D0 = how many it holds.
             def emit_empty(asm)
               asm.label("rt_list_empty")
               asm.movea(:l, asm.d(0), asm.a(0))
@@ -358,7 +358,7 @@ module VBlank
               asm.rts
             end
 
-            # The game stopped: what went wrong, the list's address, and the numbers that say how,
+            # The game stopped: what went wrong, the list's address, and the numbers that give how,
             # into FAULT for the reader (Frame), then rt_fault (D0 = what went wrong).
             def emit_faults(asm, memory)
               at = ->(plus) { asm.abs_l(memory[Frame::FAULT], plus) }

@@ -7,7 +7,7 @@
 #
 # A game saves a piece at a time over several frames (the routines for that are the game's own),
 # so nothing here knows what a save is: it reads, writes, totals and wipes bytes. The game's four
-# numbers in @rg_game_save_memory say how many bytes it has (nought for a game that never reaches
+# numbers in @rg_game_save_memory give how many bytes it has (nought for a game that never reaches
 # save memory), how many are wiped together (nought for memory that takes any byte at any time),
 # what a byte nothing has written reads, and what a byte of a block still being wiped reads.
 

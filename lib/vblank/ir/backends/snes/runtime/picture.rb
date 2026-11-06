@@ -36,7 +36,7 @@ module VBlank
           # RAM and the sprite table only while it is not drawing, so it is all copied in the blank
           # with the screen on, as much as each blank has room for (Blank): a copy too long for one
           # blank (a map of 64×64 cells is 8K, or many cells) arrives over several, with the old
-          # picture still up, and the pass is said to be shown once it is all there (Runtime::Frame's
+          # picture still up, and the pass is marked as shown once it is all there (Runtime::Frame's
           # SHOWN). The screen is never switched off for it, so no frame is black. A map arriving
           # over several blanks shows its first pieces before the rest.
           #
@@ -131,7 +131,7 @@ module VBlank
             BAR_CHANGED = 4
             BAR_TABLE = 6
             BAR_BYTES = BAR_TABLE + 8
-            # What BAR_CHANGED says when the bar has left the screen, and not moved (rt_bar_gone).
+            # What BAR_CHANGED holds when the bar has left the screen, and not moved (rt_bar_gone).
             BAR_LEAVES = 2
             # In a game that tells its bar to cover sprites: whether it does. The table then leaves
             # the sprites out of TM from the bar down, so the console draws none on those lines.
@@ -161,7 +161,7 @@ module VBlank
             BEND_STEP_LINES = SCREEN_HEIGHT / 2
             REPEAT = 0x80 # A step's count with this bit: a new value on every line of it
             BEND_TABLE_BYTES = 1 + (BEND_STEP_LINES * 2) + 1 + (BEND_STEP_LINES * 2) + 1
-            # A BEND THAT SAYS A THING ABOUT WHOLE BANDS OF ROWS needs no value for every line. A step
+            # A BEND THAT HOLDS ONE VALUE FOR WHOLE BANDS OF ROWS needs no value for every line. A step
             # with no REPEAT bit writes the register once and leaves it for as many lines as it counts,
             # so such a layer's table is a step for each band, three bytes where the other is 450.
             # Its rows hold those steps in place of a word a row: each step BAND_STEP_BYTES, the lines
@@ -170,14 +170,14 @@ module VBlank
             MOST_BAND_STEPS = (SCREEN_HEIGHT * 2 / BAND_STEP_BYTES) - 1
             BEND_CHANNELS = [2, 3].freeze
             # Where a run's tiles are made in the console's form, and which runs are owed a copy to
-            # video RAM in the next blank (a word each). The lowering's table "art tile runs" says,
+            # video RAM in the next blank (a word each). The lowering's table "art tile runs" holds,
             # for each run, sixteen bytes: its list's place and its staging's (three bytes and a
             # spare each), its first tile's word in video RAM, its tiles, its bytes, and a spare.
             def self.tile_run_staging(number) = "rt tile run #{number}"
             TILE_RUNS_OWED = "rt tile runs owed"
             HELD_STRIP_BYTES = 6 # Bytes, where in video RAM, how far into the picture: a word each
 
-            # The word that says how far into its table the picture a held run shows starts.
+            # The word that gives how far into its table the picture a held run shows starts.
             def self.tile_run_held(number) = "rt tile run #{number} held"
 
             RUN_ENTRY_BYTES = 16
@@ -275,7 +275,7 @@ module VBlank
             # sixth number then (Lowering::Picture#sprite_depths). +big_tiles+ is BGMODE's size bits for the
             # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers). +sprite_squares+ for a
             # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
-            # +banded+ says the game's bends are kept as steps (Lowering::Picture#bends_by_bands?).
+            # +banded+ means the game's bends are kept as steps (Lowering::Picture#bends_by_bands?).
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil, straight_tile_runs: false,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
                      math_turns: false, scene_bars: false, held_runs: {}, third_layer: false)
@@ -415,7 +415,7 @@ module VBlank
             end
 
             # rt_scene_background_tiles(table): the tiles a scene taking over keeps to itself, for the
-            # next blank. The table says where they are on the cartridge, how many bytes and where they
+            # next blank. The table holds where they are on the cartridge, how many bytes and where they
             # go in video memory, since a scene's list is not finished as its arrival is written.
             def emit_scene_background_tiles_noted(asm, memory)
               at = memory[SCENE_BACKGROUND_TILES]
@@ -508,7 +508,7 @@ module VBlank
             end
 
             # Channel 0 copying from the cartridge to video RAM at +word_address+: +label+'s bytes,
-            # as many as the word at +count_label+ says (none for nought).
+            # as many as the word at +count_label+ holds (none for nought).
             def emit_dma_to_vram(asm, word_address, label, count_label)
               h = Console::SNESHardware
               skip = "#{label} none"
@@ -1620,7 +1620,7 @@ module VBlank
                 # The scroll, each register written twice, its low byte and then its high. The
                 # screen's first row is the console's line 1, not line 0, so a layer shows the map
                 # row one past its vertical scroll there: the scroll written is one less than the
-                # game's, which puts the map's row where the game said.
+                # game's, which puts the map's row where the game set it.
                 asm.lda(asm.abs(state + LAYER_SCROLL_X))
                 emit_scroll_register(asm, h::BG1HOFS + (layer * 2))
                 asm.lda(asm.abs(state + LAYER_SCROLL_Y))

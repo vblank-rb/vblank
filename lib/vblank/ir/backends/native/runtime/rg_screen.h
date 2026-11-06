@@ -34,7 +34,7 @@ void rg_screen_hold(int32_t held);              /* switched off until the first 
  *
  * Both answer 1 when the scenery every screen drawn from tiles shows was put up again, as
  * declared, because a screen of another kind had replaced the display. The game then puts what
- * says which map each of those backgrounds shows back to the first. */
+ * names which map each of those backgrounds shows back to the first. */
 /* +backdrop+ is the colour shown wherever nothing is drawn (IR::SceneHandover#backdrop_of), or
  * below nought to leave it as a list of colours has it. */
 int32_t rg_screen_set(int32_t kind, int32_t two_pages, int32_t backdrop);
@@ -82,7 +82,7 @@ void rg_patch_restore(int32_t buffer, int32_t width, int32_t height, int32_t x, 
 /* Points worked out when the game was built — the pixels of a line of text — as (dx, dy)
  * pairs, painted from (x, y). */
 void rg_screen_points(int32_t x, int32_t y, int32_t color, const int16_t *points, int32_t count);
-/* One digit of a live number: +starts+ says where each of the ten digits' points begin in
+/* One digit of a live number: +starts+ holds where each of the ten digits' points begin in
  * +points+ (eleven entries). A value outside 0..9 draws nothing. */
 void rg_screen_digit(int32_t value, int32_t x, int32_t y, int32_t color, const int16_t *points,
                      const int32_t *starts);
@@ -121,7 +121,7 @@ void rg_background_show_map(int32_t background, int32_t which);
  * colors it can be told (RG_BG_COLOR_STEPS of them). A number naming none of them is the colors
  * it was drawn in. */
 void rg_background_draw_with(int32_t background, int32_t which);
-/* +pivot_x+, +pivot_y+: the point on screen it turns around, which the statement says. */
+/* +pivot_x+, +pivot_y+: the point on screen it turns around, which the statement names. */
 void rg_background_turn(int32_t background, int32_t angle, int32_t size, int32_t pivot_x, int32_t pivot_y);
 
 /* A BENT BACKGROUND has every line of the screen at its own distance across, on top of where the
@@ -130,8 +130,8 @@ void rg_background_turn(int32_t background, int32_t angle, int32_t size, int32_t
  * calls rg_game_work_out_bends there, which hands each bend's lines to rg_bend_work_out in the
  * console's order, and the picture reads what was worked out however often it is painted. For
  * each line rg_bend_work_out calls rg_game_bend_offsets with one background and one line of the
- * screen in mind, and the game answers for the background asked about, after running whatever its
- * block says to run first:
+ * screen in mind, and the game answers for the background asked about, after running whatever is in
+ * its block first:
  *
  *   if (rg_bend_asked(2)) { row = rg_bend_line(); ...; rg_bend_answer(offset); }
  *
@@ -177,7 +177,7 @@ void rg_scene_enter(int32_t scene);
 void rg_scene_take_down(int32_t brings_scenery);
 void rg_scene_redraw_sprites(int32_t brings_scenery);
 
-/* The sprites on screen this frame, said between begin and end. Each sprite has a number of its
+/* The sprites on screen this frame, set between begin and end. Each sprite has a number of its
  * own, the same every frame. First every sprite the frame draws is taken off, shown or not
  * (rg_object_take_off, with one of its pictures for its size); then each one that is shown is
  * added, back to front.
@@ -187,11 +187,11 @@ void rg_scene_redraw_sprites(int32_t brings_scenery);
  * its layers, and taking a sprite off does nothing. Any other game keeps its scenery as it is and
  * draws the sprites straight onto it, so taking one off puts back the scenery it was covering.
  *
- * A sprite that turns or resizes is said with the two _turned ones: +angle+ in degrees clockwise
- * from upright, +size+ counted as the game counts a size (rg_game_turn_rules says what 1.0 is),
+ * A sprite that turns or resizes is set with the two _turned ones: +angle+ in degrees clockwise
+ * from upright, +size+ counted as the game counts a size (rg_game_turn_rules gives what 1.0 is),
  * both about the middle of its picture. Taking one off puts back every pixel it could have
  * covered: the whole box the display gives it when it +resizes+, and a square as wide as its
- * own diagonal when it only turns. Adding one says +resizes+ too, because the rows of that box a
+ * own diagonal when it only turns. Adding one gives +resizes+ too, because the rows of that box a
  * picture that only turns can reach decide whether it is on the screen at all. */
 void rg_objects_begin(void);
 void rg_object_take_off(int32_t sprite, int32_t width, int32_t height);
@@ -252,7 +252,7 @@ void rg_screen_fade(int32_t toward_white, int32_t steps, int32_t walked);
 /* The same fade PLACED IN THE STACK: what is behind the layer it names fades, and that layer and
  * everything in front of it are left as drawn. +layer_place+ is how far forward that layer is
  * among the layers the game declared, or RG_NO_LAYER when it is none of them, and then
- * everything fades. Each thing says how far forward such a layer can be and still leave it as
+ * everything fades. Each thing gives how far forward such a layer can be and still leave it as
  * drawn (RG_BG_FADE_PLACE, rg_game_sprite_fade_places). */
 void rg_screen_fade_under(int32_t layer_place, int32_t toward_white, int32_t steps, int32_t walked);
 /* The same fade HELD TO A RECTANGLE: inside it (+reaches+ RG_FADE_INSIDE) or everywhere but it
@@ -278,7 +278,7 @@ int32_t rg_fade_steps(int32_t amount, int32_t fraction_bits, int32_t walked);
  * settled when the game was built (RG_BG_IN_BLOCKS, rg_game_sprite_blocks). */
 void rg_screen_pixelate(int32_t size);
 
-/* Two colors for a line of text, and the test that says which. */
+/* Two colors for a line of text, and the test that picks which. */
 static inline int32_t rg_pick_color(int32_t showing, int32_t color, int32_t picked) {
   return showing != 0 ? picked : color;
 }
@@ -306,10 +306,10 @@ int32_t rg_screen_two_pages(void);
  * began. A test reads it to see that a screen standing still is not rebuilt every frame. */
 int32_t rg_screen_repaints_painted(void);
 
-/* The sprites the game last said are on screen (Reference#sprites), back to front: how many, and
- * each by its place among them. A row says whose the sprite is and which picture it shows, both
+/* The sprites the game last put on screen (Reference#sprites), back to front: how many, and
+ * each by its place among them. A row holds whose the sprite is and which picture it shows, both
  * as the number of a name (rg_game_sprite_names, rg_game_image_pictures), and where it is. They
- * stand until the game next says its sprites, however many frames that is. */
+ * stand until the game next sets its sprites, however many frames that is. */
 typedef struct { int32_t name, picture, x, y; } rg_drawn_sprite;
 int32_t rg_screen_drawn_count(void);
 rg_drawn_sprite rg_screen_drawn_sprite(int32_t place);
@@ -332,7 +332,7 @@ extern const int32_t rg_game_images[];
 #define RG_SOLID (-1)
 extern const int32_t rg_game_sprite_see_through[];
 /* For each sprite, by its number: the furthest forward a placed fade's layer can be and still
- * leave it as drawn, as RG_BG_FADE_PLACE says for a background. */
+ * leave it as drawn, as RG_BG_FADE_PLACE gives for a background. */
 extern const int32_t rg_game_sprite_fade_places[];
 /* What a run says a sprite it drew by. For each sprite, by its number: the number of the name the
  * game declared it under, or RG_NO_NAME for one it named nothing for, such as a letter of text.
@@ -444,8 +444,8 @@ extern const int32_t rg_game_painted_tiles[];
 extern const uint16_t rg_game_run_colors[];
 
 /* Each run of tiles the game paints from a list is RG_RUN_FIELDS numbers in rg_game_tile_runs. A
- * run a background shows says how many tiles it has, and its width and height are nought. A run
- * that is a sprite's picture says the picture's width and height, and its tiles are the
+ * run a background shows holds how many tiles it has, and its width and height are nought. A run
+ * that is a sprite's picture holds the picture's width and height, and its tiles are the
  * picture's, left to right and then top to bottom. RG_RUN_PLACES is where the run's pixels are
  * kept among every run's, as places in its colors.
  *

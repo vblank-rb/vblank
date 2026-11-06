@@ -103,7 +103,7 @@ module VBlank
             end
 
             # rt_list_empty: no items. rt_list_at_capacity: as many as it holds, from its first slot
-            # (rt_list_fill then says what they are). rt_list_length: R0 = how many it holds.
+            # (rt_list_fill then sets what they are). rt_list_length: R0 = how many it holds.
             def emit_empty(asm, s)
               asm.label("rt_list_empty")
               asm.jsr(asm.abs("rt_list_pointer"))
@@ -466,7 +466,7 @@ module VBlank
               asm.rts
             end
 
-            # The game stopped: what went wrong, the list's place, and the numbers that say how,
+            # The game stopped: what went wrong, the list's place, and the numbers that give how,
             # into FAULT for the reader (Frame), then rt_fault.
             def emit_faults(asm, memory, s)
               asm.label("rt_list_full")

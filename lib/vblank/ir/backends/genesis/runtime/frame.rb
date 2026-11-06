@@ -33,7 +33,7 @@ module VBlank
             # keeps for it (Backends::CartridgeFaults).
             include CartridgeFaults
 
-            # FAULT: what went wrong (a word), the list's place (a long), and two numbers that say
+            # FAULT: what went wrong (a word), the list's place (a long), and two numbers that give
             # how (a long each).
             FAULT_LIST = 2
             FAULT_FIRST = 6
@@ -122,7 +122,7 @@ module VBlank
               emit_stopping(asm, at)
             end
 
-            # The interrupt that says a frame has been drawn. It keeps every register it touches, counts
+            # The interrupt that signals a frame has been drawn. It keeps every register it touches, counts
             # the frame and reads the buttons, so a pass that spans several frames answers for each of
             # them, as the interpreter's does. A5 is the game's own and is never changed.
             def emit_interrupt(asm, at)
@@ -137,9 +137,9 @@ module VBlank
               asm.rte
             end
 
-            # The end of a pass: count it, move on what keeps time by the frame, say the game is
+            # The end of a pass: count it, move on what keeps time by the frame, mark the game as
             # waiting, and wait for the screen. What keeps time by the frame moves on here, before
-            # the game is said to be waiting, because that is where the interpreter moves it on: at
+            # the game is marked as waiting, because that is where the interpreter moves it on: at
             # the frame boundary, before anything is read of the frame (Reference#advance_frame).
             def emit_wait(asm, at, sound)
               asm.label("rt_wait_vblank")
@@ -287,7 +287,7 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or with the screen switched on, for a game
-            # that never got as far as a frame), SHOWN says the end is on the screen, and the
+            # that never got as far as a frame), SHOWN marks that the end is on the screen, and the
             # processor sleeps from then on. Going wrong is the same, with what went wrong written
             # down first (rt_fault, D0 = what went wrong, the list and the numbers already in FAULT).
             def emit_stopping(asm, at)

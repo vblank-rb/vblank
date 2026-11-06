@@ -6,7 +6,7 @@
  * There is no SDL in this file and no Dear ImGui, and no window to open: it keeps the window's
  * settings and answers questions about them. The menu (rg_menu.cpp) is a thin layer that draws
  * these and calls these; a hotkey calls the very function its menu item calls; rg_sdl.c reads the
- * answers and does what they say to the real window, the speaker and the clock. Nothing the
+ * answers and does what they ask for to the real window, the speaker and the clock. Nothing the
  * window can do lives only in the menu. That is what lets all of it be tested with no window
  * (test_native_window.rb), as rg_pacing.h and rg_save.c are.
  *
@@ -80,7 +80,7 @@ void rg_window_step(void);
 int rg_window_consume_step(void);
 
 /* Fast forward is held: several frames of the game for every picture shown, at the speed
- * rg_window_fast_speed says (2 to 8, 4 to begin with). Only the window does this; a paused game
+ * rg_window_fast_speed returns (2 to 8, 4 to begin with). Only the window does this; a paused game
  * does not fast forward, and one that is let go of is back at the console's speed. */
 #define RG_FAST_SPEED_LEAST 2
 #define RG_FAST_SPEED_MOST 8
@@ -172,7 +172,7 @@ int rg_window_hotkey_key(int hotkey);
 /* The gamepad button that is a console button. */
 int rg_window_pad_button(int button);
 
-/* Choosing a key. Each says NULL when it is done, and otherwise why not, in a sentence a player
+/* Choosing a key. Each returns NULL when it is done, and otherwise why not, in a sentence a player
  * can read: a key that is another button's, or a hotkey's, is refused and nothing is changed
  * (the key is not taken from the one that has it behind the player's back). RG_NO_KEY clears. A
  * key a button already has in its other place is moved. The same sentence is the notice. */
@@ -236,7 +236,7 @@ int rg_window_watch_dropped(void);
  *   hotkey.pause = P
  *
  * A key is named as SDL names it (the name in rg_window_key_name), "none" for no key; a button
- * says its key once for each key it has, and the first line for it replaces the default ones. A
+ * names its key once for each key it has, and the first line for it replaces the default ones. A
  * line that cannot be used is left out and said in plain words, and the rest are used: a file
  * never stops the window starting. */
 void rg_window_use_defaults(void);
@@ -255,7 +255,7 @@ size_t rg_window_settings_text(char *out, size_t room, rg_settings_part part);
 int rg_window_settings_read(const char *text, char *problems, size_t room);
 
 /* Every setting so far came from somewhere else (the file every game shares) and is not the
- * own of the file that is read next, a game's: that file keeps only what it says and what is
+ * own of the file that is read next, a game's: that file keeps only what it sets and what is
  * changed while the game plays. */
 void rg_window_mark_settings_inherited(void);
 

@@ -39,7 +39,7 @@ module VBlank
             HELD = "rt held"
             SEEN = "rt seen"
             PRESSED = "rt pressed"
-            FAULT = "rt fault" # What went wrong, then the list, then two numbers that say how
+            FAULT = "rt fault" # What went wrong, then the list, then two numbers that give how
             # Set by whoever reads the run (GBC::HeadlessRun) when it has the pass it wanted last:
             # the game then shows that pass and goes no further, so nothing it would do next —
             # writing its save memory above all — happens after the moment the run ended on.
@@ -103,7 +103,7 @@ module VBlank
             # Does the game count the frames its screen was off for (#emit_dark_start)?
             def dark?(memory) = memory.reserved?(DARK_FRAMES)
 
-            # +dark+ says the game counts the frames its screen was off for.
+            # +dark+ means the game counts the frames its screen was off for.
             def reserve(memory, together: false, dark: false)
               if dark
                 memory.reserve(DARK_FRAMES, 2)
@@ -132,10 +132,10 @@ module VBlank
               memory.reserve(PICTURE_NOT_UP_NOTED, 1)
             end
 
-            # +together+ says the game has picture groups with more than one slot, which
+            # +together+ means the game has picture groups with more than one slot, which
             # rt_groups_together asks of. +count_at+ is where the game keeps IR::Frames::COUNT, in a
             # game that counts the frames its screen was off for.
-            # +songs+ says the game plays music (GBC::Music#any?): a frame of it the game waits for
+            # +songs+ means the game plays music (GBC::Music#any?): a frame of it the game waits for
             # is then played after the blank's copies (#emit_wait_with_songs).
             def emit(asm, memory, together: false, count_at: nil, songs: false)
               raise ArgumentError, "a game that counts its dark frames needs count_at:" if dark?(memory) && count_at.nil?
@@ -145,7 +145,7 @@ module VBlank
               h = Console::GBCHardware
               vblank = memory.quick(1)
 
-              # The interrupt that says a frame has been drawn. The frame is counted, and the buttons
+              # The interrupt that signals a frame has been drawn. The frame is counted, and the buttons
               # read, so a pass that spans several frames answers for each of them, as the
               # interpreter's does (Reference#advance_frame, #read_buttons).
               #
@@ -205,11 +205,11 @@ module VBlank
               %i[hl de bc af].each { |pair| asm.pop(pair) }
               asm.reti
 
-              # The end of a pass: count it, move on what keeps time by the frame, say the game is
+              # The end of a pass: count it, move on what keeps time by the frame, mark the game as
               # waiting, and wait for the screen.
               #
               # WHAT KEEPS TIME BY THE FRAME (the game's timers, rt_frame_begins) MOVES ON HERE, in
-              # the wait and before the game is said to be waiting, because that is where the
+              # the wait and before the game is marked as waiting, because that is where the
               # interpreter moves it on: at the frame boundary, before anything is read of the frame
               # (Reference#advance_frame). So whoever reads the game while it waits reads it with
               # this boundary's ticks counted.
@@ -293,7 +293,7 @@ module VBlank
               asm.ret
 
               # SLEEPING UNTIL THE BLANK. The processor sleeps until any interrupt, so it sleeps again
-              # until the screen's has said a blank began. A pass that ends late can find one begun
+              # until the screen's has signalled a blank began. A pass that ends late can find one begun
               # already, and that one is passed over for the next. Slept through, the next interrupt
               # to wake the game would be — in a game that bends rows — the display's own, as the
               # first line of the frame ends: the blank's copies would run while the screen is drawn,
@@ -301,7 +301,7 @@ module VBlank
               # would start the console again (rt_oam_dma_held). Used at once, the game would never be
               # waiting as a frame begins, where the reader of a running cartridge looks for it
               # (GBC::HeadlessRun). Interrupts are held off while the blank is forgotten, so the
-              # screen's cannot say one began between that and the sleep; they come back on after
+              # screen's cannot signal one began between that and the sleep; they come back on after
               # the instruction that follows, the sleep itself.
               asm.label("rt_sleep_until_vblank")
               asm.di
@@ -692,7 +692,7 @@ module VBlank
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is
             # copied to the console in the next blank (or straight away, with the screen switched on,
-            # for a game that never got as far as a frame), SHOWN says the end is on the screen, and
+            # for a game that never got as far as a frame), SHOWN marks that the end is on the screen, and
             # the processor sleeps from then on. Going wrong is the same, with what went wrong written
             # down first.
             def emit_stopping(asm, memory)
@@ -757,7 +757,7 @@ module VBlank
               asm.jump("rt_fault")
             end
 
-            # TWO PICTURE GROUPS UP TOGETHER THAT up_together DOES NOT SAY CAN BE stop the game, as
+            # TWO PICTURE GROUPS UP TOGETHER THAT up_together DOES NOT ALLOW stop the game, as
             # the interpreter stops it (Reference#refuse_groups_not_together!): the console may have
             # put their pictures in the same place in sprite memory (IR::PictureGroupPlaces), so one
             # copied in writes over the other's.
@@ -765,7 +765,7 @@ module VBlank
             # rt_groups_together(record, check): the record (Lowering::Picture#emit_refuse_groups_not_together)
             # is the set's slots, the place of each one's group as the sprites want it (a byte,
             # Runtime::PictureGroups::NONE for none), then every list of groups that can be up
-            # together, as the lowering says them. The groups up are fine when one list holds every
+            # together, as the lowering lists them. The groups up are fine when one list holds every
             # one of them; when none does, the game stops, with +check+, which of the build's sets
             # it was (GBC::Places#together_checks).
             #

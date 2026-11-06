@@ -41,7 +41,7 @@ module VBlank
                           signs: memory.scratch(2))
             end
 
-            # +divides+ says whether the game has a division a routine works out. One without has no
+            # +divides+ is whether the game has a division a routine works out. One without has no
             # use for those routines, and they are not small.
             def emit(asm, scratch, divides: true)
               emit_mul(asm, scratch)

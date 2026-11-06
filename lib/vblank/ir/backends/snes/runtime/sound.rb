@@ -8,18 +8,18 @@ module VBlank
           # THE SOUND UNIT, AND HOW THE CONSOLE TALKS TO IT. A Super Nintendo's sound is made by a
           # small computer of its own: an SPC700 processor with 64K of memory, and the S-DSP, which
           # mixes eight voices, each playing a recorded sound at the pitch and volume its registers
-          # say. The console's processor cannot see any of that memory. All it has are four one-byte
+          # set. The console's processor cannot see any of that memory. All it has are four one-byte
           # mailboxes ($2140-$2143 on its side, $F4-$F7 on the sound unit's): a byte the console
           # writes into one is read by the SPC700, and a byte the SPC700 writes is read by the console.
           #
           # SENDING ITS PROGRAM. At power-on the SPC700 runs a little program built into the chip,
-          # which zeroes its direct page, puts $AA and $BB in the first two mailboxes to say it is
+          # which zeroes its direct page, puts $AA and $BB in the first two mailboxes to signal it is
           # ready, and then takes a program a byte at a time: the console writes the byte into
           # mailbox 1 and its number (the low eight bits of where it is) into mailbox 0, and waits
-          # until the SPC700 copies that number back to say it has the byte. Each command is started
+          # until the SPC700 copies that number back to signal it has the byte. Each command is started
           # by a "kick", a number in mailbox 0 that is not the next byte's: $CC for the first, and
           # after the bytes one past the last byte's number. A last command with nought in mailbox 1
-          # says where to start the program, and the built-in program jumps there. rt_sound_start
+          # gives where to start the program, and the built-in program jumps there. rt_sound_start
           # does all that, once, at power-on, with interrupts held off and the screen's interrupt
           # still off: the last byte's answer lasts only a few of the SPC700's cycles, and an
           # interrupt could miss it. Its waits have no limit — at power-on the built-in program is
@@ -28,7 +28,7 @@ module VBlank
           #
           # THE PROGRAM IT RUNS (Sound.driver) does one thing: it waits for mailbox 0 to change, and
           # then does the command the other three hold — today only "write this value into this
-          # DSP register" — and copies mailbox 0's new number back to say it is done. Everything a
+          # DSP register" — and copies mailbox 0's new number back to signal it is done. Everything a
           # sound is (which recording, its pitch, its volume, its envelope, key on and key off) is
           # DSP registers, so the console plays every sound by writing them through it.
           #
@@ -64,7 +64,7 @@ module VBlank
             FIRST_KICK = 0xCC
 
             # The commands the program knows, in mailbox 1: write a DSP register (mailbox 2 names it,
-            # mailbox 3 is its value), and set some of FLG's or KOFF's bits (mailbox 2 says which,
+            # mailbox 3 is its value), and set some of FLG's or KOFF's bits (mailbox 2 holds which,
             # mailbox 3 what they become), leaving the rest as the DSP holds them (DSPWrites, "FLG is
             # shared" and "KOFF is shared").
             WRITE_DSP = 1
@@ -207,7 +207,7 @@ module VBlank
             # Everything sent across at power-on, from DRIVER_AT: the program, then from TABLE_AT the
             # sample table and the recordings, the game's +waves+ and then its own +recordings+
             # (Samples.recording's pairs) last (Samples.image). #sections and #emit are each handed the
-            # same lists, since rt_sound_start sends as many bytes as it says. What does not fit in the
+            # same lists, since rt_sound_start sends as many bytes as it is given. What does not fit in the
             # sound unit's memory, below the part its built-in program is kept in, is refused.
             def image(waves, recordings: [], whole_notes: false)
               program = driver(whole_notes: whole_notes).assembled.bytes
@@ -629,7 +629,7 @@ module VBlank
               asm.label("rt_sound_forget_not_key_off")
               asm.cmp(START_NOTE)
               asm.bcc("rt_sound_forget_past")
-              asm.cmp(FORGOTTEN) # past the three that say a place, and a command told whole
+              asm.cmp(FORGOTTEN) # past the three that name a place, and a command told whole
               asm.bcs("rt_sound_forget_past")
               asm.tya
               asm.cmp(memory.indexed(asm, QUEUE,ENTRY_REGISTER))

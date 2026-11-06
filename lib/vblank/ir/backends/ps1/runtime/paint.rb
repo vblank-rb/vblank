@@ -11,7 +11,7 @@ module VBlank
           # (Console::PLAYSTATION's screen size, which the interpreter plays too), and the picture is
           # that rectangle of video RAM at its top left, a 15-bit colour a pixel, red in the low five
           # bits: the interpreter's own colours, so a colour lands exactly. A tear-free screen keeps a
-          # second page 256 lines down, at (0, 256), and draws into the one not shown (PAGE_Y says
+          # second page 256 lines down, at (0, 256), and draws into the one not shown (PAGE_Y holds
           # which); they trade places at the frame boundary (rt_paint_flip). Everything to the right of
           # x 320 holds the game's pictures (PS1::PaintedArt), and the 16 lines under each page their
           # colour tables (PS1::TextureMemory), copied in at power-on.
@@ -27,7 +27,7 @@ module VBlank
           # corners.
           #
           # THE AREA is [left, top, right, bottom], the right and bottom one past the last pixel, kept
-          # to the screen; the whole screen until `inside` says otherwise. A rectangle is kept to it as
+          # to the screen; the whole screen until `inside` sets another. A rectangle is kept to it as
           # the interpreter keeps every pixel it paints (Reference::Framebuffer#paintable?).
           module Paint
             AREA = "rt paint area"
@@ -336,7 +336,7 @@ module VBlank
             # take; a nought after the last.
             #
             # THE PIXELS GO BY DMA, not a word at a time from the processor. While the chip takes a copy
-            # in, it says it has room for another word only once it has had time to store the last, and
+            # in, it signals it has room for another word only once it has had time to store the last, and
             # time does not move on for it while the processor only asks (Beetle PSX measured: a picture
             # sent a word at a time had not arrived after 600 frames). The DMA controller hands the chip
             # each word as it asks for it: the copy's command goes first through the port, then the
@@ -356,7 +356,7 @@ module VBlank
               asm.label("rt_paint_upload_piece")
               asm.lw(:t4, 0, :s0)
               asm.beq(:t4, :zero, "rt_paint_upload_end")
-              # The copy's three words go in one after another once the chip has room: it says it has no
+              # The copy's three words go in one after another once the chip has room: it signals it has no
               # room for the third until it has the whole command (Beetle PSX measured), so asking
               # between them waits for ever. Its queue holds sixteen.
               asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_COPY_TO_VRAM >> 16) }

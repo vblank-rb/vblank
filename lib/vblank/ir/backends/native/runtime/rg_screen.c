@@ -80,7 +80,7 @@ static int32_t frames_begun;    /* a frame boundary has been reached (Reference 
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
 static int32_t owed;            /* a rebuild of the whole view is owed (Reference#request_repaint) */
 static int32_t repaints_painted;   /* how many times the whole view was built again (rg_screen_repaints_painted) */
-/* The interpreter asks for a rebuild every time the scroll or the sprites are said. Here a saying
+/* The interpreter asks for a rebuild every time the scroll or the sprites are set. Here a setting
  * that moved nothing asks for nothing and only notes that it would have (rebuild_skipped), since
  * the picture is the one a rebuild would paint. That stops being so once the picture is touched:
  * something else has written to it, or the pages have changed over. So when the rebuild would be
@@ -178,7 +178,7 @@ static background_scroll scrolls[RG_MAX_BACKGROUNDS];
 
 /* The box a background is held to (Reference @bg_box), by the entry that keeps its name: whether
  * it is held to one, and its left, top, and the column and row just past it, kept to the screen
- * (Reference#screen_box). Held to none until the game says one. */
+ * (Reference#screen_box). Held to none until the game sets one. */
 typedef struct { int32_t held, left, top, right, bottom; } background_box;
 static background_box boxes[RG_MAX_BACKGROUNDS];
 /* The box the background being laid on the picture keeps to, or nothing (paint_scenery_in_box). */
@@ -200,7 +200,7 @@ static int64_t colors_told[RG_MAX_BACKGROUNDS];
 typedef struct { int32_t turned, angle, size, pivot_x, pivot_y; } background_turn;
 static background_turn turns[RG_MAX_BACKGROUNDS];
 
-/* The sprites on screen this frame: being said (drawing), and as the last rebuild draws them.
+/* The sprites on screen this frame: being set (drawing), and as the last rebuild draws them.
  * One that turns or resizes carries its angle and its size for this frame, and whether its size
  * ever changes. One that loses slices to a crowded line has them listed in left_out, +cut_count+
  * of them from +cut_from+ (mark_slices_left_out). */
@@ -526,7 +526,7 @@ static shares shares_now(int32_t layer) {
 }
 
 /* A layer's shares as they were at some moment, for the layers they were kept for: when the
- * rebuild now owed was asked for (Reference @owed_weights), and when the game last said it had
+ * rebuild now owed was asked for (Reference @owed_weights), and when the game last marked that it had
  * worked the amounts out again (@see_through_shown). */
 typedef struct { int32_t kept; shares at; } kept_shares;
 static kept_shares owed_shares[RG_MAX_SEE_THROUGH], told_shares[RG_MAX_SEE_THROUGH];
@@ -980,7 +980,7 @@ void rg_screen_pixelate(int32_t size) {
  * drawn. The painting reads them itself; what this owes is the picture, since one that neither
  * moves nor scrolls would otherwise keep the amounts it was painted with.
  *
- * A game that says this is one whose whole view is rebuilt (Picture#see_through_picture_changes?),
+ * A game that calls this is one whose whole view is rebuilt (Picture#see_through_picture_changes?),
  * so its sprites are kept for the rebuild rather than drawn once onto a picture that stays. */
 void rg_see_through_told(int32_t layer) {
   shares now = shares_now(layer);
@@ -1130,8 +1130,8 @@ void rg_screen_placing_at_pass_end(int32_t on) { placing_at_pass_end = on; }
 
 /* Reference#exec_scroll_background. The interpreter builds the view again every time; this builds
  * it again only when the scroll the picture shows is not the one it was built with, so a frame
- * that says the same scroll again costs nothing. What the picture shows is what scroll_shown
- * answers, which for a background put up this pass is its corner, so a scroll said over a corner
+ * that sets the same scroll again costs nothing. What the picture shows is what scroll_shown
+ * answers, which for a background put up this pass is its corner, so a scroll set over a corner
  * is a change even where the number written is the one already stored. */
 void rg_background_scroll(int32_t background, int32_t x, int32_t y) {
   background_scroll before = scroll_shown(background);
@@ -1254,7 +1254,7 @@ void rg_background_draw_with(int32_t background, int32_t which) {
 }
 
 /* Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
- * which is on the screen, mixed and faded as whatever is in force says. */
+ * which is on the screen, mixed and faded as whatever is in force sets. */
 static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
   uint16_t *into = &pixels[py * RG_SCREEN_WIDTH + px];
   *into = into_cell(color, *into, pixels, py * RG_SCREEN_WIDTH + px);
@@ -1340,7 +1340,7 @@ static int32_t bend_lines[RG_MAX_BACKGROUNDS][RG_SCREEN_HEIGHT];
 static int32_t bend_lines_kept[RG_MAX_BACKGROUNDS];
 
 /* Reference#run_bend_for_row: the game asked how far across line +py+ of the background that
- * keeps the name sits, after running whatever its block says to run. */
+ * keeps the name sits, after running whatever is in its block. */
 static int32_t run_bend_for_line(int32_t keeper, int32_t py) {
   asked_bend.background = keeper;
   asked_bend.py = py;
@@ -2300,7 +2300,7 @@ void rg_objects_end(void) {
   }
 }
 
-/* Reference#sprites: what the game last said is on screen, which stays as it was said from
+/* Reference#sprites: what the game last put on screen, which stays as it was put from
  * rg_objects_end until the next rg_objects_begin. */
 int32_t rg_screen_drawn_count(void) { return drawing_count; }
 
@@ -2462,7 +2462,7 @@ static void show_backdrop(int32_t color) {
 
 /* Reference#exec_screen. Every kind of screen is a display of its own, so any change of kind
  * wipes the picture and takes the scenery down; arriving on a screen drawn from tiles puts up
- * again what every such screen shows, as declared (#put_up_always_up), and says so. A change
+ * again what every such screen shows, as declared (#put_up_always_up), and returns 1 when it does. A change
  * between one page and two keeps the same picture and wipes nothing. +new_backdrop+ is the colour
  * shown wherever nothing is drawn from here (IR::SceneHandover#backdrop_of). */
 int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop) {
@@ -2482,7 +2482,7 @@ int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop)
   kind = new_kind;
   show_pages(two_pages);
   tint_by_display = tint_mixed_by_display(); /* a tint in force is mixed this screen's way */
-  read_block = painted_screen() ? block : 1; /* the size of a block outlasts the screen it was said on */
+  read_block = painted_screen() ? block : 1; /* the size of a block outlasts the screen it was set on */
   if (!crossing || new_kind == RG_BITMAP) return 0;
   for (int32_t i = 0; i < rg_game_picture_sizes[RG_SIZE_ALWAYS_UP]; i++) {
     forget_own_cells(rg_game_always_up[i]);
@@ -2590,7 +2590,7 @@ void rg_screen_work_out_shade(void) {
   rg_game_shade_amount();
 }
 
-/* Framebuffer#light_off=: whether the scene that just ran has the light switched off, said as
+/* Framebuffer#light_off=: whether the scene that just ran has the light switched off, set as
  * the frame ends, before it is shown (Reference#advance_frame). */
 static int32_t shade_off;
 void rg_shade_switch(int32_t on) { shade_off = on == 0; }

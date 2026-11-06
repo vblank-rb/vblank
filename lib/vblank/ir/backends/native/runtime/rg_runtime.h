@@ -43,7 +43,7 @@ void rg_wait_vblank(void);
 _Noreturn void rg_halt(void);
 
 /* `rumble`: the cartridge's motor runs by +pattern+'s eight frames for +frames+ frames, from the
- * next frame on — on a console whose cartridge carries one. rg_motor_on says whether it runs on
+ * next frame on — on a console whose cartridge carries one. rg_motor_on returns whether it runs on
  * the frame shown now. */
 void rg_rumble(int32_t frames, int32_t pattern);
 int32_t rg_motor_on(void);
@@ -89,7 +89,7 @@ int32_t rg_timer_ticking(int32_t timer);
 /* THE CARTRIDGE'S CLOCK (`clock`): one reading of it, by its place in IR::Clock::READINGS —
  * the hour, minute, second, year, month, day and day of the week (0 for Sunday), then whether
  * there is a clock and whether it was set, 1 or 0. Every reading is 0 when either of those two is.
- * Where the time comes from is the driver's to say (rg_driver.h); a run it says nothing about has
+ * Where the time comes from is the driver's to give (rg_driver.h); a run it gives no time to has
  * no clock. A time the game set is added on: how far it is from the clock's own, in whole days
  * and the seconds left over (IR::Clock::OFFSET_DAYS), 0 and 0 in a game that never sets one. */
 int32_t rg_clock_reading(int32_t reading, int32_t offset_days, int32_t offset_seconds);

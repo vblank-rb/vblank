@@ -35,7 +35,7 @@ module VBlank
             KEPT = { lb: 0, lbu: 1, lh: 2, lhu: 3, lw: 4 }.freeze
 
             # HOW A TABLE KEEPS AN ENTRY: its +bytes+ (1, 2 or 4) and whether it has a sign
-            # (LoweringPlan#table_keeping). The one place that says which load reads one: LB and LH widen by
+            # (LoweringPlan#table_keeping). The one place that decides which load reads one: LB and LH widen by
             # the sign, LBU and LHU with noughts.
             EntryKeeping = Data.define(:bytes, :signed) do
               def self.of(keeping) = new(bytes: keeping.first, signed: keeping.last)
@@ -84,7 +84,7 @@ module VBlank
             end
 
             # rt_list_empty: no items. rt_list_at_capacity: as many as it holds, from its first slot
-            # (rt_list_fill then says what they are). rt_list_length: v0 = how many it holds.
+            # (rt_list_fill then sets what they are). rt_list_length: v0 = how many it holds.
             def emit_empty(asm)
               asm.label("rt_list_empty")
               asm.sh(:zero, FRONT, :a0)
@@ -339,7 +339,7 @@ module VBlank
               asm.label("rt_list_copy_entry_done")
             end
 
-            # The game stopped: what went wrong, the list's address, and the numbers that say how, into
+            # The game stopped: what went wrong, the list's address, and the numbers that give how, into
             # FAULT for the reader (Frame), then rt_fault (a0 = what went wrong).
             def emit_faults(asm, memory)
               fault = Runtime.at(memory, Frame::FAULT)

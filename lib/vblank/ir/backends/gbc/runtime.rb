@@ -37,22 +37,22 @@ module VBlank
           # The runtime's own places in work memory, asked for before the game's, so they are in
           # the half always in view (a painted screen puts its banks in the other half while it
           # works). +art+ is what the game's pictures were made into (GBC::Art), +effects+ its sound
-          # effects (GBC::Music#effects). +together+ says it has picture groups with more than one
+          # effects (GBC::Music#effects). +together+ means it has picture groups with more than one
           # slot (Frame#emit_groups_together). +bar_rows+ is how many rows of the window's grid its status
-          # bars fill, or nil for a game with none (Picture#emit_bar). +slides+ says a note of its music
+          # bars fill, or nil for a game with none (Picture#emit_bar). +slides+ means a note of its music
           # slides its pitch (GBC::Music#slides?), +wobbles+ that one wobbles (GBC::Music#wobbles?), and
-          # +shapes+ that a square note sets its shapes (GBC::Music#shapes?). +banked_songs+ says its
+          # +shapes+ that a square note sets its shapes (GBC::Music#shapes?). +banked_songs+ means its
           # songs' notes are kept in the cartridge's banks (GBC::Music#banked?), +clips+ that it
           # plays a recording (GBC::Clips#any?), +clip_laps+ that it loops one (GBC::Clips#loops?), and +dark+ that it counts the frames its screen is
           # off for (Lowering#counts_dark_frames?), and +rumble+ that it runs a cartridge's motor
-          # (Lowering#rumbles?). +swells+ says a song's note swells by itself in a game that
-          # moves the music volume (GBC::Music#swells?). +kept_sprites+ says a sprite placed as it was
+          # (Lowering#rumbles?). +swells+ means a song's note swells by itself in a game that
+          # moves the music volume (GBC::Music#swells?). +kept_sprites+ means a sprite placed as it was
           # on the pass before is left as it is (Lowering::Picture#keeps_unchanged_sprites?), and
           # +cells_shown_now+ that it changes a cell on the frame being drawn
           # (Lowering::Picture#cells_shown_now?), and +bar_covers+ that it tells a status bar to
-          # cover sprites (Lowering::Picture#bar_covers_sprites?). +tile_loads+ says it loads sprite
+          # cover sprites (Lowering::Picture#bar_covers_sprites?). +tile_loads+ means it loads sprite
           # tiles from the cartridge (Lowering::SpriteTiles#loads_sprite_tiles?). +song_entries_in_banks+
-          # says its songs' entries are kept in a bank, and copied out as each song starts
+          # means its songs' entries are kept in a bank, and copied out as each song starts
           # (GBC::Music#entries_in_banks?).
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
@@ -85,15 +85,15 @@ module VBlank
           # the list of cells for the blank (Runtime::BigMaps), or nil. +together+ is as for #reserve.
           # +clips+ is the game's recordings (GBC::Clips), or nil for a game that plays none.
           # +count_at+ is where a game that counts the frames its screen is off for keeps
-          # IR::Frames::COUNT (Frame#emit_add_dark_frames). +banked_colors+ says its backgrounds' colour
-          # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +byte_fills+ says
+          # IR::Frames::COUNT (Frame#emit_add_dark_frames). +banked_colors+ means its backgrounds' colour
+          # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +byte_fills+ means
           # it fills a list of bytes (Lists#emit_byte_fill), and +queues+ that it pushes bytes or takes
           # from a list's front (Lists#emit_queue_routines), and +half_queues+ that it pushes onto a list
           # of halves or takes one from the front (Lists#emit_queue_routines). +sprites_over_picture+
-          # says its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
-          # sprite layer is on there. +indexes_in_banks+ says the tables of where its pictures, its
+          # means its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
+          # sprite layer is on there. +indexes_in_banks+ means the tables of where its pictures, its
           # screens' tiles and colours and its maps are kept are in a bank (GBC#build_in_view).
-          # +byte_divides+ says it divides by a byte written in it (Lowering#divides_by_written_bytes?).
+          # +byte_divides+ means it divides by a byte written in it (Lowering#divides_by_written_bytes?).
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
                        count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,

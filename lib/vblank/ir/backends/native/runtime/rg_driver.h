@@ -35,29 +35,29 @@ extern const rg_driver *rg_active_driver;
 /* The most players the runtime reads (IR::Buttons::MOST_PLAYERS). */
 #define RG_MOST_PLAYERS 16
 
-/* A driver says which buttons are down at every frame boundary: one number for each of +count+
+/* A driver reports which buttons are down at every frame boundary: one number for each of +count+
  * connected players, the first player's first (IR::Buttons.masks), a bit a button in the order
  * rg_runtime.h lists them. A button down now and not at the last boundary is pressed for the
  * frame that is starting (rg_runtime.c works that out, the same for every driver). A player stays
- * connected once a driver has said so, and holds nothing on a boundary that leaves them out;
+ * connected once a driver has reported it, and holds nothing on a boundary that leaves them out;
  * players past RG_MOST_PLAYERS are not read. */
 void rg_players_read(int32_t count, const uint32_t *masks);
 
-/* Buttons down from power-on, before the game's first statement, said the same way: a driver says
- * so before it starts the game. None of them counts as pressed until the first frame boundary
+/* Buttons down from power-on, before the game's first statement, given the same way: a driver gives
+ * them before it starts the game. None of them counts as pressed until the first frame boundary
  * reads it down. */
 void rg_players_held_from_power_on(int32_t count, const uint32_t *masks);
 
-/* WHERE THE CARTRIDGE'S CLOCK GETS ITS TIME, said by the driver before it starts the game, or not
+/* WHERE THE CARTRIDGE'S CLOCK GETS ITS TIME, given by the driver before it starts the game, or not
  * at all for a cartridge with no clock. Either way the time is the date and the hour a clock
- * SAYS, with no time zone, as IR::Clock reads it.
+ * SHOWS, with no time zone, as IR::Clock reads it.
  *
  * The windowless driver starts the clock at a moment of the test's (see #clock_at): +seconds+
  * from the start of 1970 as such a clock counts them, +ticks+ more of the console's 2^24 a second,
  * and whether the clock was ever set. From then it moves on one of the console's frames at each
  * frame boundary, as the interpreter's does, so the two agree frame by frame.
  *
- * The window says what the computer's own clock reads instead, local time, before the game
+ * The window gives what the computer's own clock reads instead, local time, before the game
  * starts and as each frame boundary hands the game its next frame: a clock keeps real time, so a
  * game held or paused finds the time gone by when it goes on, as a cartridge switched off finds
  * its clock still counting. */

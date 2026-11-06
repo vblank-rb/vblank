@@ -24,9 +24,9 @@ const rg_driver *rg_active_driver;
 static uint32_t held[RG_MOST_PLAYERS];    /* buttons down now */
 static uint32_t seen[RG_MOST_PLAYERS];    /* ...and at the last frame boundary, to tell a press from a hold */
 static uint32_t pressed[RG_MOST_PLAYERS]; /* buttons that went down at the last frame boundary */
-static int32_t connected = 1; /* players connected: never fewer than the driver has said */
+static int32_t connected = 1; /* players connected: never fewer than the driver has reported */
 
-/* +count+ players' buttons as held now. A player stays connected once a driver has said so, and
+/* +count+ players' buttons as held now. A player stays connected once a driver has reported it, and
  * one it leaves out holds nothing, as the Ruby runtime's rg_players_buttons does. */
 static void hold_players(int32_t count, const uint32_t *masks) {
   if (count > RG_MOST_PLAYERS) count = RG_MOST_PLAYERS;
@@ -251,7 +251,7 @@ int32_t rg_clock_kept_seconds(int32_t current) { return clock_present ? clock_ke
 /* --- the motor (Reference#exec_rumble, #step_motor) --- */
 
 /* THE CARTRIDGE'S MOTOR, which shakes the player's hands: on a console whose cartridge carries
- * one, it runs on or off each frame by an eight-frame pattern, for the frames the game said. A
+ * one, it runs on or off each frame by an eight-frame pattern, for the frames the game set. A
  * desktop or a web page shakes nothing yet, but the motor is kept all the same, so a test can
  * ask whether it runs. The pattern is read as IR::Rumble reads it: turned a place to the right
  * each frame, and on where its lowest bit is 1. */
@@ -340,7 +340,7 @@ int32_t rg_pressed_by(int32_t player, int32_t mask) { return down_by(pressed, pl
 /* How many players are connected now. */
 int32_t rg_players_connected(void) { return connected; }
 
-/* Which player the person at this machine is: the first, until a match says otherwise. */
+/* Which player the person at this machine is: the first, until a match names another. */
 int32_t rg_local_player(void) { return 1; }
 
 /* The match's shared seed: nought, since the desktop build plays no match yet. */

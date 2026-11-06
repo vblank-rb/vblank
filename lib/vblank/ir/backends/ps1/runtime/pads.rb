@@ -12,9 +12,9 @@ module VBlank
           # sends 01h ("a pad, please"), then 42h ("your buttons"), and the pad answers with what kind it is
           # (41h for a digital pad), then 5Ah ("here they come"), then the buttons, two bytes of them, a
           # pressed button reading 0. Each byte is written to the port's data register, and the byte that
-          # came back in the same moment is read once the port says it has one. A pad answers each byte but
+          # came back in the same moment is read once the port signals it has one. A pad answers each byte but
           # the last by pulling its acknowledge line low for a moment, and the next byte must wait for that,
-          # or the pad never hears it: the port's status says when the line is low. With no pad in the port
+          # or the pad never hears it: the port's status shows when the line is low. With no pad in the port
           # nothing comes back, so every wait gives up after a while, and the buttons read as none held.
           #
           # The two button bytes, bit by bit, turned into IR::Buttons's order: the first is Select, L3, R3,
@@ -71,7 +71,7 @@ module VBlank
               asm.lui(:t1, h::IO >> 16)
               asm.li(:t0, SELECT_FIRST_PORT)
               asm.sh(:t0, h::JOY_CTRL & 0xFFFF, :t1)
-              asm.li(:t5, 0xFFFF) # the two button bytes, none pressed until the pad says so
+              asm.li(:t5, 0xFFFF) # the two button bytes, none pressed until the pad reports them
               # The port takes a byte in only once the one before was read, so whatever is left from the
               # last conversation is read first and thrown away.
               asm.lbu(:t0, h::JOY_DATA & 0xFFFF, :t1)

@@ -55,7 +55,7 @@ module VBlank
             OTHER_READIED = "rt paint other readied"
             OTHER_READIED_ROWS = "rt paint other readied rows"
             # Its map, and the first and last rows of tiles where Paint::MAP_COPY may differ from
-            # it; OTHER_MAP_PENDING says the map shown is to be kept as the other's before the pass
+            # it; OTHER_MAP_PENDING marks that the map shown is to be kept as the other's before the pass
             # changes it (rt_paint_map_runs).
             OTHER_MAP = "rt paint other map"
             MAP_DIFFERS_FIRST = "rt paint map differs first"
@@ -95,7 +95,7 @@ module VBlank
             end
 
             # The other picture's map, rows and shared tiles, for a screen that can take turns
-            # (Lowering::Paint.takes_turns? says which can).
+            # (Lowering::Paint.takes_turns? decides which can).
             def reserve(memory)
               memory.reserve_far(OTHER_MAP, Paint::MAP_BYTES)
               memory.reserve_far(OTHER_READIED, Paint::ROWS * 4)
@@ -106,14 +106,14 @@ module VBlank
             # room for two halves too.
             def room_reserved?(memory) = memory.reserved?(OTHER_MAP)
 
-            # Said once the log is reserved (PaintLog.emit), when it is big enough for two halves of
+            # Decided once the log is reserved (PaintLog.emit), when it is big enough for two halves of
             # PaintLog::LEAST_LOG_ENTRIES each: the screen takes turns. A log smaller than that is one
             # half, as before.
             TAKES_TURNS = "rt paint takes turns"
 
             def take_turns(memory) = memory.reserve(TAKES_TURNS, 0)
 
-            # Whether the screen takes turns, once PaintLog.emit has said.
+            # Whether the screen takes turns, once PaintLog.emit has decided.
             def kept?(memory) = memory.reserved?(TAKES_TURNS)
 
             # At power-on (after Paint's map is all the clear tile): this pass in the first half of the

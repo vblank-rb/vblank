@@ -924,7 +924,7 @@ module VBlank
             def bent_layers = painted? ? [] : bends.map { |bend| layer_of(background_declared_for(bend)) }.uniq
 
             # Whether the game's bends are kept as a step for each band (Runtime::Picture, "A bend that
-            # says a thing about whole bands of rows"): every bend has bands, few enough to keep.
+            # holds one value for whole bands of rows"): every bend has bands, few enough to keep.
             def bends_by_bands?
               bend_bands.all? && bend_bands.all? { |firsts| band_steps(firsts).sum(&:length) <= Runtime::Picture::MOST_BAND_STEPS }
             end
@@ -1591,7 +1591,7 @@ module VBlank
             # layer's rows (Runtime::Picture.bend_offsets) for the frame the wait shows; the first row of each
             # bend, then the rest of each, leaving each variable at the screen's height.
             #
-            # A game all of whose bends say a thing about whole bands of rows has each band worked
+            # A game all of whose bends hold one value for whole bands of rows has each band worked
             # out once (RowBands). All of them or none: a block asked every row can change a number
             # another block reads, and then that one's rows are not bands at all.
             #

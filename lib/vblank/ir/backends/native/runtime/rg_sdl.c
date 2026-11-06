@@ -93,7 +93,7 @@
  * in folders where this computer keeps a person's settings (rg_settings_root.h says where, and
  * --config-dir names another). Both are read when the window opens, the game's over the player's. A
  * change is written back a moment after it is made (rg_window_settings_due): to the game's file
- * where it has one, which keeps only what it says itself and what was changed while the game
+ * where it has one, which keeps only what it sets itself and what was changed while the game
  * played, so the rest goes on following the player's file; otherwise to the player's, whole. A
  * file that cannot be read is said in plain words, over the picture as the window opens too, and
  * its defaults used: it never stops the window opening. A scripted run (--scripted-keys) uses none
@@ -214,7 +214,7 @@ static SDL_Renderer *renderer;
 static SDL_Texture *texture;
 
 /* The menu's letters on the screen's card, at the density they were drawn for (0 before the first
- * time), and what the menu last said to draw. */
+ * time), and what the menu last gave to draw. */
 static SDL_Texture *menu_letters;
 static int menu_letters_density;
 static rg_menu_drawing menu_drawing;
@@ -236,7 +236,7 @@ static int display_waits_refreshes;    /* how many refreshes the display waits f
 static Uint64 next_frame_ns;           /* when the next frame is due, on the console's clock */
 static Uint64 earliest_next_ns;        /* where the monitor paces: the moment before which the next may not begin */
 
-/* --refresh-rate: the rate to pace for, whatever the monitor says its own is. */
+/* --refresh-rate: the rate to pace for, whatever the monitor reports its own is. */
 static double pretended_refreshes_a_second;
 
 /* --frame-times: when each picture was handed to the display, to say at the end how evenly they
@@ -250,7 +250,7 @@ static long frames_held_by_clock; /* frames the monitor was pacing and the windo
 /* THE PICTURE ALREADY UP. A picture the game finished that is the same as the one the window is
  * showing is not uploaded and not drawn again: the window shows it as it is, and a still title
  * screen costs the computer and its graphics card next to nothing. +texture_holds+ is the picture
- * in the texture; +window_owed_a_drawing+ says something other than the picture asks for the
+ * in the texture; +window_owed_a_drawing+ marks that something other than the picture asks for the
  * window to be drawn (it was uncovered, resized, moved to another screen, or lost its drawing
  * surface), and +picture_due_ns+ is, where the monitor paces the game, when the picture handed over
  * last is due to be replaced. */
@@ -577,7 +577,7 @@ static char *settings_file_in(const char *folder) {
   return path;
 }
 
-/* Starts the settings as the file or files say, before the window opens. +asked+ is the file
+/* Starts the settings as the file or files set them, before the window opens. +asked+ is the file
  * --settings-file named, which is then the only one there is. */
 static void load_settings(const char *asked, int usual_files_asked) {
   rg_window_use_key_names(scancode_name, scancode_named);
@@ -598,7 +598,7 @@ static void load_settings(const char *asked, int usual_files_asked) {
     if (everyones) read_settings_file(everyones, said, sizeof said);
     int game_has_its_own = this_games && SDL_GetPathInfo(this_games, NULL);
     if (game_has_its_own) {
-      /* What the player's file said is the player's, and the game's file keeps only its own. */
+      /* What the player's file set is the player's, and the game's file keeps only its own. */
       rg_window_mark_settings_inherited();
       read_settings_file(this_games, said, sizeof said);
       settings_written_part = RG_SETTINGS_OWN;
@@ -643,7 +643,7 @@ static void write_files_due(void) {
   if (rg_window_settings_due(SDL_GetTicksNS())) write_settings_file();
 }
 
-/* Does to the real window what the settings now say: fullscreen on or off, and the size. */
+/* Does to the real window what the settings now ask for: fullscreen on or off, and the size. */
 static void apply_window_changes(void) {
   static int size_owed;
   int changes = rg_window_consume_changes();
@@ -666,7 +666,7 @@ static void apply_window_changes(void) {
  * A picture meant for several refreshes (a monitor of a hundred and twenty a second shows the
  * console's sixty for two each) is drawn ONCE, with the display told to wait for as many refreshes
  * as the picture is shown for: SDL's vsync takes that number. Not every driver takes every number,
- * and it says so, so a driver that refuses is asked for one refresh and the picture is drawn once
+ * and it reports a refusal, so a driver that refuses is asked for one refresh and the picture is drawn once
  * for each of its refreshes instead, which every driver can wait for. Worked out again whenever
  * the window moves to another monitor, so the number follows the monitor. */
 static void choose_pacing(void) {
@@ -789,7 +789,7 @@ static void draw_box(const rg_menu_part *box) {
   SDL_RenderGeometry(renderer, NULL, points, 1 + 2 * ring, indices, count);
 }
 
-/* Each letter of +words+ copied from the letters' card to where the menu said, in its colour. */
+/* Each letter of +words+ copied from the letters' card to where the menu put it, in its colour. */
 static void draw_words(const rg_menu_part *words) {
   if (!menu_letters) return;
   SDL_SetTextureColorMod(menu_letters, words->color[0], words->color[1], words->color[2]);
@@ -815,7 +815,7 @@ static void status_words(char rate[32], char work[32]) {
   snprintf(work, 32, "%.2f", rg_window_frame_work_ms(now));
 }
 
-/* What the menu says to draw, in the window's own pixels: the picture was drawn through the
+/* What the menu gives to draw, in the window's own pixels: the picture was drawn through the
  * console's own size (the logical presentation, which scales it by a whole number with bars where
  * the window is the wrong shape), which is put aside while the menu draws and put back after. */
 static void draw_menu_and_status(void) {
@@ -948,7 +948,7 @@ static void save_window_picture(void) {
 /* THE SOUND IS KEPT IN STEP WITH THE GAME by playing it a shade faster or slower. A frame of the
  * game makes a frame of sound, and how many frames there are in a second is the monitor's doing
  * where it paces the game (rg_pacing.h), so the sound is played at the game's pace to begin with.
- * That alone is not enough: neither a monitor nor a sound card runs at exactly the rate it says,
+ * That alone is not enough: neither a monitor nor a sound card runs at exactly the rate it reports,
  * so a little more sound is made than played, or a little less, all the time. Left alone that
  * piles up until some has to be thrown away, or runs dry, and either is a click.
  *
@@ -1031,7 +1031,7 @@ static _Noreturn void quit_play(void) {
   quit(0);
 }
 
-/* A key meant for the menu, and what the window does about what the menu then says: Quit ends the
+/* A key meant for the menu, and what the window does about what the menu then asks for: Quit ends the
  * play. Resume carries
  * on, even from a pause before the menu was opened; closing the menu (the gamepad's B) leaves such a
  * pause as it was, as F1 does. */
@@ -1165,9 +1165,9 @@ static void pad_button_changed(const SDL_GamepadButtonEvent *event) {
   }
 }
 
-/* Everything the window has to say: closing it ends the game, a key presses the keyboard's
+/* Everything the window reports: closing it ends the game, a key presses the keyboard's
  * gamepad, a gamepad plugged in or pulled out is taken up or let go, and a window moved to
- * another monitor, or a monitor set to another rate, is paced afresh. Says whether there were any. */
+ * another monitor, or a monitor set to another rate, is paced afresh. Returns whether there were any. */
 static bool read_events(void) {
   bool any = false;
   SDL_Event event;
@@ -1227,7 +1227,7 @@ static bool read_events(void) {
   return any;
 }
 
-/* The window's events read, and what they asked of the real window done to it. Says whether there
+/* The window's events read, and what they asked of the real window done to it. Returns whether there
  * were any events. */
 static bool read_and_apply_events(void) {
   bool any = read_events();
@@ -1403,7 +1403,7 @@ static _Noreturn void refuse_script_button_without_key(int button) {
 
 /* The script's keys for the frame that is starting, a line of standard input: the buttons held
  * as a number (as --headless reads them), each one that changed sent as the key event a keyboard
- * would send, and then any words naming keys, hotkeys or panels. Says whether there was a line:
+ * would send, and then any words naming keys, hotkeys or panels. Returns whether there was a line:
  * a script that has run out holds nothing down. */
 static bool press_scripted_keys(void) {
   char line[512];
@@ -1671,7 +1671,7 @@ static void play_console_start_up(void) {
  * other, and is opened and read the way they are.
  *
  * It is given every button a standard gamepad has, though the keyboard presses ten of them. SDL
- * numbers a made-up gamepad's buttons by counting only the ones it is said to have, so a pad said
+ * numbers a made-up gamepad's buttons by counting only the ones it is declared to have, so a pad declared
  * to have just these ten would have its directions under different numbers from a real one's. */
 static void attach_keyboard_pad(void) {
   SDL_VirtualJoystickDesc pad;
@@ -1787,7 +1787,7 @@ int main(int argc, char **argv) {
   window = SDL_CreateWindow(rg_game_title, RG_SCREEN_WIDTH * rg_window_scale(), RG_SCREEN_HEIGHT * rg_window_scale(), flags);
   if (!window) refuse_to_start("the window cannot be opened");
   SDL_SetWindowMinimumSize(window, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
-  rg_window_consume_changes(); /* the window opened as the settings say: nothing is left to do to it */
+  rg_window_consume_changes(); /* the window opened as the settings ask: nothing is left to do to it */
   renderer = SDL_CreateRenderer(window, NULL);
   if (!renderer) refuse_to_start("nothing can draw into the window");
   SDL_SetRenderLogicalPresentation(renderer, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);

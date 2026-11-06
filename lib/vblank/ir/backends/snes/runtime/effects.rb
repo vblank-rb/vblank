@@ -70,7 +70,7 @@ module VBlank
             STATE_BYTES = 64 # Past CURSORS and a word for each of the most parts an effect has
             # The effects a frame has to look at, by their places in the rank order, each one up, and
             # nought after the last (rt_sfx_live_list). A word a place; LIVE_AT walks it, and
-            # LIVE_CHANGED says an effect was asked for or ended, so it is out of date.
+            # LIVE_CHANGED marks that an effect was asked for or ended, so it is out of date.
             LIVE = "rt sfx live"
             LIVE_AT = "rt sfx live at"
             LIVE_CHANGED = "rt sfx live changed"
@@ -120,7 +120,7 @@ module VBlank
             end
 
             # rt_sfx_effect_holds (JSR): A, and the zero flag clear, when a sound effect holds the voice
-            # Y says (two bytes a voice, from channel 1), rather than the tune or nobody. Y is kept.
+            # Y names (two bytes a voice, from channel 1), rather than the tune or nobody. Y is kept.
             def emit_effect_holds(asm, at, memory)
               asm.label("rt_sfx_effect_holds")
               asm.lda(asm.long("music_data", SNES::Music::RANK_KINDS_AT))

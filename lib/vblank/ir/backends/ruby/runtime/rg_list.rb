@@ -118,7 +118,7 @@ def rg_list_sort(list, by, descending)
 end
 
 # The list made to hold exactly +count+ entries of a table, from entry +at+ on, held so the whole
-# run is inside the table. The program says how the table is kept (a byte, a half or a word,
+# run is inside the table. The program sets how the table is kept (a byte, a half or a word,
 # signed or not) because a C table is read at that width; every table here is an Array of the
 # whole numbers it holds already, so that is not needed.
 def rg_list_copy(list, table, _kept, table_length, at, count)

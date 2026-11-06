@@ -105,7 +105,7 @@ static inline void rg_sha1_hex(const unsigned char *data, size_t length, char he
     snprintf(hex + 2 * i, 3, "%02x", (unsigned)((sum[i / 4] >> (24 - 8 * (i % 4))) & 0xFFu));
 }
 
-/* Whether the file at +path+ can be played from, with the words when not in +message+. +named_by+ says
+/* Whether the file at +path+ can be played from, with the words when not in +message+. +named_by+ holds
  * what named the path, or is NULL for the shared folder, where no file is no BIOS rather than a
  * mistake. */
 static inline rg_console_bios_answer rg_console_bios_judge(const char *path, const char *named_by,

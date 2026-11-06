@@ -242,7 +242,7 @@ module VBlank
             # shows nothing, so the game stops, saying so, rather than showing the wrong picture.
             #
             # rt_camera_to(x, y): the window's corner, once it is within what the plane can show.
-            # rt_camera_written: the scroll registers made to say it.
+            # rt_camera_written: the scroll registers made to hold it.
             CAMERA = "rt camera" # The window's corner, a word each: across, then down
             CAMERA_ACROSS = 192
             CAMERA_DOWN = 32
@@ -431,7 +431,7 @@ module VBlank
               asm.branch(:ne, "rt_paint_clear_area")
               asm.and(:l, asm.imm(0xF), asm.d(0))
               asm.move(:l, asm.d(0), asm.d(7))
-              asm.addq(:l, 1, asm.d(7)) # what SOLID says of a tile all this colour...
+              asm.addq(:l, 1, asm.d(7)) # what SOLID holds for a tile all this colour...
               asm.mulu(asm.imm(0x0101), asm.d(7))
               asm.move(:l, asm.d(7), asm.d(1))
               asm.swap(asm.d(1))

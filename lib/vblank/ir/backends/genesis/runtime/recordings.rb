@@ -362,7 +362,7 @@ module VBlank
               asm.clr(:w, asm.abs_l(Console::GenesisHardware::Z80_BUS_REQUEST))
               asm.rts
 
-              # rt_recordings_place: the place in the cartridge D0 says written at A2 on, kept in D0, as the
+              # rt_recordings_place: the place in the cartridge D0 gives written at A2 on, kept in D0, as the
               # window's place and the bank, low bytes first.
               asm.label("rt_recordings_place")
               asm.move(:l, asm.d(0), asm.d(1))
@@ -463,7 +463,7 @@ module VBlank
                 z.jump(0xC2, :new_play) # JP NZ
                 z.jump(0xC3, :loop) # JP
 
-                # The bank in HL shown in the window and noted, END_HIGH_NOW said for it. HL is lost. The
+                # The bank in HL shown in the window and noted, END_HIGH_NOW set for it. HL is lost. The
                 # window's bank register is one bit wide and takes nine writes, the lowest bit first.
                 z.label(:set_bank)
                 z.word(0x22, mail.call(BANK_NOW)) # LD (bank now),HL

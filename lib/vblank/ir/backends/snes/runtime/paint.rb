@@ -592,7 +592,7 @@ module VBlank
               dirty = memory[DIRTY]
 
               # rt_paint_mark (JSR): rows of pixels +top+ up to +bottom+, tiles +chunk+ to +last+
-              # across, said changed, and each of those tiles made ready to paint in this generation.
+              # across, marked changed, and each of those tiles made ready to paint in this generation.
               asm.label("rt_paint_mark")
               asm.lda(asm.direct(s.bottom))
               asm.dec
@@ -1229,7 +1229,7 @@ module VBlank
 
               asm.label("rt_paint_blit")
               # A picture's number and its place: the place is held near the screen (below), where
-              # its low word says it all, and the low word is all that is hashed.
+              # its low word holds it all, and the low word is all that is hashed.
               emit_op_begin(asm, memory, PaintLog::KIND_BLIT, 12, "rt_paint_blit_now") if logged
               # Near enough the screen to paint anything at all.
               [[R.call(1), WIDTH], [R.call(2), HEIGHT]].each do |at, edge|
@@ -1256,7 +1256,7 @@ module VBlank
               asm.lda(asm.long_x("paint pictures", 6))
               asm.sta(asm.direct(s.height))
               # Which of each row's runs of columns: the one for the place across modulo eight, where
-              # the picture's table of runs says it starts in a row (SNES::PaintedArt#run_starts,
+              # the picture's table of runs shows it starts in a row (SNES::PaintedArt#run_starts,
               # sixteen bytes a picture), in +run+.
               asm.lda(asm.direct(R.call(0)))
               4.times { asm.asl }
@@ -1686,7 +1686,7 @@ module VBlank
               asm.lda(asm.direct(s.area_right))
               asm.label("rt_paint_restore_right")
               asm.sta(asm.direct(s.right))
-              # The rows: every one of the patch's inside the area, said changed with the tiles.
+              # The rows: every one of the patch's inside the area, marked changed with the tiles.
               asm.lda(asm.direct(R.call(2)))
               asm.branch_long(:bmi, "rt_paint_restore_top_area")
               asm.cmp(asm.direct(s.area_top))
@@ -1721,7 +1721,7 @@ module VBlank
               asm.sta(asm.direct(s.last))
               if logged
                 # What a patch puts back is whatever was under it, which no hash of its numbers
-                # says, so each one put back is a hash of its own: its tiles never match an older
+                # gives, so each one put back is a hash of its own: its tiles never match an older
                 # key. What is written down is painted first, and then the patch, now.
                 asm.inc(asm.abs(memory[PaintLog::RESTORES]))
                 asm.lda(asm.abs(memory[PaintLog::RESTORES]))
@@ -1873,13 +1873,13 @@ module VBlank
             # in this generation put on the runs to send, a run for each stretch of them side by
             # side — of tiles on the screen now, or of tiles that are not (SHOWN_IN), each on its own
             # list. A tile of an older generation between them is not sent: its cell shows the
-            # clear tile. The rows are said unchanged again, and this generation is the one shown.
+            # clear tile. The rows are marked unchanged again, and this generation is the one shown.
             #
-            # A PASS THAT FITS IN ONE BLANK, as near as the rows changed say (#emit_measure), is not
+            # A PASS THAT FITS IN ONE BLANK, as near as the rows changed show (#emit_measure), is not
             # split on a Super FX cartridge: every run goes on the list that is sent last, with the
             # map, so the whole pass arrives in one blank, in as few runs as it has. Only a bigger
             # pass is split, its tiles on the screen held back to go with the map. On a plain
-            # cartridge (PaintLog) the rows changed say little of what is sent, as most of the tiles
+            # cartridge (PaintLog) the rows changed show little of what is sent, as most of the tiles
             # in them are sent already, so a pass is always split, which is right for any pass:
             # the tiles not on the screen only go in a blank before the map, unseen until it does.
             # (+mask+ is the kind of the run started, +not_mask+ the tile's: 0 not on the screen, 1
@@ -2420,7 +2420,7 @@ module VBlank
 
             # rt_paint_send_ready (JSR): the copying engine's channel 0 set to copy from the copy in
             # +bank+ to video RAM's two ports, what every run shares, so each run (rt_paint_send_run)
-            # sets only its own place and length. Said again after anything else could copy, as
+            # sets only its own place and length. Set again after anything else could copy, as
             # after a wait for the next blank.
             # rt_paint_send_run (JSR): the run at X of RUNS copied to video RAM, its tiles to their
             # own slots. Keeps X.

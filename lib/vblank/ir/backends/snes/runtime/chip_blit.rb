@@ -16,7 +16,7 @@ module VBlank
           # each place across modulo eight it can be painted at, of a COLUMN of ten bytes for each tile across:
           # the mask of the pixels it draws in both bytes of a word, then its four pairs of planes,
           # each pair a word: ready to write into a tile's row. The chip reads
-          # the cartridge a byte at a time: R14 says where, ROMB which bank, and GETB takes the byte
+          # the cartridge a byte at a time: R14 holds where, ROMB which bank, and GETB takes the byte
           # a few cycles after R14 was written, so the reads go one after another down a column.
           #
           # HOW IT PAINTS. A band at a time, a band being the picture's rows inside one row of tiles:

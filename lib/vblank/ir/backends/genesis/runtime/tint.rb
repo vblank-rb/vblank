@@ -24,18 +24,18 @@ module VBlank
           #   toward white   c + ((31 - c) × steps ÷ 256)
           #   toward a tint  (c × (256 - steps) + tint × steps) ÷ 256
           #
-          # Nothing is written to the colour memory at once. A change says it is owed (DIRTY), and as the pass
+          # Nothing is written to the colour memory at once. A change marks it as owed (DIRTY), and as the pass
           # ends (rt_colors_prepared, before the wait) every place the game uses is worked out into a copy of the
-          # colour memory in work RAM (CRAM; USED says how many places of each palette, and the backdrop is
+          # colour memory in work RAM (CRAM; USED holds how many places of each palette, and the backdrop is
           # always one) — worked out then because a sum for each of the sixty colours takes longer than the
           # blank does, and a colour written after it is on the screen for a frame. The blank only copies
-          # the whole of it (rt_colors_written), so the colours change on the frame the game said, with the
+          # the whole of it (rt_colors_written), so the colours change on the frame the game set them, with the
           # sprite table and the scroll. A colour that is not changed is not worked out again.
           #
           #   rt_tint_to(mode, steps, color)         D0 = 0 black, 1 white, 2 the colour in D2; D1 the 256ths
           #   rt_colors_hold(table, which, palette)  a list's other colours, see Runtime::Tiles's tables
           #   rt_backdrop_hold(table, which)         a backdrop that follows a list, its colour in that set
-          #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to say it
+          #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to hold it
           #   rt_colors_written                      the blank's work: the copy written to the colour memory
           module Tint
             MODE = "rt tint" # The fade or tint in force: its mode, its steps, 256 less its steps, the tint
@@ -131,7 +131,7 @@ module VBlank
             end
 
             # rt_tint_to: the fade or tint in force, from now on. The colour's channels are kept apart.
-            # Said the same as the one in force, it does nothing, so a game that says its tint every
+            # Set the same as the one in force, it does nothing, so a game that sets its tint every
             # pass works its colours out only on the passes it changes (PaletteWalk). No steps at all is
             # the colours as they are, whatever they were walked toward.
             def emit_tint_to(asm, at)
@@ -164,7 +164,7 @@ module VBlank
             end
 
             # rt_tinted: D0 = a colour of the game's, D0 = the word of the colour memory it is shown as. Each
-            # channel in turn is moved as the mode says, cut to three bits and put where the word has it:
+            # channel in turn is moved as the mode sets, cut to three bits and put where the word has it:
             # 0000 BBB0 GGG0 RRR0. It uses D1 to D3 and nothing else.
             def emit_tinted(asm, at)
               asm.label("rt_tinted")

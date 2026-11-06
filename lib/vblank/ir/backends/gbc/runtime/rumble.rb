@@ -6,7 +6,7 @@ module VBlank
       class GBC
         module Runtime
           # THE CARTRIDGE'S MOTOR (`rumble`, Nodes::Rumble). A Color cartridge with a rumble motor —
-          # an MBC5 that says so in its header — runs it from bit 3 of the register that picks which
+          # an MBC5 that declares it in its header — runs it from bit 3 of the register that picks which
           # 8K of its save memory is in view (Console::GBCHardware::MBC_RAM_BANK): 1 and the motor
           # spins, 0 and it stops. Nothing else of the register changes what the motor does.
           #

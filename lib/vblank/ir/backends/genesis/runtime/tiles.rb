@@ -22,7 +22,7 @@ module VBlank
           #
           # A MAP IS A GRID OF CELLS, a word each: the tile's number in the low eleven bits and its
           # palette in the two bits at 13. A plane is 32 or 64 cells across and down (the game's
-          # backgrounds all say one size), and coming off one edge it comes round to the other, which is
+          # backgrounds all have one size), and coming off one edge it comes round to the other, which is
           # what the interpreter's backgrounds do.
           #
           # THE SPRITE TABLE is a list the chip walks from row 0, each row naming the next by its
@@ -118,7 +118,7 @@ module VBlank
             # scene's tiles under the new map. The maps, the cells and the sprites of the pass go in
             # after the tiles while it is still off, and it comes back on in the next blank
             # (#emit_upload), so the first frame drawn shows the whole of the new scene at once. The pass
-            # takes the frames the copy took, which the frame count says, as a slow pass's does.
+            # takes the frames the copy took, which the frame count shows, as a slow pass's does.
             #
             # A scene that takes over before the screen first comes on finds it off already, and its tiles
             # go in with everything else copied then (Frame's rt_show_pass).
@@ -283,7 +283,7 @@ module VBlank
             #
             # A sprite DRAWN IN A LIST OF COLOURS (`draw_with`) names, in +palettes+, a table of how many lists
             # it can be drawn with and the palette of each, in the bits of a piece's word that name it; +which+
-            # is the one the game says now. Every piece is then drawn from that palette, and a +which+ the
+            # is the one the game names now. Every piece is then drawn from that palette, and a +which+ the
             # table has no list for draws it from the palette its own picture names. A sprite drawn with
             # none has nought for +palettes+.
             def emit_sprites(asm, memory, at)
@@ -332,7 +332,7 @@ module VBlank
             end
 
             # A4: the palette the sprite is drawn from, as the bits of a piece's word that name it, or -1 for the
-            # one its picture names. D5 is the list the game says (negative or past the table's: none), D6 the table.
+            # one its picture names. D5 is the list the game names (negative or past the table's: none), D6 the table.
             def emit_palette_chosen(asm)
               asm.moveq(-1, asm.d(7))
               asm.movea(:l, asm.d(7), asm.a(4))

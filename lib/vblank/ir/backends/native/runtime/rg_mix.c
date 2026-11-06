@@ -11,7 +11,7 @@
  * back. When every voice is in, each total is held to what a byte holds, -128 to 127: on the
  * finished sum, so a loud voice and a loud one of the other sign cancel.
  *
- * A NOTE WITH A SHAPE slides its loudness rather than stepping it: once a frame its shape says
+ * A NOTE WITH A SHAPE slides its loudness rather than stepping it: once a frame its shape gives
  * where the note should be by the frame's end, and the loudness moves there a little with every
  * sample. That loudness, its GAIN, keeps sixteen bits of fraction, since a slow fade moves it by
  * much less than one a sample. Whether the game shapes any note at all is settled once for the

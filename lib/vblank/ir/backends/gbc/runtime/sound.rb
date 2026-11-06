@@ -15,7 +15,7 @@ module VBlank
           # recording has the wave voice while it plays, so a table for the wave voice — a `wave` or
           # a `stop_wave`, whose first write is to NR30 — is kept rather than written then, and the
           # recording's end writes it (Clips#emit_game_wave_back). The last such table is kept
-          # whenever one is said, so a wave the game was sounding as the recording started is
+          # whenever one is set, so a wave the game was sounding as the recording started is
           # sounded again at its end too, as the Advance, which mixes the two, goes on playing it.
           module Sound
             GAME_WAVE = "rt sound game wave" # 16 bits: the last table for the wave voice, or nought

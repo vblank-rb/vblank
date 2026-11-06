@@ -12,7 +12,7 @@ module VBlank
           #
           # Each picture a sprite can show is kept for this as a MASK (Lowering::Collision): a bit
           # for each of its pixels, set where it draws, eight to a byte, leftmost pixel in the top
-          # bit, a row at a time — the table "collision pictures" says where each is, its width and
+          # bit, a row at a time — the table "collision pictures" holds where each is, its width and
           # its height. A sprite's pictures are a list, by number ("collision lists": how many,
           # then each picture's number).
           #

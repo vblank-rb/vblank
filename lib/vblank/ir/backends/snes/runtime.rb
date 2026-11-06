@@ -67,7 +67,7 @@ module VBlank
           end
 
           # The runtime's sections: the entry points in the first bank, and everything else in one, for
-          # a cartridge that carries +carries+. +lowering+ says what only lowering the game finds out:
+          # a cartridge that carries +carries+. +lowering+ gives what only lowering the game finds out:
           # the routine run at each frame boundary, the wave voice's waveforms, the sections of its
           # songs and of its plays of recordings, where it keeps its music volume, the layers it bends,
           # and how its layers and sprites are drawn.
@@ -107,7 +107,7 @@ module VBlank
               [lowered[:music], lowered[:plays]].compact
           end
 
-          # What +lowering+ says the runtime needs, asked once and in this order, since a section
+          # What +lowering+ reports the runtime needs, asked once and in this order, since a section
           # asked for is made then.
           def lowered_facts(carries, lowering)
             { waves: lowering.sound_waves, music: (lowering.music_section if carries.songs),

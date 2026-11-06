@@ -21,9 +21,9 @@ module VBlank
           # (START, FINISH), and in the list of what was drawn that a reader of the run takes it from
           # (DRAWN_BEFORE, DRAWN_AFTER); the round of the table they were written in (ROUND_PLACED,
           # from ROUND: a pass that hides the sprites moves every entry, and starts a new round); two
-          # marks, both set while it is placed as its numbers say (PLACED): one its place, one the
+          # marks, both set while it is placed as its numbers set (PLACED): one its place, one the
           # rest, each made nought by a write of a number it is about; in a game whose sprites borrow
-          # the eight lists, the list it wears, one up, and which of the eight its entries say
+          # the eight lists, the list it wears, one up, and which of the eight its entries name
           # (LENT_LIST, LENT_GROUP); and whether it was last drawn from one piece in one place
           # (SAME_PIECE).
           #
@@ -33,7 +33,7 @@ module VBlank
           # begin where they began and only numbers but its place changed. In a game whose sprites
           # borrow the eight lists, a sprite keeps the one it borrowed by being placed in it every
           # pass, so one left as it is still asks for its list (rt_lend_list), which marks it worn
-          # this pass, and is left as it is only when the answer is the one its entries already say.
+          # this pass, and is left as it is only when the answer is the one its entries already name.
           #
           # Asked of a sprite whose place alone changed, it answers NZ, no carry and A =
           # ANSWER_PLACE_ALONE, which rt_place_kept_sprite takes to rt_place_kept_sprite_moved. A
@@ -58,7 +58,7 @@ module VBlank
             # one place: rt_sprite_reposed's.
             SAME_PIECE = 8
             # Where in its block the rows of the list it was last drawn with begin, the first pose's
-            # first (two bytes), for a sprite SAME_PIECE says was so drawn: a change of its pose alone
+            # first (two bytes), for a sprite SAME_PIECE marks as so drawn: a change of its pose alone
             # is the row that many rows on (rt_place_kept_sprite_pose).
             ROWS_AT = 9
             # 1 when its last placing wrote an entry for every piece of its picture, none of them off
@@ -220,7 +220,7 @@ module VBlank
             # own, which list it is drawn with, the row of its block that pose in that list is — is a
             # byte or two each, since none of them can pass a byte and still be drawn: a number of more
             # is a sprite not drawn, or drawn in its own colours, as Lowering::Picture#sprite_placement
-            # says. The block is read with its bank in view, and the caller's put back after.
+            # decides. The block is read with its bank in view, and the caller's put back after.
             def emit_posed(asm, memory, lends:)
               emit_in_bank(asm, "rt_sprite_posed", "rt_sprite_posed_read")
               emit_in_bank(asm, "rt_sprite_pose", "rt_sprite_pose_read")
@@ -947,7 +947,7 @@ module VBlank
             end
 
             # A = the three upper bytes of the number DE points at its lowest byte of, or'd, with DE
-            # moved to its last: the zero flag says the number is a byte from 0 to 255.
+            # moved to its last: the zero flag shows the number is a byte from 0 to 255.
             def emit_upper_bytes_or(asm)
               asm.inc(:de)
               asm.load(:a, [:de])

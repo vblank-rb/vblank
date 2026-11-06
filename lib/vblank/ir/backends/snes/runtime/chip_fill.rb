@@ -125,8 +125,8 @@ module VBlank
               asm.rtl
             end
 
-            # Each row of tiles from +top+ to +bottom+ said changed from tile +chunk+ to +last+, as
-            # Paint's rt_paint_mark says it.
+            # Each row of tiles from +top+ to +bottom+ marked changed from tile +chunk+ to +last+, as
+            # Paint's rt_paint_mark marks it.
             def emit_dirty_rows_update(asm, memory, s, prefix = "rt_paint_fill")
               dirty = memory[Paint::DIRTY]
               asm.lda(asm.direct(s.bottom))
@@ -329,7 +329,7 @@ module VBlank
             # Tile TILE made ready, if its generation is not the word at +generation+: put in that
             # generation and on the list of tiles readied, and its 64 bytes filled with the clear
             # colour's four words of planes at +clear+ — unless the block given, which may branch to
-            # "+tag+ ready", says the tile is painted whole. Uses R0, R1, AT, HELD, PAIRS, R12, R13.
+            # "+tag+ ready", marks the tile as painted whole. Uses R0, R1, AT, HELD, PAIRS, R12, R13.
             def emit_tile_ready_if_old(gsu, tag, generation:, clear:)
               gsu.iwt(AT, GENERATIONS)
               gsu.with(AT).add(TILE)

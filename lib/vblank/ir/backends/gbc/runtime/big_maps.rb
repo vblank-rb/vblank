@@ -415,7 +415,7 @@ module VBlank
 
             # rt_big_cells: A cells from CELL, along a row (B = 0) or down a column (B = 1), each its
             # tile and colours into the copy of the grid — and into the list for the blank while
-            # STAGING says so.
+            # STAGING asks for it.
             def emit_cells(asm, at, buffer, staged)
               h = Console::GBCHardware
               asm.label("rt_big_cells")

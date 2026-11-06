@@ -13,7 +13,7 @@ module VBlank
           #
           # How loud a note sounds is its own volume times the music's level — the game's
           # `music_volume`, kept in a variable of the game's (IR::Tunes::LEVEL) — read as the note
-          # starts. A game that never says how loud the music is plays it at full.
+          # starts. A game that never sets how loud the music is plays it at full.
           #
           # It runs between any two instructions of the game, so it keeps every register, uses
           # nothing the game's code uses, and reads only the part of the cartridge always in view.
@@ -32,7 +32,7 @@ module VBlank
             # two square voices, which take a volume only as a note starts and so are sounded again,
             # the note's tuning and duty. A drum hit on the noise voice rings and fades by itself,
             # so it is not held. LEVEL_SET is the level the held notes were set at, kept as the
-            # level with its 16s bit turned over, so a memory that starts at nought says full.
+            # level with its 16s bit turned over, so a memory that starts at nought means full.
             HELD = "rt music held"
             TUNINGS = "rt music tunings"
             DUTIES = "rt music duties"
@@ -71,7 +71,7 @@ module VBlank
 
             # WHETHER EACH WAVE NOTE PUTS ITS WAVEFORM IN, rather than the tune at its start: in a game
             # whose sound effects or recordings can sound on the wave voice with a waveform of their
-            # own (WAVE_LOADED says which is in), so a note after them finds its own gone.
+            # own (WAVE_LOADED holds which is in), so a note after them finds its own gone.
             def reloads_wave?(memory) = memory.reserved?(WAVE_LOADED)
 
             # Whether a wave note held across a recording is put back as it ends (WAVE_BACK).
@@ -138,7 +138,7 @@ module VBlank
               asm.load([swell_at(memory, voice)], :a)
             end
 
-            # A SQUARE NOTE'S SHAPES, in a game where a square note says them, for each of the two
+            # A SQUARE NOTE'S SHAPES, in a game where a square note sets them, for each of the two
             # square voices (Audio::Duty says what they are, and Reference::Player#step_shapes how they
             # step): the shapes' bits, the frame of the note it is on, 1 while a note (not a rest)
             # holds there, and the shape it played last frame. Four bytes a voice.
@@ -212,9 +212,9 @@ module VBlank
             end
 
             # +level+ is where the game keeps the music's level, or nil for a game that never sets it.
-            # +songs+ says whether the game has any songs at all; +effects+ are its sound effects
+            # +songs+ is whether the game has any songs at all; +effects+ are its sound effects
             # (GBC::Music#effects), and +by_rank+ the same in the order a frame plays them. +fades+
-            # says whether any note says how it fades or swells (GBC::Music#fades?), +slides+ whether
+            # is whether any note sets how it fades or swells (GBC::Music#fades?), +slides+ whether
             # any slides its pitch (GBC::Music#slides?), and +pans+ whether any plays from one speaker
             # (GBC::Music#pans?). Whether any wobbles is whether its place was reserved (#wobbles?).
             def emit(asm, memory, level:, songs:, effects: [], by_rank: [], fades: false, slides: false, pans: false,
@@ -433,7 +433,7 @@ module VBlank
               asm.load([memory[SHAPE_WALKS] + ((voice - 1) * SHAPE_BYTES) + SHAPE_ON], :a)
             end
 
-            # A SQUARE NOTE'S SHAPES, in a game where a square note says them.
+            # A SQUARE NOTE'S SHAPES, in a game where a square note sets them.
             #
             # rt_shape_start: A = the note's shapes (Audio::Duty#bits), DE its tuning. On a square
             # voice ([PART]) the note is written in its first shape — the part's tone, which
@@ -951,7 +951,7 @@ module VBlank
             #
             # The cartridge shows the processor one bank of 16K at 0x4000 to 0x7FFF at a time, and
             # which one is a number written to the cartridge's memory bank controller (an MBC5, or an
-            # MBC3 on a cartridge with a clock): a write to 0x2000 says the bank. Nothing can read that
+            # MBC3 on a cartridge with a clock): a write to 0x2000 picks the bank. Nothing can read that
             # number back, which is why the runtime notes it as it writes it. The table of songs is in
             # one of the banks, so it is put in view for the copy. A game with songs runs the player
             # from its wait for the frame, with the frame's interrupt held off (Frame counts music as
@@ -1175,8 +1175,8 @@ module VBlank
               rest_or_volume(asm, "noise", fades)
               asm.load(:c, :a)
               if fades
-                # A hit that says how it fades has it under its volume already; one that says
-                # nothing rings out as its part says. NOISE_SAID_FADE is bit 3 of the tuning's high byte.
+                # A hit that sets how it fades has it under its volume already; one that sets
+                # nothing rings out as its part sets. NOISE_SAID_FADE is bit 3 of the tuning's high byte.
                 # (A rest has every bit of its tuning set, so it takes this way too, at no volume:
                 # silent either way.)
                 asm.bit(3, :d)

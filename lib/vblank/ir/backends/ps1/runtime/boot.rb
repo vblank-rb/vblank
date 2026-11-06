@@ -57,15 +57,15 @@ module VBlank
               emit_gp0_word(asm, h)
             end
 
-            # rt_gp0_word: the word in a0 sent to the graphics chip's drawing port, once the chip says it
+            # rt_gp0_word: the word in a0 sent to the graphics chip's drawing port, once the chip signals it
             # can take a command word (GPUSTAT bit 26). A fill keeps the chip busy for a while, and a word
             # sent while it is busy would be lost.
             #
             # A COMMAND OF SEVERAL WORDS is sent whole: its first word through rt_gp0_word, and the rest
             # stored to GP0 straight after, through t1, which rt_gp0_word leaves holding the ports' base.
-            # The chip says it has no room for a command's last word until it holds the whole command
+            # The chip signals it has no room for a command's last word until it holds the whole command
             # (Beetle PSX measured: a textured rectangle, and a copy into video RAM, asked for between
-            # their words, waited for ever). Its queue holds sixteen words, and it says it has room only
+            # their words, waited for ever). Its queue holds sixteen words, and it signals it has room only
             # once it has taken every whole command it was sent, so any command fits.
             def emit_gp0_word(asm, h)
               asm.label("rt_gp0_word")
@@ -81,7 +81,7 @@ module VBlank
 
             # THE INSTRUCTION CACHE ON. The processor keeps the last 4K of code it ran in a cache inside
             # itself, and runs code from there without going out to RAM for each instruction, but only
-            # once the cache control register (FFFE0130h) says so. Sony's BIOS sets it to 0001E988h
+            # once the cache control register (FFFE0130h) allows it. Sony's BIOS sets it to 0001E988h
             # before it starts a program (psx-spx, "Cache Control"), so a program loaded from a disc or by
             # a loader finds it on; a program started at power-on, as ruby-ps1-emulator starts one,
             # finds it off, and runs its loops several times slower. So the runtime sets the BIOS's value

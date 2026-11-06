@@ -2,7 +2,7 @@
 # everything the game does to it — drawing, backgrounds, sprites, the window over the picture,
 # fades and tints, a picture in blocks, see-through layers, bends and the light.
 #
-# Each method says which of the interpreter's it answers for (in backends/reference.rb and
+# Each method names which of the interpreter's it answers for (in backends/reference.rb and
 # reference/framebuffer.rb), because the interpreter is what this is checked against pixel for
 # pixel. That includes the parts that look like bookkeeping — when the whole view is rebuilt,
 # which scenery is up, what a scene takes down as it arrives — since each decides what a pixel
@@ -198,7 +198,7 @@ def rg_screen_setup
   @rg_kind = -1 # the kind of screen up; none before the first `screen`
   @rg_rebuild_pending = false # a rebuild of the whole view is owed (Reference#request_repaint)
   @rg_repaints_painted = 0 # how many times the whole view was built again (rg_screen_repaints_painted)
-  # The interpreter asks for a rebuild every time the scroll or the sprites are said. Here a saying
+  # The interpreter asks for a rebuild every time the scroll or the sprites are set. Here a setting
   # that moved nothing asks for nothing and only notes that it would have (@rg_rebuild_skipped),
   # since the picture is the one a rebuild would paint. That stops being so once the picture is
   # touched: something else has written to it, or the pages have changed over. So when the rebuild
@@ -265,7 +265,7 @@ def rg_screen_setup
   @rg_corners_expired = false
   @rg_colors_told = Array.new(RG_MAX_BACKGROUNDS, 0) # one more than the step of colors last named, 0 for none
   @rg_turns = Array.new(RG_MAX_BACKGROUNDS) { RgTurn.new(false, 0, 0, 0, 0) }
-  # The sprites on screen this frame: being said, and as the last rebuild draws them.
+  # The sprites on screen this frame: being set, and as the last rebuild draws them.
   @rg_drawing = []
   @rg_sprite_layer = []
   # Where each sprite was last drawn straight onto the picture, by its number (Reference @obj_prev).
@@ -552,7 +552,7 @@ end
 
 def rg_screen_pixel(x, y, color) = rg_set_pixel(x, y, color)
 
-# Two colors for a line of text, and the test that says which.
+# Two colors for a line of text, and the test that picks which.
 def rg_pick_color(showing, color, picked) = showing != 0 ? picked : color
 
 # Reference#exec_draw_text: each lit pixel of each letter, from the text's top left. The points
@@ -564,7 +564,7 @@ def rg_screen_points(x, y, color, points, count, from = 0)
   end
 end
 
-# Reference#exec_draw_digit: +starts+ says where each of the ten digits' points begin.
+# Reference#exec_draw_digit: +starts+ holds where each of the ten digits' points begin.
 def rg_screen_digit(value, x, y, color, points, starts)
   return if value < 0 || value > 9
 
@@ -1149,9 +1149,9 @@ end
 
 # Reference#exec_scroll_background
 # The interpreter builds the view again every time; this builds it again only when the scroll the
-# picture shows is not the one it was built with, so a frame that says the same scroll again costs
+# picture shows is not the one it was built with, so a frame that sets the same scroll again costs
 # nothing. What the picture shows is what rg_scroll_shown answers, which for a background put up
-# this pass is its corner, so a scroll said over a corner is a change even where the number written
+# this pass is its corner, so a scroll set over a corner is a change even where the number written
 # is the one already stored.
 def rg_background_scroll(background, x, y)
   keeper = rg_keeper_of(background)
@@ -1298,7 +1298,7 @@ def rg_background_draw_with(background, which)
 end
 
 # Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
-# which is on the screen, mixed and faded as whatever is in force says.
+# which is on the screen, mixed and faded as whatever is in force sets.
 def rg_lay_scenery(px, py, color)
   at = (py * RG_SCREEN_WIDTH) + px
   painted = rg_into_cell(color, @rg_pixels[at], @rg_pixels, at)
@@ -1318,7 +1318,7 @@ def rg_bend_answer(offset)
 end
 
 # Reference#run_bend_for_row: the game asked how far across line +py+ of the background that keeps
-# the name sits, after running whatever its block says to run.
+# the name sits, after running whatever is in its block.
 def rg_run_bend_for_line(keeper, py)
   @rg_asked_bend[0] = keeper
   @rg_asked_bend[1] = py
@@ -2349,7 +2349,7 @@ def rg_objects_end
   end
 end
 
-# Reference#sprites: what the game last said is on screen, which stays as it was said from
+# Reference#sprites: what the game last put on screen, which stays as it was put from
 # rg_objects_end until the next rg_objects_begin: how many, and each by its place among them as
 # [whose it is, which picture it shows, x, y].
 def rg_screen_drawn_count = @rg_drawing.length
@@ -2505,7 +2505,7 @@ end
 
 # Reference#exec_screen. Every kind of screen is a display of its own, so any change of kind wipes
 # the picture and takes the scenery down; arriving on a screen drawn from tiles puts up again what
-# every such screen shows, as declared, and says so (1). A change between one page and two keeps
+# every such screen shows, as declared, and returns 1 when it does. A change between one page and two keeps
 # the same picture and wipes nothing.
 def rg_screen_set(new_kind, two_pages, new_backdrop)
   crossing = @rg_kind >= 0 && @rg_kind != new_kind
@@ -2524,7 +2524,7 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
   @rg_kind = new_kind
   rg_show_pages(two_pages)
   @rg_tint_by_display = rg_tint_mixed_by_display? # a tint in force is mixed this screen's way
-  @rg_read_block = rg_painted_screen? ? @rg_block : 1 # the size of a block outlasts the screen it was said on
+  @rg_read_block = rg_painted_screen? ? @rg_block : 1 # the size of a block outlasts the screen it was set on
   return 0 if !crossing || new_kind == RG_BITMAP
 
   @rg_game_picture_sizes[RG_SIZE_ALWAYS_UP].times do |i|
@@ -2640,7 +2640,7 @@ def rg_screen_work_out_shade
   rg_game_shade_amount
 end
 
-# Framebuffer#light_off=: whether the scene that just ran has the light switched off, said as the
+# Framebuffer#light_off=: whether the scene that just ran has the light switched off, set as the
 # frame ends, before it is shown.
 def rg_shade_switch(on)
   @rg_shade_off = on == 0

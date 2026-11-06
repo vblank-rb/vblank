@@ -21,7 +21,7 @@ RG_MIX_GAME = 0
 RG_MIX_SONG = 1
 RG_MIX_EFFECT = 2
 
-# One voice of the mixer (the fields are rg_mix.c's mix_voice's, and say the same things).
+# One voice of the mixer (the fields are rg_mix.c's mix_voice's, and mean the same things).
 class RgMixVoice
   attr_accessor :sounding, :owner, :effect, :lane, :rank, :loops, :ticket, :recording, :position, :fraction, :step,
                 :back, :loudness, :gain, :ramp, :shaped, :level, :phase, :attack, :decay, :sustain, :release

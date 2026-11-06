@@ -5,11 +5,11 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # LOADS OF SPRITE TILES THE GAME SAID IN A PASS (Lowering::SpriteTiles), put into sprite
+          # LOADS OF SPRITE TILES THE GAME ASKED FOR IN A PASS (Lowering::SpriteTiles), put into sprite
           # memory in the blank after it.
           #
           # The Color's picture memory cannot be written while the display reads it, so a load is
-          # only noted where the game says it: the bank its tiles are in, where they are there,
+          # only noted where the game asks for it: the bank its tiles are in, where they are there,
           # where they go in sprite memory and how many. That is a few stores, whatever the tiles.
           # In the blank, rt_sprite_tile_loads puts each noted load's bank in view and has the
           # console's own copy (rt_gdma) move its tiles, sixteen bytes a tile, straight from the

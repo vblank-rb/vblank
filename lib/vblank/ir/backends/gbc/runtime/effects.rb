@@ -46,7 +46,7 @@ module VBlank
             end
 
             # +effects+ are the game's (GBC::Music#effects), +by_rank+ the same highest rank first.
-            # +slides+ says a note of the game's music slides its pitch (GBC::Music#slides?), +pans+
+            # +slides+ means a note of the game's music slides its pitch (GBC::Music#slides?), +pans+
             # that one plays from one speaker (GBC::Music#pans?), +fades+ that one fades or swells
             # (GBC::Music#fades?), and +bytes+ is how many a note of it takes (GBC::Music.note_bytes).
             def emit(asm, memory, effects, by_rank, slides: false, pans: false, fades: false, bytes: GBC::Music::NOTE_BYTES)

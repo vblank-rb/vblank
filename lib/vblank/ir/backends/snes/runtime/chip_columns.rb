@@ -54,7 +54,7 @@ module VBlank
           # same; a row down inside a tile is y one more.
           #
           # FIRST, THE TILES THE BATCH COVERS ARE MADE READY. A tile of an older generation is the
-          # clear colour throughout whatever its bytes say, so before any of it is painted its 64
+          # clear colour throughout whatever its bytes hold, so before any of it is painted its 64
           # bytes are made the clear colour's and its generation this one. A tile the batch paints
           # every pixel of (a batch that is not ragged, with no see-through pixels, and a tile from
           # its top to its bottom) is not filled first: every byte of it is written anyway. Such a

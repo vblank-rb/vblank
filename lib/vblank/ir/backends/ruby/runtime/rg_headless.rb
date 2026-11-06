@@ -104,7 +104,7 @@ def rg_headless_main(argv)
   end
   # Which of Ruby's compilers is turning this game's Ruby into machine code as it plays: "jit yjit",
   # or "jit none". Said once, before the first frame, by the Ruby that runs the game, which is not
-  # the one that started it: that one's settings say nothing about this one's.
+  # the one that started it: that one's settings set nothing for this one's.
   $stdout.write("jit #{defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? 'yjit' : 'none'}\n")
   rg_game_main
   rg_headless_finish
@@ -182,7 +182,7 @@ end
 def rg_headless_print_moment(heading, with_picture)
   $stdout.write("#{heading}\n")
   rg_game_dump_state
-  # Every sprite the game last said is on screen, back to front, a line each: whose it is and
+  # Every sprite the game last put on screen, back to front, a line each: whose it is and
   # which picture it shows, both as the number of a name the game was built with, and where it is.
   rg_screen_drawn_count.times do |place|
     name, picture, x, y = rg_screen_drawn_sprite(place)

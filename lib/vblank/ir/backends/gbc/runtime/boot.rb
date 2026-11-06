@@ -20,7 +20,7 @@ module VBlank
           #   variable starts at nought, as the interpreter's do;
           # - the little routine that fills the sprite table is copied into quick memory, since
           #   while that copy runs the processor can read nothing else;
-          # - sound is switched on, and the vertical-blank interrupt, which says a frame has been
+          # - sound is switched on, and the vertical-blank interrupt, which signals a frame has been
           #   drawn, is switched on;
           # - in a game that reads `frames_since_power_on`, the timer counts the frames the screen
           #   is off for, from the moment the processor is at its speed (Runtime::Frame#emit_dark_start).

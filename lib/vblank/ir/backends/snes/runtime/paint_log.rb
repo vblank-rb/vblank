@@ -74,7 +74,7 @@ module VBlank
             # For each tile, a byte: not nought while its slot of video RAM is behind the copy.
             UNSENT = "rt paint unsent"
             # For each row of tiles, the leftmost and rightmost tile (a word each, as Paint::DIRTY,
-            # which says the tiles covered since the last pass): readied in this generation; cells
+            # which holds the tiles covered since the last pass): readied in this generation; cells
             # to look at again.
             READIED = "rt paint readied"
             MAP_DIRTY = "rt paint map dirty"
@@ -333,7 +333,7 @@ module VBlank
               asm.label("#{tag}_end")
             end
 
-            # The block for each row +name+'s rows say may have a stretch, X the row's index (four
+            # The block for each row +name+'s rows mark as possibly holding a stretch, X the row's index (four
             # bytes a row). The block keeps X.
             def emit_each_row(asm, memory, name, tag)
               rows = memory[ROWS_OF.fetch(name)]
@@ -378,7 +378,7 @@ module VBlank
             end
 
             # rt_paint_hash (JSR): OP_HASH from the painting's kind, the area and the words of its
-            # working numbers, the way OP_BYTES says (HASHED_NUMBERS). Each word is added in,
+            # working numbers, the way OP_BYTES sets (HASHED_NUMBERS). Each word is added in,
             # and then the two halves of the hash are turned and mixed into each other, so every bit
             # of a word reaches every bit of the hash within a few words; a word of nought ends it,
             # to carry the last word's bits through.
@@ -614,7 +614,7 @@ module VBlank
             end
 
             # rt_paint_mark (JSR): rows of pixels +top+ up to +bottom+, tiles +chunk+ to +last+
-            # across, covered: each row said changed (Paint::DIRTY), each tile of an older
+            # across, covered: each row marked changed (Paint::DIRTY), each tile of an older
             # generation put in this one with the clear colour's key, and OP_HASH taken into every
             # key (#emit_key_taking_in), so the same paintings in another order make another key.
             # An OP_HASH of nought is a routine that only reads the
@@ -646,7 +646,7 @@ module VBlank
               end
               emit_pointer(asm, generations, memory[Paint::GENERATIONS])
               # A tile new to the generation: the clear colour's key, with this painting taken in
-              # unless it paints nothing (OP_HASH nought: +shift+ says which).
+              # unless it paints nothing (OP_HASH nought: +shift+ marks which).
               asm.lda(asm.abs(hash))
               asm.ora(asm.abs(hash + 2))
               asm.sta(asm.direct(s.shift))
@@ -733,10 +733,10 @@ module VBlank
             # painting done at once, before it paints: each tile not yet painted in this generation
             # made the clear colour, and the tile unsent if that or the painting changes it. Its key
             # is not worked out: no tile of this generation is compared before the next clear starts
-            # another (LOGGING), so only the copy's key matters, and it is said to be none. It
+            # another (LOGGING), so only the copy's key matters, and it is set to none. It
             # reads and writes the tiles by their number (X), as the routines that call it keep their
             # own numbers in the rest of the direct page.
-            # (+mask+ says whether OP_HASH is nought: a routine that only reads the tiles.)
+            # (+mask+ marks whether OP_HASH is nought: a routine that only reads the tiles.)
             # rt_paint_mark_any (JSR): rt_paint_mark while paintings are written down, else this.
             # rt_paint_flush_logged (JSR): rt_paint_flush_keeping while they are written down.
             def emit_mark_now(asm, memory, s)
@@ -761,7 +761,7 @@ module VBlank
               asm.label("rt_paint_mark_now")
               # Texts on the layer it covers painted first (TextLayer).
               asm.jsr(asm.abs("rt_paint_layer_check_now")) if TextLayer.kept?(memory)
-              # Painted at once, the screen is no longer what the last pass's log says.
+              # Painted at once, the screen is no longer what the last pass's log holds.
               asm.lda(NO_LAST_PASS)
               asm.sta(asm.abs(memory[LAST_PASS_END]))
               asm.lda(asm.abs(hash))
@@ -1115,7 +1115,7 @@ module VBlank
               asm.cpy(asm.direct(s.last))
               asm.branch_long(:bcc, "rt_paint_flush_tile")
               asm.plx
-              # Sending, the row's last run is ended and the row said unchanged.
+              # Sending, the row's last run is ended and the row marked unchanged.
               asm.lda(asm.abs(memory[SENDING]))
               asm.beq("rt_paint_flush_next_row")
               asm.sty(asm.direct(s.tile))
@@ -1145,7 +1145,7 @@ module VBlank
 
               # rt_paint_flush_sending (JSR, as the pass ends): the flush, and each tile of the rows
               # it looks at put on Paint's runs to send as it goes, rather than looked at again
-              # (Paint's rt_paint_prepare does that for a pass painted at once); the rows said
+              # (Paint's rt_paint_prepare does that for a pass painted at once); the rows marked
               # unchanged after.
               asm.label("rt_paint_flush_sending")
               # The log the next pass compares with: this one, if it is whole.
@@ -1223,10 +1223,10 @@ module VBlank
             end
 
             # rt_paint_slot_behind (JSR, X a tile's key, four bytes a tile): A not nought, and the
-            # slot's key said to be the copy's, if the tile's slot of video RAM is behind the copy;
+            # slot's key set to the copy's, if the tile's slot of video RAM is behind the copy;
             # nought if it holds what the copy holds already, as when a pass painted a tile on its
             # way (a flush with the log full) and ended where the last pass did. A key of nought is
-            # a tile painted at once, which no key says: always sent. Keeps X and Y.
+            # a tile painted at once, which no key names: always sent. Keeps X and Y.
             def emit_slot_behind(asm, memory)
               copy = memory[KEYS_COPY]
               shown = memory[KEYS_SHOWN]

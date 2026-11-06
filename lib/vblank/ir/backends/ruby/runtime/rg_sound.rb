@@ -226,7 +226,7 @@ def rg_sound_setup
   @rg_ended = -1
   @rg_stops = 0
   @rg_stops_seen = 0
-  @rg_music_held = false # the game said hold_music: the tune stays where it is
+  @rg_music_held = false # the game called hold_music: the tune stays where it is
   @rg_song = 0 # where the playing song's numbers start in @rg_game_music
   @rg_song_frame = 0
   @rg_part_count = 0
@@ -352,7 +352,7 @@ end
 # A hit starts with every bit of the row set, which is where the emulator picks the pattern up.
 def rg_noise_start(step_ticks, bits, volume, fade) = @rg_hiss.start(step_ticks, bits, volume, fade)
 
-# One step of the hiss: the bit at the end falls off and says which way the voice stands, and when
+# One step of the hiss: the bit at the end falls off and marks which way the voice stands, and when
 # it was set it is stirred back into the two places at the other end.
 def rg_noise_step
   hiss = @rg_hiss
@@ -835,8 +835,8 @@ def rg_note_slide(note) = (@rg_game_music[note + 4] >> RG_SLIDE_AT) & RG_SLIDE_B
 def rg_note_pan(note) = (@rg_game_music[note + 4] >> RG_PAN_AT) & RG_PAN_BITS
 
 # The log's line for a note setting its voice, with the note's fade when it set one, and its
-# slide, its wobble, its speaker and its shapes after that when it said them — with -1, for none,
-# before one said after it.
+# slide, its wobble, its speaker and its shapes after that when it set them — with -1, for none,
+# before one set after it.
 def rg_log_voice_set(voice, who, pitch, volume, note)
   said = @rg_game_music[note + 4]
   told = [said.anybits?(RG_SAID_FADE) ? said & (RG_FADE_UP | RG_FADE_STEP_BITS) : -1,

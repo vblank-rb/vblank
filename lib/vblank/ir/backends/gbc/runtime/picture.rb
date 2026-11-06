@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE PICTURE: what the game says about its sprites and its background while a pass runs,
+          # THE PICTURE: what the game sets for its sprites and its background while a pass runs,
           # kept in work memory, and copied to the console in the blank after the pass.
           #
           # The console's own picture memory can only be written while it is not drawing, so
@@ -167,21 +167,21 @@ module VBlank
             # +drawn_palettes+ is where a game that draws a background with other colours keeps the
             # colours its pictures are drawn in now (Lowering::Picture#drawn_palettes), or nil for
             # one whose colours are the art's from power-on: a fade moves those.
-            # +lends+ says the sprites' lists borrow the console's eight as the game runs (Art#lends?),
+            # +lends+ means the sprites' lists borrow the console's eight as the game runs (Art#lends?),
             # which needs +drawn_palettes+. +palettes_in_use+ are the numbers of the palettes the game
             # can show, backgrounds' 0 to 7 and sprites' 8 to 15 (Art#palettes_in_use): a fade
-            # moves those alone. +groups+ says it has pictures grouped by room (Runtime::PictureGroups).
+            # moves those alone. +groups+ means it has pictures grouped by room (Runtime::PictureGroups).
             # +bar_rows+ is how many rows of the window's grid a game's status bars fill, the most of
             # any of them, or nil for a game with none.
-            # +rooms+ says its screens bring their own tiles in (#emit_rooms), and +room_colors+ their
-            # own colours with them, which needs +drawn_palettes+. +lent_families+ says its sprites'
+            # +rooms+ means its screens bring their own tiles in (#emit_rooms), and +room_colors+ their
+            # own colours with them, which needs +drawn_palettes+. +lent_families+ means its sprites'
             # lists that are lent come in families (Art#lent_family). +backdrop+ is the first screen's,
             # shown until the first frame, or nil where the first list holds it (Art#first_screen_backdrop).
-            # +banked_colors+ says its backgrounds' colour tables are kept in banks (#emit_background_colors_far).
+            # +banked_colors+ means its backgrounds' colour tables are kept in banks (#emit_background_colors_far).
             # +lends+ is :by_scene when each scene numbers its own lists, and +first_kept_list+ is then
             # the number, one up, of the first list every scene keeps (Art#first_kept_list).
-            # +tall_pieces+ says the console draws every sprite piece 8×16 (Art#tall_pieces?).
-            # +bar_maps+ says a status bar has several maps to show (#emit_bar_show).
+            # +tall_pieces+ means the console draws every sprite piece 8×16 (Art#tall_pieces?).
+            # +bar_maps+ means a status bar has several maps to show (#emit_bar_show).
             def emit(asm, memory, sprite_tiles:, background_tiles:, runs: [], drawn_palettes: nil, lends: false,
                      palettes_in_use:, groups: false, bar_rows: nil, bar_maps: false, rooms: false, picture_rooms: false,
                      room_colors: false, lent_families: false, backdrop: nil, banked_colors: false, first_kept_list: nil,
@@ -307,7 +307,7 @@ module VBlank
             # counted (LENT_MISSED), since nothing in the picture tells the author it happened.
             #
             # Like the Advance's lending, a list gives its one back only once a whole pass has gone
-            # by without anything placed in it, since nothing says part way through a pass which lists
+            # by without anything placed in it, since nothing shows part way through a pass which lists
             # the rest will wear. So with all eight in use, a thing that comes on the pass another
             # goes is drawn for that pass in colours not its own.
             #
@@ -315,7 +315,7 @@ module VBlank
             # numbered from +first_kept+ up is one every scene keeps, and its colours are in
             # art_lent_palettes; one below is the scene up's own, read from the bank its table is in.
             #
-            # +kept_in_bank+ says the lists every scene keeps, and their families, are in a bank of
+            # +kept_in_bank+ means the lists every scene keeps, and their families, are in a bank of
             # their own as well (GBC#build_in_view), read as a scene's own are.
             def emit_lend_colors(asm, memory, drawn_palettes, families: false, first_kept: nil, kept_in_bank: false)
               lent = memory[LENT]
@@ -1082,7 +1082,7 @@ module VBlank
               # The cells a big map's view brought in (Runtime::BigMaps).
               asm.call("rt_big_view")
               # A grid being put up, and a painted screen's tiles: as much of each as the blank holds.
-              # A status bar's grid first, which is a few rows: the carry says either has rows left,
+              # A status bar's grid first, which is a few rows: the carry marks that either has rows left,
               # and the cells changed wait for both.
               if bar
                 asm.call("rt_bar_map_job")
@@ -1120,7 +1120,7 @@ module VBlank
               # THE ROWS' BENDS FOR THE FRAME ABOUT TO BE DRAWN, from the scroll just set: the first
               # row's set now, and each row after it as the line before it ends
               # (rt_hblank_interrupt), which is switched on here while the background up bends and
-              # off while it does not. Switched in the blank, not where the game says, so the frame
+              # off while it does not. Switched in the blank, not where the game asks, so the frame
               # being drawn as a pass changes it is drawn whole, as the pass before had it.
               asm.label("rt_bends_first_row")
               asm.load(:a, [memory[BENDING]])
@@ -1644,12 +1644,12 @@ module VBlank
 
             # THE BACKGROUND. rt_background_put_up(grid) starts putting a grid up — its tiles
             # and then its cells' colours, 32 rows of 32 each, kept by GBC::Art — and the blanks
-            # copy it in (rt_upload); rt_background_scroll(x, y) says where the view sits.
+            # copy it in (rt_upload); rt_background_scroll(x, y) sets where the view sits.
             #
             # rt_background_put_up_unscrolled(grid) is the same with the view put back at the
             # top-left corner first, even when the grid is up already: the blank copies SCROLL into
             # the console's two scroll registers, so the background is shown from its corner until
-            # the game says where the view sits again. That is what a background's statement and a
+            # the game sets where the view sits again. That is what a background's statement and a
             # scene's arrival put up with, as the Advance does (GBA::BackgroundDrawing
             # #emit_background_hardware) and the interpreter shows (Reference#put_up_background);
             # handing a background another of its maps keeps the view where it is (rt_big_show
@@ -1735,7 +1735,7 @@ module VBlank
 
             # A SCREEN'S OWN TILES (GBC::Art::Room), brought in as it comes up.
             #
-            # rt_tiles_put_up(room) says the room numbered +room+ is the one wanted, and does nothing
+            # rt_tiles_put_up(room) marks the room numbered +room+ is the one wanted, and does nothing
             # when it is in picture memory already. Its tiles are thousands of bytes — more than one
             # blank can copy while the display draws — so the blank after the pass that wanted it
             # holds the display off, copies them in at once, does the rest of its work (a grid put up
@@ -2632,7 +2632,7 @@ module VBlank
             #   toward a colour t: (c × (256 - steps) + t × steps) / 256
             #
             # rt_tint(toward, color, steps) does nothing when nothing changed, which is most
-            # frames of a game that says its fade every frame.
+            # frames of a game that sets its fade every frame.
             #
             # rt_tint_apply moves them again by the fade in force, from the colours they are drawn in
             # now: the art's, or +drawn_palettes+ for a game that draws a background in others.
@@ -2787,7 +2787,7 @@ module VBlank
               asm.jump_relative(:nz, "rt_tint_colors")
               asm.ret
 
-              # A = channel A (0..31) of a colour moved; B says which channel of the tint's colour
+              # A = channel A (0..31) of a colour moved; B holds which channel of the tint's colour
               # to move toward (0 red, 1 green, 2 blue). Keeps DE and HL.
               asm.label("rt_tint_channel")
               asm.push(:de)

@@ -38,7 +38,7 @@ module VBlank
             ENTRY = "rt music entry" # Where the part being played's entry is, an address
             NOTE = "rt music note" # Its note being played
             # THE MUSIC VOLUME, in a game that sets it (Genesis::Music#follows_level?): the level the notes
-            # sounding were set at, with its FULL_LEVEL bit turned over so the nought memory starts at says
+            # sounding were set at, with its FULL_LEVEL bit turned over so the nought memory starts at means
             # full; each part's note's volume as written, while its voice holds it (nought for a rest, or
             # none); and which parts' voices hold one, in the order they first took one since the tune
             # started (Reference::Player's @sounding, a Hash kept in the order its keys came).
@@ -127,7 +127,7 @@ module VBlank
             def shares_voices?(memory) = memory.reserved?(Effects::HOLDERS)
             def sides?(memory) = memory.reserved?(LOUDNESS_LIST)
 
-            # A0 = the song table, and A1 = the place in it D0's low word says.
+            # A0 = the song table, and A1 = the place in it D0's low word gives.
             def emit_table_place(asm, register = 1)
               asm.and(:l, asm.imm(0xFFFF), asm.d(0))
               asm.lea(asm.abs_l("music_data"), asm.a(0))
@@ -150,7 +150,7 @@ module VBlank
               asm.jsr(asm.abs_l("rt_music_note_slide")) if slides?(memory)
             end
 
-            # The voice D4 says, VOICE_BYTES a voice, stopped wobbling, stepping and sliding, as an effect's
+            # The voice D4 names, VOICE_BYTES a voice, stopped wobbling, stepping and sliding, as an effect's
             # end stops it (Reference::Player#finish_effect). +channel+ is where its channel is.
             def emit_voice_stops_changing(asm, at, memory, channel)
               %i[wobbles shapes].each do |kind|
@@ -369,7 +369,7 @@ module VBlank
               end
               emit_stop_voice_change(asm, at, "rt_music_stop_wobble", WOBBLES)
 
-              # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE says, or
+              # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE sets, or
               # holding still (Reference::Player#set_voice).
               asm.label("rt_music_note_wobble")
               emit_note_voice(asm, at, WOBBLES)
@@ -446,7 +446,7 @@ module VBlank
               end
               emit_stop_voice_change(asm, at, "rt_music_stop_shapes", SHAPES)
 
-              # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE says, or
+              # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE sets, or
               # holding its shape (Reference::Player#set_voice).
               asm.label("rt_music_note_shapes")
               emit_note_voice(asm, at, SHAPES)
@@ -456,7 +456,7 @@ module VBlank
             end
 
             # rt_music_swells: every swelling note held under the music volume, the voices in order, before
-            # the wobbles (Reference::Player#step_swells): struck where IR::Tunes::Swell#held_under says, then
+            # the wobbles (Reference::Player#step_swells): struck where IR::Tunes::Swell#held_under returns, then
             # counted on a frame as Swell#stepped does. Runtime::Sound does the climbing; this only knows how
             # far it has got.
             def emit_swells(asm, at, _memory)
@@ -527,7 +527,7 @@ module VBlank
               end
               emit_stop_voice_change(asm, at, "rt_music_stop_swell", SWELLS)
 
-              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE says, from
+              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE sets, from
               # its loudness at the level, or holding no swell (Reference::Player#hold_swell_under_level).
               asm.label("rt_music_note_swell")
               emit_note_voice(asm, at, SWELLS)

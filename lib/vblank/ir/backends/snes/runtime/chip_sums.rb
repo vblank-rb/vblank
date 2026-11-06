@@ -144,7 +144,7 @@ module VBlank
               gsu.sm(back, 11)
               gsu.from(HIGH)
               gsu.to(6)
-              gsu.xor(RIGHT_HIGH) # the top bit of R6 now says the signs differ
+              gsu.xor(RIGHT_HIGH) # the top bit of R6 now shows the signs differ
               emit_size_of(gsu, LOW, HIGH, "chip divide left size")
               emit_size_of(gsu, RIGHT_LOW, RIGHT_HIGH, "chip divide right size")
               emit_call(gsu, SIZES)
@@ -390,7 +390,7 @@ module VBlank
               gsu.label("chip divide fractions by a number")
               gsu.from(HIGH)
               gsu.to(0)
-              gsu.xor(RIGHT_HIGH) # the top bit of R0 now says the signs differ
+              gsu.xor(RIGHT_HIGH) # the top bit of R0 now shows the signs differ
               gsu.sm(kept, 0)
               emit_size_of(gsu, LOW, HIGH, "chip divide fractions left size")
               emit_size_of(gsu, RIGHT_LOW, RIGHT_HIGH, "chip divide fractions right size")
@@ -399,7 +399,7 @@ module VBlank
               gsu.or_(HIGH)
               gsu.bne("chip divide fractions widened")
               gsu.nop
-              emit_return(gsu) # nought over anything is nought, and LOW and HIGH already say so
+              emit_return(gsu) # nought over anything is nought, and LOW and HIGH already hold it
               gsu.label("chip divide fractions widened")
               gsu.move(6, HIGH)
               gsu.move(4, LOW)

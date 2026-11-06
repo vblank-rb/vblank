@@ -56,7 +56,7 @@ module VBlank
 
             module_function
 
-            # +extra_buttons+ and +second_controller+ say what the interrupt reads, as Frame.emit is
+            # +extra_buttons+ and +second_controller+ set what the interrupt reads, as Frame.emit is
             # told. Its size does not hang on which byte of the direct page it reads the controller
             # in, so it is measured with any.
             def reserve(memory, extra_buttons: false, second_controller: false)
@@ -137,7 +137,7 @@ module VBlank
               asm.ora(h::GSU_OWNS_ROM | h::GSU_OWNS_RAM)
               asm.rep(0x30)
               asm.and_a(0x00FF)
-              asm.tax # what SCMR will say, handed to the waiting loop
+              asm.tax # what SCMR will hold, handed to the waiting loop
               asm.lda(asm.direct(0)) # where the program starts, the same
               asm.jsl(asm.long(memory[WAIT]))
               asm.rep(0x20)
@@ -145,7 +145,7 @@ module VBlank
             end
 
             # The waiting loop, as bytes to copy into work RAM. Called long with A, X and Y 16 bits
-            # wide, A the program's address and X what SCMR is to say, it hands the chip the ROM and
+            # wide, A the program's address and X what SCMR is to hold, it hands the chip the ROM and
             # its RAM and starts it, goes round until the chip's GO bit falls, and takes the ROM and
             # RAM back. All of that is here rather than in the cartridge because from the moment the
             # chip owns the ROM until it gives it back, the console must not read an instruction from

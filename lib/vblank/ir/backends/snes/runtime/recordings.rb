@@ -84,7 +84,7 @@ module VBlank
             EFFECT_OWNER = 0x100
             # ...and its SHAPE (Reference::Mixer#step_envelopes): the row's two words of it, its level
             # (out of Audio::Envelope::FULL), which part of the shape it is in (PLAIN for a note with
-            # none), and its volume as the row says it, which the level scales.
+            # none), and its volume as the row holds it, which the level scales.
             PLACE_AD = 32
             PLACE_SR = 34
             LEVEL = 36
@@ -596,7 +596,7 @@ module VBlank
               asm.rtl
 
               # rt_recordings_loud(volume): the place just taken, at PLACE, sounding at +volume+, as the
-              # music volume says (Reference::Player#song_loudness).
+              # music volume sets (Reference::Player#song_loudness).
               asm.label("rt_recordings_loud")
               asm.ldy(at.call(PLACE))
               asm.lda(asm.direct(Sound::R0))
@@ -1057,7 +1057,7 @@ module VBlank
               asm.rts
             end
 
-            # One entry in the sound queue for what a place's voice is to be told, which PLACE and ROW say.
+            # One entry in the sound queue for what a place's voice is to be told, which PLACE and ROW name.
             def emit_queued_entry(asm, at, command)
               asm.lda(at.call(PLACE))
               asm.sta(asm.direct(Sound::R0))

@@ -33,7 +33,7 @@ module VBlank
 
             module_function
 
-            # +byte_fills+ says the game fills a list of bytes (Lowering#fills_byte_lists?),
+            # +byte_fills+ means the game fills a list of bytes (Lowering#fills_byte_lists?),
             # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?), and
             # +half_queues+ that it pushes onto a list of halves or takes from one's front
             # (Lowering#keeps_half_queues?).
@@ -424,7 +424,7 @@ module VBlank
 
             # rt_byte_list_push: E, the low byte of the value, into the list at HL. rt_half_list_push:
             # DE, the low half of the value, the same way. Where both are one routine, the list's
-            # width is kept in quick memory, and the Z flag says "a byte" from where the slot is
+            # width is kept in quick memory, and the Z flag marks "a byte" from where the slot is
             # doubled to where the value is written: nothing between them changes it.
             def emit_narrow_push(asm, memory, q, widths)
               labels, name = narrow_names(widths, "push")
@@ -546,7 +546,7 @@ module VBlank
 
             # rt_byte_list_item: BCDE = the item BCDE places along the list of bytes whose length is
             # at HL. rt_half_list_item: the same along a list of halves. Where both are one routine,
-            # the Z flag says "a byte" from where the slot is found to the read.
+            # the Z flag marks "a byte" from where the slot is found to the read.
             def emit_narrow_item(asm, memory, q, widths)
               labels, name = narrow_names(widths, "item")
               either = widths.length > 1
@@ -842,7 +842,7 @@ module VBlank
               asm.inc(:de)
               asm.jump_relative("rt_list_copy_loop")
 
-              # The table's entry at index HL, kept the way argument 2 says (GBC::Lowering::TABLE_KEPT:
+              # The table's entry at index HL, kept the way argument 2 sets (GBC::Lowering::TABLE_KEPT:
               # 0 a signed byte, 1 a byte, 2 a signed half, 3 a half, 4 a word), into q.entry.
               kept = arg(memory, 2, 6)
               table = arg(memory, 1, 6)

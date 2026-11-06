@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* --- the console's memory map: the top byte of an address says which memory it is --- */
+/* --- the console's memory map: the top byte of an address marks which memory it is --- */
 
 enum {
   REGION_BIOS = 0x0,
@@ -1031,7 +1031,7 @@ static void store8(rg_bios_boot *b, uint32_t address, uint8_t value, int32_t *cy
 }
 
 /* LDM: the registers in +mask+ loaded from consecutive words, the first at +address+ as +direction+
- * says (bit 0 decrementing, bit 1 before). Gives the address after the last. */
+ * sets (bit 0 decrementing, bit 1 before). Gives the address after the last. */
 enum { LSM_B = 1, LSM_D = 2 };
 
 /* What one word of a block transfer adds to +wait+: the region's in-order time. */
@@ -1683,7 +1683,7 @@ static void io_write16(rg_bios_boot *b, uint32_t address, uint16_t value) {
   case REG_MAX: break;
   case REG_POSTFLG:
     if (b->active_region == REGION_BIOS) {
-      /* HALTCNT is the high byte. mGBA only lets the BIOS sleep once POSTFLG (the low byte) says
+      /* HALTCNT is the high byte. mGBA only lets the BIOS sleep once POSTFLG (the low byte) shows
        * the console has been through its start-up once. */
       if (b->io[address >> 1]) {
         if (value & 0x8000u) note_unhandled(b, "the console stopped (STOP)", 0x04000301u);

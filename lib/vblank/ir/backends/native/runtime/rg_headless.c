@@ -173,7 +173,7 @@ static void write_picture(const uint16_t *shown) {
   fflush(picture_out);
 }
 
-/* Every sprite the game last said is on screen, back to front, a line each: whose it is and which
+/* Every sprite the game last put on screen, back to front, a line each: whose it is and which
  * picture it shows, both as the number of a name the game was built with, and where it is. */
 static void print_sprites(void) {
   for (int32_t place = 0; place < rg_screen_drawn_count(); place++) {

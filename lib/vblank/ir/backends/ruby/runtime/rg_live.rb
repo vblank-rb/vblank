@@ -3,7 +3,7 @@
 # frame's sound and takes back the buttons for the next pass, or nothing, which stops the play
 # there.
 #
-# The game is told one frame went by each pass, whatever a clock says: a pass that runs late makes
+# The game is told one frame went by each pass, whatever a clock shows: a pass that runs late makes
 # the game run slow.
 
 # What a game stops with when it does something its rules refuse (a push onto a full list); the
@@ -43,7 +43,7 @@ def rg_driver_wait_vblank
 end
 
 # The match's seed goes into the game's random numbers once, at the end of the first pass, which is
-# the one the game sets itself up in. A game that says `seed 7` has done so by then, so the match
+# the one the game sets itself up in. A game that sets `seed 7` has done so by then, so the match
 # seed is added to what it chose and not lost to it; every machine adds the same number.
 def rg_live_mix_match_seed
   return if @rg_match_seed.nil?

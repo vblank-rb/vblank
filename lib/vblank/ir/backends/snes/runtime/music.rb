@@ -44,7 +44,7 @@ module VBlank
             NOTE = "rt music note" # Its note being played
             # THE MUSIC VOLUME, in a game that sets it (SNES::Music#follows_level?): the level the
             # notes sounding were set at, kept with its FULL_LEVEL bit turned over so the nought
-            # memory starts at says full; each part's note's volume as written, while its voice holds
+            # memory starts at means full; each part's note's volume as written, while its voice holds
             # it (nought for a rest, or none); a note's loudness at the level, worked out; the level
             # itself while a loudness is worked out; and where the part's loudness groups are while
             # one is found.
@@ -179,7 +179,7 @@ module VBlank
               asm.jsr(asm.abs("rt_music_note_slide")) if slides?(memory)
             end
 
-            # The voice Y says stopped wobbling, stepping and sliding, A left nought, as an effect's
+            # The voice Y names stopped wobbling, stepping and sliding, A left nought, as an effect's
             # end stops it (Reference::Player#finish_effect). +channel+ is where its channel is.
             def emit_voice_stops_changing(asm, memory, channel)
               asm.lda(0)
@@ -273,7 +273,7 @@ module VBlank
 
             # rt_music_swells: every swelling note held under the music volume, the voices in order,
             # before the wobbles (Reference::Player#step_swells): struck where IR::Tunes::Swell#held_under
-            # says, then counted on a frame as Swell#stepped does. The sound chip does the climbing; this
+            # returns, then counted on a frame as Swell#stepped does. The sound chip does the climbing; this
             # only knows how far it has got.
             def emit_swells(asm, at, memory)
               m = SNES::Music
@@ -378,7 +378,7 @@ module VBlank
               asm.sta(record)
               asm.rtl
 
-              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE says,
+              # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE sets,
               # from its loudness at the level, or holding no swell (Reference::Player#hold_swell_under_level).
               asm.label("rt_music_note_swell")
               asm.ldx(at.call(ENTRY))
@@ -467,7 +467,7 @@ module VBlank
               asm.rtl
 
               # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE
-              # says, or holding its shape (Reference::Player#set_voice).
+              # sets, or holding its shape (Reference::Player#set_voice).
               asm.label("rt_music_note_shapes")
               asm.ldx(at.call(ENTRY))
               asm.lda(asm.long_x("music_data", m::CHANNEL))
@@ -549,7 +549,7 @@ module VBlank
               asm.rtl
 
               # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE
-              # says, or holding still (Reference::Player#set_voice).
+              # sets, or holding still (Reference::Player#set_voice).
               asm.label("rt_music_note_wobble")
               asm.ldx(at.call(ENTRY))
               asm.lda(asm.long_x("music_data", m::CHANNEL))

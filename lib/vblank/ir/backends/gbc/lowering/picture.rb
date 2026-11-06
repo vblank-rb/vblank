@@ -609,7 +609,7 @@ module VBlank
               @asm.label(fine)
             end
 
-            # TWO GROUPS UP TOGETHER THAT up_together DOES NOT NAME stop the game, asked of
+            # TWO GROUPS UP TOGETHER THAT up_together DOES NOT ALLOW stop the game, asked of
             # every set of a scene up, or of every screen, as the sprites are about to be placed —
             # before any sprite's picture is asked about, as the interpreter asks
             # (Reference#refuse_pictures_not_up!). A set of one slot can have only one group up.

@@ -106,7 +106,7 @@ module VBlank
               asm.tst(:w, asm.d(0))
             end
 
-            # rt_sfx_effect_holds: D0, and the zero flag clear, when a sound effect holds the voice D4 says (two
+            # rt_sfx_effect_holds: D0, and the zero flag clear, when a sound effect holds the voice D4 names (two
             # bytes a voice, from channel 1), rather than the tune or nobody. D4 is kept.
             def emit_effect_holds(asm, at)
               asm.label("rt_sfx_effect_holds")

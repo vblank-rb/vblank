@@ -9,7 +9,7 @@ module VBlank
           # 68000 writes a byte at a time, and the YM2612, which sits on the sound processor's side of the
           # console. The 68000 reaches it only while the sound processor (a Z80) has been asked to stay off
           # its bus (Runtime::Boot), and each of its registers is two writes, which register and then what
-          # goes in it, with a wait between for the chip to say it is ready. A game with a recording lets the
+          # goes in it, with a wait between for the chip to signal it is ready. A game with a recording lets the
           # Z80 run and plays through it (Runtime::Recordings); its FM writes each ask for the bus, write and
           # give it back.
           #
@@ -39,7 +39,7 @@ module VBlank
             # The second number of a WRITE_PSG that is one byte.
             ONE_BYTE = 0xFFFF
 
-            ON = "rt sound on" # 1 once the game has said `enable_sound`
+            ON = "rt sound on" # 1 once the game has called `enable_sound`
             VOLUMES = "rt sound volumes" # A word for each PSG voice: its volume, 0 to 15
             STEPS = "rt sound steps" # A word for each voice: the 64ths of a second between its steps, above nought when it climbs
             COUNTS = "rt sound counts" # A word for each voice: how far to its next step
@@ -114,7 +114,7 @@ module VBlank
               asm.rts
             end
 
-            # rt_psg_write(first, second): a byte to the PSG, and a second one unless it says ONE_BYTE.
+            # rt_psg_write(first, second): a byte to the PSG, and a second one unless it is ONE_BYTE.
             #
             # rt_fm_write(register, value): the FM chip's +register+ (its second part's from $100) set to
             # +value+. The chip's two parts each have a port for the register and one for the value, and
@@ -186,7 +186,7 @@ module VBlank
               asm.lea(at.call(VOLUMES), asm.a(1))
               asm.move(:w, asm.d(0), asm.idx(1, 0, 2, :w))
 
-              # The volume in D0 to the PSG's voice D2 says, two bytes a voice.
+              # The volume in D0 to the PSG's voice D2 names, two bytes a voice.
               asm.label("rt_sound_volume")
               asm.lea(asm.abs_l("rt_sound_attenuation"), asm.a(1))
               asm.move(:b, asm.idx(1, 0, 0, :w), asm.d(0))
