@@ -8,7 +8,7 @@ module VBlank
     # game on the desktop. The BIOS is the small program built into every console, and the start-up
     # (the logo and its chime) is something it draws and plays. It is Nintendo's work, so VBlank never
     # carries it: a game reads it from the player's own computer each time it starts, and a player
-    # without one gets no start-up at all, with nothing said.
+    # without one gets no start-up at all, with nothing given.
     #
     # It is looked for in three places, the first that names a file winning: the environment variable
     # VBLANK_GBA_BIOS, a line in the settings file, and gba_bios.bin in the settings folder every game

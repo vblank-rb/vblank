@@ -100,7 +100,7 @@ module VBlank
     include Layers     # layers, layer (a named place in the stack: what sits in front of what)
     include DrawOrder  # draw_in_order (sprites drawn in an order the game works out)
     include Settings   # setting (what this build was told: which floors, which screen it boots on)
-    include SaveData   # save_data (records of the game's state, saved when the game says so; see Saves)
+    include SaveData   # save_data (records of the game's state, saved when the game asks for it; see Saves)
     include Parts      # part, start_over (a new game: a part of the game's state back as declared)
     include GameEffects # uses (a game's own effect packs, for its build alone)
     include DataPacks  # data_pack (the original's data, read through a pack made from the player's copy)
@@ -741,7 +741,7 @@ module VBlank
       end
     end
 
-    # A box written where the game said it, dropped once there is a frame boundary to move it to,
+    # A box written where the game set it, dropped once there is a frame boundary to move it to,
     # as a scroll's is (see #finalize_background_boxes).
     def record_inline_box_node(node)
       @inline_box_nodes << node
@@ -1387,7 +1387,7 @@ module VBlank
     # what the game last said, and +in_force+ the one holding what the write last put in
     # place; they differ exactly on the frame to write on, and the write then makes them
     # agree. See #finalize_background_maps for why it is two variables and not a write
-    # where the game said it.
+    # where the game set it.
     def write_if_changed(said:, in_force:, write:)
       # A fresh var_ref each time: no node is ever shared between two places in the tree.
       Build.if_(Build.binop(:!=, Build.var_ref(said), Build.var_ref(in_force)),

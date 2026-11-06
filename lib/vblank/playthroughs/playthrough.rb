@@ -85,7 +85,7 @@ module VBlank
       # +lead_in+ is another playthrough, played on the cartridge first and not counted:
       # see `power_on_and_lead_in`.
       #
-      # +on+ is the way to run the game (a word of LoweredGame.ways; the emulator unless said), and
+      # +on+ is the way to run the game (a word of LoweredGame.ways; the emulator unless set), and
       # +window+ a device to show it on at the console's frame rate (see WatchedGame).
       #
       # +in_passes+ makes every count in the script a count of passes of the game loop, or of a

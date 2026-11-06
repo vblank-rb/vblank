@@ -20,13 +20,13 @@ module VBlank
     # not measured; a side that wants the measured cartridge builds it itself (`-> { GAME.build_rom }`).
     #
     # +console:+ (a console's name, :gba, :gbc, :snes, :genesis or :ps1) says which console a game to
-    # build is built for: the first one it names unless said. A built cartridge or a cartridge file is
+    # build is built for: the first one it names unless set. A built cartridge or a cartridge file is
     # already for one console, which says which emulator plays it (Console::Kit#open_probe), so there
     # +console:+ only checks: a side that names another console is refused, saying which the file is
     # for.
     #
     # +lowering:+ says how the game is shown (Playthroughs::CommandLine::SHOWN_WAYS): the cartridge in
-    # its console's emulator unless said, or the game played as the interpreter, native, js or ruby
+    # its console's emulator unless set, or the game played as the interpreter, native, js or ruby
     # plays it (Playthroughs::LoweredGame). Those take the game itself, so a cartridge file is shown
     # only in the emulator. They play the game the cartridge holds — `built_for_computer?` answers
     # false, as it does in the cartridge — so the two sides of one game show one game.

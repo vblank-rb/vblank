@@ -70,10 +70,10 @@ module VBlank
     #   settings_file:  the game's own YAML file, kept out of git, that names it as well. A relative
     #                   path in it is read from the file's folder. A committed file beside it, the
     #                   same name ending .example.yml, is the template the message points at.
-    #   key:            the key in that file ("rom" unless said; "data" for a folder of files, say)
+    #   key:            the key in that file ("rom" unless set; "data" for a folder of files, say)
     #   not_set_help:   words of the game's own added to the message when nothing is set: what the
     #                   copy must hold, say
-    #   env:            where the setting is looked up (ENV unless said; a test hands its own)
+    #   env:            where the setting is looked up (ENV unless set; a test hands its own)
     #
     # and one of two ways to accept the copy:
     #
@@ -116,7 +116,7 @@ module VBlank
         @env = env
       end
 
-      # The accepted copy. NotSet when nothing says where one is, WrongCopy when the one named
+      # The accepted copy. NotSet when nothing names where one is, WrongCopy when the one named
       # cannot be used.
       def copy
         named = named_path(setting, key, WrongCopy)
@@ -139,7 +139,7 @@ module VBlank
         named.path
       end
 
-      # The accepted copy, or nil when nothing says where one is. A copy that is named and wrong
+      # The accepted copy, or nil when nothing names where one is. A copy that is named and wrong
       # raises WrongCopy all the same: that is a mistake to fix, not a machine without the game.
       def copy_if_set
         copy

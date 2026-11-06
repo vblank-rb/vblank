@@ -149,7 +149,7 @@ module VBlank
 
       # THE BACKDROP A `screen` STATEMENT MEANS where it is written: at the top of a scene, the
       # scene's (Arrival#backdrop, its own or the game's); anywhere else its own, or the game's
-      # where it says none. Black on a painted screen, and on a raw display setting, which names
+      # where it names none. Black on a painted screen, and on a raw display setting, which names
       # no kind of screen. Nil, the backdrop left as it is, for every `screen` but the game's own
       # in a game whose backdrop follows a list (#backdrop_follows_list?).
       def backdrop_of(node)

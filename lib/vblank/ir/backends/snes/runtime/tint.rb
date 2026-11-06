@@ -164,7 +164,7 @@ module VBlank
             # touched, so changing a list costs what its colours cost and not one move of every
             # colour on the screen. With a fade in force the colours are moved as the pass ends, as
             # a fade said this pass moves them, which writes over what went in the copy here, so
-            # the two meet on the same pass whichever was said first. A fade that ended this pass
+            # the two meet on the same pass whichever was given first. A fade that ended this pass
             # has its work still to do and keeps it. The table is a count, then each set's 24-bit
             # address in four bytes, the colours the game declared first: so a number naming none of
             # the others comes to that one, as Reference#colors_held_by says. A set is a count of

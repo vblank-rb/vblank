@@ -101,7 +101,7 @@ module VBlank
             end
 
             # t9 = the address of the slot +offset+ (a register) places after the first item of the list at
-            # +list+ (a0 unless said), unchecked. Changes t6 and t7.
+            # +list+ (a0 unless set), unchecked. Changes t6 and t7.
             def emit_slot_of_offset(asm, offset, label, list: :a0)
               asm.lhu(:t6, FRONT, list)
               asm.lhu(:t7, CAPACITY, list)
@@ -129,7 +129,7 @@ module VBlank
               asm.label("#{label}_done")
             end
 
-            # v0 = what the slot at t9 of the list at +list+ (a0 unless said) holds, widened by its sign.
+            # v0 = what the slot at t9 of the list at +list+ (a0 unless set) holds, widened by its sign.
             # Changes t7.
             def emit_read_slot(asm, label, list: :a0)
               asm.lhu(:t7, SHIFT, list)

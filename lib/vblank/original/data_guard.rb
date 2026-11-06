@@ -27,7 +27,7 @@ module VBlank
     # - a file whose first line starts with the mark the game's tools stamp on what they write from
     #   the original (generated_mark:). Only the first line, so the tool that writes the mark, and
     #   its test, can name it;
-    # - a file over most_bytes (512 KB unless said), which is almost always art pulled from the
+    # - a file over most_bytes (512 KB unless set), which is almost always art pulled from the
     #   original. The message says how to commit it anyway, rather than guessing where it came from.
     #
     # WHAT THE GAME SUPPLIES: its consoles, and any folders, kinds and mark of its own. It names them

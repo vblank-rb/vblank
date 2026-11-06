@@ -62,9 +62,9 @@ module VBlank
     # console load it: `t.console_folders = { gbc: ["test/gbc"] }`. Every other test plays on all.
     #
     # THE GOLDEN PATH, `rake test:golden`, is the files a list names (t.golden_list, test/golden.txt
-    # unless said; a test file a line, from the folder t.golden_from names, the one rake runs in
-    # unless said), and a share of the other test files drawn at random on each run (t.golden_sample,
-    # GoldenSample::SHARE unless said), on every lowering that plays each. A game that keeps no such
+    # unless set; a test file a line, from the folder t.golden_from names, the one rake runs in
+    # unless set), and a share of the other test files drawn at random on each run (t.golden_sample,
+    # GoldenSample::SHARE unless set), on every lowering that plays each. A game that keeps no such
     # file has no such task.
     #
     # A TASK FOR EACH FOLDER OF TESTS, with `t.groups = "test"`: `rake test:group:enemies` plays every

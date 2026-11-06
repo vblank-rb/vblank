@@ -23,7 +23,7 @@ module VBlank
 
       module_function
 
-      # +said+ as { key => Range }, or an empty Hash for nothing said; a friendly error for anything
+      # +said+ as { key => Range }, or an empty Hash for nothing given; a friendly error for anything
       # that is not a number of players.
       def refuse_unusable!(said)
         return {} if said.nil?
@@ -33,7 +33,7 @@ module VBlank
       end
 
       # The players the game takes on a build for +console+ (nil for a test's program, which names
-      # none), as [fewest, most], or nil where it said nothing for that build.
+      # none), as [fewest, most], or nil where it gave nothing for that build.
       def fewest_and_most_on_build(players, console:, for_computer:)
         keys = [(:computer if for_computer), console, :else].compact
         range = players.values_at(*keys).compact.first or return nil

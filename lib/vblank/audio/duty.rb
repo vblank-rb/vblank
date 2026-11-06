@@ -34,7 +34,7 @@ module VBlank
       def self.one(shape) = new(shapes: ([named(shape)] * FRAMES).freeze)
 
       # THE SHAPE A NOTE SAID: a shape's name (:eighth, :quarter, :half, :three_quarter), or a list
-      # of two or four of them to step through, or nil when it said nothing. +where+ names who said
+      # of two or four of them to step through, or nil when it gave nothing. +where+ names who said
       # it, as the start of a sentence.
       def self.said(value, where:)
         return nil if value.nil?

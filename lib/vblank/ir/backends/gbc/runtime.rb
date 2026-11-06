@@ -41,7 +41,7 @@ module VBlank
           # slot (Frame#emit_groups_together). +bar_rows+ is how many rows of the window's grid its status
           # bars fill, or nil for a game with none (Picture#emit_bar). +slides+ says a note of its music
           # slides its pitch (GBC::Music#slides?), +wobbles+ that one wobbles (GBC::Music#wobbles?), and
-          # +shapes+ that a square note says its shapes (GBC::Music#shapes?). +banked_songs+ says its
+          # +shapes+ that a square note sets its shapes (GBC::Music#shapes?). +banked_songs+ says its
           # songs' notes are kept in the cartridge's banks (GBC::Music#banked?), +clips+ that it
           # plays a recording (GBC::Clips#any?), +clip_laps+ that it loops one (GBC::Clips#loops?), and +dark+ that it counts the frames its screen is
           # off for (Lowering#counts_dark_frames?), and +rumble+ that it runs a cartridge's motor

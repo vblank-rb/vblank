@@ -3,7 +3,7 @@
 module VBlank
   class Builder
     # SAVE DATA: a group of the game's own state — variables and lists — kept in the
-    # cartridge's save memory when the game says so, and put back when it says so.
+    # cartridge's save memory when the game asks for it, and put back when it asks for it.
     #
     #   files = save_data :file, copies: 3 do
     #     keep hearts, name, flags
@@ -148,7 +148,7 @@ module VBlank
       # are in +kept+ too), for the reset that has to put a pool back rather than empty it.
       #
       # +fast+ is what the game said about where the record's routines run from: true for the
-      # console's quick memory, false for the cartridge, nil for nothing said.
+      # console's quick memory, false for the cartridge, nil for nothing given.
       #
       # Until the program is fully declared a record's +kept+, +body+, +half+, +shape+ and
       # +pools+ are nil (see #declare), so anything that reads them too early fails where it

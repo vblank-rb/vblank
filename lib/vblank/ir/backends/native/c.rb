@@ -47,7 +47,7 @@ module VBlank
           # target = value; the target is a Name or an Index.
           Assign = Data.define(:target, :value)
 
-          # A local variable of the routine, int32_t unless said.
+          # A local variable of the routine, int32_t unless set.
           Local = Data.define(:name, :value, :type) do
             def initialize(name:, value:, type: "int32_t")
               super

@@ -27,7 +27,7 @@ module VBlank
                "interpreter" => "interpreter" }.freeze
 
       # THE WAYS A GAME CAN BE SHOWN, as a film shows it: the cartridge in its console's emulator, the
-      # first and the one meant when none is said, then every word of WAYS but logic, which plays the
+      # first and the one meant when none is given, then every word of WAYS but logic, which plays the
       # game's rules alone and has no picture.
       SHOWN_WAYS = [LoweredGame::EMULATOR, *(WAYS.keys - [LoweredGame::LOGIC])].freeze
 
@@ -365,7 +365,7 @@ module VBlank
 
       # Every setting that was said, as `compare` takes them from Ruby: each is the option of
       # the same name, and the ones a command line can only give as text are read here. One
-      # that was not said is left out, so that what it is with nothing said stays the
+      # that was not said is left out, so that what it is with nothing given stays the
       # library's to say.
       def comparison_settings
         said = Comparison.settings.to_h { |setting| [setting, options[setting]] }.compact

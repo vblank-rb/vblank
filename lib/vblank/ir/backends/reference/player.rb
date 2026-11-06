@@ -254,7 +254,7 @@ module VBlank
           end
 
           # A NOTE SETTING ITS VOICE, said in the log (IR::Tunes.voice_entry), and the voice wobbling it
-          # from here when it says so — a note that does not, and a rest, leave the voice still.
+          # from here when it asks for it — a note that does not, and a rest, leave the voice still.
           def set_voice(channel, who, part, event)
             frequency = event[1]
             vibrato = IR::Tunes.said_vibrato(part, event) if frequency.positive?

@@ -168,7 +168,7 @@ module VBlank
 
       # A window +scale+ times a +width+ by +height+ picture, titled +title+; nil +scale+ is the
       # settings'. +library+ names the SDL3 file to load, in place of looking for it. +menu+ false
-      # is a window F1 opens no menu in, for a game that says it has none.
+      # is a window F1 opens no menu in, for a game that sets it to have none.
       #
       # +settings_file+ is where the player's settings are read from and written to: :usual, the
       # files the desktop build keeps too (SettingsFile); a path, that one file alone; or nil, none,

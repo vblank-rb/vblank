@@ -34,7 +34,7 @@ module VBlank
         #               that order
         #
         # The script finds the pieces it fills in by their id, and a page without one of them plays
-        # the same, with nothing said there.
+        # the same, with nothing given there.
         module Page
           DEFAULT = Ractor.make_shareable(File.join(__dir__, "page.html.erb"))
 

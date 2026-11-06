@@ -519,7 +519,7 @@ module VBlank
         # Whether a row's `enabled:` is decided as the game runs, rather than true or false.
         def menu_enabled_at_runtime?(item) = item.enabled.is_a?(DSL::Value)
 
-        # A fresh test for a row that can be picked only while the game says so.
+        # A fresh test for a row that can be picked only while the game asks for it.
         def menu_can_pick(item) = (item.enabled != 0)
 
         # The value that says which of a row's several labels is on screen. A Symbol names

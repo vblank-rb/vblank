@@ -69,7 +69,7 @@ module VBlank
 
           attr_reader :grids, :sprite_pictures
 
-          # The backdrop of a game that says none: black, as the interpreter's empty screen is.
+          # The backdrop of a game that names none: black, as the interpreter's empty screen is.
           BACKDROP = 0
 
           # The palette a painted screen's picture is drawn from (Runtime::Paint), kept from the sprites

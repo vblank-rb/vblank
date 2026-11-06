@@ -26,7 +26,7 @@ module VBlank
       # A group's name and its test files, in order of path.
       Group = Data.define(:name, :files)
 
-      # +files+ are the test files (every test_*.rb beneath +root+ unless said), as paths from the same
+      # +files+ are the test files (every test_*.rb beneath +root+ unless set), as paths from the same
       # folder +root+ is named from ("./test" and "test" are one root).
       def initialize(root, files: nil, broad: {})
         @root = Pathname(root.to_s).cleanpath.to_s

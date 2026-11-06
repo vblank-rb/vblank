@@ -151,7 +151,7 @@ module VBlank
       # +ignoring_frames+ is the stretches of it that are not looked at (see IgnoredFrames),
       # and +how_alike+ what a Likeness takes: how alike two pictures have to be. +readings+
       # is the named readings (see Readings) and +comparing+ the list of what is compared
-      # (see Compared), nil for nothing said. +carrying_on+ says whether to play on past the
+      # (see Compared), nil for nothing given. +carrying_on+ says whether to play on past the
       # first drift and list every stretch of it. +reports_in+ is a folder to write a
       # report of each drift into (see DriftReport), or nil for none. All of it is read
       # here, so a setting that makes no sense is refused before a frame is played.
@@ -477,7 +477,7 @@ module VBlank
       end
 
       # Two screens that were kept, with where they differ of the places that are looked at:
-      # +part+, or the part looked at on every frame where none is said.
+      # +part+, or the part looked at on every frame where none is given.
       private def screen_pair(pictures, part = @likeness.looked_at.fixed_part)
         ScreenPair.new(*pictures, @likeness.differing_places(*pictures, part), @likeness.screen_size.first)
       end

@@ -51,7 +51,7 @@ module VBlank
       # WHAT A RUN SAW. +pixels+ is how many are stuck disagreeing between the two
       # pictures with nothing coming to fix them — 0 for a game whose drawing all arrives.
       # +first+ is where to look, as [x, y], so a person has somewhere to start. A reading
-      # that does not apply to this screen says so with #measured? false, so "we did not
+      # that does not apply to this screen asks for it with #measured? false, so "we did not
       # look" can never be mistaken for "nothing was wrong".
       Reading = Data.define(:pixels, :first) do
         def self.none = new(pixels: nil, first: nil)

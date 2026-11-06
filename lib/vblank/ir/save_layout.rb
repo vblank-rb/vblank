@@ -187,7 +187,7 @@ module VBlank
       # The save memory of +kilobytes+.
       def memory(kilobytes) = Memory.new(kilobytes)
 
-      # The packed 32K memory, which a table is read from and written to unless it says otherwise.
+      # The packed 32K memory, which a table is read from and written to unless it sets otherwise.
       PACKED = memory(MEMORIES.first)
 
       # The kinds that reach save memory. A program holding none of them has none.

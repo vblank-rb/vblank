@@ -75,7 +75,7 @@ module VBlank
 
       # Write +values+ (a Hash, as the game's tool read them off the copy) into +file+, keeping every
       # comment and the measured section. A file there is not yet is made in +folder+, the first folder
-      # unless said.
+      # unless set.
       def write(file, values, folder: @folders.first)
         target = @paths.fetch(file.to_sym) { File.join(File.expand_path(folder), "#{file}.yml") }
         FileUtils.mkdir_p(File.dirname(target))

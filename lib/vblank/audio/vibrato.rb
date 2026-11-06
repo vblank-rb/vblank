@@ -44,7 +44,7 @@ module VBlank
       # Does the pitch move? A depth of nought holds it still.
       def moves? = depth.positive?
 
-      # Whether +vibrato+ — said, or nil for nothing said — moves the pitch.
+      # Whether +vibrato+ — said, or nil for nothing given — moves the pitch.
       def self.moves?(vibrato) = !vibrato.nil? && vibrato.moves?
 
       # How far the pitch number goes above where the note began, and below it.

@@ -25,8 +25,8 @@ RG_PARTS_MOST = 20
 RG_NUMBERS_PER_NOTE = 6
 RG_FADE_STEP_BITS = 7 # A note's fade (Audio::NoteFade#bits): the 64ths of a second a step lasts
 RG_FADE_UP = 8        # Set when it swells
-RG_SAID_FADE = 16     # Beside them in a note, set when the note or its part said one
-RG_SAID_SLIDE = 32    # Above that, set when the note or its part said a slide
+RG_SAID_FADE = 16     # Beside them in a note, set when the note or its part set one
+RG_SAID_SLIDE = 32    # Above that, set when the note or its part set a slide
 RG_SLIDE_AT = 6       # Whose seven bits (Audio::PitchSlide#bits) are above that again
 RG_SLIDE_BITS = 0x7F
 RG_SLIDE_DOWN = 8     # A slide's bits: set when it slides down,
@@ -34,7 +34,7 @@ RG_SLIDE_SHIFT_BITS = 7 # The shift
 RG_SLIDE_EVERY_AT = 4 # The 128ths of a second a step waits, above them
 RG_SLIDE_EVERY_BITS = 7 # In three bits
 RG_PITCH_COUNT_TOP = 2048 # The square voices keep a pitch as this less its ticks a wave
-RG_SAID_VIBRATO = 1 << 13 # In a note, set when it or its part said a wobble
+RG_SAID_VIBRATO = 1 << 13 # In a note, set when it or its part set a wobble
 RG_VIBRATO_AT = 14 # Whose sixteen bits (Audio::Vibrato#bits) are above it
 RG_VIBRATO_BITS = 0xFFFF
 RG_VIBRATO_FOUR_BITS = 0xF # The depth,
@@ -44,7 +44,7 @@ RG_PAN_AT = 30 # At the top of a note, its speaker (Audio::Pan.bits_of)
 RG_PAN_BITS = 3
 RG_PAN_LEFT = 1 # The left alone,
 RG_PAN_RIGHT = 2 # The right alone, or nought for both
-RG_SAID_DUTY = 1 << 8 # A note's sixth number: set when it or its part said its shapes,
+RG_SAID_DUTY = 1 << 8 # A note's sixth number: set when it or its part set its shapes,
 RG_DUTY_BITS = 0xFF # Whose eight bits (Audio::Duty#bits) are under it
 RG_CARRIES_VIBRATO = 1 << 9 # Above it, set when its vibrato carries its swing on
 RG_GLIDES = 1 << 10 # Set on a recorded note that carries on the one sounding
@@ -834,7 +834,7 @@ def rg_note_slide(note) = (@rg_game_music[note + 4] >> RG_SLIDE_AT) & RG_SLIDE_B
 # The speaker a note plays from: RG_PAN_LEFT, RG_PAN_RIGHT, or nought for both.
 def rg_note_pan(note) = (@rg_game_music[note + 4] >> RG_PAN_AT) & RG_PAN_BITS
 
-# The log's line for a note setting its voice, with the note's fade when it said one, and its
+# The log's line for a note setting its voice, with the note's fade when it set one, and its
 # slide, its wobble, its speaker and its shapes after that when it said them — with -1, for none,
 # before one said after it.
 def rg_log_voice_set(voice, who, pitch, volume, note)

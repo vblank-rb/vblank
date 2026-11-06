@@ -31,9 +31,9 @@ module VBlank
     # CONSOLE AND LOWERING. `rake film NAME=door CONSOLE=ps1 LOWERING=ruby` says them for one film,
     # over what the Rakefile says (an empty one says nothing); a side the film file names with its own
     # keeps its own. The console is the one a game to build is built for (the first the game names
-    # unless said); a built cartridge or a file is for one console already, and a side that names
+    # unless set); a built cartridge or a file is for one console already, and a side that names
     # another is refused. The lowering is how the game is shown: the cartridge in its console's
-    # emulator unless said, or ruby, js, native or interpreter
+    # emulator unless set, or ruby, js, native or interpreter
     # (Playthroughs::CommandLine::SHOWN_WAYS), which play the game itself, so a cartridge file is
     # shown only in the emulator.
     #
@@ -63,7 +63,7 @@ module VBlank
 
       # Make the film +film_name+ and answer the MP4's path. +search_path+ is where ImageMagick and
       # ffmpeg are looked for (see Film.make). +console+ and +lowering+ are what each side is opened
-      # with unless it says its own: the Rakefile's unless said.
+      # with unless it sets its own: the Rakefile's unless set.
       def make_film(film_name, search_path: ENV.fetch("PATH", ""), console: self.console, lowering: self.lowering)
         refuse_unknown_film!(film_name)
         load_game

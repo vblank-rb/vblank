@@ -83,7 +83,7 @@ module VBlank
               refuse_unmade_sprites!
             end
 
-            # A `screen` other than the game's own that says a backdrop the game's does not: a scene's
+            # A `screen` other than the game's own that sets a backdrop the game's does not: a scene's
             # own. Colour 0 is the console's one backdrop, set once for the game, so one that changes
             # as a scene comes up is not made yet.
             def refuse_backdrops_of_its_own!

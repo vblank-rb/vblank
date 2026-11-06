@@ -9,7 +9,7 @@ module VBlank
       class JS
         # THE WINDOW MENU AS JAVASCRIPT DATA, for the page's copy of it (runtime/rg_page_menu.js),
         # from Live::WindowMenu, as Native::MenuData is for the desktop build's. A page has no window
-        # size of its own, so that line is left out. +menu+ false is a game that says it has no menu.
+        # size of its own, so that line is left out. +menu+ false is a game that sets it to have no menu.
         module MenuData
           module_function
 

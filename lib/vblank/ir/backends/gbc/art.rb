@@ -33,7 +33,7 @@ module VBlank
           # How many palettes of each kind there are.
           PALETTES = 8
 
-          # The backdrop of a game that says none: black, as the interpreter's empty screen is.
+          # The backdrop of a game that names none: black, as the interpreter's empty screen is.
           BACKDROP = 0
 
           # How many tiles of each kind there is room for in the console's picture memory: sprites

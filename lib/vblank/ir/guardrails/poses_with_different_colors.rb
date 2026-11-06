@@ -59,7 +59,7 @@ module VBlank
               "it to `draw_with` a list that `colors` declares."
           end
 
-          # A picture with a list beside one with none is said as that, since "different lists"
+          # A picture with a list beside one with none is given as that, since "different lists"
           # would send the author looking for a second list that is not there.
           def disagreement_sentence(by_list)
             bare = by_list[nil]

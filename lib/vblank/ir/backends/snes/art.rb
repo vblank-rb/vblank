@@ -174,7 +174,7 @@ module VBlank
             def self.places_of(colors, palette) = colors.map { |color| palette.index(color) }
           end
 
-          # The backdrop of a game that says none: black, as the interpreter's empty screen is.
+          # The backdrop of a game that names none: black, as the interpreter's empty screen is.
           BACKDROP = 0
 
           # +backdrop+ is the colour the game shows wherever nothing is drawn (`screen ... backdrop:`),

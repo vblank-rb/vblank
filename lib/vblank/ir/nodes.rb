@@ -183,7 +183,7 @@ module VBlank
       # the frame after; until a bar is first placed after it is put up, it shows at the row it
       # was declared with. Placing a background that is not a status bar changes nothing.
       #
-      # +covers+, in a game that says so, is whether the bar hides the sprites from its top down
+      # +covers+, in a game that asks for it, is whether the bar hides the sprites from its top down
       # (nought shows them), written in the same gap; nil is a bar nobody told, which shows them.
       class PlaceBar
         include Node
@@ -1288,8 +1288,8 @@ module VBlank
       # write to one is followed by the wrap to that width (IR::KeptWidths), so what it holds
       # needs nothing more from any backend; a console may keep it in fewer bytes.
       #
-      # +players+ is [fewest, most]: how many players the game said it takes on this build
-      # (Cartridge::Players), or nil where it said nothing. +for_computer+ is true for a build that
+      # +players+ is [fewest, most]: how many players the game set it to take on this build
+      # (Cartridge::Players), or nil where it gave nothing. +for_computer+ is true for a build that
       # plays on a computer, whose controllers are not the console's (#described_build).
       #
       # +border+ is the picture the game gave for the border round its screen, two bytes a pixel as
@@ -1314,10 +1314,10 @@ module VBlank
         # +start_file+ is the file the program is handed as it starts, which some of its tables and
         # pictures are read from (a StartFile), or absent for a program that reads none.
 
-        # The most players the game said it takes on this build, or nil where it said nothing.
+        # The most players the game set it to take on this build, or nil where it gave nothing.
         def most_players = players&.last
 
-        # Whether the game said it takes more than one player, which is what a match of several machines
+        # Whether the game set it to take more than one player, which is what a match of several machines
         # needs. A build carries what a match needs (its seed routine, the runtime that plays one) only then.
         def several_players? = most_players.to_i > 1
 

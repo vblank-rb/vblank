@@ -43,8 +43,8 @@ module VBlank
       # +console+ is the console the program is built for; a tree made by hand for no console in
       # particular leaves it out (see Nodes::Program). +variant+ is the console's variant, or nil.
       # +sprite_piece_sizes+ is the size of sprite piece by console, as [console, [width, height]]
-      # pairs. +players+ is [fewest, most] players the game said it takes on this build, or nil
-      # where it said nothing; +for_computer+ is true for a build that plays on a computer. Each is
+      # pairs. +players+ is [fewest, most] players the game set it to take on this build, or nil
+      # where it gave nothing; +for_computer+ is true for a build that plays on a computer. Each is
       # left off the node unless it is said, so a program that says neither is the tree it was.
       def program(*statements, console: nil, variant: nil, sprite_piece_sizes: [], players: nil, for_computer: false)
         said = { players: players, for_computer: (true if for_computer) }.compact

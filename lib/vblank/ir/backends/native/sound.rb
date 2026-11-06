@@ -24,15 +24,15 @@ module VBlank
           PART_KINDS = { square: 0, wave: 1, noise: 2, recorded: 3 }.freeze
 
           # Set beside a note's four bits of fade (Audio::NoteFade#bits) when the note or its part
-          # said one, rather than leaving it to the voice (rg_sound.c's SAID_FADE).
+          # set one, rather than leaving it to the voice (rg_sound.c's SAID_FADE).
           SAID_FADE = 16
 
-          # ...and above them, set when the note or its part said a slide (Audio::PitchSlide#bits),
+          # ...and above them, set when the note or its part set a slide (Audio::PitchSlide#bits),
           # whose seven bits are above that again (rg_sound.c's SAID_SLIDE and SLIDE_AT).
           SAID_SLIDE = 32
           SLIDE_AT = 6
 
-          # ...and above those, set when the note or its part said a wobble (Audio::Vibrato#bits),
+          # ...and above those, set when the note or its part set a wobble (Audio::Vibrato#bits),
           # whose sixteen bits are above that again (rg_sound.c's SAID_VIBRATO and VIBRATO_AT).
           SAID_VIBRATO = 1 << 13
           VIBRATO_AT = 14

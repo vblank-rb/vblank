@@ -115,15 +115,15 @@ module VBlank
         kind != :wave || Audio::Sound.wave_level(volume) != :mute
       end
 
-      # HOW A NOTE SLIDES ITS PITCH (an Audio::PitchSlide), as the note or its part said it, or nil
+      # HOW A NOTE SLIDES ITS PITCH (an Audio::PitchSlide), as the note or its part set it, or nil
       # when neither did. Only the first square voice slides, and a part elsewhere saying one was
       # refused before it got here.
       def said_slide(part, event) = event[Audio::Music::Part::SLIDE_SLOT] || part.slide
 
-      # HOW A NOTE WOBBLES ITS PITCH (an Audio::Vibrato), as the note or its part said it, or nil.
+      # HOW A NOTE WOBBLES ITS PITCH (an Audio::Vibrato), as the note or its part set it, or nil.
       def said_vibrato(part, event) = event[Audio::Music::Part::VIBRATO_SLOT] || part.vibrato
 
-      # THE SPEAKER A NOTE PLAYS FROM, as the note or its part said it: :left or :right, or nil for
+      # THE SPEAKER A NOTE PLAYS FROM, as the note or its part set it: :left or :right, or nil for
       # both (Audio::Pan.side_of) — which a note that says :center plays from, in a part that pans.
       def note_side(part, event) = Audio::Pan.side_of(event[Audio::Music::Part::PAN_SLOT] || part.pan)
 
@@ -132,7 +132,7 @@ module VBlank
       # always did, and says nothing here.
       def said_duty(part, event) = event[Audio::Music::Part::DUTY_SLOT] || part.duties
 
-      # A DRUM'S OWN NOISE SETTING, [divider, halvings], when its note said one, or nil. Only a
+      # A DRUM'S OWN NOISE SETTING, [divider, halvings], when its note set one, or nil. Only a
       # console told the setting itself reads it: the rate it makes is the note's pitch already.
       def said_noise_clock(event) = event[Audio::Music::Part::NOISE_CLOCK_SLOT]
 
@@ -142,7 +142,7 @@ module VBlank
       # A NOTE SETTING ITS VOICE, as every backend's log says it: [:voice, channel, who, frequency,
       # volume], then the note's fade, its slide and its wobble when it said them (#said_fade,
       # #said_slide, #said_vibrato), its side when it is one speaker (#note_side), and its shape
-      # when it said one (#said_duty), with a nil before one said after it. A rest says none of
+      # when it set one (#said_duty), with a nil before one said after it. A rest says none of
       # them: nothing sounds to change.
       def voice_entry(channel, who, frequency, volume, fade: nil, slide: nil, vibrato: nil, side: nil, duty: nil)
         said = frequency.positive? ? Audio::Music.without_trailing_nils([fade, slide, vibrato, side, duty]) : []

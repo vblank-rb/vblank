@@ -26,7 +26,7 @@ module VBlank
       #   every pass, and almost every pass nothing moved. Only a change works the colours out.
       # - The colours walked are the ones each picture is drawn in NOW: the declared set of a list,
       #   or the set the game told it to hold (Reference#colors_held_by), so a list that changes
-      #   and a walk in force meet on the same pass, whichever was said first.
+      #   and a walk in force meet on the same pass, whichever was given first.
       # - The work is done as the pass ends and sent in the blank, so the moved colours show on the
       #   picture of the pass that said them, with the sprites and the scroll, and a pass that says
       #   several walks (a fade catching up on frames a slow pass took) works the colours out once.

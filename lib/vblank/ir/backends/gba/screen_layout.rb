@@ -2350,7 +2350,7 @@ module VBlank
           # A sprite that draws from few enough colors is stored half a byte a pixel and
           # reads one BANK of that table — sixteen colors of its own, shared with nothing
           # unless it happens to use the same ones. It costs half the sprite memory of the
-          # same picture stored the old way, and nothing about the program says so: the
+          # same picture stored the old way, and nothing about the program asks for it: the
           # count of colors in the art decides it. A sprite with more colors than a bank
           # holds keeps the whole-byte storage and reads across the whole table, exactly
           # as every sprite did before this.

@@ -148,7 +148,7 @@ module VBlank
               @carries = {}
             end
 
-            # Whether a scene says a backdrop of its own (Picture.scene_backdrops?).
+            # Whether a scene sets a backdrop of its own (Picture.scene_backdrops?).
             def scene_backdrops?
               @scene_backdrops = Picture.scene_backdrops?(@cache.program, @cache.handover) if @scene_backdrops.nil?
               @scene_backdrops

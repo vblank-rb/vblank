@@ -8,7 +8,7 @@ module VBlank
     # A cartridge that shipped holds the player's saves, and the next build of the game has to
     # find them. Working a record's place out from the records declared before it cannot: add a
     # setting to the first record and every record after it moves, and their saves read as
-    # empty with nothing said. So the place is written down in save memory instead, next to
+    # empty with nothing given. So the place is written down in save memory instead, next to
     # the saves, and each build reads it back. A record this build did not change is found
     # where it was, whatever happened to the others.
     #

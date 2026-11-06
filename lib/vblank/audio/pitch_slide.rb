@@ -41,12 +41,12 @@ module VBlank
       # asks nothing of the voice, so any part may say it and it costs a game nothing.
       def moves? = self != NONE
 
-      # Whether +slide+ — said, or nil for nothing said — moves the pitch.
+      # Whether +slide+ — said, or nil for nothing given — moves the pitch.
       def self.moves?(slide) = !slide.nil? && slide.moves?
 
       # THE SLIDE A PART OR NOTE SAID, from the two words a song writes it with: +up+ to slide it up
       # and +down+ to slide it down. Each is a speed (:fast, :medium or :slow), :none, or the
-      # voice's own two numbers ({ every: 1..7, shift: 1..7 }). Nil when it said neither.
+      # voice's own two numbers ({ every: 1..7, shift: 1..7 }). Nil when it gave neither.
       def self.said(up:, down:, where:)
         return nil if up.nil? && down.nil?
         unless up.nil? || down.nil?

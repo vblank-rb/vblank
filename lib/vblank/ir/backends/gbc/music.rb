@@ -47,7 +47,7 @@ module VBlank
           # (Audio::Pan.bits_of, nought for both). The volume's spare four bits could hold it, but
           # every reader of the volume would then have to take it out first.
           #
-          # In a game where a square note says its shapes, one more after that: a square note's shapes
+          # In a game where a square note sets its shapes, one more after that: a square note's shapes
           # (Audio::Duty#bits) — its own, or its part's one — which the player writes the first of as
           # the note starts and steps through after.
           #
@@ -59,7 +59,7 @@ module VBlank
           end
 
           # Whether any note of these lists (#notes) slides its pitch, whether any plays from one
-          # speaker, whether any says its shapes, and whether any wobbles.
+          # speaker, whether any sets its shapes, and whether any wobbles.
           def self.slides_in?(notes) = notes.each_value.any? { |list| list.any? { |note| VBlank::Audio::PitchSlide.moves?(note.slide) } }
           def self.pans_in?(notes) = notes.each_value.any? { |list| list.any?(&:side) }
           def self.shapes_in?(notes) = notes.each_value.any? { |list| list.any?(&:duty) }
@@ -283,7 +283,7 @@ module VBlank
             @pans
           end
 
-          # ...and one where a square note says its shapes: only then does a note carry a byte for
+          # ...and one where a square note sets its shapes: only then does a note carry a byte for
           # them, and the player step a square voice's shape a frame at a time.
           def shapes?
             @shapes = Music.shapes_in?(notes) unless defined?(@shapes)

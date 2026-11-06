@@ -52,7 +52,7 @@ module VBlank
             WAVE_TUNING = "rt music wave tuning"
             WAVE_SHAPE = "rt music wave shape"
             WAVE_BACK = "rt music wave back"
-            # 1 while the game holds the tune where it is, in a game that says so
+            # 1 while the game holds the tune where it is, in a game that asks for it
             # (Reference::Player#hold). One byte, which the player clears as the tune changes.
             TUNE_HELD = "rt music tune held"
 
@@ -247,7 +247,7 @@ module VBlank
             # The slide of the note whose volume is at HL, kept for rt_voice_write: the byte after the
             # volume, in a game where a note slides. In one where a note plays from one speaker, the
             # voice's speakers set from the byte after that (rt_set_speakers). In one where a square
-            # note says its shapes, the note's first shape and its stepping from the byte after that
+            # note sets its shapes, the note's first shape and its stepping from the byte after that
             # (rt_shape_start). And in one where a note wobbles, the voice set to wobble the note from
             # the two after those (rt_wobble_start). Keeps B and DE.
             def emit_store_slide_speaker_vibrato(asm, memory, slides, pans)
@@ -425,7 +425,7 @@ module VBlank
             end
 
             # Voice +voice+ steps no shapes: it went quiet, or the game's own sound took it. Nothing
-            # in a game where no square note says its shapes, nor on a voice that is not square.
+            # in a game where no square note sets its shapes, nor on a voice that is not square.
             def emit_end_shapes(asm, memory, voice)
               return unless shapes?(memory) && voice <= SHAPE_VOICES
 

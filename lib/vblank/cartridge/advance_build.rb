@@ -14,11 +14,11 @@ module VBlank
       #
       #   code, maker     the four characters an emulator tells one cartridge from another by, and
       #                   the two that name a publisher, in the Advance's cartridge header
-      #   fast_cartridge  the quick cartridge timing asked for at boot; on unless said false
+      #   fast_cartridge  the quick cartridge timing asked for at boot; on unless set false
       #   fast_code       letting the build choose which routines go in the quick memory; on
-      #                   unless said false
+      #                   unless set false
       #   stack_room      how many bytes of the quick memory the game's stack is given; the build
-      #                   decides unless said (see IR::Backends::GBA::TopOfQuickMemory)
+      #                   decides unless set (see IR::Backends::GBA::TopOfQuickMemory)
       #   profile         a measurement taken earlier, a path or a Diagnostics::RoutineProfile,
       #                   which decides what goes in the quick memory
       SETTINGS = %i[code maker fast_cartridge fast_code stack_room profile].freeze

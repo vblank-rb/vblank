@@ -13,7 +13,7 @@ module VBlank
     # #build_rom (the finished cartridge) — so an example is one `VBlank.game` call
     # instead of a module of wiring.
     class Game
-      # +options+ is how the game is built (see {Options}), as the game said it.
+      # +options+ is how the game is built (see {Options}), as the game set it.
       attr_reader :title, :code, :maker, :options
 
       # The consoles the game is for, by name (see Console::DESCRIPTIONS), in the order the game
@@ -101,12 +101,12 @@ module VBlank
       # which screen it boots on. A test builds a variant by passing a value here, and nothing
       # anybody else is building changes. Remembered per set of settings.
       #
-      # +console+ is the console it is built for, the first the game names unless said: the game
+      # +console+ is the console it is built for, the first the game names unless set: the game
       # reads that console's screen as its block runs (`screen_width`), so the tree is that
       # console's.
       #
       # +variant+ is the console's variant it is built for (Console::Variant): the one the game
-      # names for +console+ in `variants:` unless said, and nil for the plain console.
+      # names for +console+ in `variants:` unless set, and nil for the plain console.
       def program(settings: {}, console: @consoles.first, variant: variant_for(console))
         evaluated(settings, refuse_console_not_for!(console), variant).program
       end
@@ -142,7 +142,7 @@ module VBlank
       #
       # +settings+ are what this build is told, as for #program.
       #
-      # +console+ is the console the cartridge is for, the first the game names unless said: a
+      # +console+ is the console the cartridge is for, the first the game names unless set: a
       # Game Boy Advance cartridge (Cartridge::ROM) or a Game Boy Color one (Cartridge::GBCROM).
       #
       # A console setting the game says that +console+ does not have is for another of the game's

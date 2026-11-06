@@ -20,7 +20,7 @@ module VBlank
     # +inputs+ by their contents (what a build reads that is not the game's code: a player's copy of
     # the original, say). And the game itself, one of two ways:
     #
-    # - by its PROGRAM, unless said: the tree the game's block builds for that console, so a change
+    # - by its PROGRAM, unless set: the tree the game's block builds for that console, so a change
     #   to the game's code that changes what it builds changes the key and one that does not, does
     #   not. Making the tree runs the game's block, which is most of a build for a big game, once in
     #   each process and Ractor that asks.
@@ -95,7 +95,7 @@ module VBlank
       # miss, for #report.
       #
       # +label+ is how the report names it, and what its last build is kept under to explain a miss:
-      # the game's title, console and settings unless said. A game that builds many cartridges of
+      # the game's title, console and settings unless set. A game that builds many cartridges of
       # one title (a room, an area, the game from a save) names each, or every miss reads alike and
       # is explained against whichever was built last. The label is not part of the key: two asks
       # with one key are one cartridge, whatever each calls it.

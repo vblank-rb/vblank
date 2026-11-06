@@ -622,7 +622,7 @@ module VBlank
               @run_places[number] = Runtime::Picture::BG_TILES + (firsts.first * words_a_tile)
             end
 
-            # A `screen` other than the game's own that says a backdrop the game's does not, somewhere
+            # A `screen` other than the game's own that sets a backdrop the game's does not, somewhere
             # it cannot come up by: on a painted screen, or anywhere but the top of a scene.
             def refuse_backdrops_of_its_own!
               handover = @cache.handover
@@ -633,7 +633,7 @@ module VBlank
               refuse_unmade!("a scene that says a backdrop of its own (`screen ... backdrop:`)")
             end
 
-            # Whether a scene of +program+ says a backdrop the game's does not, which colour 0 is
+            # Whether a scene of +program+ sets a backdrop the game's does not, which colour 0 is
             # changed to as it takes over (Runtime::Tint's rt_backdrop_hold).
             def self.scene_backdrops?(program, handover = IR::SceneHandover.of(program))
               return false if Lowering::Paint.painted?(program)
@@ -642,7 +642,7 @@ module VBlank
             end
 
             # A scene taking over, in a game whose scenes differ in their backdrop: colour 0 changed
-            # to its own, or the game's where it says none. It goes out with the scene's colours and
+            # to its own, or the game's where it names none. It goes out with the scene's colours and
             # maps (Runtime::Picture's "Together"), through whatever fade is in force.
             def emit_scene_backdrop(arrival)
               return unless @cache.facts.scene_backdrops? && arrival.backdrop

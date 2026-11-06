@@ -20,9 +20,9 @@ module VBlank
     #   end
     #
     # The list is a test file a line, blank lines and lines starting # left out, each read from the
-    # folder +from+ (the folder rake runs in unless said). It is read when the task runs, so a clone
+    # folder +from+ (the folder rake runs in unless set). It is read when the task runs, so a clone
     # without the list still has every other task. The rest are drawn from +test_files+, the test
-    # files beneath the list's own folder unless said (`test_*.rb` and `*_test.rb`), and +sample+ is
+    # files beneath the list's own folder unless set (`test_*.rb` and `*_test.rb`), and +sample+ is
     # the share drawn. The block is handed the TestTask that plays the files, the GBA lowering's run,
     # to set what any test task takes. The task is `test:golden` unless +name+ says otherwise.
     class GoldenTask < Rake::TaskLib

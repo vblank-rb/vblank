@@ -24,7 +24,7 @@ module VBlank
     #
     # WHAT THE GAME SUPPLIES: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
     # its labels, as its decompilation's RAM map has them: a name to an address on the console's bus,
-    # or to an address and how it is read (WIDTHS), one byte unsigned unless said. A read or a write
+    # or to an address and how it is read (WIDTHS), one byte unsigned unless set. A read or a write
     # takes a label or an address. +save+ (an IR::SaveImage) is what the save memory holds as the
     # console is switched on: a save file of the player's, say.
     #

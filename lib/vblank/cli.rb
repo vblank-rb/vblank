@@ -526,7 +526,7 @@ module VBlank
         raise Thor::Error, "#{options[:format].inspect} is not a profile format. The formats are: human, json."
       measuring = { frames: VBlank::Diagnostics::TapeProfile.frames_from_text(options[:frames]), scene: options[:scene], from: options[:from], keys: held_buttons || [],
                     press: buttons_named(options[:press]) }
-      # Each console's profile has its own settling when none is said, and a tape says its own start.
+      # Each console's profile has its own settling when none is given, and a tape says its own start.
       measuring[:settle] = options[:settle] if options[:settle]
       measuring[:tape] = VBlank::Playthroughs::Tape.read(options[:tape]) if options[:tape]
       game = load_game(game_file)

@@ -136,7 +136,7 @@ module VBlank
           # (#initial_forced_blank_bit). What else it says, its backdrop, is the scene's arrival's
           # (#emit_scene_backdrop).
           #
-          # In a game where a screen says a backdrop, every `screen` outside a scene's top also
+          # In a game where a screen sets a backdrop, every `screen` outside a scene's top also
           # writes the one it means (IR::SceneHandover#backdrop_of) where the console keeps it: a
           # game with no backgrounds sends no table of colours that would carry it.
           def emit_screen(node)

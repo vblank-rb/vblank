@@ -37,7 +37,7 @@ module VBlank
       TIERS = %i[hardware_only portable].freeze
 
       # Every kind's tier, read off the kind's own declaration (see Node::Declarations#tier)
-      # rather than listed here. A kind is portable unless it says otherwise, where it is
+      # rather than listed here. A kind is portable unless it sets otherwise, where it is
       # declared, and that is not a promise made by default: every portable kind has to be one
       # the interpreter runs and the console lowers, which a coverage test holds them to — so a
       # new kind neither backend can run fails there until it is given handlers or says it is

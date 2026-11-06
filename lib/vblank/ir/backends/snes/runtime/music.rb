@@ -29,7 +29,7 @@ module VBlank
             STOPS = "rt music stops" # How many times the game asked stop_music
             STOPS_SEEN = "rt music stops seen" # How many of those stops the player has acted on
             ENDED = "rt music ended" # A tune that played once and reached its end
-            TUNE_HELD = "rt music tune held" # 1 while the game holds the tune, in a game that says so
+            TUNE_HELD = "rt music tune held" # 1 while the game holds the tune, in a game that asks for it
             FRAME = "rt music frame" # How far into the tune, in frames
             AGAIN = "rt music again" # 1 once the tune has come round
             SONG = "rt music song" # Where the playing tune's record is in the table

@@ -121,7 +121,7 @@ module VBlank
       # +banks+ is the linked cartridge, its first 32K first. +vectors+ names where each vector
       # points, by VECTORS's names; one not named points where reset does.
       # +save_bytes+ is how much battery-backed RAM it has, a power of two from 2K, or nought.
-      # +board+ is the kind of board (BOARDS), a plain one unless said.
+      # +board+ is the kind of board (BOARDS), a plain one unless set.
       def initialize(banks, title:, vectors:, save_bytes: 0, built: nil, board: PLAIN)
         @built = built
         @board = board

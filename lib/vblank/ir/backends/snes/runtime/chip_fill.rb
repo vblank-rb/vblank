@@ -524,7 +524,7 @@ module VBlank
             end
 
             # MASK_OF (LINK), or +label+: R0 = the pixels of the tile whose left edge is R3 that are
-            # between the words at +left+ and +right+ (the rectangle's, unless said), a byte with the
+            # between the words at +left+ and +right+ (the rectangle's, unless set), a byte with the
             # top bit leftmost, in both bytes of the word (Paint's rt_paint_column_mask): those from
             # the left less R3 (nought at least) up to the right less R3 (eight at most). The tile is
             # one painted, so its left edge is before the right and the left before its right edge.

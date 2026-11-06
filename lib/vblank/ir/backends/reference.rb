@@ -200,7 +200,7 @@ module VBlank
           @handed_file = nil       # the file the program is handed as it starts, or nil for none (see #hand_file)
           @frame = 0               # passes of the game loop finished (see @screen_frame for frames shown)
           @screen_mode = nil       # the mode a `screen` op selected, if any
-          @backdrop = 0            # the colour shown wherever nothing is drawn (`screen ... backdrop:`), black unless said
+          @backdrop = 0            # the colour shown wherever nothing is drawn (`screen ... backdrop:`), black unless set
           @buffered = false        # whether that mode opted into double buffering
           @log = []               # observable events: [:vblank, n], [:halt]
           @defined_sounds = {}     # name -> musical params (from define_sound)
@@ -437,7 +437,7 @@ module VBlank
         # at, so a block that says a hundred has a body caught up ten times.
         #
         # This is here because being late is the one thing this interpreter cannot find out
-        # for itself: it has no clock, a frame is over when the program says so, and a pass
+        # for itself: it has no clock, a frame is over when the program asks for it, and a pass
         # can never overrun one. That is the right answer for an oracle — but it leaves
         # everything a program does ABOUT being late untestable here, and what a program
         # does about being late is exactly the interesting part. So a test says it instead,
@@ -2097,7 +2097,7 @@ module VBlank
         # +tall+ is how many rows a block of the picture is, for a background being put
         # into blocks: every row then shows the picture row at the top of its block, and
         # is still placed by its own bend (see #paint_scenery_in_blocks). One row, which
-        # is the picture as drawn, unless said.
+        # is the picture as drawn, unless set.
         def rows_shown_of(bg) = bg.above_row ? [scenery_rows, bg.above_row].min : scenery_rows
 
         def paint_background_window(bg, tall = 1)

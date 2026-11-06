@@ -19,7 +19,7 @@ module VBlank
 
       SIDES = { left: LEFT, right: RIGHT, center: CENTER }.freeze
 
-      # The side a part or a note SAID: :left, :right or :center, or nil when it said nothing.
+      # The side a part or a note SAID: :left, :right or :center, or nil when it gave nothing.
       # +where+ names who said it, as the start of a sentence.
       def self.said(side, where:)
         return nil if side.nil?

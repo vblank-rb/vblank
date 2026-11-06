@@ -5,7 +5,7 @@ module VBlank
     class Comparison
       # WHAT A COMPARISON COMPARES ON EACH FRAME: the picture, the named readings, or both.
       #
-      # It is a list, said where the comparison is made, and with nothing said it is the
+      # It is a list, said where the comparison is made, and with nothing given it is the
       # picture and whatever readings were given. The picture is compared by how alike it
       # has to be (see Likeness); a reading has to be the same on both.
       #
@@ -18,7 +18,7 @@ module VBlank
       # what each was on both cartridges — which is often the quickest way to see what a
       # difference in the picture comes from.
       #
-      # +comparing+ is the list as it was written, or nil for nothing said.
+      # +comparing+ is the list as it was written, or nil for nothing given.
       class Compared
         KINDS = [PICTURE, :readings].freeze
 

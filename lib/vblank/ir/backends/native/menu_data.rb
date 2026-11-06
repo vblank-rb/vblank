@@ -22,7 +22,7 @@ module VBlank
 
           module_function
 
-          # The C text. +menu+ false is a game that says it has no menu.
+          # The C text. +menu+ false is a game that sets it to have no menu.
           def source(menu: true)
             [header, headings, sizes_and_colors, "const int rg_game_has_menu = #{menu ? 1 : 0};\n", *[1, 2].map { |density| atlas(density) },
              "const rg_menu_atlas rg_menu_atlases[2] = {#{[1, 2].map { |density| atlas_entry(density) }.join(', ')}};\n"].join("\n")

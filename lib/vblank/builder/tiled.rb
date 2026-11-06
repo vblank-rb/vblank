@@ -282,7 +282,7 @@ module VBlank
       #     box = background :box, tiles: :frame, map: EMPTY_BOX, held: true
       #
       # WHY A SETTING, AND WHY IT IS OFF UNLESS ASKED FOR. Without it a cell is written where
-      # the game says so, which is the cheapest thing and right for a door or a pot: the
+      # the game asks for it, which is the cheapest thing and right for a door or a pot: the
       # display reads the map while it draws, so a change shows on this frame or the next by
       # where on the screen the display has got to, and nobody can tell for one cell. A
       # message box growing a size a frame is seventy cells, and there the same writes show

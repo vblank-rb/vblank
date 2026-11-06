@@ -115,7 +115,7 @@ module VBlank
             # (`sprite_piece_size: { gbc: [8, 16] }`), 8 otherwise (Art#initialize).
             def piece_height = (@program.sprite_piece_size_on(Console::COLOR.name) || [8, 8]).last
 
-            # A `screen` other than the game's own that says a backdrop the game's does not: a scene's
+            # A `screen` other than the game's own that sets a backdrop the game's does not: a scene's
             # would have every palette written again as it takes over. Named by its scene.
             def refuse_backdrops_of_its_own!
               @program.walk.each do |node|
@@ -531,7 +531,7 @@ module VBlank
             # stops it (Reference#refuse_pictures_not_up!): on the console it would show whatever the
             # groups up put where that picture goes in sprite memory. Asked as the sprite is placed,
             # of every set of its own scene or of every screen that holds the picture in a group,
-            # whether the game said one of those groups is up in one of the set's slots. +pose+ is
+            # whether the game set one of those groups is up in one of the set's slots. +pose+ is
             # the pose the sprite shows, and +said+ that pose when the program never changes it.
             #
             # A sprite of many pictures is asked by a table of the group holding each, a byte a

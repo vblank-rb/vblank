@@ -9,7 +9,7 @@ module VBlank
       # Fixup). A linker (GBC::Linker, SNES::Linker) puts each section in a bank of the cartridge
       # (Banks), then fills the holes in. Which instructions a section holds, how big a bank is and
       # how a hole is filled are the console's; what a section is, how the banks fill up and how a
-      # cartridge too full for the game says so are decided here.
+      # cartridge too full for the game asks for it are decided here.
       module Sections
         # A place named in an instruction, filled in once everything is placed. Which +kind+s there
         # are is the assembler's own: each says what it fills in (an address, a distance, a bank).

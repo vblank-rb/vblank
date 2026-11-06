@@ -31,7 +31,7 @@ module VBlank
 
       # THE SHAPE A PART OR NOTE SAID, from the two words a song writes it with: +decay+ to fade
       # each note out, +swell+ to bring it in. Each is a speed (:fast, :medium, :slow or :none) or
-      # the step itself, 0 to 7. Nil when it said neither, which leaves the note to its voice: a
+      # the step itself, 0 to 7. Nil when it gave neither, which leaves the note to its voice: a
       # drum fades as its part says, a square note holds.
       def self.said(decay:, swell:, where:)
         return nil if decay.nil? && swell.nil?

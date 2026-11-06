@@ -78,11 +78,11 @@ module VBlank
       # Buttons down on a range of frames.
       Hold = Data.define(:buttons, :frames)
 
-      # A side the film file names, with the console and lowering it says (nil where it says none).
+      # A side the film file names, with the console and lowering it says (nil where it names none).
       Side = Data.define(:game, :console, :lowering)
 
       # The film in the file at +path+, with +sides+ (label to cartridge) the ones its Rakefile names.
-      # +console+ and +lowering+ are what every side is opened with unless it says its own (see
+      # +console+ and +lowering+ are what every side is opened with unless it sets its own (see
       # FilmCartridge); a name that is no console's or no lowering's is refused before any side opens.
       def self.read(path, sides: {}, console: nil, lowering: nil)
         script = new(path, sides: sides, console: console, lowering: lowering)
