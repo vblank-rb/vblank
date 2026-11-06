@@ -95,10 +95,15 @@ cannot be built this way yet. What reads a slot that way:
 - `table :speeds, pack[:speeds]` — written as its size alone and filled from the file at power-on; the
   build never looks at its entries. `table :name, DSL::StartFileEntries.new(at:, count:), width:,
   signed:` is the same for any place in the file.
-- `image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)` — both lists
-  from the pack, 8x8, and only as a background's tile so far. As a sprite, a blit, a face or a
-  recoloured tile the lowering refuses it naming the picture; `mirror`/`upside_down` of it, a picture
-  taking only one list from the pack, and any other verb that reads a slot's bytes are refused at the line.
+- `image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)` — a picture
+  from the pack, drawn however a picture is: a background's tile, a sprite, `blit`, a face of a place,
+  drawn in other colours (`draw_with`, a background's recolours), `mirror`/`upside_down`. `pack[:sprites]
+  .tiles(0, across: 2, down: 2)` takes the places of tiles side by side, for a picture 8 pixels wider
+  and taller for each. A picture can take only one list from the pack, the other being `colors: [...]`
+  or `places: [...]` in the game. The program holds zeros of the picture's size, and the runtime fills
+  them at power-on. **The build sees a whole box**: a default hitbox, a cut into blocks or the pieces a
+  console draws it in follow the box of its size, not the see-through pixels in it, so a game that
+  wants a tighter box says `hitbox:`. Any other verb that reads a slot's bytes is refused at the line.
 - `pack.unpacking(copy_size: SIZE)` — the unpacking program for a copy of that many bytes (the
   release's size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
   after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.

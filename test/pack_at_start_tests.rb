@@ -4,6 +4,85 @@ require "digest"
 require "tmpdir"
 require "all/vblank/builder/test_data_packs"
 
+# THE HELPERS FOR GAMES THAT DRAW PICTURES FROM THE PACK, kept once for PackAtStartTests and for
+# PackAtStartPlaceTests.
+module PackAtStartPictures
+  include MadeUpOriginal
+
+  # The build each of these games is made by: one for a computer, its data pack left out.
+  PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+
+  # PICTURES DRAWN FROM THE PACK. The made-up original's sprite picture is four tiles of places
+  # (SPRITE_PLACES), and each game below draws it, or a tile of it, one way each: as a sprite, a blit, a
+  # place's face, in other colours, turned, or with only one of its two lists in the pack. Each is built
+  # all-in-one and with the pack left out, handed a pack of these two slots.
+  PICTURE_SLOTS = [VBlank::Original::Slot.colors(:palette, at: PALETTE_AT, count: 16),
+                   VBlank::Original::Slot.tiles(:sprites, at: SPRITES_AT, count: 4)].freeze
+  Ractor.make_shareable(PICTURE_SLOTS)
+
+  # The sizes of the pictures of the games below: the whole 16x16 one, and the first tile of it.
+  HERO = Ractor.make_shareable({ width: 16, height: 16 })
+  MARK = Ractor.make_shareable({ width: 8, height: 8 })
+
+  private def picture_pack_file
+    VBlank::Original::Pack.holding(PICTURE_SLOTS.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: SHA1, build_version: "1").to_bytes
+  end
+
+  # A game of the made-up original's two slots whose block (run on the builder, handed the pack) draws.
+  private def picture_game(folder, options: VBlank::Cartridge::Options.new, tear_free: false, screen_kind: :bitmap, &draws)
+    from = original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen screen_kind, **(tear_free ? { tear_free: true } : {})
+      clear_screen :black if screen_kind == :bitmap
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.colors :palette, at: PALETTE_AT, count: 16
+        slots.tiles :sprites, at: SPRITES_AT, count: 4
+      end
+      instance_exec(pack, &draws)
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The game drawn both ways plays alike: the all-in-one build on the interpreter, and the build with
+  # its pack left out handed the pack file, on this run's player.
+  private def assert_pictures_play_alike(what, tear_free: false, screen_kind: :bitmap, &draws)
+    Dir.mktmpdir do |folder|
+      whole = picture_game(folder, tear_free: tear_free, screen_kind: screen_kind, &draws)
+      left_out = picture_game(folder, options: PACK_AT_START, tear_free: tear_free, screen_kind: screen_kind, &draws)
+
+      [1, 3].each do |frames|
+        shown = game_player.run(whole, frames: frames).screen.to_a
+        assert_operator shown.flatten.uniq.length, :>, 2, "#{what}: the all-in-one build draws the picture"
+        assert_equal shown, game_player.hand_file(picture_pack_file).run(left_out, frames: frames).screen.to_a,
+                     "#{what}: after #{frames} frames the game handed its pack shows what the all-in-one build shows"
+      end
+    end
+  end
+end
+
+# A PLACE'S FACE DRAWN FROM THE PACK. Only a console that draws places plays it (the Advance), so it
+# sits in test/console/gba/ and not with PackAtStartTests.
+module PackAtStartPlaceTests
+  include PackAtStartPictures
+
+  def test_a_face_of_a_place_drawn_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("a face", tear_free: true) do |pack|
+      image :mark, **MARK, colors: pack[:palette], places: pack[:sprites].tile(0)
+      place :room do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :mark, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        wait_vblank
+        draw_place :room, seen_by: eye
+      end
+    end
+  end
+end
+
 # A GAME BUILT WITH ITS DATA PACK LEFT OUT, handed the pack file as it starts. The made-up original
 # and its game are test_data_packs.rb's (MadeUpOriginal): built all-in-one there, the pack is made
 # from the copy as the game is built and the game holds what it read. Built here with
@@ -15,16 +94,13 @@ require "all/vblank/builder/test_data_packs"
 #
 # Only a build for a computer can leave the pack out: a cartridge holds its own data, and nothing
 # hands a cartridge a file. So these tests are not in test/all/, which every cartridge run plays,
-# and not in test/console/. They are played through game_player by each run whose player reads a
+# and not in test/console/ (but for a place's face, which only the Advance draws). They are played through game_player by each run whose player reads a
 # file as it starts: the interpreter (test/interpreter/vblank/builder/test_pack_at_start_interpreter.rb)
 # and the game as C, as JavaScript and as Ruby, checked against it on every frame
 # (test/lowering/{native,js,ruby}/vblank/ir/backends/*/test_*_pack_at_start.rb). That a cartridge
 # build refuses is test_data_packs.rb's.
 module PackAtStartTests
-  include MadeUpOriginal
-
-  # The build each of these games is made by: one for a computer, its data pack left out.
-  PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+  include PackAtStartPictures
 
   # The pack file a player's machine makes from the made-up copy: each slot cut from it, as the
   # all-in-one build cuts them.
@@ -131,7 +207,21 @@ module PackAtStartTests
       made = heights.call(builder)
       [made[:palette], made[:walls].tile(0), made[:walls].tile(1), builder.table(:speeds, made[:heights])]
     end
+    drawn = ->(place) { place.zero? ? -1 : PALETTE.fetch(place) & 0x7FFF }
+    hero = SPRITE_PLACES.map(&drawn)
+    mirrored = hero.each_slice(16).flat_map(&:reverse)
+    draws_hero = lambda do |options|
+      picture_game(folder, options: options) do |pack|
+        image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
+        game_loop do
+          wait_vblank
+          blit :hero, 10, 10
+          blit mirror(:hero), 40, 10
+        end
+      end
+    end
     [["the game", all_in_one_game(folder), pack_at_start_game(folder), [tile.call(0), tile.call(1), SPEEDS]],
+     ["the game of pictures", draws_hero.call(VBlank::Cartridge::Options.new), draws_hero.call(PACK_AT_START), [hero, mirrored]],
      ["the bigger game", big_game_program(folder, options: VBlank::Cartridge::Options.new),
       big_game_program(folder, options: PACK_AT_START), [*(0...BIG_TILES).map(&tile), COPY.bytes.first(FILLER_BYTES)]],
      ["the game of unpacked slots", game_program(reads_heights), game_program(reads_heights, options: PACK_AT_START),
@@ -158,6 +248,68 @@ module PackAtStartTests
         end
       end
       assert_equal ways.sort, found.uniq.sort, "the all-in-one builds hold the original's bytes in every way an array is written"
+    end
+  end
+
+  def test_a_sprite_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("a sprite") do |pack|
+      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
+      sprite :hero, at: [30, 20]
+      game_loop { wait_vblank }
+    end
+  end
+
+  def test_a_picture_blitted_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("a blit") do |pack|
+      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
+      image :mark, **MARK, colors: pack[:palette], places: pack[:sprites].tile(0)
+      game_loop do
+        wait_vblank
+        blit :hero, 100, 60
+        blit :mark, 10, 10
+      end
+    end
+  end
+
+  def test_a_picture_from_the_pack_turned_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("a turned picture") do |pack|
+      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
+      game_loop do
+        wait_vblank
+        blit mirror(:hero), 20, 20
+        blit upside_down(:hero), 60, 20
+        blit upside_down(mirror(:hero)), 100, 20
+      end
+    end
+  end
+
+  def test_a_picture_from_the_pack_drawn_in_other_colors_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("a recoloured sprite", screen_kind: :tiled) do |pack|
+      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
+      colors :warm, [:transparent, *Array.new(15) { |at| rgb(31 - at, at * 2, at / 2) }]
+      hero = sprite :hero, at: [30, 20]
+      hero.draw_with :warm
+      game_loop { wait_vblank }
+    end
+  end
+
+  def test_a_picture_taking_only_its_colors_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("colors from the pack") do |pack|
+      image :held, width: 8, height: 8, colors: pack[:palette], places: TILE_PLACES[1]
+      game_loop do
+        wait_vblank
+        blit :held, 30, 30
+        blit mirror(:held), 50, 30
+      end
+    end
+  end
+
+  def test_a_picture_taking_only_its_places_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
+    assert_pictures_play_alike("places from the pack") do |pack|
+      own = [:transparent, :white, :red, :green, :blue, :yellow, :cyan, :magenta, :orange, :gray, rgb(5, 10, 15), rgb(30, 3, 9)]
+      image :held, width: 16, height: 16, colors: own, places: pack[:sprites].tiles(0, across: 2, down: 2)
+      sprite :held, at: [30, 20]
+      game_loop { wait_vblank }
     end
   end
 

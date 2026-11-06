@@ -179,9 +179,10 @@ module VBlank
             pixels = []
             info = []
             @images.each_key do |name, colors|
-              refuse_picture_from_start_file!(name, "a sprite, a blit or a face")
               image = picture_named(name)
               info.push(pixels.length, image.width, image.height)
+              from_start_file = picture_from_start_file(name)
+              record_start_file_fill(:image, pixels.length, from_start_file, colors) if from_start_file
               drawn = if colors == SHADING_PLACES
                         bitmap = @data.fetch(name)
                         bitmap.places_in_shading(bitmap.shading)
@@ -194,6 +195,7 @@ module VBlank
               end
               pixels.concat(drawn)
             end
+            @image_pixel_count = pixels.length # what the runtime copies them by, to fill an image read from the start file
             [runtime_array("image_pixels", "int16_t", pixels), runtime_array("images", "int32_t", info), *sprite_name_arrays]
           end
 
@@ -417,8 +419,7 @@ module VBlank
               [nil, *steps].each do |swaps|
                 bg.tiles.each do |tile|
                   if (read_at_start = picture_from_start_file(tile))
-                    refuse_picture_from_start_file!(tile, "a tile drawn in other colours") if swaps
-                    record_start_file_tile_fill(tile_pixels.length, read_at_start)
+                    record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
                   end
                   tile_pixels.concat(tile_colors(tile, swaps))
                 end

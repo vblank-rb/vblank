@@ -159,7 +159,7 @@ module VBlank
             # gathers them before running), so its storage is the first declaration's.
             @lists = by_name(@reachable.reverse, :list_new)
             @scenes = scene_numbers
-            @start_file_tile_fills = [] # what the routine reading the start file writes into the tiles (StartFileFills)
+            @start_file_fills = [] # what the routine reading the start file writes into the pictures' pixels (StartFileFills)
             prepare_picture
             prepare_sound
           end
@@ -191,6 +191,11 @@ module VBlank
             answers = [see_through_amounts, bend_offsets, work_out_bends, shade_span, shade_amount, timer_ticks,
                        sprites_over_picture_routine]
             main = C::Function.new(name: @names.own("main"), body: [*build_start_file_reads, *power_on, *lower(@program)], exported: true)
+            # The routine reading the start file is written once the art is, which fixes how many pixels
+            # there are, and before the arrays it asks for are written out.
+            tables = constant_arrays
+            art = picture_data
+            start_file_routines = build_start_file_routines
             [C::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
              C::Include.new("rg_int32.h"), C::Include.new("rg_runtime.h"), C::Include.new("rg_list.h"),
              C::Include.new("rg_screen.h"), C::Include.new("rg_sound.h"), C::Include.new("rg_mix.h"),
@@ -200,11 +205,11 @@ module VBlank
              *(@scenes.empty? ? [] : [C::Global.new(name: @names.own("scene"), value: -1)]),
              *(loops_ending_passes.empty? ? [] : [C::Global.new(name: running_loop_variable, value: 0)]),
              *held_colors_globals, *sprites_hidden_globals,
-             *constant_arrays, *picture_data, *@drawing_arrays, title_array, *sound_tables,
+             *tables, *art, *@drawing_arrays, title_array, *sound_tables,
              save_memory_table,
              *@called.map { |name| C::Prototype.new(name: routine(name)) }, *build_start_file_prototypes,
              *routine_table_declarations,
-             *routines, *answers, main, *build_start_file_routines,
+             *routines, *answers, main, *start_file_routines,
              C::Function.new(name: @names.own("dump_state"), body: dump_state, exported: true),
              *(@program.several_players? ? [C::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)] : [])]
           end

@@ -23,7 +23,9 @@ module VBlank
     # - a picture given as places into a list of colours (Nodes::Bitmap#from_file, a Picture): the
     #   colours, two bytes each with five bits a channel, and the places, two to a byte with the
     #   left one in the low half, place 0 see-through. That is what `image colors:, places:` makes
-    #   of the same numbers held in the game (Assets.placed_pixels).
+    #   of the same numbers held in the game (Assets.placed_pixels). A picture can take only its
+    #   colours or only its places from the file, and hold the other list itself; and it can be
+    #   turned round or upside down, as `mirror` and `upside_down` turn one.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
     # the build works out may depend on them. Each backend that plays such a program reads the file
@@ -38,8 +40,16 @@ module VBlank
       Check = Data.define(:at, :bytes)
 
       # Where a picture's colours and places are in the file: +colors_at+, the first colour, of
-      # +colors_count+; and +places_at+, the byte holding its first two places.
-      Picture = Data.define(:colors_at, :colors_count, :places_at)
+      # +colors_count+; and +places_at+, the byte holding its first two places, which are those of
+      # tiles +across+ wide (Assets.picture_places_of_tiles). A list the picture holds itself, the
+      # other one, has no place: nil. +turns+ are the ways the picture is turned once it is read, in
+      # order, each :mirrored or :upside_down (Assets::Image).
+      Picture = Data.define(:colors_at, :colors_count, :places_at, :across, :turns) do
+        def initialize(colors_at:, colors_count:, places_at:, across: 1, turns: [].freeze) = super
+
+        # The same picture turned +way+ once it is read.
+        def turned(way) = with(turns: [*turns, way].freeze)
+      end
 
       # The most colours a picture's places can pick from: a place is four bits.
       PLACES = 16
@@ -95,17 +105,26 @@ module VBlank
         node.entries_in_file = nil
       end
 
-      # A picture's colours and places, read from the place it names, and its pixels made from them as
-      # `image colors:, places:` makes them. A place past the colours shows colour 0, as each
-      # runtime fills it.
+      # A picture's colours and places, read from the place it names or held by the picture, and its
+      # pixels made from them as `image colors:, places:` makes them, then turned as it is told. A
+      # place past the colours shows colour 0, as each runtime fills it.
       def self.fill_picture(node, bytes)
         where = node.from_file
         count = node.width * node.height
-        places = Assets.places_packed_in(bytes.byteslice(where.places_at, count / 2))
-        colors = Assets.colors_packed_in(bytes.byteslice(where.colors_at, where.colors_count * 2))
-        node.pixels, node.transparent = Assets.placed_pixels(places, colors + ([0] * [PLACES - colors.length, 0].max))
+        places = if where.places_at
+                   Assets.picture_places_of_tiles(Assets.places_packed_in(bytes.byteslice(where.places_at, count / 2)), across: where.across)
+                 else
+                   node.places.bytes
+                 end
+        colors = where.colors_at ? Assets.colors_packed_in(bytes.byteslice(where.colors_at, where.colors_count * 2)) : node.colors
+        pixels, transparent = Assets.placed_pixels(places, colors + ([0] * [PLACES - colors.length, 0].max))
+        picture = Assets::Image.new(width: node.width, height: node.height, transparent: transparent, pixels: pixels, colors: colors,
+                                    places: places.pack("C*"))
+        picture = where.turns.reduce(picture) { |turned, way| turned.public_send(way) }
+        node.pixels = picture.pixels
+        node.transparent = picture.transparent
         node.colors = colors
-        node.places = places.pack("C*")
+        node.places = picture.places
         node.from_file = nil
       end
       private_class_method :fill_table, :fill_picture

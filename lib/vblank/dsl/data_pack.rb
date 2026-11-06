@@ -119,30 +119,41 @@ module VBlank
     # the game must read such a file (`data_pack` with the pack left out declares it does).
     StartFileEntries = Data.define(:at, :count)
 
-    # A HANDLE ON ONE SLOT OF A DATA PACK, or on one tile of a slot of tiles: the slot's layout (an
-    # Original::Slot: its name, shape, size and place in the copy) and, for one tile, which. It never
+    # A HANDLE ON ONE SLOT OF A DATA PACK, or on tiles of a slot of tiles: the slot's layout (an
+    # Original::Slot: its name, shape, size and place in the copy) and, for tiles, which. It never
     # holds the bytes. `image` and `table` read them (Builder::DataPacks#pack_slot_values).
-    PackSlot = Data.define(:layout, :tile_index) do
+    #
+    # A handle on tiles is +across+ tiles wide and +down+ tiles tall, starting at +tile_index+ and
+    # counting left to right and then top to bottom, as a sprite keeps its tiles: a picture of
+    # 16x16 pixels is 2 across and 2 down.
+    PackSlot = Data.define(:layout, :tile_index, :across, :down) do
+      def initialize(layout:, tile_index: nil, across: 1, down: 1) = super
+
       def shape = layout.shape
 
-      # How many the handle reads: the slot's count, or 1 for one tile.
-      def count = tile_index ? 1 : layout.count
+      # How many the handle reads: the slot's count, or the tiles of a handle on tiles.
+      def count = tile_index ? across * down : layout.count
 
-      # Whether the handle is on one tile.
+      # Whether the handle is on tiles, one or more.
       def one_tile? = !tile_index.nil?
 
       # A handle on tile +index+ (0 first) of a slot of tiles, for an image's `places:`.
-      def tile(index)
+      def tile(index) = tiles(index, across: 1, down: 1)
+
+      # A handle on the +across+ by +down+ tiles from tile +first+ of a slot of tiles, for the
+      # `places:` of a picture 8 pixels wider and taller for each.
+      def tiles(first, across:, down: 1)
         unless shape == :tiles && !one_tile?
-          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `tile` picks one tile of a slot of tiles. " \
-                               "To fix this, call `tile` on a slot of tiles."
+          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `tile` and `tiles` pick tiles of a slot of tiles. " \
+                               "To fix this, call them on a slot of tiles."
         end
-        unless index.is_a?(Integer) && index.between?(0, layout.count - 1)
-          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} tiles, 0 to #{layout.count - 1}. There is no " \
-                               "tile #{index.inspect}."
+        unless [first, across, down].all?(Integer) && across.positive? && down.positive? && first.between?(0, layout.count - 1) &&
+               first + (across * down) <= layout.count
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} tiles, 0 to #{layout.count - 1}. There are no " \
+                               "#{across.inspect} by #{down.inspect} tiles from tile #{first.inspect}."
         end
 
-        with(tile_index: index)
+        with(tile_index: first, across: across, down: down)
       end
     end
   end

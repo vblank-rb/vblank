@@ -483,22 +483,18 @@ module VBlank
                   "know its pixels, so #{verb} cannot #{motion}. To show it turned, paint the turned " \
                   "pixels into a list of its own."
           end
-          if picture_from_start_file?(source)
-            raise ArgumentError,
-                  "#{verb} names the picture :#{source}, which is read from the data pack as the game starts. The " \
-                  "build does not know its pixels, so #{verb} cannot #{motion}. Build the game all-in-one to " \
-                  "show it turned."
-          end
           picture = @pictures[source] ||
                     raise(ArgumentError,
                           "#{verb} names the picture :#{source}, which is not defined. Define it first " \
                           "with `image :#{source}, ...`.")
           name = free_name_after(source, way)
           turned = picture.public_send(way)
-          record_picture(Build.bitmap(name, width: turned.width, height: turned.height,
-                                              pixels: turned.pixels, transparent: turned.transparent,
-                                              colors: turned.colors, places: turned.places, colors_name: turned.colors_name,
-                                              pieces: turned.pieces))
+          node = Build.bitmap(name, width: turned.width, height: turned.height,
+                                    pixels: turned.pixels, transparent: turned.transparent,
+                                    colors: turned.colors, places: turned.places, colors_name: turned.colors_name,
+                                    pieces: turned.pieces)
+          read_turned_picture_from_start_file(node, source, way)
+          record_picture(node)
           box_x, box_y, box_w, box_h = @image_bounds[source] || [0, 0, turned.width, turned.height]
           @image_bounds[name] = if way == :mirrored
                                   [turned.width - box_x - box_w, box_y, box_w, box_h]

@@ -42,11 +42,12 @@ module VBlank
     # starts (IR::StartFile). The pack's layout follows from the slots' shapes and sizes alone
     # (Original::Pack.layout), so the build knows where each slot will be in the file: a table given
     # a slot is read from there (#table_from_start_file), and so is a picture given a slot of colours
-    # and one tile of a slot of tiles (#define_picture_from_start_file). The program holds none of
-    # a table's entries and zeros for a picture's pixels, and nothing the build works out may depend
+    # or tiles of a slot of tiles, or both (#define_picture_from_start_file). The program holds none
+    # of a table's entries and zeros for a picture's pixels, and nothing the build works out may depend
     # on what a slot holds: a table read from the file is not one whose entries a build looks at (a
-    # pose stepped through by a table's entries), and a picture read from the file
-    # is drawn as a whole box of its size, never cut or turned by its pixels. What a game cannot do
+    # pose stepped through by a table's entries), and a picture read from the file is a whole box of
+    # its size to the build, so its default hitbox and its cut into blocks follow the box, not the
+    # see-through pixels in it (a game that wants a tighter box gives `hitbox:`). What a game cannot do
     # with a slot this way yet is refused in plain words, naming the line.
     #
     # A SLOT THE ORIGINAL KEEPS PACKED has no `at:`, and the game's own unpacking routine fills it:
@@ -166,54 +167,98 @@ module VBlank
       end
 
       # `image :name, colors: pack[:palette], places: pack[:walls].tile(0)` with the pack left out:
-      # an 8x8 picture whose colours and places are read from the file (IR::StartFile::Picture). In
-      # the program its places are all 1 and its colours nought, so the build treats it as a solid
-      # square. Its list of colours is named for the slot it comes from (#pack_colors_name), so two
-      # pictures from one slot are drawn from one list and two from different slots from two, as
-      # they are when the lists hold what the slots hold.
+      # a picture whose colours or places or both are read from the file (IR::StartFile::Picture).
+      # A list the game gives itself (`colors: [...]`, `places: [...]`) stays in the program. In the
+      # program the pixels are zeros, and the places of a list read from the file are all 1, so the
+      # build treats the picture as a solid box. Its list of colours, when read from the file, is
+      # named for the slot it comes from (#pack_colors_name), so two pictures from one slot are
+      # drawn from one list and two from different slots from two, as they are when the lists hold
+      # what the slots hold.
       def define_picture_from_start_file(name, opts)
+        refuse_picture_with_other_options!(name, opts)
         colors = opts[:colors]
         places = opts[:places]
-        refuse_picture_not_wholly_from_pack!(name, opts)
-        refuse_slot_from_elsewhere!(colors, "image :#{name}'s colors:")
-        refuse_slot_read_wrongly!(colors, :colors, "image :#{name}'s colors:")
-        refuse_slot_from_elsewhere!(places, "image :#{name}'s places:")
-        refuse_slot_read_wrongly!(places, :tile, "image :#{name}'s places:")
         width = opts[:width]
         height = opts[:height]
         positive_dims!(name, width, height)
-        refuse_picture_not_one_tile!(name, width, height)
-        refuse_too_many_pack_colors!(name, colors)
+        colors_from_file = colors.is_a?(DSL::PackSlot)
+        places_from_file = places.is_a?(DSL::PackSlot)
+        if colors_from_file
+          refuse_slot_from_elsewhere!(colors, "image :#{name}'s colors:")
+          refuse_slot_read_wrongly!(colors, :colors, "image :#{name}'s colors:")
+          refuse_too_many_pack_colors!(name, colors)
+        end
+        if places_from_file
+          refuse_slot_from_elsewhere!(places, "image :#{name}'s places:")
+          refuse_slot_read_wrongly!(places, :tile, "image :#{name}'s places:")
+          refuse_picture_not_of_its_tiles!(name, width, height, places)
+        end
 
-        node = Build.bitmap(name, width: width, height: height, pixels: Array.new(width * height, 0).pack("v*"),
-                                  transparent: nil, colors: Array.new(colors.count, 0),
-                                  places: Array.new(width * height, 1).pack("C*"), colors_name: pack_colors_name(colors))
+        colors_name = colors_from_file ? pack_colors_name(colors) : (colors if colors.is_a?(Symbol))
+        table = if colors_from_file
+                  Array.new(colors.count, 0)
+                else
+                  color_table(name, colors_name ? declared_colors_for_image!(name, colors_name) : (colors || []))
+                end
+        if places_from_file
+          refuse_pack_places_without_colors!(name) if table.empty?
+          held_places = Array.new(width * height, 1)
+          pixels = Array.new(width * height, 0).pack("v*")
+          marker = nil
+        else
+          refuse_bad_places!(name, places: places, width: width, height: height, table: table)
+          held_places = places
+          pixels, marker = IR::Assets.placed_pixels(places, table.map { |value| value || 0 })
+        end
+        node = Build.bitmap(name, width: width, height: height, pixels: pixels, transparent: marker,
+                                  colors: table.map { |value| value || 0x0000 }, places: held_places.pack("C*"),
+                                  colors_name: colors_name)
         node.from_file = IR::StartFile::Picture.new(
-          colors_at: @pack_slot_starts.fetch(colors.layout.name), colors_count: colors.count,
-          places_at: @pack_slot_starts.fetch(places.layout.name) + (places.tile_index * Original::Slot::Tiles.item_bytes(places.layout))
+          colors_at: (@pack_slot_starts.fetch(colors.layout.name) if colors_from_file), colors_count: table.length,
+          places_at: (places_in_pack(places) if places_from_file), across: places_from_file ? places.across : 1
         )
         record_picture(node)
-        (@pictures_from_start_file ||= Set.new) << name
+        (@pictures_from_start_file ||= {})[name] = node.from_file
         record_visible_bounds(name: name, width: width, height: height, cells: [], transparent: nil)
       end
 
-      # Whether the picture +name+ is read from the file the program is handed as it starts.
-      def picture_from_start_file?(name) = @pictures_from_start_file&.include?(name) || false
-
-      # With the pack left out, a picture reads from the pack only as a slot of colours and one tile
-      # of places, both from the pack: the build knows nothing else of it that does not depend on the
-      # bytes.
-      def refuse_picture_not_wholly_from_pack!(name, opts)
-        both = opts[:colors].is_a?(DSL::PackSlot) && opts[:places].is_a?(DSL::PackSlot)
-        others = opts.keys - %i[colors places width height]
-        return if both && others.empty?
-
-        raise ArgumentError, "image :#{name} reads a slot of the data pack, and this build reads its pack as the game " \
-                             "starts. Such a picture must take both colors: and places: from the pack, and nothing " \
-                             "else: `image :#{name}, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)`. " \
-                             "Or build the game all-in-one."
+      def refuse_pack_places_without_colors!(name)
+        raise ArgumentError, "image :#{name} was given places: from the data pack and no colors:. A place is a place in a " \
+                             "list of colors, so give the list too: `colors: pack[:palette]`, or `colors: [:transparent, ...]`."
       end
 
+      # Where in the file the first tile that +places+ (a DSL::PackSlot on tiles) reads is.
+      def places_in_pack(places)
+        @pack_slot_starts.fetch(places.layout.name) + (places.tile_index * Original::Slot::Tiles.item_bytes(places.layout))
+      end
+
+      # A picture turned +way+ (:mirrored, :upside_down) from +source+, which is read from the file
+      # the program is handed: it is read from the same place and turned as it is read. Places the
+      # game holds are turned here already, in +node+, and are not turned again.
+      def read_turned_picture_from_start_file(node, source, way)
+        return unless picture_from_start_file?(source)
+
+        from = @pictures_from_start_file.fetch(source)
+        node.from_file = from.places_at ? from.turned(way) : from
+        @pictures_from_start_file[node.name] = node.from_file
+      end
+
+      # Whether the picture +name+ is read from the file the program is handed as it starts.
+      def picture_from_start_file?(name) = @pictures_from_start_file&.key?(name) || false
+
+      # With the pack left out, a picture reads from the pack only as a slot of colours or tiles of
+      # places, or both, and nothing else: the build knows nothing else of it that does not depend on
+      # the bytes.
+      def refuse_picture_with_other_options!(name, opts)
+        others = opts.keys - %i[colors places width height]
+        return if others.empty?
+
+        raise ArgumentError, "image :#{name} reads a slot of the data pack, and this build reads its pack as the game " \
+                             "starts. Such a picture takes colors:, places:, width: and height:, and nothing else, " \
+                             "but it was given #{others.map(&:inspect).join(', ')}: " \
+                             "`image :#{name}, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)`. " \
+                             "Or build the game all-in-one."
+      end
       # The name of the list of colours a picture read from the pack is drawn from: the colour
       # slot's, written so no list a game declares (`colors :sea`) can have it.
       def pack_colors_name(handle) = :"data pack slot :#{handle.layout.name}"
@@ -226,11 +271,12 @@ module VBlank
                              "at most. Give it a slot of #{IR::StartFile::PLACES} colors or fewer."
       end
 
-      def refuse_picture_not_one_tile!(name, width, height)
-        return if width * height == Original::Slot::Tiles::PIXELS
+      def refuse_picture_not_of_its_tiles!(name, width, height, places)
+        side = Original::Slot::Tiles::SIDE
+        return if width == places.across * side && height == places.down * side
 
-        raise ArgumentError, "image :#{name} is #{width}x#{height}, and one tile of a slot has " \
-                             "#{Original::Slot::Tiles::PIXELS} places. Make the picture 8x8."
+        raise ArgumentError, "image :#{name} is #{width}x#{height}, and its places are #{places.across} by #{places.down} " \
+                             "tiles of #{side}x#{side} pixels. Make the picture #{places.across * side}x#{places.down * side}."
       end
 
       # THE UNPACKING PROGRAM (Original::Unpacking says why it is a program of its own): the copy's
@@ -379,7 +425,9 @@ module VBlank
         refuse_slot_read_wrongly!(handle, wanted, where)
         refuse_slot_read_while_left_out!(handle, where)
         values = handle.layout.decode(@data_pack_contents.bytes_of(handle.layout.name))
-        handle.one_tile? ? values.fetch(handle.tile_index) : values
+        return values unless handle.one_tile?
+
+        IR::Assets.picture_places_of_tiles(values.slice(handle.tile_index, handle.count).flatten, across: handle.across)
       end
 
       # +opts+ for `image`, each handle in colors: or places: replaced by what its slot holds.

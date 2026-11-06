@@ -32,11 +32,21 @@ module MadeUpOriginal
   TILES_AT = 0x40
   SPEEDS_AT = 0xA0
   NUDGES_AT = 0xB0
+  SPRITES_AT = 0xC0
   LZ77_AT = 0x140
   RLE_AT = 0x1A0
   COPY_SIZE = 0x200
 
-  # The tiles as the original keeps them: two pixels a byte, the left one in the low half.
+  # A 16x16 picture as its places, row by row: see-through in a slanting pattern, and the rest in
+# eleven colours, so a turned copy of it differs from it at every row and column.
+SPRITE_PLACES = (0...16).flat_map { |y| (0...16).map { |x| ((x * 3) + (y * 5)) % 6 == 0 ? 0 : 1 + ((x + (2 * y)) % 11) } }.freeze
+
+# The picture as the original keeps it: four tiles, left to right and top to bottom, each two pixels a byte.
+SPRITE_BYTES = [0, 1, 2, 3].flat_map do |tile|
+  (0...64).map { |at| SPRITE_PLACES[((((tile / 2) * 8) + (at / 8)) * 16) + ((tile % 2) * 8) + (at % 8)] }
+end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
+
+# The tiles as the original keeps them: two pixels a byte, the left one in the low half.
   TILE_BYTES = TILE_PLACES.flatten.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
 
   # The two packed blocks, written by BiosCompress, the packer the Game Boy Advance lowering uses
@@ -54,6 +64,7 @@ module MadeUpOriginal
     bytes[TILES_AT, TILE_BYTES.bytesize] = TILE_BYTES
     bytes[SPEEDS_AT, SPEEDS.length] = SPEEDS.pack("C*")
     bytes[NUDGES_AT, 2] = [0xF6, 0x0A].pack("C*")
+    bytes[SPRITES_AT, SPRITE_BYTES.bytesize] = SPRITE_BYTES
     bytes[LZ77_AT, LZ77_BLOCK.bytesize] = LZ77_BLOCK
     bytes[RLE_AT, RLE_BLOCK.bytesize] = RLE_BLOCK
     bytes.freeze
@@ -478,30 +489,49 @@ class TestDataPacks < Minitest::Test
   # computer: built here only, never played, so on every run.
   READS_PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
 
-  # The pixels of a picture read from the pack are not known as the game is built, so nothing can
-  # be worked out from them: turning it is refused, as turning a picture the game paints is.
-  def test_a_picture_read_from_the_pack_as_the_game_starts_cannot_be_turned
-    Dir.mktmpdir do |folder|
-      builder = Builder.new(options: READS_PACK_AT_START)
-      pack = made_up_pack(builder, folder)
-      builder.image(:wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0))
-      refused = assert_raises(ArgumentError) { builder.mirror(:wall) }
-
-      assert_match ":wall", refused.message
-      assert_match "data pack as the game starts", refused.message
-    end
-  end
-
-  # Read from the pack as the game starts, a picture takes both its colours and its places from it.
-  def test_a_picture_reading_part_of_itself_from_the_pack_as_the_game_starts_is_refused
+  # What the build works out from a picture's pixels is not known for a picture read from the pack as
+  # the game starts, so a picture takes colors:, places:, width: and height: from it and nothing else.
+  def test_a_picture_read_from_the_pack_as_the_game_starts_is_refused_any_other_option
     Dir.mktmpdir do |folder|
       builder = Builder.new(options: READS_PACK_AT_START)
       pack = made_up_pack(builder, folder)
       refused = assert_raises(ArgumentError) do
-        builder.image(:wall, width: 8, height: 8, colors: pack[:palette], places: TILE_PLACES[0])
+        builder.image(:wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0), shading: :fade)
       end
 
-      assert_match "both colors: and places:", refused.message
+      assert_match ":shading", refused.message
+      assert_match "all-in-one", refused.message
+    end
+  end
+
+  def test_a_picture_read_from_the_pack_must_be_the_size_of_its_tiles
+    Dir.mktmpdir do |folder|
+      builder = Builder.new(options: READS_PACK_AT_START)
+      pack = made_up_pack(builder, folder)
+      refused = assert_raises(ArgumentError) do
+        builder.image(:wall, width: 16, height: 8, colors: pack[:palette], places: pack[:walls].tile(0))
+      end
+
+      assert_match "8x8", refused.message
+    end
+  end
+
+  def test_places_read_from_the_pack_need_colors
+    Dir.mktmpdir do |folder|
+      builder = Builder.new(options: READS_PACK_AT_START)
+      pack = made_up_pack(builder, folder)
+      refused = assert_raises(ArgumentError) { builder.image(:wall, width: 8, height: 8, places: pack[:walls].tile(0)) }
+
+      assert_match "no colors:", refused.message
+    end
+  end
+
+  def test_tiles_picked_past_the_end_of_a_slot_are_refused
+    Dir.mktmpdir do |folder|
+      pack = made_up_pack(Builder.new, folder)
+      refused = assert_raises(ArgumentError) { pack[:walls].tiles(1, across: 2) }
+
+      assert_match "2 tiles", refused.message
     end
   end
 

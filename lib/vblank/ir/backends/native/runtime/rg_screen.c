@@ -75,6 +75,22 @@ uint16_t *rg_screen_tile_pixels_to_fill(int32_t count) {
   return tile_pixels_filled;
 }
 
+/* The pixels of the images sprites, blits and faces draw: the game's own, which cannot be written,
+ * or for a game with images read from the file it is handed as it starts, a copy of them with those
+ * images filled in (rg_screen_image_pixels_to_fill). */
+static const int16_t *image_pixels_drawn = rg_game_image_pixels;
+static int16_t *image_pixels_filled;
+
+int16_t *rg_screen_image_pixels_to_fill(int32_t count) {
+  if (!image_pixels_filled) {
+    image_pixels_filled = malloc((size_t)(count > 0 ? count : 1) * sizeof *image_pixels_filled);
+    if (!image_pixels_filled) rg_fault("there is no room for the %d pixels of the pictures", (int)count);
+    memcpy(image_pixels_filled, rg_game_image_pixels, (size_t)count * sizeof *image_pixels_filled);
+    image_pixels_drawn = image_pixels_filled;
+  }
+  return image_pixels_filled;
+}
+
 static int32_t held;            /* switched off until the first frame (Framebuffer#held=) */
 static int32_t frames_begun;    /* a frame boundary has been reached (Reference @uses_frames) */
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
@@ -1543,7 +1559,7 @@ static int16_t **painted_images;
 static picture picture_of(int32_t image) {
   const int32_t *info = rg_game_images + RG_IMAGE_FIELDS * image;
   const int16_t *painted = painted_images ? painted_images[image] : NULL;
-  return (picture){painted ? painted : rg_game_image_pixels + info[0], info[1], info[2]};
+  return (picture){painted ? painted : image_pixels_drawn + info[0], info[1], info[2]};
 }
 
 /* Room for one painted image's pixels, made the first time the image is painted. */

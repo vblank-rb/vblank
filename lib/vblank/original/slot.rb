@@ -43,7 +43,8 @@ module VBlank
       # TILES, the Advance's: 8x8 pixels of sixteen colours, 32 bytes each, two pixels a byte with the left one in
       # the low half, row by row from the top. Each reads as its 64 places.
       module Tiles
-        PIXELS = 64
+        SIDE = 8
+        PIXELS = SIDE * SIDE
 
         def self.item_bytes(_slot) = PIXELS / 2
 

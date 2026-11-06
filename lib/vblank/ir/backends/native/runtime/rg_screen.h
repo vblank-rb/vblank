@@ -323,6 +323,10 @@ rg_drawn_sprite rg_screen_drawn_sprite(int32_t place);
  * when the game is built. */
 #define RG_NOT_DRAWN (-1)
 extern const int16_t rg_game_image_pixels[];
+/* The +count+ image pixels the picture is drawn from, as an array that can be written: a copy of
+ * rg_game_image_pixels, made the first time this is asked, which the picture is drawn from from
+ * then on. For an image read from the file the game is handed as it starts (rg_start_file_fill_picture). */
+int16_t *rg_screen_image_pixels_to_fill(int32_t count);
 extern const int32_t rg_game_images[];
 #define RG_IMAGE_FIELDS 3
 /* The most sprites a game may have; the build refuses more. */
@@ -374,7 +378,7 @@ extern const int32_t rg_game_see_through[];
 extern const uint16_t rg_game_tile_pixels[];
 /* The +count+ tile pixels the picture is drawn from, as an array that can be written: a copy of
  * rg_game_tile_pixels, made the first time this is asked, which the picture is drawn from from then
- * on. For a tile read from the file the game is handed as it starts (rg_start_file_fill_tile). */
+ * on. For a tile read from the file the game is handed as it starts (rg_start_file_fill_picture). */
 uint16_t *rg_screen_tile_pixels_to_fill(int32_t count);
 
 /* Each background is RG_BG_FIELDS numbers in rg_game_backgrounds, in the order the stack draws

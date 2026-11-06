@@ -129,16 +129,23 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * rg_start_file_fill_table: +count+ entries of +table+, kept as +kept+ (RG_TABLE_INT8...), from
  * byte +at+ on, each as wide as that, low byte first.
  *
- * rg_start_file_fill_tile: +count+ pixels of a tile from +start+ in the background tiles' pixels,
- * of which there are +tile_pixels+ (rg_screen_tile_pixels_to_fill), from places two to a byte at
- * +places_at+ (the left one in the low half) into +colors_count+ colours of two bytes at
- * +colors_at+: RG_SEE_THROUGH where the place is 0, the colour's fifteen bits otherwise, and 0 for
- * a place past the colours. */
+ * rg_start_file_fill_picture: one picture's pixels, from +rules+, which are numbers: what is filled
+ * (RG_FILL_TILE: a background tile's pixels, of which there are +total+, RG_SEE_THROUGH where the
+ * layer behind shows; RG_FILL_IMAGE: the pixels of an image a sprite, a blit or a face draws, of
+ * which there are +total+, -1 where nothing is drawn), +total+, where the picture's pixels start
+ * there, its width and height, how it is turned (RG_TURN_MIRRORED, RG_TURN_UPSIDE_DOWN, or both), how
+ * many tiles wide its places are, where in the file its places are (-1 where the game holds them),
+ * where its colours are (-1 where the game holds them), how many colours, and how many colours of
+ * another list it is drawn with. Then the game's own places (one for each pixel) where the file has
+ * none, its own colours where the file has none, and the other list. A place is 0 for see-through, or
+ * a place in the colours: its fifteen bits, the other list's colour at that place where it has one,
+ * and 0 for a place past the colours. */
+enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
+enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
 void rg_start_file_hand(const uint8_t *bytes, int32_t size);
 void rg_start_file_open(const char *called, const int32_t *rules);
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at);
-void rg_start_file_fill_tile(int32_t tile_pixels, int32_t start, int32_t count, int32_t colors_at, int32_t colors_count,
-                             int32_t places_at);
+void rg_start_file_fill_picture(const int32_t *rules);
 
 #endif

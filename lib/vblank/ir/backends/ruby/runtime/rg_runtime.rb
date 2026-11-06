@@ -207,21 +207,51 @@ def rg_start_file_fill_table(table, kept, count, at)
   table.replace(@rg_start_file.byteslice(at, count * RG_START_FILE_ENTRY_BYTES[kept]).unpack(RG_START_FILE_READS[kept]))
 end
 
-# The game's tile pixels are frozen, so the first tile filled puts an unfrozen copy in their place;
-# the picture reads them from there on. +_tile_pixels+ is how many there are, which the C needs.
-def rg_start_file_fill_tile(_tile_pixels, start, count, colors_at, colors_count, places_at)
-  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
-  pixels = @rg_game_tile_pixels
-  count.times do |i|
-    both = @rg_start_file.getbyte(places_at + (i / 2))
-    place = i.even? ? both & 0x0F : both >> 4
-    pixels[start + i] = if place.zero?
-                          RG_SEE_THROUGH
-                        elsif place < colors_count
-                          @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1("v") & 0x7FFF
-                        else
-                          0
-                        end
+RG_FILL_TILE = 0
+RG_TURN_MIRRORED = 1
+RG_TURN_UPSIDE_DOWN = 2
+
+# The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles wide,
+# each tile's 64 places row by row, two to a byte with the left one in the low half.
+def rg_start_file_place(places_at, across, row, column)
+  at = ((((row / 8) * across) + (column / 8)) * 64) + ((row % 8) * 8) + (column % 8)
+  both = @rg_start_file.getbyte(places_at + (at / 2))
+  at.even? ? both & 0x0F : both >> 4
+end
+
+# One picture's pixels (rg_runtime.h, rg_start_file_fill_picture). The game's pixels are frozen, so
+# the first picture filled puts an unfrozen copy in their place; the picture reads them from there
+# on. The +total+ in the rules is how many there are, which the C needs.
+def rg_start_file_fill_picture(rules)
+  kind, _total, start, width, height, turn, across, places_at, colors_at, colors_count, swapped_count = rules
+  held_places = 11
+  held_colors = held_places + (places_at.negative? ? width * height : 0)
+  swapped = held_colors + (colors_at.negative? ? colors_count : 0)
+  if kind == RG_FILL_TILE
+    @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+    pixels = @rg_game_tile_pixels
+  else
+    @rg_game_image_pixels = @rg_game_image_pixels.dup if @rg_game_image_pixels.frozen?
+    pixels = @rg_game_image_pixels
+  end
+  height.times do |row|
+    width.times do |column|
+      from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
+      from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
+      place = places_at.negative? ? rules[held_places + (from_row * width) + from_column] : rg_start_file_place(places_at, across, from_row, from_column)
+      color = if place.zero?
+                kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
+              elsif place < swapped_count
+                rules[swapped + place]
+              elsif place >= colors_count
+                0
+              elsif colors_at.negative?
+                rules[held_colors + place]
+              else
+                @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1("v") & 0x7FFF
+              end
+      pixels[start + (row * width) + column] = color
+    end
   end
 end
 

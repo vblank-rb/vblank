@@ -429,18 +429,41 @@ void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t 
   }
 }
 
-void rg_start_file_fill_tile(int32_t tile_pixels, int32_t start, int32_t count, int32_t colors_at, int32_t colors_count,
-                             int32_t places_at) {
-  uint16_t *pixels = rg_screen_tile_pixels_to_fill(tile_pixels);
-  for (int32_t i = 0; i < count; i++) {
-    uint8_t both = start_file[places_at + (i / 2)];
-    int32_t place = (i % 2 == 0) ? (both & 0x0F) : (both >> 4);
-    uint16_t color = 0;
-    if (place == 0) {
-      color = RG_SEE_THROUGH;
-    } else if (place < colors_count) {
-      color = (uint16_t)(start_file_number(colors_at + (place * 2), 2) & 0x7FFFu);
+/* The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles
+ * wide, each tile's 64 places row by row, two to a byte with the left one in the low half. */
+static int32_t start_file_place(int32_t places_at, int32_t across, int32_t row, int32_t column) {
+  int32_t at = ((((row / 8) * across) + (column / 8)) * 64) + ((row % 8) * 8) + (column % 8);
+  uint8_t both = start_file[places_at + (at / 2)];
+  return (at % 2 == 0) ? (both & 0x0F) : (both >> 4);
+}
+
+void rg_start_file_fill_picture(const int32_t *rules) {
+  int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
+  int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];
+  int32_t colors_count = rules[9], swapped_count = rules[10];
+  const int32_t *held_places = rules + 11;
+  const int32_t *held_colors = held_places + (places_at < 0 ? width * height : 0);
+  const int32_t *swapped = held_colors + (colors_at < 0 ? colors_count : 0);
+  uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
+  int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
+  for (int32_t row = 0; row < height; row++) {
+    for (int32_t column = 0; column < width; column++) {
+      int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
+      int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
+      int32_t place = places_at < 0 ? held_places[(from_row * width) + from_column]
+                                    : start_file_place(places_at, across, from_row, from_column);
+      uint16_t color = 0xFFFFu;
+      if (place != 0) {
+        color = 0;
+        if (place < swapped_count) {
+          color = (uint16_t)swapped[place];
+        } else if (place < colors_count) {
+          color = colors_at < 0 ? (uint16_t)held_colors[place]
+                                : (uint16_t)(start_file_number(colors_at + (place * 2), 2) & 0x7FFFu);
+        }
+      }
+      if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
+      else image_pixels[start + (row * width) + column] = (int16_t)color;
     }
-    pixels[start + i] = color;
   }
 }

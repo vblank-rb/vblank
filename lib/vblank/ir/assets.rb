@@ -63,6 +63,19 @@ module VBlank
       # sixteenth is not a colour, Graphics::Color.resolve).
       def self.colors_packed_in(bytes) = bytes.unpack("v*").map { |color| color & 0x7FFF }
 
+      # The places of tiles kept one after another, each 64 places row by row, for a picture
+      # +across+ tiles wide: the places of the picture's pixels row by row. A picture one tile wide
+      # keeps its places in the order the tiles hold them already.
+      def self.picture_places_of_tiles(places, across:)
+        return places if across == 1
+
+        width = across * 8
+        Array.new(places.length) do |at|
+          row, column = at.divmod(width)
+          places.fetch(((((row / 8) * across) + (column / 8)) * 64) + ((row % 8) * 8) + (column % 8))
+        end
+      end
+
       Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces) do
         def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil) = super
 
