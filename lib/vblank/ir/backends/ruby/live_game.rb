@@ -25,6 +25,13 @@ module VBlank
           def width = @game.class::RG_SCREEN_WIDTH
           def height = @game.class::RG_SCREEN_HEIGHT
 
+          # The file the game reads as it starts (IR::StartFile), +bytes+ a String, handed over before
+          # #play. A game that reads one and is handed none stops at its first statement, saying so.
+          def hand_file(bytes)
+            @game.rg_start_file_hand(bytes)
+            self
+          end
+
           # The samples a second its sound is made at.
           def sound_rate = @game.class::RG_SOUND_RATE
 

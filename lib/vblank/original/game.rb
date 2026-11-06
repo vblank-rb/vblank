@@ -25,6 +25,21 @@ module VBlank
     # cannot be read.
     class WrongPath < CopyError; end
 
+    # A SHELL IS BUILT WITH NO COPY ON THE MACHINE, so a port whose code depends on what the copy
+    # holds cannot be built as one. While the block runs, every Game answers NotSet whatever names a
+    # copy (Shell.build turns that into the words naming the line that asked). Kept per Ractor, as
+    # each core builds its own games.
+    def self.without_copies
+      before = Ractor.current[:vblank_copies_hidden]
+      Ractor.current[:vblank_copies_hidden] = true
+      yield
+    ensure
+      Ractor.current[:vblank_copies_hidden] = before
+    end
+
+    # Whether a shell is being built here now (Original.without_copies).
+    def self.copies_hidden? = Ractor.current[:vblank_copies_hidden] == true
+
     # THE PLAYER'S COPY, ACCEPTED: where it is, the name of its release, and its SHA-1 (nil for a
     # folder accepted by a probe, which has no one hash).
     Copy = Data.define(:path, :release, :sha1)
@@ -39,19 +54,6 @@ module VBlank
       end
 
       def kind_words = folder ? "a folder" : "a file"
-    end
-
-    # ONE RELEASE OF THE ORIGINAL, as a decompilation's versions file lists it: its name, its SHA-1,
-    # and if known its MD5, its size in bytes, and whether the game reads it. A release with an MD5
-    # and no SHA-1 is one a person might have, and can be named, but is never read.
-    Release = Data.define(:name, :sha1, :md5, :size, :read) do
-      # A release from one entry of a versions file (string or symbol keys): sha1, md5, size, and
-      # supported, false for a release the game knows and does not read.
-      def self.from(name, facts)
-        facts = facts.transform_keys(&:to_s)
-        new(name: name.to_s, sha1: facts["sha1"], md5: facts["md5"], size: facts["size"],
-            read: facts["supported"] != false && !facts["sha1"].nil?)
-      end
     end
 
     # WHAT A GAME MADE FROM AN ORIGINAL DECLARES ABOUT ITS COPY, and the one way to ask for it.
@@ -109,16 +111,21 @@ module VBlank
         @setting = setting
         @settings_file = File.expand_path(settings_file)
         @key = key
-        @releases = releases && release_list(releases)
+        @releases = releases && Releases.new(title: title, list: release_list(releases))
         @probe = probe
         @not_set_help = not_set_help
         @paths = paths.to_h { |name, entry| [name.to_sym, PathSetting.from(entry)] }
         @env = env
       end
 
+      # The releases the game knows (Releases), or nil for a game that accepts its copy by a probe.
+      attr_reader :releases
+
       # The accepted copy. NotSet when nothing names where one is, WrongCopy when the one named
-      # cannot be used.
+      # cannot be used. Inside Original.without_copies it is NotSet whatever is set (a shell build).
       def copy
+        raise NotSet, copies_hidden_message if Original.copies_hidden?
+
         named = named_path(setting, key, WrongCopy)
         raise NotSet, not_set_message if named.nil?
         raise WrongCopy, "#{named.named_in} names #{named.path}. Nothing is there. Correct the path to your copy of #{title}." unless File.exist?(named.path)
@@ -132,6 +139,8 @@ module VBlank
       # sets where it is, WrongPath when what is named is not there or is not the kind it must be.
       def path(name)
         entry = @paths.fetch(name.to_sym) { refuse_unknown_path_name!(name) }
+        raise NotSet, copies_hidden_message if Original.copies_hidden?
+
         named = named_path(entry.setting, entry.key, WrongPath)
         raise NotSet, path_not_set_message(entry) if named.nil?
 
@@ -208,45 +217,24 @@ module VBlank
         Copy.new(path: path, release: release, sha1: File.file?(path) ? Digest::SHA1.file(path).hexdigest : nil)
       end
 
+      # The release the copy at +path+ is, by its length and then its SHA-1 (Releases has the words
+      # for a copy that is none the game reads), and that SHA-1.
       def release_by_digest(path)
         raise WrongCopy, "#{path} is a folder. Name the file of your copy of #{title}." unless File.file?(path)
 
-        refuse_unknown_length!(path)
+        refusal = @releases.size_refusal(path, File.size(path))
+        raise WrongCopy, refusal if refusal
+
         sha1 = Digest::SHA1.file(path).hexdigest
-        release = @releases.find { |known| known.sha1 == sha1 }
-        return [release.name, sha1] if release&.read
-        raise WrongCopy, unread_release_message(path, release) if release
+        refusal = @releases.digest_refusal(path, sha1, md5: (Digest::MD5.file(path).hexdigest unless @releases.with_sha1(sha1)))
+        raise WrongCopy, refusal if refusal
 
-        raise WrongCopy, unknown_bytes_message(path, sha1)
+        [@releases.with_sha1(sha1).name, sha1]
       end
 
-      # A copy no known release is the length of is refused without reading it: most wrong copies are
-      # another game, or a download cut short, and this says so at once. One the length of a release
-      # the game does not read goes on, so that the release can be named.
-      def refuse_unknown_length!(path)
-        sizes = @releases.map(&:size)
-        return if sizes.include?(nil) || sizes.include?(File.size(path))
-
-        raise WrongCopy, "#{path} is #{File.size(path)} bytes. A copy of #{title} is #{readable_releases.map(&:size).uniq.join(' or ')} " \
-                         "bytes. Name a complete copy of #{title}."
-      end
-
-      def readable_releases = @releases.select(&:read)
-
-      def readable_releases_words = readable_releases.map { |release| "#{release.name} (SHA-1 #{release.sha1})" }.join(", ")
-
-      def unknown_bytes_message(path, sha1)
-        md5 = Digest::MD5.file(path).hexdigest
-        named = @releases.find { |known| known.md5 == md5 }
-        return unread_release_message(path, named) if named && !named.read
-
-        "#{path} is not a release of #{title} that this game knows. Its SHA-1 is #{sha1}. A changed or " \
-          "damaged copy has a different SHA-1. This game reads #{readable_releases_words}. Name a copy of one of these."
-      end
-
-      def unread_release_message(path, release)
-        "#{path} is the #{release.name} release of #{title}. This game does not read that release. " \
-          "It reads #{readable_releases_words}. Name a copy of one of these."
+      def copies_hidden_message
+        "This build is a shell, which holds none of #{title}'s data, so it reads no copy of #{title} and no file " \
+          "made from one."
       end
 
       def not_set_message

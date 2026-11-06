@@ -78,17 +78,23 @@ module VBlank
       # leaves the pack out, which reads no copy), +build_version+ the build it names, +slots+ the
       # Original::Slot list. +make_unpacking+ makes the Original::Unpacking that fills such a pack,
       # handed the copy's size, the first time something asks for it: a pack whose every slot is
-      # copied as it is never needs its program built as the game is.
-      def initialize(rom_sha1:, build_version:, slots:, make_unpacking:)
+      # copied as it is never needs its program built as the game is. +original+ is what `from:`
+      # named (an Original::Game, or an Original::Copy), which a shell reads the releases of.
+      def initialize(rom_sha1:, build_version:, slots:, make_unpacking:, original: nil)
         @rom_sha1 = rom_sha1
         @build_version = build_version
         @slots = slots.to_h { |slot| [slot.name, slot] }
         @make_unpacking = make_unpacking
         @unpackings = {}
+        @original = original
       end
 
-      # The SHA-1 of the copy the pack was made from, and the build version it names.
-      attr_reader :rom_sha1, :build_version
+      # The SHA-1 of the copy the pack was made from, the build version it names, and the original
+      # it is made from.
+      attr_reader :rom_sha1, :build_version, :original
+
+      # Every slot (Original::Slot), in the pack's order.
+      def slots = @slots.values
 
       # The pack's unpacking as a program of its own (an Original::Unpacking): what a shell runs on
       # the player's machine to make the pack, and what a test plays on each run. A build that

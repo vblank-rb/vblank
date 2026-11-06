@@ -77,7 +77,7 @@ module VBlank
       def data_pack(from:, version: nil, &)
         refuse_second_data_pack!
         refuse_missing_pack_version!(version)
-        return declare_pack_read_at_start(version, &) if @build_options.pack_at_start
+        return declare_pack_read_at_start(from, version, &) if @build_options.pack_at_start
 
         copy = from.is_a?(Original::Copy) ? from : from.copy
         refuse_copy_without_hash!(copy)
@@ -101,7 +101,7 @@ module VBlank
 
       # THE PACK LEFT OUT (see the top of this file): the slots named, the copy never read, and the
       # program told the file it is handed as it starts, a pack of these slots for +version+.
-      def declare_pack_read_at_start(version)
+      def declare_pack_read_at_start(from, version)
         refuse_pack_left_out_of_cartridge!
         slots = DSL::PackSlots.new
         yield slots
@@ -110,9 +110,17 @@ module VBlank
         @program.start_file = IR::StartFile.new(called: PACK_FILE_TITLE, size: layout.size, checks: layout.checks)
         @pack_slot_starts = layout.slot_starts
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
-        @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list,
+        @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list, original: from,
                                        make_unpacking: ->(copy_size) { unpacking_program(nil, slots.list, slots.routine, copy_size: copy_size) })
       end
+
+      public
+
+      # The game's data pack (DSL::DataPack), or nil for a game with none: what a shell is built
+      # around (Original::Shell).
+      def declared_data_pack = @data_pack
+
+      private
 
       # What a player is told the file is (IR::StartFile#called): the one a game is handed, and the
       # one its unpacking is handed.
@@ -232,11 +240,13 @@ module VBlank
       #
       # With the pack left out there are no +bytes+: the program is built for a copy of +copy_size+
       # bytes, the size of the release it unpacks, and reads the copy from the file it is handed as
-      # it starts, so it holds none of the copy either.
+      # it starts, so it holds none of the copy either. That program is what a shell plays on the
+      # player's machine, so it is built for the game's console, and shows how far it has got
+      # (#define_unpacking_progress).
       def unpacking_program(bytes, slots, routine, copy_size: nil)
         copy_size = refuse_unsized_unpacking!(copy_size) unless bytes
         Builder.keeping_builder_in_use do
-          maker = Builder.new
+          maker = bytes ? Builder.new : Builder.new(options: unpacking_options)
           copy = if bytes
                    maker.table(Original::Unpacking::COPY, bytes.bytes, width: :byte, signed: false)
                  else
@@ -245,7 +255,9 @@ module VBlank
           list = maker.list(Original::Unpacking::BYTES, capacity: slots.sum(&:byte_size), width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = DSL::UnpackingFaults.new(maker)
-          reader = DSL::OriginalBytes.new(maker, copy: copy, pack: list, faults: faults)
+          progress = (Original::Unpacking::PROGRESS unless bytes)
+          reader = DSL::OriginalBytes.new(maker, copy: copy, pack: list, faults: faults, before_wait: progress)
+          define_unpacking_progress(maker, reader.bytes_done, finished, slots.sum(&:byte_size)) if progress
           places = Original::Unpacking.places_of(slots)
           writers = slots.each_with_index.to_h do |slot, number|
             [slot.name, DSL::SlotBytes.new(maker, list, slot, places[slot.name], number: number, faults: faults)]
@@ -256,9 +268,42 @@ module VBlank
           end
           maker.instance_exec(reader, pack, &routine) if routine
           finished.store!(1)
+          if progress
+            maker.call(progress)
+            maker.wait_vblank
+          end
           maker.halt
           maker.finalize_program
           Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes ? bytes.bytesize : copy_size)
+        end
+      end
+
+      # How a shell's unpacking is built: for a computer, and for the console the game is built for,
+      # so it shows in the same window as the game.
+      def unpacking_options
+        Cartridge::Options.new(console: @build_options.console, variant: @build_options.variant, for_computer: true)
+      end
+
+      # Where a shell's progress bar is, in pixels from the screen's edges, and how tall it is.
+      PROGRESS_BAR_SIDE = 16
+      PROGRESS_BAR_HEIGHT = 8
+
+      # THE PROGRESS BAR a shell shows while it unpacks: a routine on +maker+, called before every
+      # wait for the next frame (DSL::OriginalBytes), drawing a bar as far along as +done+ is of
+      # +total+ bytes, and the whole bar once +finished+ is 1. Game code, so every runtime draws it,
+      # and the interpreter is its answer key. The division is by a number worked out here, so a
+      # pack of many megabytes never makes a number too big for 32 bits.
+      def define_unpacking_progress(maker, done, finished, total)
+        across = maker.screen_width - (2 * PROGRESS_BAR_SIDE)
+        top = (maker.screen_height - PROGRESS_BAR_HEIGHT) / 2
+        bytes_a_pixel = [total / across, 1].max
+        maker.screen :bitmap
+        maker.func(Original::Unpacking::PROGRESS) do
+          maker.clear_screen :black
+          maker.draw_text "UNPACKING", :center, top - 16, :white
+          maker.fill_rect PROGRESS_BAR_SIDE, top, across, PROGRESS_BAR_HEIGHT, :gray
+          shown = ((done / bytes_a_pixel) + (finished * across)).clamp(0, across)
+          maker.draw_rect_at PROGRESS_BAR_SIDE, top, shown, PROGRESS_BAR_HEIGHT, :white
         end
       end
 

@@ -40,6 +40,7 @@ module VBlank
       BYTES = Messages::MadeNames.make(:unpacking_part, part: :bytes)
       BYTES_DONE = Messages::MadeNames.make(:unpacking_part, part: :bytes_done)
       FINISHED = Messages::MadeNames.make(:unpacking_part, part: :finished)
+      PROGRESS = Messages::MadeNames.make(:unpacking_part, part: :progress)
       FAULT_KIND = Messages::MadeNames.make(:unpacking_part, part: :fault_kind)
       FAULT_AT = Messages::MadeNames.make(:unpacking_part, part: :fault_at)
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)

@@ -86,8 +86,8 @@ naming the slot.
 Ruby) reads no copy, builds on a machine with none, and holds none of the original's bytes. The program
 reads its pack from a file it is handed as it starts (`IR::StartFile`): the desktop program's
 `--data-pack PATH`, `--start-file FILE` on the headless programs, and in a test the interpreter's,
-checked runs' and headless runs' `hand_file(bytes)`. The web page and the Ruby file have no way to be
-handed one yet: that is the shell's Load ROM, still to come. Handed none, a pack of the wrong size, or
+checked runs' and headless runs' `hand_file(bytes)`. The web page has no way to be handed one yet; the
+Ruby file gets its pack as a shell (below). Handed none, a pack of the wrong size, or
 one made for another build version or slot list, the game stops at once with an `IR::ProgramError` in
 plain words. A Game Boy Advance desktop program, which plays the console's start-up from the cartridge,
 cannot be built this way yet. What reads a slot that way:
@@ -102,13 +102,26 @@ cannot be built this way yet. What reads a slot that way:
 - `pack.unpacking(copy_size: SIZE)` — the unpacking program for a copy of that many bytes (the
   release's size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
   after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.
-  Playing it inside the shipped game before the game starts, keeping the pack on the player's machine
-  and checking the copy's SHA-1 are the shell's, still to come.
+  Built so, it draws a progress bar as it goes (game code, so every runtime shows it).
 
 A cartridge build told `pack_at_start:` is refused at `data_pack`, and `vblank build --pack-at-start`
 for a cartridge before anything is built; every cartridge lowering refuses a program that reads a start
 file (`Backends.refuse_start_file_on_cartridge!`). The unpacking checks only its copy's size; checking
 the copy's SHA-1 is the shell's. Worked example: `test/pack_at_start_tests.rb`.
+
+**The shell** — `vblank run game.rb --shell` (`--pack-folder DIR`), `vblank build game.rb --format ruby
+--shell`, `Original::Shell.build(game)` — is the port as a player gets it: no copy is read (every
+`Original::Game` answers `NotSet` while it builds, so a game whose code reads the copy stops naming the
+line), and it holds the game with its pack left out, a menu (the title, LOAD ROM, SETTINGS; a small
+game of the library's own), and the unpacking built for each release `from:` reads, which must each
+have a `sha1` and a `size`. Played (`Live::Shell`), it plays the game from `data.pack` in its folder
+(the desktop build's folder for the game, named from the title and the releases' SHA-1s) when that file
+passes the game's start-file check. Otherwise LOAD ROM asks for a file, refuses one that is no release
+the game reads (`Original::Releases`, the words a build machine uses too), unpacks it with its
+release's unpacking, writes the pack — byte for byte the all-in-one build's — and plays the game. A
+pack for another `version:` fails the check, so the menu asks again. SETTINGS opens the window's menu.
+The desktop program and the web page are not shells yet, and every release reads one slot list.
+Worked example: `test/lowering/ruby/vblank/live/test_shell.rb`.
 
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a

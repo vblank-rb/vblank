@@ -64,9 +64,13 @@ module VBlank
       # how a game written out as one Ruby file (Ruby#script) plays with no builder to hand.
       # +collect_garbage+ runs one full collection once the game has set itself up
       # (#collect_garbage_after_setup); vblank run and a script turn it on, and uncapped it does nothing.
-      def initialize(program = nil, game: nil, uncapped: false, stop_after_passes: nil, network: nil, collect_garbage: false)
+      # +keep_last_picture+ false ends the play as soon as the game stops itself, for a game a shell
+      # plays before another (Live::Shell), rather than keeping its picture up until the device stops.
+      def initialize(program = nil, game: nil, uncapped: false, stop_after_passes: nil, network: nil, collect_garbage: false,
+                     keep_last_picture: true)
         refuse_match_for_one_player!(program) if network && program
         @game = game || IR::Backends::Ruby.new.live_game(program)
+        @keep_last_picture = keep_last_picture
         @network = network
         @uncapped = uncapped
         @collect_garbage = collect_garbage && !uncapped
@@ -89,7 +93,7 @@ module VBlank
         stopped_on = @game.play(self, match_seed: @network&.seed, local_player: @network&.player)
         rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
                         stopped_itself: !stopped_on.nil?, lateness: @uncapped ? nil : @lateness.lateness)
-        keep_showing(stopped_on) if stopped_on
+        keep_showing(stopped_on) if stopped_on && @keep_last_picture
         rate
       ensure
         @network&.leave

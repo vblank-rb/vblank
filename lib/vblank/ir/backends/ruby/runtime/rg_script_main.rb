@@ -20,6 +20,7 @@ module VBlankScript
       parser.on("--[no-]collect-garbage", "Collect Ruby's garbage once the game has set itself up. Default: on.")
       parser.on("--settings-file FILE", "Read and write the window's settings in FILE only.")
       parser.on("--config-dir DIR", "Keep the window's settings files in DIR.")
+      parser.on("--pack-folder DIR", "Keep the game's data pack in DIR.") if SHELL
     end.parse!(arguments, into: options)
     %i[scale pictures].each do |name|
       raise OptionParser::InvalidArgument, "--#{name} must be a whole number above 0" if options[name]&.<(1)
@@ -42,9 +43,14 @@ module VBlankScript
     warn window.settings_problems_message if window.settings_problems_message
     puts "Playing #{TITLE}. #{'Press F1 or ` for the menu. ' if MENU}Press P to pause. Hold Tab to play fast. " \
          "Press Escape to stop."
-    rate = VBlank::Live::Session.new(game: game, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
-                                     collect_garbage: options.fetch(:"collect-garbage", true))
-                                .play(window)
+    play_game = lambda do |playing|
+      VBlank::Live::Session.new(game: playing, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
+                                collect_garbage: options.fetch(:"collect-garbage", true))
+                           .play(window)
+    end
+    rate = SHELL ? play_shell(window, options, play_game) : play_game.call(game)
+    return unless rate
+
     if rate.passes.positive?
       puts format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
                   pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
@@ -54,6 +60,18 @@ module VBlankScript
     puts "#{TITLE} stopped itself. Its last picture stayed in the window." if rate.stopped_itself?
   ensure
     window&.close
+  end
+
+  # A game built as a shell (Live::Shell): the game from its kept pack, or its menu until the player
+  # loads a copy. Gives back how fast the game went, or nil when the player stopped before it played.
+  def self.play_shell(window, options, play_game)
+    folder = options[:"pack-folder"] || window.folder_for(SHELL.folder) or
+      raise VBlank::Live::SDL::Failed, "#{TITLE} cannot make the folder to keep its data pack in. Give one with --pack-folder."
+    SHELL.play(window, folder_path: folder, choose_copy: -> { window.choose_file }, open_settings: -> { window.open_menu },
+                       refused: lambda { |words|
+                         warn words
+                         window.notice(words)
+                       }, play_game: play_game)
   end
 end
 

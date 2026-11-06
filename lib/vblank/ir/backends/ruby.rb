@@ -97,22 +97,29 @@ module VBlank
         # The library files are carried as they are, so a fix to the window or the session reaches
         # the next script built; SCRIPT_PARTS lists them, and a script that names something none of
         # them defines fails when it gets there (test_ruby_script.rb plays one).
-        # +pack_at_start+ leaves the game's data pack out (Native#checked_program).
-        def build_script(game, path, console:, settings: {}, err: $stderr, pack_at_start: false)
-          program = Native.new.checked_program(game, console: console, settings: settings, err: err, pack_at_start: pack_at_start)
-          File.write(path, script(program, title: game.title, menu: game.menu?))
+        # +pack_at_start+ leaves the game's data pack out (Native#checked_program). +shell+ builds
+        # the game as a shell (Original::Shell): the file holds none of the original's data, and
+        # makes the pack from the player's copy the first time it is played (Live::Shell).
+        def build_script(game, path, console:, settings: {}, err: $stderr, pack_at_start: false, shell: false)
+          if shell
+            built = Original::Shell.build(game, console: console, settings: settings, err: err)
+            File.write(path, script(built.game, title: game.title, menu: game.menu?, shell: built))
+          else
+            program = Native.new.checked_program(game, console: console, settings: settings, err: err, pack_at_start: pack_at_start)
+            File.write(path, script(program, title: game.title, menu: game.menu?))
+          end
           path
         end
 
-        # ...the file's text, for +program+ in a window titled +title+, with a menu or not.
-        def script(program, title:, menu: true)
-          source = live_source(program)
-          raise BuildError, "the game's Ruby has a line #{SCRIPT_END}, which ends it early in a script" if source.lines.include?("#{SCRIPT_END}\n")
-
+        # ...the file's text, for +program+ in a window titled +title+, with a menu or not, and as
+        # the Original::Shell +shell+ when there is one.
+        def script(program, title:, menu: true, shell: nil)
           [SCRIPT_TOP, *SCRIPT_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) },
+           *(shell ? SHELL_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) } : []),
            "VBlank::Graphics::MenuFont::CARRIED = <<'#{FONT_END}'\n#{File.read(Graphics::MenuFont::PATH, encoding: Encoding::UTF_8)}#{FONT_END}\n",
            "module VBlankScript\n  TITLE = #{title.to_s.inspect}\n  MENU = #{menu}\n",
-           "  SOURCE = <<'#{SCRIPT_END}'\n#{source}\n#{SCRIPT_END}\nend\n",
+           "  SOURCE = #{script_heredoc(live_source(program), SCRIPT_END)}",
+           shell ? script_shell_text(shell) : "  SHELL = nil\n", "end\n",
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
         end
 
@@ -125,6 +132,9 @@ module VBlank
                           vblank/graphics/menu_font.rb vblank/live/window_menu.rb vblank/live/lateness.rb vblank/live/rate.rb
                           vblank/live/menu.rb vblank/live/settings.rb vblank/live/settings_file.rb
                           vblank/live/session.rb vblank/live/sdl.rb].freeze
+        # What a shell's script carries besides: the check of a kept pack, the words for a wrong copy,
+        # and the shell itself, each needing nothing of the library the script does not carry.
+        SHELL_PARTS = %w[vblank/ir/start_file.rb vblank/original/releases.rb vblank/live/shell.rb].freeze
         SCRIPT_MAIN = "rg_script_main.rb" # In RUNTIME_DIR: what plays the game, last in a script
         # The line the game's Ruby ends at in a script, which no line of the game's can be, and the
         # line the menu's letters (Graphics::MenuFont::PATH, carried after the parts) end at.
@@ -132,15 +142,52 @@ module VBlank
         FONT_END = "RG_END_OF_THE_LETTERS"
         private_constant :MAGIC_COMMENT, :SCRIPT_TOP, :SCRIPT_END, :FONT_END
 
-        private
-
-        # The game as Ruby with its runtime and the live driver: the body of a LiveGame's class.
-        # Anything the runtime lacks is refused.
+        # The game as Ruby with its runtime and the live driver: the body of a LiveGame's class, which
+        # LiveGame.new makes a game of each time it is asked. Anything the runtime lacks is refused.
         def live_source(program)
           lowering = Lowering.new(program)
           text, gaps = lowering.text_and_gaps(LIVE_FUNCTIONS)
           refuse_runtime_gaps!(gaps)
           [lowering.console_text, *runtime_text(RUNTIME + [LIVE_DRIVER]), text].join
+        end
+
+        private
+
+        # +text+ as a heredoc ending at the line +ending+, which no line of it may be; +after+ is what
+        # follows it on the line it starts on (a comma between arguments).
+        def script_heredoc(text, ending, after = "")
+          raise BuildError, "the game's Ruby has a line #{ending}, which ends it early in a script" if text.lines.include?("#{ending}\n")
+
+          "<<'#{ending}'#{after}\n#{text}\n#{ending}\n"
+        end
+
+        # A string of bytes as Ruby that reads back the same bytes.
+        def script_bytes(bytes) = "#{bytes.b.inspect}.b"
+
+        # VBlankScript::SHELL, the Live::Shell for +shell+ (an Original::Shell), written out: its three
+        # kinds of program as Ruby in heredocs, and its facts as literals.
+        def script_shell_text(shell)
+          file = shell.pack_form.start_file
+          checks = file.checks.map { |check| "VBlank::IR::StartFile::Check.new(at: #{check.at}, bytes: #{script_bytes(check.bytes)})" }
+          releases = shell.releases.list.map do |release|
+            "VBlank::Original::Release.new(name: #{release.name.inspect}, sha1: #{release.sha1.inspect}, md5: #{release.md5.inspect}, " \
+              "size: #{release.size.inspect}, read: #{release.read})"
+          end
+          unpackings = shell.unpackings.each_with_index.map do |(name, unpacking), number|
+            "      #{name.inspect} => #{script_heredoc(live_source(unpacking.program), "#{SCRIPT_END}_UNPACKING_#{number}", ',')}"
+          end
+          ["  SHELL = VBlank::Live::Shell.new(\n",
+           "    title: #{shell.title.to_s.inspect}, folder: #{shell.folder.inspect},\n",
+           "    game: SOURCE, menu: #{script_heredoc(live_source(shell.menu), "#{SCRIPT_END}_MENU", ',')}",
+           "    unpackings: {\n#{unpackings.join}    },\n",
+           "    releases: VBlank::Original::Releases.new(title: #{shell.releases.title.to_s.inspect}, list: [#{releases.join(', ')}]),\n",
+           "    start_file: VBlank::IR::StartFile.new(called: #{file.called.inspect}, size: #{file.size}, checks: [#{checks.join(', ')}]),\n",
+           "    before_sha1: #{script_bytes(shell.pack_form.before_sha1)}, after_sha1: #{script_bytes(shell.pack_form.after_sha1)},\n",
+           "    names: VBlank::Live::Shell::UnpackingNames.new(bytes: #{Original::Unpacking::BYTES.to_s.inspect}, " \
+           "finished: #{Original::Unpacking::FINISHED.to_s.inspect}, fault_kind: #{Original::Unpacking::FAULT_KIND.to_s.inspect}),\n",
+           "    menu_choice: #{Original::Shell::MENU_CHOICE.inspect},\n",
+           "    choices: { #{Original::Shell::LOAD_ROM} => :load_rom, #{Original::Shell::SETTINGS} => :settings }\n",
+           "  )\n"].join
         end
 
         def refuse_runtime_gaps!(gaps)

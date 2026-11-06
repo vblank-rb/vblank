@@ -375,6 +375,13 @@ module VBlank
                                  game's data pack out. The game reads the pack
                                  from a file as it starts (a program takes
                                  --data-pack PATH). A cartridge cannot do this.
+        --shell                  With --format ruby: build the game as a shell,
+                                 with none of the original's data in it. The
+                                 first time it is played, a menu asks for the
+                                 player's copy of the original (Load ROM). The
+                                 shell checks it, makes the data pack from it,
+                                 and keeps the pack. After that, the game
+                                 starts at once.
         #{SET}
 
       Measuring (see vblank profile --help):
@@ -436,6 +443,7 @@ module VBlank
     option :global, banner: "NAME"
     option :data, default: "inline", enum: %w[inline separate]
     option :pack_at_start, type: :boolean, default: false
+    option :shell, type: :boolean, default: false
     def build(game_file)
       refuse_web_options_out_of_place!
       refuse_pack_at_start_on_cartridge!
@@ -836,6 +844,15 @@ module VBlank
                                  $XDG_CONFIG_HOME/vblank if that is set, else
                                  ~/.config/vblank on Linux, else the folder
                                  your computer keeps for programs.
+        --shell                  Build the game as a shell, with none of the
+                                 original's data in it, as a player gets it.
+                                 The first time, a menu asks for your copy of
+                                 the original (Load ROM). The shell checks it,
+                                 makes the game's data pack from it, and keeps
+                                 the pack. After that, the game starts at once.
+        --pack-folder DIR        With --shell, keep the data pack in DIR.
+                                 Default: the folder your computer keeps for
+                                 the game.
         --pictures N             Stop after the window has shown N pictures.
         --uncapped               Do not wait for the end of each frame. The game
                                  then runs as fast as this computer can play it.
@@ -943,9 +960,12 @@ module VBlank
     option :players, type: :numeric, banner: "N"
     option :input_delay, type: :numeric, banner: "PASSES"
     option :set, type: :array, banner: "NAME=VALUE", default: []
+    option :shell, type: :boolean, default: false
+    option :pack_folder, banner: "DIR"
     def run_game(game_file)
       refuse_mismatched_play_options!
       refuse_mismatched_match_options!
+      refuse_mismatched_shell_options!
       return serve_in_browser(game_file) if options[:browser]
 
       refuse_cartridge_file!(game_file)
@@ -960,19 +980,12 @@ module VBlank
       return play_unattended(game_file, way) if unattended?
 
       game = load_game(game_file)
+      return say_rate(game, *play_shell_in_window(game)) if options[:shell]
+
       program = program_to_run(game)
       require_relative "live"
       network = network_to_play(game_file, game, program)
-      rate = play_in_window(game, program, live_session(game, program, network), network)
-      # The game moves on one frame for each picture, so the pictures a second are its speed. A
-      # game that stopped itself before its first picture has no speed to say.
-      if rate.passes.positive?
-        say format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
-                   pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
-                   console: 1 / program.described_console.frame_seconds)
-        say rate.lateness.words if rate.lateness && !match_without_window?
-      end
-      say_stopped_itself(game, rate) if rate.stopped_itself?
+      say_rate(game, program, play_in_window(game, program, live_session(game, program, network), network))
     end
 
     desc "bot BOT_FILE", "Join a match as a player that is a Ruby script"
@@ -1184,6 +1197,71 @@ module VBlank
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game.title} in a window yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Build a cartridge, or use vblank preview."
+    end
+
+    # How fast +rate+ (a play of +program+) went, said once the play stops. The game moves on one
+    # frame for each picture, so the pictures a second are its speed. A game that stopped itself
+    # before its first picture, or a shell stopped before the game played (nil), has none to say.
+    def say_rate(game, program, rate)
+      return unless rate
+
+      if rate.passes.positive?
+        say format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
+                   pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
+                   console: 1 / program.described_console.frame_seconds)
+        say rate.lateness.words if rate.lateness && !match_without_window?
+      end
+      say_stopped_itself(game, rate) if rate.stopped_itself?
+    end
+
+    # --shell: +game+ built as a shell (Original::Shell) and played in a window as a player gets it
+    # (Live::Shell). Gives back the game's program and how fast it went, nil when the player stopped
+    # before the game played.
+    def play_shell_in_window(game)
+      say "Building #{game.title} as a shell - Please wait."
+      built = VBlank::Original::Shell.build(game, console: console_to_play(game), settings: given_settings,
+                                                  progress: VBlank::Messages::Progress.to($stderr))
+      require_relative "live"
+      shell = VBlank::Live::Shell.from(built)
+      console = built.game.described_console
+      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
+                                     height: console.screen_height, menu: game.menu?,
+                                     settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir])
+      warn window.settings_problems_message if window.settings_problems_message
+      folder = options[:pack_folder] || window.folder_for(shell.folder) or
+        raise Thor::Error, "#{game.title} cannot make the folder to keep its data pack in. Give one with --pack-folder."
+      say "Playing #{game.title} as a shell. Its data pack is kept in #{folder}."
+      rate = shell.play(window, folder_path: folder, choose_copy: -> { window.choose_file }, open_settings: -> { window.open_menu },
+                                refused: lambda { |words|
+                                  warn words
+                                  window.notice(words)
+                                }, play_game: ->(playing) { live_shell_session(playing).play(window) })
+      [built.game, rate]
+    rescue ArgumentError, VBlank::BuildError => e
+      raise Thor::Error, e.message
+    rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
+      raise Thor::Error, e.message
+    ensure
+      window&.close
+    end
+
+    # The game a shell plays once it has its pack, as #live_session plays a game.
+    def live_shell_session(game)
+      VBlank::Live::Session.new(game: game, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
+                                collect_garbage: options[:collect_garbage])
+    end
+
+    # A shell is played by a person, in a window, as Ruby.
+    def refuse_mismatched_shell_options!
+      if !options[:shell] && options[:pack_folder]
+        raise Thor::Error, "--pack-folder is where a shell keeps its data pack. Add --shell, or take it out."
+      end
+      return unless options[:shell]
+
+      word = { browser: "--browser", tape: "--tape", script: "--script", host: "--host", join: "--join",
+               on: "--on" }.find { |name, _word| options[name] }&.last or return
+      raise Thor::Error, "--shell plays the game in a window, for a person, as Ruby. #{word} does not go with it. " \
+                         "Take one of them out."
     end
 
     # The options only a window has, by the words a person typed.
@@ -1746,7 +1824,7 @@ module VBlank
       console = console_to_play(game)
       path = options[:output] || file_beside(game, game_file, console, "-ruby.rb")
       VBlank::IR::Backends::Ruby.new.build_script(game, path, console: console, settings: given_settings,
-                                                  pack_at_start: options[:pack_at_start])
+                                                  pack_at_start: options[:pack_at_start], shell: options[:shell])
       say "Built #{path}. To play it, run: ruby #{File.basename(path)}"
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot write #{game.title} as Ruby yet. The game needs a part of VBlank " \
@@ -1777,6 +1855,10 @@ module VBlank
     # --pack-at-start leaves a game's data pack out, which only a build for a computer can do: a
     # cartridge holds its own data (Builder::DataPacks).
     def refuse_pack_at_start_on_cartridge!
+      if options[:shell] && options[:format] != "ruby"
+        raise Thor::Error, "--shell works only with --format ruby now. A cartridge holds its own data, and the " \
+                           "desktop program and the web page cannot make their pack from a copy yet. Add --format ruby."
+      end
       return unless options[:pack_at_start] && !%w[native web ruby].include?(options[:format])
 
       raise Thor::Error, "--pack-at-start works only with --format native, web or ruby. A cartridge holds its own " \

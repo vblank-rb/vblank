@@ -53,6 +53,9 @@ module VBlank
       # interpreter runs.
       attr_reader :program
 
+      # The game's data pack (DSL::DataPack), or nil for a game with none.
+      def declared_data_pack = @builder.declared_data_pack
+
       # Did the block stop early at a `debug_halt`? A truncated tree is deliberate, so the
       # guardrails and the ROM validation are skipped for one — they would report on a
       # program the author already knows is half a program.

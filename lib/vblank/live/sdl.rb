@@ -315,6 +315,34 @@ module VBlank
         true
       end
 
+      # The menu over the picture opened, as F1 opens it: a shell's SETTINGS (Live::Shell).
+      def open_menu
+        @menu.toggle if @has_menu && !@menu.open?
+      end
+
+      # The folder the operating system keeps for vblank and +name+ (a game's), where the desktop
+      # build keeps a game's save: made if it is not there, nil when it cannot be made.
+      def folder_for(name) = pref_folder(name)
+
+      # The path of a file the player picks in the operating system's own window for opening one,
+      # or nil when they pick none. SDL answers through a routine it calls as it reads the window's
+      # events, so the window is read and drawn until it does, and stays as it was meanwhile.
+      def choose_file
+        answer = nil
+        answered = false
+        caller = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT]) do |_, list, _|
+          first = list.null? ? 0 : list[0, Fiddle::SIZEOF_VOIDP].unpack1("J")
+          answer = Fiddle::Pointer.new(first).to_s unless first.zero?
+          answered = true
+        end
+        @sdl.SDL_ShowOpenFileDialog(caller, nil, @window, nil, 0, nil, false)
+        until answered || @closed
+          read_event if @sdl.SDL_WaitEventTimeout(@event, 50) != 0
+          redraw_window
+        end
+        answer
+      end
+
       # The window's size on the screen, in the computer's pixels, as SDL reports it.
       def window_size
         size = Fiddle::Pointer.malloc(8, Fiddle::RUBY_FREE)
@@ -449,6 +477,7 @@ module VBlank
           extern "char SDL_PutAudioStreamData(void*, void*, int)"
           extern "int SDL_GetAudioStreamQueued(void*)"
           extern "void SDL_DestroyAudioStream(void*)"
+          extern "void SDL_ShowOpenFileDialog(void*, void*, void*, void*, int, const char*, bool)"
         end
       end
 

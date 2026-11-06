@@ -37,15 +37,21 @@ module VBlank
       # How many bytes a building block writes between one wait for the next frame and the next.
       PROGRESS_BYTES = 256
 
-      def initialize(builder, copy:, pack:, faults:)
+      # +before_wait+ names a routine called before each wait for the next frame (a shell's
+      # progress bar, Builder::DataPacks#define_unpacking_progress), or is nil for none.
+      def initialize(builder, copy:, pack:, faults:, before_wait: nil)
         @builder = builder
         @copy = copy
         @pack = pack
         @faults = faults
+        @before_wait = before_wait
         @done = builder.var(Original::Unpacking::BYTES_DONE, 0)
         @block_variables = {}
         @block_routines = {}
       end
+
+      # How many bytes the building blocks have written so far, a variable of the routine's.
+      def bytes_done = @done
 
       # The byte at +at+ in the copy, 0 to 255. +at+ may be worked out as the game runs. A place
       # outside the copy is a fault the build stops on.
@@ -123,8 +129,14 @@ module VBlank
         block_variable(:slot_number).store!(slot.number)
         block_variable(:count).store!(count)
         @builder.call(define_block_routine(kind))
-        @builder.wait_vblank
+        emit_wait
         nil
+      end
+
+      # A wait for the next frame, with the routine to call before it.
+      def emit_wait
+        @builder.call(@before_wait) if @before_wait
+        @builder.wait_vblank
       end
 
       def define_block_routine(kind)
@@ -142,7 +154,7 @@ module VBlank
         if out - mark >= PROGRESS_BYTES
           @done.increase!(out - mark)
           mark.store!(out)
-          @builder.wait_vblank
+          emit_wait
         end
       end
 

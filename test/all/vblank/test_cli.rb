@@ -1102,6 +1102,36 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A shell makes its pack on the player's machine, which only the Ruby file does so far.
+  def test_shell_is_refused_but_for_the_ruby_file
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      out, status = cli("build", "demo.rb", "--shell", "--format", "web", dir: dir)
+      refute status.success?, "--shell on a web page should fail"
+      assert_match(/--shell works only with --format ruby/, out)
+    end
+  end
+
+  # A game with no data pack holds no original's data, so there is no shell to make of it.
+  def test_shell_of_a_game_with_no_data_pack_is_refused
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      out, status = cli("build", "demo.rb", "--shell", "--format", "ruby", dir: dir)
+      refute status.success?, "--shell on a game with no data pack should fail"
+      assert_match(/has no data_pack/, out)
+    end
+  end
+
+  # --pack-folder is where a shell keeps its pack, so it means nothing without --shell.
+  def test_pack_folder_without_shell_is_refused
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      out, status = cli("run", "demo.rb", "--pack-folder", dir, dir: dir)
+      refute status.success?, "--pack-folder without --shell should fail"
+      assert_match(/Add --shell/, out)
+    end
+  end
+
   # A computer there is no build for is refused before anything is built, in the command's own
   # words for the ones there are.
   def test_format_native_rejects_an_unknown_target
