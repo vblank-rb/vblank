@@ -315,6 +315,101 @@ class TestSession < Minitest::Test
     assert_match(/list :trail is full/, error.message)
   end
 
+  # THE PLAY SAYS WHICH PASSES RAN LATE: the game's own work over a pass, from the buttons handed
+  # to it to the picture it hands back, against a frame. The pass the game sets itself up in is
+  # left out, since it is meant to take long.
+  def test_a_play_counts_the_passes_that_took_longer_than_a_frame
+    program = counting_game
+    frame = frame_seconds(program)
+    rate = Session.new(program).play(device_whose_game_works(2 * frame, frames: 4))
+
+    assert_equal [3, 3], [rate.lateness.passes, rate.lateness.late_passes]
+    assert_equal frame, rate.lateness.most_late_seconds
+  end
+
+  def test_a_play_quicker_than_its_frames_has_no_late_pass
+    program = counting_game
+    frame = frame_seconds(program)
+    rate = Session.new(program).play(device_whose_game_works(frame / 4, frames: 4))
+
+    assert_equal [3, 0], [rate.lateness.passes, rate.lateness.late_passes]
+  end
+
+  # COLLECTING GARBAGE ONCE THE GAME HAS SET ITSELF UP leaves the objects the build and the setup
+  # made behind them, so a big collection does not land in the middle of play. It changes when Ruby
+  # collects, never what the game does: the pictures are the same with it and without it.
+  #
+  # The game makes garbage on every pass, so the collection has something to find: each pass
+  # makes the frame's sound (a beep sounding all the while) and a picture with a number drawn in
+  # it, and a list goes round. Every picture and the game's whole state after every pass are
+  # compared.
+  def test_collecting_after_setup_changes_no_picture_and_no_variable
+    program = garbage_making_game
+    with, with_states = play_watching_state(program, collect_garbage: true)
+    without, without_states = play_watching_state(program, collect_garbage: false)
+
+    assert_equal 60, with.pictures.size
+    assert_equal without.pictures.map(&:pixels), with.pictures.map(&:pixels)
+    assert_equal without_states, with_states
+  end
+
+  def test_collecting_after_setup_is_said_in_the_lateness
+    rate = Session.new(garbage_making_game, collect_garbage: true).play(Headless.new(frames: 4))
+
+    refute_nil rate.lateness.setup_collection_seconds
+  end
+
+  # Uncapped, the play is measuring how fast the machine goes: no pass has a frame to be late
+  # against, so it says nothing about lateness, and it collects nothing of its own.
+  def test_an_uncapped_play_collects_no_garbage_and_says_no_lateness
+    session = Session.new(counting_game, uncapped: true, collect_garbage: true)
+    rate = session.play(Headless.new(frames: 4))
+
+    refute_predicate session, :collects_garbage?
+    assert_nil rate.lateness
+  end
+
+  # A game that makes garbage every pass, the way a game played as Ruby does: a beep sounding all
+  # the while (each frame's sound is new samples), a number drawn, a list pushed and shifted.
+  private def garbage_making_game
+    game do
+      enable_sound
+      x = var :x, 0
+      trail = list :trail, capacity: 8
+      game_loop do
+        beep 440, duty: :half, decay: :none, volume: 15 if x % 20 == 0
+        clear_screen :black
+        draw_number :x, 8, 8, :white, digits: 4
+        draw_rect_at x % 200, 40, 3, 3, :red
+        trail.shift if trail.length == 8
+        trail.push x
+        x += 1
+      end
+    end
+  end
+
+  # Plays +program+ for 60 pictures, and gives back the device and the game's whole state (as
+  # LiveGame#state_crc says it) after each pass.
+  private def play_watching_state(program, collect_garbage:)
+    live = VBlank::IR::Backends::Ruby.new.live_game(program)
+    states = []
+    device = Headless.new(frames: 60)
+    device.define_singleton_method(:show) do |pixels, width, height|
+      super(pixels, width, height)
+      states << live.state_crc
+    end
+    Session.new(game: live, collect_garbage: collect_garbage).play(device)
+    [device, states]
+  end
+
+  # A headless device whose every reading of the clock is +seconds+ after the last, so the game's
+  # pass between the session's two readings takes that long.
+  private def device_whose_game_works(seconds, frames:)
+    device = Headless.new(frames: frames)
+    device.define_singleton_method(:now) { @now += seconds }
+    device
+  end
+
   # A game that marks how many frames it has seen: one red pixel on the top row, that many
   # pixels in.
   private def counting_game

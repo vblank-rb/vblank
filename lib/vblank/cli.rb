@@ -806,6 +806,10 @@ module VBlank
       speaker, the window keeps the speed of the console by the clock, and
       shows fewer pictures than the game has frames.
 
+      When the play in a window stops, the command says how many frames took
+      longer than a frame of the console, and how much of that time Ruby spent
+      collecting garbage. With --uncapped, it does not say this.
+
       Options:
         --console NAME           #{CONSOLE_CHOICES}:
                                  which console to play the game as. Default:
@@ -830,6 +834,11 @@ module VBlank
         --no-yjit                Do not use YJIT, the part of Ruby that makes
                                  the game run faster. Use this to measure the
                                  speed without it. Default: --yjit.
+        --no-collect-garbage     Do not collect Ruby's garbage once the game
+                                 has set itself up. Ruby then collects only
+                                 when it needs to, which can stop the game in
+                                 the middle of a frame. Default:
+                                 --collect-garbage.
         --record-sound FILE      When the play stops, write the sound that the
                                  game gave the speaker to FILE, a .wav file.
                                  Use this to listen to a sound problem again.
@@ -902,6 +911,7 @@ module VBlank
     option :pictures, type: :numeric, banner: "N"
     option :uncapped, type: :boolean, default: false
     option :yjit, type: :boolean, default: true
+    option :collect_garbage, type: :boolean, default: true
     option :record_sound, banner: "FILE"
     option :settings_file, banner: "FILE"
     option :config_dir, banner: "DIR"
@@ -950,6 +960,7 @@ module VBlank
         say format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
                    pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
                    console: 1 / program.described_console.frame_seconds)
+        say rate.lateness.words if rate.lateness && !match_without_window?
       end
       say_stopped_itself(game, rate) if rate.stopped_itself?
     end
@@ -1158,7 +1169,8 @@ module VBlank
     # The game built as Ruby, ready to play: a game that needs something the Ruby runtime cannot do
     # yet is refused here, before a window opens.
     def live_session(game, program, network = nil)
-      VBlank::Live::Session.new(program, uncapped: options[:uncapped], stop_after_passes: options[:pictures], network: network)
+      VBlank::Live::Session.new(program, uncapped: options[:uncapped], stop_after_passes: options[:pictures], network: network,
+                                         collect_garbage: options[:collect_garbage] && !match_without_window?)
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game.title} in a window yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Build a cartridge, or use vblank preview."
@@ -1457,6 +1469,10 @@ module VBlank
 
     # The match played with no window: this computer's player holds what --keys says, and every notice
     # about the match is said as it comes.
+    # A match played with no window plays on a clock that moves only as the play does
+    # (Live::Headless), so no frame of it can be late, and the session collects no garbage there.
+    def match_without_window? = !!(options[:host] || options[:join]) && options[:window] == false
+
     def play_match_without_window(session, network)
       keys = options[:keys].map(&:to_sym)
       device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words })

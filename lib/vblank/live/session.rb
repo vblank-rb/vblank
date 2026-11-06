@@ -62,16 +62,22 @@ module VBlank
       # +stop_after_passes+ is how many passes to play at most, whatever the device says. +game+, in
       # place of a program, is a game built as Ruby already (IR::Backends::Ruby::LiveGame), which is
       # how a game written out as one Ruby file (Ruby#script) plays with no builder to hand.
-      def initialize(program = nil, game: nil, uncapped: false, stop_after_passes: nil, network: nil)
+      # +collect_garbage+ runs one full collection once the game has set itself up
+      # (#collect_garbage_after_setup); vblank run and a script turn it on, and uncapped it does nothing.
+      def initialize(program = nil, game: nil, uncapped: false, stop_after_passes: nil, network: nil, collect_garbage: false)
         refuse_match_for_one_player!(program) if network && program
         @game = game || IR::Backends::Ruby.new.live_game(program)
         @network = network
         @uncapped = uncapped
+        @collect_garbage = collect_garbage && !uncapped
         @stop_after_passes = stop_after_passes
         @frame_seconds = @game.frame_seconds
         @pass_buttons = IR::Buttons::PassButtons.new # each connected player's buttons, a pass at a time
         @events_announced = 0 # how many of the match's events the device has been told
       end
+
+      # Whether this play runs the full collection after setup: asked for, and not uncapped.
+      def collects_garbage? = @collect_garbage
 
       # Plays once, on +device+, until it says stop or the game ends, and gives back how fast it
       # went (Rate). A game that does something its rules refuse (a push onto a full list) stops
@@ -82,7 +88,7 @@ module VBlank
         watch_game_for_device
         stopped_on = @game.play(self, match_seed: @network&.seed, local_player: @network&.player)
         rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
-                        stopped_itself: !stopped_on.nil?)
+                        stopped_itself: !stopped_on.nil?, lateness: @uncapped ? nil : @lateness.lateness)
         keep_showing(stopped_on) if stopped_on
         rate
       ensure
@@ -99,6 +105,8 @@ module VBlank
         @seconds_paused = 0
         @fast_frame_began = nil # when the frame being fast forwarded through began, or nil
         @fast_forward_passes = 0 # passes played in it
+        @lateness = LatenessTally.new(frame_seconds: @frame_seconds)
+        @pass_began = nil # when the game was handed the buttons for the pass it is playing; nil in the first
         @started = @frame_began = @device.now
         @device.wait_until(@frame_began)
       end
@@ -118,6 +126,8 @@ module VBlank
       # handed over once.
       def buttons_after(pixels, left, right = left)
         speed = @uncapped ? 1 : @device.fast_forward_speed(@passes + 1)
+        record_pass_time(speed)
+        collect_garbage_after_setup if @collect_garbage && @passes.zero?
         if speed > 1
           play_fast_forward(pixels, speed)
         else
@@ -128,14 +138,49 @@ module VBlank
         return nil if @device.stop? || @passes == @stop_after_passes
 
         held = @device.held_buttons(@passes)
-        return @pass_buttons.masks(held) unless @network
+        masks = @network ? exchange_buttons(held) : @pass_buttons.masks(held)
+        @pass_began = @device.now
+        @collection_began = LatenessTally.collection_clock
+        masks
+      end
 
+      private
+
+      # Every connected player's buttons for the pass that starts, this machine's +held+ among them.
+      def exchange_buttons(held)
         masks = @network.exchange(pass: @passes, local_mask: IR::Buttons.player_mask(Array(held), 1), game: @game)
         announce_new_events
         masks
       end
 
-      private
+      # THE GAME'S OWN WORK OVER THE PASS JUST ENDED, from the buttons handed to it to now, and the
+      # time Ruby spent collecting garbage inside it, into the play's Lateness. The pass the game
+      # sets itself up in is left out, as is one played in fast forward: both are meant to run long.
+      def record_pass_time(speed)
+        return unless @pass_began
+        return @lateness.record_fast_forward if speed > 1
+
+        @lateness.record(work_seconds: @device.now - @pass_began,
+                         collection_seconds: LatenessTally.seconds_collecting_since(@collection_began))
+      end
+
+      # ONE FULL COLLECTION, ONCE THE GAME HAS SET ITSELF UP. Ruby keeps young objects apart from old
+      # ones and mostly looks only at the young; now and then it looks at every object it has, a full
+      # collection, and how long that takes grows with everything alive. Building a big game leaves
+      # a great many objects (the game's tree, its pictures, the setup's own), and left alone Ruby
+      # gets round to a full look at them some way into play, where it stops one pass for many
+      # frames. Run here, at the end of the pass the game set itself up in, which is late already,
+      # it finds that work done when play starts. Measured on a big port, it took the one long stop
+      # out of play; on a small game it costs a few milliseconds once and changes nothing after.
+      #
+      # It changes when Ruby collects, never what the game does. Ruby's own collecting stays on as
+      # it was, so a game that makes garbage every pass never grows without limit. Compacting the
+      # heap as well (GC.compact) was measured too, and made a small game collect far more often.
+      def collect_garbage_after_setup
+        began = LatenessTally.collection_clock
+        GC.start(full_mark: true, immediate_sweep: true)
+        @lateness.record_setup_collection(LatenessTally.seconds_collecting_since(began))
+      end
 
       # A game for one player is built without what a match needs (IR::Program#several_players?), so it plays in none.
       def refuse_match_for_one_player!(program)

@@ -8,9 +8,10 @@ module VBlank
     # counts one frame a pass, runs that much slower. Fast forward plays more passes than frames,
     # and the game runs that much faster. The seconds run to the end of the last frame
     # the play reached. +stopped_itself+ is a game that halted or came to its end, rather than one
-    # the player stopped.
-    Rate = Data.define(:passes, :frames, :seconds, :stopped_itself) do
-      def initialize(passes:, frames:, seconds:, stopped_itself: false) = super
+    # the player stopped. +lateness+ is which passes ran longer than a frame (Lateness), or nil
+    # played uncapped, where no pass has a frame to be late against.
+    Rate = Data.define(:passes, :frames, :seconds, :stopped_itself, :lateness) do
+      def initialize(passes:, frames:, seconds:, stopped_itself: false, lateness: nil) = super
 
       def stopped_itself? = stopped_itself
 

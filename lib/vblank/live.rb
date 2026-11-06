@@ -12,6 +12,7 @@
 # through Fiddle, which a game that only builds cartridges never needs, and Fiddle is loaded only
 # when a window is asked for.
 require_relative "../vblank"
+require_relative "live/lateness" # which passes ran longer than a frame, and how much was collecting garbage
 require_relative "live/rate" # how fast the play went: passes and frames a second
 require_relative "live/session" # the game played a pass at a time through a device
 require_relative "live/headless" # ...a device with no screen, whose clock a test moves

@@ -17,6 +17,7 @@ module VBlankScript
       parser.on("--scale N", Integer, "The window is N times the size of the screen. Default: the size in the settings file.")
       parser.on("--pictures N", Integer, "Stop after the window has shown N pictures.")
       parser.on("--uncapped", "Do not wait for the end of each frame, to measure the speed.")
+      parser.on("--[no-]collect-garbage", "Collect Ruby's garbage once the game has set itself up. Default: on.")
       parser.on("--settings-file FILE", "Read and write the window's settings in FILE only.")
       parser.on("--config-dir DIR", "Keep the window's settings files in DIR.")
     end.parse!(arguments, into: options)
@@ -41,12 +42,14 @@ module VBlankScript
     warn window.settings_problems_message if window.settings_problems_message
     puts "Playing #{TITLE}. #{'Press F1 or ` for the menu. ' if MENU}Press P to pause. Hold Tab to play fast. " \
          "Press Escape to stop."
-    rate = VBlank::Live::Session.new(game: game, uncapped: options[:uncapped], stop_after_passes: options[:pictures])
+    rate = VBlank::Live::Session.new(game: game, uncapped: options[:uncapped], stop_after_passes: options[:pictures],
+                                     collect_garbage: options.fetch(:"collect-garbage", true))
                                 .play(window)
     if rate.passes.positive?
       puts format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
                   pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
                   console: 1 / game.frame_seconds)
+      puts rate.lateness.words if rate.lateness
     end
     puts "#{TITLE} stopped itself. Its last picture stayed in the window." if rate.stopped_itself?
   ensure
