@@ -2,6 +2,7 @@
 
 require_relative "backends/derived_names"
 require_relative "backends/fade_steps"
+require_relative "backends/palette_walk"
 require_relative "backends/blocks"
 require_relative "backends/sprite_cut"
 require_relative "backends/sprite_lines"

@@ -32,17 +32,18 @@ module VBlank
           # the whole of it (rt_colors_written), so the colours change on the frame the game said, with the
           # sprite table and the scroll. A colour that is not changed is not worked out again.
           #
-          #   rt_tint_to(mode, steps, color)         D0 = 1 black, 2 white, 3 the colour in D2; D1 the 256ths
+          #   rt_tint_to(mode, steps, color)         D0 = 0 black, 1 white, 2 the colour in D2; D1 the 256ths
           #   rt_colors_hold(table, which, palette)  a list's other colours, see Runtime::Tiles's tables
           #   rt_backdrop_hold(table, which)         a backdrop that follows a list, its colour in that set
           #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to say it
           #   rt_colors_written                      the blank's work: the copy written to the colour memory
           module Tint
-            MODE = "rt tint" # the fade or tint in force: its mode, its steps, 256 less its steps, and the
-            STEPS = 2 #           tint colour's three channels, a word each
+            MODE = "rt tint" # the fade or tint in force: its mode, its steps, 256 less its steps, the tint
+            STEPS = 2 #           colour's three channels, and the colour as it was handed over, a word each
             KEEP = 4
             TARGET = 6
-            TINT_BYTES = 12
+            COLOR = 12
+            TINT_BYTES = 14
             COLORS = "rt colors" # the game's colours, a word for each of the 64 places of the colour memory
             USED = "rt colors used" # how many places of each palette the game uses, a word each
             DIRTY = "rt colors dirty"
@@ -50,10 +51,9 @@ module VBlank
             OWED = "rt cram owed" # 1 while CRAM is not yet in the colour memory
             SETS = "rt colors sets" # for each palette, the set of a list it holds now (a long), or nought
 
-            NONE = 0
-            TOWARD_BLACK = 1
-            TOWARD_WHITE = 2
-            TOWARD_COLOR = 3
+            TOWARD_BLACK = PaletteWalk::TOWARD_BLACK
+            TOWARD_WHITE = PaletteWalk::TOWARD_WHITE
+            TOWARD_COLOR = PaletteWalk::TOWARD_COLOR
 
             module_function
 
@@ -131,8 +131,23 @@ module VBlank
             end
 
             # rt_tint_to: the fade or tint in force, from now on. The colour's channels are kept apart.
+            # Said the same as the one in force, it does nothing, so a game that says its tint every
+            # pass works its colours out only on the passes it changes (PaletteWalk). No steps at all is
+            # the colours as they are, whatever they were walked toward.
             def emit_tint_to(asm, at)
               asm.label("rt_tint_to")
+              asm.cmp(:w, at.call(MODE, STEPS), asm.d(1))
+              asm.branch(:ne, "rt_tint_to_changed")
+              asm.tst(:w, asm.d(1))
+              asm.branch(:eq, "rt_tint_to_same")
+              asm.cmp(:w, at.call(MODE), asm.d(0))
+              asm.branch(:ne, "rt_tint_to_changed")
+              asm.cmp(:w, at.call(MODE, COLOR), asm.d(2))
+              asm.branch(:ne, "rt_tint_to_changed")
+              asm.label("rt_tint_to_same")
+              asm.rts
+              asm.label("rt_tint_to_changed")
+              asm.move(:w, asm.d(2), at.call(MODE, COLOR))
               asm.move(:w, asm.d(0), at.call(MODE))
               asm.move(:w, asm.d(1), at.call(MODE, STEPS))
               asm.move(:w, asm.imm(256), asm.d(3))
@@ -160,7 +175,7 @@ module VBlank
                 asm.move(:w, asm.d(0), asm.d(2))
                 asm.and(:w, asm.imm(31), asm.d(2))
                 asm.lsr(:w, 5, asm.d(0))
-                asm.tst(:w, at.call(MODE))
+                asm.tst(:w, at.call(MODE, STEPS)) # no steps: the colour as it is, whatever it was walked toward
                 asm.branch(:eq, "#{done}_cut")
                 asm.cmp(:w, asm.imm(TOWARD_WHITE), at.call(MODE))
                 asm.branch(:eq, "#{done}_white")

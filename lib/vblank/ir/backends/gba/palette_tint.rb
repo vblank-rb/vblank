@@ -360,6 +360,13 @@ module VBlank
           def walk_steps(steps) = steps * walk_levels / FINE_WALK
 
           # The same for an amount the game works out.
+          #
+          # THE ADVANCE'S OWN WAY, beside Backends::PaletteWalk, which every console without a blend
+          # takes. The rules are the same; what differs is how they are counted. A game that asks for
+          # no fraction walks in thirty-seconds here, so the steps and the colour fit one state word
+          # that a single compare tells is unchanged and a single AND unpacks (#emit_state_steps),
+          # and the steps are held to the walk's range in the ARM that packs that word
+          # (#emit_tint_word), not before the call as PaletteWalk::Walk#steps holds them.
           def walk_steps_value(amount, fraction_bits)
             return FadeSteps.steps_value(amount, fraction_bits: fraction_bits, walked: true) if @fine
 

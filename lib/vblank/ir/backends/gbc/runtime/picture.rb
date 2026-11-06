@@ -637,10 +637,10 @@ module VBlank
             end
 
             # What a fade or a tint moves every colour toward: black, white, or a colour of the
-            # game's.
-            TOWARD_BLACK = 0
-            TOWARD_WHITE = 1
-            TOWARD_COLOR = 2
+            # game's, as every console's walk names them.
+            TOWARD_BLACK = PaletteWalk::TOWARD_BLACK
+            TOWARD_WHITE = PaletteWalk::TOWARD_WHITE
+            TOWARD_COLOR = PaletteWalk::TOWARD_COLOR
 
             # The palettes +numbers+ as runs of neighbours, [first, how many], for one walk each.
             def palette_runs(numbers)
@@ -649,7 +649,6 @@ module VBlank
 
             # A colour has three channels of five bits, red in the lowest.
             CHANNEL_MAX = 31
-            STEPS = FadeSteps::WALK
 
             # At power-on, with the screen off: every tile into the console's memory, every
             # palette into the copy and the console. The data is the game's (GBC::Art, by the
@@ -2644,7 +2643,7 @@ module VBlank
               asm.load_hl_sp(2)
               asm.load(:b, 12)
               asm.call("rt_take_args")
-              # BC = the steps, held to 0..256 by the lowering, so the high byte is 0 or 1.
+              # BC = the steps, held to 0..256 before the call (PaletteWalk::Walk#steps), so the high byte is 0 or 1.
               asm.load_high(:a, arg.call(2))
               asm.load(:c, :a)
               asm.load_high(:a, arg.call(2) + 1)

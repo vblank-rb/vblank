@@ -125,6 +125,9 @@ lowering made the routines a bend calls and the other did not):
   own. The Color's table is another shape and is not one of them.
 - `IR::Tunes.ranks_in_order`, `Backends::FadeSteps` — the order sound ranks are kept in, and a
   fade's steps.
+- `Backends::PaletteWalk` — a fade or tint that walks the colours: what the runtime is handed
+  (toward what, the colour, the steps held to their range) and the rules its runtime keeps (said
+  the same, it does nothing; worked out as the pass ends, sent in the blank).
 
 A third console that sees its cartridge a bank at a time starts from these. A decision found
 written in two lowerings goes here rather than being fixed in each.

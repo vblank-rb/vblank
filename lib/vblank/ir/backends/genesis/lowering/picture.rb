@@ -94,28 +94,16 @@ module VBlank
               refuse_unmade!("a scene that says a backdrop of its own (`screen ... backdrop:`)")
             end
 
-            # Reference#exec_fade, which on a console that cannot blend walks the colours (IR::Fading): the
-            # whole screen toward black or white, in 256ths.
-            def emit_fade(node)
+            # Reference#exec_fade and #exec_tint, which on a console that cannot blend walk the colours
+            # (IR::Fading; PaletteWalk says what the walk is and when it is done, Runtime::Tint does it here).
+            def emit_fade(node) = emit_palette_walk(node)
+            def emit_tint(node) = emit_palette_walk(node)
+
+            def emit_palette_walk(node)
               return unless tiled? || painted?
 
-              mode = node.toward == :white ? Runtime::Tint::TOWARD_WHITE : Runtime::Tint::TOWARD_BLACK
-              runtime_call("rt_tint_to", [Build.int(mode), tint_steps(node), Build.int(0)])
-            end
-
-            # Reference#exec_tint: the whole screen toward a colour, in 256ths.
-            def emit_tint(node)
-              return unless tiled? || painted?
-
-              runtime_call("rt_tint_to", [Build.int(Runtime::Tint::TOWARD_COLOR), tint_steps(node),
-                                          Build.int(Graphics::Color.resolve(node.color))])
-            end
-
-            # How far the fade or tint has gone, in the walk's 256ths, held between none and all
-            # (FadeSteps.steps, worked out as the game runs).
-            def tint_steps(node)
-              steps = FadeSteps.steps_value(node.amount, fraction_bits: node.fraction_bits, walked: true)
-              Build.clamped(steps, Build.int(0), Build.int(256))
+              walk = PaletteWalk.walk_for(node)
+              runtime_call("rt_tint_to", [Build.int(walk.toward), walk.steps, Build.int(walk.color)])
             end
 
             def refuse_unmade_backgrounds!

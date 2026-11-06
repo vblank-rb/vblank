@@ -2007,26 +2007,17 @@ module VBlank
 
             # --- fades and tints ---
 
-            # Reference#exec_fade, as a fade that walks the colours (IR::Fading walks every fade on a
-            # console that cannot blend, Runtime::Tint): toward black or white by the 256ths
-            # the amount comes to. A fade placed under a layer or held to part of the screen needs a
-            # blend the build does not make.
-            def emit_fade(node)
-              refuse_unmade!("a fade held to part of the screen (`#{node.reaches}:`)") if node.reaches
-              refuse_unmade!("a fade under a layer (`under:`)") if node.under
-              toward = node.toward == :white ? Runtime::Tint::TOWARD_WHITE : Runtime::Tint::TOWARD_BLACK
-              runtime_call("rt_tint", [Build.int(toward), Build.int(0), walk_steps(node)])
-            end
+            # Reference#exec_fade and #exec_tint, as a walk of the colours (IR::Fading walks every fade
+            # on a console that cannot blend; PaletteWalk says what the walk is and when it is done,
+            # Runtime::Tint does it here). rt_tint holds the steps to their range itself (PaletteWalk
+            # says why), so they are handed over unheld.
+            def emit_fade(node) = emit_palette_walk(node)
+            def emit_tint(node) = emit_palette_walk(node)
 
-            # Reference#exec_tint: toward the colour, in 256ths.
-            def emit_tint(node)
-              runtime_call("rt_tint", [Build.int(Runtime::Tint::TOWARD_COLOR), Build.int(Graphics::Color.resolve(node.color)),
-                                       walk_steps(node)])
+            def emit_palette_walk(node)
+              walk = PaletteWalk.walk_for(node)
+              runtime_call("rt_tint", [Build.int(walk.toward), Build.int(walk.color), walk.unheld_steps])
             end
-
-            # FadeSteps' steps for a fade that walks the colours, worked out as the game runs;
-            # Runtime::Tint holds them to 0..32.
-            def walk_steps(node) = FadeSteps.steps_value(node.amount, fraction_bits: node.fraction_bits, walked: true)
 
             def sprites_hidden_flag = @sprites_hidden ||= keep_local(:sprites_hidden)
           end

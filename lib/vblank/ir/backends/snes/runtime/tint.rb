@@ -36,9 +36,9 @@ module VBlank
           #   rt_tint_prepare                 as a pass ends (JSL): the colours moved, if the fade changed
           #   rt_tint_upload                  in the blank (JSR): the moved colours, if they changed
           module Tint
-            TOWARD_BLACK = 0
-            TOWARD_WHITE = 1
-            TOWARD_COLOR = 2
+            TOWARD_BLACK = PaletteWalk::TOWARD_BLACK
+            TOWARD_WHITE = PaletteWalk::TOWARD_WHITE
+            TOWARD_COLOR = PaletteWalk::TOWARD_COLOR
             STEPS = FadeSteps::WALK
             CHANNEL_MAX = 31
 
@@ -246,7 +246,8 @@ module VBlank
               asm.rtl
             end
 
-            # The steps held to 0..256 and, when the fade is not the one in force, the colours moved.
+            # The steps held to 0..256 (PaletteWalk's range, held here once rather than at every call:
+            # see PaletteWalk) and, when the fade is not the one in force, the colours moved.
             def emit_tint(asm, memory, s, dims)
               state = memory[STATE]
               asm.label("rt_tint")
