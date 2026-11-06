@@ -122,6 +122,8 @@ module VBlank
                               words: lambda do |parts|
                                 "painting a pixel of canvas :#{parts[:canvas]}" if parts[:part] == "pixel"
                               end),
+        unpacking_part: Kind.new(spelling: "__unpacking__%{part}", parts: { part: PLAIN },
+                                 words: ->(parts) { "unpacking the original's data (#{parts[:part]})" }),
         canvas_font: Kind.new(spelling: "__letters_%{font}__%{part}", parts: { font: ANY, part: PLAIN },
                               words: nil),
         list_text_part: Kind.new(spelling: "__list_text_%{number}__%{part}", parts: { number: "\\d+", part: PLAIN },
@@ -239,6 +241,7 @@ module VBlank
         when :tile_pictures_part then "tile_pictures :#{parts[:group]}"
         when :draw_order then "draw_in_order ##{parts[:number]}"
         when :place_part then "place :#{parts[:place]}"
+        when :unpacking_part then "the data pack"
         else "list :#{list_name}"
         end
       end

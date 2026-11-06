@@ -18,7 +18,13 @@ class TestOriginalPack < Minitest::Test
      VBlank::Original::Slot.numbers(:speeds, at: 40, count: 3, width: :half, signed: false)]
   end
 
-  private def made = VBlank::Original::Pack.made_from(COPY, sha1: SHA1, build_version: "1.2", slots: slots)
+  # A pack holding +slot_list+ as each is cut from the copy, the way a pack of slots with at: is made.
+  private def cut_pack(slot_list = slots, sha1: SHA1, build_version: "1.2")
+    VBlank::Original::Pack.holding(slot_list.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: sha1,
+                                                                                                build_version: build_version)
+  end
+
+  private def made = cut_pack
 
   def test_each_slot_holds_the_bytes_of_the_copy_it_was_cut_from
     pack = made
@@ -73,7 +79,7 @@ class TestOriginalPack < Minitest::Test
   # A pack that exists can always be written: what its file cannot hold is refused as it is made.
   def test_a_build_version_too_long_for_the_file_is_refused
     refused = assert_raises(ArgumentError) do
-      VBlank::Original::Pack.made_from(COPY, sha1: SHA1, build_version: "1" * 256, slots: slots)
+      cut_pack(build_version: "1" * 256)
     end
 
     assert_match "1 to 255 bytes", refused.message
@@ -82,7 +88,7 @@ class TestOriginalPack < Minitest::Test
   def test_a_slot_name_too_long_for_the_file_is_refused
     long = VBlank::Original::Slot.colors(:"#{'a' * 256}", at: 0, count: 1)
     refused = assert_raises(ArgumentError) do
-      VBlank::Original::Pack.made_from(COPY, sha1: SHA1, build_version: "1", slots: [long])
+      cut_pack([long], build_version: "1")
     end
 
     assert_match "slot name", refused.message
@@ -90,14 +96,14 @@ class TestOriginalPack < Minitest::Test
 
   def test_a_sha1_that_is_not_forty_hex_digits_is_refused
     refused = assert_raises(ArgumentError) do
-      VBlank::Original::Pack.made_from(COPY, sha1: "abc", build_version: "1", slots: slots)
+      cut_pack(sha1: "abc", build_version: "1")
     end
 
     assert_match "40 hex digits", refused.message
   end
 
   def test_a_sha1_in_capitals_is_kept_and_read_back_in_lower_case
-    pack = VBlank::Original::Pack.made_from(COPY, sha1: SHA1.upcase, build_version: "1", slots: slots)
+    pack = cut_pack(sha1: SHA1.upcase, build_version: "1")
 
     assert_equal SHA1, pack.rom_sha1
     assert_equal SHA1, VBlank::Original::Pack.from_bytes(pack.to_bytes).rom_sha1

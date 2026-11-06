@@ -43,6 +43,7 @@ class TestMadeNames < Minitest::Test
     tile_run_pending: { number: 0 },
     painted_copies: {},
     canvas_part: { canvas: :box, part: :pixel },
+    unpacking_part: { part: :lz77 },
     canvas_font: { font: :tiny, part: :rows },
     list_text_part: { number: 1, part: :line },
     text_points_routine: {},

@@ -35,12 +35,11 @@ module VBlank
       MAGIC = "VBLANKPK".b.freeze
       FORMAT_VERSION = 1
 
-      # A pack of +slots+ (a list of Slot) cut from +copy+, the copy's whole file as a String, whose
-      # SHA-1 is +sha1+; +build_version+ names the build that made it.
-      def self.made_from(copy, sha1:, build_version:, slots:)
-        copy = copy.b
-        new(format_version: FORMAT_VERSION, rom_sha1: sha1, build_version: build_version.to_s,
-            slots: slots.to_h { |slot| [slot.name, slot.cut_from(copy)] })
+      # A pack holding +slot_bytes+ (each slot's bytes by name, in the pack's order), cut from the
+      # copy (Slot#cut_from) or written by the game's unpacking routine (Unpacking), made from the
+      # copy whose SHA-1 is +sha1+; +build_version+ names the build that made it.
+      def self.holding(slot_bytes, sha1:, build_version:)
+        new(format_version: FORMAT_VERSION, rom_sha1: sha1, build_version: build_version.to_s, slots: slot_bytes)
       end
 
       # The pack in the file at +path+.

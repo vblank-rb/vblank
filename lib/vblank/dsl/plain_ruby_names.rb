@@ -11,8 +11,10 @@ module VBlank
       # stays a plain number and costs nothing, and `target = hero_x` is a second name.
       class LocalNames
         # The verbs whose blocks hold code the game runs as it plays. A plain Ruby block, like
-        # the one given to `8.times`, runs while building however it is nested.
-        GAME_VERBS = %i[game_loop scene func each_pass every after repeat once_a_frame on_tick item].freeze
+        # the one given to `8.times`, runs while building however it is nested. `fill_from_copy` is
+        # a data pack's unpacking routine (`slots.fill_from_copy`), game code of a program of its own.
+        GAME_VERBS = %i[game_loop scene func each_pass every after repeat once_a_frame on_tick item
+                        fill_from_copy].freeze
 
         ARITHMETIC = %i[+ - * / % << >> -@ abs].freeze
 

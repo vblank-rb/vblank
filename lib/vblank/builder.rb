@@ -1066,6 +1066,16 @@ module VBlank
     # no `var` of its own to call.
     def self.in_use = Ractor.current[:vblank_builder_in_use]
 
+    # Run the block, then put back the builder that was in use before it, whatever the block made.
+    # Builder.new makes each new builder the one in use, so a builder made to build a program
+    # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
+    def self.keeping_builder_in_use
+      was = Ractor.current[:vblank_builder_in_use]
+      yield
+    ensure
+      Ractor.current[:vblank_builder_in_use] = was
+    end
+
     # +name+, or the first of name_2, name_3... that no variable has.
     def free_variable_name(name)
       return name unless @variables.include?(name)

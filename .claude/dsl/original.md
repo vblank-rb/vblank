@@ -14,7 +14,35 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `slots.tiles :walls, at: 0x1020, count: 40` — the Advance's 8x8 tiles of sixteen colours, 32 bytes each.
   - `slots.numbers :speeds, at: 0x2000, count: 8, width: :byte, signed: false` — numbers one, two or four bytes wide; `signed:` must be said.
 
-  A game has one `data_pack`.
+  A game has one `data_pack`. A slot with no `at:` is filled by the unpacking routine (below); a slot with
+  no `at:` and no routine is refused.
+- **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack. It is **game
+  code**, a program of its own (`Original::Unpacking`), so the same routine fills the pack as the game is
+  built (played to its `halt` on the interpreter) and, in a shell to come, on the player's machine. The
+  slots with `at:` are copied first, then the routine runs. Inside it, normal Ruby works as in a game block
+  (`while` on a number read from the copy is a loop in the routine), and:
+  - `copy.byte(at)` (0 to 255), `copy.half(at)`, `copy.word(at)`: low byte first; `big_endian: true` for
+    high byte first. `at` may be worked out as the routine runs.
+  - `copy.copy_bytes at:, count:, into: pack[:walls], start: 0` — bytes as they are.
+  - `copy.unpack_lz77 at:, into:, start: 0` and `copy.unpack_rle at:, into:, start: 0` — a block packed in
+    the Game Boy Advance BIOS's LZ77 or RLE format (4-byte header: the scheme in the first byte's top half,
+    1 or 3, then the unpacked size), the formats retail cartridges and the GBA lowering use
+    (`BiosCompress` is the answer key).
+  - `pack[:walls][i] = value` writes one byte (the low 8 bits); `pack[:walls][i]` reads one back;
+    `pack[:walls].byte_size`.
+
+  **Nothing goes past its place.** A write outside its slot is not made, and a read outside the copy reads
+  nothing that matters; either, or a block of another scheme, stops the build, naming the first that
+  happened: `Original::WrongCopy` with the place in the copy, or an `ArgumentError` with the slot and the
+  byte. A place or count written as a number is refused at once. A routine that never ends is stopped
+  after as many frames as the copy and the pack have bytes.
+
+  Each building block adds what it writes to the routine's count of bytes done as it goes, and waits for
+  the next frame every 256 bytes and after it ends, so a shell can show progress:
+  `pack.unpacking.bytes_done_in(run)` of `byte_size`.
+  `pack.unpacking.program` is the program, and `slot_bytes_in(run)` each slot's bytes from a run of it on
+  any backend; every lowering plays it like any game, checked against the interpreter. Genesis
+  decompressors are not here yet. Worked example: `test/all/vblank/builder/test_data_packs.rb`.
 - **The game holds handles, never bytes.** `pack[:palette]` is a `DSL::PackSlot`: its `shape`, `count`
   and `layout` (name, place and `byte_size`), nothing it holds. The verbs read the slot themselves:
   `image ..., colors: pack[:palette], places: pack[:walls].tile(3)` and `table :speeds, pack[:speeds]`.
@@ -44,7 +72,8 @@ other consoles' layouts (the Color's 4-colour tiles, the Super Nintendo's tiles,
 colours) are shapes still to add. A computer game's data is in no console's layout, so its port's
 unpacking routine turns it into one of the shapes.
 
-**Every build is all-in-one today.** The pack is made from the copy as the game is built, written as its
+**Every build is all-in-one today.** The pack is made from the copy as the game is built (by the routine on
+the interpreter, where there is one), written as its
 file and read back, and each verb given a handle takes what the slot holds as if the game had written
 it. So the game plays as one holding the data on every backend, and a cartridge keeps it that way for
 good: a console's cartridge holds its data. A machine with no copy stops at `data_pack` with

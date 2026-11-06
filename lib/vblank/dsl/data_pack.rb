@@ -9,23 +9,48 @@ module VBlank
     #     slots.colors  :palette, at: 0x1000, count: 16
     #     slots.tiles   :walls,   at: 0x1020, count: 40
     #     slots.numbers :speeds,  at: 0x2000, count: 8, width: :byte, signed: false
+    #     slots.tiles   :sprites, count: 64                    # no at: the routine below fills it
+    #     slots.fill_from_copy do |copy, pack|
+    #       copy.unpack_lz77 at: 0x3000, into: pack[:sprites]
+    #     end
     #   end
+    #
+    # A slot with no +at+ is filled by the game's own unpacking routine, the block given to
+    # #fill_from_copy (see Builder::DataPacks for how and where it runs).
     class PackSlots
-      def initialize = @list = []
+      def initialize
+        @list = []
+        @routine = nil
+      end
 
-      # The slots named so far, in order.
-      attr_reader :list
+      # The slots named so far, in order, and the unpacking routine (a block), or nil for none.
+      attr_reader :list, :routine
 
       # +count+ colours, two bytes each.
-      def colors(name, at:, count:) = add(Original::Slot.colors(name, at: at, count: count))
+      def colors(name, count:, at: nil) = add(Original::Slot.colors(name, at: at, count: count))
 
       # +count+ tiles of 8x8 pixels in sixteen colours, 32 bytes each.
-      def tiles(name, at:, count:) = add(Original::Slot.tiles(name, at: at, count: count))
+      def tiles(name, count:, at: nil) = add(Original::Slot.tiles(name, at: at, count: count))
 
       # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ says whether they can be
       # below zero.
-      def numbers(name, at:, count:, width:, signed:)
+      def numbers(name, count:, width:, signed:, at: nil)
         add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed))
+      end
+
+      # The game's unpacking routine: the block is game code, handed the copy's bytes (an
+      # OriginalBytes) and the pack's slots to write (an UnpackingSlots).
+      def fill_from_copy(&block)
+        unless block
+          raise ArgumentError, "`slots.fill_from_copy` needs a block: `slots.fill_from_copy do |copy, pack| ... end`."
+        end
+        unless @routine.nil?
+          raise ArgumentError, "The data pack says `slots.fill_from_copy` twice. A data pack has one unpacking routine. " \
+                               "Put all of the unpacking in one block."
+        end
+
+        @routine = block
+        nil
       end
 
       private
@@ -50,15 +75,22 @@ module VBlank
     # original's bytes, and a build that reads the pack only as the game starts takes the same game.
     class DataPack
       # +header+ is the Original::Pack the build read (only its copy's SHA-1 and build version are
-      # asked of it here), +slots+ the Original::Slot list it was made with.
-      def initialize(header, slots)
+      # asked of it here), +slots+ the Original::Slot list it was made with. +make_unpacking+ makes
+      # the Original::Unpacking that fills such a pack, the first time something asks for it: a
+      # pack whose every slot is copied as it is never needs its program built as the game is.
+      def initialize(header, slots, make_unpacking:)
         @rom_sha1 = header.rom_sha1
         @build_version = header.build_version
         @slots = slots.to_h { |slot| [slot.name, slot] }
+        @make_unpacking = make_unpacking
       end
 
       # The SHA-1 of the copy the pack was made from, and the build version it names.
       attr_reader :rom_sha1, :build_version
+
+      # The pack's unpacking as a program of its own (an Original::Unpacking): what a shell runs on
+      # the player's machine to make the pack, and what a test plays on each run.
+      def unpacking = @unpacking ||= @make_unpacking.call
 
       # The handle of the slot named +name+.
       def [](name)

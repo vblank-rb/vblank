@@ -23,9 +23,10 @@ module VBlank
     # original whose data is in no console's layout, a computer game's, has its port's unpacking
     # routine turn the data into one of the shapes.
     #
-    # Where the bytes are (+at+) is how a slot is filled now: copied out of the copy as they are.
-    # A slot whose bytes are packed in the copy, or spread over it, is filled by the game's own
-    # routine instead, and keeps its shape and size.
+    # Where the bytes are (+at+) says a slot is copied out of the copy as the bytes are there. A
+    # slot whose bytes are packed in the copy, or spread over it, has no +at+ (nil): the game's
+    # own unpacking routine fills it (`slots.fill_from_copy`, Builder::DataPacks), and it keeps its shape
+    # and size all the same.
     #
     # +width+ and +signed+ are a slot of numbers' alone, and nil for any other shape.
     Slot = Data.define(:name, :shape, :at, :count, :width, :signed)
@@ -63,11 +64,11 @@ module VBlank
 
       SHAPES = { colors: Colors, tiles: Tiles, numbers: Numbers }.freeze
 
-      def self.colors(name, at:, count:) = new(name: name.to_sym, shape: :colors, at: at, count: count, width: nil, signed: nil)
+      def self.colors(name, count:, at: nil) = new(name: name.to_sym, shape: :colors, at: at, count: count, width: nil, signed: nil)
 
-      def self.tiles(name, at:, count:) = new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil)
+      def self.tiles(name, count:, at: nil) = new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil)
 
-      def self.numbers(name, at:, count:, width:, signed:)
+      def self.numbers(name, count:, width:, signed:, at: nil)
         unless IR::Build::ELEMENT_BYTES.key?(width)
           raise ArgumentError, "Slot :#{name} was given width: #{width.inspect}. A slot of numbers must be :byte, :half " \
                                "or :word wide."
@@ -81,9 +82,10 @@ module VBlank
       end
 
       def initialize(name:, shape:, at:, count:, width:, signed:)
-        unless at.is_a?(Integer) && !at.negative? && count.is_a?(Integer) && count.positive?
+        unless (at.nil? || (at.is_a?(Integer) && !at.negative?)) && count.is_a?(Integer) && count.positive?
           raise ArgumentError, "Slot :#{name} was given at: #{at.inspect} and count: #{count.inspect}. at: must be a " \
-                               "place in the copy, 0 or more. count: must be 1 or more."
+                               "place in the copy, 0 or more, or left out for a slot the unpacking routine fills. " \
+                               "count: must be 1 or more."
         end
 
         super
@@ -92,9 +94,14 @@ module VBlank
       # How many bytes the slot holds.
       def byte_size = count * shape_rules.item_bytes(self)
 
+      # Whether the game's unpacking routine fills the slot, rather than its bytes being copied
+      # from a place in the copy.
+      def filled_by_routine? = at.nil?
+
       # The slot's bytes in +copy+ (the copy's whole file as a binary String). WrongCopy when the
-      # copy ends before the slot does.
+      # copy ends before the slot does. Only a slot with a place in the copy has bytes there.
       def cut_from(copy)
+        raise ArgumentError, "Slot :#{name} has no place in the copy. Its routine fills it." if filled_by_routine?
         return copy.byteslice(at, byte_size) if at + byte_size <= copy.bytesize
 
         raise WrongCopy, "Slot :#{name} is #{byte_size} bytes from #{at}, and the copy is #{copy.bytesize} bytes. The slot " \
