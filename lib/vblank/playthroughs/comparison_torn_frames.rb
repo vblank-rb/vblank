@@ -12,16 +12,23 @@ module VBlank
       # moment never shows the torn frame at all — so the two differ on that one frame though
       # the port is right.
       #
+      # A TEAR CAN LAST MORE THAN A FRAME: a copy that takes longer than one frame shows two
+      # pictures part way through the change, each unlike the frame before and the frame after,
+      # before the picture settles (an original's billboard does this). So torn frames come in
+      # runs, of one or more.
+      #
       # WHY NOT `frames_in_a_row: 2`. That forgives any one frame, so a port that shows a change
       # a frame late passes as readily as the original's tearing. This forgives exactly one
-      # thing. On a frame where the torn side shows a picture unlike the frame before it and
-      # unlike the frame after it, the other side must show the frame after it — the picture
-      # the torn one settles on. Anything else is a difference as it always was.
+      # thing. On every frame of a run where the torn side shows a picture unlike the frame before
+      # it and unlike the frame after it, the other side must show the picture the run settles on:
+      # that of the first frame after it that is not torn. Anything else is a difference as it
+      # always was.
       #
-      # WHAT IT COSTS is a frame of waiting: whether a frame is torn is not known until the
-      # frame after it has been played, so each frame is decided a frame late, with what was
-      # kept from it (Observation). The picture of the torn side is kept on every frame, which
-      # the emulator already holds, and the other side's only on a frame whose picture differs.
+      # WHAT IT COSTS is waiting: whether a frame is torn is not known until the frame after it
+      # has been played, and what a run settles on not until it ends, so a frame is decided a
+      # frame late, and the frames of a run once it ends, each with what was kept from it
+      # (Observation). The picture of the torn side is kept on every frame, which the emulator
+      # already holds, and the other side's only on a frame whose picture differs.
       #
       # +side+ is which cartridge is the one that tears, 0 for the first and 1 for the second,
       # and +likeness+ how alike the other side's picture and the settled one have to be.
@@ -49,28 +56,38 @@ module VBlank
         def initialize(side, likeness)
           @side = side
           @likeness = likeness
-          @waiting = nil
+          @waiting = [] # the frame before this one, after the torn frames of a run not yet ended
           @before = nil
         end
 
-        # HAND OVER THE FRAME JUST PLAYED and get back the frame before it, decided: its
-        # Observation, with the picture taken out of what differed where that frame was torn
-        # and forgiven. Nil on the first frame, which has none before it. +consoles+ is the
-        # two running cartridges, on the frame just played.
-        def decide_previous(observation, consoles)
+        # HAND OVER THE FRAME JUST PLAYED and get back the frames now decided, oldest first: each
+        # an Observation, with the picture taken out of what differed where that frame was torn
+        # and forgiven. Empty while a run of torn frames goes on, and on the first frame, which
+        # has none before it. +consoles+ is the two running cartridges, on the frame just played.
+        #
+        # The last frame waiting is torn when it is unlike the frame before it and the torn side
+        # now shows something else again. When it is not, the run before it has ended, and the
+        # torn side now shows what the run settled on: the last frame's picture, since the two
+        # are alike (or it would be torn).
+        def decide_waiting(observation, consoles)
           torn_side = consoles[@side]
-          decided = @waiting && decided(@waiting, torn_side)
+          decided = []
+          last = @waiting.last
+          unless last.nil? || torn?(last, torn_side)
+            decided = @waiting[0...-1].map { |torn| forgiven(torn, torn_side) } << last.observation
+            @waiting = []
+          end
           differs = observation.seen&.differed&.include?(PICTURE)
-          @waiting = Waiting.new(observation: observation,
-                                 unlike_before: differs && !@before.nil? && changed?(torn_side, @before, observation.kept.part),
-                                 torn_side_picture: torn_side.picture, other_side_picture: (consoles[1 - @side].picture if differs))
+          @waiting << Waiting.new(observation: observation,
+                                  unlike_before: differs && !@before.nil? && changed?(torn_side, @before, observation.kept.part),
+                                  torn_side_picture: torn_side.picture, other_side_picture: (consoles[1 - @side].picture if differs))
           @before = torn_side.picture
           decided
         end
 
-        # The last frame, which has no frame after it to say whether it was torn: it is
-        # taken as it was seen. Nil when there is none waiting.
-        def last_observation = @waiting&.observation
+        # The frames still waiting when the tape runs out, which have no frame after them to say
+        # how they settle: each is taken as it was seen.
+        def waiting_observations = @waiting.map(&:observation)
 
         private
 
@@ -79,10 +96,12 @@ module VBlank
         # in the part is not torn in the part.
         def changed?(game, kept, part) = !game.difference_from(kept, looked_at: part.bytes).nil?
 
-        def decided(waiting, settled)
+        def torn?(waiting, now) = waiting.unlike_before && changed?(now, waiting.torn_side_picture, waiting.observation.kept.part)
+
+        # A torn frame of a run that has ended, forgiven where the other side showed the picture
+        # the run settled on, which +settled+ (the torn side) shows now.
+        def forgiven(waiting, settled)
           observation = waiting.observation
-          return observation unless waiting.unlike_before
-          return observation unless changed?(settled, waiting.torn_side_picture, observation.kept.part)
           return observation unless @likeness.alike?(settled, waiting.other_side_picture, observation.kept.part)
 
           observation.with(seen: observation.seen.with(differed: observation.seen.differed - [PICTURE]))

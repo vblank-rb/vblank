@@ -21,7 +21,11 @@ class TestComparisonTornFrames < Minitest::Test
 
   # Each frame is drawn whole on a page of its own and shown when done, so the only torn frame is
   # the one drawn torn on purpose.
-  private def turning(torn: false, late: 0)
+  #
+  # +torn_frames+ 2 is an original whose change tears over two frames: on tick TURNS the top third
+  # is red, on the tick after the top two thirds, and the tick after that all of it, as a copy that
+  # takes longer than a frame does.
+  private def turning(torn: false, late: 0, torn_frames: 1)
     VBlank.build("TURNING", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :bitmap, tear_free: true
       ticks = var :ticks, 0
@@ -31,7 +35,12 @@ class TestComparisonTornFrames < Minitest::Test
           clear_screen :blue
         else
           clear_screen :red
-          fill_rect 0, 80, 240, 80, :blue if torn && ticks == TURNS
+          if torn && torn_frames == 1
+            fill_rect 0, 80, 240, 80, :blue if ticks == TURNS
+          elsif torn
+            fill_rect 0, 54, 240, 106, :blue if ticks == TURNS
+            fill_rect 0, 106, 240, 54, :blue if ticks == TURNS + 1
+          end
         end
       end
     end
@@ -72,6 +81,25 @@ class TestComparisonTornFrames < Minitest::Test
     torn_on = first_frame(original, watch.play(original).tape) { |game| game.red?(0, 0) }
 
     assert_equal torn_on, watch.compare(late, original, forgiving_torn_frames_of: :second).drift.frame
+  end
+
+  # A TEAR OVER TWO FRAMES: each of the two is unlike the frame before and the frame after, and the
+  # picture settles on the third. Ours shows the settled picture on both, which is forgiven.
+  def test_a_tear_over_two_frames_is_forgiven_where_ours_shows_what_it_settles_on
+    assert_raises(Minitest::Assertion) { assert_plays_alike turning, turning(torn: true, torn_frames: 2), watch }
+    assert_plays_alike turning, turning(torn: true, torn_frames: 2), watch, forgiving_torn_frames_of: :second
+  end
+
+  # Ours a frame late beside a two-frame tear is still blue on the first torn frame, where the
+  # original settles on red: drift, on that frame.
+  def test_ours_a_frame_late_beside_a_tear_over_two_frames_is_drift
+    late = turning(late: 1)
+    original = turning(torn: true, torn_frames: 2)
+    torn_on = first_frame(original, watch.play(original).tape) { |game| game.red?(0, 0) }
+
+    drift = watch.compare(late, original, forgiving_torn_frames_of: :second).drift
+    refute_nil drift
+    assert_equal torn_on, drift.frame
   end
 
   def test_carrying_on_with_the_rule_lists_only_the_real_drift

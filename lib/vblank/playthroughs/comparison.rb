@@ -755,7 +755,7 @@ module VBlank
       # A FRAME IS SEEN, THEN DECIDED. Each frame is looked at as soon as it is played, and
       # what can only be asked then is kept (an Observation). With the strict rule for torn
       # frames (TornFrames) a frame is decided a frame later, once the frame after it says
-      # whether it was torn; without, at once.
+      # whether it was torn, and a run of torn frames once it settles; without, at once.
       class SideBySide
         attr_reader :frames
 
@@ -830,9 +830,10 @@ module VBlank
             seen = @lined_up ? observe_step(keys) : observe
             next unless seen
 
-            decided = @torn ? @torn.decide_previous(seen, [@first, @second]) : seen
-            extend_or_end_differing_stretches(decided) if decided
-            return if stopped?
+            (@torn ? @torn.decide_waiting(seen, [@first, @second]) : [seen]).each do |decided|
+              extend_or_end_differing_stretches(decided)
+              return if stopped?
+            end
           end
         end
 
@@ -850,8 +851,11 @@ module VBlank
         # and ran to the last frame that was played.
         def end_playing
           @lined_up&.refuse_nothing_compared!
-          waiting = @torn&.last_observation
-          extend_or_end_differing_stretches(waiting) if waiting && !stopped?
+          (@torn&.waiting_observations || []).each do |waiting|
+            break if stopped?
+
+            extend_or_end_differing_stretches(waiting)
+          end
           return end_drift_under_way(@lull.last_frame, @lull.ended) if @lull
 
           end_drift_under_way(@decided_frame, :tape_ran_out)
