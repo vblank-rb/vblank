@@ -38,14 +38,14 @@ module VBlank
         DISABLED_COLOR = "#404040"
 
         # The gap between the bottom of one row and the top of the next, when the game
-        # does not say. With the built-in 7px font that puts rows 13 pixels apart, which
+        # does not set one. With the built-in 7px font that puts rows 13 pixels apart, which
         # is what Wolfenstein's menus use.
         ROW_GAP = 6
 
         # One row of a menu: what it can say, whether it can be picked, the colours it
         # overrides, and what it does when it is chosen. `labels` is always a list,
         # because a settings row says a different thing depending on the setting, and
-        # `showing` is the value that says which of them is on screen.
+        # `showing` is the value that picks which of them is on screen.
         Item = Data.define(:labels, :enabled, :color, :picked, :showing, :action)
 
         # Collects the rows of one menu. Handed to the `menu` block as its argument
@@ -202,7 +202,7 @@ module VBlank
         # from there like any other, and a menu you back out of still opens where you
         # left it.
         #
-        # THE COLOURS come in three, and any of them can be said per row:
+        # THE COLOURS come in three, and any of them can be set per row:
         #
         #   color:     a row the cursor is not on
         #   picked:    the row the cursor is on
@@ -500,7 +500,7 @@ module VBlank
           end
         end
 
-        # What `enabled:` said, kept as true, false, or a VARIABLE that is 1 while the row can
+        # What `enabled:` set, kept as true, false, or a VARIABLE that is 1 while the row can
         # be picked. A test is turned into one here, at the top of the menu's frame: it is asked
         # in several places — stepping, choosing, drawing — and a test belongs to one place in
         # the program, where a variable can be read as often as anybody likes.
@@ -522,7 +522,7 @@ module VBlank
         # A fresh test for a row that can be picked only while the game asks for it.
         def menu_can_pick(item) = (item.enabled != 0)
 
-        # The value that says which of a row's several labels is on screen. A Symbol names
+        # The value that picks which of a row's several labels is on screen. A Symbol names
         # a variable, the way a Symbol does everywhere else in the DSL.
         def menu_showing_value!(item)
           showing = item.showing

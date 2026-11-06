@@ -13,7 +13,7 @@ module VBlank
       # step would not land on the frame the author asked for.
       #
       # A FADED-OUT SONG GOES ON PLAYING, SILENTLY, the way a faded-out screen goes on being
-      # drawn. What happens while nobody can hear it is the game's to say: stop it, switch to
+      # drawn. What happens while nobody can hear it is the game's to decide: stop it, switch to
       # another song, or bring the same one back. Stopping it here instead would fight a game
       # that names its song every frame, which a jukebox does — the old tune would start over
       # the frame after it stopped.
@@ -25,7 +25,7 @@ module VBlank
         ROUTINE = :__music_fade_tick
 
         FULL = 100.0
-        DEFAULT_FRAMES = 30 # Half a second, the same as a screen fade — they are usually said together
+        DEFAULT_FRAMES = 30 # Half a second, the same as a screen fade — they are usually called together
 
         # TARGET starts below nothing, so the guardrail can tell a fade in (which writes FULL) from
         # the declaration. The value is never used: the routine runs only once a fade has set both.
@@ -37,7 +37,7 @@ module VBlank
         #
         #   fade_music_out                    # over half a second
         #   fade_music_out frames: 90         # a slow fade for a sad ending
-        #   fade_music_out duration: 1.5      # the same, said in seconds
+        #   fade_music_out duration: 1.5      # the same, given in seconds
         #
         # Calling it again while a fade runs turns it round from where it is now.
         #
@@ -53,8 +53,8 @@ module VBlank
         #   fade_music_in frames: 10
         #
         # With no length it comes up at the speed the music last went down, so a fade out and a
-        # fade in are two words and no bookkeeping. Said while a fade out runs, it turns round
-        # from where the music is; said with the music already at full, there is nothing to do.
+        # fade in are two words and no bookkeeping. Called while a fade out runs, it turns round
+        # from where the music is; called with the music already at full, there is nothing to do.
         #
         # @param frames [Integer, nil] how long it takes, in frames
         # @param duration [Numeric, nil] how long it takes, in seconds

@@ -34,7 +34,7 @@ module VBlank
       #
       # A place lit by a shading (`shading:`, see #shading) is drawn lit: each face's corners give
       # their light (`face ..., light: [...]`), the place's point_lights add to it as the game runs,
-      # and each pixel is the colour the shading says for the light it has reached.
+      # and each pixel is the colour the shading gives for the light it has reached.
       #
       # A PLACE FROM DATA, as a game reads a level from a file, is the same place without the block:
       # +points+ each [x, y, z], and +faces+ each a Hash of what `face` takes, with its points by their
@@ -72,10 +72,10 @@ module VBlank
       end
 
       # A GAME'S OWN SHADING: for each level of light, darkest first, what each of the game's colours
-      # becomes, as the game's tables say. +colors+ are the game's colours (numbers, as `rgb` gives,
+      # becomes, as the game's tables give it. +colors+ are the game's colours (numbers, as `rgb` gives,
       # or names), and each of +levels+ is one number for each of them: the place in +colors+ of
       # the colour it becomes at that level. A place lit by it (`place :mine, shading: :fade`) draws
-      # each pixel as the shading says for the light the pixel has reached; a colour not in
+      # each pixel as the shading gives for the light the pixel has reached; a colour not in
       # +colors+ stays as it is.
       #
       #   shading :fade, colors: palette, levels: tables   # 32 levels, as a game's tables give them
@@ -171,7 +171,7 @@ module VBlank
       #   left = corner.x if corner.x < left
       #
       # Each `screen_spot` line keeps its answers in variables of its own. A shape drawn where the
-      # game says (`draw_place ..., at:, facing:`) is asked about with the same +at+ and +facing+.
+      # game puts it (`draw_place ..., at:, facing:`) is asked about with the same +at+ and +facing+.
       #
       # @param point [Integer, DSL::Value] a point's number, what `point` gave back
       # @return [DSL::ScreenSpot]
@@ -456,7 +456,7 @@ module VBlank
       end
 
       # What the routine is told before it draws: where the viewer is and which way it faces, and
-      # the view. For a shape standing where the game says (+stance+, from #make_stance), the
+      # the view. For a shape standing where the game puts it (+stance+, from #make_stance), the
       # viewer handed over is then moved into the shape's own arrows
       # (IR::PlaceDrawing#stance_handover_statements).
       #

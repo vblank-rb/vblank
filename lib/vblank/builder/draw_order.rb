@@ -5,7 +5,7 @@ module VBlank
     # SPRITES DRAWN IN AN ORDER THE GAME WORKS OUT.
     #
     # Everywhere else, which sprite is in front of which is settled when the cartridge is
-    # built: the one declared later is in front, unless a layer says otherwise. A top-down
+    # built: the one declared later is in front, unless a layer orders otherwise. A top-down
     # game cannot live with that. It draws whichever character stands LOWER on the screen
     # in front — walk round below something and you are drawn over it, walk round above it
     # and it is drawn over you — and the answer changes every time two things pass each
@@ -14,7 +14,7 @@ module VBlank
     #   draw_in_order hero, guard, guards        # whoever stands lower is in front
     #
     # The number each thing is put in order by is the bottom of its box unless the block
-    # says otherwise, and the block is how a game says something else: a puff of smoke that
+    # gives another, and the block is how a game asks for something else: a puff of smoke that
     # starts a step nearer the front and drops back once it is grown, a thing in the air
     # that is drawn over whatever it flies across.
     #
@@ -164,7 +164,7 @@ module VBlank
 
       # BUILD EACH ORDER'S ROUTINE AND RUN IT BEFORE EVERY FRAME IS DRAWN — after the pools
       # have copied their things into place, since a pool's numbers are copied with them, and
-      # just before the objects are drawn, so the order is the one the positions now say.
+      # just before the objects are drawn, so the order is the one the positions now give.
       def finalize_draw_orders
         return if draw_orders.empty?
 

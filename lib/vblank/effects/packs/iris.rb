@@ -10,7 +10,7 @@ module VBlank
       # the shape of, a row at a time. Closing that light over frames is not — it is a few
       # variables and a routine that runs each frame — so it lives here, written in the same
       # verbs a game is written in, the pair to `fade_out` / `fade_in` and `pixelate_out` /
-      # `pixelate_in`, and said the same way.
+      # `pixelate_in`, and called the same way.
       #
       # IT CLOSES THE GAME'S OWN LIGHT. A game with a lantern has one light already, and the
       # display has room for one; so the iris takes that light down to nothing and, on the way
@@ -46,12 +46,12 @@ module VBlank
         #   iris_out                          # on the middle of the light, over half a second
         #   iris_out at: [hero.x + 8, hero.y + 8]
         #   iris_out frames: 20               # faster
-        #   iris_out duration: 1.0            # the same, said in seconds
+        #   iris_out duration: 1.0            # the same, given in seconds
         #
         # `at:` is the point it closes on, in screen pixels; either half may be worked out as
         # the game runs. Left out, it closes on wherever the light already is.
         #
-        # A WALK SAID IN PIXELS, the way a game copying another one says it: `from:` is the size
+        # A WALK GIVEN IN PIXELS, the way a game copying another one gives it: `from:` is the size
         # the circle starts at and `by:` how many pixels it shrinks every frame, in place of
         # `frames:` or `duration:`.
         #
@@ -103,8 +103,8 @@ module VBlank
         # worked out as the game runs. Onto a light that darkens nothing, the circle opens all
         # the way past the corners rather than stopping at the light's own size.
         #
-        # Said in pixels, it opens `by:` pixels every frame, and once the circle passes `to:` the
-        # light is let go — given back as it was, or as `radius:` and `dark:` say:
+        # Given in pixels, it opens `by:` pixels every frame, and once the circle passes `to:` the
+        # light is let go — given back as it was, or as `radius:` and `dark:` set it:
         #
         #   iris_in by: 4, to: 150, dark: 0    # 4, 8 ... 148, then the whole picture
         #
@@ -190,7 +190,7 @@ module VBlank
         # is left holding and then moves it on, so that is the size after the first.
         #
         # A walk whose first step already reaches where it is going has arrived on that frame,
-        # as the game's does: the block says what arriving is — shut, or the light let go.
+        # as the game's does: the block decides what arriving is — shut, or the light let go.
         def first_step_in_pixels(light, state, step, high, &arrived)
           state[:size] = (state[:size] + step).clamp(0.0, high)
           light.radius = state[:size].to_i
@@ -202,15 +202,15 @@ module VBlank
           state[:step] = step.abs
         end
 
-        # The light given back once a walk in arrives: as it was, or as `iris_in` said.
+        # The light given back once a walk in arrives: as it was, or as `iris_in` asked for.
         def let_light_go(light, state)
           state[:active] = 0
           light.radius = state[:radius]
           light.dark = state[:dark]
         end
 
-        # A walk is said in pixels a frame or in how long it takes, not both: the two would each
-        # say how far the circle moves every frame.
+        # A walk is given in pixels a frame or in how long it takes, not both: the two would each
+        # set how far the circle moves every frame.
         def refuse_walk_in_pixels_and_frames!(by, frames, duration)
           return unless by && (frames || duration)
 

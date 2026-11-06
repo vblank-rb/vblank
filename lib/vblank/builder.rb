@@ -142,7 +142,7 @@ module VBlank
       @tile_runs = []          # runs of tiles painted from a list, in declaration order (see TileRuns)
       @painted_colors = {}     # picture painted from a list → the colours its places pick (see TileRuns)
       @painted_colors_names = {} # ...and the name those colours were declared under, where they were
-      @inline_tile_copies = [] # their copies where `changed` was said, moved to the frame gap at finalize
+      @inline_tile_copies = [] # their copies where `changed` was called, moved to the frame gap at finalize
       @sprite_tile_sets = {}   # sprite_tiles name → { count:, colors:, colors_name: } (see SpriteTiles)
       @tile_pose_sets = {}     # a pose drawn from sprite tiles → the set's name
       @func_fast = {}          # name → where the author insisted the routine live (func fast:)
@@ -171,7 +171,7 @@ module VBlank
       @image_bounds = {}       # image name → [x, y, w, h] box around its visible (non-transparent) pixels, for collision
       @pictures = {}           # image name → its {IR::Assets::Image}, so `mirror` can turn one round
       @turned_images = {}      # [:mirrored or :upside_down, image name] → the turned picture's name, so turning one twice makes one picture
-      @solid_black_images = {} # image name → its copy for a tileset that says `black: :solid`
+      @solid_black_images = {} # image name → its copy for a tileset that sets `black: :solid`
       @color_lists = {}        # `colors` name → its colours, see-through first, for a sprite told to draw with it
       @changing_color_lists = {} # `colors` name → what the build keeps about a list told to hold other colours (see ColorLists)
       @backdrop_list = nil     # the list the game's backdrop follows, or nil (see ColorLists#followed_backdrop_list)
@@ -185,7 +185,7 @@ module VBlank
       @sprite_repaints = []    # [wait node, the software sprites declared by then], one per frame boundary
       @routine_sprites = []    # the software sprites declared inside a routine's body (see Sprites#sprite_painting_state)
       @building_routine = nil  # the routine whose body is being built, nil while the program block itself runs
-      @scene_numbers = {}      # scene func name → the number that says its body was the last scene to run
+      @scene_numbers = {}      # scene func name → the number that marks its body as the last scene to run
       @scene_screens = {}      # scene func name → the screen its body draws on
       @default_screen_mode = nil # the screen the program block left set, which every routine's body starts on
       @hw_sprites = []         # live hardware sprites, drawn (into the sprite table) after every wait_vblank
@@ -231,7 +231,7 @@ module VBlank
       # func body) while its block runs.
       # The program names the console the options name, and a Builder told none makes an unbound
       # program (see IR::Nodes::Program). The game is laid out on the screen
-      # the program says it is for.
+      # of the console the program names.
       @program = Build.program(console: options.console, variant: options.variant,
                                sprite_piece_sizes: options.sprite_piece_size.to_a,
                                players: Cartridge::Players.fewest_and_most_on_build(options.players,
@@ -302,16 +302,16 @@ module VBlank
     # measures each scene with the list held at its capacity instead
     # (VBlank.warn_of_collections_that_fill).
     #
-    # `holds:` says what KIND of number the list keeps, by showing one. Write a Float and
+    # `holds:` sets what KIND of number the list keeps, by showing one. Write a Float and
     # the list holds numbers with a fraction, exactly as writing one makes a variable hold
     # them: `list :speeds, capacity: 8, holds: 0.0`. Every value read out then carries the
     # scale and every value put in is checked against it, so a game with many of something
     # that moves in halves and quarters never has to pick a scale and carry it by hand. The
     # number itself is only an example — a list still starts empty.
     #
-    # `width:` says HOW BIG ONE SLOT IS, and it is the difference between a list that fits in
+    # `width:` sets HOW BIG ONE SLOT IS, and it is the difference between a list that fits in
     # the console's fast memory and one that does not. A slot is a whole 32-bit number unless
-    # you say otherwise, and most lists do not hold anything like that much: `:byte` holds
+    # you set another, and most lists do not hold anything like that much: `:byte` holds
     # -128..127 and `:half` holds -32768..32767, at a quarter and a half of the memory. A list
     # of flags, of directions, of which-picture-is-showing, of hit points, of countdowns —
     # every one of those is a byte, and a game with many of them gets that memory back for
@@ -338,8 +338,8 @@ module VBlank
     # WHERE IT LIVES is a question you almost never have to answer. The console has two
     # work memories — a small quick one and a large one that makes it wait — and the
     # framework puts what a frame touches in the quick one and lets the rest fall into
-    # the roomy one, so a game with a lot of state builds where it used to fail. Say
-    # `fast: false` about one you know is cold (a world state read when a menu opens) to
+    # the roomy one, so a game with a lot of state builds where it used to fail. Set
+    # `fast: false` on one you know is cold (a world state read when a menu opens) to
     # give the quick memory back to the things that are walked every frame, or `fast:
     # true` to insist on one the framework did not pick. It is the same word `func`
     # already uses for the same question about code, and it changes nothing the program
@@ -353,7 +353,7 @@ module VBlank
     # @return [List] a handle to the list
     def list(name, capacity:, estimate: nil, holds: nil, width: :word, fast: nil, full_of: nil)
       record_estimate_line(estimate)
-      # A fraction given as what the list starts full of says it holds fractions, as `holds:` would.
+      # A fraction given as what the list starts full of marks it as holding fractions, as `holds:` would.
       example = holds
       example = full_of if holds.nil? && full_of.is_a?(Numeric)
       bits = list_fraction_bits(name, example)
@@ -364,8 +364,8 @@ module VBlank
       DSL::List.new(self, name, fraction_bits: bits)
     end
 
-    # What `full_of:` said, as the number each item holds: a fraction multiplied up the way the
-    # list keeps its items. A fraction into a list `holds:` says is whole is refused, as a push
+    # What `full_of:` gave, as the number each item holds: a fraction multiplied up the way the
+    # list keeps its items. A fraction into a list `holds:` marks as whole is refused, as a push
     # of one would be.
     def list_starting_item(name, full_of, bits)
       return nil if full_of.nil?
@@ -381,8 +381,8 @@ module VBlank
       bits ? DSL::Fraction.scale(full_of, bits) : full_of.to_i
     end
 
-    # What `holds:` said, as a number of fraction bits. A whole number says the same as
-    # saying nothing, so it is allowed and means what it looks like.
+    # What `holds:` gave, as a number of fraction bits. A whole number means the same as
+    # giving nothing, so it is allowed and means what it looks like.
     def list_fraction_bits(name, holds)
       return nil if holds.nil?
       unless holds.is_a?(Numeric)
@@ -394,11 +394,11 @@ module VBlank
       DSL::Fraction.bits_of(holds)
     end
 
-    # AN `estimate:` DOES NOTHING, whatever it says, except have its line kept. A list, a pool, a `repeat`, a
+    # AN `estimate:` DOES NOTHING, whatever it gives, except have its line kept. A list, a pool, a `repeat`, a
     # a test and a stretched rectangle or column once took one — `{ usually: N }`, how big or
     # how often the thing normally was — for a cost estimate that worked a frame's time out from
     # the program. That estimate is gone: the build measures a game by running it. A game
-    # written while the hint meant something still says it, so it is not refused; the line is
+    # written while the hint meant something still writes it, so it is not refused; the line is
     # kept, and one warning names every such line (Guardrails::Checks::EstimateDoesNothing).
     # Nothing about it reaches the program.
     def record_estimate_line(estimate)
@@ -426,7 +426,7 @@ module VBlank
     # (`table :speeds, pack[:speeds]`), and then its width and sign are the slot's, never
     # inferred from what the copy holds (see Builder::DataPacks). So can a DSL::StartFileEntries,
     # for a table read from the file the game is handed as it starts; its width and sign are then
-    # the ones given (a half, not signed, unless said).
+    # the ones given (a half, not signed, unless given).
     #
     # @param name [Symbol] the table's name
     # @param values [Array<Integer>, DSL::PackSlot] the whole numbers to store, computed at build time
@@ -447,8 +447,8 @@ module VBlank
       values = validate_table_values!(name, values)
       bits = table_fraction_bits(values)
       # A table of numbers with a fraction is stored multiplied up, and a whole cell of
-      # it no longer fits in a half — so it takes a word unless the program says
-      # otherwise. Reads from it carry the fraction, so nothing downstream repeats it.
+      # it no longer fits in a half — so it takes a word unless the program sets
+      # another. Reads from it carry the fraction, so nothing downstream repeats it.
       width = :word if bits && (width.nil? || width == :half)
       width ||= :half
       values = values.map { |v| bits ? DSL::Fraction.scale(v, bits) : v }
@@ -634,7 +634,7 @@ module VBlank
       refuse_shifted_tile_run_lists!
       refuse_filled_shifted_lists!
       finalize_tile_copies
-      link_backgrounds_to_changing_lists # before the colours: it says what those backgrounds are drawn with
+      link_backgrounds_to_changing_lists # before the colours: it sets what those backgrounds are drawn with
       finalize_background_colors
       finalize_backdrop_list # before the lists: a list only the backdrop shows is not one nobody draws with
       finalize_changing_color_lists
@@ -665,7 +665,7 @@ module VBlank
     # once all of them are (see #finalize_program).
     def build_last(name) = (@built_last ||= []) << name
 
-    # Build every routine body not built yet (+emitted+ says which are), each into a func
+    # Build every routine body not built yet (+emitted+ holds which are), each into a func
     # node of its own — but, +holding_back+, not the ones #build_last named.
     def emit_bodies(emitted, default_screen_mode, holding_back: false)
       held = holding_back ? (@built_last || []) : []
@@ -731,7 +731,7 @@ module VBlank
     end
 
     # THE VARIABLES A BOX THE BACKGROUND +name+ IS HELD TO IS KEPT IN (Background#show_only_inside),
-    # made the first time the game says one: a background nobody holds to a box keeps none, and
+    # made the first time the game sets one: a background nobody holds to a box keeps none, and
     # its game builds as it did. All five start at 0, which is everywhere.
     def hold_background_to_box(name)
       declared = declared_background(name)
@@ -753,15 +753,15 @@ module VBlank
       (@held_tile_changes ||= []) << node
     end
 
-    # The variable that says whether the status bar +name+ covers sprites, made the first time a
-    # game says so: a bar nobody tells keeps no such variable.
+    # The variable that holds whether the status bar +name+ covers sprites, made the first time a
+    # game sets it: a bar nobody tells keeps no such variable.
     def bar_covers_var(name)
       @bars_covering[name] ||= IR::Nodes::Background.bar_covers_var(name).tap { |var| ensure_var(var) }
     end
 
     # Remember that +name+ can be handed a whole different map, so the copy is made once a
-    # frame in the gap between frames rather than wherever the game happened to say which
-    # map it wants. +shown_var+ is what the game said; +live_var+ is what is really in the
+    # frame in the gap between frames rather than wherever the game happened to name which
+    # map it wants. +shown_var+ is what the game asked for; +live_var+ is what is really in the
     # background's cells. A {Background} calls this from `show_map`.
     def defer_map_swap(name, shown_var, live_var, node)
       declared_background(name).shown_map = shown_var
@@ -776,8 +776,8 @@ module VBlank
     # Two of its variables start out agreeing, both meaning "its own colours", so a
     # background that is told nothing on a frame writes nothing at all — which is also the
     # state the tiles are already in when the game starts. The third is a place for a backend
-    # to keep whatever it needs to say which list is showing; nought is "nothing has been
-    # said yet", and what goes there otherwise is that backend's business alone.
+    # to keep whatever it needs to mark which list is showing; nought is "nothing has been
+    # set yet", and what goes there otherwise is that backend's business alone.
     def make_background_recolorable(name)
       refuse_coloring_turning_background!(name)
       at_boot(Build.set(:"__bg_#{name}_colors", Build.int(IR::Build::NO_RECOLOR)))
@@ -789,8 +789,8 @@ module VBlank
 
     # The colour counterpart to {#defer_map_swap}: remember that +name+ can be handed a
     # whole different list of colours, so the display's table is written once a frame in the
-    # gap between frames rather than wherever the game happened to say which list it wants.
-    # +shown_var+ is what the game said; +live_var+ is what is really in the table.
+    # gap between frames rather than wherever the game happened to name which list it wants.
+    # +shown_var+ is what the game asked for; +live_var+ is what is really in the table.
     def defer_recolor_write(name, shown_var, live_var, node)
       declared_background(name).shown_colors = shown_var
       declared_background(name).live_colors = live_var
@@ -841,7 +841,7 @@ module VBlank
     # THE SIZE OR ANGLE A BACKGROUND IS DECLARED AT, which is a different thing from one
     # written each frame and has to run in a different place.
     #
-    # `background(:sword, ...).scale(16.0)` says how big the picture STARTS. At the top of
+    # `background(:sword, ...).scale(16.0)` sets how big the picture STARTS. At the top of
     # a program that is also where it runs, because the top of a program runs once — but a
     # scene's body is reached on every frame that scene is up, so the same line there put
     # the size back at the top of every frame and whatever was easing it got one step and
@@ -1197,7 +1197,7 @@ module VBlank
     # existing per-frame `active` value, so presentation stays automatic — nothing new to
     # call, and no per-draw flag in game code. Outside a scene, visibility is unchanged.
     # Which game state a declaration belongs to, or nil where it belongs to none and is
-    # always there. The gate above says the same thing as a run-time test; this says it
+    # always there. The gate above gives the same thing as a run-time test; this gives it
     # as a NAME, which is what something deciding what has to be in memory at once needs.
     def declaring_scene = @building_scene
 
@@ -1234,7 +1234,7 @@ module VBlank
     # So the `if` around the call would otherwise decide nothing at all: the glyphs are
     # declared inside it, and then shown on every frame regardless, which reads as a
     # prompt that never blinks. Carrying the condition onto the glyph itself is what makes
-    # the two agree — it is shown exactly while the test holds, which is what the line says.
+    # the two agree — it is shown exactly while the test holds, which is what the line asks for.
     #
     # A condition is 0 or 1, so several nested ones multiply together, the same way
     # #gated_by_scene folds in "and this scene is the live one". Each is copied because a node
@@ -1265,7 +1265,7 @@ module VBlank
 
     # The objects to draw, arranged the way the declared layers ask for. This is the
     # one place a frame's drawing order is settled: the list every backend is handed
-    # already says what goes in front of what, so no backend works it out for itself
+    # already sets what goes in front of what, so no backend works it out for itself
     # and two of them cannot come to different answers.
     #
     # The layer is read back off the objects in the tree rather than kept beside them
@@ -1322,7 +1322,7 @@ module VBlank
     # Show the box each background is held to, in the gap between frames, gated to its scene, for
     # the reason a scroll is written there: the display reads which layers show where as it draws
     # each line, so a box moved while it draws would show two boxes on one picture. Every
-    # declaration of the name carries the variable that says whether it is held, which goes back to
+    # declaration of the name carries the variable that holds whether it is held, which goes back to
     # everywhere as its scene takes over (IR::SceneHandover).
     def finalize_background_boxes
       boxed = backgrounds_that(&:held_to_box?)
@@ -1346,7 +1346,7 @@ module VBlank
       @backgrounds.fetch(name)
     end
 
-    # The declared backgrounds the block says yes to, in declaration order —
+    # The declared backgrounds the block returns true for, in declaration order —
     # `backgrounds_that(&:scrolls?)`.
     def backgrounds_that
       @backgrounds.select { |_name, background| yield(background) }
@@ -1355,7 +1355,7 @@ module VBlank
     # PUT A WRITE PER THING IN THE GAP BETWEEN FRAMES, at every frame boundary there is — the
     # shared half of the passes above and below, which differ only in what they are about
     # (the backgrounds that scroll, the ones handed a map, the lists of colours that change)
-    # and what each one's write says. +things+ is those, by name; the block is handed each
+    # and what each one writes. +things+ is those, by name; the block is handed each
     # name and what is kept about it, and gives back the write.
     #
     # +inline_nodes+ are the writes recorded where the author called for them, dropped here
@@ -1384,7 +1384,7 @@ module VBlank
     end
 
     # A WRITE MADE ONLY ON A FRAME WHERE THE ANSWER CHANGED. +said+ is the variable holding
-    # what the game last said, and +in_force+ the one holding what the write last put in
+    # what the game last set, and +in_force+ the one holding what the write last put in
     # place; they differ exactly on the frame to write on, and the write then makes them
     # agree. See #finalize_background_maps for why it is two variables and not a write
     # where the game set it.
@@ -1404,11 +1404,11 @@ module VBlank
     # and there the same write really would show half of the old room and half of the new.
     # So the copy waits for the gap, which is the one moment the display is not reading.
     #
-    # WHY TWO VARIABLES rather than a copy where `show_map` was called. `show_map` says
+    # WHY TWO VARIABLES rather than a copy where `show_map` was called. `show_map` sets
     # which map is showing — a statement about the world, the same shape as a scroll
-    # position — so a game may say it every frame, from inside a branch, from a scene. What
+    # position — so a game may call it every frame, from inside a branch, from a scene. What
     # the console must not do is copy thousands of cells every frame. Holding what the game
-    # SAID apart from what is really IN the cells turns that into one comparison: they
+    # SET apart from what is really IN the cells turns that into one comparison: they
     # differ exactly on the frame the answer changed, which is the frame to copy on.
     def finalize_background_maps
       write_between_frames(@inline_map_nodes, backgrounds_that(&:swaps_maps?)) do |name, background|
@@ -1426,7 +1426,7 @@ module VBlank
     # before a map handed over in the same pass, as an unheld change written during the pass
     # lands before that map's copy: a change made in the pass that walks into another room is
     # gone with the room either way. A program with no frame boundary has no moment to hold the
-    # changes for, so its changes are written where the game says them.
+    # changes for, so its changes are written where the game makes them.
     def finalize_held_tiles
       changes = @held_tile_changes || []
       return if changes.empty?
@@ -1482,7 +1482,7 @@ module VBlank
     # version does not.
     #
     # A picture that has stopped moving is told to hold still by being told nothing, and
-    # the display holds it: the numbers that say how the layer is turned and where it is
+    # the display holds it: the numbers that set how the layer is turned and where it is
     # pinned stay where they were put. So writing them again every frame is not only work
     # nobody asked for — a divide and two table lookups before the write itself — it is
     # A RISK THE STILL PICTURE HAS NO REASON TO RUN. The display reads where the layer is
@@ -1492,7 +1492,7 @@ module VBlank
     # lands there. A scroll written late is invisible, which is why the scroll registers
     # beside it have never needed this.
     #
-    # Holding what the display was TOLD apart from what the program has SINCE SAID turns
+    # Holding what the display was TOLD apart from what the program has SINCE SET turns
     # all of that into two comparisons: they differ exactly on the frame the answer moved,
     # which is the frame worth writing on.
     def affine_write_if_changed(name, background)
@@ -1507,7 +1507,7 @@ module VBlank
                         Build.set(told_angle, Build.var_ref(background.angle)),
                         Build.set(told_size, Build.var_ref(background.scale)))
 
-      # A background turned inside one scene says nothing at all while another scene is up:
+      # A background turned inside one scene writes nothing at all while another scene is up:
       # the display has one turning layer and they share it, so a title screen's zoom must
       # not go on distorting the game that took over from it.
       while_any_scene_up(background.scene_gates, write)
@@ -1805,7 +1805,7 @@ module VBlank
     end
 
     # A TABLE GIVEN A SLOT OF THE DATA PACK takes the slot's width and sign. A width or sign the
-    # line says as well must be the slot's, since two answers to one question are a mistake.
+    # line gives as well must be the slot's, since two answers to one question are a mistake.
     def refuse_table_unlike_slot!(name, handle, width, signed)
       layout = handle.layout
       return if (width.nil? || width == layout.width) && (signed.nil? || signed == layout.signed)
@@ -1830,7 +1830,7 @@ module VBlank
 
     # How many fraction bits a table's values carry: a table with a Float anywhere in
     # it holds numbers with a fraction, and every read from it hands back a value that
-    # says so. This is what lets a sine table be written as plain trigonometry — the
+    # carries it. This is what lets a sine table be written as plain trigonometry — the
     # scaling that used to be spelled out in the table's own definition is done here.
     def table_fraction_bits(values)
       DSL::Fraction::DEFAULT_BITS if values.any?(Float)

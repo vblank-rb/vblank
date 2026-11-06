@@ -7,7 +7,7 @@ module VBlank
     # `sample` stays a flat DSL verb.
     module SampledAudio
       # A sensible default rate for a hand-authored clip — how many samples play per
-      # second when the caller doesn't say.
+      # second when the caller doesn't give one.
       DEFAULT_SAMPLE_RATE = 8192
 
       # Define a named PCM sample, either from a `.wav` file or from raw samples:

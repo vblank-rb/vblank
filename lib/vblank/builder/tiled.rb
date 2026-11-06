@@ -18,7 +18,7 @@ module VBlank
     #   MAP
     #
     # A tile is just an {#image}, so tiles are authored exactly like any other art
-    # (ASCII, an array, or an imported picture) and the tileset only says which
+    # (ASCII, an array, or an imported picture) and the tileset only names which
     # character stands for which. All the console's tile machinery — where the tile
     # pictures live in video memory, the map layout, the background-control
     # registers — is managed for you and never appears here.
@@ -185,7 +185,7 @@ module VBlank
       # BLACK AS A COLOUR. A tile has no marker of its own for "nothing here", so black drawn by colour
       # stands for it, and an outline in black comes out full of holes. Art given as place numbers
       # never had that trouble: place 0 is see-through and black at any other place is a colour. So
-      # a tileset that says `black: :solid` holds its pictures as place numbers, every backend then
+      # a tileset that sets `black: :solid` holds its pictures as place numbers, every backend then
       # reads them as it reads any such art, and black takes a colour slot of its own on the console.
       #
       # This is a copy of the picture, once however many tilesets ask, and the picture itself keeps
@@ -227,7 +227,7 @@ module VBlank
       #
       #   A row may be an ARRAY instead, one element per cell, and then a cell is
       #   whatever the tileset is keyed by rather than a single character; `nil` is
-      #   the empty cell. That is the same grid said another way, and it is how a
+      #   the empty cell. That is the same grid written another way, and it is how a
       #   level the BUILD works out is written — decoded from somewhere, or generated.
       #   Such a level has a tile number per cell and never had characters, and a real
       #   screenful holds more distinct tiles than there are characters anybody would
@@ -258,8 +258,8 @@ module VBlank
       # IR::TileMap.streams?). Past the edge of such a map the view shows nothing, rather than
       # the map coming round again.
       #
-      # WHAT STOPS A MOVER, said apart from what it SEES: `walls:` is a grid of its own,
-      # the same shape as the map, saying which cells a mover cannot enter. Without it the
+      # WHAT STOPS A MOVER, given apart from what it SEES: `walls:` is a grid of its own,
+      # the same shape as the map, marking which cells a mover cannot enter. Without it the
       # walls are the tileset's `solid:` tiles, which is what a small game wants and what
       # every game wrote before this existed. With it the two are separate data, which is
       # what a real game's are: a room's collision is authored, imported or decoded beside
@@ -292,7 +292,7 @@ module VBlank
       # in work memory instead, a word each, and writes them in the gap between frames: the
       # same picture, without copying the cells nobody changed, and without a second copy of
       # the map to keep in step when show_map or a scene puts the map up again. A game that
-      # does not say it builds what it built before.
+      # does not set it builds what it built before.
       #
       # Returns a {Background} handle you can scroll (`world.scroll_by dx, dy`).
       #
@@ -475,14 +475,14 @@ module VBlank
         # handle, can mark this one as the layer that turns — see #make_background_affine.
         #
         # A record already there is KEPT and given the new node, never replaced: a program
-        # that declares one name twice has already said things about the first one, and a
+        # that declares one name twice has already set things on the first one, and a
         # fresh record would drop them — a scroll it forgot would stop being moved to the
         # gap between frames and would tear where the author wrote it.
         refuse_name_in_two_places!(name, @backgrounds[name]) if @backgrounds[name]
         declared = (@backgrounds[name] ||= DeclaredBackground.new)
         refuse_held_differently!(name, declared, held)
         declared.held = held
-        # Which map the game says is showing, and which one is really in the cells — and, for
+        # Which map the game sets as showing, and which one is really in the cells — and, for
         # a background drawn from several sets of tiles, which set is really in tile memory.
         choice = map_names.size > 1 ? [:"__bg_#{name}_map", :"__bg_#{name}_live"] : []
         choice += [IR::Nodes::Background.set_var(name)] if sets
@@ -515,7 +515,7 @@ module VBlank
         # scrolls simply leaves them at 0.
         scroll_x, scroll_y = IR::Nodes::Background.scroll_vars(name)
         boot = [scroll_x, scroll_y]
-        # ...and, for a background with several maps, which one the game says is showing and
+        # ...and, for a background with several maps, which one the game sets as showing and
         # which one is really in its cells. Both start at 0 — the first map, the one the
         # build already stamped — so nothing is copied until the game asks for another. A
         # background brought into view a strip at a time starts with nothing in its cells, too.
@@ -546,7 +546,7 @@ module VBlank
                              # rather than by the first room's, wherever it stands.
                              solid_cells: wall_grids(name, map_names, drawn, set, walls),
                              # ...and which tiles are walls, so a cell set_tile changes takes
-                             # its tile's: walls written apart with `walls:` say nothing of tiles.
+                             # its tile's: walls written apart with `walls:` set nothing about tiles.
                              solid_tiles: walls.nil? && !sets ? solid_tile_numbers(tile_names, set) : nil,
                              tile_size: [set[:tile_w], set[:tile_h]],
                              walks_areas: !sets.nil?,
@@ -644,7 +644,7 @@ module VBlank
 
       private
 
-      # A LAYER THAT TURNS CANNOT ALSO SCROLL, and a program can say the two in either
+      # A LAYER THAT TURNS CANNOT ALSO SCROLL, and a program can write the two in either
       # order. Turning first and scrolling second is refused where the scroll is written
       # (see {Background#ensure_not_affine!}); this is the other order, where the scroll
       # is already recorded and turning the layer would quietly stop it working — the
@@ -803,7 +803,7 @@ module VBlank
       # Returns what #background works with: a tileset standing for every set at once (for
       # the walls, read off pictures, and the tile size), the map names, each map's grid of
       # pictures, every set's tiles one after another, each map as numbers into those, and
-      # the three operands that say which tiles and maps belong to which set.
+      # the three operands that hold which tiles and maps belong to which set.
       def background_from_sets(name, tiles, map, from)
         refuse_tile_sets_shape!(name, tiles, map, from)
         sets = tiles.transform_values { |tileset| tileset!(name, tileset) }
@@ -925,7 +925,7 @@ module VBlank
       end
 
       # Turn a `map:` into a grid of tile-image names. Its cells are whatever the
-      # tileset is KEYED by, and a row says them one of two ways: as a String, one
+      # tileset is KEYED by, and a row writes them one of two ways: as a String, one
       # character per cell, or as an Array, one element per cell. The two are the same
       # grid — a String row is the typed-out form, and it can only reach a tileset whose
       # keys are single characters, which is why the Array form exists at all. A level
@@ -961,7 +961,7 @@ module VBlank
       # end, which is what tells somebody whether their key was even in the right range.
       TILE_KEYS_TO_NAME = 24
 
-      # What a tileset can say about black drawn by colour (#tiles).
+      # What a tileset can set about black drawn by colour (#tiles).
       BLACK_ANSWERS = %i[see_through solid].freeze
 
       def tileset_tiles_in_words(keys)
@@ -1093,7 +1093,7 @@ module VBlank
       #
       # With no `walls:` they come off the picture — the cells whose tile the tileset
       # marked `solid:` — which is what a small game wants and what every game wrote
-      # before `walls:` existed. With `walls:` they are their own data, said apart from
+      # before `walls:` existed. With `walls:` they are their own data, given apart from
       # the picture, and a map `walls:` does not name has none at all.
       def wall_grids(name, map_names, drawn, set, walls)
         return drawn.map { |rows, _| solid_cell_grid(rows, set) } if walls.nil?

@@ -16,7 +16,7 @@ module VBlank
       # shows a painted picture whole, so it keeps one page even there, and a second
       # paint only draws the same picture again.)
       #
-      # So a change is painted once per picture the screen keeps. The game says WHEN
+      # So a change is painted once per picture the screen keeps. The game marks WHEN
       # the picture changed; how many paints that takes is read off the screen the game
       # declared, and no game writes the number down.
       #
@@ -29,7 +29,7 @@ module VBlank
       #   bar.draw
       #
       # ON A PLAIN SCREEN THE SAME GAME CODE IS RIGHT and costs one paint, because a
-      # screen that keeps one picture needs one. Nothing in the game says which screen
+      # screen that keeps one picture needs one. Nothing in the game names which screen
       # it is on, which is the point — a game moved from `screen :bitmap` to
       # `screen :bitmap, tear_free: true` keeps working, and the flicker that would
       # have appeared never does.
@@ -88,7 +88,7 @@ module VBlank
           end
 
           # THE PICTURE CHANGED. Call it at the moment the thing it shows moves — when
-          # the score goes up, when the game ends. It paints nothing itself; it says
+          # the score goes up, when the game ends. It paints nothing itself; it marks
           # that every page now wants a fresh copy.
           #
           # Calling it again before the last change has reached both pages simply asks

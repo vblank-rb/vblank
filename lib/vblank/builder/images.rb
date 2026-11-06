@@ -71,7 +71,7 @@ module VBlank
       # from, so a list that holds one color twice still tells its two places apart.
       #
       # The list can also be one declared with `colors`, by its name — `colors: :sea` — which is
-      # what a layer drawn from several lists needs, so `draw_with` can say which of them is
+      # what a layer drawn from several lists needs, so `draw_with` can name which of them is
       # which (see Background#draw_with).
       #
       # A picture a place is lit by can count into its shading's colours instead (#define_shaded_image):
@@ -128,8 +128,8 @@ module VBlank
       #     ART
       #   end
       #
-      # The middle of the picture is never seen: the game's screen is drawn there. A game that says
-      # nothing gets VBlank's own border (Graphics::Border.default). A build that shows the game's
+      # The middle of the picture is never seen: the game's screen is drawn there. A game that declares
+      # none gets VBlank's own border (Graphics::Border.default). A build that shows the game's
       # screen whole (the Color's own, or any other console's) draws no border and keeps nothing of
       # this, so the game builds the same bytes there as without it. What a border can hold is
       # checked on every build, so a game hears about a wrong one wherever it is built
@@ -160,7 +160,7 @@ module VBlank
       #   blit :friend, :ball_x, :ball_y
       #
       # ONE OF A SET, picked by a number the game works out: give it the pictures and
-      # say what chooses between them.
+      # name what chooses between them.
       #
       #   blit [:calm, :hurt, :dying], 100, 4, showing: damage
       #
@@ -202,7 +202,7 @@ module VBlank
       #
       # ON `screen :tiled` A MIRRORED POSE COSTS NO SPRITE MEMORY. The console can
       # draw an object reversed for nothing, so the build stores the picture once and
-      # says "that one, backwards" — a third off a character that faces both ways.
+      # marks it "that one, backwards" — a third off a character that faces both ways.
       # (It notices art that is ALREADY a mirror too, so a game that drew both ways by
       # hand gets the same saving with nothing to change. On `screen :bitmap` there is
       # no such hardware, so a mirrored picture is drawn like any other: this saves you
@@ -296,7 +296,7 @@ module VBlank
       # name it was declared under and its colours (#list_drawn_from), so two lists named apart
       # are two lists whatever they hold. A tile given the colours themselves is drawn from the
       # list of the layer that holds them, where one does (IR::Nodes::Background#recolored_list_of);
-      # where two named apart hold them, nothing says which, and the game is told.
+      # where two named apart hold them, nothing names which, and the game is told.
       def lists_drawn_from(poses, subject:)
         unless poses.all? { |pose| colors_drawn_from(pose) }
           raise ArgumentError,
@@ -367,7 +367,7 @@ module VBlank
       # the only thing left to do is read it at the first. That draws right as long as the
       # other list agrees about those places, and draws half the pixels wrong when it does
       # not. Palettes lifted off real cartridges repeat a colour often (two blacks, two
-      # whites), so this is refused rather than drawn wrong; art given as places says which
+      # whites), so this is refused rather than drawn wrong; art given as places names which
       # place each pixel meant and is never in doubt, and so is a picture painted from a list,
       # whose bytes are places.
       #
@@ -519,7 +519,7 @@ module VBlank
 
       # Draw whichever of +names+ the +showing+ value picks. Written the long way this is
       # a test and a draw per picture, which is what it lowers to anyway — so this is the
-      # same work said once, and both backends already know how to do it.
+      # same work written once, and both backends already know how to do it.
       def blit_one_of(names, x, y, showing)
         if showing.nil?
           raise ArgumentError,
@@ -561,7 +561,7 @@ module VBlank
       # would mask the marker away — and it's recorded on the bitmap so `blit`
       # skips those pixels, letting the background show through.
       #
-      # `transparent: true` is the same thing said the way the art form says it:
+      # `transparent: true` is the same thing written the way the art form writes it:
       # pixels written as :transparent are see-through and everything else is a
       # color. That's for art a program builds itself — pictures converted out of
       # some other game's files, say — which arrives as an array rather than as
@@ -672,7 +672,7 @@ module VBlank
 
       PIECE_SIZE = IR::Assets::PIECE_SIZE
       BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE
-      PICTURE_REACH = 255 # A pose table says where a piece sits as a byte each way
+      PICTURE_REACH = 255 # A pose table holds where a piece sits as a byte each way
 
       def refuse_bad_pieces!(name, pieces, colors)
         unless pieces.is_a?(Array) && !pieces.empty?
@@ -701,8 +701,8 @@ module VBlank
         end
       end
 
-      # A picture says what its pixels are ONE way. Art in characters, colors and places are
-      # three ways of saying it, and two of them would have to agree with nothing able to
+      # A picture gives what its pixels are ONE way. Art in characters, colors and places are
+      # three ways of giving it, and two of them would have to agree with nothing able to
       # check that they did.
       def one_source_of_pixels!(name, opts, block)
         if opts.key?(:shading) && (block || %i[pieces data from transparent].any? { |key| opts.key?(key) })

@@ -15,7 +15,7 @@ module VBlank
     module ColorLists
       # What the build keeps about one list told to hold other colours: the statement that
       # declares it to the backends, the sets it can hold (a {DSL::Recolors}, the list
-      # playing the part a sprite plays there), and the writes recorded where the game said
+      # playing the part a sprite plays there), and the writes recorded where the game called
       # `recolor`, which are moved to the gap between frames once the program is whole.
       ChangingList = Struct.new(:node, :recolors, :shown, :live, :writes, keyword_init: true)
 
@@ -35,7 +35,7 @@ module VBlank
       # set named, in the order the game named them. A number naming none is the first set.
       LISTS_IN_USE = :__colors_in_use
 
-      # SAY WHICH LISTS OF SPRITE COLOURS ARE IN USE NOW, as the game enters a room.
+      # SET WHICH LISTS OF SPRITE COLOURS ARE IN USE NOW, as the game enters a room.
       #
       #   colors_in_use [:door, :zelda]                                    # these, from now on
       #   colors_in_use [[:door, :zelda], [:octorok, :bush]], showing: room  # one of several sets
@@ -43,14 +43,14 @@ module VBlank
       # Every list a sprite can `draw_with` takes one of the console's groups of sprite
       # colours for as long as its scene is up, so a scene whose things between them wear
       # more lists than there are groups does not fit, though no one room of it shows more
-      # than a few. Said here, the lists of one set are the only ones that have to be in the
+      # than a few. Named here, the lists of one set are the only ones that have to be in the
       # console at once: lists never in use together take turns in one group, and the
       # colours of the set in use are copied in between frames on the frame it changes. So it
       # is the biggest set that has to fit, not the scene.
       #
       # A sprite drawn with a list that is not in use shows whatever its group holds now:
       # the colours of another list. So a room's things are the ones to take away as the
-      # room is left. Until the game first says, the first set named is in use, and so it is
+      # room is left. Until the game first names one, the first set named is in use, and so it is
       # for a number naming no set.
       #
       # @param which [Array<Symbol>, Array<Array<Symbol>>] the lists in use, or several sets
@@ -70,7 +70,7 @@ module VBlank
         nil
       end
 
-      # SAY WHICH COLOURS A LIST HOLDS NOW. Every sprite and every pool instance drawn with
+      # SET WHICH COLOURS A LIST HOLDS NOW. Every sprite and every pool instance drawn with
       # the list shows them, from the frame its position and pose next change.
       #
       #   colors :slot, [:transparent, :gray, :white, :black]     # what it holds at power-on
@@ -82,8 +82,8 @@ module VBlank
       # The sets are lists declared with `colors`, each with a colour for every place the
       # list itself has. A number outside the set is the colours it was declared with.
       #
-      # It says which colours the list holds, the way `show_map` says which map is showing:
-      # so it can be said once, or every frame, from a branch or a scene, and the colours
+      # It sets which colours the list holds, the way `show_map` sets which map is showing:
+      # so it can be called once, or every frame, from a branch or a scene, and the colours
       # are copied in the gap between frames on the frame the answer changed and no other.
       #
       # @param name [Symbol] a list declared with `colors`
@@ -111,7 +111,7 @@ module VBlank
       # most of the walk, and every channel arrives on the last step together.
       #
       # It is lists and nothing more. The colours are worked out as the cartridge is built, so a
-      # game pays for the lists and for saying which one shows, and only the lists it names move.
+      # game pays for the lists and for naming which one shows, and only the lists it names move.
       # How fast it goes is how fast the game moves the number it hands to `showing:`.
       #
       # @param name [Symbol] a list declared with `colors`
@@ -137,7 +137,7 @@ module VBlank
 
       # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
       # colour at that place as declared (what the backdrop is at power-on), and the `screen`
-      # that said so.
+      # that named it.
       BackdropList = Data.define(:name, :place, :color, :screen)
 
       # A BACKDROP THAT FADES WITH THE PICTURE. `screen :tiled, backdrop: :screen_colors` names a
@@ -232,9 +232,9 @@ module VBlank
       # write is the list's own, in the gap between frames on the frame the answer changed, so the
       # backdrop changes with the sprites and backgrounds drawn with the list and never apart from
       # them. A list the game never recolours holds its declared colours for good, and the backdrop
-      # is that one colour, which the `screen` already says.
+      # is that one colour, which the `screen` already names.
       #
-      # It is the game's backdrop from power-on to the end, so it is said on the game's own `screen`
+      # It is the game's backdrop from power-on to the end, so it is named on the game's own `screen`
       # and is the backdrop of every screen. A painted screen draws every pixel and has none, so a
       # game with one is refused rather than given a backdrop that comes and goes.
       def finalize_backdrop_list
@@ -358,8 +358,8 @@ module VBlank
       # Count +sets+ among every set named so far, and return where they start: the same
       # sets named again side by side are counted once, and new ones go on the end. So a pick
       # by a number the game works out is that number plus where they start. The first call
-      # also declares the variable saying which set is in use, holding "the first" at boot.
-      # +picked+ says the sets were given with showing:, which is how an error names one.
+      # also declares the variable holding which set is in use, holding "the first" at boot.
+      # +picked+ marks that the sets were given with showing:, which is how an error names one.
       def register_lists_in_use(sets, picked:)
         if @lists_in_use.empty?
           at_boot(Build.set(LISTS_IN_USE, Build.int(IR::Build::NO_RECOLOR)))
@@ -427,7 +427,7 @@ module VBlank
 
       # THE LISTS THAT LISTS NEVER IN USE TOGETHER TAKE TURNS IN, from +places+ (see
       # #places_for_lists_in_use): shared name -> a ChangingList whose sets are, set by set,
-      # the list it holds while that set is in use. Empty for a game that never says
+      # the list it holds while that set is in use. Empty for a game that never calls
       # `colors_in_use`.
       #
       # A set that leaves a shared list out has it hold its resting list — the one it holds
@@ -468,7 +468,7 @@ module VBlank
       end
 
       # WHICH SHARED LIST EACH LIST IN A SET IS DRAWN THROUGH: list name -> the shared list's
-      # name. Empty for a game that never says `colors_in_use`.
+      # name. Empty for a game that never calls `colors_in_use`.
       #
       # The lists are placed scene by scene: the lists only one scene's sprites draw with take
       # turns among themselves, so the groups they take are that scene's while it is up and

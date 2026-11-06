@@ -230,7 +230,7 @@ module VBlank
 
         refuse_poses_of_many_sizes!(object_node, "change size")
 
-        # Declared with a Float, which is how a program says "this holds a fraction" —
+        # Declared with a Float, which is how a program marks "this holds a fraction" —
         # so the size variable carries its scale like any other, and 1.0 boots it to
         # exactly the constant it is replacing.
         var(scale_var, 1.0)
@@ -341,7 +341,7 @@ module VBlank
       # ONE OF A RUN OF +count+ CHOICES, PICKED BY A NUMBER THE GAME WORKS OUT: +choice+ (a
       # variable, or a pool's field) is set to +start+ plus +showing+, or to +outside+ when the
       # number names none of them. What a sprite's colours and its layer are both picked by.
-      # +subject+ and +verb+ say what was told what, for the friendly errors.
+      # +subject+ and +verb+ name what was told what, for the friendly errors.
       def write_picked_choice(choice, count:, start:, showing:, outside:, subject:, verb:)
         fixed = DSL::Value.fixed_number(showing)
         if fixed
@@ -804,7 +804,7 @@ module VBlank
         [@current_scene_gate, [SCENE_UP, scene_number(@building_scene)]]
       end
 
-      # The number a scene writes to say its body was the last to run. Nought is no scene yet.
+      # The number a scene writes to mark that its body was the last to run. Nought is no scene yet.
       def scene_number(name)
         @scene_numbers[name] ||= @scene_numbers.size + 1
       end
@@ -850,14 +850,14 @@ module VBlank
         end
       end
 
-      # The variable every scene writes as its body ends, saying whether it draws on a screen
+      # The variable every scene writes as its body ends, marking whether it draws on a screen
       # the game paints into (1) or one drawn from tiles (0).
       PAINTED_SCREEN_UP = :__painted_screen_up
 
       # HAND THE PICTURE FROM ONE SCENE'S SPRITES TO THE NEXT'S, for a game with software
       # sprites declared inside scenes. Two statements go into every scene's routine.
       #
-      # LAST, it says its body ran (see #sprite_painting_state for what waits on that).
+      # LAST, it marks that its body ran (see #sprite_painting_state for what waits on that).
       #
       # FIRST, it takes the other scenes' sprites off the picture. The repaint already does
       # that when a scene changes the state from inside its own body: by the next boundary the
@@ -873,7 +873,7 @@ module VBlank
       # the same care in a game where some scene is drawn from tiles. Such a sprite is painted
       # into a picture, and a tiled scene has none: the memory a painted screen keeps its
       # pixels in is where a tiled one keeps its tile pictures, so painting the sprite there
-      # writes a sprite's worth of pixels over the tiles. So each scene also says which kind
+      # writes a sprite's worth of pixels over the tiles. So each scene also marks which kind
       # of screen it draws on, those sprites wait for a painted one, and a tiled scene forgets
       # them as it starts. A game whose scenes are all painted has none of this.
       def finalize_scene_sprite_handover

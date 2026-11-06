@@ -11,8 +11,8 @@ module VBlank
     # screen slides from one room to the next — but its pools and lists of things can show any
     # room's, so all of them have to fit at once, and a game of twenty rooms runs out long
     # before any one room would. The console's own games load a room's things as the room loads
-    # and let them go as it is left. Said here, a game does the same: it groups its pictures by
-    # room and says which rooms are up, and only those have to fit.
+    # and let them go as it is left. Named here, a game does the same: it groups its pictures by
+    # room and names which rooms are up, and only those have to fit.
     module PictureGroups
       # GROUP A SCENE'S SPRITE PICTURES, by room:
       #
@@ -24,9 +24,9 @@ module VBlank
       # A picture in no group is up the whole time — the hero, the panel, the shadows. A
       # picture in a group is up only while one of its groups is, and a sprite drawn showing
       # it at any other moment is a mistake the game is stopped for, on every build, in plain
-      # words. Groups that can be up at once say so in +up_together+; without it, one group at
-      # a time. The first time a scene takes over, none of its groups is up until the game says
-      # one is; given the screen back, it has the groups up it had as it was left, as its
+      # words. Groups that can be up at once are named in +up_together+; without it, one group at
+      # a time. The first time a scene takes over, none of its groups is up until the game puts
+      # one up; given the screen back, it has the groups up it had as it was left, as its
       # sprites are left as they were.
       #
       # @param name [Symbol] what the groups are called, in errors and reports

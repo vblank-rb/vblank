@@ -4,7 +4,7 @@
 # pass at a time while a person watches and plays, its picture put on a screen, its buttons read
 # from a keyboard or a pad.
 #
-# The playing is the session's; what it is shown on is a device, which shows a picture, says
+# The playing is the session's; what it is shown on is a device, which shows a picture, reports
 # which buttons are held and whether to stop, and keeps the time. The headless device is the
 # one with no screen, for a test or a measurement.
 #

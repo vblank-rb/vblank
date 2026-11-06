@@ -74,7 +74,7 @@ module VBlank
       # THE NUMBER EACH RECORD'S JOBS GO BY, by the record's name, read back off a built program:
       # the routine that steps the running job (#save_jobs_step_running) asks whose job it is by
       # that number before it calls the record's own step, and that question is the only place a
-      # built program says it. A measured build reads it to start a save of its own, so a game
+      # built program holds it. A measured build reads it to start a save of its own, so a game
       # nobody plays is measured saving (see Diagnostics::SaveStarts).
       def self.record_numbers(program)
         stepping = Messages::MadeNames.make(:save_jobs, piece: :step_running)
@@ -108,7 +108,7 @@ module VBlank
 
       # Once the records are laid out: the save memory they are in (IR::SaveLayout::Memory), the
       # SaveHalf for it, and the routines that run the jobs, which walk every record. +fast+
-      # is where those routines are kept, which the records say between them (see
+      # is where those routines are kept, which the records decide between them (see
       # SaveRecords#fast_for_queue): true, false, or nil for the build to decide.
       def lay_out(memory:, halves:, fast: nil)
         @memory = memory
@@ -129,7 +129,7 @@ module VBlank
       def idle = sd_and(sd_eq(job_var(:run_rec), sd_int(0)), sd_eq(job_var(:wait_rec), sd_int(0)))
 
       # What each record needs of its own: two snapshots' worth of buffer, kept in the roomy
-      # memory since it is read only while a job runs, and the flag that says a job just ended.
+      # memory since it is read only while a job runs, and the flag that marks a job just ended.
       def declare_snapshot_buffer(layout)
         stage = layout.scratch(:stage)
         size = [layout.body * 2, 1].max
@@ -142,8 +142,8 @@ module VBlank
       # ASK FOR A JOB on +layout+'s copy in its copy scratch: room is made, a save is
       # snapshotted into its buffer there and then, and the job goes in line.
       #
-      # What happens when one of this record's jobs is already in hand is the record's to say
-      # (`when_busy:`): :wait goes in line behind it; :refuse does nothing and says so with
+      # What happens when one of this record's jobs is already in hand is the record's to choose
+      # (`when_busy:`): :wait goes in line behind it; :refuse does nothing and reports it through
       # `failed?`; :replace takes the place of a job on the same copy that is still waiting,
       # or abandons one on the same copy that is being written — safe, because a half only
       # counts once its checksum is in, so the copy's last save is still there.
@@ -257,7 +257,7 @@ module VBlank
       end
 
       # TAKE A JOB, named by the ask scratch: it runs now when nothing does, and waits otherwise.
-      # Make room first (see the class comment), and say which of its record's two buffers a
+      # Make room first (see the class comment), and pick which of its record's two buffers a
       # snapshot goes in.
       def save_jobs_pick_slot
         sd_when(sd_op(:!=, job_var(:wait_rec), sd_int(0))) { record(Build.call(jobs_name(:finish))) }

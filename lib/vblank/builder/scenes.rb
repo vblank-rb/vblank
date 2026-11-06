@@ -14,11 +14,11 @@ module VBlank
       # Define a named subroutine. The block is stored and evaluated after the main
       # block (so func/call order in the DSL doesn't matter).
       #
-      # `fast:` says where the routine should be kept. The console has a small amount of
+      # `fast:` sets where the routine should be kept. The console has a small amount of
       # very quick memory and a much larger, slower cartridge, and code runs about two
       # and a half times faster from the quick one. The framework works out on its own
       # which routines are worth keeping there — the ones a frame spends the most time in
-      # — so you can leave this alone. Say `fast: true` to insist on one it did not pick,
+      # — so you can leave this alone. Set `fast: true` to insist on one it did not pick,
       # or `fast: false` to keep one out. `rom.profile` says what it chose and how much
       # room is left. (See VBlank.build's `fast_code:` to turn the choosing off
       # altogether.)
@@ -41,13 +41,13 @@ module VBlank
       # lowered, so it may be defined before or after this call.
       #
       # ONE OF SEVERAL, picked by a number the game works out: give it the routines, in
-      # order, and the number that says which, counting from 0.
+      # order, and the number that picks which, counting from 0.
       #
       #   HANDLERS = %i[op_end op_wait op_walk op_say]
       #   scripts.each { |s| call HANDLERS, number: s.opcode }
       #
       # A script's instructions, a character's current state, the move an enemy picked:
-      # anything where a number already says what happens next. It goes straight to the
+      # anything where a number already decides what happens next. It goes straight to the
       # routine that number names, so a list of a hundred and more costs what a list of two
       # does — where testing the number against each one in turn costs a test per routine. A
       # number below 0 or past the end of the list calls nothing.
@@ -108,7 +108,7 @@ module VBlank
       # same pass as its first pass of game, and the two can run past the end of the frame.
       # It is always exactly one pass, so a game counting passes from a hand-over can count it.
       #
-      # +measure_holding:+ says what a build that measures the game presses while it measures
+      # +measure_holding:+ sets what a build that measures the game presses while it measures
       # this scene, to choose what goes in the console's quick memory: buttons held down the whole
       # time (`%i[up b]`), or a tape (`Playthroughs::Tape.read("fight.tape")`) whose presses are
       # played round and round. Measured with nothing pressed, a scene stands still, and a

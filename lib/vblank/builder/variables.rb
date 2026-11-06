@@ -39,7 +39,7 @@ module VBlank
       # `(mode == :playing)` read as they look, and `call mode` runs the routine of that name.
       #
       # @param name [Symbol] variable name
-      # A VARIABLE THAT ONLY EVER HOLDS A SMALL NUMBER can say so: `var :flag, 0, width: :byte` keeps
+      # A VARIABLE THAT ONLY EVER HOLDS A SMALL NUMBER can declare it: `var :flag, 0, width: :byte` keeps
       # it in a byte and `width: :half` in two, as a list's `width:` does, and a number too big
       # keeps its low bits and reads back with their sign (see {IR::KeptWidths}). It reads and works
       # the same everywhere, and a Game Boy Color spends much less time on it.
@@ -285,7 +285,7 @@ module VBlank
 
       # The name of every variable the game has, in the order it first named each.
       # Where each is kept is the lowering's to decide (a built cartridge's
-      # var_addresses says).
+      # var_addresses gives it).
       # @return [Array<Symbol>]
       def variables
         @variables.to_a
@@ -335,7 +335,7 @@ module VBlank
       end
 
       # A name is one variable however many places declare it. That is what lets a game
-      # object say `var :score, 0` in setup that runs more than once, and it is also how two
+      # object write `var :score, 0` in setup that runs more than once, and it is also how two
       # parts of a game that each wanted a scratch `_seen` end up writing the same one with
       # nothing to say so — found later by a wrong picture. Two declarations that agree are
       # the first case and pass; two that start the variable differently (a fraction and a
@@ -356,7 +356,7 @@ module VBlank
       end
 
       # One `var` or `save_var`: what it started the variable at, whether it is kept across
-      # power-off, and the line of the game that said it.
+      # power-off, and the line of the game that wrote it.
       Declaration = Data.define(:start, :saved, :width, :at) do
         # Ruby says 0.0 == 0, and a fraction and a whole number are exactly the two kinds
         # that must not pass as the same, so the class has to match as well as the value.
@@ -380,7 +380,7 @@ module VBlank
 
       # The node to store in +name+. A variable that holds NAMES turns the one it was given
       # into that name's number; everything else keeps the meaning it has everywhere — a bare
-      # symbol is another variable, and a Float says the variable holds a fraction.
+      # symbol is another variable, and a Float marks the variable as holding a fraction.
       def stored_node(name, value)
         held = @name_vars[name]
         return Build.int(held.number_for(value)) if held && value.is_a?(Symbol)
@@ -389,7 +389,7 @@ module VBlank
       end
 
       # The node to store in +name+, remembering whether that variable holds a
-      # fraction. Writing a Float — `var :px, 3.5` — is how a program says it does; the
+      # fraction. Writing a Float — `var :px, 3.5` — is how a program marks that it does; the
       # scale is then carried by every handle for that variable and never written again.
       def number_node_noting_fraction!(name, value)
         bits = DSL::Fraction.bits_of(value)
@@ -414,7 +414,7 @@ module VBlank
       # goes through a hidden variable first, so it can be read as a DISTANCE: a
       # negative one would otherwise invert the range and drive the variable away from
       # its target for ever, which is silent and looks like a physics bug. Taking the
-      # size of it means the step says how fast, and the target says which way.
+      # size of it means the step sets how fast, and the target sets which way.
       def emit_approach_bounds(step)
         fixed = DSL::Value.fixed_number(step)
         return [-fixed, fixed] if fixed

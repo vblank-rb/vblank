@@ -41,7 +41,7 @@ module VBlank
         # where it was. You call this once, at the moment of impact, and nothing else.
         #
         #   shake_screen intensity: 3, frames: 8      # eight frames of shaking
-        #   shake_screen intensity: 3, duration: 0.2  # the same, said in seconds
+        #   shake_screen intensity: 3, duration: 0.2  # the same, given in seconds
         #
         # Calling it again while a shake runs restarts it, so repeated hits keep
         # shaking rather than queueing up.

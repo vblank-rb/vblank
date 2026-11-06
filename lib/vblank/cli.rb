@@ -68,7 +68,7 @@ module VBlank
 
     # THERE IS NO `vblank play`. It played a script or a tape on the cartridge, in the emulator, while
     # `vblank run` played the game as Ruby with a person at the controls. Nothing in the two names
-    # said which ran the game how, and a bot was run on the emulator by somebody sure it was Ruby.
+    # showed which ran the game how, and a bot was run on the emulator by somebody sure it was Ruby.
     # Now `vblank run` plays a game either way, so the old name is refused with the line to write
     # instead, as is `vblank help play`.
     def self.refuse_play!(args)
@@ -193,7 +193,7 @@ module VBlank
       end
     end
 
-    # Other names people reach for, for what a build makes, and the option that says it.
+    # Other names people reach for, for what a build makes, and the option that asks for it.
     NATIVE = ["--format=native", "a program for this computer"].freeze
     WEB = ["--format=web", "a web page"].freeze
     CARTRIDGE = [nil, "a cartridge for each console the game names"].freeze
@@ -526,7 +526,7 @@ module VBlank
         raise Thor::Error, "#{options[:format].inspect} is not a profile format. The formats are: human, json."
       measuring = { frames: VBlank::Diagnostics::TapeProfile.frames_from_text(options[:frames]), scene: options[:scene], from: options[:from], keys: held_buttons || [],
                     press: buttons_named(options[:press]) }
-      # Each console's profile has its own settling when none is given, and a tape says its own start.
+      # Each console's profile has its own settling when none is given, and a tape holds its own start.
       measuring[:settle] = options[:settle] if options[:settle]
       measuring[:tape] = VBlank::Playthroughs::Tape.read(options[:tape]) if options[:tape]
       game = load_game(game_file)
@@ -537,7 +537,7 @@ module VBlank
       raise Thor::Error, e.message
     end
 
-    # The options `run` and `compare` both take: what says which buttons to press, and the
+    # The options `run` and `compare` both take: what sets which buttons to press, and the
     # settings and the console a game file is built with.
     def self.options_for_playing
       option :console, banner: "NAME", enum: CONSOLES
@@ -653,7 +653,7 @@ module VBlank
     option :lead_ins, type: :array, banner: "NAME"
     option :reports_in, banner: "DIR"
     def compare(first_file, second_file)
-      # A comparison lines screens up at one size, so only the consoles whose kits say it can are offered.
+      # A comparison lines screens up at one size, so only the consoles whose kits allow it are offered.
       result = with_playthroughs_command_line("compare", offered: COMPARED_NAMES) do |command|
         command.compare(first_file, second_file)
       end
@@ -1074,7 +1074,7 @@ module VBlank
     def inspect(rom_file)
       raise Thor::Error, "I cannot find the ROM file #{rom_file}." unless File.file?(rom_file)
 
-      # The cartridge's own header says which console it is for. A console with no inspector yet
+      # The cartridge's own header names which console it is for. A console with no inspector yet
       # is refused by name: the Advance's reads its header and disassembles ARM, so another
       # console's cartridge would come out as numbers that look like an answer and mean nothing.
       bytes = File.binread(rom_file)
@@ -1125,7 +1125,7 @@ module VBlank
     # in a sentence, and that sentence is what the command ends with.
     #
     # +doing+ is what the command does with a game file ("compare"), for the question a game for
-    # two consoles is asked when --console does not say which.
+    # two consoles is asked when --console does not name which.
     def with_playthroughs_command_line(doing, offered: nil)
       build = lambda do |file|
         game = load_game(file)
@@ -1255,7 +1255,7 @@ module VBlank
       raise Thor::Error, "#{game_file} is a cartridge.\n\n#{NO_CARTRIDGE}"
     end
 
-    # The way --on names (a word of Playthroughs::CommandLine::WAYS), ruby unless it says.
+    # The way --on names (a word of Playthroughs::CommandLine::WAYS), ruby unless it names another.
     def way_to_run
       way = options[:on] || "ruby"
       return way if VBlank::Playthroughs::CommandLine::WAYS.key?(way)
@@ -1275,7 +1275,7 @@ module VBlank
       WAY_WORDS.fetch(way) { "Ruby #{RUBY_VERSION}, with #{jit_in_use}," }
     end
 
-    # Play the script or the tape on the game in +game_file+, the way +way+ says. Whether there is a
+    # Play the script or the tape on the game in +game_file+, the way +way+ names. Whether there is a
     # window is said first, before the game is built, since a big build takes a minute.
     def play_unattended(game_file, way)
       window = options[:window].nil? ? way != VBlank::Playthroughs::LoweredGame::LOGIC && $stdout.tty? : options[:window]
@@ -1477,7 +1477,7 @@ module VBlank
       raise Thor::Error, e.message
     end
 
-    # The match played with no window: this computer's player holds what --keys says, and every notice
+    # The match played with no window: this computer's player holds what --keys names, and every notice
     # about the match is said as it comes.
     # A match played with no window plays on a clock that moves only as the play does
     # (Live::Headless), so no frame of it can be late, and the session collects no garbage there.
@@ -1505,7 +1505,7 @@ module VBlank
                          "or --host to host one."
     end
 
-    # The one bot BOT_FILE says. A file that says none, or more than one, is a friendly error.
+    # The one bot BOT_FILE declares. A file that declares none, or more than one, is a friendly error.
     def load_bot(bot_file)
       path = File.expand_path(bot_file)
       raise Thor::Error, "I cannot find the bot file #{bot_file}." unless File.file?(path)
@@ -1574,7 +1574,7 @@ module VBlank
     # --- build and profile ---
 
     # The "game" format (--format=game, the default): a cartridge for each console the game names,
-    # or for the one --console says.
+    # or for the one --console names.
     #
     # EACH IS BUILT WHATEVER HAPPENS TO THE OTHER. A game for both consoles that the Color cannot
     # play still gets its Advance cartridge, and the command then ends saying why the Color's was
@@ -1645,7 +1645,7 @@ module VBlank
     end
 
     # The console a command that runs one cartridge runs +game+ on: the one --console names, or the
-    # game's only one. A game for two with neither said is asked which, since nothing is taken to
+    # game's only one. A game for two with neither named is asked which, since nothing is taken to
     # be for the Advance. +doing+ is what the command does with it ("profile", "play"), and
     # +offered+ the consoles it can do that on, which `compare` holds to those it lines up side by
     # side; only the game's own of those are offered.
@@ -1839,7 +1839,7 @@ module VBlank
       buttons_named(options[:keys])
     end
 
-    # The buttons +names+ say, each checked.
+    # The buttons in +names+, each checked.
     def buttons_named(names)
       buttons = names.map { |name| name.to_s.downcase.to_sym }
       unknown = buttons.reject { |button| VBlank::IR::Buttons.known?(button) }

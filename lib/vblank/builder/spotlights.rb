@@ -36,7 +36,7 @@ module VBlank
       # The row's half width, worked out once a row before either edge reads it.
       HALF = :__spotlight_half
 
-      # How dark outside a light is when its declaration does not say: dark enough to read as
+      # How dark outside a light is when its declaration does not set it: dark enough to read as
       # a light in the dark, light enough that the room is still there.
       DARK_UNSAID = 75
 
@@ -88,7 +88,7 @@ module VBlank
 
       # The midpoint circle's half width on each row from its middle out, for a circle of
       # +size+: rows 0 to size - 1 lit, the rest nought. Written the way the console's games
-      # write it (The Minish Cap: src/common.c, sub_0801E24C) — +turn+ says whether the next
+      # write it (The Minish Cap: src/common.c, sub_0801E24C) — +turn+ decides whether the next
       # step round the circle goes straight across or across and in.
       def midpoint_half_widths(size)
         widths = Array.new(size + 1, 0)
@@ -111,7 +111,7 @@ module VBlank
 
       MIDPOINT_HALF_WIDTHS = (0..MIDPOINT_LARGEST).flat_map { |size| midpoint_half_widths(size) }.freeze
 
-      # The statement that darkens the picture outside the circle +light+ says. Its edges read
+      # The statement that darkens the picture outside the circle +light+ gives. Its edges read
       # the row's half width, which #work_out_half_width puts in HALF first.
       def shade_node(builder, light)
         half = builder.var(HALF, 0)

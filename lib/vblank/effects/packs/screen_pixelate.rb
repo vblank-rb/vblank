@@ -50,7 +50,7 @@ module VBlank
         #
         #   pixelate_out                    # over half a second
         #   pixelate_out frames: 12         # faster
-        #   pixelate_out duration: 1.5      # the same, said in seconds
+        #   pixelate_out duration: 1.5      # the same, given in seconds
         #
         # The picture is not redrawn and nothing is lost: `pixelate_in` brings it back
         # untouched. Calling this again while a walk runs turns it round from where it is.

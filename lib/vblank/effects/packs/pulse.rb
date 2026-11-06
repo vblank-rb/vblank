@@ -19,7 +19,7 @@ module VBlank
       # and wrapping it can't get stuck; watching for the size to reach its target can,
       # if a step ever overshoots and the equality is never true.
       module Pulse
-        # How long one full grow-and-shrink takes, if the caller doesn't say. Slow enough
+        # How long one full grow-and-shrink takes, if the caller doesn't give one. Slow enough
         # to read as breathing rather than flashing.
         DEFAULT_SECONDS = 2.0
 
@@ -50,7 +50,7 @@ module VBlank
           sprite.scale(from) # start where the rhythm starts, so the first frame is right
 
           # Written as Floats on purpose: a size with a fraction is what these variables
-          # hold, and writing one is how a program says so. Handing over an already
+          # hold, and writing one is how a program marks it. Handing over an already
           # multiplied-up whole number would be multiplied up a second time.
           state = pulse_state(sprite, half)
           state[:top] = to.to_f

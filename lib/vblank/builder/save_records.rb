@@ -21,7 +21,7 @@ module VBlank
     # halves per copy and the newer one wins (#save_data_scan), the order a half is written in
     # with its checksum last (SaveHalf), and where each kept thing sits in a body (Kept).
     module SaveRecords
-      # One thing a record keeps, and where in its body it sits — the one place that says how a
+      # One thing a record keeps, and where in its body it sits — the one place that sets how a
       # kept thing is laid out. A variable is a word at +at+. A list is its length, a word at
       # +at+, and then +count+ slots of +width+ each, the first right after the length.
       #
@@ -48,7 +48,7 @@ module VBlank
       # Declare a record of the game's state, kept in save memory in +copies+ numbered
       # copies. The block, if there is one, names what it keeps with `keep`; the handle's own
       # `keep` adds more later, from anywhere in the program. Returns a handle: `files[n]` is
-      # one copy, and a copy saves, loads, erases and says whether it is good.
+      # one copy, and a copy saves, loads, erases and reports whether it is good.
       #
       # THE RECORD IS USABLE AT ONCE AND LAID OUT AT THE END. A file-select screen comes first
       # in a game and has to save and peek at the record, while what the record keeps belongs
@@ -141,13 +141,13 @@ module VBlank
       # Everything the routines need to know about one record, worked out once. +place+ is
       # where it starts in save memory: a number for the table of places, which never moves,
       # and for a record the name of a variable, set at power-on from that table. +number+
-      # counts the records from 1 in the order they were declared, which is how a job says
+      # counts the records from 1 in the order they were declared, which is how a job marks
       # whose it is; the table of places, which is written without jobs, is 0.
       #
       # +pools+ is each pool, and each field of one, the record keeps (their lists and variables
       # are in +kept+ too), for the reset that has to put a pool back rather than empty it.
       #
-      # +fast+ is what the game said about where the record's routines run from: true for the
+      # +fast+ is what the game set about where the record's routines run from: true for the
       # console's quick memory, false for the cartridge, nil for nothing given.
       #
       # Until the program is fully declared a record's +kept+, +body+, +half+, +shape+ and
@@ -232,10 +232,10 @@ module VBlank
       # piece each pass.
       JOBS_THAT_WRITE = %i[save erase copy].freeze
 
-      # WHERE ONE OF A RECORD'S ROUTINES IS KEPT, from what the game said of the record:
+      # WHERE ONE OF A RECORD'S ROUTINES IS KEPT, from what the game set for the record:
       # true for the quick memory, false for the cartridge, nil for the build to decide.
       #
-      # `fast: false` is said of every routine the record has. `fast: true` is said of the two
+      # `fast: false` applies to every routine the record has. `fast: true` applies to the two
       # routines every pass of a write runs — the one that writes a piece, and the one that
       # looks the copy over when the last piece is in — and only when the game asks for a job
       # that writes. That is what a save spends its frames in. The jobs themselves (save,
@@ -253,12 +253,12 @@ module VBlank
         insists_on_writing?(layout) ? true : nil
       end
 
-      # Did the game say `fast: true` of this record, and ask it for a job that writes?
+      # Did the game set `fast: true` on this record, and ask it for a job that writes?
       def insists_on_writing?(layout) = layout.fast && @save_jobs_asked[layout.name].intersect?(JOBS_THAT_WRITE)
 
-      # WHERE THE QUEUE'S OWN ROUTINES ARE KEPT, which no game says of them: they are every
+      # WHERE THE QUEUE'S OWN ROUTINES ARE KEPT, which no game sets for them: they are every
       # record's, and a write goes through them on its way to the record's own. So they go
-      # where the game's records say between them — the quick memory when a record that
+      # where the game's records decide between them — the quick memory when a record that
       # insisted on it writes, since those writes pass through here; the cartridge when every
       # record the game declared was kept out; and wherever the build decides otherwise.
       #
@@ -273,7 +273,7 @@ module VBlank
       end
 
       # Where each kept thing sits in the body, and what the record's shape and key are. Where
-      # the record sits in save memory is not decided here: the table of places says, at
+      # the record sits in save memory is not decided here: the table of places decides, at
       # power-on (see SavePlaces).
       def lay_out_save_data(name, copies, kept, place:, number: 0, when_busy: :wait, pools: [], fast: nil)
         at = 0
@@ -619,7 +619,7 @@ module VBlank
       end
 
       # ONE PEEK AT A COPY, written wherever the game reads it — which on a file-select screen
-      # is before the record says what it keeps, so where the thing sits in a copy is not known
+      # is before the record names what it keeps, so where the thing sits in a copy is not known
       # yet. The line gets a stand-in for the number, named after the record, and
       # #resolve_save_data_peeks puts the real reading in its place once every record is laid
       # out. What the reading does is fixed here: the record's jobs are finished first, just

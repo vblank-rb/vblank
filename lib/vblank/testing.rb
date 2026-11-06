@@ -59,7 +59,7 @@ module VBlank
     # is the screen those tests were written for, and is played as its run's console
     # (PlaysRunConsole). The library assumes none, so a game's build that names none stops and says
     # so; only a test suite has this. Laying such a test out as its run's console is the better
-    # answer, and fails every test that says a place on the Advance's screen.
+    # answer, and fails every test that names a place on the Advance's screen.
     module LaidOutForTheAdvance
       def console_description = console ? super : Console::ADVANCE
     end
@@ -147,7 +147,7 @@ module VBlank
     def skip_on_this_machine(why) = raise(NotOnThisMachine, why)
 
     # THE PLAYER'S COPY OF THE ORIGINAL +game+ (an Original::Game) IS MADE FROM, for a test that reads
-    # it. A machine where nothing says where one is stops the test (Original::NotSet), saying what to
+    # it. A machine where nothing sets where one is stops the test (Original::NotSet), saying what to
     # set, and a copy that is named and wrong stops it too (Original::WrongCopy). Nothing skips: the
     # games' shared rule is that a suite without the copy stops, because a suite that skipped would
     # pass having checked nothing of the game.
@@ -182,7 +182,7 @@ module VBlank
 
     # THE TWO KINDS OF SKIP A RUN TAKES. The first: its lowering lacks the feature the test plays —
     # its build does not make it yet, or its hardware cannot. A checked player raises it for what
-    # its lowering does not make or answer, and skip_on_<run> for what a test says it cannot play.
+    # its lowering does not make or answer, and skip_on_<run> for what a test declares it cannot play.
     # The second is NotOnThisMachine, below. Any other skip is a test in the wrong place, and fails
     # the run (SkipsByReason).
     #

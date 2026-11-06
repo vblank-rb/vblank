@@ -68,13 +68,13 @@ module VBlank
       end
 
       # THE MOST PLAYERS THIS BUILD SEATS, a Ruby number while the game is built, as `screen_width`
-      # is: the top of what `players:` says for this build. A game says its players once, and lays
+      # is: the top of what `players:` sets for this build. A game names its players once, and lays
       # out its seats from this, so the two cannot drift apart.
       #
       #   VBlank.game "PARTY", consoles: %i[gba], players: { computer: 1..4, else: 1 } do
       #     walkers = (1..most_players).map { |player| sprite :walker, at: [20 * player, 80] }
       #
-      # A game that says no `players:` has no number to give, so this is a friendly error: a build
+      # A game that sets no `players:` has no number to give, so this is a friendly error: a build
       # seats what the console reads, and a computer build up to sixteen, which a game never means.
       def most_players
         @program.most_players or raise ArgumentError,
@@ -83,7 +83,7 @@ module VBlank
       end
 
       # SHAKE THE PLAYER'S HANDS for +frames+ frames, as a ball hitting a bumper does. +pattern+
-      # says on which frames the motor runs, eight of them at a time and round again: a String of
+      # sets on which frames the motor runs, eight of them at a time and round again: a String of
       # eight, "#" for on and "." for off, read from the left. Steady by default; "#.#.#.#." is a
       # light buzz. A number is eight bits read as the Color's own games read theirs, so a pattern
       # taken from one of them plays the same (IR::Rumble).
@@ -91,7 +91,7 @@ module VBlank
       #   rumble frames: 12
       #   rumble frames: 30, pattern: "##..##.."
       #
-      # A rumble said while one runs takes its place, and `frames: 0` stops it. A rumble is
+      # A rumble started while one runs takes its place, and `frames: 0` stops it. A rumble is
       # felt only on a console whose cartridge carries a motor (the Game Boy Color's); on any
       # other it does nothing, and the game plays the same.
       #

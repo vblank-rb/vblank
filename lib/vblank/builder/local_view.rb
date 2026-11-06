@@ -25,7 +25,7 @@ module VBlank
       # declarations drawing needs (a picture, a letter), which do nothing where they are written.
       DECLARATIONS = %i[declaration part].freeze
 
-      # Draws what the block says, for the player number it is handed.
+      # Draws what the block asks for, for the player number it is handed.
       def drawing_for_local_player
         unless block_given?
           raise ArgumentError, "`drawing_for_local_player` needs a block. To fix this, write the drawing in it: " \

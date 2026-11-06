@@ -40,7 +40,7 @@ module VBlank
         sd_add(layout.place_node, sd_add(sd_op(:*, copy, sd_int(room * 2)), sd_op(:*, half, sd_int(room))))
       end
 
-      # Where copy +copy+'s newer half starts. A copy with no good half says -1 for which is
+      # Where copy +copy+'s newer half starts. A copy with no good half holds -1 for which is
       # newer, so it is held to 0 or 1: a reading of such a copy is thrown away, but the place it
       # read from is still a place in save memory, which a 128K chip reaches by switching to the
       # bank it is in.
@@ -54,7 +54,7 @@ module VBlank
       end
 
       # Step 1: the marker and the shape, into the half starting at +here+ — wiped first, on a
-      # memory that has to be (see #emit_room_wipe), unless +wipe+ says the caller wiped it.
+      # memory that has to be (see #emit_room_wipe), unless +wipe+ marks that the caller wiped it.
       def emit_half_header(layout, here, wipe: true)
         emit_room_wipe(here, @memory.room(layout.half)) if wipe
         { MARKER_AT: sd_int(IR::SaveLayout::MARKER), SHAPE_AT: sd_int(layout.shape) }.each do |field, value|

@@ -25,7 +25,7 @@ module VBlank
       # TILE COLLISION: the routine that asks a background's grid whether a box is clear of
       # its solid tiles, built once for each background-and-box-size that needs one. An
       # internal hook a {HardwareSprite} calls when it is `blocked_by` a background — never
-      # written by an author, who says `blocked_by` and nothing else.
+      # written by an author, who writes `blocked_by` and nothing else.
       #
       # This is tile collision and nothing else. Two things collide in this framework and
       # they share no machinery: a mover against the scenery's solid tiles, which is this,
@@ -57,7 +57,7 @@ module VBlank
 
       # A BACKGROUND'S WALLS KEPT WHERE THE GAME CAN CHANGE THEM, for one whose cells the game
       # changes with set_tile (see Background#record_wall_change): +list+ holds one wall byte a
-      # cell of the map showing, and +fresh+ says whether it holds that map's walls yet. 0 means
+      # cell of the map showing, and +fresh+ marks whether it holds that map's walls yet. 0 means
       # not yet, and is what the variable holds wherever the background goes up as declared —
       # the variables a background is put back to its first map with are put back to 0 then
       # (IR::SceneHandover), and this is one of them — and after another map is shown. The walls

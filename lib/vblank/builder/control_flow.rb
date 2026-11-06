@@ -192,13 +192,13 @@ module VBlank
       # the framework converts seconds to frames for you:
       #
       #   every(30) { blink = 1 }              # every 30 frames
-      #   every(0.5, :seconds) { blink = 1 }   # the same, said in seconds
+      #   every(0.5, :seconds) { blink = 1 }   # the same, given in seconds
       #
       # @param n [Integer, Numeric] the interval (frames must be whole; seconds may be fractional)
       # @param unit [Symbol] :frames (default) or :seconds
       def every(n, unit = :frames, &block)
         counter = timer_counter!(:every, n, unit, block)
-        # Build a first-class `every` node: the tree keeps saying "every N frames"
+        # Build a first-class `every` node: the tree still reads "every N frames"
         # (which anything reading the tree reads directly), and each backend
         # turns it into the frame counter + compare. The counter itself is still
         # allocated and cleared at boot by timer_counter! above.
@@ -214,13 +214,13 @@ module VBlank
       # one frame.
       #
       #   after(600) { state = 1 }             # 600 frames in
-      #   after(10, :seconds) { state = 1 }    # the same, said in seconds
+      #   after(10, :seconds) { state = 1 }    # the same, given in seconds
       #
       # @param n [Integer, Numeric] the delay (frames must be whole; seconds may be fractional)
       # @param unit [Symbol] :frames (default) or :seconds
       def after(n, unit = :frames, &block)
         counter = timer_counter!(:after, n, unit, block)
-        # A first-class `after` node — the tree keeps saying "after N frames", and
+        # A first-class `after` node — the tree still reads "after N frames", and
         # each backend counts up only until the target so the body fires exactly
         # once. The counter is allocated and cleared at boot by timer_counter!.
         push_container(Build.after(counter, to_frames(n, unit))) do
@@ -250,7 +250,7 @@ module VBlank
       # one frame on a game that fits and two on a game that does not, so a body run
       # once per pass slows down when the game does — a half-second fade takes a second
       # and a half, and a counter counts at two thirds speed. This one is run once per
-      # frame that really passed, so it takes as long as it says whatever the game is
+      # frame that really passed, so it takes as long as it is set to whatever the game is
       # doing. (A very slow pass is capped, so a game can never be asked to catch up
       # half a second inside one already-late frame.)
       #
@@ -406,7 +406,7 @@ module VBlank
 
       # One posed pool's beat: count the frame, and when the beat comes round put the
       # counter back and step every instance on. The step is a walk of the pool's slots,
-      # said where the pool was declared (Composition#register_pool_animation) and built
+      # set up where the pool was declared (Composition#register_pool_animation) and built
       # afresh for each place it goes, since a node belongs to one place in the tree.
       def advance_pool_animation(anim)
         step = Build.if_(Build.binop(:>=, Build.var_ref(anim[:tick]), Build.int(anim[:rate])),
@@ -431,7 +431,7 @@ module VBlank
       # a player can tell from one that did not.
       #
       # Called before #finalize_present_lists, which takes a frame's present node away when
-      # the game has no sprites of the console's own to draw: that node is what says where
+      # the game has no sprites of the console's own to draw: that node is what marks where
       # in the frame this goes.
       def finalize_animation_steps
         return if @animations.empty? && @pool_animations.empty?

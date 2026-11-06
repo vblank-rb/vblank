@@ -7,7 +7,7 @@ module VBlank
     #
     # Flowers that sway and water that lapses are a handful of tiles taking turns through a short
     # loop of pictures, over a map that does not change. Every picture is drawn ahead of time, so
-    # the game has only to say which one a group shows, and the whole group changes as one.
+    # the game has only to name which one a group shows, and the whole group changes as one.
     #
     # They stand on painted tiles (see TileRuns), which is what makes them work everywhere a
     # background does: a group is a run of tiles, never merged with any other, whose colours come

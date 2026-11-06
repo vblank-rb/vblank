@@ -57,7 +57,7 @@ module VBlank
   # four variables and a routine that runs each frame. Nothing there is new
   # capability, so Packs::ScreenShake is written in the same verbs a game is.
   #
-  # When a pack turns out to need one small thing the DSL cannot say, the answer is
+  # When a pack turns out to need one small thing the DSL cannot express, the answer is
   # to add that thing as a kernel primitive, not to let the pack reach past the
   # boundary. `once_a_frame` exists for exactly that reason.
   #

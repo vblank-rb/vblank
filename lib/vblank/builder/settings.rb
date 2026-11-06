@@ -10,7 +10,7 @@ module VBlank
     #
     #   floors = setting :floors, 60
     #
-    # The line is the whole of it: the name, and what the game gets when nobody says. It is
+    # The line is the whole of it: the name, and what the game gets when nobody sets one. It is
     # a value while the game is BUILT — a Ruby value, like the numbers a game computes its
     # tables from — not a variable the game keeps while it runs.
     module Settings

@@ -53,7 +53,7 @@ module VBlank
         # One sprite per game leads the camera. Calling it again with a different sprite
         # is a friendly error rather than two cameras fighting over one world.
         #
-        # `at:` says where in the WORLD the character starts, which is the question you
+        # `at:` sets where in the WORLD the character starts, which is the question you
         # want answered right here and which the sprite's own position cannot answer — that
         # is where it sits on the screen, and under a follow camera those are two different
         # things. Leave it out to start at the world's top-left corner.

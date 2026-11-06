@@ -73,7 +73,7 @@ module VBlank
         #
         #   fade_out                                # to black, over half a second
         #   fade_out :white, frames: 10             # a fast whiteout
-        #   fade_out :black, duration: 1.5          # the same, said in seconds
+        #   fade_out :black, duration: 1.5          # the same, given in seconds
         #   fade_out :red, frames: 12               # a redout, for a death
         #
         # The picture is not redrawn and nothing is lost — it is all still there under the
@@ -92,7 +92,7 @@ module VBlank
         #   fade_out inside: [0, 0, 240, 128]
         #
         # `fade_in` with no arguments comes back the same way, so the layer or the rectangle
-        # is said once. Either of those and a color other than :black or :white cannot be
+        # is given once. Either of those and a color other than :black or :white cannot be
         # asked for together, which is a friendly error saying why.
         #
         # @param color [Symbol, String, Integer] the color to fade toward
@@ -450,7 +450,7 @@ module VBlank
           { word => rect }
         end
 
-        # The rectangle this game's screen fade is held to, said once for all the verbs, for the
+        # The rectangle this game's screen fade is held to, set once for all the verbs, for the
         # same reason as the layer above: one ramp, one place.
         def set_fade_rectangle!(rectangle)
           if @fade_rectangle && @fade_rectangle != rectangle

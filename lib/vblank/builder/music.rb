@@ -50,7 +50,7 @@ module VBlank
       # A song named here starts on the NEXT frame: the player runs as the screen finishes a
       # picture, which is before the game's pass, so it hears the name a frame on. That is a
       # frame later than a cartridge whose sound engine runs after its game's logic, and a game
-      # rebuilt to match one says `this_frame: true` — the song is then taken up and its first
+      # rebuilt to match one sets `this_frame: true` — the song is then taken up and its first
       # frame played right here, and the next frame plays its second.
       #
       # @param name [Symbol] song name (defined with `song`)
@@ -68,9 +68,9 @@ module VBlank
         record(Build.play_song(name, this_frame: this_frame))
       end
 
-      # No song is playing now. Like `play_song`, it can be said every frame: the
-      # song goes quiet once, and saying it again while nothing plays does nothing.
-      # Said in the same frame as naming a song, it starts that song over from its
+      # No song is playing now. Like `play_song`, it can be called every frame: the
+      # song goes quiet once, and calling it again while nothing plays does nothing.
+      # Called in the same frame as naming a song, it starts that song over from its
       # first note — `stop_music; play_song :title` is how a tune restarts.
       def stop_music
         record(Build.stop_music)
@@ -78,15 +78,15 @@ module VBlank
 
       # HOLD THE MUSIC WHERE IT IS, while the next screen loads. The notes sounding ring on as
       # they are, and nothing new starts, from the next frame: `release_music` carries on from
-      # the note it stopped before, and naming another song or saying `stop_music` lets it go
-      # too. Naming the song held changes nothing, so a game that says `play_song` every frame
+      # the note it stopped before, and naming another song or calling `stop_music` lets it go
+      # too. Naming the song held changes nothing, so a game that calls `play_song` every frame
       # can hold its music like any other. Sound effects play on, and the music volume still
       # reaches the notes held. Holding when no song plays does nothing.
       def hold_music
         record(Build.hold_music(true))
       end
 
-      # The music held by `hold_music` carries on from the next frame. Said when it is not held,
+      # The music held by `hold_music` carries on from the next frame. Called when it is not held,
       # it does nothing.
       def release_music
         record(Build.hold_music(false))
@@ -94,7 +94,7 @@ module VBlank
 
       # HOW LOUD THE MUSIC PLAYS, from 0 (silent) to 100 (as written). It reaches the song
       # playing now, notes already sounding included, from the next frame — and every song
-      # after it, until it is said again. Sound effects are not the music, and keep their own
+      # after it, until it is set again. Sound effects are not the music, and keep their own
       # volume.
       #
       #   music_volume 50          # half as loud
@@ -136,7 +136,7 @@ module VBlank
       #
       #   music = songs :music, [title_theme, file_select, forest]   # VBlank::Audio::Score each
       #   music.play 2            # the forest
-      #   music.play track        # ...or whichever one a number the game holds says
+      #   music.play track        # ...or whichever one a number the game holds names
       #
       # For a game whose music already exists as numbers — decoded from another cartridge,
       # read from a file — rather than written as `song` blocks. A Hash names them instead:
@@ -167,7 +167,7 @@ module VBlank
       #
       #   sfx = sound_effects :sfx, { hit: HIT, spark: SPARK }   # VBlank::Audio::Score each
       #   sfx.play :hit
-      #   sfx.play which          # ...or whichever one a number the game holds says
+      #   sfx.play which          # ...or whichever one a number the game holds names
       #
       # A sword hit, a door, a chest: short runs of notes the way a tune is, decoded from the same
       # place. Asked for again while it is still sounding, one starts again from its first note.

@@ -10,7 +10,7 @@ module VBlank
       # The font advances this many pixels per character (a 5px glyph + a 1px gap).
       GLYPH_WIDTH = 6
 
-      # How many digit columns draw_number reserves when you don't say. A live
+      # How many digit columns draw_number reserves when you don't give one. A live
       # number's width isn't known until the game runs, so it draws in a fixed field.
       DEFAULT_DIGITS = 4
 
@@ -151,7 +151,7 @@ module VBlank
         return record(Build.draw_text(text, x, y, colors.first, font: font)) if colors.length == 1
 
         # A bitmap screen paints where it is called, and the words are the same words in
-        # either colour — so they are painted ONCE, with the test worked out first to say
+        # either colour — so they are painted ONCE, with the test worked out first to pick
         # which colour. Written the long way, as the words under a test and again under its
         # opposite, it takes no longer and is every pixel of the words twice over.
         which = text_color_test(showing)
@@ -173,7 +173,7 @@ module VBlank
       #
       # The left edge takes the same names {#draw_text} does. What is placed is the
       # FIELD, not the number in it — the field is the same width whatever the number
-      # says, which is what stops a centred score jittering as it counts up.
+      # is, which is what stops a centred score jittering as it counts up.
       #
       # @param value [Integer, Symbol, Value] the number to draw
       # @param x [Integer, Symbol] left edge of the field, or :left / :center / :right
@@ -347,7 +347,7 @@ module VBlank
       end
 
       # WORDS HELD IN A LIST (see DSL::ListText): +length+ of its character codes from item +from+,
-      # all of it from there when not said. How wide they come out is known only as they are
+      # all of it from there when not given. How wide they come out is known only as they are
       # drawn, so the left edge is a number or a variable, and each word of it is one colour.
       def draw_list_text(list, x, y, color, font:, from:, length:, placed:)
         if TILE_HARDWARE_MODES.include?(@screen_mode)

@@ -18,7 +18,7 @@ module VBlank
       # The scanline the console is drawing right now (VCOUNT, 0..227), as a {Value}
       # you can do arithmetic on. It's how a probe measures how far into a frame the
       # drawing has reached — sample it right after drawing, and how far past the
-      # start of the vertical blank (scanline 160) it is says how much of the safe
+      # start of the vertical blank (scanline 160) it is shows how much of the safe
       # window the frame used. Hardware-only: the headless interpreter refuses it.
       def read_scanline
         DSL::Value.new(self, Build.read_scanline)

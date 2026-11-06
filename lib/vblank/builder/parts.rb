@@ -21,7 +21,7 @@ module VBlank
     # `part :play` works like Ruby's `private`: alone, it holds from its line to the next
     # `part` (or the end of the game); given a block, it holds inside the block. The block form
     # cannot hand back the locals made inside it, which is why the plain form is there — a game
-    # that builds its play as a row of objects, each declaring its own state, says `part :play`
+    # that builds its play as a row of objects, each declaring its own state, writes `part :play`
     # once above the row. A scene names a part too: what its body declares.
     #
     # A ROUTINE BELONGS WHERE IT IS WRITTEN. A `func`, a scene, a pool's `func` and an
@@ -54,7 +54,7 @@ module VBlank
     # many things the part has. On the console each variable is a store of a number the code
     # carries, a couple of instructions; a list is its length set again (and a full one filled
     # by the copying engine); a pool is its free slots pushed back, one short loop. A game that
-    # never says `start_over` has no such routine, and builds the same cartridge it always did.
+    # never calls `start_over` has no such routine, and builds the same cartridge it always did.
     #
     # Why not one block copy of the starts from the cartridge into memory? That wants the part's
     # variables side by side in memory, and where each variable lives is each console's own
@@ -112,7 +112,7 @@ module VBlank
       # A variable, list or pool the game just declared, as a member of every part and scene in
       # force here. Called by `var`, `list` and `pool`, where a name that starts with `_` is the
       # author's scratch and left out; the framework's own state that a new game puts back (a
-      # timer's count, a job's running flag, a sprite's place) says +framework+.
+      # timer's count, a job's running flag, a sprite's place) sets +framework+.
       def add_part_member(kind, thing, framework: false)
         return if !framework && thing.is_a?(Symbol) && thing.start_with?("_")
 

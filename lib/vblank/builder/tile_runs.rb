@@ -10,7 +10,7 @@ module VBlank
     # known while the game is built — a name, a score, a message typed a letter at a time, a
     # meter, a map drawn from where the player has been. They are never merged, because two of
     # them that look the same now may not on the next frame. And they reach the screen only
-    # when the game says `changed`, which copies the whole list in the gap between frames.
+    # when the game calls `changed`, which copies the whole list in the gap between frames.
     #
     # The list holds the pixels the way the console's video memory does, so the copy is a
     # plain copy and a game can match another cartridge's buffer byte for byte: one byte is two
@@ -19,7 +19,7 @@ module VBlank
     #
     # THAT FORM IS THE ADVANCE'S, and every other console converts it as it copies, which is
     # work for each tile on each `changed`. A game that repaints many tiles a frame on one of
-    # those says `console_format: true` and writes the bytes the console keeps instead
+    # those sets `console_format: true` and writes the bytes the console keeps instead
     # (Console::Description#tile_planes), which are copied with nothing converted. It changes
     # nothing on the Advance, whose copy is plain already. It is off unless asked for, because
     # such a list means something different on each console.
@@ -27,7 +27,7 @@ module VBlank
       # Bytes one tile of a run takes in its list: 8 rows of 8 pixels, two pixels a byte.
       TILE_BYTES = 32
 
-      # The game says the list moved (see DSL::TileRun#changed). Where the program is paced by
+      # The game marks the list as moved (see DSL::TileRun#changed). Where the program is paced by
       # frames the copy waits for the gap after this frame — see #finalize_tile_copies — and
       # the flag set here is what tells it to; where it is not, the copy stays where it was
       # asked for, since there is no gap to move it to.
@@ -148,7 +148,7 @@ module VBlank
       end
 
       # COPY EACH RUN WHOSE LIST MOVED, in the gap between frames, and only on a frame where
-      # the game said so. Saying `changed` sets a flag; the gap copies and clears it. That is
+      # the game asked for it. Calling `changed` sets a flag; the gap copies and clears it. That is
       # what makes three `changed` in one frame one copy, and what keeps the copy out of the
       # middle of a frame, where the top of the screen would show the old pixels and the
       # bottom the new.

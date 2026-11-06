@@ -45,7 +45,7 @@ module VBlank
       #   screen :tiled           # tile/sprite layers
       #
       # HOW MANY TILE LAYERS `screen :tiled` HAS IS NOT FIXED, and nothing in a program
-      # says which arrangement it wants. The console lays its tile layers out two ways:
+      # names which arrangement it wants. The console lays its tile layers out two ways:
       # four that scroll, or two that scroll plus one that turns and resizes. A game gets
       # the second exactly when it turns a background (`background(...).rotate` /
       # `.scale`), because turning one IS asking for it — so the build reads the
@@ -67,7 +67,7 @@ module VBlank
       # @example Tear-proof
       #   screen :bitmap, tear_free: true
       #
-      # Pass +colors:+ to say which colors the screen shows, instead of letting the
+      # Pass +colors:+ to set which colors the screen shows, instead of letting the
       # framework work them out from the ones you name. You want this only when your
       # pictures come from somewhere that already decided — art imported from another
       # game or a paint program, whose pixels are numbers that pick out of ITS table.
@@ -78,19 +78,19 @@ module VBlank
       # @example Colors that came with the art
       #   screen :bitmap, tear_free: true, colors: imported.colors
       #
-      # Pass +late:+ to say what the tear-free screen does with a page the game finished too
+      # Pass +late:+ to choose what the tear-free screen does with a page the game finished too
       # late for the break between pictures it was meant for. By default (+:wait+) it waits for
       # the next break, so it never tears — but a frame a little late then costs a whole frame,
       # and a game at sixty drops to thirty for it. +:show_now+ shows such a page as soon as
       # it is done, which can tear on those frames. A row number (0 to 159) shows it at once
       # only while the screen is still drawing above that row, where a tear is least seen, and
       # waits otherwise. A late page finished during the break itself is shown at once by
-      # either, since nothing is being drawn then. Said per `screen`, so a scene can allow it while the
+      # either, since nothing is being drawn then. Set per `screen`, so a scene can allow it while the
       # game plays and forbid it on a menu. `rom.profile` counts the pages it showed at once.
       #
-      # +pace:+ says what LATE means: the pictures a second the game aims for — 60 (the
+      # +pace:+ sets what LATE means: the pictures a second the game aims for — 60 (the
       # default), 30, 20 or 15. A page is late when it misses the break that rate aims at. A
-      # game that runs at thirty and says `pace: 30` shows at once only the pages that ran
+      # game that runs at thirty and sets `pace: 30` shows at once only the pages that ran
       # over thirty, and the ones on time at thirty wait as they always did.
       #
       # @example A late page shown at once, if the tear is in the top quarter
@@ -159,7 +159,7 @@ module VBlank
       end
 
       # SETS THE GAME'S PIXEL SIZE on the program and the builder's console, and returns it as the
-      # screen node keeps it: nil for one. It is the whole game's, so it is said once, on the game's
+      # screen node keeps it: nil for one. It is the whole game's, so it is set once, on the game's
       # first screen line, and the program carries it (Program#pixel_size). From that line on the
       # builder lays the game out on the small screen the console description then answers, which
       # is why nothing may have read the screen's size before it.
@@ -201,8 +201,8 @@ module VBlank
       end
 
       # THE COLOUR A SCREEN SHOWS WHEREVER NOTHING IS DRAWN, as the IR keeps it: nil for a screen
-      # that says none, which shows the game's (black, the colour every screen has shown there
-      # before, unless the game's own `screen` says another). A painted screen draws every pixel, so
+      # that names none, which shows the game's (black, the colour every screen has shown there
+      # before, unless the game's own `screen` names another). A painted screen draws every pixel, so
       # it has nowhere to show one.
       private def resolve_backdrop(backdrop, mode)
         return nil if backdrop.nil?
@@ -441,8 +441,8 @@ module VBlank
         end
       end
 
-      # Whether the game shows tiled screens alone: it says `screen :tiled`, and no other kind. A
-      # game that says no screen paints; one that turns a `screen :rotozoom` keeps the camera's
+      # Whether the game shows tiled screens alone: it asks for `screen :tiled`, and no other kind. A
+      # game that names no screen paints; one that turns a `screen :rotozoom` keeps the camera's
       # own meaning there.
       def every_screen_tiled?
         @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq == [:tiled]
@@ -641,7 +641,7 @@ module VBlank
       #   layers :world, :actors, :ui
       #   pixelate 8, under: :ui
       #
-      # A game says one place, and every `pixelate` in it says the same one.
+      # A game names one place, and every `pixelate` in it names the same one.
       #
       # @param size [Symbol, Integer, Value] how many pixels a block is each way, 1 to 16
       # @param under [Symbol, nil] a layer left as drawn with everything in front of it, or nil for the whole screen
@@ -898,8 +898,8 @@ module VBlank
       end
 
       # SWITCH THE LIGHT OFF IN THE SCENES IT IS OFF IN: those that see through a layer, or
-      # fade under one (see IR::LightScenes). Each scene says, as it starts its pass, whether
-      # the light is on, and the light's darkness is that much of what the game says — so
+      # fade under one (see IR::LightScenes). Each scene sets, as it starts its pass, whether
+      # the light is on, and the light's darkness is that much of what the game sets — so
       # every backend works out the same picture from the program alone. A game whose light
       # is on in every scene gets none of this.
       def finalize_light_switch
@@ -966,7 +966,7 @@ module VBlank
       LIGHT_SHAPE_VALUES = %i[int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right
                               table_get data_byte].freeze
 
-      # What the commonest things a shape cannot do are, said as the game says them.
+      # What the commonest things a shape cannot do are, said as the game writes them.
       LIGHT_SHAPE_CANNOT = { list_get: "read a list", list_len: "read a list", held: "read the buttons",
                              pressed: "read the buttons", players_connected: "read the buttons", chance: "pick a number at random",
                              call: "call a routine", call_one_of: "call a routine" }.freeze

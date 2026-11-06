@@ -119,9 +119,9 @@ module VBlank
       # Declare a record of the game's state, kept in save memory in +copies+ numbered copies.
       # The block, if given, names what it keeps with `keep`, and the handle's `keep` adds more
       # later. Returns a handle: `files[n]` is one copy, and a copy saves, loads, erases and
-      # says whether it is good. See Saves.
+      # reports whether it is good. See Saves.
       #
-      # `fast:` says where the record's save routines should be kept, the word `func` takes:
+      # `fast:` sets where the record's save routines should be kept, the word `func` takes:
       # `fast: true` insists on the console's quick memory, `fast: false` keeps them in the
       # cartridge, and left out the framework decides. A build that measures its game measures
       # each screen that saves with a save running (Diagnostics::SaveStarts), so it weighs the
@@ -232,7 +232,7 @@ module VBlank
       end
 
       # A save_var on flash or the EEPROM is saved on a pass of the game loop after it changes, so
-      # a game with no loop would never save one, and nothing on screen would say so.
+      # a game with no loop would never save one, and nothing on screen would show it.
       def refuse_recorded_save_var_without_loop!
         return unless @saves&.save_vars_in_record? && @frame_boundaries.empty?
 

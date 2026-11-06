@@ -19,7 +19,7 @@ module VBlank
     #      copies gives up the room past the ones it keeps.
     #   2. Each record finds its row, by the number worked out from its name. With no row (a
     #      record new in this build, or one whose room was just freed) it is given room and a
-    #      row. With more copies than its row says, it grows where it is when the room after it
+    #      row. With more copies than its row holds, it grows where it is when the room after it
     #      is free, and otherwise its copies are moved, byte for byte, to room big enough.
     #   3. The table is written back if anything changed.
     #
@@ -30,7 +30,7 @@ module VBlank
     # checked that every record fits at once, so the last step always finds it.
     #
     # THE POWER GOING OFF while this runs loses nothing, with one exception. Moving a record's
-    # copies writes them into room the table says is free, and the table is written the moment
+    # copies writes them into room the table marks as free, and the table is written the moment
     # they are in — so until then the table still points at the old place, which nothing has
     # touched. The exception is the last resort, when save memory is nearly full and the free
     # room is in pieces: the records are slid down together, and then, for a record given more
@@ -349,7 +349,7 @@ module VBlank
         end
       end
 
-      # MOVE ONE RECORD'S COPIES — the record in the row scratch, as many as its row says — to
+      # MOVE ONE RECORD'S COPIES — the record in the row scratch, as many as its row holds — to
       # the to scratch, then write the table, so it points at them only once they are there.
       # Moving up, the bytes go last first, so a move by less than the record's size never
       # reads a byte it has already written over.

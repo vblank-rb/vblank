@@ -5,7 +5,7 @@ module VBlank
     # THE STACK: naming the depths a picture is built from, and putting things in them.
     #
     # A game is drawn in layers — the scenery, the characters, the score on top — and
-    # without a name for them the only way to say what sits in front of what is the
+    # without a name for them the only way to set what sits in front of what is the
     # order the declarations happen to run in. That order is invisible, it lives in
     # prose comments, and in a game split across files it depends on which file was
     # required first. `layers` gives those depths names, and `layer do ... end` puts
@@ -124,7 +124,7 @@ module VBlank
         see_through: :free,
       }.freeze
 
-      # Declare the program's stack of layers, backmost first — the one line that says
+      # Declare the program's stack of layers, backmost first — the one line that sets
       # what is in front of what.
       #
       #   layers :sky, :world, :actors, :ui
@@ -139,7 +139,7 @@ module VBlank
       # Every background has a level of its own otherwise, and the console stacks only a
       # few, so four backgrounds and sprites behind all of them is one level too many. The
       # console can put two backgrounds at one level and still tell them apart (it draws
-      # one of them first), so the list still says which is in front: the later one, as
+      # one of them first), so the list still sets which is in front: the later one, as
       # anywhere else in the stack. What it cannot do is put a sprite between the two: a
       # sprite at that level is drawn in front of both. So a sprite goes in the list's
       # last layer or somewhere else in the stack, never in an earlier one of the list.
@@ -159,7 +159,7 @@ module VBlank
 
         @layer_stack = names
         @shared_levels = shared
-        # Held so a `layer` block can say later that its layer is see-through: the stack
+        # Held so a `layer` block can mark later that its layer is see-through: the stack
         # is one thing and it is declared here, but which of its layers you can see
         # through is written where that layer is opened.
         @layers_node = record(Build.layers(names, shared: shared))
@@ -182,7 +182,7 @@ module VBlank
       # one line — `hero = layer(:actors) { sprite :hero, at: [100, 60] }` — and a layer
       # holding several is written the way anything else with a block is.
       #
-      # `transparency:` says how much of what is BEHIND this layer shows through it —
+      # `transparency:` sets how much of what is BEHIND this layer shows through it —
       # water, glass, fog, a dimmed backdrop behind a menu. 0 is solid (the picture as
       # drawn) and 100 is invisible:
       #
@@ -224,7 +224,7 @@ module VBlank
       # works out. `transparency: t` is the same as the two adding to 100, and keeps the
       # rounding it always had.
       #
-      # A SCREEN has one see-through layer, and a layer says its amounts one time — every
+      # A SCREEN has one see-through layer, and a layer sets its amounts one time — every
       # example opens a layer block exactly once, so that is the natural place. A game can
       # have one on each of its screens: a title whose light rays shimmer and a menu whose
       # window glows over its backdrop, in two scenes that never show together. Needs
@@ -435,8 +435,8 @@ module VBlank
       end
 
 
-      # Has this layer already said how see-through it is? The same thing said twice is one
-      # fact said twice, and is let through. Compared as the author wrote it, since two
+      # Has this layer already set how see-through it is? The same thing set twice is one
+      # fact given twice, and is let through. Compared as the author wrote it, since two
       # reads of the same variable build two equal-but-distinct nodes.
       def transparency_repeated!(name, amounts)
         was = @transparency_written[name]
@@ -493,7 +493,7 @@ module VBlank
 
       # The layer in front of +name+ in a shared level, or nil when +name+ is the front one of
       # its level or shares none. A sprite at a shared level is drawn in front of both
-      # backgrounds, so in any layer but the front one it would not be where the stack says.
+      # backgrounds, so in any layer but the front one it would not be where the stack puts it.
       def shared_layer_in_front_of(name)
         group = @shared_levels.find { |names| names.include?(name) }
         group && group.last != name ? group.last : nil

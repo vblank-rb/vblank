@@ -69,7 +69,7 @@ module VBlank
       #
       # WHICH OF THE CONSOLE'S TWO WORK MEMORIES A POOL IS KEPT IN is the build's to decide,
       # as it is for a list: the quick one for what a frame touches while there is room, the
-      # roomier one for the rest. `fast: false` says the pool is cold and gives the quick
+      # roomier one for the rest. `fast: false` marks the pool as cold and gives the quick
       # memory back; `fast: true` insists on it. A pool bigger than POOL_MAX_QUICK_BYTES cannot
       # share the quick memory, so it is kept in the roomier one whatever a frame does with
       # it, and `fast: true` on such a pool is a friendly error.
@@ -96,7 +96,7 @@ module VBlank
         handle = DSL::Pool.new(self, name, fields, capacity, image: image, hitbox: art&.hitbox, on_full: on_full,
                                                         art: art)
         # A pool too big to share the quick memory is kept out of it, as though the game had
-        # said `fast: false` — unless it said `fast: true`, which is then a friendly error.
+        # set `fast: false` — unless it set `fast: true`, which is then a friendly error.
         bytes = pool_bytes(handle, fields, widths)
         refuse_pool_no_memory_holds!(handle, fields.size, bytes) if bytes > console.largest_memory_bytes
         if bytes > POOL_MAX_QUICK_BYTES
@@ -113,7 +113,7 @@ module VBlank
 
       # --- the seam between a pool and the build (see Pool#func) ---
       #
-      # A pool declares its routines through here and says where its walks are; what those two
+      # A pool declares its routines through here and marks where its walks are; what those two
       # facts mean is settled at the end of the build, when every routine's body exists.
 
       # Declare +name+ as a routine of +pool+, working on one instance at a time. Its body is
@@ -138,7 +138,7 @@ module VBlank
         :"__pool_walk_#{@pool_walk_seq}"
       end
 
-      # Give +pool+ a hidden slot per instance saying which other list of colours it is drawn
+      # Give +pool+ a hidden slot per instance holding which other list of colours it is drawn
       # with, the first time one is told to draw with one (see Pool#draw_with). Every slot
       # starts in its own colours.
       def make_pool_recolorable(pool)
@@ -367,7 +367,7 @@ module VBlank
       end
 
       # A POOL THAT INSISTS ON THE QUICK MEMORY AND IS TOO BIG TO SHARE IT. `fast: true` is
-      # the game saying it knows better than the build where the pool goes, so the build does
+      # the game declaring it knows better than the build where the pool goes, so the build does
       # not quietly put it somewhere else: it says why not, and what gives the pool room.
       def refuse_oversized_fast_pool!(pool, field_count, bytes)
         quick = Messages::PlainWords::QUICK_MEMORY
@@ -383,7 +383,7 @@ module VBlank
       # EVERY LIST A POOL KEEPS ITS INSTANCES IN, and how wide a slot of each is, in the
       # order they are made: list => width.
       #
-      # A field is as wide as the game said, a whole word unless `widths:` narrowed it.
+      # A field is as wide as the game declared, a whole word unless `widths:` narrowed it.
       #
       # THE POOL'S OWN BOOKKEEPING IS NARROWED WITHOUT BEING ASKED, because unlike a field
       # the framework knows exactly what these hold. The active column is a yes or a no, so
@@ -395,7 +395,7 @@ module VBlank
       # A posed pool keeps two more hidden slots beside its fields: which way each instance
       # faces, and where each is in its cycle. Both are small counts, so both are a byte.
       #
-      # The chain that says what order the things came in holds slot numbers too, and the
+      # The chain that records what order the things came in holds slot numbers too, and the
       # removals a walk has not yet taken out of it are a stack of them.
       def pool_lists(pool, fields, widths)
         slot = slot_width(pool.capacity)

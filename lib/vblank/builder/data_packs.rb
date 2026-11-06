@@ -4,7 +4,7 @@ module VBlank
   class Builder
     # THE ORIGINAL'S DATA, READ THROUGH A DATA PACK. A port of a retail game may not ship that
     # game's data, so it reads the player's own copy (Original::Game). It does not read the copy
-    # directly: it says which pieces of the copy it needs, each a slot of a known shape and size,
+    # directly: it names which pieces of the copy it needs, each a slot of a known shape and size,
     # and reads them from a data pack made from the copy (Original::Pack).
     #
     #   pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
@@ -21,7 +21,7 @@ module VBlank
     # reads it there. A slot's shape and size are the game's own words in either build, never
     # worked out from the bytes, so nothing the game's code does depends on what the copy holds.
     #
-    # THE GAME HOLDS HANDLES, NEVER BYTES. `pack[:palette]` is a DSL::PackSlot, which says the slot's
+    # THE GAME HOLDS HANDLES, NEVER BYTES. `pack[:palette]` is a DSL::PackSlot, which gives the slot's
     # shape and size and nothing it holds; `image` and `table` take the handle and read the slot
     # themselves (#pack_slot_values). So a game cannot branch on the original's bytes while it is
     # built, and a build that leaves the bytes out changes only what those verbs do with a handle.
@@ -294,7 +294,7 @@ module VBlank
       end
 
       # Each slot's bytes as +unpacking+ writes them on the interpreter, the answer key every other
-      # backend is held to. The first fault the routine met (a block not packed the way it says, a
+      # backend is held to. The first fault the routine met (a block not packed the way it declares, a
       # read past the copy's end, a write past a slot) stops the build here, as a slot past the
       # copy's end does.
       def unpack_on_interpreter(unpacking)
