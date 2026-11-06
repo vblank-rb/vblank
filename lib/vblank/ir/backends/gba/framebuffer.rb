@@ -141,14 +141,14 @@ module VBlank
           end
 
           # What a picture's palette-number form is filed under, beside its colors.
-          def indexed_blob(name) = :"#{name}#{INDEXED_SUFFIX}"
+          def indexed_blob(name) = DerivedNames.join(name, INDEXED_SUFFIX)
 
           # ...and the same numbers COLUMN BY COLUMN, for a picture a stretched column draws on
           # the tear-free screen. The walk goes down one column of the picture, so kept that way
           # the next row's number is the next byte; kept row by row it is a whole picture width
           # further on, and finding it is a multiply every row. The copy costs the cartridge the
           # picture's size once more, which is far cheaper than the multiplies.
-          def column_blob(name) = :"#{name}#{COLUMNS_SUFFIX}"
+          def column_blob(name) = DerivedNames.join(name, COLUMNS_SUFFIX)
 
           # A picture's palette numbers, row by row, turned into the same numbers column by
           # column.

@@ -174,7 +174,7 @@ class TestNumberTable < Minitest::Test
     emitter.resolve_fixups
     words = words_of(emitter)
 
-    assert_equal HEADER + emitter.labels.fetch("elsewhere"), word_named_by(words, 0)
+    assert_equal HEADER + emitter.label_offset("elsewhere"), word_named_by(words, 0)
   end
 
   def test_with_no_table_open_an_address_is_the_four_instructions_it_always_was

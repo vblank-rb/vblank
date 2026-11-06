@@ -208,8 +208,7 @@ module VBlank
               FIX_ROUTINE => @divide_fix_routine_iwram }.filter_map do |name, base|
               next unless base
 
-              size = @emitter.labels.fetch(:"#{name}_end") - @emitter.labels.fetch(name)
-              [name, base...(base + size)]
+              [name, base...(base + @emitter.routine_bytes(name))]
             end.to_h
           end
 
@@ -228,18 +227,16 @@ module VBlank
           # the copied code simply runs faster. Copies whole words from the routine's
           # start label up to its end. A no-op when neither routine was reserved.
           def emit_copy_divide_routines_to_iwram
-            if @divide_routine_iwram
-              copy_routine(:__divide_routine, :__divide_routine_end, @divide_routine_iwram)
-            end
+            copy_routine(ROUTINE, @divide_routine_iwram) if @divide_routine_iwram
             return unless @divide_fix_routine_iwram
 
-            copy_routine(:__divide_fix_routine, :__divide_fix_routine_end,
-                         @divide_fix_routine_iwram)
+            copy_routine(FIX_ROUTINE, @divide_fix_routine_iwram)
           end
 
-          def copy_routine(from, to, destination)
-            @emitter.emit_load_label_address(0, from) # r0 = the routine, in ROM
-            @emitter.emit_load_label_address(1, to)
+          # Copy +routine+, from its label to its end label (DerivedNames.routine_end), to +destination+.
+          def copy_routine(routine, destination)
+            @emitter.emit_load_label_address(0, routine) # r0 = the routine, in ROM
+            @emitter.emit_load_label_address(1, DerivedNames.routine_end(routine))
             @emitter.emit(ASM.load_immediate(2, destination))
             copy = @emitter.gensym
             @emitter.place_label(copy)
@@ -327,7 +324,7 @@ module VBlank
 
             @emitter.refuse_open_number_table!("The divide routine")
             @emitter.emit(ASM.loop_forever) # the routine is only ever entered by the call above
-            @emitter.place_label(:__divide_routine)
+            @emitter.place_label(ROUTINE)
             start = @emitter.pos
             by_zero = @emitter.gensym
 
@@ -339,7 +336,7 @@ module VBlank
             emit_divide_restore_signs
             @emitter.place_label(by_zero)
             emit_divide_by_zero
-            @emitter.place_label(:__divide_routine_end)
+            @emitter.place_label(DerivedNames.routine_end(ROUTINE))
             refuse_oversized_routine!("divide", @emitter.pos - start, ROUTINE_BYTES)
           end
 
@@ -385,7 +382,7 @@ module VBlank
 
             @emitter.refuse_open_number_table!("The routine that divides fractions")
             @emitter.emit(ASM.loop_forever) # the routine is only ever entered by the call above
-            @emitter.place_label(:__divide_fix_routine)
+            @emitter.place_label(FIX_ROUTINE)
             start = @emitter.pos
             by_zero = @emitter.gensym
             too_big = @emitter.gensym
@@ -441,7 +438,7 @@ module VBlank
             emit_divide_fix_saturate
             @emitter.place_label(by_zero)
             emit_divide_by_zero
-            @emitter.place_label(:__divide_fix_routine_end)
+            @emitter.place_label(DerivedNames.routine_end(FIX_ROUTINE))
             refuse_oversized_routine!("fraction divide", @emitter.pos - start, FIX_ROUTINE_BYTES)
           end
 

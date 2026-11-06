@@ -116,7 +116,7 @@ module VBlank
           end
 
           def func_label(name)
-            "func_#{name}"
+            :"func_#{name}"
           end
 
           # Multi-way dispatch lowers to one "if the variable equals this value, call

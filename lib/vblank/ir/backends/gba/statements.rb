@@ -206,7 +206,7 @@ module VBlank
             return emit_countdown_in_memory(node) if counts_down?(node)
 
             index = node.index
-            limit = :"#{index}__limit"
+            limit = DerivedNames.join(index, "__limit")
             top = @emitter.gensym
             done = @emitter.gensym
 

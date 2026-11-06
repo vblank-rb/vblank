@@ -97,7 +97,7 @@ module VBlank
           # made with — the saved one coming in at power-on, or a new one set.
           def self.work_var(part) = :"__clock_work_#{part}"
           COPY_MADE = :__clock_copy_made
-          MADE_WITH = IR::Clock::OFFSETS.to_h { |offset| [offset, :"#{offset}_added"] }.freeze
+          MADE_WITH = IR::Clock::OFFSETS.to_h { |offset| [offset, DerivedNames.sub_label(offset, :added)] }.freeze
           COPY = IR::Clock::TIME.to_h { |reading| [reading, var(reading)] }.freeze
           WORK = %i[cycles of_cycle years into months].to_h { |part| [part, work_var(part)] }.freeze
 
@@ -211,7 +211,7 @@ module VBlank
             @primitives.store_var(ACC, READ_THIS_PASS)
             @emitter.emit_branch(:bl, AFTER_WAIT)
             @emitter.emit(ASM.pop(*kept, PC))
-            @emitter.place_label(:"#{FIRST_READING}_end")
+            @emitter.place_label(DerivedNames.routine_end(FIRST_READING))
           end
 
           def emit_routine(label)
@@ -219,7 +219,7 @@ module VBlank
             @emitter.emit(ASM.push(LR))
             yield
             @emitter.emit(ASM.pop(PC))
-            @emitter.place_label(:"#{label}_end")
+            @emitter.place_label(DerivedNames.routine_end(label))
           end
 
           # Every reading 0 to begin with — the console's memory is not nought at power-on — then
@@ -412,7 +412,7 @@ module VBlank
             @primitives.store_var(ACC, COPY_MADE)
             @emitter.place_label(out)
             @emitter.emit(ASM.pop(*kept, PC))
-            @emitter.place_label(:"#{ADD_OFFSET}_end")
+            @emitter.place_label(DerivedNames.routine_end(ADD_OFFSET))
           end
 
           def copy_statements
@@ -491,7 +491,7 @@ module VBlank
             @emitter.emit(ASM.subs_imm(BITS, BITS, 1))
             @emitter.emit_branch(:bcond, bit, cond: :ne)
             @emitter.emit(ASM.return)
-            @emitter.place_label(:"#{SEND}_end")
+            @emitter.place_label(DerivedNames.routine_end(SEND))
           end
 
           # TICK A BYTE BACK INTO ACC, lowest bit first: the clock lowered, which is when the chip
@@ -516,7 +516,7 @@ module VBlank
             @emitter.emit(ASM.subs_imm(BITS, BITS, 1))
             @emitter.emit_branch(:bcond, bit, cond: :ne)
             @emitter.emit(ASM.return)
-            @emitter.place_label(:"#{RECEIVE}_end")
+            @emitter.place_label(DerivedNames.routine_end(RECEIVE))
           end
         end
       end

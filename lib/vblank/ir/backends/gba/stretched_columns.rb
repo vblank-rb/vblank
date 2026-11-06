@@ -87,8 +87,8 @@ module VBlank
           def stretches_are_all_pixels?(name) = @decided[name]&.stretches_are_all_pixels? || false
 
           # What the lists are filed under, beside the picture's colors.
-          def runs_blob(name) = :"#{name}#{RUNS_SUFFIX}"
-          def runs_start_blob(name) = :"#{name}#{RUNS_START_SUFFIX}"
+          def runs_blob(name) = DerivedNames.join(name, RUNS_SUFFIX)
+          def runs_start_blob(name) = DerivedNames.join(name, RUNS_START_SUFFIX)
 
           # What the build settled for each picture, for the report.
           def to_h = @decided.dup

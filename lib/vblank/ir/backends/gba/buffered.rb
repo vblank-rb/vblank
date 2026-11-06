@@ -669,7 +669,7 @@ module VBlank
             emit(ASM.subs_imm(2, 2, 1))
             emit_branch(:bcond, pixel, cond: :ne)
             emit(ASM.pop(15))
-            place_label(:"#{TEXT_POINTS}_end")
+            place_label(DerivedNames.routine_end(TEXT_POINTS))
           end
 
           # Where a two-colour line's slot waits while its pixels are written: clear of the
@@ -735,7 +735,7 @@ module VBlank
               # Where it ends, so a profile of the finished game can say how much of a frame
               # went into drawing digits. A routine the LOWERING makes has no other record of
               # its span — func_ranges only knows routines somebody wrote.
-              place_label(:"#{Messages::MadeNames.make(:buffered_digit_routine, font: font_name)}_end")
+              place_label(DerivedNames.routine_end(Messages::MadeNames.make(:buffered_digit_routine, font: font_name)))
             end
           end
 

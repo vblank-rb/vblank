@@ -346,7 +346,7 @@ module VBlank
           def set_end_label(number) = :"__scene_set_code_#{number}_last"
 
           # How big each set's block came out, by number.
-          def set_bytes(number) = @emit.labels.fetch(set_end_label(number)) - @emit.labels.fetch(set_start_label(number))
+          def set_bytes(number) = @emit.label_offset(set_end_label(number)) - @emit.label_offset(set_start_label(number))
 
           def set_numbers = (1..quick_memory_sets.size)
 
@@ -396,7 +396,7 @@ module VBlank
           def swapped_address(name)
             number = set_holding(name)
             @swap_base + @set_offsets.fetch(number) +
-              (@emit.labels.fetch(@functions.func_label(name)) - @emit.labels.fetch(set_start_label(number)))
+              (@emit.label_offset(@functions.func_label(name)) - @emit.label_offset(set_start_label(number)))
           end
 
           # THE TABLES THE SWAP READS. For no set and for each set, a list of what to do, kept in
@@ -568,7 +568,7 @@ module VBlank
             place_label(done)
             emit(ASM.bx(14))
             emit_power_on_routine
-            place_label(:"#{SWAP_ROUTINE}_end")
+            place_label(DerivedNames.routine_end(SWAP_ROUTINE))
           end
 
           # What a reader of the running cartridge needs to name a routine that ran from where

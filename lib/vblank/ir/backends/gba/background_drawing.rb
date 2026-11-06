@@ -556,7 +556,7 @@ module VBlank
               emit(ASM.pop(15))
               # Where it ends, so a profile of the finished game can name it (see
               # GBA#lowered_routine_addresses).
-              place_label(:"#{label}_end")
+              place_label(DerivedNames.routine_end(label))
             end
             (@pending_walking_colors || {}).each do |label, bg|
               emit(ASM.loop_forever)
@@ -564,7 +564,7 @@ module VBlank
               emit(ASM.push(14))
               emit_walking_colors_send(bg)
               emit(ASM.pop(15))
-              place_label(:"#{label}_end")
+              place_label(DerivedNames.routine_end(label))
             end
           end
 
@@ -1034,7 +1034,7 @@ module VBlank
           # lists took that room from routines every frame of play runs. The send happens on the
           # frame a list changes, and from the cartridge it costs the same copies.
           def walking_colors_routine_label(name, bg)
-            label = :"#{bg.sets.routine}_colors"
+            label = DerivedNames.sub_label(bg.sets.routine, :colors)
             (@pending_walking_colors ||= {})[label] ||= bg
             label
           end

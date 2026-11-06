@@ -1531,7 +1531,7 @@ module VBlank
           def declaration_tag(node)
             return node.name unless @declared_in_several.include?(node.name)
 
-            :"#{node.name}__in_#{IR::Modes.strip_scene_prefix(node.scene)}"
+            DerivedNames.join(node.name, "__in_", IR::Modes.strip_scene_prefix(node.scene))
           end
 
           # The scene +node+'s declaration is laid out for on its own, which names its routines

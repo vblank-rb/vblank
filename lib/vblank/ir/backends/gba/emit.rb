@@ -121,14 +121,26 @@ module VBlank
 
           # A label is somewhere other code jumps to, so nothing about the registers on
           # the way here holds on the way in.
+          #
+          # EVERY LABEL IS KEPT AS A SYMBOL, whichever a caller wrote it as. A table holding both
+          # finds nothing when it is asked in the other kind, and says nothing about it; so each
+          # method here that takes a label name turns it into a Symbol itself.
           def place_label(name)
             @address_register.forget
             @list_register.forget
-            @labels[name] = pos
+            @labels[name.to_sym] = pos
           end
 
+          # Where label +name+ is, as a byte offset into the code.
+          def label_offset(name)
+            @labels.fetch(name.to_sym) { raise LoweringError, "reference to undefined label #{name.inspect}" }
+          end
+
+          # How many bytes +routine+ is: from its label to the one past its end (DerivedNames.routine_end).
+          def routine_bytes(routine) = label_offset(DerivedNames.routine_end(routine)) - label_offset(routine)
+
           def gensym
-            "L#{@label_seq += 1}"
+            :"L#{@label_seq += 1}"
           end
 
           # The instructions that follow start a copy of +bytes+ into video memory that the
@@ -161,7 +173,7 @@ module VBlank
               @address_register.forget
               @list_register.forget
             end
-            @fixups << Branch.new(pos: pos, kind: kind, cond: cond, target: target)
+            @fixups << Branch.new(pos: pos, kind: kind, cond: cond, target: target.to_sym)
             @branches += 1
             emit(ASM.nop)
           end
@@ -276,12 +288,12 @@ module VBlank
           # or the other way, lands that far from the copy: in whatever the quick memory holds
           # there. Such a call has to load the address and jump through it (see
           # Placement#emit_call_func), and a plain one is refused as the jumps are written.
-          def keep_jumps_inside(first, last) = @copied_blocks << [first, last]
+          def keep_jumps_inside(first, last) = @copied_blocks << [first.to_sym, last.to_sym]
 
           # Rewrite a branch placeholder as a real branch. The word offset is
           # (target - here)/4; ASM folds in the pipeline adjustment.
           def resolve_branch(fix)
-            target = @labels.fetch(fix.target) do
+            target = @labels.fetch(fix.target) do # a Symbol: #emit_branch made it one
               raise LoweringError, "unresolved jump to #{fix.target.inspect}"
             end
             refuse_jump_out_of_copied_block!(fix, target)
@@ -297,7 +309,7 @@ module VBlank
 
           def refuse_jump_out_of_copied_block!(fix, target)
             @copied_blocks.each do |first, last|
-              block = @labels.fetch(first)...@labels.fetch(last)
+              block = label_offset(first)...label_offset(last)
               next if block.cover?(fix.pos) == block.cover?(target)
 
               raise LoweringError, "a plain jump to #{fix.target.inspect} crosses the edge of the block " \
@@ -331,17 +343,14 @@ module VBlank
 
           # Where code label +name+ is in the cartridge when it runs.
           def label_address(name)
-            position = @labels.fetch(name) do
-              raise LoweringError, "reference to undefined label #{name.inspect}"
-            end
-            ROM_START + VBlank::Cartridge::ROM::ENTRY_OFFSET + position
+            ROM_START + VBlank::Cartridge::ROM::ENTRY_OFFSET + label_offset(name)
           end
 
           # Load the run-time address of a named code label into +reg+ (a fixed-size
           # placeholder patched in the second pass, once the label's position is known) —
           # or, in a routine with a number table, one read of a word that is.
           def emit_load_label_address(reg, label)
-            emit_load_address(reg, :label_addr, label)
+            emit_load_address(reg, :label_addr, label.to_sym)
           end
 
           # Blobs are copied into palette / video / sound memory by DMA, whose source

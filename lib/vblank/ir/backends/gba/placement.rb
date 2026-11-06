@@ -406,7 +406,7 @@ module VBlank
           def fast_func_address(name)
             return nil unless @fast_funcs.include?(name)
 
-            @hot_base + (@emit.labels.fetch(@functions.func_label(name)) - @emit.labels.fetch(HOT_START))
+            @hot_base + (@emit.label_offset(@functions.func_label(name)) - @emit.label_offset(HOT_START))
           end
 
           # What the variables at one end and the lists and buffers at the other have
@@ -511,7 +511,7 @@ module VBlank
             # The copy moves whole words, and every allocation is rounded up to one, so
             # what comes back is already on a word.
             unless @fast_funcs.empty?
-              @hot_bytes = @emit.labels.fetch(HOT_END) - @emit.labels.fetch(HOT_START)
+              @hot_bytes = @emit.label_offset(HOT_END) - @emit.label_offset(HOT_START)
               @hot_base = @memory.alloc(@hot_bytes)
             end
             # Every scene's set goes to one place, as big as the biggest of them.
@@ -619,14 +619,14 @@ module VBlank
           # fixed-size placeholder patched in the second pass — the same trick a
           # reference to embedded data uses.
           def emit_load_fast_address(reg, label)
-            @emit.fixups << Emit::AddressLoad.new(pos: pos, kind: :fast_addr, reg: reg, target: label)
+            @emit.fixups << Emit::AddressLoad.new(pos: pos, kind: :fast_addr, reg: reg, target: label.to_sym)
             emit(ASM.load_immediate_fixed(reg, 0))
           end
 
           # Also a custom fixup kind, handed to Emit's resolver map the same way
           # #resolve_hot_size is.
           def resolve_fast_address(fix)
-            offset = @emit.labels.fetch(fix.target) - @emit.labels.fetch(HOT_START)
+            offset = @emit.label_offset(fix.target) - @emit.label_offset(HOT_START)
             @emit.patch16(fix.pos, ASM.load_immediate_fixed(fix.reg, @hot_base + offset))
           end
 
@@ -665,9 +665,9 @@ module VBlank
           # wherever boot copied the block to, and anywhere else it is where it sits in the
           # cartridge.
           def runtime_address(label)
-            at = @emit.labels.fetch(label)
+            at = @emit.label_offset(label)
             start = @emit.labels[HOT_START]
-            return @emit.label_address(label) unless start && at >= start && at < @emit.labels.fetch(HOT_END)
+            return @emit.label_address(label) unless start && at >= start && at < @emit.label_offset(HOT_END)
 
             @hot_base + (at - start)
           end
@@ -967,7 +967,7 @@ module VBlank
           end
 
           # The routine that runs the scene a measurement names by the scene's own name.
-          def scene_routine_named(scene) = :"#{SceneQuickMemory::SCENE_PREFIX}#{scene}"
+          def scene_routine_named(scene) = DerivedNames.join(SceneQuickMemory::SCENE_PREFIX, scene)
 
           # A COLLECTION IN THE QUICK MEMORY IS A CLAIM ON IT TOO, weighed by the same rule as the
           # code: a read from the roomy memory waits about six times as long, as a routine left in
@@ -1043,7 +1043,7 @@ module VBlank
           # A collection's claim is named so no routine can share it: a routine's name is one word.
           LIST_CLAIM_PREFIX = "collection "
 
-          def list_claim_name(collection) = :"#{LIST_CLAIM_PREFIX}#{collection}"
+          def list_claim_name(collection) = DerivedNames.join(LIST_CLAIM_PREFIX, collection)
 
           def list_claim?(name) = name.to_s.start_with?(LIST_CLAIM_PREFIX)
 

@@ -1587,7 +1587,7 @@ module VBlank
             emit(ASM.subs_imm(2, 2, 1))
             emit_branch(:bcond, pixel, cond: :ne)
             emit(ASM.return)
-            place_label(:"#{TEXT_POINTS}_end")
+            place_label(DerivedNames.routine_end(TEXT_POINTS))
           end
           # Draw the run-time digit held in +value+ (0..9). A font can't be indexed by a
           # run-time value the way an array is, so there are two ways to render it, and
@@ -1696,7 +1696,7 @@ module VBlank
               # Where it ends, so a profile of the finished game can say how much of a frame
               # went into drawing digits. A routine the LOWERING makes has no other record of
               # its span — func_ranges only knows routines somebody wrote.
-              place_label(:"#{Messages::MadeNames.make(:digit_routine, font: font_name)}_end")
+              place_label(DerivedNames.routine_end(Messages::MadeNames.make(:digit_routine, font: font_name)))
             end
           end
 

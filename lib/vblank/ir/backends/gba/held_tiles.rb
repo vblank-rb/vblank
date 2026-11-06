@@ -234,7 +234,7 @@ module VBlank
             emit(ASM.return)
             # Where it ends, so a profile of the finished game can name it (see
             # GBA#lowered_routine_addresses).
-            place_label(:"#{HELD_ROUTINE}_end")
+            place_label(DerivedNames.routine_end(HELD_ROUTINE))
           end
 
           # THE ROUTINE THAT FORGETS THE WAITING CHANGES TO ONE STRETCH OF VIDEO MEMORY (see
@@ -268,7 +268,7 @@ module VBlank
             emit(ASM.pop(HELD_DROP_TO, HELD_DROP_KEPT, HELD_DROP_OFFSET))
             place_label(done)
             emit(ASM.return)
-            place_label(:"#{HELD_DROP_ROUTINE}_end")
+            place_label(DerivedNames.routine_end(HELD_DROP_ROUTINE))
           end
 
           # The queue, in the console's big work memory: a word for each change it can hold.

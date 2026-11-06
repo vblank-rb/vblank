@@ -42,6 +42,8 @@ module VBlank
           include EmitterCalls
 
           ROUTINE = :__fill_face_routine
+          # Where a face lying wholly outside the window jumps to: the routine's way out.
+          OUTSIDE_WINDOW_LABEL = DerivedNames.sub_label(ROUTINE, :out)
 
           MOST_CORNERS = Nodes::FillFace::MOST_CORNERS
           CORNER_FIELDS = %w[x y u v].freeze
@@ -181,15 +183,14 @@ module VBlank
 
           # Copy the routine from the cartridge into the quick memory, once, at power-on.
           def emit_copy_fill_face_routine
-            @divide.copy_routine(ROUTINE, :"#{ROUTINE}_end", @routine_iwram) if @routine_iwram
+            @divide.copy_routine(ROUTINE, @routine_iwram) if @routine_iwram
           end
 
           # Where the routine runs, by name, for a profile to report against.
           def fill_face_routine_addresses
             return {} unless @routine_iwram
 
-            size = @emitter.labels.fetch(:"#{ROUTINE}_end") - @emitter.labels.fetch(ROUTINE)
-            { ROUTINE => @routine_iwram...(@routine_iwram + size) }
+            { ROUTINE => @routine_iwram...(@routine_iwram + @emitter.routine_bytes(ROUTINE)) }
           end
 
           # THE ROUTINE, made once for a game that fills a face, after the game's own code, and
@@ -203,14 +204,14 @@ module VBlank
             place_label(ROUTINE)
             start = pos
             emit(ASM.push(4, 5, 6, 7, 8, 9, 10, 11, 14))
-            emit_skip_face_outside_edges(:"#{ROUTINE}_out")
+            emit_skip_face_outside_edges(OUTSIDE_WINDOW_LABEL)
             emit_corners_in_perspective
             emit_corners_lit if @lit
             emit_edges
             @span_patches = []
             emit_branch(:bl, PATCH_ROUTINE)
             emit_rows
-            place_label(:"#{ROUTINE}_out")
+            place_label(OUTSIDE_WINDOW_LABEL)
             emit(ASM.pop(4, 5, 6, 7, 8, 9, 10, 11, 15))
             emit_span_pixels_routine
             emit_divide_by_count_routine
@@ -221,7 +222,7 @@ module VBlank
               emit_shade_color_routine
             end
             emit_patch_routine
-            place_label(:"#{ROUTINE}_end")
+            place_label(DerivedNames.routine_end(ROUTINE))
             refuse_oversized_routine!(pos - start)
           end
 
@@ -1004,12 +1005,18 @@ module VBlank
             emit_branch(:bcond, stretch, cond: :lt)
             emit_branch(:b, next_row)
             emit_whole_stretches(fast, stretch, lit: false)
-            emit_every_pixel_run(:"#{fast}_every_pixel", next_row, lit: false)
+            emit_every_pixel_run(every_pixel_label(fast), next_row, lit: false)
             return unless @lit
 
-            emit_whole_stretches(:"#{fast}_lit", stretch, lit: true)
-            emit_every_pixel_run(:"#{fast}_lit_every_pixel", next_row, lit: true)
+            emit_whole_stretches(lit_label(fast), stretch, lit: true)
+            emit_every_pixel_run(every_pixel_label(lit_label(fast)), next_row, lit: true)
           end
+
+          # THE FAST RUNS ARE NAMED FROM +fast+, the label of the unlit run of whole stretches: its
+          # lit twin, and beside each the run that works out every pixel, which
+          # #emit_branch_by_perspective reaches by this name.
+          def lit_label(fast) = DerivedNames.sub_label(fast, :lit)
+          def every_pixel_label(run) = DerivedNames.sub_label(run, :every_pixel)
 
           # The words the run of whole stretches keeps: u, v and w over the distance at the
           # stretch's start, each one's step over a whole stretch, how far the run goes, and how far
@@ -1047,15 +1054,16 @@ module VBlank
             emit_branch(:bcond, not_whole, cond: :ne)
             load_var(1, :_face_shading) if @lit
             load_var(3, :_face_perspective)
+            lit_branch = DerivedNames.sub_label(fast, :lit_branch)
             if @lit
               emit(ASM.cmp_imm(1, 0))
-              emit_branch(:bcond, :"#{fast}_lit_branch", cond: :ne)
+              emit_branch(:bcond, lit_branch, cond: :ne)
             end
             emit_branch_by_perspective(fast)
             if @lit
               emit_branch(:b, not_whole)
-              place_label(:"#{fast}_lit_branch")
-              emit_branch_by_perspective(:"#{fast}_lit")
+              place_label(lit_branch)
+              emit_branch_by_perspective(lit_label(fast))
             end
             place_label(not_whole)
           end
@@ -1064,7 +1072,7 @@ module VBlank
           # by the perspective word in r3.
           def emit_branch_by_perspective(fast)
             emit(ASM.cmp_imm(3, 1))
-            emit_branch(:bcond, :"#{fast}_every_pixel", cond: :eq)
+            emit_branch(:bcond, every_pixel_label(fast), cond: :eq)
             emit(ASM.cmp_imm(3, STRETCH))
             emit_branch(:bcond, fast, cond: :eq)
           end
@@ -1133,8 +1141,8 @@ module VBlank
             emit_branch(:b, next_row)
           end
 
-          PIXEL_IN_PERSPECTIVE_ROUTINE = :"#{ROUTINE}_pixel_in_perspective".freeze
-          PIXEL_IN_PERSPECTIVE_LIT_ROUTINE = :"#{ROUTINE}_pixel_in_perspective_lit".freeze
+          PIXEL_IN_PERSPECTIVE_ROUTINE = DerivedNames.sub_label(ROUTINE, :pixel_in_perspective)
+          PIXEL_IN_PERSPECTIVE_LIT_ROUTINE = DerivedNames.sub_label(ROUTINE, :pixel_in_perspective_lit)
 
           def emit_run_pixels_less(count)
             load_var(5, :_face_run_end)
@@ -1342,9 +1350,9 @@ module VBlank
             emit(ASM.mov_reg_lsr_reg(reg, reg, moved))
           end
 
-          SPAN_PIXELS_ROUTINE = :"#{ROUTINE}_span_pixels".freeze
-          SAMPLE_ROUTINE = :"#{ROUTINE}_place_in_perspective".freeze
-          DIVIDE_ROUTINE = :"#{ROUTINE}_divide_by_count".freeze
+          SPAN_PIXELS_ROUTINE = DerivedNames.sub_label(ROUTINE, :span_pixels)
+          SAMPLE_ROUTINE = DerivedNames.sub_label(ROUTINE, :place_in_perspective)
+          DIVIDE_ROUTINE = DerivedNames.sub_label(ROUTINE, :divide_by_count)
 
           # THE PIXELS OF A STRETCH OF A ROW, stepping evenly: r0 u, r1 v, r2 the step across, r3
           # the step down, r4 where the first is in the screen's memory, r5 how many (one or more).
@@ -1664,7 +1672,7 @@ module VBlank
             emit(ASM.add_imm(4, 4, 1))
           end
 
-          PATCH_ROUTINE = :"#{ROUTINE}_patch".freeze
+          PATCH_ROUTINE = DerivedNames.sub_label(ROUTINE, :patch)
 
           # Where a shift sits in an instruction: five bits from bit 7.
           SHIFT_FIELD = 0x1F << 7
@@ -1834,7 +1842,7 @@ module VBlank
             emit_branch(:bcond, pixel, cond: :ne)
           end
 
-          SHADE_COLOR_ROUTINE = :"#{ROUTINE}_shade_color".freeze
+          SHADE_COLOR_ROUTINE = DerivedNames.sub_label(ROUTINE, :shade_color)
 
           # r11 = the colour in r11 at the shade word's level, on the direct screen: looked for
           # among the shading's colours, and if it is one of them, the colour its place becomes at

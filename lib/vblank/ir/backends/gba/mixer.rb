@@ -420,8 +420,7 @@ module VBlank
           def mix_routine_addresses
             return {} unless @mix_routine_iwram
 
-            size = @emitter.labels.fetch(:__mix_routine_end) - @emitter.labels.fetch(ROUTINE)
-            { ROUTINE => @mix_routine_iwram...(@mix_routine_iwram + size) }
+            { ROUTINE => @mix_routine_iwram...(@mix_routine_iwram + @emitter.routine_bytes(ROUTINE)) }
           end
 
           # Where the voices are kept and where each sample landed, for the build record to
@@ -601,8 +600,8 @@ module VBlank
           # correctly from either place, and the ARM7 has no instruction cache, so the copy
           # needs no flush. Copies whole words from the routine's start label up to its end.
           def emit_copy_mix_routine_to_iwram
-            @emitter.emit_load_label_address(0, :__mix_routine)      # r0 = routine start in ROM
-            @emitter.emit_load_label_address(1, :__mix_routine_end)  # r1 = routine end in ROM
+            @emitter.emit_load_label_address(0, ROUTINE)                            # r0 = routine start in ROM
+            @emitter.emit_load_label_address(1, DerivedNames.routine_end(ROUTINE))  # r1 = routine end in ROM
             @emitter.emit(ASM.load_immediate(2, @mix_routine_iwram)) # r2 = IWRAM destination
             copy = @emitter.gensym
             @emitter.place_label(copy)
@@ -1481,7 +1480,7 @@ module VBlank
             e = @emitter
             e.refuse_open_number_table!("The mix routine")
             e.emit(ASM.loop_forever) # fall-through guard: the routine is only entered via the call
-            e.place_label(:__mix_routine)
+            e.place_label(ROUTINE)
             start = e.pos
             e.emit(ASM.push(0, *(LR if @uses_envelopes)))    # push {r0}: stash the destination buffer at [sp]
             e.emit(ASM.load_immediate(3, @mix_totals))        # the running totals
@@ -1600,7 +1599,7 @@ module VBlank
             e.emit(ASM.subs_imm(2, 2, 1))
             e.emit_branch(:bcond, quiet, cond: :ne)
             e.emit(ASM.return)
-            e.place_label(:__mix_routine_end)
+            e.place_label(DerivedNames.routine_end(ROUTINE))
 
             size = @emitter.pos - start
             return unless size > MIX_ROUTINE_IWRAM_MAX

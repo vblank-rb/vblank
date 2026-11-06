@@ -277,7 +277,7 @@ module VBlank
         # VBlank interrupt has fired, which needs the interrupts set up at boot and a
         # small handler that acknowledges each one (see #emit_irq_setup / #emit_irq_handler).
         SWI_VBLANK_INTR_WAIT = 0x05
-        IRQ_HANDLER_LABEL = "__irq_vblank" # the interrupt routine, addressed by the vector
+        IRQ_HANDLER_LABEL = :__irq_vblank # the interrupt routine, addressed by the vector
 
         # Comparison operator → the ARM condition that is TRUE for it and the
         # condition under which it is FALSE (used to skip setting the result to 1).
@@ -876,7 +876,7 @@ module VBlank
         # bracketing it, with nothing to add here.
         def lowered_routine_addresses
           @emit.labels.filter_map do |name, start|
-            finish = @emit.labels[:"#{name}_end"] or next
+            finish = @emit.labels[DerivedNames.routine_end(name)] or next
             next if @functions.func_ranges.key?(name) # a routine somebody wrote, already placed
 
             base = ROM_START + VBlank::Cartridge::ROM::ENTRY_OFFSET
@@ -1689,7 +1689,7 @@ module VBlank
           end
         end
 
-        def indexed_blob_name(name) = :"#{name}#{INDEXED_SUFFIX}"
+        def indexed_blob_name(name) = DerivedNames.join(name, INDEXED_SUFFIX)
 
         # The console's tile size (8x8 pixels) and the number of cells across a
         # regular background map (32x32). These are fixed hardware facts.

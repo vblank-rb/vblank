@@ -186,9 +186,9 @@ module VBlank
           # is these two bits of the wait-state register set.
           SLOWEST_SAVE_ACCESS = 0b11
 
-          PROGRAM_LABEL = "save_flash_program"
-          WIPE_LABEL = "save_flash_wipe"
-          START_WIPE_LABEL = "save_flash_start_wipe"
+          PROGRAM_LABEL = :save_flash_program
+          WIPE_LABEL = :save_flash_wipe
+          START_WIPE_LABEL = :save_flash_start_wipe
 
           def flash? = true
           def signature = SIGNATURE
@@ -352,7 +352,7 @@ module VBlank
           include PlaceFoundEachByte
 
           SIGNATURE = "FLASH1M_V103".b.freeze
-          SHOW_BANK_LABEL = "save_flash_show_bank"
+          SHOW_BANK_LABEL = :save_flash_show_bank
 
           def initialize(bank_word:, **)
             super(**)
@@ -481,11 +481,11 @@ module VBlank
           # up on it, as FlashChip::ASKS does.
           ASKS = 0x40000
 
-          ADDRESS_LABEL = "save_eeprom_address"
-          PUT_LABEL = "save_eeprom_put"
-          FETCH_LABEL = "save_eeprom_fetch"
-          FETCH_FOR_READING_LABEL = "save_eeprom_fetch_for_reading"
-          WRITE_BACK_LABEL = "save_eeprom_write_back"
+          ADDRESS_LABEL = :save_eeprom_address
+          PUT_LABEL = :save_eeprom_put
+          FETCH_LABEL = :save_eeprom_fetch
+          FETCH_FOR_READING_LABEL = :save_eeprom_fetch_for_reading
+          WRITE_BACK_LABEL = :save_eeprom_write_back
 
           def initialize(area:, **)
             super(**)

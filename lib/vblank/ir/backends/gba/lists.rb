@@ -256,7 +256,7 @@ module VBlank
             e.emit(ASM.return)
             # Where it ends, so a profile can say how much of a frame went into copying (see
             # GBA#lowered_routine_addresses).
-            e.place_label(:"#{COPY_ROUTINE}_end")
+            e.place_label(DerivedNames.routine_end(COPY_ROUTINE))
           end
 
           # The value in r3 repeated across a whole word in r0, so a word written anywhere in the
@@ -314,7 +314,7 @@ module VBlank
             e.emit(ASM.return)
             # Where it ends, so a profile can say how much of a frame went into filling (see
             # GBA#lowered_routine_addresses).
-            e.place_label(:"#{FILL_ROUTINE}_end")
+            e.place_label(DerivedNames.routine_end(FILL_ROUTINE))
           end
 
           # THE WHOLE WORDS OF THE RUN, handed to the copying engine rather than stored one at a
@@ -529,11 +529,11 @@ module VBlank
           end
 
           def head_var(name)
-            :"#{name}__head"
+            DerivedNames.join(name, "__head")
           end
 
           def length_var(name)
-            :"#{name}__len"
+            DerivedNames.join(name, "__len")
           end
 
           # list_new: reset the list to empty. Its storage is already reserved (see

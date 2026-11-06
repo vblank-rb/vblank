@@ -609,7 +609,7 @@ module VBlank
             emit_branch(:b, hide)
             place_label(hidden)
             emit(ASM.pop(4, 5, 6, 7, 8, 15))
-            place_label(:"#{HELD_TABLE_ROUTINE}_end")
+            place_label(DerivedNames.routine_end(HELD_TABLE_ROUTINE))
           end
 
           # The routine that writes one scene's moving sprites (see GBA#prepare_scene_sprites).
@@ -1308,7 +1308,7 @@ module VBlank
             emit(ASM.bx(14))
             # Where it ends, so a profile of the finished game can name it (see
             # GBA#lowered_routine_addresses).
-            place_label(:"#{LEND_COLORS}_end")
+            place_label(DerivedNames.routine_end(LEND_COLORS))
           end
 
           # A list that found no group free, in a game where sprites step through lists of their
@@ -1362,7 +1362,7 @@ module VBlank
             emit(ASM.pop(4, 5, 15))
             # Where it ends, so a profile of the finished game can name it (see
             # GBA#lowered_routine_addresses).
-            place_label(:"#{label}_end")
+            place_label(DerivedNames.routine_end(label))
           end
 
           # One fewer sprite draws from the room the asking sprite holds, if it holds one.

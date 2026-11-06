@@ -171,10 +171,12 @@ module VBlank
             end
             blob = :"__picture_group_art_#{set.name}"
             yield blob, laid.pictures.map(&:key).join.b
-            yield :"#{blob}__entries", entries.flatten.pack("V*")
-            yield :"#{blob}__groups", groups.map(&:first).pack("V*")
+            entries_blob = DerivedNames.join(blob, "__entries")
+            groups_blob = DerivedNames.join(blob, "__groups")
+            yield entries_blob, entries.flatten.pack("V*")
+            yield groups_blob, groups.map(&:first).pack("V*")
             SetCopyPlan.new(name: set.name, scene: set.scene, slots: set.slots, group_count: set.groups.length,
-                            blob: blob, entries: :"#{blob}__entries", groups_table: :"#{blob}__groups",
+                            blob: blob, entries: entries_blob, groups_table: groups_blob,
                             routine: Messages::MadeNames.make(:picture_groups, set: set.name.to_s),
                             shown: Array.new(set.slots) { |slot| :"__groups_shown_#{set.name}_#{slot}" },
                             up: Array.new(set.slots) { |slot| :"__groups_up_#{set.name}_#{slot}" },

@@ -1246,7 +1246,7 @@ module VBlank
             e.place_label(onward)
             e.emit(ASM.pop(PC))
             emit_upload_wave_routine if @effect_waves && !upload_wave_in_interrupt?
-            e.place_label(:"#{SOUND_EFFECT_STEP}_end")
+            e.place_label(DerivedNames.routine_end(SOUND_EFFECT_STEP))
           end
 
           # The routines inside the screen's interrupt, called from the block's code, which is
