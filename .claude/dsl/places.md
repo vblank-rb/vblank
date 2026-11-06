@@ -214,7 +214,11 @@ area, and with the same `near:` or a farther one than the first (`IR::PlaceDrawi
 drawing without perspective shares the points one in perspective turned, and on the PlayStation the
 other way round too: a game of rooms that asks where each room's corners land and then
 draws each room with its own call turns a doorway's corners once, not once for the asking and once
-for each room beside it. A `screen_spot` with a nearer `near:` than the drawings' still shares. On a
+for each room beside it. A `screen_spot` with a nearer `near:` than the drawings' still shares. A
+drawing or `screen_spot` handed the same viewer and the same view as the one before it costs a
+comparison for each of the viewer's numbers and one for the view, and nothing more: the viewer and the view are
+handed over by a routine of the place's own, which writes only what changed, and the points' count is
+looked at only when something did (`IR::PlaceDrawing`, "HANDED OVER UNCHANGED"). On a
 console whose processor runs its code from a small cache (the PlayStation's) a face's corners are
 worked in a loop, so a face's code stays in the cache from one face to the next. **Each point gets a
 code as it is turned** (`IR::PlaceDrawing`, "POINT CODES"), as Descent's points did: which edges of the

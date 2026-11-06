@@ -157,7 +157,7 @@ module VBlank
                           lit: lit && !shape.shading.nil?)
         drawn = faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
         record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view, stance),
-                                *place_clip(drawing, view, window_nodes), Build.call(drawing.count_routine), *drawn,
+                                *place_clip(drawing, view, window_nodes), drawing.count_statement, *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
                                 both_sides: both_sides == true, faces: faces&.name, window: window_nodes))
       end
@@ -459,16 +459,34 @@ module VBlank
       # the view. For a shape standing where the game says (+stance+, from #make_stance), the
       # viewer handed over is then moved into the shape's own arrows
       # (IR::PlaceDrawing#stance_handover_statements).
+      #
+      # The viewer and the view are handed over by a routine of the place's own for each viewer and view
+      # the game draws or asks with, which writes only what differs from what the last handover left
+      # (IR::PlaceDrawing, HANDED OVER UNCHANGED): one call where each `draw_place` and `screen_spot` line
+      # would otherwise copy every number of the viewer and the view.
       def place_handover(drawing, seen_by, view, stance = nil)
-        viewer = seen_by.variables.zip(IR::PlaceDrawing::VIEWER_PARTS).map do |variable, part|
-          Build.copy(drawing.viewer_var(part), variable)
-        end
         if stance&.turned?
           declare_place_routine(drawing.stance_routine, drawing.stance_statements)
           stance.parts.each { |part, _| ensure_var(drawing.stance_var(part)) }
         end
-        viewer + (stance ? drawing.stance_handover_statements(stance) : []) +
-          view.to_h.map { |part, number| Build.set(drawing.view_var(part), Build.int(number)) }
+        [Build.call(place_handover_routine(drawing, seen_by, view)), *(stance ? drawing.stance_handover_statements(stance) : [])]
+      end
+
+      # The routine handing +seen_by+ and +view+ over to +drawing+, declared the first time they are handed
+      # over together. Each view the place is handed is numbered from 1, so the 0 its variable starts at
+      # is none.
+      def place_handover_routine(drawing, seen_by, view)
+        @place_handovers ||= Hash.new { |all, place| all[place] = {} }
+        @place_views ||= Hash.new { |all, place| all[place] = {} }
+        routines = @place_handovers[drawing.routine]
+        views = @place_views[drawing.routine]
+        routines.fetch([seen_by.name, view]) do
+          number = views[view] ||= views.length + 1
+          name = drawing.handover_routine(routines.length + 1)
+          declare_place_routine(name, drawing.viewer_handover_statements(seen_by.variables) +
+                                      drawing.view_handover_statements(view, number))
+          routines[[seen_by.name, view]] = name
+        end
       end
 
       # The IR::PlaceDrawing::Stance +at+ and +facing+ give, each number a fraction node, or nil for

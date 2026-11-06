@@ -122,6 +122,7 @@ module VBlank
       def point_routine = name(:point_turning)
       def spot_routine = name(:spot)
       def count_routine = name(:counting)
+      def handover_routine(number) = name(:"handover_#{number}")
       def points_table = name(:points)
       def faces_table = name(:faces)
       def slots_list = name(:slots)
@@ -265,14 +266,57 @@ module VBlank
       # What a drawing of a shape standing at +stance+ does once the viewer is handed over as it is:
       # for a turned stance, keep it in the stance variables and call the stance routine; for one
       # facing as the place does, move the viewer by the spot alone, three subtractions.
+      #
+      # The viewer is moved after it is handed over, so the count compares it with the one the points were
+      # last turned for (HANDED OVER UNCHANGED).
       def stance_handover_statements(stance)
-        unless stance.turned?
-          return AXES.zip(stance.spot).map do |axis, node|
-            Build.set(viewer_var(axis), Build.binop(:-, Build.var_ref(viewer_var(axis)), node))
-          end
-        end
+        moved = if stance.turned?
+                  stance.parts.map { |part, node| Build.set(stance_var(part), node) } + [Build.call(stance_routine)]
+                else
+                  AXES.zip(stance.spot).map do |axis, node|
+                    Build.set(viewer_var(axis), Build.binop(:-, Build.var_ref(viewer_var(axis)), node))
+                  end
+                end
+        [*moved, handover_changed_statement]
+      end
 
-        stance.parts.map { |part, node| Build.set(stance_var(part), node) } + [Build.call(stance_routine)]
+      # HANDED OVER UNCHANGED. Every drawing and every `screen_spot` hands the routines the viewer and the
+      # view, and the count then compares what it was handed with what the points were last turned for
+      # (TURN_PARTS). A game of rooms asks where many corners land, and draws many rooms, all seen by one
+      # viewer through one view between its moves, so most of those comparisons find nothing changed.
+      #
+      # So the handover compares as it copies: a part of the viewer is written only where it differs from
+      # what the last handover left, and the view, whose parts are numbers written in the program, is
+      # known by a number of its own (counting from 1 among the views the place is handed), its parts
+      # written only when the routines hold another. Either sets the handover-changed variable, and so
+      # does a stance, which moves the viewer after it is handed over. Every handover is followed by the
+      # count where that variable is set, and by nothing where it is not: then what the routines were
+      # handed is what the last count compared and kept, so the count would find nothing to move on for,
+      # the near limit and the codes' lines and bits included, which are worked out from the view alone.
+      # A handover that writes nothing costs a comparison a part.
+      def handover_changed_var = name(:handover_changed)
+
+      # The statement saying the handover changed something, so the count is to run.
+      def handover_changed_statement = Build.set(handover_changed_var, 1)
+
+      # The count, called after a handover only when the handover changed something (HANDED OVER UNCHANGED).
+      def count_statement = Build.if_(Build.var_ref(handover_changed_var), Build.call(count_routine))
+
+      # The viewer whose variables are +sources+ (in VIEWER_PARTS' order) handed over, each part written
+      # only where it differs from what the routines hold (HANDED OVER UNCHANGED).
+      def viewer_handover_statements(sources)
+        VIEWER_PARTS.zip(sources).map do |part, source|
+          Build.if_(Build.binop(:!=, Build.var_ref(viewer_var(part)), Build.var_ref(source)),
+                    Build.copy(viewer_var(part), source), handover_changed_statement)
+        end
+      end
+
+      # +view+ handed over, numbered +number+ among the place's views: its parts written only when the
+      # routines hold another view.
+      def view_handover_statements(view, number)
+        parts = VIEW_PARTS.map { |part| Build.set(view_var(part), Build.int(view.public_send(part))) }
+        [Build.if_(Build.binop(:!=, var(:view_number), number),
+                   Build.set(name(:view_number), number), *parts, handover_changed_statement)]
       end
 
       # The variable the routine reads the view's +part+ from.
@@ -389,19 +433,24 @@ module VBlank
       # The variable holding the line a point is past the view's +side+ beyond.
       def code_line_var(side) = name(:"code_line_#{side}")
 
-      # Each view edge's line for the points' codes, and the bits that pass a face over and that send
-      # it to the cut, worked out as each drawing starts, after the count (see POINT CODES).
-      def code_mask_statements
-        lines = OUTCODE_EDGES.map do |edge|
+      # Each view edge's line for the points' codes, worked out by the count when the view was handed over
+      # changed (see POINT CODES).
+      def code_line_statements
+        OUTCODE_EDGES.map do |edge|
           Build.set(code_line_var(edge.side),
                     Build.binop(:+, Build.binop(:*, Build.var_ref(view_var(edge.side)), SUBPIXEL), edge.sixteenths))
         end
+      end
+
+      # The bits that pass a face over and that send it to the cut, worked out as each drawing starts,
+      # after the count (see POINT CODES).
+      def code_mask_statements
         same_near = Build.if_(Build.binop(:==, Build.var_ref(view_var(:near)), Build.var_ref(turn_var(:near))),
                               Build.set(name(:rejecting_codes), ALL_OUTCODE_BITS | BEHIND_BIT),
                               Build.set(name(:cutting_codes), BEHIND_BIT))
         same_near.else = Build.else_(Build.set(name(:rejecting_codes), BEHIND_BIT),
                                      Build.set(name(:cutting_codes), TURNED_BIT))
-        [*lines, same_near]
+        [same_near]
       end
 
       # The bits of OUTCODE_EDGES the place on the screen +across+, +down+ (values) is past, the edges'
@@ -423,7 +472,7 @@ module VBlank
           CLIP_EDGES.map { |edge| clip_var(edge) } + outcode_variables +
           %i[face listed base slot picture point seen_point dx dy dz count along area each next drawing
              at_x at_y at_z at_u at_v at_light spot_point spot_x spot_y spot_behind turn_changed
-             land_x land_y code rejecting_codes cutting_codes].map { |part| name(part) } +
+             land_x land_y code rejecting_codes cutting_codes handover_changed view_number].map { |part| name(part) } +
           OUTCODE_EDGES.map { |edge| code_line_var(edge.side) } +
           turn_parts.map { |part| turn_var(part) } + corner_variables
       end
@@ -455,18 +504,20 @@ module VBlank
       # The count moved on as a drawing starts, once its viewer and view are handed over, when what a
       # point's turn is worked out from differs from the last drawing's that moved it on (see
       # TURN_PARTS); each part that differs is kept for the next. The count routine's statements, which
-      # every drawing of the place, and every `screen_spot`, calls. The near limit kept is the one the
-      # points were turned with, which the point routine reads (see THE NEAR LIMIT NEED NOT MATCH).
-      # Whether the points were turned in perspective, where it is kept, is the same: points turned with
-      # their nearness serve a drawing that reads none.
+      # every drawing of the place, and every `screen_spot`, calls where its handover changed something
+      # (#count_statement). The near limit kept is the one the points were turned with, which the point
+      # routine reads (see THE NEAR LIMIT NEED NOT MATCH). Whether the points were turned in perspective,
+      # where it is kept, is the same: points turned with their nearness serve a drawing that reads none.
       def drawing_count_statements
         changed = name(:turn_changed)
         kept = %i[near in_perspective] & turn_parts
-        [Build.set(changed, 0),
+        [Build.set(handover_changed_var, 0),
+         Build.set(changed, 0),
          *MATCHED_TURN_PARTS.map do |part|
            Build.if_(Build.binop(:!=, Build.var_ref(turn_var(part)), turn_part_now(part)),
                      Build.set(changed, 1), Build.set(turn_var(part), turn_part_now(part)))
          end,
+         *code_line_statements,
          Build.if_(Build.binop(:<, turn_part_now(:near), Build.var_ref(turn_var(:near))), Build.set(changed, 1)),
          *(kept.include?(:in_perspective) ? [Build.if_(Build.binop(:>, in_perspective, Build.var_ref(turn_var(:in_perspective))), Build.set(changed, 1))] : []),
          Build.if_(Build.var_ref(changed), Build.add(drawing_var, 1),
@@ -760,7 +811,7 @@ module VBlank
         seen = ->(at) { Build.list_get(seen_list, Build.binop(:+, Build.binop(:*, number, SEEN_STRIDE), at)) }
         pixel = method(:pixel_of)
         [Build.set(name(:seen_point), Build.clamped(Build.var_ref(spot_point_var), 0, @points - 1)),
-         Build.call(count_routine),
+         count_statement,
          Build.if_(stale_point_condition(number), Build.call(point_routine)),
          Build.set(name(:at_z), seen.call(2)),
          Build.set(spot_answer_var(:x), 0),

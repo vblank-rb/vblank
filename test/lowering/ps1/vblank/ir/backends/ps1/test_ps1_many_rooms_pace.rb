@@ -206,14 +206,15 @@ class TestPS1ManyRoomsPace < Minitest::Test
   end
 
   # ...with room to spare in the second frame for what a real game of rooms does besides: its own walk
-  # through the rooms it can see, and their doors and things. A pass that ran this close to the next
-  # blank in this scene ran past it in such a game.
-  SPARE_LINES = 60
+  # through the rooms it can see, and their doors and things. This scene is lighter than the heaviest
+  # view of such a game, so it ends each pass a third of a frame or more before the second blank: a
+  # pass that ran closer than that here ran past it there.
+  MOST_LINES_PAST_BLANK = VBlank::Diagnostics::PS1Profiler::FRAME_LINES / 3
 
   def test_a_corridor_of_many_rooms_leaves_room_in_its_second_frame
     past = profile.lines_past_blank.fetch(2, [0])
 
-    assert_operator past.max, :<=, VBlank::Diagnostics::PS1Profiler::FRAME_LINES - SPARE_LINES, "lines past the first blank: #{past.minmax}"
+    assert_operator past.max, :<=, MOST_LINES_PAST_BLANK, "lines past the first blank: #{past.minmax}"
   end
 
   # A face wholly outside the window it is drawn through is passed over once it is cut, before it is tested for
