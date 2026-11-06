@@ -71,17 +71,6 @@ class TestPacmanPortShell < Minitest::Test
     Played.new(pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked)
   end
 
-  # The pack the all-in-one build makes from the cartridge: every slot as the cartridge's assets unpack,
-  # in the order the port names its slots.
-  private def expected_pack
-    rom = File.binread(PacmanFixture::ROM_PATH)
-    assets = { room_palette: "__bg_shared_pal", room_tiles: "__bg_shared_char", room_map: "__bg_map_room",
-               sprite_palette: "__obj_palette", pac_tiles: "__obj_tiles___obj1", pellet_tiles: "__obj_tiles___obj2",
-               ghost_tiles: "__obj_tiles___obj7" }
-    VBlank::Original::Pack.holding(assets.transform_values { |name| PacmanFixture.unpacked_asset(rom, name) },
-                                   sha1: PacmanFixture.facts.fetch("rom").fetch("sha1"), build_version: "1").to_bytes
-  end
-
   def test_the_first_start_plays_pacman_as_the_example_does_pixel_for_pixel
     Dir.mktmpdir do |folder|
       played = play_shell(shell(folder), folder, picked: PacmanFixture::ROM_PATH)
@@ -97,7 +86,7 @@ class TestPacmanPortShell < Minitest::Test
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: PacmanFixture::ROM_PATH)
 
-      assert_equal expected_pack, File.binread(File.join(folder, "kept", Shell::PACK_FILE))
+      assert_equal PacmanFixture.expected_pack, File.binread(File.join(folder, "kept", Shell::PACK_FILE))
     end
   end
 

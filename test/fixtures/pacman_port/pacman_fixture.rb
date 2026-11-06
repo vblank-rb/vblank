@@ -57,6 +57,17 @@ module PacmanFixture
     Built.new(bytes: rom.buffer.dup.b, assets: assets)
   end
 
+  # The pack the all-in-one build makes from the cartridge: every slot as the cartridge's assets
+  # unpack, in the order the port names its slots.
+  def expected_pack
+    rom = File.binread(ROM_PATH)
+    assets = { room_palette: "__bg_shared_pal", room_tiles: "__bg_shared_char", room_map: "__bg_map_room",
+               sprite_palette: "__obj_palette", pac_tiles: "__obj_tiles___obj1", pellet_tiles: "__obj_tiles___obj2",
+               ghost_tiles: "__obj_tiles___obj7" }
+    VBlank::Original::Pack.holding(assets.transform_values { |name| unpacked_asset(rom, name) },
+                                   sha1: facts.fetch("rom").fetch("sha1"), build_version: "1").to_bytes
+  end
+
   # The facts as a hash, written as the facts file's values.
   def facts_of(built)
     { "rom" => { "sha1" => Digest::SHA1.hexdigest(built.bytes), "size" => built.bytes.bytesize },
