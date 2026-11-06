@@ -122,8 +122,16 @@ module VBlank
     # :shared_windows where the display's windows do it and the light, a status bar and a fade held
     # to part of the screen use the same windows (the Advance); :own_window where a window does it
     # that nothing else in the game uses (the Super Nintendo); nil where nothing can.
+    #
+    # +area_clips_called_routines+ says a routine called from inside `inside` has its drawing held to
+    # that area, as the interpreter holds it: the console's build keeps the area as numbers in memory
+    # while the game runs, and every drawing routine reads them, wherever it was built. Where it is
+    # false the build works each shape's clipping out from the edges as it writes the shape (the
+    # Advance's ARM), so a routine built once, outside any area, draws past the area of whoever calls
+    # it, and the build refuses such a call (Checks::CallInsideArea).
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
-                              :holds_background_above_row, :background_box, :glides_recordings, :sprites, :sprite_places,
+                              :holds_background_above_row, :background_box, :area_clips_called_routines,
+                              :glides_recordings, :sprites, :sprite_places,
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
@@ -226,6 +234,9 @@ module VBlank
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
                               holds_background_above_row: false, background_box: :shared_windows, glides_recordings: false, sprites: 128,
+                              # Each shape is clipped against the area's edges as the ARM is
+                              # written (Backends::GBA::Statements#emit_inside).
+                              area_clips_called_routines: false,
                               # The most the desktop and web builds draw in one frame, too.
                               sprite_places: 512,
                               # What limits a row on the Advance is the time the display has to
@@ -276,6 +287,8 @@ module VBlank
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, controllers: 1,
                             holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 40, sprite_places: 40,
+                            # rt_paint_area keeps the area in memory (GBC::Lowering::Picture#emit_inside).
+                            area_clips_called_routines: true,
                             # The first ten pieces its table holds on a line, every other left out
                             # (each piece is a sprite of its own, 8 wide).
                             sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
@@ -321,6 +334,10 @@ module VBlank
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
                                      buttons: %i[a b select start right left up down r l x y].freeze, controllers: 2,
                                      holds_background_above_row: true, background_box: nil, glides_recordings: true, sprites: 128,
+                                     # rt_paint_area keeps the area in memory, and a routine on a
+                                     # Super FX chip is handed it (SNES::Lowering::Paint#emit_inside,
+                                     # SNES::ChipCode#area_places).
+                                     area_clips_called_routines: true,
                                      sprite_places: 128,
                                      # A row of the screen shows at most 32 sprites and 34 of their
                                      # 8-pixel pieces; a piece is what this counts.
@@ -381,6 +398,8 @@ module VBlank
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
                               holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 80, sprite_places: 80,
+                              # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
+                              area_clips_called_routines: true,
                               # A row of the screen shows at most 20 sprites (16 on a screen of 256
                               # across), and a sprite here is one piece of a picture, up to 32×32.
                               # Which are left out is not drawn yet: a piece up to 32 wide is one
@@ -436,6 +455,8 @@ module VBlank
                                   # A background is a picture the graphics chip draws, so it can be held to
                                   # a box (the chip's drawing area) that nothing else uses.
                                   holds_background_above_row: false, background_box: :own_window, glides_recordings: false,
+                                  # The area is kept in memory (PS1::Lowering::Paint#emit_inside).
+                                  area_clips_called_routines: true,
                                   # The graphics chip draws every sprite each frame as a textured rectangle,
                                   # so the number is the framework's, not the hardware's.
                                   sprites: 128, sprite_places: 512,

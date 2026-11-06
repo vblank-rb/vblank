@@ -109,7 +109,8 @@ class TestTextUnderPaintings < Minitest::Test
 
   # The same text on every pass, held to a narrower area after the first: a console that passes
   # over a text the last pass drew too must see that its area changed. The text is written in the
-  # area rather than called from a routine there, which every build refuses (Checks::CallInsideArea).
+  # area rather than called from a routine there, which the Advance's build refuses
+  # (Checks::CallInsideArea).
   def test_text_in_an_area_that_narrows_is_held_to_it
     shown = screen_after(4) do
       screen :bitmap

@@ -46,8 +46,9 @@ class TestIRGuardrailCallInsideArea < Minitest::Test
   # --- Proof that the footgun is real ---
 
   # The interpreter clips the routine's fill to the area, wherever the routine was built; the
-  # Advance's cartridge is held to the other half of the proof in the file named above. Every
-  # build refuses the game, so no run plays it.
+  # Advance's cartridge is held to the other half of the proof in the file named above. The
+  # Advance's build refuses the game; the consoles that clip a called routine play it in
+  # test/called_routine_area_tests.rb.
   def test_the_interpreter_clips_a_routine_called_from_inside_an_area
     interp = Reference.new.run(game_with_call_that_draws, frames: 2)
     assert_equal 0, interp.screen.pixel(120, 50),
@@ -175,6 +176,28 @@ class TestIRGuardrailCallInsideArea < Minitest::Test
     end
 
     assert_empty Check.new.detect(prog), "with no `inside` in force there is nothing to disagree about"
+  end
+
+  # A console that keeps the area in memory as the game runs clips the routine where it is called,
+  # as the interpreter does, so its build is not refused; the Advance's still is.
+  def test_only_a_console_that_bakes_the_clip_in_is_flagged
+    assert_equal 1, findings_count_on(:gba), "the Advance bakes each shape's clip into its own ARM"
+    %i[gbc snes genesis ps1].each do |console|
+      assert_equal 0, findings_count_on(console), "#{console} holds a called routine's drawing to the area"
+    end
+  end
+
+  # How many findings the check makes of a routine that draws, called inside an area, in a game
+  # built for +console+.
+  private def findings_count_on(console)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+    b.instance_eval do
+      screen :bitmap
+      func(:draw_something) { fill_rect 0, 0, 240, 160, :red }
+      game_loop { inside(0, 0, 100, 100) { call :draw_something } }
+    end
+    b.finalize_program
+    Check.new.detect(b.program).size
   end
 
   # --- the build surfaces it ---

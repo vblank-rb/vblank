@@ -18,6 +18,12 @@ module VBlank
         # Refusing the combination is the fix: an author can always move the
         # `inside` block inside the routine itself, so the clip travels with the
         # routine everywhere it's called from instead of living at one call site.
+        #
+        # Only a console that bakes the clip in this way is the hazard. The others keep
+        # the area as numbers in memory while the game runs, which every drawing routine
+        # reads wherever it was built (a Super FX routine is handed them too), so a
+        # routine called inside an area is clipped there exactly as the interpreter clips
+        # it (Console::Description#area_clips_called_routines). Their builds are not refused.
         class CallInsideArea
           NAME = :call_inside_area
           PLAIN_NAME = "a routine called inside an area"
@@ -34,12 +40,15 @@ module VBlank
           CALLS = %i[call call_one_of].freeze
 
           def detect(program)
+            console = program.described_console
+            return [] if console.area_clips_called_routines
+
             funcs = program.each.select { |node| node.kind == :func }.to_h { |func| [func.name, func] }
 
             program.each.select { |node| node.kind == :inside }.flat_map do |area|
               calls_that_draw(area, funcs).map do |call_node, target, drawn_by|
                 Finding.new(check: NAME, severity: :error,
-                            message: message(call_node, target, drawn_by), node: call_node)
+                            message: message(call_node, target, drawn_by, console.title), node: call_node)
               end
             end
           end
@@ -98,7 +107,7 @@ module VBlank
             nil
           end
 
-          def message(call_node, target, drawn_by)
+          def message(call_node, target, drawn_by, console_title)
             verb = TiledDisplay.verb_for(drawn_by)
             calls = if call_node.kind == :call
                       "`call :#{target}` calls a routine built once"
@@ -108,7 +117,7 @@ module VBlank
             "`inside` clips what it draws, but #{calls}, " \
               "outside any area. `:#{target}` draws with `#{verb}`, directly or through " \
               "another routine it calls, so that drawing will not stay inside this area on " \
-              "the console. The interpreter clips it here; the console does not.\n\n" \
+              "the #{console_title}. The interpreter clips it here; the #{console_title} does not.\n\n" \
               "Put `inside x, y, w, h do ... end` inside `:#{target}` itself instead. Then the " \
               "clip applies everywhere that routine runs, not only from this one call."
           end
