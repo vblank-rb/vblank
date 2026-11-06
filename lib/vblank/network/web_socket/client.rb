@@ -37,6 +37,8 @@ module VBlank
 
         def self.open_socket(uri, port, ssl_context)
           tcp = TCPSocket.new(uri.host, port)
+          # A match sends a few bytes every pass: each goes out as it is written (see LineChannel).
+          tcp.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, true)
           return tcp unless uri.scheme == "wss"
 
           context = ssl_context || OpenSSL::SSL::SSLContext.new.tap { |each| each.set_params }

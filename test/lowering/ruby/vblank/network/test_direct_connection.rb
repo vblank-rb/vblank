@@ -129,6 +129,19 @@ class TestDirectConnection < Minitest::Test
     server&.close
   end
 
+  # A line a pass is a few bytes, and TCP left to itself holds a small write back to send with the
+  # next: a TCP line sends each line as it is written.
+  def test_a_tcp_line_sends_each_line_as_it_is_written
+    server = TCPServer.new("127.0.0.1", 0)
+    socket = TCPSocket.new("127.0.0.1", server.addr[1])
+    Network::LineChannel.new(socket)
+
+    assert socket.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool
+  ensure
+    socket&.close
+    server&.close
+  end
+
   def test_a_machine_that_asks_a_direct_host_for_a_room_of_its_own_is_told_no_and_the_room_goes_on
     room = Network::DirectRoom.new
     Network::RelayTransport.make_room(room.host_line)

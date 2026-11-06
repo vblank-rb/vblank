@@ -29,7 +29,16 @@ module VBlank
         @buffer = +""
         @lines = []
         @ended = false
-        io.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, true) if io.is_a?(TCPSocket)
+        send_each_line_at_once(io) if io.is_a?(TCPSocket)
+      end
+
+      # TCP holds a small write back to send it with the next (Nagle's rule), and the other end holds
+      # back its acknowledgement of it, so a line of a few bytes can wait tens of milliseconds before
+      # it leaves. A match sends one such line every pass and waits for the other machines' lines, so
+      # every line goes out as it is written. Keep-alive finds a peer whose machine went away.
+      private def send_each_line_at_once(io)
+        io.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, true)
+        io.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, true)
       end
 
       # One line for +text+. A write to a peer that has gone ends the line instead of raising.
