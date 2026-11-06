@@ -11,6 +11,6 @@
 #
 # It is run by `vblank bot chaser.rb --join ADDRESS`, and plays in tests through the same device
 # (Live::BotDevice) the command uses.
-require_relative "bots/bot" # a script that chooses buttons, and the way a file says which it is
-require_relative "bots/tape_bot" # ...and one that plays the presses of a tape
-require_relative "bots/game_view" # ...from a read-only view of its own copy of the game
+require_relative "bots/bot"        # A script that chooses buttons, and how a file names which one it is
+require_relative "bots/tape_bot"   # A bot that plays the presses of a tape
+require_relative "bots/game_view"  # A read-only view of a bot's own copy of the game

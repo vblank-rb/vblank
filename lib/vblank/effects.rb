@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "effects/packs/walk_length" # how long a walk of an effect is, shared by the packs below
+require_relative "effects/packs/walk_length"  # How long an effect's walk is, shared by the packs below
 # A pack is written in normal Ruby as a game is, so it comes in the way a part of a game does.
 VBlank.require_game_file "effects/packs/screen_shake"
 VBlank.require_game_file "effects/packs/screen_fade"

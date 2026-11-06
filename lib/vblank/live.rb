@@ -12,15 +12,15 @@
 # through Fiddle, which a game that only builds cartridges never needs, and Fiddle is loaded only
 # when a window is asked for.
 require_relative "../vblank"
-require_relative "live/lateness" # which passes ran longer than a frame, and how much was collecting garbage
-require_relative "live/rate" # how fast the play went: passes and frames a second
-require_relative "live/session" # the game played a pass at a time through a device
-require_relative "live/headless" # ...a device with no screen, whose clock a test moves
-require_relative "live/bot_device" # ...and one with no person, whose buttons a bot chooses
-require_relative "live/recording" # ...any device, with the sound handed to its speaker kept
-require_relative "live/window_menu" # the window's menu written down once: its lines, keys and look
-require_relative "live/menu" # ...how it behaves and where it draws each part, with no window of its own
-require_relative "live/settings" # what the window keeps for a player, in the desktop build's settings file's rules
-require_relative "live/settings_file" # ...and where it is kept, the same file as the desktop build's
-require_relative "live/console_bios" # the player's Game Boy Advance BIOS, for the console's start-up, found as the desktop build finds it
-require_relative "live/sdl" # ...and a window, for a person: SDL3 through Fiddle, loaded when a window is asked for
+require_relative "live/lateness"       # Which passes ran longer than a frame, and how much was garbage collection
+require_relative "live/rate"           # How fast play went: passes and frames a second
+require_relative "live/session"        # The game played a pass at a time through a device
+require_relative "live/headless"       # A device with no screen, whose clock a test moves
+require_relative "live/bot_device"     # A device with no person, whose buttons a bot chooses
+require_relative "live/recording"      # Any device, keeping the sound handed to its speaker
+require_relative "live/window_menu"    # The window's menu written once: lines, keys and look
+require_relative "live/menu"           # How the menu behaves and draws, with no window of its own
+require_relative "live/settings"       # What the window keeps for a player
+require_relative "live/settings_file"  # Where those settings are kept, the same file as the desktop build's
+require_relative "live/console_bios"   # The player's Game Boy Advance BIOS, found as the desktop build finds it
+require_relative "live/sdl"            # A window for a person: SDL3 through Fiddle, loaded when asked for

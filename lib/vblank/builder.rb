@@ -20,7 +20,7 @@ require_relative "builder/input"
 require_relative "builder/local_view"
 require_relative "builder/drawing"
 require_relative "builder/places"
-VBlank.require_game_file "builder/spotlights" # the circle a spotlight lights, a row at a time
+VBlank.require_game_file "builder/spotlights"  # The circle a spotlight lights, a row at a time
 require_relative "builder/variables"
 VBlank.require_game_file "builder/control_flow"
 require_relative "builder/scenes"
@@ -44,10 +44,10 @@ require_relative "builder/save_half"
 require_relative "builder/save_places"
 require_relative "builder/save_jobs"
 require_relative "builder/save_var_record"
-require_relative "builder/saves" # ...all four held as one object, behind the save_data verb
-require_relative "builder/debug" # the probe-only verbs, defined but deliberately not mixed in
-require_relative "builder/game_effects" # uses: a game's own effect packs, for its build alone
-require_relative "builder/data_packs" # data_pack: the original's data, read through the pack made from the copy
+require_relative "builder/saves"               # All four save parts held as one object, behind the save_data verb
+require_relative "builder/debug"               # The probe-only verbs, defined but deliberately not mixed in
+require_relative "builder/game_effects"        # uses: a game's own effect packs, for its build alone
+require_relative "builder/data_packs"          # data_pack: the original's data, read through the pack made from the copy
 
 module VBlank
   # DSL context for building a GBA ROM.

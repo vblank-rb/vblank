@@ -39,21 +39,21 @@ end
 #
 # Everything else is free to move. Adding a require here means a new module, not a new file —
 # a file goes in its own module's front door.
-require_relative "vblank/console" # the hardware's addresses and flags, named
-require_relative "vblank/messages" # what a build says to the person running it, while it builds
-require_relative "vblank/cartridge" # the bytes on the card, and the card itself
-require_relative "vblank/graphics" # what a picture is made of
-require_relative "vblank/audio" # what a beep, a note and a tune are
-require_relative "vblank/ir" # the op-tree a program becomes, and the backends that consume it
-require_relative "vblank/dsl" # the handles a game holds: a Value, a Sprite, a List, a Pool
-require_relative "vblank/builder" # ...and the verbs that hand them back
-require_relative "vblank/effects" # the verb/effect pack registry, and the packs that ship on by default
-require_relative "vblank/diagnostics" # reading a built or running cartridge back
-require_relative "vblank/playthroughs" # ...and playing one with nobody at the controls, or two side by side
-require_relative "vblank/network" # more than one machine playing one match: what they say, and how they keep in step
-require_relative "vblank/bots" # a player with no window and no person: a script that chooses its buttons
-require_relative "vblank/original" # the player's own copy of the retail game a port is made from
-require_relative "vblank/pager" # a long report shown a screen at a time
+require_relative "vblank/console"       # Hardware addresses and flags
+require_relative "vblank/messages"      # What a build tells the person running it
+require_relative "vblank/cartridge"     # The bytes on the card, and the card itself
+require_relative "vblank/graphics"      # What a picture is made of
+require_relative "vblank/audio"         # Beeps, notes and tunes
+require_relative "vblank/ir"            # The op-tree a program becomes, and the backends that consume it
+require_relative "vblank/dsl"           # The handles a game holds: Value, Sprite, List, Pool
+require_relative "vblank/builder"       # The verbs that hand those handles back
+require_relative "vblank/effects"       # The effect-pack registry, and the packs that ship by default
+require_relative "vblank/diagnostics"   # Reading a built or running cartridge back
+require_relative "vblank/playthroughs"  # Playing a cartridge with nobody at the controls
+require_relative "vblank/network"       # Machines playing one match together
+require_relative "vblank/bots"          # Players with no window and no person
+require_relative "vblank/original"      # The player's own copy of a retail game a port is made from
+require_relative "vblank/pager"         # A long report shown a screen at a time
 
 module VBlank
   # A saved profile that cannot be read, or that no longer matches the game it decides for.

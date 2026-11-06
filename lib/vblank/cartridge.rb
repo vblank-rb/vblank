@@ -5,21 +5,21 @@
 # finished one has to pass. The machine code inside it is the lowering's business, not this
 # module's (see IR::Backends::GBA).
 
-require_relative "cartridge/header" # where each field of the header sits, and the logo
-require_relative "cartridge/constants" # the old name for the hardware table, for games that still say it
+require_relative "cartridge/header"          # Where each header field sits, and the logo
+require_relative "cartridge/constants"       # The old name for the hardware table, for games that still use it
 require_relative "cartridge/rom_validator"
-require_relative "cartridge/build_record" # what the build worked out, for the cartridge to carry
-require_relative "cartridge/game_code" # the four characters an emulator tells one cartridge from another by
+require_relative "cartridge/build_record"    # What the build worked out, carried by the cartridge
+require_relative "cartridge/game_code"       # The four characters an emulator tells one cartridge from another by
 require_relative "cartridge/rom"
-require_relative "cartridge/gbc_rom" # a Game Boy Color cartridge: its header and checksums
-require_relative "cartridge/snes_rom" # a Super Nintendo cartridge: its header, vectors and checksum
-require_relative "cartridge/genesis_rom" # a Sega Genesis cartridge: its vectors, header and checksum
-require_relative "cartridge/ps1_exe" # a PlayStation program: a PS-X EXE header and its code
-require_relative "cartridge/players" # how many players a game takes, by console
-require_relative "cartridge/options" # how a game is built, as one value
-require_relative "cartridge/evaluated_game" # the one place a game's block becomes a program
-require_relative "cartridge/build_request" # what a console's build is handed, once the game is checked
-require_relative "cartridge/advance_build" # ...the Game Boy Advance's, which lowers it to ARM
-require_relative "cartridge/lowered_build" # ...and the Game Boy Color's and the Super Nintendo's
+require_relative "cartridge/gbc_rom"         # A Game Boy Color cartridge: header and checksums
+require_relative "cartridge/snes_rom"        # A Super Nintendo cartridge: header, vectors and checksum
+require_relative "cartridge/genesis_rom"     # A Sega Genesis cartridge: vectors, header and checksum
+require_relative "cartridge/ps1_exe"         # A PlayStation program: PS-X EXE header and code
+require_relative "cartridge/players"         # How many players a game takes, by console
+require_relative "cartridge/options"         # How a game is built, as one value
+require_relative "cartridge/evaluated_game"  # The one place a game's block becomes a program
+require_relative "cartridge/build_request"   # What a console's build is handed once the game is checked
+require_relative "cartridge/advance_build"   # The Game Boy Advance's build, which lowers to ARM
+require_relative "cartridge/lowered_build"   # The Game Boy Color's and Super Nintendo's builds
 require_relative "cartridge/game"
 require_relative "cartridge/test_patterns"
