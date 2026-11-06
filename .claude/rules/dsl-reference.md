@@ -127,7 +127,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Tables — `.claude/dsl/tables.md`
 
-- `table :name, array` → `Table`, read-only ROM data read by a run-time index.
+- `table :name, array` → `Table`, ROM data read by index; `data_pack`, from a copy
 
 ## Pools — `.claude/dsl/pools.md`
 

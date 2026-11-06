@@ -22,6 +22,7 @@ and a test fails when the two differ.
 - `background` — works: `above_row:` is refused: this build does not make it yet. `show_only_inside` uses the display's second window. One background at a time can be held to a box. A game that holds one cannot also have a light, a status bar, a fade held to part of the screen, or a fade under a layer, because these need the same windows. With `held: true`, the cells a pass changes with `set_tile` wait in work memory and go into video memory together in the gap between frames, so they all show on the next frame. Up to 1024 changes wait. A pass that makes more writes the waiting ones at once.
 - `status_bar` — works: the bar takes one of the four background layers. A game with a bar cannot also have a light, a fade held to part of the screen, or a fade under a layer, because these need the same part of the display.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
+- `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `dump_func` — works: it lists the ARM a routine was made into.
 - `entry` — works: raw ARM for the Advance's processor (`.claude/dsl/escape-hatch.md`).
 - `held` — works: the ten buttons a Game Boy Advance has, the shoulder buttons `:l` and `:r` among them. `:x` and `:y` are refused: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.

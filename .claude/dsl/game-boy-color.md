@@ -138,6 +138,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `scene` — works: see `func` for `fast:`.
 - `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
+- `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `dump_func` — works: it lists the SM83 code a routine was made into, with the game's variables and the runtime's routines by name.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Game Boy Color does not have.
 - `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.

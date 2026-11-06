@@ -47,6 +47,7 @@ require_relative "builder/save_var_record"
 require_relative "builder/saves" # ...all four held as one object, behind the save_data verb
 require_relative "builder/debug" # the probe-only verbs, defined but deliberately not mixed in
 require_relative "builder/game_effects" # uses: a game's own effect packs, for its build alone
+require_relative "builder/data_packs" # data_pack: the original's data, read through the pack made from the copy
 
 module VBlank
   # DSL context for building a GBA ROM.
@@ -102,6 +103,7 @@ module VBlank
     include SaveData   # save_data (records of the game's state, saved when the game says so; see Saves)
     include Parts      # part, start_over (a new game: a part of the game's state back as declared)
     include GameEffects # uses (a game's own effect packs, for its build alone)
+    include DataPacks  # data_pack (the original's data, read through a pack made from the player's copy)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree
     # nodes as terse Build.set(...) calls.
@@ -420,18 +422,29 @@ module VBlank
     # wraps it (what an angle wants), any other size clamps it — so a lookup never
     # reads past the table.
     #
+    # A slot of numbers from the game's data pack is given in place of the array
+    # (`table :speeds, pack[:speeds]`), and then its width and sign are the slot's, never
+    # inferred from what the copy holds (see Builder::DataPacks).
+    #
     # @param name [Symbol] the table's name
-    # @param values [Array<Integer>] the whole numbers to store, computed at build time
-    # @param width [Symbol] :byte, :half, or :word
+    # @param values [Array<Integer>, DSL::PackSlot] the whole numbers to store, computed at build time
+    # @param width [Symbol, nil] :byte, :half, or :word; nil is :half (or the slot's width)
     # @param signed [Boolean, nil] force signedness; nil infers it from the values
     # @return [Table] a handle to index with []
-    def table(name, values, width: :half, signed: nil)
+    def table(name, values, width: nil, signed: nil)
+      if values.is_a?(DSL::PackSlot)
+        refuse_table_unlike_slot!(name, values, width, signed)
+        width = values.layout.width
+        signed = values.layout.signed
+        values = pack_slot_values(values, :numbers, "table :#{name}")
+      end
       values = validate_table_values!(name, values)
       bits = table_fraction_bits(values)
       # A table of numbers with a fraction is stored multiplied up, and a whole cell of
       # it no longer fits in a half — so it takes a word unless the program says
       # otherwise. Reads from it carry the fraction, so nothing downstream repeats it.
-      width = :word if bits && width == :half
+      width = :word if bits && (width.nil? || width == :half)
+      width ||= :half
       values = values.map { |v| bits ? DSL::Fraction.scale(v, bits) : v }
       signed = values.any?(&:negative?) if signed.nil?
       check_table_values_fit!(name, values, width, signed)
@@ -1775,8 +1788,17 @@ module VBlank
       end
     end
 
-    # Element size in bytes for each table width.
-    TABLE_WIDTHS = { byte: 1, half: 2, word: 4 }.freeze
+    # A TABLE GIVEN A SLOT OF THE DATA PACK takes the slot's width and sign. A width or sign the
+    # line says as well must be the slot's, since two answers to one question are a mistake.
+    def refuse_table_unlike_slot!(name, handle, width, signed)
+      layout = handle.layout
+      return if (width.nil? || width == layout.width) && (signed.nil? || signed == layout.signed)
+
+      raise ArgumentError, "table #{name.inspect} reads slot :#{layout.name}. The slot holds #{layout.width.inspect} " \
+                           "numbers with signed: #{layout.signed}. The table line gives width: #{width.inspect} and " \
+                           "signed: #{signed.inspect}. If a table reads a slot, the slot sets the width and the sign. " \
+                           "Remove width: and signed: from the table line."
+    end
 
     # A table's values must be a non-empty array of whole numbers.
     def validate_table_values!(name, values)
@@ -1801,7 +1823,7 @@ module VBlank
     # Every value must fit the element width. A value that does not fit would be
     # cut down silently on the console, so stop the build and name the fix.
     def check_table_values_fit!(name, values, width, signed)
-      bytes = TABLE_WIDTHS.fetch(width) do
+      bytes = Build::ELEMENT_BYTES.fetch(width) do
         raise ArgumentError, "table #{name.inspect} width must be :byte, :half, or :word. You gave #{width.inspect}."
       end
       bits = bytes * 8

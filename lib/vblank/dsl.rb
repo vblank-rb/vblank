@@ -54,3 +54,4 @@ require_relative "dsl/tile_picture_group" # ...and tiles taking turns through pi
 require_relative "dsl/sprite_tile_set" # sprite tiles the game loads from the cartridge, for poses drawn from them
 VBlank.require_game_file "dsl/canvas" # ...and a picture the game draws into with words, built on them
 VBlank.require_game_file "dsl/list_text" # ...and words held in a list, drawn on a painted screen
+require_relative "dsl/data_pack" # the original's data, read through the pack made from the player's copy

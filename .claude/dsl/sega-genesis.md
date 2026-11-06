@@ -137,6 +137,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `scene` — works: see `func` for `fast:`.
 - `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
+- `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Genesis has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Genesis does not have.
 - `held` — works: the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` or more is refused, and `players:` more than 1 is refused too: this build reads the first pad only.

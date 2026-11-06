@@ -60,6 +60,8 @@ module VBlank
       # Say it and the framework keeps that order rather than working one out. Say
       # nothing, which is almost always right, and it works one out from the colors in
       # the art.
+      # A slot of the game's data pack can stand for either list: `colors: pack[:palette]`,
+      # `places: pack[:walls].tile(0)` (see DataPacks).
       # Art that arrived as NUMBERS picking out of that list is given as places instead
       # of pixels, which is the shape art lifted off another cartridge comes in:
       #
@@ -81,6 +83,8 @@ module VBlank
         # A pose drawn from tiles of a set the game loads (see SpriteTiles).
         return define_tile_pose(name, opts) if opts.key?(:tiles_from)
 
+        # A slot of the game's data pack in colors: or places: is read here (DataPacks).
+        opts = opts_with_pack_slots_read(name, opts)
         one_source_of_pixels!(name, opts, block)
         # A list given by name keeps its name with the picture (IR::Assets::Image#colors_name).
         colors_name = opts[:colors] if opts[:colors].is_a?(Symbol)
