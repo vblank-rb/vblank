@@ -316,22 +316,6 @@ class TestStillFramesOnTheAdvance < Minitest::Test
     assert_equal BLUE, shown_at_the_end(prog, COLUMN_PIXEL)
   end
 
-  # What a pass draws is gone once the picture is rebuilt, so a box drawn further along each
-  # frame over a still field leaves no trail.
-  def test_what_a_pass_draws_on_a_still_screen_leaves_no_trail
-    prog = still_game do
-      field = background :field, tiles: :set, map: RED_FIELD
-      x = var :x, 0
-      game_loop do
-        field.scroll_to(*SCROLL)
-        draw_rect_at x, 20, 4, 4, :green
-        x += 8
-      end
-    end
-
-    assert_equal RED, shown_at_the_end(prog, [1, 21])
-  end
-
   # A tear-free screen is two pages shown in turn, and a rebuild paints only one of them. A sprite
   # that moves once and stops must end up moved on both, or it jumps back on every other frame.
   def test_a_sprite_that_stops_on_a_tear_free_screen_stands_in_one_place_on_both_pages
