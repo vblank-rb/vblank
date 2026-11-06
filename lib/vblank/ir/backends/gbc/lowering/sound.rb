@@ -7,7 +7,7 @@ module VBlank
         class Lowering
           # THE SOUND, lowered for a Game Boy Color: a beep, a hit on the noise voice and a tone on
           # the wave voice as a row of writes to the Color's sound registers, which the runtime makes
-          # where the game says the word (Runtime::Sound, GBC::SoundRegisters); and the songs, which
+          # where the game asks for it (Runtime::Sound, GBC::SoundRegisters); and the songs, which
           # the music player walks each frame (GBC::Music, Runtime::Music). Mixed into Lowering.
           module Sound
             STATEMENTS = Ractor.make_shareable({
@@ -28,7 +28,7 @@ module VBlank
             # (Reference#audio): what a run of the cartridge reads back its sounds by (GBC::SoundLog).
             attr_reader :sound_tables
 
-            # Where the game keeps how loud its music is, or nil for a game that never says.
+            # Where the game keeps how loud its music is, or nil for a game that never sets it.
             def music_level = @variables[Tunes::LEVEL]
 
             # Does a song's note swell by itself in a game that moves the music volume, and on which kinds
@@ -46,7 +46,7 @@ module VBlank
             # Does the game hold its music? Only then does the player look (Runtime::Music::TUNE_HELD).
             def holds_music? = @program.walk.any? { |node| node.kind == :hold_music }
 
-            # Does the game run the cartridge's motor? Then its cartridge says it carries one.
+            # Does the game run the cartridge's motor? Then its cartridge declares it carries one.
             def rumbles? = @reachable.any? { |node| node.kind == :rumble }
 
             private
@@ -205,7 +205,7 @@ module VBlank
             BEEP_VOICE = 2
 
             # THE GAME'S OWN SOUND TAKES +voice+, so it wobbles no song's note (Runtime::Music#emit_wobbles)
-            # — said before the sound is written, so a frame of the player in between writes the song's
+            # — set before the sound is written, so a frame of the player in between writes the song's
             # pitch under the game's sound and not over it. Nothing in a game where no note wobbles.
             def emit_stop_wobble(voice)
               return unless Runtime::Music.wobbles?(@memory)
@@ -235,7 +235,7 @@ module VBlank
               sound_writes(GameBoySound.wave_stop, [:stop_wave])
             end
 
-            # The writes as a table of the Color's (SoundRegisters), made where the game says the word;
+            # The writes as a table of the Color's (SoundRegisters), made where the game asks for it;
             # +logged+ is what the interpreter logs for the word.
             def sound_writes(writes, logged)
               label = drawing_table("sound_writes", 1, SoundRegisters.table(writes))

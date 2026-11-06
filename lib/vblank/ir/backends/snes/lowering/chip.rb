@@ -22,7 +22,7 @@ module VBlank
           # console instead: the author asked for this routine to be quick, and would find it slow
           # with nothing to say why.
           module Chip
-            # The kinds of IR a routine on the chip can hold besides what ChipCode makes, which say
+            # The kinds of IR a routine on the chip can hold besides what ChipCode makes, which do
             # nothing while the game runs.
             MADE = Ractor.make_shareable((ChipCode::STATEMENTS.keys + ChipCode::VALUES.keys + [:else]).to_h { |kind| [kind, true] })
             LIST_STEPS = %i[list_get list_set list_len list_push list_drop list_fill list_copy].freeze
@@ -193,7 +193,7 @@ module VBlank
 
             # A run that paints plots (Runtime::ChipColumns), so the chip is told how the picture it
             # plots into is laid out: rt_chip_run puts R0's fourth byte in SCMR, whose two low bits
-            # say eight bits a pixel. Where in its RAM the picture starts (SCBR) is its first byte,
+            # set eight bits a pixel. Where in its RAM the picture starts (SCBR) is its first byte,
             # where Paint's copy is.
             PLOTS_256_COLORS = 0x03
 
@@ -298,7 +298,7 @@ module VBlank
               @asm.label(fine)
             end
 
-            # With the list's place in X: on to the index fault below unless the chip said the list was
+            # With the list's place in X: on to the index fault below unless the chip reported the list was
             # full or empty, and otherwise the runtime's push or drop on that list, which never return.
             def emit_chip_end_fault_check
               at_index = fresh("chip_index_fault")

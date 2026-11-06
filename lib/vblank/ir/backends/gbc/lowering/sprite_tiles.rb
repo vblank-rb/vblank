@@ -18,7 +18,7 @@ module VBlank
           # A load names a table of tiles kept in a bank in the Color's own form, sixteen bytes a
           # tile, and starting on a multiple of 16, which is the only place the console's copy reads
           # from (TileRuns#sprite_tiles_source_section), apart from the table itself, which the game can
-          # still read by index as it wrote it. The game only notes the load where it says it (a few
+          # still read by index as it wrote it. The game only notes the load where it asks for it (a few
           # stores), and the blank after the pass copies the tiles straight from the cartridge
           # (Runtime::SpriteTileLoads).
           module SpriteTiles

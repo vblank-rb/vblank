@@ -20,7 +20,7 @@ module VBlank
           WAVE_VOICE = 3
           NOISE_VOICE = 4
 
-          # A note's tuning that says the part rests there.
+          # A note's tuning that marks the part as resting there.
           REST = 0xFFFF
 
           # What the songs are to the author, for a cartridge too full for them (see Linker::TooBig).
@@ -39,7 +39,7 @@ module VBlank
           # ...and in a game where a note slides its pitch, one more after them: the first square
           # voice's sweep register as the note sets it (Audio::PitchSlide#bits), 0 for a note that
           # holds its pitch. Its seven bits have nowhere else to go — the tuning and the volume have
-          # five spare between them, and music converted from another game says a few dozen
+          # five spare between them, and music converted from another game uses a few dozen
           # different slides — so the byte is paid for by every note of such a game, and by no
           # other game's.
           #
@@ -72,17 +72,17 @@ module VBlank
           # One note of a part as the music table holds it, with what it is to the interpreter: the
           # song's name, the part, the voice it plays on, its pitch (0 for a rest), its volume, and
           # how it fades or swells, how it slides its pitch and how it wobbles when the note or its
-          # part said so (IR::Tunes.said_fade, IR::Tunes.said_slide, IR::Tunes.said_vibrato), and
+          # part asked for it (IR::Tunes.said_fade, IR::Tunes.said_slide, IR::Tunes.said_vibrato), and
           # the speaker it plays from when it is one (IR::Tunes.note_side), and the shapes a square
-          # note said (IR::Tunes.said_duty).
+          # note names (IR::Tunes.said_duty).
           Note = Data.define(:song, :part, :voice, :pitch, :volume, :fade, :slide, :vibrato, :side, :duty)
 
           # A NOTE'S FADE RIDES IN ITS TUNING'S TOP FOUR BITS, which a square or noise note never
           # uses: a square voice's period is eleven bits and the hiss's clock eight. The player
           # takes them out and puts them under the note's volume, where the voice's register keeps
-          # them. A noise note that says a fade also sets NOISE_SAID_FADE, since a drum that says nothing
-          # rings out as its part says and a fade of nothing — a hit that holds — would read the
-          # same. A song that says nothing of fading has nothing there, and is the bytes it was.
+          # them. A noise note that names a fade also sets NOISE_SAID_FADE, since a drum that names none
+          # rings out as its part sets and a fade of nothing — a hit that holds — would read the
+          # same. A song that names no fade has nothing there, and is the bytes it was.
           FADE_SHIFT = 12
           NOISE_SAID_FADE = 0x0800
 
@@ -98,7 +98,7 @@ module VBlank
 
           # +banked+ keeps each song's notes in the cartridge's banks rather than the part always in
           # view (#sections). +effects_in_banks+ keeps the sound effects' there too, each with a row
-          # that says what it is, and has them played from those rows (Runtime::EffectTable).
+          # that holds what it is, and has them played from those rows (Runtime::EffectTable).
           # +entries_in_banks+ keeps the songs' entries in a bank as well, with their notes in banks
           # (#emit_song_entries).
           def initialize(program, banked: false, effects_in_banks: false, entries_in_banks: false)
@@ -160,7 +160,7 @@ module VBlank
           # SONGS KEPT IN BANKS. The part of the cartridge always in view holds 16384 bytes, the
           # framework's own code among them, so a game with much music cannot keep every note there.
           # One whose songs do not fit (GBC#build) keeps each part's notes in a bank of the cartridge
-          # instead, a section a part, and its entry says which bank; the player puts that bank in
+          # instead, a section a part, and its entry names which bank; the player puts that bank in
           # view while it reads the part (Runtime::Music). What a song is — how long, its parts —
           # and the sound effects' notes stay in view.
           #
@@ -188,7 +188,7 @@ module VBlank
             [asm.section, *parts.flatten, *effect_sections]
           end
 
-          # What a row of music_sfx_index says beside where the effect's row is: its group as a number
+          # What a row of music_sfx_index holds beside where the effect's row is: its group as a number
           # from 1, nought for none.
           def group_number(effect)
             return 0 if effect.group.nil?
@@ -256,7 +256,7 @@ module VBlank
             lists
           end
 
-          # Whether any song or sound effect says how a note fades or swells: the player takes a
+          # Whether any song or sound effect sets how a note fades or swells: the player takes a
           # note's fade out of its tuning only in a game that has one to take.
           def fades?
             @songs.any? { |song| song.voices.any? { |part| part.events.any? { |event| Tunes.said_fade(part, event) } } }
@@ -329,7 +329,7 @@ module VBlank
             asm.data_bytes(moves && !wobble.carries ? 1 : 0) if carries? # 1: the swing starts over
           end
 
-          # A note's shapes as its byte holds them: the ones it or its part said, or else its part's one.
+          # A note's shapes as its byte holds them: the ones it or its part named, or else its part's one.
           # A rest's, and every other voice's, are never read, so they are nought.
           def note_shapes(part, event)
             return 0 if event[1].zero? || Tunes.part_kind(part) != :square

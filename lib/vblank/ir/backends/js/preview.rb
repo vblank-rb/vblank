@@ -11,10 +11,10 @@ module VBlank
     module Backends
       class JS
         # THE GAME IN A BROWSER TAB, BUILT AGAIN ON EVERY RELOAD: `vblank preview game.rb`. Edit
-        # the game, reload the page, and the game starts again as the file now says — no cartridge
+        # the game, reload the page, and the game starts again as the file now has it — no cartridge
         # built, no emulator started.
         #
-        # What it shows is the game as the IR says it, which is what the browser runs: a mistake in
+        # What it shows is the game as the IR describes it, which is what the browser runs: a mistake in
         # the game's logic (a collision off by a pixel, a scene that never hands over, something
         # drawn in the wrong place) shows here. A mistake only the console makes — something about
         # its memory, its timing or the machine code a cartridge is made of — does not, and is the
@@ -64,7 +64,7 @@ module VBlank
 
           def answer(client)
             request = client.gets.to_s
-            client.gets("\r\n\r\n") # the request's headers, which say nothing this needs
+            client.gets("\r\n\r\n") # the request's headers, which hold nothing this needs
             path = request.split(" ")[1].to_s
             if request.start_with?("GET ") && ["/", "/index.html"].include?(path.split("?").first)
               respond(client, 200, page)
@@ -84,7 +84,7 @@ module VBlank
             client.write(body)
           end
 
-          # The page as the game file says now, or what stopped the build.
+          # The page as the game file has it now, or what stopped the build.
           def page
             tell "Building #{File.basename(@game_file)}"
             Dir.mktmpdir("vblank-preview") do |dir|

@@ -166,12 +166,12 @@ module VBlank
           # and +bank_background_colors+ the tables of its backgrounds' colours (Picture#emit_background_colors_for_declaration).
           # +banked_table_bytes+ is how big one of the game's tables has to be to go to a bank (#banked_tables).
           # +effects_in_banks+ keeps its sound effects there too (GBC::Music#effects_in_banks?), and
-          # +indexes_in_banks+ the tables that say where each song, picture, screen and routine is
+          # +indexes_in_banks+ the tables that give where each song, picture, screen and routine is
           # (GBC#build_in_view).
           # +cache+ holds what is worked out from +program+ alone, kept from one try at a build to
           # the next (BuildCache): nothing in it depends on how this one is built.
-          # +scene_pictures+ says each scene brings its own sprite pictures in (Art::TooManySpriteTiles),
-          # which takes rooms: of nothing but those pictures, unless +tile_rooms+ says the backgrounds
+          # +scene_pictures+ marks that each scene brings its own sprite pictures in (Art::TooManySpriteTiles),
+          # which takes rooms: of nothing but those pictures, unless +tile_rooms+ marks that the backgrounds
           # need rooms too.
           def initialize(program, memory:, lends_sprite_colors: false, tile_rooms: false, room_colors: false,
                          banked_songs: false, bank_pose_tables: false, bank_background_colors: false,
@@ -564,7 +564,7 @@ module VBlank
           CONSOLE = Console::COLOR
 
           # WHAT THE COLOR'S LOWERING ALONE WORKS OUT FROM THE PROGRAM, once a build for all its tries
-          # (BuildCache#facts): what each tile's picture says (Art#tile_fact), the tiles each
+          # (BuildCache#facts): what each tile's picture gives (Art#tile_fact), the tiles each
           # background shows and its `set_tile`s put in it, the screens' modes, each tile's colours
           # with each of its background's lists, a background's lists at each step, its recolour
           # steps, and each sprite picture's pixels in each list. Each is a memo of the program
@@ -667,7 +667,7 @@ module VBlank
           def emit_children(node) = node.children.each { |child| statement(child) }
 
           # BCDE into the variable +name+. A variable a sprite is placed from marks the sprite changed
-          # (Runtime::KeptSprites) — when the number is another than the one there, so a pose said
+          # (Runtime::KeptSprites) — when the number is another than the one there, so a pose set
           # again every pass leaves the sprite as it is.
           def store(name)
             return store_kept_bytes(name) if kept_bytes(name)
@@ -851,7 +851,7 @@ module VBlank
             @asm.label(done)
           end
 
-          # A beat (`every`, `after`) is the plain statements IR::Frames says it means.
+          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
           def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
 
           def emit_call(node)
@@ -1046,7 +1046,7 @@ module VBlank
           # order is one compare an item and no moves, and level numbers never pass each other.
           #
           # BC is the slot the item will go in, walking down; a compare is the item's number less
-          # the one before's, a byte at a time from the lowest, and the borrow out of it says which
+          # the one before's, a byte at a time from the lowest, and the borrow out of it shows which
           # is smaller as whole unsigned numbers. Two numbers of different signs are the other way
           # round as signed ones, so the borrow is turned over when their top bits differ.
           def emit_list_sort(node)
@@ -1187,7 +1187,7 @@ module VBlank
             @asm.xor_a([:hl]) # ...turned over by the one before's top bit
             @asm.load(:e, :a)
             @asm.load_high(:a, key + key_width - 1)
-            @asm.xor_a(:e) # ...and by the item's: its top bit says
+            @asm.xor_a(:e) # ...and by the item's: its top bit gives the answer
             @asm.rla
           end
 
@@ -1224,7 +1224,7 @@ module VBlank
           #
           # A LIST NOTHING TAKES FROM THE FRONT keeps its first item in its first slot for good, so
           # an item's slot is its index: such a list's item is read straight from its place, once
-          # the index is held to the length the header says — every field of a pool is such a list.
+          # the index is held to the length the header holds — every field of a pool is such a list.
           # An index out of range goes the whole way round, so the game stops as the interpreter's.
           def value_of_list_get(node)
             place, capacity, width = list_placed(node)
@@ -1275,7 +1275,7 @@ module VBlank
 
           # HL = the slot the index in BCDE names in the list at +place+, whose slots are +width+
           # bytes, a list whose first item is in its first slot; a jump to +out_of_range+, BCDE as
-          # it was, for an index past 16 bits, below nought, or not below the length its header says.
+          # it was, for an index past 16 bits, below nought, or not below the length its header holds.
           def emit_list_slot_address(place, width, out_of_range)
             @asm.load(:a, :b)
             @asm.or_a(:c)
@@ -1377,7 +1377,7 @@ module VBlank
           end
 
           # A TABLE PAST 64 KILOBYTES, read at the index in BCDE, which is already held inside it.
-          # The entry's offset (the index × the entry's size) is more than two bytes can say, so it
+          # The entry's offset (the index × the entry's size) is more than two bytes can hold, so it
           # is kept in three, CDE, and the part it is in is found here rather than by
           # rt_far_read_parts: the offset's bits from the part's size up are the part's number, and
           # its place in the list of parts (three bytes a part: its address and its bank) is that
@@ -1437,7 +1437,7 @@ module VBlank
             @asm.load(:b, :a)
           end
 
-          # --- save memory (Runtime::Saving), laid out as IR::SaveLayout says ---
+          # --- save memory (Runtime::Saving), laid out by IR::SaveLayout ---
 
           # Reference#exec_save_init: every `save_var` takes its saved number when save memory
           # carries the game's marker, and the number it was declared with when it does not. Each
@@ -1476,7 +1476,7 @@ module VBlank
           # interpreter works them out, which is the order they are pushed in.
           def emit_save_write(node) = runtime_call("rt_save_write", [node.at, node.value, save_width(node)])
 
-          # Reference#exec_save_erase: the wipe is waited for unless the node says not to.
+          # Reference#exec_save_erase: the wipe is waited for unless the node asks not to.
           def emit_save_erase(node) = runtime_call("rt_save_erase", [node.at, Build.int(node.wait == false ? 0 : 1)])
 
           def value_of_save_read(node) = runtime_call("rt_save_read", [node.at, save_width(node)])
@@ -1490,7 +1490,7 @@ module VBlank
           # --- timers ---
           #
           # A timer (`timer :beat, per_second: 10`) ticks so many times a second whatever the game is
-          # doing, and runs what the game said to do on each tick. There is no clock in it: a frame is
+          # doing, and runs what the game gave it to do on each tick. There is no clock in it: a frame is
           # the interpreter's sixtieth of a second, so at every frame boundary a running timer gains
           # its rate in sixtieths of a tick, and each whole tick that comes to is a tick
           # (Reference#accrue_timer). The Color's own hardware timer counts its own clock, which is
@@ -1702,7 +1702,7 @@ module VBlank
             variable_named(condition.lhs) || kept_variable_named(condition.lhs)
           end
 
-          # A variable said to equal (or not) a number written in the program: [its place, the
+          # A variable tested to equal (or not) a number written in the program: [its place, the
           # number], or nil for any other test.
           def equality_with_number(condition)
             return nil unless binop?(condition, :==) || binop?(condition, :!=)
@@ -1743,7 +1743,7 @@ module VBlank
           end
 
           # rt_cmp32 on the two sides of a comparison, and A compared with what the comparison holds
-          # on, so the zero flag says.
+          # on, so the zero flag gives the answer.
           def compare(node)
             byte = folded(node.rhs)
             if byte&.between?(0, 0xFF)
@@ -1803,7 +1803,7 @@ module VBlank
             @asm.label(done)
           end
 
-          # A = B | C | D, the three upper bytes of the number in BCDE, so the zero flag says
+          # A = B | C | D, the three upper bytes of the number in BCDE, so the zero flag shows
           # whether the number is one byte, from 0 to 255.
           def emit_upper_bytes_or
             @asm.load(:a, :b)

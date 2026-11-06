@@ -79,7 +79,7 @@ module VBlank
 
           # +bytes+ for +name+, a table of the runtime's that its code only reads and writes through
           # X with an instruction that has a long form (#indexed): in the first 8K, or past it when the
-          # build said the tables go far. A game with room for them near is laid out as it always
+          # build set the tables to go far. A game with room for them near is laid out as it always
           # was; one without keeps its variables near in their place, since the game's code reads
           # those far more often than the runtime reads these.
           def reserve_table(name, bytes) = @far_tables ? reserve_far(name, bytes) : reserve(name, bytes)

@@ -38,7 +38,7 @@ module VBlank
             super
           end
 
-          # What only drawing and sound would have said, refused by name.
+          # What only drawing and sound would have answered, refused by name.
           def sprites(_name = nil) = refuse_nothing_drawn!(:sprites)
           def audio = refuse_nothing_drawn!(:audio)
           def recording_sound(**) = refuse_nothing_drawn!(:recording_sound)

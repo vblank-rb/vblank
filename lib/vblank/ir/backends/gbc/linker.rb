@@ -14,7 +14,7 @@ module VBlank
         # BANKED, in one of the others, and a jump from one bank to another is not a jump at all
         # but a call through bank 0 that switches the bank in view first (see Runtime#far_call).
         #
-        # A section's +home+ says which: :fixed, :banked, :aligned16 (banked, starting at an address
+        # A section's +home+ names which: :fixed, :banked, :aligned16 (banked, starting at an address
         # that is a multiple of 16, which the console's copy into picture memory reads from), a
         # number (the address in bank 0 it must start at, for the processor's own entry points), or
         # a label, which puts it in the same bank as the section that defines that label, so it can

@@ -11,7 +11,7 @@ module VBlank
         # voice and its noise voice, and on recordings through the mixer (runtime/rg_mix.h) — as
         # the interpreter's music player walks them, whether the game names the song or picks it
         # from a list by number; the sound effects played over the song; the game's own
-        # recordings; and the beeps, `wave`, `stop_wave`, `noise` and `enable_sound` the game says
+        # recordings; and the beeps, `wave`, `stop_wave`, `noise` and `enable_sound` the game asks for
         # itself. Each goes into the sound log a test reads, in the interpreter's words (see
         # SoundLog).
         #
@@ -38,11 +38,11 @@ module VBlank
           VIBRATO_AT = 14
 
           # ...and at the top, the speaker it plays from (Audio::Pan.bits_of), nought for both, so
-          # it needs nothing said beside it (rg_sound.c's PAN_AT). The top bit is the sign's, so a
+          # it needs nothing set beside it (rg_sound.c's PAN_AT). The top bit is the sign's, so a
           # note on the right alone is a negative number.
           PAN_AT = 30
 
-          # A note's sixth number is its shapes when it or its part said them (Audio::Duty#bits), with
+          # A note's sixth number is its shapes when it or its part named them (Audio::Duty#bits), with
           # SAID_DUTY beside them, and 0 for a note that plays its part's one shape (rg_sound.c's
           # SAID_DUTY).
           SAID_DUTY = 1 << 8
@@ -193,7 +193,7 @@ module VBlank
           end
 
           # The player reads the music volume the game keeps, when it keeps one: a game that never
-          # says `music_volume` plays every part at its written volume with nothing worked out.
+          # names `music_volume` plays every part at its written volume with nothing worked out.
           def sound_power_on
             return [] unless variable_names.include?(Tunes::LEVEL)
 
@@ -251,7 +251,7 @@ module VBlank
             sound_table("beeps", [rows.size, *rows.flatten])
           end
 
-          # Each different `wave` the game says: which waveform, how long one wave of it lasts,
+          # Each different `wave` the game asks for: which waveform, how long one wave of it lasts,
           # and how many quarters of each step its loudness keeps.
           def wave_table
             sound = VBlank::Audio::Sound
@@ -315,7 +315,7 @@ module VBlank
           end
 
           # A part: which kind of voice it plays on, which of its song's parts it is, the two
-          # things that say what its voice sounds like, and its notes. A recorded part's +lane+ is
+          # things that give what its voice sounds like, and its notes. A recorded part's +lane+ is
           # which of the song's recorded parts it is.
           def encoded_part(part, number, pass, lane)
             kind = Tunes.part_kind(part)
@@ -326,7 +326,7 @@ module VBlank
           # What a part's voice sounds like, as two numbers. A square part: how many eighths of
           # its wave are high. A wave part: which waveform. A noise part: how many bits its hiss
           # comes out of, and how long a hit holds each step of volume as it fades. A recorded
-          # part: its lane, since each note says what it sounds like.
+          # part: its lane, since each note sets what it sounds like.
           def part_tone(kind, part, lane)
             sound = VBlank::Audio::Sound
             case kind
@@ -342,10 +342,10 @@ module VBlank
           # clock it lasts — one wave of it on a square voice or the wave voice, one step of the
           # hiss on the noise voice — or, on a recorded part, the row of note_sounds_table it
           # sounds. A recorded note's volume is written as its loudness on the mixer, since it can
-          # hold a fraction. Then how it fades or swells, when its part or the note said so
+          # hold a fraction. Then how it fades or swells, when its part or the note asked for it
           # (IR::Tunes.said_fade): the voice's four bits of it, and SAID_FADE beside them; 0 for a
           # note that leaves it to the voice, and for a rest. With them, in the same number, how it
-          # slides its pitch when it or its part said so (IR::Tunes.said_slide), how it wobbles
+          # slides its pitch when it or its part asked for it (IR::Tunes.said_slide), how it wobbles
           # (IR::Tunes.said_vibrato), and which speaker it plays from (IR::Tunes.note_side). And
           # after that number, a square note's shapes (IR::Tunes.said_duty; see SAID_DUTY).
           def encoded_note(note, part, kind)

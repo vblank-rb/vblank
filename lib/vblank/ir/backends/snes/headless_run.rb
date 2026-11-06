@@ -24,7 +24,7 @@ module VBlank
           # packed, two bytes each, as a check number reads them (RunComparison.picture_check).
           # +mixed+, on the interpreter's side only, is a byte a pixel: 1 where it mixed.
           #
-          # Two pictures a step apart are equal, so all that #hash can say of a picture is its size.
+          # Two pictures a step apart are equal, so all that #hash can use of a picture is its size.
           NearPicture = Data.define(:packed, :mixed) do
             def self.of(shown, mixed = nil) = new(packed: shown.pack("v*"), mixed: mixed&.pack("C*"))
 
@@ -53,14 +53,14 @@ module VBlank
 
           # What a Moment holds of the picture +shown+: its check number, or for a game with a
           # see-through layer (+near+) the picture itself (NearPicture), with which pixels were
-          # +mixed+ where the interpreter says.
+          # +mixed+ where the interpreter marks them.
           def self.moment_picture(shown, near, mixed = nil) = near ? NearPicture.of(shown, mixed) : RunComparison.picture_check(shown)
 
           # Whether +program+'s pictures are held within a step (NearPicture).
           def self.near_pictures?(program) = !SeeThrough.layers(program).empty?
 
           # +watch_picture+ reads the picture after every frame the console draws, not only at the end
-          # of each pass, to say which were all black (#black_frames). It is a whole screen read each
+          # of each pass, to find which were all black (#black_frames). It is a whole screen read each
           # frame, so only a test that asks for it pays for it.
           def initialize(save: SaveImage.new, watch_picture: false)
             super(save: save)
@@ -115,7 +115,7 @@ module VBlank
           def live_dsp_registers = @core.dsp_registers
 
           # The recordings sounding as the run ended, in the order of their places, as the
-          # interpreter says them (Reference#active_samples): the cartridge's own count
+          # interpreter gives them (Reference#active_samples): the cartridge's own count
           # (Runtime::Recordings), heard or not.
           def active_samples = (@sounding || []).map(&:first)
 
@@ -142,8 +142,8 @@ module VBlank
           attr_reader :apu_ram
 
           # WHAT WAS HEARD: the loudest sample bsnes played in each screen frame from power-on, left
-          # or right, as a number from 0 to 32768. The registers say what the sound unit was told
-          # at the end of each pass; this says what came out between, so a test can measure a
+          # or right, as a number from 0 to 32768. The registers hold what the sound unit was told
+          # at the end of each pass; this gives what came out between, so a test can measure a
           # sound's shape — a rest's silence, a fade's length — where the registers cannot see it.
           # Taking it every frame also keeps the emulator from holding every sample of the run.
           # A frame is the finest it sees: what happens inside one is not in it.
@@ -214,7 +214,7 @@ module VBlank
 
           # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the screen is
           # still switched off (Runtime::Frame turns it on as the first pass is shown). The interpreter
-          # says a display switched off as a plain white picture (Reference::Framebuffer::HELD_OFF),
+          # shows a display switched off as a plain white picture (Reference::Framebuffer::HELD_OFF),
           # so that is the picture the run ends on, and the game goes no further.
           def ends_before_first_picture?(frames) = frames.zero?
 
@@ -435,7 +435,7 @@ module VBlank
             [word(at + Runtime::Paint::CAMERA_X), word(at + Runtime::Paint::CAMERA_Y)]
           end
 
-          # The sprites the game placed in its last pass, back to front, as the interpreter says them
+          # The sprites the game placed in its last pass, back to front, as the interpreter gives them
           # (Reference#sprites): the runtime keeps a row for each (Runtime::Picture::DRAWN) — whose,
           # which picture, where — and SpriteNames turns the numbers back into names.
           def read_sprites = @places.drawn_sprite_rows(@drawn_sprites, method(:half))
@@ -451,7 +451,7 @@ module VBlank
           def waiting? = half(runtime_place(Runtime::Frame::WAITING)) == 1
 
           # FAULT: what went wrong (a word), the list's place (three bytes and a spare), and two
-          # numbers that say how (four bytes each).
+          # numbers that show how (four bytes each).
           def read_fault
             at = runtime_place(Runtime::Frame::FAULT)
             [half(at), read32(at + Runtime::Frame::FAULT_LIST) & 0xFFFFFF, word(at + Runtime::Frame::FAULT_FIRST),

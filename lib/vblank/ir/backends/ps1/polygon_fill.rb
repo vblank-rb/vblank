@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         # THE PLAYSTATION GRAPHICS CHIP FILLING A TEXTURED TRIANGLE, by its own rules, written in Ruby so
-        # the checked run can say which pixels the chip draws for the triangles a program sends, and
+        # the checked run can work out which pixels the chip draws for the triangles a program sends, and
         # which texel each shows. PS1::CheckedRun draws a place's faces this way on the interpreter's
         # side, and compares that with what the chip drew in the emulator: every pixel, with none let
         # off. It is the answer key for the chip, as the interpreter is for everything else, and no

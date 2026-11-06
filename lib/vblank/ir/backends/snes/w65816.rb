@@ -10,11 +10,11 @@ module VBlank
         #
         # The 65816 is the 6502 grown to 16 bits. It has three registers a program works with: A,
         # the accumulator every sum goes through, and X and Y, which count and index. Each is 8
-        # or 16 bits wide, as two flags say: M for A and X for X and Y. REP clears flags and SEP
+        # or 16 bits wide, as two flags set: M for A and X for X and Y. REP clears flags and SEP
         # sets them, so `rep 0x30` makes all three 16 bits wide and `sep 0x20` makes A 8 bits.
         # How wide A is decides how many bytes an instruction's number takes (LDA #5 is two bytes
         # with an 8-bit A and three with a 16-bit one), so the assembler follows REP and SEP as it
-        # writes, and `widths` says what they are at a label code jumps to from elsewhere.
+        # writes, and `widths` sets what they are at a label code jumps to from elsewhere.
         #
         # Memory is reached with a 24-bit address: a bank (the top byte) and 64K inside it. An
         # instruction can name all 24 bits (long), 16 of them in the data bank (absolute), or 8 of
@@ -97,7 +97,7 @@ module VBlank
           # Each conditional branch's opposite, for a branch too far for one byte (#branch_long).
           OPPOSITES = { bpl: :bmi, bmi: :bpl, bvc: :bvs, bvs: :bvc, bcc: :bcs, bcs: :bcc, bne: :beq, beq: :bne }.freeze
 
-          # The one-byte instructions with nothing to say.
+          # The one-byte instructions that take no operand.
           SINGLES = {
             clc: 0x18, sec: 0x38, cli: 0x58, sei: 0x78, cld: 0xD8, sed: 0xF8, clv: 0xB8,
             tax: 0xAA, tay: 0xA8, txa: 0x8A, tya: 0x98, tsx: 0xBA, txs: 0x9A, txy: 0x9B, tyx: 0xBB,
@@ -169,8 +169,8 @@ module VBlank
             name
           end
 
-          # What the code at the next label finds A, X and Y to be: +a16+ and +xy16+ say whether
-          # they are 16 bits wide. Code jumped to from elsewhere says so, since the assembler
+          # What the code at the next label finds A, X and Y to be: +a16+ and +xy16+ mark whether
+          # they are 16 bits wide. Code jumped to from elsewhere sets them, since the assembler
           # follows REP and SEP only as it writes them in order.
           def widths(a16:, xy16:)
             @wide_a = a16

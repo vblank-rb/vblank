@@ -9,7 +9,7 @@ module VBlank
         # (its source number, an entry in the sample table), how fast it reads through it (its
         # pitch), how loud it is on the left and on the right, how its loudness rises and falls (its
         # envelope), and the key-on register that starts it from the top. The console plays a sound
-        # by writing those (Runtime::Sound's rt_sound_write); this module says which writes each of
+        # by writing those (Runtime::Sound's rt_sound_write); this module gives which writes each of
         # the interpreter's sound-log entries means.
         #
         # The lowering writes them, and the checked run reads the emulator's registers after every
@@ -107,7 +107,7 @@ module VBlank
           # FLG: not muted, not held in reset, and the echo never writing — its buffer would be
           # written over the sound unit's own memory, where the program is.
           SOUND_ON = 0x20
-          # ...and as the sound unit starts: muted and every voice held off, said outright, since
+          # ...and as the sound unit starts: muted and every voice held off, written outright, since
           # what FLG reads before anything writes it is not to be relied on (fullsnes).
           SOUND_OFF = 0xE0
           # Main volume, the most there is (127, on both sides).
@@ -230,7 +230,7 @@ module VBlank
 
           # A song's note on channel +channel+: on a square voice, the note held at a fixed gain, or
           # the voice let go for a rest or a note at volume nought; on the wave or noise voice,
-          # nothing, since the entry after it is the note. +fade+ is an Audio::NoteFade the note said.
+          # nothing, since the entry after it is the note. +fade+ is an Audio::NoteFade the note named.
           def song_note(channel, song, frequency, volume, parts, fade: nil, duty: nil)
             voice = SQUARE_VOICES[channel] or return []
             return key_off(1 << voice) unless sounds?(channel, frequency, volume, fade)
@@ -246,7 +246,7 @@ module VBlank
           end
 
           # A NOTE WOBBLING: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's
-          # pitch number from it (Audio::Vibrato), which the voice's pitch registers say on the wave
+          # pitch number from it (Audio::Vibrato), which the voice's pitch registers hold on the wave
           # length the note is on. The note is not started again, so nothing else is written.
           def wobble(channel, frequency, steps)
             voice = CHANNEL_VOICES.fetch(channel)
@@ -293,7 +293,7 @@ module VBlank
             [[base + ADSR1, ADSR_OFF], [base + GAIN, 0]]
           end
 
-          # Where a [:voice ...] entry says its fade, its slide and its shape (IR::Tunes.voice_entry).
+          # Where a [:voice ...] entry holds its fade, its slide and its shape (IR::Tunes.voice_entry).
           DUTY_OF_VOICE_ENTRY = 9
           FADE_OF_VOICE_ENTRY = 5
           SLIDE_OF_VOICE_ENTRY = 6
@@ -307,7 +307,7 @@ module VBlank
           # fade goes down the way a beep's does (#fade_rate). A swell climbs from nought to the top
           # of the envelope, with the voice's volume at the top, in the time the Advance's voice
           # takes to climb all fifteen steps; a note the Advance starts part way up starts at the
-          # bottom here. +writes+ are a voice's, with its envelope said.
+          # bottom here. +writes+ are a voice's, with its envelope set.
           def note_envelope(writes, volume, fade)
             return writes if fade.nil? || fade.step.zero?
             return swelling_envelope(writes, fade) if fade.swells?
@@ -341,10 +341,10 @@ module VBlank
           # The volume of +voice+ while its note swells: the most there is, as it climbs.
           def swell_top(voice) = voice == NOISE_VOICE ? (15 * VOLUME_STEP * HISS_SCALE).round : 15 * VOLUME_STEP
 
-          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count says it is
+          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count puts it
           # (Reference::Player#step_swells): an +entry+ of [:loudness, channel, volume], with the
           # swell after it if it climbs on. Holding, the envelope stops at its top and the voice's
-          # volume says the loudness, as any held note's does; the volume goes first, since the other
+          # volume sets the loudness, as any held note's does; the volume goes first, since the other
           # order is full volume for a moment. Climbing on, the envelope is put where the loudness
           # is and the voice's volume back at the top. The sound chip reads a register once a sample,
           # so the volume between the envelope's two writes is what gives it time to see the first.
@@ -481,7 +481,7 @@ module VBlank
           #
           # - the tune a [:loudness ...] for a held note reaches is the one whose note was logged last
           #   (or +song+ before any), since a tune plays its first frame's notes, rests included, as
-          #   it starts — and a sound effect's notes are not a tune's. A stop says its tune itself, as
+          #   it starts — and a sound effect's notes are not a tune's. A stop names its tune itself, as
           #   the cartridge logs it ([:stop_music, name], Music.stop_entry; #misnamed_stop holds it to
           #   the log);
           # - a song's note on the wave or noise voice plays at the note's own volume, which its
@@ -504,7 +504,7 @@ module VBlank
             previous = nil
             effect_voices = 0 # the voices a sound effect holds, a bit each
             side = nil # the speaker the note just logged plays from, nil for both
-            fade = nil # the fade it said
+            fade = nil # the fade it named
             sounding = {} # what each channel's last note is, for a wobble of it
             rising = {} # whether each channel's last note is a song's that swells
             sides = {} # the speaker each channel's last note plays from, nil for both
@@ -556,10 +556,10 @@ module VBlank
             frequency.positive? && fade&.swells_by_itself? && CHANNEL_VOICES.fetch(channel) != WAVE_VOICE && !voicing.effects.include?(who)
           end
 
-          # A [:noise ...] entry that plays a note: a drum's fade is said in the [:voice ...] before it.
+          # A [:noise ...] entry that plays a note: a drum's fade is given in the [:voice ...] before it.
           def noise_note?(entry) = entry.first == :noise && entry.last.is_a?(Hash)
 
-          # Where a [:voice ...] entry says its side (IR::Tunes.voice_entry).
+          # Where a [:voice ...] entry holds its side (IR::Tunes.voice_entry).
           SIDE_OF_VOICE_ENTRY = 8
 
           # A NOTE FROM ONE SPEAKER: each voice of the sound chip has a volume for each side, so the
@@ -598,9 +598,9 @@ module VBlank
           end
 
           # What the registers hold after the sound log +entries+, by register, for each one written,
-          # and FLG and KOFF, which the sound unit starts as at_power_on says and whose bits an entry
+          # and FLG and KOFF, which the sound unit starts as at_power_on sets and whose bits an entry
           # changes only some of. +voicing+ as for #for_entry.
-          # WHICH TUNE A STOP STOPPED is the cartridge's to say (Music.stop_entry), since the
+          # WHICH TUNE A STOP STOPPED is the cartridge's to name (Music.stop_entry), since the
           # interpreter's [:stop_music] does not. Where a tune has logged a note since the last stop,
           # the log says it too, and the two must agree: the index in +entries+ (the cartridge's log,
           # stops named) of the first stop that names another tune, or nil. With no note since the
@@ -635,7 +635,7 @@ module VBlank
           # WHAT THE LOG CANNOT ANSWER FOR. A slide logs nothing as it moves, on the interpreter as on
           # the Advance, whose voice does the moving. So while the last note of a channel slides,
           # the registers the player moves it with have no expected value. A rest or a tune's stop
-          # leaves them where the slide took them, so it is the last note that sounded that says.
+          # leaves them where the slide took them, so it is the last note that sounded that decides.
           def slide_registers(entries)
             entries.select { |entry| entry.first == :voice && entry[3].positive? }.group_by { |entry| entry[1] }.flat_map do |channel, notes|
               next [] unless VBlank::Audio::PitchSlide.moves?(notes.last[SLIDE_OF_VOICE_ENTRY])

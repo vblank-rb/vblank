@@ -112,7 +112,7 @@ module VBlank
             # Whether any sprite picture is drawn with squares of 16×16 (Art::Piece#big).
             def sprite_squares? = !painted? && @art.sprite_squares?
 
-            # What the build can say about the table of 128 rows. A sprite past the last row is not
+            # What the build can know about the table of 128 rows. A sprite past the last row is not
             # drawn, with no error from the console, and only here is it known how many rows each
             # picture came to. A pool's sprites and letters of text are left out of the count: how
             # many show at once is decided as the game runs, so this counts what is certain, the
@@ -330,7 +330,7 @@ module VBlank
             end
 
             # ONE SET OF A SPRITE'S PICTURES FOR ALL ITS LISTS (+one_sprite_tile_set+, which SNES#build
-            # turns on when the copies do not fit). Each sprite row says which set of colours it is
+            # turns on when the copies do not fit). Each sprite row names which set of colours it is
             # drawn from, so a tile that holds PLACES rather than colours can be shown in any list: the
             # picture and every list it is drawn with each take a set whose colours stay in their own
             # places, and every copy comes to the same tiles. A set is then a whole list, and shared
@@ -357,7 +357,7 @@ module VBlank
             # list nothing is drawn with has no palette, and nothing to show.
             #
             # A list one scene keeps to itself has a palette only while that scene is up, and another
-            # scene's colours in it otherwise: the number is kept, and said again as the scene arrives
+            # scene's colours in it otherwise: the number is kept, and set again as the scene arrives
             # (#emit_scene_colors), so it writes only with its scene up.
             def emit_color_list_holds(node)
               emit_backdrop_follows(node)
@@ -475,7 +475,7 @@ module VBlank
 
             # A scene taking over, in a game of screen colours: its sets into the colours drawn now and
             # the copy the blank sends, through whatever fade is in force, and the list each of its
-            # backgrounds was told to draw with said again over them. They go out in the blank that
+            # backgrounds was told to draw with set again over them. They go out in the blank that
             # sends its maps' registers (Runtime::Picture's "Together"), so no frame shows the two out
             # of step.
             def emit_scene_colors(scene, arrival)
@@ -493,7 +493,7 @@ module VBlank
             end
 
             # What a background's palettes hold at its step +step+ (nil for its own colours): each list
-            # it is drawn from, by place, as the list named for that step says (Assets::Recolor).
+            # it is drawn from, by place, as the list named for that step gives (Assets::Recolor).
             def background_held_set(bg, step)
               swaps = step && bg.list_swaps(step)
               ((@background_lists || {})[held_lists_key(bg)] || {}).map do |list, (palette, image)|

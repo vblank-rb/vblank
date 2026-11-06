@@ -36,7 +36,7 @@ module VBlank
           # the pass's number as #frames_took has it, read off the console's line timer
           # (Runtime::Frame::END_LINES). For a pass that took several frames a blank began while it ran,
           # so this is how many lines too late it went to sleep to take a frame fewer. Nothing the
-          # interpreter can say: it has no screen drawing a line at a time.
+          # interpreter can answer: it has no screen drawing a line at a time.
           def lines_after_blank(pass) = @lines_after_blank.fetch(pass)
 
           private
@@ -55,7 +55,7 @@ module VBlank
           def set_buttons(buttons) = @core.set_buttons(buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] })
 
           # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the picture is still
-          # off. The interpreter says a display switched off as a plain white picture
+          # off. The interpreter shows a display switched off as a plain white picture
           # (Reference::Framebuffer::HELD_OFF), so that is the picture the run ends on, and the game goes no
           # further.
           def ends_before_first_picture?(frames) = frames.zero?
@@ -90,7 +90,7 @@ module VBlank
           # ...AND IT COUNTS ONLY IF IT IS THE PAGE SHOWN. As the pass went on the screen the runtime kept
           # which page the chip was showing (Runtime::Paint::PASS_SHOWN_PAGE_Y); that has to be the page the
           # pass drew. And what the runtime keeps of the page it last told the chip to show
-          # (Runtime::Paint::SHOWN_PAGE_Y) has to be what the chip's display start says now, so a command the
+          # (Runtime::Paint::SHOWN_PAGE_Y) has to be what the chip's display start holds now, so a command the
           # chip never took is seen too. The page shown is read at the pass's moment and not now, since the
           # next pass may already have changed it, as a screen becoming tear-free does. Where either does not
           # hold — a tear-free screen whose pages did not trade places — the picture is the one the chip
@@ -116,7 +116,7 @@ module VBlank
             @on_vblank&.call(frame) unless frame == :end
           end
 
-          # The game halted: its last picture is shown by the blank that says so, and the moment is the end
+          # The game halted: its last picture is shown by the blank that marks it, and the moment is the end
           # of the run.
           def finish_after_halt
             (1..passes).last(Runtime::Frame::STEPS_KEPT).each { |pass| note_frames_took(pass) unless @frames_took.key?(pass) }
@@ -167,7 +167,7 @@ module VBlank
           def state = read32(runtime_place(Runtime::Frame::STATE))
           def waiting? = read32(runtime_place(Runtime::Frame::WAITING)) == 1
 
-          # FAULT: what went wrong, the list's place, and two numbers that say how, a word each.
+          # FAULT: what went wrong, the list's place, and two numbers that show how, a word each.
           def read_fault
             at = runtime_place(Runtime::Frame::FAULT)
             [read32(at), read32(at + Runtime::Frame::FAULT_LIST), word(at + Runtime::Frame::FAULT_FIRST),

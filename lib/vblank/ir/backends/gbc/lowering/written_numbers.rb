@@ -24,7 +24,7 @@ module VBlank
           #   wraps in) needs only those bytes of x, so x is worked out at that width (#low_value):
           #   a variable's two bytes read where it is kept, a sum two bytes wide.
           # - A COMPARISON with such a number is the subtraction rt_cmp32 does, its bytes written
-          #   into the instructions, so the carry says the answer.
+          #   into the instructions, so the carry gives the answer.
           #
           # What every number means is unchanged: these give IR::Int32's answer, as the runtime's
           # routines do.

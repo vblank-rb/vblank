@@ -112,7 +112,7 @@ module VBlank
                                            save_read: :value_of_save_read, save_sum: :value_of_save_sum
                                          })
 
-          # EVERY KIND THIS BACKEND CANNOT WRITE YET, said out loud rather than found out. Native
+          # EVERY KIND THIS BACKEND CANNOT WRITE YET, listed rather than found out. Native
           # trails the other two backends, so a kind may be missing here — but only on this list,
           # which test_native_kind_coverage.rb holds against every kind there is. A kind leaves
           # the list the day it gets a row in STATEMENTS or VALUES.
@@ -138,7 +138,7 @@ module VBlank
             # The game's light: the last one written, wherever, since it stands from power-on
             # (Reference#collect_definitions), or nil for a game with none.
             @shade = program.walk.select { |node| node.kind == :shade_outside }.last
-            # ...and whether it takes turns with the scenes it is off in, said as each frame ends.
+            # ...and whether it takes turns with the scenes it is off in, set as each frame ends.
             @switches_shade = @shade && IR::LightScenes.switches?(program)
             # What each timer does when it ticks: its handler, wherever that is written, since it
             # is the timer's from power-on (Nodes::OnTimer.of). And the number the runtime knows
@@ -171,7 +171,7 @@ module VBlank
           end
 
           # Every step a run of the program can reach, values inside them included: what is
-          # written out, and what is refused when it cannot be. A check that has to say the same
+          # written out, and what is refused when it cannot be. A check that has to answer the same
           # as the lowering about a step in a routine nothing calls asks for this.
           def reachable_steps = @reachable
 
@@ -223,7 +223,7 @@ module VBlank
             [*(waits ? [eval_call("rg_screen_hold", C::Int.new(1))] : []), *sound_power_on]
           end
 
-          # What a run can reach, as IR::Reach says it for every lowering: the statements under a
+          # What a run can reach, as IR::Reach works it out for every lowering: the statements under a
           # root, the routines they name, every routine reached from the program, from what each
           # bend runs and from what each timer does when it ticks, and every variable.
           def statements_under(root) = Reach.statements_under(root)
@@ -294,8 +294,8 @@ module VBlank
 
           # A table kept at the width the game declared it, as the cartridge keeps it: a byte or a
           # half, signed or not, and a whole word otherwise. The build has already checked every
-          # entry fits; a table built by hand that says nothing, or whose entries do not fit what it
-          # says, keeps whole words. Reading an entry widens it back to a whole number, so nothing
+          # entry fits; a table built by hand that names no width, or whose entries do not fit the one it
+          # names, keeps whole words. Reading an entry widens it back to a whole number, so nothing
           # that reads one changes.
           def table_type(table)
             type, range = TABLE_TYPES[[table.width, table.signed ? true : false]]
@@ -322,7 +322,7 @@ module VBlank
 
           # --- refusing what cannot be written yet ---
 
-          # What a refusal calls the build this lowering makes. JS::Lowering says its own; every
+          # What a refusal calls the build this lowering makes. JS::Lowering names its own; every
           # refusal is otherwise the same for both.
           def build_name = "the desktop build"
 
@@ -467,7 +467,7 @@ module VBlank
                            C::While.new(condition: call("rg_lt", index, count), body: pass)])]
           end
 
-          # A beat (`every`, `after`) is the plain statements IR::Frames says it means.
+          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
           def lower_beat(node) = Frames.beat_statements(node).flat_map { |statement| lower(statement) }
 
           alias lower_every lower_beat
@@ -578,7 +578,7 @@ module VBlank
             C::Function.new(name: @names.own("timer_ticks"), body: handlers, exported: true)
           end
 
-          # A game whose light takes turns says first whether the scene that just ran has it on
+          # A game whose light takes turns sets first whether the scene that just ran has it on
           # (Reference#advance_frame). The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame
           # counters the program can read move on, where the interpreter moves them. Last, a game
           # that bends a background it has works every bend's lines out for the pass to come
@@ -668,7 +668,7 @@ module VBlank
           def value_of_shift_right(node) = call("rg_shr", value(node.operand), C::Int.new(node.bits))
 
           # A READING OF THE CARTRIDGE'S CLOCK, asked of the runtime by its place in
-          # IR::Clock::READINGS. Where the time comes from is the runtime's driver's to say: the
+          # IR::Clock::READINGS. Where the time comes from is the runtime's driver's to set: the
           # computer's clock in a window, the test's moment with none (rg_driver.h).
           #
           # A time the game set is added on, from the two saved numbers it is kept in, in a game

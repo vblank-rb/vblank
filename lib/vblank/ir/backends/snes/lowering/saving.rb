@@ -6,7 +6,7 @@ module VBlank
       class SNES
         class Lowering
           # SAVE MEMORY, lowered for a Super Nintendo: each save step a call into Runtime::Saving,
-          # with the places in save memory worked out as IR::SaveLayout says, so the cartridge's
+          # with the places in save memory worked out by IR::SaveLayout, so the cartridge's
           # battery-backed RAM holds the bytes the interpreter's save memory holds. Mixed into
           # Lowering.
           module Saving
@@ -23,7 +23,7 @@ module VBlank
             # A Super Nintendo cartridge saves in 32K of battery-backed RAM (Runtime::Saving). A game
             # that names flash or an EEPROM lays its save memory out for that chip — its blocks, and
             # its save_vars kept in a record — which this RAM does not have. Every board keeps one:
-            # where it is on a Super FX board is Cartridge::SNESROM::SUPER_FX's to say.
+            # where it is on a Super FX board is Cartridge::SNESROM::SUPER_FX's to set.
             def refuse_unsupported_save_memory!
               return unless SaveLayout.named_by?(@program)
 

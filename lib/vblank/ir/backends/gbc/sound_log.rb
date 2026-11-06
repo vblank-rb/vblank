@@ -12,7 +12,7 @@ module VBlank
         #
         # Nothing is added to the cartridge to say so. The emulator records the processor each
         # time it reaches one of the runtime's sound routines (Core#record_arrivals), and what the
-        # routine was handed says what it played: rt_sound_writes is handed the table of writes
+        # routine was handed shows what it played: rt_sound_writes is handed the table of writes
         # one word of the game makes, and the build kept what each table is to the interpreter;
         # the music player's rt_music_note is handed the note it plays, in the music table the
         # build laid out (GBC::Music#notes), and at rt_music_note_voice it holds the volume the
@@ -82,7 +82,7 @@ module VBlank
             @effects_starting = {}
             @voices_let_go = {}
             # Effects played from their rows (Runtime::EffectTable) share these two places, and the
-            # registers say which effect, and which voice. Their notes are known by their bank.
+            # registers hold which effect, and which voice. Their notes are known by their bank.
             @effect_names = places.sound_effects
             @effects_in_banks = code.key?("rt_sfx_started")
             if @effects_in_banks
@@ -162,7 +162,7 @@ module VBlank
           private
 
           # AN INTERRUPT TAKEN JUST AS THE PROCESSOR REACHES AN INSTRUCTION comes back to it, and the
-          # emulator records it reached twice, with one run of it. The interrupt says so itself:
+          # emulator records it reached twice, with one run of it. The interrupt shows it itself:
           # the place it will return to, on top of the stack as its vector is reached, is the
           # instruction just recorded, which has not run yet. So the next arrival there is that
           # same one. A vector is never an arrival of its own.
@@ -200,7 +200,7 @@ module VBlank
           end
 
           # A sound effect's note, as Reference::Player#play_effect_frame logs one: it keeps its own
-          # volume, so nothing is said of a music level.
+          # volume, so nothing is logged of a music level.
           def effect_note(note)
             @music << [:note, note.song, note.pitch]
             @music << voice_log_entry(note)
@@ -220,7 +220,7 @@ module VBlank
             @music << [:stop_wave] if voice == Music::WAVE_VOICE
           end
 
-          # What the wave or noise voice is doing now, as Reference::Player#log_wave_or_noise says it.
+          # What the wave or noise voice is doing now, as Reference::Player#log_wave_or_noise logs it.
           def wave_or_noise(kind, note)
             part = note.part
             if kind == :wave

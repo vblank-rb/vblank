@@ -8,7 +8,7 @@ module VBlank
           # A VARIABLE KEPT A BYTE OR TWO WIDE (IR::KeptWidths). Mixed into Lowering.
           #
           # The Color's processor works on a byte at a time, so a four-byte variable costs four
-          # trips to memory each time it is read, tested or written. One the game said is narrow
+          # trips to memory each time it is read, tested or written. One the game declared narrow
           # is kept in the bytes it needs, and the work is that many bytes: reading a byte and
           # testing it is `ld a,[nn]` and `cp`, and writing one is `ld [nn],a`. Writing only those
           # bytes is the wrap every other console does with a shift, so that statement is left out.
@@ -108,8 +108,8 @@ module VBlank
               !name.nil? && fits_kept?(name, number)
             end
 
-            # A narrow variable said to equal (or not) a number it can hold: [the variable, the
-            # number]. One it cannot hold is left to the whole comparison, which says so.
+            # A narrow variable tested to equal (or not) a number it can hold: [the variable, the
+            # number]. One it cannot hold is left to the whole comparison, which gives the answer.
             def equality_of_kept(condition)
               return nil unless binop?(condition, :==) || binop?(condition, :!=)
 
@@ -154,7 +154,7 @@ module VBlank
               @asm.sbc_a((number >> 8) ^ 0x80)
             end
 
-            # Two variables kept at the same width said to equal (or not) each other: [the one, the
+            # Two variables kept at the same width tested to equal (or not) each other: [the one, the
             # other]. Nil for any other test.
             def equality_of_two_kept(condition)
               return nil unless binop?(condition, :==) || binop?(condition, :!=)

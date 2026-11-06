@@ -21,7 +21,7 @@ module VBlank
           #
           # A GROUP OF `tile_pictures` needs none of that. Its pictures are all known when the
           # cartridge is built, so its table is written in the Color's own form, and its list is never
-          # made here: where a list stood, two bytes say which picture. The console's copy takes the
+          # made here: where a list stood, two bytes name which picture. The console's copy takes the
           # picture straight from the cartridge in the blank, with its bank put in view, so a show
           # costs a pass a few instructions and no stretch of work memory at all. Everything above
           # the lowering still sees the list and the Advance's form, so the interpreter and the
@@ -197,7 +197,7 @@ module VBlank
             # reads from an address that is a multiple of 16. A group has no such stretch: its tiles'
             # places are counted from nought, and from the picture it shows when it is copied.
             #
-            # In a game with a group, a run's flag says which bank to put in view for its copy, and
+            # In a game with a group, a run's flag names which bank to put in view for its copy, and
             # the two bytes after it where its places are counted from. A list's run sets the flag
             # alone, and those two stay nought, as boot left them.
             def keep_tile_runs
@@ -267,7 +267,7 @@ module VBlank
             end
 
             # Where in the cartridge the picture shown is, for the blank's copy, and its bank, which is
-            # never nought, as the flag that says the run is waiting.
+            # never nought, as the flag that marks the run as waiting.
             def emit_held_picture_source(run, owed)
               picture = @held_pictures.fetch(run.name)
               @asm.load(:a, [picture])

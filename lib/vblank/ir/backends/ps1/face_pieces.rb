@@ -200,7 +200,7 @@ module VBlank
 
           # +piece+ cut at +line+ on +number+ (X or Y: a line across the screen; TEXEL_U or TEXEL_V: a line on the
           # picture): [the part at or before the line, the part at or past it]. A corner on the line is
-          # in both. +spans+ says how a corner made on a screen line has its texel worked out.
+          # in both. +spans+ sets how a corner made on a screen line has its texel worked out.
           def cut(piece, number, line, spans)
             below = []
             above = []

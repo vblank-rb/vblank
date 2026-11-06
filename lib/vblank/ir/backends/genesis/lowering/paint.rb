@@ -27,7 +27,7 @@ module VBlank
             # only moves the view over what was painted.
             PAINTING = STATEMENTS.keys.freeze
 
-            # Whether +program+'s screen is painted: it says `screen :bitmap`, or it says no screen and
+            # Whether +program+'s screen is painted: it names `screen :bitmap`, or it names no screen and
             # paints.
             def self.painted?(program)
               modes = program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq

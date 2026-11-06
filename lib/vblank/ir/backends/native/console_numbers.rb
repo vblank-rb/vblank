@@ -6,7 +6,7 @@ module VBlank
       class Native
         # THE CONSOLE THE C IS BUILT AS, written where the runtime reads it: rg_console_numbers.h,
         # beside game.c, which runtime/rg_console.h includes. Its screen is the size of the
-        # runtime's buffers and window, and its clock says how long a frame lasts. Everything else
+        # runtime's buffers and window, and its clock sets how long a frame lasts. Everything else
         # the game does differently on one console than another is decided when the game is
         # lowered, from the same description.
         #

@@ -12,7 +12,7 @@ module VBlank
         # D7, which hold numbers and take every sum, and eight address registers, A0 to A7, which hold
         # places in memory (A7 is the stack's pointer). Every one is 32 bits wide, and most
         # instructions work on a byte, a word (16 bits) or a long word (32 bits) of one, as the name's
-        # last letter says: `move.l d1,d0` copies all 32 bits, `move.w` the low 16. A game's number is
+        # last letter marks: `move.l d1,d0` copies all 32 bits, `move.w` the low 16. A game's number is
         # 32 bits, so the lowering uses the long form almost everywhere and a sum is one instruction.
         #
         # There is no mode to follow, unlike a 65816's: the size is in the instruction, so this
@@ -86,7 +86,7 @@ module VBlank
           # A long word to be filled in later, written as noughts.
           ZERO_LONG = "\0\0\0\0".b.freeze
 
-          # The one-word instructions with nothing to say.
+          # The one-word instructions that take no operand.
           SINGLES = { nop: 0x4E71, rts: 0x4E75, rte: 0x4E73, reset: 0x4E70, illegal: 0x4AFC }.freeze
 
           attr_reader :bytes
@@ -398,7 +398,7 @@ module VBlank
 
           def fixup(kind, label, plus = 0) = @fixups << Fixup.new(offset: here, kind: kind, label: label.to_s, plus: plus)
 
-          # The six bits that say how to find an operand: the mode and the register, in the order the
+          # The six bits that give how to find an operand: the mode and the register, in the order the
           # instruction wants them. A MOVE's destination has them the other way round (register first).
           def field(operand, mode_at, register_at)
             mode, register = mode_and_register(operand)

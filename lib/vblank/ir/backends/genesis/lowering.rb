@@ -174,7 +174,7 @@ module VBlank
           # The console this lowers for (BuildCache).
           CONSOLE = Console::GENESIS
 
-          # How the program draws: :painted, :tiled (it says `screen :tiled`, or has a background or a
+          # How the program draws: :painted, :tiled (it names `screen :tiled`, or has a background or a
           # sprite) or :none.
           def self.picture_of(program)
             return :painted if Paint.painted?(program)
@@ -293,7 +293,7 @@ module VBlank
              [Console::GenesisHardware::REG_WINDOW_Y, 0]]
           )
 
-          # The planes' size, as the register says it: a tiled screen's own, and for any other the 64 across
+          # The planes' size, as the register holds it: a tiled screen's own, and for any other the 64 across
           # and 32 down a painted screen's map is laid out in (Runtime::Paint).
           def plane_size_register
             return 0x01 unless tiled?
@@ -620,7 +620,7 @@ module VBlank
             @asm.label(done)
           end
 
-          # A beat (`every`, `after`) is the plain statements IR::Frames says it means.
+          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
           def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
 
           def emit_call(node)
@@ -988,7 +988,7 @@ module VBlank
             @asm.label(done)
           end
 
-          # The item in D0, with its number in D1, at the place D3 says (twice it), moved back past
+          # The item in D0, with its number in D1, at the place D3 names (twice it), moved back past
           # every item before it whose number is strictly beyond its own, each of those a place on. A3
           # walks back from the place; D4 is the item before it, D5 that one's number. The number before
           # the place the item started in, in D2, is still the number before the next place, since
@@ -1100,7 +1100,7 @@ module VBlank
           # --- timers ---
           #
           # A timer (`timer :beat, per_second: 10`) ticks so many times a second whatever the game is
-          # doing, and runs what the game said to do on each tick. A frame is the interpreter's
+          # doing, and runs what the game gave it to do on each tick. A frame is the interpreter's
           # sixtieth of a second, so at every frame boundary a running timer gains its rate in
           # sixtieths of a tick, and each whole tick that comes to is a tick (Reference#accrue_timer).
           # Each timer keeps when it was first started (nought for never), since timers move on in the
@@ -1268,7 +1268,7 @@ module VBlank
           def value_of_local_player(_node) = load_constant(1)
           def value_of_var_ref(node) = load_variable(node.name)
 
-          # One byte of a named blob of data, which the game says where to look in as it is built, so it is a number
+          # One byte of a named blob of data, which the game sets where to look in as it is built, so it is a number
           # here (Reference#data_byte).
           def value_of_data_byte(node)
             bytes = by_kind(:data).fetch(node.name) { raise LoweringError, "reference to undefined data #{node.name.inspect}" }.bytes

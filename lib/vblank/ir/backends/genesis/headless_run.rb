@@ -100,7 +100,7 @@ module VBlank
           def set_buttons(buttons) = @core.set_buttons(buttons.map(&:to_sym) & PAD_BUTTONS)
 
           # A RUN OF NO FRAMES ends as the first pass does, before anything is shown: the screen is
-          # still switched off. The interpreter says a display switched off as a plain white picture
+          # still switched off. The interpreter shows a display switched off as a plain white picture
           # (Reference::Framebuffer::HELD_OFF), so that is the picture the run ends on, and the game goes
           # no further.
           def ends_before_first_picture?(frames) = frames.zero?
@@ -212,7 +212,7 @@ module VBlank
             @on_vblank&.call(frame) unless frame == :end
           end
 
-          # The game halted: its last picture is shown by the blank that says so, and the moment is the end
+          # The game halted: its last picture is shown by the blank that marks it, and the moment is the end
           # of the run.
           def finish_after_halt
             (1..passes).last(Runtime::Frame::STEPS_KEPT).each { |pass| note_frames_took(pass) unless @frames_took.key?(pass) }
@@ -274,7 +274,7 @@ module VBlank
             [half(at), half(at + 2)].map { |word| word >= 0x8000 ? word - 0x10000 : word }
           end
 
-          # The sprites the game placed in its last pass, back to front, as the interpreter says them
+          # The sprites the game placed in its last pass, back to front, as the interpreter gives them
           # (Reference#sprites): the runtime keeps a row for each (Runtime::Tiles::DRAWN) — whose, which
           # picture, where — and SpriteNames turns the numbers back into names. A game with no
           # sprites keeps no such place.
@@ -299,7 +299,7 @@ module VBlank
           def state = half(runtime_place(Runtime::Frame::STATE))
           def waiting? = half(runtime_place(Runtime::Frame::WAITING)) == 1
 
-          # FAULT: what went wrong (a word), the list's place (a long), and two numbers that say how
+          # FAULT: what went wrong (a word), the list's place (a long), and two numbers that show how
           # (a long each).
           def read_fault
             at = runtime_place(Runtime::Frame::FAULT)

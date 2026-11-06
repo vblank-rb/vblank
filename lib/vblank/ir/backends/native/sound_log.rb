@@ -78,7 +78,7 @@ module VBlank
             when "beep" then [:beep, @effects.fetch(numbers[0])]
             when "note" then [:note, @songs.fetch(numbers[0]).name, @pitches.fetch(numbers[1])]
             when "voice"
-              # A fade, a slide or a wobble of -1 is none, said before one that came after it. The
+              # A fade, a slide or a wobble of -1 is none, set before one that came after it. The
               # speaker is its bits (Audio::Pan.bits_of), and a note on both prints none.
               fade = Audio::NoteFade.from_bits(numbers[4]) if numbers[4] && numbers[4] >= 0
               slide = Audio::PitchSlide.from_bits(numbers[5]) if numbers[5] && numbers[5] >= 0
@@ -113,7 +113,7 @@ module VBlank
             Audio::Sound.resolve_effect(node.tone, duty: node.duty, decay: node.decay, volume: node.volume, defined: defined)
           end
 
-          # What a `wave` says, and what a `noise` comes to, as the interpreter logs each
+          # What a `wave` asks for, and what a `noise` comes to, as the interpreter logs each
           # (Reference#exec_wave and #resolve_noise).
           def wave_of(node) = { shape: node.shape, frequency: node.frequency, volume: node.volume }
 

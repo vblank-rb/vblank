@@ -94,7 +94,7 @@ module VBlank
 
           # +frames+ as the interpreter counts them. A step budget alone (+max_steps+) is the
           # interpreter's own measure, and the C keeps no count of its steps — so the interpreter
-          # says how many frames fit in the budget, and the C plays that many. Beside +frames+ a
+          # works out how many frames fit in the budget, and the C plays that many. Beside +frames+ a
           # budget only guards one frame of the interpreter, and means nothing here.
           def run(program, max_steps: nil, frames: nil)
             frames ||= max_steps ? frames_within(program, max_steps) : Reference::DEFAULT_FRAMES

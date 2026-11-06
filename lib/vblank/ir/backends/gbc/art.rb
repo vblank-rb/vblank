@@ -17,7 +17,7 @@ module VBlank
         # Color has — is refused here with the picture's name.
         #
         # A background's place 0 is the backdrop, the colour shown where nothing is drawn — black,
-        # BACKDROP, unless the game's `screen` says another (#backdrop) — on the Color as in the
+        # BACKDROP, unless the game's `screen` names another (#backdrop) — on the Color as in the
         # interpreter: a tile's see-through pixels show it. So a background tile has three colours
         # of its own, and a sprite's picture three and see-through.
         #
@@ -115,7 +115,7 @@ module VBlank
           # is the one the runtime brings it in by (one up, so that nought is none), or nil for a
           # scene's tiles that only its areas' rooms bring in (+parent+ of each of those). +base+ is
           # its first tile's number, +tiles+ its own tiles (16 bytes each) and +numbers+ which number
-          # each is by its bytes. +what+ says whose it is, for a message, and +id+ which it is among
+          # each is by its bytes. +what+ names whose it is, for a message, and +id+ which it is among
           # every room the game has, which labels its tiles in the cartridge.
           #
           # In a game whose screens bring their colours in too (Art#room_colors?), +palettes+ are the
@@ -167,11 +167,11 @@ module VBlank
           GroupRoom = Data.define(:set, :number, :first_tile, :places, :pictures)
 
           # +square_colors+ are the colour lists of a painted screen's squares (GBC::SquareColors), nil for
-          # a game that paints no screen. +lends+ says the sprites' lists borrow the console's eight
+          # a game that paints no screen. +lends+ marks that the sprites' lists borrow the console's eight
           # as the game runs (TooManySpriteLists), and is :by_scene when each scene numbers its own
           # as well (TooManyLentLists). +grouped+ is the set of picture groups each grouped
           # picture is copied in by, by the picture's name (Lowering::Picture#grouped_pictures).
-          # +room_colors+ says each screen brings its own palettes in with its tiles
+          # +room_colors+ marks that each screen brings its own palettes in with its tiles
           # (TooManyBackgroundLists). +first_cleared_to+ is the colour the game's first
           # `clear_screen` names, nil for none (#first_screen_backdrop). +scene_pictures+ is the
           # scene whose own each picture is, by its name, in a game whose scenes bring their own
@@ -194,13 +194,13 @@ module VBlank
           # (#index_section), and each scene's record of its own lists beside the code that hands
           # it over (#lent_scene_record).
           #
-          # +tile_facts+ keeps what each tile's picture alone says, for every try of one build
+          # +tile_facts+ keeps what each tile's picture alone gives, for every try of one build
           # (#tile_fact).
           def initialize(square_colors: nil, lends: false, grouped: {}, room_colors: false, first_cleared_to: nil,
                          backdrop: BACKDROP, piece_height: SpritePieces::SIZE, scene_pictures: nil,
                          indexes_in_banks: false, tile_facts: {})
             @indexes_in_banks = indexes_in_banks
-            @tile_facts = tile_facts # what each tile's picture alone says (#tile_fact)
+            @tile_facts = tile_facts # what each tile's picture alone gives (#tile_fact)
             @piece_height = piece_height
             @scene_pictures = scene_pictures
             @scene_tiles = Hash.new { |all, scene| all[scene] = [] } # a scene -> its own tiles, 16 bytes each
@@ -388,7 +388,7 @@ module VBlank
           # The scenes that have sprite pictures of their own.
           def scenes_with_own_pictures = scene_pictures? ? @scene_pictures.values.uniq : []
 
-          # Say +room+ brings +scene+'s own sprite pictures in as it comes up.
+          # Marks that +room+ brings +scene+'s own sprite pictures in as it comes up.
           def bring_scene_pictures_in(room, scene) = @room_scenes[room.id] = scene
 
           # Whether +room+, or a room it carries, brings sprite pictures in.
@@ -679,7 +679,7 @@ module VBlank
           end
 
           # A room for the tiles +what+ brings in (see Room), numbered from +base+: from its parent's
-          # last, or past the tiles every screen keeps. +brought_in+ says the runtime brings it in by
+          # last, or past the tiles every screen keeps. +brought_in+ marks that the runtime brings it in by
           # a number of its own; a scene's tiles carried by its areas' rooms are not. Its palettes are
           # numbered the same way.
           def add_room(what, parent: nil, base: nil, brought_in: true)
@@ -713,7 +713,7 @@ module VBlank
           # (Lowering::Picture#recolor_steps_of), which write into its palette. So two tiles that
           # show the same colours but change differently have palettes of their own, and so does one
           # tile shown by two backgrounds that change it differently: its picture is kept once, and
-          # each background's cells name their own palette. +empty_cells_shown+ says an empty cell can
+          # each background's cells name their own palette. +empty_cells_shown+ marks that an empty cell can
           # show while its palette is in (Lowering::Picture#empty_cells_shown_with?); where none can,
           # the palette of a tile drawn with other lists can be the first, whatever its first colour
           # (#background_palette_number). Others keep to black first, as they always have.
@@ -772,7 +772,7 @@ module VBlank
 
           def see_through_tile?(image) = tile_fact(:see_through, image) { (0...64).any? { |i| image.tile_see_through_at?(i) } }
 
-          # WHAT A TILE'S PICTURE ALONE SAYS (#list_order, #drawn_places, #tile_colors,
+          # WHAT A TILE'S PICTURE ALONE GIVES (#list_order, #drawn_places, #tile_colors,
           # #see_through_tile?): each a scan of its 64 pixels, and a build asks each of them for every
           # cell, every step of a background's colours and every try. So each answer is kept in
           # +tile_facts+, which the lowering hands every try of one build (BuildCache), by the
@@ -809,7 +809,7 @@ module VBlank
           # through. Its places, in the order the palette holds them; nil for a tile that is not
           # one (#drawn_tile).
           #
-          # The backdrop (black unless the game says another) goes first when the list has it. An
+          # The backdrop (black unless the game names another) goes first when the list has it. An
           # empty cell is written with the first palette, here and in the game's code, and shows that
           # palette's first colour — so a list that starts with the backdrop can be the first
           # palette (#background_palette_number).
@@ -835,7 +835,7 @@ module VBlank
              drawn_palette_number(colors, drawing, keeps_backdrop: !drawing.recolor_steps)]
           end
 
-          # The number of the palette of +colors+ a tile drawn as +drawing+ says is drawn from.
+          # The number of the palette of +colors+ that a tile drawn as +drawing+ is drawn from.
           def drawn_palette_number(colors, drawing, keeps_backdrop: true)
             background_palette_number(colors, keeps_backdrop: keeps_backdrop, room: drawing.room, swaps: drawing.recolor_steps,
                                               any_first: drawing.any_first)
@@ -847,7 +847,7 @@ module VBlank
           # the first palette after it that can: that one takes its place rather than a ninth.
           # +room+ is the one whose tiles it draws, in a game whose screens bring their colours in.
           # +swaps+ is what the palette shows with each list a background draws it with, nil for none.
-          # +any_first+ says no empty cell shows while it is in, so whatever its first colour, it can
+          # +any_first+ marks that no empty cell shows while it is in, so whatever its first colour, it can
           # be the first.
           def background_palette_number(colors, keeps_backdrop: true, room: nil, swaps: nil, any_first: false)
             can_be_first = any_first || (keeps_backdrop && colors.first == @backdrop)
@@ -923,7 +923,7 @@ module VBlank
           # How many palettes the backgrounds have: the eight, less the painted screen's.
           def most_background_palettes = painting? ? PALETTES - painted_palettes.length : PALETTES
 
-          # The palette of the backdrop alone (black unless the game says another), where an empty
+          # The palette of the backdrop alone (black unless the game names another), where an empty
           # cell is drawn from while nothing else is first.
           def backdrop_alone = BackgroundPalette.new(colors: padded([@backdrop]), swaps: nil)
 
@@ -954,7 +954,7 @@ module VBlank
           # shared with another tile however alike the two start, since the game writes it as it
           # runs; empty until the game's first copy, as the interpreter's is. +colors+ is the run's
           # list, see-through first, and gives its palette: the backdrop where it is see-through.
-          # +solid+ says no picture of the tile draws see-through, so the list's first place is
+          # +solid+ marks that no picture of the tile draws see-through, so the list's first place is
           # never shown and the four after it fill the palette, as a solid tile's do. +swaps+ is what
           # the palette shows with each list a background draws it with, so two runs that start in
           # the same colours and are told different ones have a palette each. +room+ is the one whose
@@ -1019,7 +1019,7 @@ module VBlank
           end
 
           # The number of a big map of +cols+ × +rows+ kept in work memory at +address+ (one the game
-          # changes, Runtime::BigMaps's rt_big_copy_in): its table of rows says where each row is there.
+          # changes, Runtime::BigMaps's rt_big_copy_in): its table of rows gives where each row is there.
           def big_map_in_memory(cols, rows, address)
             entry = [nil, cols, rows, address]
             @big_maps.index(entry) || (@big_maps << entry).length - 1

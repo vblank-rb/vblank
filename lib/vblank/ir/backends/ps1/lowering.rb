@@ -204,7 +204,7 @@ module VBlank
           # A backdrop of a colour (`screen ..., backdrop:`, or a list of colours the backdrop follows), and
           # the second pad (`players:` more than 1, or `player: 2` and on), refused as not made yet.
           def refuse_unmade_parts!
-            # A painted screen's backdrop is black whatever its `screen` says (SceneHandover#backdrop_of),
+            # A painted screen's backdrop is black whatever its `screen` names (SceneHandover#backdrop_of),
             # so only a screen drawn from tiles shows one.
             backdrop = @program.walk.any? do |node|
               (tiles_screen?(node) && !node.backdrop.to_i.zero?) || (node.kind == :color_list && node.backdrop_place)
@@ -526,7 +526,7 @@ module VBlank
             @asm.label(done)
           end
 
-          # A beat (`every`, `after`) is the plain statements IR::Frames says it means.
+          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
           def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
 
           def emit_call(node)
@@ -841,7 +841,7 @@ module VBlank
           # --- timers ---
           #
           # A timer (`timer :beat, per_second: 10`) ticks so many times a second whatever the game is
-          # doing, and runs what the game said to do on each tick. A frame is the interpreter's sixtieth of
+          # doing, and runs what the game gave it to do on each tick. A frame is the interpreter's sixtieth of
           # a second, so at every frame boundary a running timer gains its rate in sixtieths of a tick, and
           # each whole tick that comes to is a tick (Reference#accrue_timer). Each timer keeps when it was
           # first started (nought for never), since timers move on in the order they were first started;
@@ -959,7 +959,7 @@ module VBlank
               # The interpreter works both sides out (Reference#eval_binop); the second is skipped here
               # when the first does not hold only where working it out changes nothing (IR::Unchanging). A
               # side that reads a list can stop the game (an index out of range), so it is worked out
-              # whatever the first side says, by the value below.
+              # whatever the first side gives, by the value below.
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
             elsif condition.is_a?(Node) && condition.kind == :binop && COMPARISONS.include?(condition.op)
@@ -1039,7 +1039,7 @@ module VBlank
           # A console is played by one person, the first player.
           def value_of_local_player(_node) = emit_load_constant(1)
 
-          # One byte of a named blob of data, which the game says where to look in as it is built, so it is
+          # One byte of a named blob of data, which the game sets where to look in as it is built, so it is
           # a number here (Reference#data_byte).
           def value_of_data_byte(node)
             data = @program.walk.find { |found| found.kind == :data && found.name == node.name }

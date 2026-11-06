@@ -11,9 +11,9 @@ module VBlank
         # next 32K, and so on. (The lower half of each of those banks is the console's own: work
         # RAM, the picture and sound chips' registers.) Banks $80 and up are the FAST copy of the
         # cartridge — the same bytes as banks $00 and up, read a third faster once the cartridge
-        # says it can keep up (Console::SNESHardware::MEMSEL) — so everything is placed there. A
+        # declares it can keep up (Console::SNESHardware::MEMSEL) — so everything is placed there. A
         # Super FX board shows its ROM in banks $80 and up too, so the layout is the same there; that
-        # cartridge never says it can keep up, so those banks are read slowly, and it holds at most 64
+        # cartridge never declares it can keep up, so those banks are read slowly, and it holds at most 64
         # banks, the two megabytes the chip itself can read (+most_banks+).
         #
         # Each section goes whole into one bank, since the processor cannot run off the end of a
@@ -29,7 +29,7 @@ module VBlank
           FIRST_BANK = 0x80 # The fast copy of the cartridge's first 32K
           ORIGIN = 0x8000 # Where a bank's 32K start in the processor's view
           HEADER_FROM = 0x7FB0 # The first bank's header and vectors, written by the cartridge
-          MOST_BANKS = 128 # Four megabytes, as large as a LoROM cartridge's header can say
+          MOST_BANKS = 128 # Four megabytes, as large as a LoROM cartridge's header can name
 
           # Where each label went: its 24-bit address.
           Linked = Data.define(:banks, :places, :sections) do

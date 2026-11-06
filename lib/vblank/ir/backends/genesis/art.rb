@@ -207,7 +207,7 @@ module VBlank
 
           # A LIST OF COLOURS THE GAME CHANGES AS IT RUNS keeps a palette to itself, its colours in the order
           # of its places: changing it is writing other colours over that palette, so every pixel of a picture
-          # drawn from it is the place it was drawn at, and nothing else's colours can share it. +key+ says
+          # drawn from it is the place it was drawn at, and nothing else's colours can share it. +key+ names
           # whose list it is, and +colors+ (15-bit, see-through left out) are the colours it starts with.
           def reserve_held_palette(key, colors)
             @held.fetch(key) do

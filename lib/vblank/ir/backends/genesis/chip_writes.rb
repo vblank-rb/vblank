@@ -6,7 +6,7 @@ module VBlank
       class Genesis
         # WHAT A SOUND IS, ON A GENESIS'S TWO SOUND CHIPS. The console plays a game's sounds on the PSG, a
         # small chip with three square voices and a noise voice, and on the YM2612, a chip of six FM voices.
-        # This module says which writes each of the interpreter's sound-log entries means; the lowering
+        # This module gives which writes each of the interpreter's sound-log entries means; the lowering
         # makes them (Lowering::Sound), the player sends them (Runtime::Music), and the checked run reads
         # the chips after every pass and holds them to what the log up to then says (#after), so a write
         # that never arrived, or arrived wrong, shows up in the chip itself.
@@ -14,7 +14,7 @@ module VBlank
         # THE SQUARE VOICES. The game's two square voices are the PSG's first two. A PSG voice is a length
         # of wave, ten bits of it counted in 32 ticks of the chip's clock, and a loudness. It has no width of
         # wave (every square is half up and half down), no speaker of its own and no way to fade, so the
-        # width and the speaker a game says are not heard. Fades are the runtime's (Runtime::Sound): a
+        # width and the speaker a game names are not heard. Fades are the runtime's (Runtime::Sound): a
         # voice's loudness is kept in work RAM and moved a step at a time, as the Advance's voice moves
         # its own.
         #
@@ -100,7 +100,7 @@ module VBlank
           WAVE_FLOOR = 10
           DECIBELS_A_STEP = 0.75
 
-          # A SONG'S PARTS, as on the Super Nintendo (DSPWrites), say what a log entry does not: +parts+,
+          # A SONG'S PARTS, as on the Super Nintendo (DSPWrites), give what a log entry does not: +parts+,
           # each song's parts by [the song's name, its channel] (a sound effect's among them), and
           # +effects+, the names of the songs that are sound effects.
           Voicing = Data.define(:parts, :effects) do
@@ -155,7 +155,7 @@ module VBlank
           end
 
           # A song's note on a square voice, or the voice stopped for a rest; on the wave or noise voice
-          # nothing, since the entry after it is the note. +fade+ is an Audio::NoteFade the note said.
+          # nothing, since the entry after it is the note. +fade+ is an Audio::NoteFade the note named.
           def song_note(channel, _song, frequency, volume, fade: nil)
             voice = SQUARE_VOICES[channel] or return []
             return [[:silence, 1 << voice]] unless sounds?(channel, frequency, volume, fade)
@@ -193,12 +193,12 @@ module VBlank
           # A slide run off the top: the voice silent at once.
           def slide_stop(channel) = [[:silence, 1 << CHANNEL_VOICES.fetch(channel)]]
 
-          # Where a [:voice ...] entry says its fade, its slide and its side (IR::Tunes.voice_entry).
+          # Where a [:voice ...] entry holds its fade, its slide and its side (IR::Tunes.voice_entry).
           FADE_OF_VOICE_ENTRY = 5
           SLIDE_OF_VOICE_ENTRY = 6
           SIDE_OF_VOICE_ENTRY = 8
 
-          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count says it is
+          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count puts it
           # (Reference::Player#step_swells): an +entry+ of [:loudness, channel, volume], with the swell
           # after it if it climbs on. Here the climbing is the runtime's already, so it is told where the
           # note is and how it goes on.
@@ -335,7 +335,7 @@ module VBlank
             previous = nil
             effect_voices = 0 # the voices a sound effect holds, a bit each
             side = nil # the speaker the note just logged plays from
-            fade = nil # the fade it said
+            fade = nil # the fade it named
             sounding = {} # what each channel's last note is, for a wobble of it
             rising = {} # whether each channel's last note is a song's that swells
             sides = {} # the speaker each channel's last note plays from
@@ -391,7 +391,7 @@ module VBlank
             end
           end
 
-          # A drum's fade, said in the [:voice ...] before it, in place of the part's.
+          # A drum's fade, given in the [:voice ...] before it, in place of the part's.
           def with_fade(writes, fade)
             writes.map { |write| write.first == :loud ? [:loud, write[1], write[2], signed_step(fade)] : write }
           end
@@ -402,7 +402,7 @@ module VBlank
             frequency.positive? && fade&.swells_by_itself? && CHANNEL_VOICES.fetch(channel) != WAVE_VOICE && !voicing.effects.include?(who)
           end
 
-          # A [:noise ...] entry that plays a note: a drum's fade is said in the [:voice ...] before it.
+          # A [:noise ...] entry that plays a note: a drum's fade is given in the [:voice ...] before it.
           def noise_note?(entry) = entry.first == :noise && entry.last.is_a?(Hash)
 
           # +voices+, the voices sound effects hold, after a [:voice ...] +entry+ (DSPWrites.held_by_effects).
@@ -418,7 +418,7 @@ module VBlank
           # The wave or noise voice's own entry, which a song's note there logs after its loudness.
           def voice_own_entry?(entry) = !entry.nil? && %i[wave stop_wave noise].include?(entry.first)
 
-          # WHICH TUNE A STOP STOPPED, the cartridge's to say and held to the log where the log says it too
+          # WHICH TUNE A STOP STOPPED, the cartridge's to name and held to the log where the log says it too
           # (DSPWrites.misnamed_stop): the index in +entries+ of the first stop that names another tune.
           def misnamed_stop(entries, voicing = NO_VOICING)
             heard = nil
@@ -440,7 +440,7 @@ module VBlank
           PSG_NOISE_SETTING_REGISTER = 6
 
           # WHAT THE CHIPS HOLD AFTER THE SOUND LOG +entries+, as [:psg, register] or [:fm, register] and
-          # the value. Nothing reaches a chip until the game says `enable_sound` (Runtime::Sound). A voice
+          # the value. Nothing reaches a chip until the game calls `enable_sound` (Runtime::Sound). A voice
           # that is moving its own loudness has none to answer for, nor a note that slides its pitch: the
           # log does not say where they have got to.
           def after(entries, voicing = NO_VOICING)

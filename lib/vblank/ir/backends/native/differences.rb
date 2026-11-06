@@ -17,7 +17,7 @@ module VBlank
           Snapshot = Data.define(:heading, :variables, :picture, :sounds, :sprites)
 
           # The snapshots the windowless program printed. +held+ is down from power-on, before
-          # the game's first statement, and +buttons+ say what is held on each frame from the
+          # the game's first statement, and +buttons+ give what is held on each frame from the
           # first on. +start_file+ is the bytes of the file the program is handed as it starts
           # (IR::StartFile), or nil for none.
           def lowered_snapshots(program, frames:, buttons:, mode:, held: [], start_file: nil)
@@ -36,7 +36,7 @@ module VBlank
           end
 
           # +program+ built to run with no window and run with +args+ and +input+, giving back what it
-          # printed: the game as C, built the way +mode+ says. JS::Differences runs the game as
+          # printed: the game as C, built the way +mode+ names. JS::Differences runs the game as
           # JavaScript instead, which prints the same lines.
           def run_headless_program(program, mode, args:, input:)
             Zig.run_program(Native.new.build_headless(program, mode: mode), args: args, input: input)
@@ -78,7 +78,7 @@ module VBlank
             sounds = []
             moments = []
             text.each_line(chomp: true) do |line|
-              # The Ruby runtime says once, before any frame, which compiler runs it ("jit yjit").
+              # The Ruby runtime prints once, before any frame, which compiler runs it ("jit yjit").
               next if line.start_with?("jit ")
 
               if line.start_with?("sound ")

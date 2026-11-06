@@ -21,14 +21,14 @@ module VBlank
           # AT POWER-ON the chip is read, and taken to be there unless all five registers read 0xFF,
           # which is what the bus reads with nothing on it. A chip that is halted has not been set.
           # One that counted past what it holds (its carry bit), or holds a second, minute or hour
-          # no clock can say — what a real chip can hold once its battery has run out and been put
+          # no clock can show — what a real chip can hold once its battery has run out and been put
           # back — has lost any time set from it: it is started again as Crystal starts one, all
           # five registers written, nought days and the time of day it held where that was one,
           # and left halted, so it too reads as not set until the game sets it. THEN AFTER EACH WAIT
           # FOR THE SCREEN it is read again, so every reading between two waits is of one moment.
           #
           # SETTING IT keeps how far the time set is from the chip's own, and lets a halted chip go,
-          # which is what it says it was set by. The readings are worked out from the chip's count
+          # which is what marks it as set. The readings are worked out from the chip's count
           # and that offset after each wait, after the saved offset is read back at power-on, and
           # after the game sets a new one — never while a number is being worked out.
           #
@@ -77,7 +77,7 @@ module VBlank
                                                day_high: [Console::GBCHardware::CLOCK_DAY_HIGH, 0xC1]
                                              })
 
-            # The most each of the time of day's counters can say.
+            # The most each of the time of day's counters can hold.
             MOST = Ractor.make_shareable({ seconds: 60, minutes: 60, hours: 24 })
 
             # How many days one fold moves out of the chip: its ninth bit.
@@ -243,7 +243,7 @@ module VBlank
             end
 
             # A CHIP THAT LOST ITS TIME STARTED AGAIN: halted first, which clears its carry and its
-            # ninth bit, then every register written — a second, minute or hour no clock can say as
+            # ninth bit, then every register written — a second, minute or hour no clock can show as
             # nought, the others as they were, and nought days — and left halted.
             def emit_clock_restart(pause)
               h = Console::GBCHardware

@@ -35,7 +35,7 @@ module VBlank
         # interpreter's walk does (Runtime::Clips#emit_lap), so the log says it on the same pass.
         #
         # Each clip is kept in a bank of the cartridge, a section of its own, and a table always in
-        # view says where: its address, its bank, how many bytes it is, and which recording it is;
+        # view gives where: its address, its bank, how many bytes it is, and which recording it is;
         # where the game loops one, where it goes back to and how many bytes are left from there,
         # and the three numbers of its laps (Laps).
         class Clips
@@ -66,8 +66,8 @@ module VBlank
           # when it loops, and its laps.
           #
           # +frames+ is how many of the interpreter's mixes it sounds through, the last the one that
-          # reads its last sample (Reference::Mixer#mix_voice): what a run of the cartridge says
-          # sounds is counted by them (Runtime::Clips#emit_frame), whenever the samples themselves
+          # reads its last sample (Reference::Mixer#mix_voice): what a run of the cartridge reports
+          # as sounding is counted by them (Runtime::Clips#emit_frame), whenever the samples themselves
           # end.
           Clip = Data.define(:name, :note, :number, :recording, :label, :bytes, :hold_byte, :laps, :part_way, :frames)
 

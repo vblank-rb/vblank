@@ -385,7 +385,7 @@ module VBlank
               @color_lists.fetch(name) { raise LoweringError, "the list of colours #{name.inspect} is drawn with and never declared" }
             end
 
-            # Reference#exec_color_list_holds: the list holds the set the game says, written over its palette in
+            # Reference#exec_color_list_holds: the list holds the set the game names, written over its palette in
             # the blank. A list nothing is drawn with has no palette, and nothing to show.
             def emit_color_list_holds(node)
               if backdrop_copied? && backdrop_list.name == node.name
@@ -399,7 +399,7 @@ module VBlank
             end
 
             # A BACKDROP THAT FOLLOWS A LIST (IR::Nodes::ColorList#backdrop_place). The video chip's register 7
-            # says which colour of its memory shows wherever nothing is drawn, any of the sixty-four, so where
+            # sets which colour of its memory shows wherever nothing is drawn, any of the sixty-four, so where
             # the list keeps a palette of its own and the backdrop is one of the colours in that palette's
             # places, the register points at it there: the list's write changes the backdrop with everything
             # else drawn from the palette, and nothing is copied (#backdrop_register). A list's first place is
@@ -558,7 +558,7 @@ module VBlank
             end
 
             # A cell showing tile +tile+ of +bg+'s, as [tile number, palette], or nil for none. Made once
-            # for a tile: a map says the same few tiles hundreds of times, and making one reads its 64 pixels.
+            # for a tile: a map names the same few tiles hundreds of times, and making one reads its 64 pixels.
             def cell_of(bg, tile)
               return nil if tile.nil? || tile.negative?
 
@@ -580,7 +580,7 @@ module VBlank
             # sprites together, four palettes of sixteen, so a title whose picture and sprites step through any
             # number of sets of colours costs one palette, written over in the blank, and leaves three for the rest.
             #
-            # A LIST THAT HOLDS THE SAME COLOURS WHATEVER THE GAME SAYS needs no writing over: a background told
+            # A LIST THAT HOLDS THE SAME COLOURS WHATEVER THE GAME SETS needs no writing over: a background told
             # `draw_with :machine` and drawn in :machine's own colours shows those colours at every step. So its
             # palette is the list's in the list's order (Art#ordered_palette), which a sprite drawn with the
             # same list shares, rather than one kept to itself. Only place 0 may differ between the sets, since
@@ -835,7 +835,7 @@ module VBlank
               @asm.label(skip)
             end
 
-            # Which list the sprite is drawn with, as the game says it now, and the table of the palettes the
+            # Which list the sprite is drawn with, as the game sets it now, and the table of the palettes the
             # lists have; or two noughts for a sprite drawn in no list but its own.
             def recolor_operands(obj)
               return [Build.int(0), Build.int(0)] if obj.recolors.empty?

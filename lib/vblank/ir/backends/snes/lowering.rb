@@ -716,7 +716,7 @@ module VBlank
             @asm.label(done)
           end
 
-          # A beat (`every`, `after`) is the plain statements IR::Frames says it means.
+          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
           def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
 
           def emit_call(node)
@@ -1465,7 +1465,7 @@ module VBlank
             @asm.label(signed)
           end
 
-          # The item in the place X says (X twice the place) moved back past every item before it
+          # The item in the place X names (X twice the place) moved back past every item before it
           # whose number is strictly beyond its own, as the sort above moves one: each of those a
           # place on, its number and its item with it, and the table of places told. X is twice the
           # place the item is going to, which reaches that place in every table, and Y the item there
@@ -1511,7 +1511,7 @@ module VBlank
             @asm.rts
           end
 
-          # The item doubled in A put in the place X says, in the table of items and the table of
+          # The item doubled in A put in the place X names, in the table of items and the table of
           # places.
           def emit_item_placed(keyed)
             @asm.sta(@asm.abs_x(keyed.entries))
@@ -1670,7 +1670,7 @@ module VBlank
           # --- timers ---
           #
           # A timer (`timer :beat, per_second: 10`) ticks so many times a second whatever the game is
-          # doing, and runs what the game said to do on each tick. A frame is the interpreter's
+          # doing, and runs what the game gave it to do on each tick. A frame is the interpreter's
           # sixtieth of a second, so at every frame boundary a running timer gains its rate in
           # sixtieths of a tick, and each whole tick that comes to is a tick (Reference#accrue_timer).
           # Each timer keeps when it was first started (nought for never), since timers move on in the
@@ -1833,7 +1833,7 @@ module VBlank
           # The two sides of a comparison compared, and the branch that is taken when it does NOT hold.
           #
           # Equal or not: the low halves compared and, when they match, the high halves; the zero flag
-          # says. Less or more: the left subtracted from the right or the right from the left, the low
+          # gives the answer. Less or more: the left subtracted from the right or the right from the left, the low
           # halves with CMP and the high halves with SBC and the borrow from the first, which leaves
           # the sign of the difference in the negative flag — unless the subtraction overflowed, in
           # which case the sign came out the wrong way round and is flipped back.
@@ -1862,11 +1862,11 @@ module VBlank
                 @asm.label(signed)
               end
             end
-            # The negative flag now says left < right, where for > and <= the two were swapped.
+            # The negative flag now shows left < right, where for > and <= the two were swapped.
             { :== => :bne, :!= => :beq, :< => :bpl, :> => :bpl, :>= => :bmi, :<= => :bmi }.fetch(op)
           end
 
-          # A BYTE OR HALF SLOT OF A LIST SAID EQUAL, OR NOT, TO A NUMBER WRITTEN IN THE PROGRAM. A
+          # A BYTE OR HALF SLOT OF A LIST TESTED EQUAL, OR NOT, TO A NUMBER WRITTEN IN THE PROGRAM. A
           # narrow slot reads back with its top bit as the sign (#emit_read_slot_at_x), so it equals a
           # number that fits its width exactly when its own bits are that number's low bits: one
           # compare of the slot where it is, where reading it out as 32 bits takes the sign worked

@@ -345,7 +345,7 @@ module VBlank
 
           # A LIST THE GAME CHANGES AS IT RUNS has a palette to itself, its colours in the order of its
           # places: changing it is writing another list over that palette, so every pixel has to
-          # be the place it was drawn at, and nothing else's colours can share it. +key+ says whose
+          # be the place it was drawn at, and nothing else's colours can share it. +key+ names whose
           # it is, a background's name and a list or a sprites' list. Its colours are the first ones
           # it holds; the rest go in as the game runs (Runtime::Tint's rt_colors_hold).
           def held_background_palette(key, colors, scene: nil)
@@ -666,7 +666,7 @@ module VBlank
             @scene_held.fetch(@scene_palettes.find { |_, own| own.equal?(palettes) }.first)
           end
 
-          # What +scene+'s sprites bring in as it takes over, as #scene_colors says it.
+          # What +scene+'s sprites bring in as it takes over, as #scene_colors gives it.
           def scene_sprite_colors(scene)
             palettes = @scene_sprite_palettes.fetch(scene, [])
             changed = palettes.each_index.select { |palette| palettes[palette] && palettes[palette] != @sprite_palettes[palette] }

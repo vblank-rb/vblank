@@ -14,11 +14,11 @@ module VBlank
         # JavaScript (runtime/), which is the native runtime's C function for function. The
         # STATEMENTS and VALUES tables, the art worked out in Ruby, which kinds it cannot write
         # yet, what it refuses — a console-only step the program can reach, and only that: all of
-        # that is the native lowering's, so the two can never disagree about what a program says,
+        # that is the native lowering's, so the two can never disagree about what a program does,
         # only about how a runtime does it — and each runtime is checked against the interpreter
         # on its own.
         #
-        # What differs is said here: the build a refusal names. The guardrail that tells an
+        # What differs is set here: the build a refusal names. The guardrail that tells an
         # author about a console-only step before a web build is Guardrails::Checks::WebPortability.
         class Lowering < Native::Lowering
           # The program as one JavaScript file's text: the game alone, with no runtime (see

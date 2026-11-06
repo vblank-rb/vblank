@@ -13,7 +13,7 @@ module VBlank
         #     PLOT puts its next pixel (x and y), R12 and R13 what LOOP counts down and goes back to,
         #     R14 the ROM address GETB reads from, R11 where LINK leaves a return address.
         #   - an instruction is mostly one byte, its register in the low four bits. Which registers
-        #     a sum reads and writes is said beforehand by prefixes: FROM Rn names where the next
+        #     a sum reads and writes is set beforehand by prefixes: FROM Rn names where the next
         #     instruction reads from (the "source"), TO Rn where it writes (the "destination"), and
         #     WITH Rn both. Without them both are R0, and after each instruction both go back to R0.
         #   - ALT1, ALT2 and ALT3 are prefixes too: each turns the next opcode into another

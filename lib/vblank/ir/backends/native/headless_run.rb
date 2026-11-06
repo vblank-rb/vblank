@@ -51,7 +51,7 @@ module VBlank
           Moment = RunComparison::Moment
 
           # Raised for something a test asks of the interpreter that the native lowering cannot
-          # answer yet — which says the test's file was opted into native runs too early, or
+          # answer yet — which means the test's file was opted into native runs too early, or
           # the one test wants `skip_on_native`.
           CannotAnswer = RunComparison::CannotAnswer
 
@@ -353,8 +353,8 @@ module VBlank
           end
 
           # Which compiler the program's own language turns its code into machine code with, as the
-          # program says itself before its first frame: :yjit or :none from the Ruby lowering's, and
-          # nil from a program that does not say (C needs none, and node's is always on).
+          # program reports itself before its first frame: :yjit or :none from the Ruby lowering's, and
+          # nil from a program that does not report one (C needs none, and node's is always on).
           attr_reader :running_jit
 
           private
@@ -364,8 +364,8 @@ module VBlank
                                 "interpreter. Leave its file interpreter-only, or say `#{skip_helper_name}` in this one test."
           end
 
-          # What a refusal calls this lowering, and the helper a test says to skip it there.
-          # JS::HeadlessRun says its own.
+          # What a refusal calls this lowering, and the helper a test calls to skip it there.
+          # JS::HeadlessRun names its own.
           def lowering_name = "the native lowering"
           def skip_helper_name = "skip_on_native"
 
@@ -400,7 +400,7 @@ module VBlank
             @sound_file = nil
           end
 
-          # What the program is told about what it says each frame.
+          # What the program is told about what it prints each frame.
           def frame_options(picture_path) = ["--picture-out", picture_path]
 
           def save_file(dir) = File.join(dir, "save")
@@ -440,7 +440,7 @@ module VBlank
             @held.empty? ? [] : ["--held-from-power-on", @pass_buttons.headless_input_line(@held)]
           end
 
-          # The clock's moment as the program takes it: the date and the hour the Time says, as
+          # The clock's moment as the program takes it: the date and the hour the Time holds, as
           # seconds from the start of 1970 with no time zone (see IR::Clock.reading), and its part
           # of a second as the ticks of the program's console. The Ruby runtime counts in whichever
           # console the program is for; the C and JavaScript ones are only ever handed the

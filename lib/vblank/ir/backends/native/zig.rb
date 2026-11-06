@@ -137,7 +137,7 @@ module VBlank
           # and SDL's once a desktop build has fetched it.
           def checker_flags = WARNINGS + [RUNTIME_DIR, sdl_include_dir].compact.map { |dir| "-I#{dir}" }
 
-          # Writes them to +path+ unless it already holds exactly them, and says whether it
+          # Writes them to +path+ unless it already holds exactly them, and returns whether it
           # wrote. The file is put in place whole, so a checker never reads half of one; what is
           # being written meanwhile is named after the file, so git and the gem leave it out too.
           def refresh_checker_flags(path = CHECKER_FLAGS_FILE)

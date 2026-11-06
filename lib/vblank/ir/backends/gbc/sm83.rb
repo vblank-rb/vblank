@@ -54,7 +54,7 @@ module VBlank
           # The shifts and turns behind the 0xCB prefix, in the order their opcodes go.
           SHIFTS = { rlc: 0, rrc: 1, rl: 2, rr: 3, sla: 4, sra: 5, swap: 6, srl: 7 }.freeze
 
-          # The one-byte instructions with nothing to say.
+          # The one-byte instructions that take no operand.
           SINGLES = { nop: 0x00, rlca: 0x07, rrca: 0x0F, rla: 0x17, rra: 0x1F, daa: 0x27, cpl: 0x2F,
                       scf: 0x37, ccf: 0x3F, halt: 0x76, di: 0xF3, ei: 0xFB, reti: 0xD9 }.freeze
 

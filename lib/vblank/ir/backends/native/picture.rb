@@ -8,7 +8,7 @@ module VBlank
         # the art they draw with. Mixed into Lowering, beside the logic.
         #
         # The drawing itself is done by runtime/rg_screen.c, a port of the interpreter's picture;
-        # what this half does is say it in the interpreter's order and hand over the art. All of
+        # what this half does is lay it out in the interpreter's order and hand over the art. All of
         # the art is worked out HERE, in Ruby, with the interpreter's own readings of it — which
         # pixel of a tile shows what is behind, which color a pixel of a picture is — so the C
         # never has a second opinion about a pixel.
@@ -29,7 +29,7 @@ module VBlank
           # sixteen signed bits beside NOT_DRAWN.
           MAX_COLOR = 0x7FFF
           CELL_EMPTY = -1
-          # How many numbers say one map (RG_MAP_FIELDS): where its cells start, its columns, its
+          # How many numbers describe one map (RG_MAP_FIELDS): where its cells start, its columns, its
           # rows, and the columns and rows of the grid it comes round at.
           MAP_FIELDS = 5
           MAX_BACKGROUNDS = 64
@@ -70,7 +70,7 @@ module VBlank
             @backgrounds = @last_declared.transform_values { |bg| entry_of(bg) }
             @objects = by_name(@program.walk, :object)
             @sprites = @objects.each_key.with_index.to_h # sprite name -> the number rg_screen.c knows it by
-            @drawn_sprites = DrawnSprites.new(@program) # the names a run says its sprites by
+            @drawn_sprites = DrawnSprites.new(@program) # the names a run gives its sprites by
             @left_out_of_blocks = names_left_out_of_blocks
             # The runs of tiles and the pictures the game paints from lists as it runs, and the
             # number rg_screen.c knows each by.
@@ -100,7 +100,7 @@ module VBlank
             refuse_unsupported_picture!
           end
 
-          # --- what this backend cannot draw yet, said before anything is written ---
+          # --- what this backend cannot draw yet, refused before anything is written ---
 
           def refuse_unsupported_picture!
             refuse_picture!("more than #{MAX_SEE_THROUGH} see-through layers") if @see_through.size > MAX_SEE_THROUGH
@@ -197,10 +197,10 @@ module VBlank
             [runtime_array("image_pixels", "int16_t", pixels), runtime_array("images", "int32_t", info), *sprite_name_arrays]
           end
 
-          # Reference#sprites says each sprite it drew by two names: the one the game declared it
+          # Reference#sprites names each sprite it drew by two names: the one the game declared it
           # under, and the one the author gave the picture it shows, whatever colors that is
           # drawn in. So each sprite and each picture has the number of its name (DrawnSprites),
-          # for a run to say what it drew.
+          # for a run to report what it drew.
           def sprite_name_arrays
             [runtime_array("sprite_names", "int32_t", @objects.each_value.map { |obj| @drawn_sprites.name_number(obj.declared) }),
              runtime_array("image_pictures", "int32_t", @images.each_key.map { |name, _| @drawn_sprites.picture_number(name) })]
@@ -521,7 +521,7 @@ module VBlank
 
           # The routine rg_screen.c calls for how far across one row of a bent background sits
           # (Reference#run_bend_for_row), answering for the background it is asked about: the row
-          # goes into the bend's variable, what its block says to run runs, and the offset is
+          # goes into the bend's variable, what its block asks to run runs, and the offset is
           # worked out from there.
           def bend_offsets
             answers = @bends.each_value.map do |bend|
@@ -621,8 +621,8 @@ module VBlank
           # The colour shown wherever nothing is drawn goes with it (IR::SceneHandover#backdrop_of).
           def lower_screen(node) = screen_change("rg_screen_set", node.mode, node.buffered, @handover.backdrop_of(node))
 
-          # A change of screen, by `screen` or by a scene arriving on its own. The C says when
-          # that put the scenery every screen shows up again as declared, and what says which
+          # A change of screen, by `screen` or by a scene arriving on its own. The C decides when
+          # that put the scenery every screen shows up again as declared, and what sets which
           # map each of those backgrounds shows then goes back to the first, and what every
           # screen shows that the game paints is copied in from its list as it is now, as
           # Reference#put_up_always_up does both. A tear-free screen is two pages only on a console
@@ -705,7 +705,7 @@ module VBlank
           def lower_restore_region(node) = [patch_statement("rg_patch_restore", node)]
 
           # Reference#backing_for: a patch is kept in the buffer the program declared for it,
-          # which says how big it is.
+          # which sets how big it is.
           def patch_statement(function, node)
             buffer = @patches.fetch(node.buffer) do
               raise LoweringError, "backing buffer #{node.buffer.inspect} is used and never declared"
@@ -948,11 +948,11 @@ module VBlank
           # Which picture a sprite showing pose number +pose+ (one of its poses, already checked)
           # is DRAWN from, in the colors it is drawn with now. Its pictures are a row of poses in
           # its own colors, then a row for each list it can be drawn with
-          # (Reference#object_recolor), and rg_place_of_choice says which row it is on.
+          # (Reference#object_recolor), and rg_place_of_choice returns which row it is on.
           #
           # A list that holds other colors as the game runs (a name where the colors would be)
           # has a row for every set it can hold, the ones it was declared with first, and the
-          # set it holds now says which of those rows (Reference#colors_held_by).
+          # set it holds now picks which of those rows (Reference#colors_held_by).
           def picture_drawn(obj, pose)
             lists = Array(obj.recolors)
             sets = [[nil], *lists.map { |colors| colors.is_a?(Symbol) ? sets_held_by(colors) : [colors] }]
@@ -1040,7 +1040,7 @@ module VBlank
             [C::Name.new(side), *node.area.map { |edge| C::Int.new(edge) }]
           end
 
-          # Reference#exec_pixelate. Where the blocks stop is not this statement's to say: a
+          # Reference#exec_pixelate. Where the blocks stop is not this statement's to set: a
           # program has one place for them, settled before it runs (#names_left_out_of_blocks).
           def lower_pixelate(node) = [eval_call("rg_screen_pixelate", value(node.size))]
 

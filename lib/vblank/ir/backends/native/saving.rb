@@ -8,12 +8,12 @@ module VBlank
         # the way Picture and Sound are.
         #
         # Nearly all of saving is the game's own: the routines that lay a record out, write it a
-        # piece each pass and say whether a copy is good are built by the Builder out of ordinary
+        # piece each pass and check whether a copy is good are built by the Builder out of ordinary
         # statements, and are written as C with the rest of the game. What is left for a backend
         # is the handful of ways into save memory itself — read, write, total, wipe — and the two
         # statements `save_var` is made of. Each is written here the way the interpreter runs it
-        # (the Reference method is named beside each), against bytes laid out as IR::SaveLayout
-        # says, so the game as C keeps the same bytes the interpreter's IR::SaveImage does.
+        # (the Reference method is named beside each), against bytes laid out by IR::SaveLayout,
+        # so the game as C keeps the same bytes the interpreter's IR::SaveImage does.
         module Saving
           # The kinds that reach save memory, and whether a program names any (IR::SaveLayout).
           KINDS = SaveLayout::KINDS
@@ -68,7 +68,7 @@ module VBlank
                            eval_call("rg_save_write", at, value(node.value), save_width(node))])]
           end
 
-          # Reference#exec_save_erase: the wipe is waited for unless the node says not to.
+          # Reference#exec_save_erase: the wipe is waited for unless the node asks not to.
           def lower_save_erase(node)
             [eval_call("rg_save_erase", value(node.at), C::Int.new(node.wait == false ? 0 : 1))]
           end

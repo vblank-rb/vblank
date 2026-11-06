@@ -108,7 +108,7 @@ module VBlank
             # The Color has no one backdrop colour: each of its background palettes keeps its own
             # first colour, which the see-through pixels of the tiles drawn from it show, and an
             # empty cell shows the first palette's. So the backdrop is built into every palette, and
-            # a `screen` that says another (#refuse_backdrops_of_its_own!) is refused.
+            # a `screen` that names another (#refuse_backdrops_of_its_own!) is refused.
             def color_backdrop = @handover.game_backdrop
 
             # How tall the console draws every sprite piece: 16 where the game named the Color's 8×16
@@ -159,7 +159,7 @@ module VBlank
                              indexes_in_banks: @indexes_in_banks, tile_facts: @cache.facts.tile_facts)
               @grids = {} # a background declaration -> its grid's number
               @backgrounds = by_name(@program.walk, :background)
-              @drawn_sprites = SpriteNames.new(@program) # the numbers a run says its sprites by
+              @drawn_sprites = SpriteNames.new(@program) # the numbers a run names its sprites by
               @patches = by_name(@program.walk, :backing_buffer) # what sprites on a painted screen cover
               @column_routines = {} # a picture drawn a column at a time -> its routine's label
               @drawing_tables = [] # DrawingTable each, for the data
@@ -481,7 +481,7 @@ module VBlank
                                    "this, use fewer groups."
             end
 
-            # Each set's slots, three numbers of the lowering's own each: the group the game said is
+            # Each set's slots, three numbers of the lowering's own each: the group the game set as
             # up (Reference @groups_up), the one the sprites placed last need — a byte, NONE for none
             # — and the one in sprite memory now, which the blank keeps (Runtime::PictureGroups).
             GroupSlot = Data.define(:shown, :wanted, :up)
@@ -504,7 +504,7 @@ module VBlank
 
             # The groups up now, as the sprites about to be placed need them: each slot's, or NONE
             # for a number naming no group — or, for a set of a scene not up yet, FOLLOW, the group
-            # the game says by the blank.
+            # the game sets by the blank.
             def emit_groups_wanted
               @group_slots.each do |name, slots|
                 set = @picture_sets.fetch(name)
@@ -542,7 +542,7 @@ module VBlank
             # say it in the interpreter's words, naming the sprite the interpreter names.
             #
             # A sprite of a scene that has not taken over yet is asked nothing, as the interpreter
-            # asks nothing of it (Reference#up_in_this_scene?): its scene says which groups are up
+            # asks nothing of it (Reference#up_in_this_scene?): its scene sets which groups are up
             # as it takes over (#emit_groups_wanted).
             def emit_refuse_pictures_not_up(obj, said, pose)
               asked = fresh("pictures_asked")
@@ -599,7 +599,7 @@ module VBlank
               emit_group_up_check(slots, [group], check, pose, asked, fine: fine)
             end
 
-            # Notes the sprite and goes to +asked+ unless one of the set's +slots+ says one of
+            # Notes the sprite and goes to +asked+ unless one of the set's +slots+ names one of
             # +groups+ (nodes) is up; goes on at +fine+ when one does.
             def emit_group_up_check(slots, groups, check, pose, asked, fine: fresh("group_up"))
               up = slots.product(groups).map { |slot, group| Build.binop(:==, Build.var_ref(slot), group) }
@@ -609,7 +609,7 @@ module VBlank
               @asm.label(fine)
             end
 
-            # TWO GROUPS UP TOGETHER THAT up_together DOES NOT SAY CAN BE stop the game, asked of
+            # TWO GROUPS UP TOGETHER THAT up_together DOES NOT NAME stop the game, asked of
             # every set of a scene up, or of every screen, as the sprites are about to be placed —
             # before any sprite's picture is asked about, as the interpreter asks
             # (Reference#refuse_pictures_not_up!). A set of one slot can have only one group up.
@@ -1069,7 +1069,7 @@ module VBlank
 
             # A background goes up as its grid, or as a map bigger than the grid (Runtime::BigMaps),
             # unscrolled every time, even when its grid is up already: a background put up again
-            # on every pass, after the game has said where its view sits, shows from its corner on
+            # on every pass, after the game has set where its view sits, shows from its corner on
             # every frame (Runtime::Picture's rt_background_put_up_unscrolled).
             def background_put_up(bg)
               return bar_put_up(bg) if bg.bar?
@@ -1288,9 +1288,9 @@ module VBlank
             end
 
             # Reference#bend_offset_at: a background is drawn with its own bend, or flat when it has
-            # none, so the background going up says which table the rows are shown from
+            # none, so the background going up sets which table the rows are shown from
             # (Runtime::Picture's rt_bends_on), or that none is (rt_bends_off) — +bg+ nil for no
-            # background at all. A game that bends nothing says neither.
+            # background at all. A game that bends nothing sets neither.
             def emit_bends_shown(bg)
               return if bends.empty?
 
@@ -1515,7 +1515,7 @@ module VBlank
                                    "with other colours. To fix this, remove `draw_with`, or use fewer lists of colours."
             end
 
-            # The colours +bg+ was told to draw with, said again as its scene's own colours arrive.
+            # The colours +bg+ was told to draw with, set again as its scene's own colours arrive.
             def emit_held_background_colors(bg)
               held = @background_colors_held[bg.name]
               emit_background_colors_for_declaration(bg, Build.var_ref(held)) if held
@@ -2019,7 +2019,7 @@ module VBlank
             # A sprite kept as it was is placed afresh, when a number of it changed, by rt_sprite_posed
             # (Runtime::KeptSprites) from a block in the cartridge saying where its numbers are, with
             # its rows after it, rather than by code of its own working each out in 32 bits: the
-            # label of the block, or nil for a sprite a block cannot say (a list that holds other
+            # label of the block, or nil for a sprite a block cannot describe (a list that holds other
             # colours as the game runs, a sprite switched off for good, a place or a list written in
             # the program, more than a byte of poses or lists). Its rows are what its tables hold
             # (#pose_tables), side by side, so the block is read in one bank: the banks, in a game
@@ -2371,7 +2371,7 @@ module VBlank
 
             # A sprite's attributes as rt_sprite takes them: in the low byte, its palette and
             # whether it is behind the background, as the sprite table keeps them; above that, the
-            # numbers a run says it by — whose it is, one up so nought is nobody's, and which picture
+            # numbers a run names it by — whose it is, one up so nought is nobody's, and which picture
             # it is showing.
             def sprite_attributes_word(obj, picture, palette, level)
               behind = behind_scenery?(level) ? Console::GBCHardware::OBJ_BEHIND : 0
@@ -2464,7 +2464,7 @@ module VBlank
             # --- tables of the drawing's numbers ---
 
             # A table of numbers one drawing step reads, kept in the data, and its label: +bytes+ an
-            # entry, each kept as its low bytes (an Entry reading it says whether with its sign).
+            # entry, each kept as its low bytes (an Entry reading it decides whether with its sign).
             # A +banked+ one is kept in a bank of the cartridge of its own, for a runtime routine
             # that puts it in view as it reads it (a BankedAddress), rather than in the part always
             # in view, where a game's code and tables need the room.

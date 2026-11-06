@@ -107,7 +107,7 @@ module VBlank
           BRANCH_REACH = (-128..127)
 
           # +routines+ is the names of every routine to make, and +funcs+ the IR of each. +plan+
-          # folds what is written in the program (LoweringPlan), and +holds+ says what the section
+          # folds what is written in the program (LoweringPlan), and +holds+ names what the section
           # is to the author, for a cartridge too full for it. +tables+ is a TableRead for each table
           # by name, +lists+ a ListPlace for each list the chip reaches, and +numbers_end+ where the
           # block of numbers stops, the lists being past it.
@@ -231,7 +231,7 @@ module VBlank
 
           # --- the chip's RAM ---
 
-          # The word of the chip's RAM for +key+, 4 bytes unless it says.
+          # The word of the chip's RAM for +key+, 4 bytes unless +bytes+ names another size.
           def place_of(key, bytes: 4)
             @places.fetch(key) do
               if @next_place + bytes > @numbers_end
@@ -818,7 +818,7 @@ module VBlank
             emit_high_of_sign
           end
 
-          # HIGH nought, or every bit set when the flags say LOW is below nought. IBT sets no flags.
+          # HIGH nought, or every bit set when the flags show LOW is below nought. IBT sets no flags.
           def emit_high_of_sign
             above = fresh("sign_above")
             @gsu.ibt(HIGH, 0)
@@ -832,7 +832,7 @@ module VBlank
           # Reference#value_of_table_get: the index made safe (LoweringPlan.index_kept_in_range), and
           # the entry read from the cartridge.
           #
-          # THE CHIP READS THE CARTRIDGE ITSELF, through a buffer: ROMB says the bank, and writing
+          # THE CHIP READS THE CARTRIDGE ITSELF, through a buffer: ROMB names the bank, and writing
           # R14 starts the read of the byte at that address, which GETB then takes (waiting for it if
           # it has not come yet). Each GETB gets one byte, and an INC of R14 starts the next. A
           # table is in one bank, as every section is, so its bank is a number the linker knows.
@@ -988,7 +988,7 @@ module VBlank
             @gsu.or_(high)
           end
 
-          # The flags left as a comparison says, and the branch taken when it does NOT hold. Equal or
+          # The flags left as a comparison sets them, and the branch taken when it does NOT hold. Equal or
           # not: the two halves' differences together are nought only when both are. Less or more:
           # the left side less the right side, for the sign of the answer.
           def emit_comparison(node)
@@ -1010,7 +1010,7 @@ module VBlank
 
           # The flags BLT and BGE read for a 32-bit number less another: the subtraction of the low
           # halves leaves only its borrow, and the high halves' leaves the sign and the overflow,
-          # which together say which number is the lower however far apart they are. The answer goes
+          # which together show which number is the lower however far apart they are. The answer goes
           # to R0 and is not wanted.
           def emit_flags_of_less(low, high, other_low, other_high)
             @gsu.from(low)

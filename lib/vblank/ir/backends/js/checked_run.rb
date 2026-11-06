@@ -14,7 +14,7 @@ module VBlank
           def lowered_side = "JS"
 
           # The game as JavaScript, run by node. There is one way to build JavaScript, so the C's
-          # build +mode+ has nothing to say here.
+          # build +mode+ plays no part here.
           def run_headless_program(program, _mode, args:, input:)
             Node.run_program(JS.new.build_headless(program), args: args, input: input)
           end

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE RECORDINGS THE SOUND UNIT PLAYS, in its own format, and the table that says where each
+        # THE RECORDINGS THE SOUND UNIT PLAYS, in its own format, and the table that gives where each
         # starts. The S-DSP plays nothing but recordings, kept in BRR, its packed format (fullsnes,
         # "SNES APU DSP BRR Samples"): blocks of nine bytes, a header byte and sixteen four-bit
         # samples. The header's top four bits are how far each sample is shifted up, the next two

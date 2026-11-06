@@ -60,12 +60,12 @@ module VBlank
             @shifts = {} # a picture's number -> the places across modulo eight it is painted at
           end
 
-          # Says that picture +number+ is painted at the places across modulo eight +shifts+.
+          # Marks that picture +number+ is painted at the places across modulo eight +shifts+.
           def paint_at(number, shifts)
             @shifts[number] = (@shifts.fetch(number, []) | shifts).sort
           end
 
-          # The places across modulo eight +picture+ keeps a run for: every one when nothing said
+          # The places across modulo eight +picture+ keeps a run for: every one when nothing set
           # where it is painted, which is always right, only bigger.
           def shifts_kept(picture) = @shifts.fetch(picture.number, (0...SHIFTS).to_a)
 

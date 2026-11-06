@@ -9,7 +9,7 @@ module VBlank
         # the player's BIOS running, and the BIOS reads the cartridge as it starts: the logo and the
         # check byte in its header, and the few words after. So a desktop build of a console that
         # plays its start-up (Console::Description#plays_bios_start_up) carries the first BYTES bytes
-        # of the cartridge the same game builds, and how big the whole cartridge is, which says where
+        # of the cartridge the same game builds, and how big the whole cartridge is, which gives where
         # a read finds nothing. These are the game's own bytes, made by VBlank; nothing of the BIOS
         # is in them.
         module CartridgeStart

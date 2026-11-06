@@ -13,7 +13,7 @@ module VBlank
         #
         # Which list each square names is decided here, once for each scene, and never while the game
         # runs — the way a Color cartridge's artist gave each tile of the art its palette. Every
-        # drawing the game can paint says what colours it paints and the box of the screen it can
+        # drawing the game can paint gives what colours it paints and the box of the screen it can
         # reach (Lowering::PaintReach). A square then needs every colour that can reach it in that
         # scene, and black, the colour the screen starts in. Squares that need the same colours, or
         # colours that fit in one list together, share a list, in any scene.

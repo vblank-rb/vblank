@@ -11,7 +11,7 @@ module VBlank
         # its screen was off for before the first, and the faults of picture groups not up.
         class HeadlessRun < CartridgeHeadlessRun
           # Give the cartridge's clock chip, which counts days and keeps no date, the time of day
-          # +time+ says and a count of nought days when the game first reads it, moved on a frame of
+          # +time+ gives and a count of nought days when the game first reads it, moved on a frame of
           # the console's each frame, as the interpreter's #clock_at does on a console whose chip is
           # of that kind; +set: false+ is a chip that stopped when its battery ran out. +days+ is a
           # chip that has counted that many already, and +counters+ one whose five registers hold
@@ -51,7 +51,7 @@ module VBlank
           # on after the last pass compared play the music on.
           def whole_audio = @sound_log.entries.dup
 
-          # The recordings sounding at the moment the run is read, as the interpreter says them
+          # The recordings sounding at the moment the run is read, as the interpreter gives them
           # (Reference#active_samples): the one the cartridge plays, a Color playing one at a time,
           # by its count of frames (Runtime::Clips::SOUNDING).
           def active_samples = @active_samples || []
@@ -80,11 +80,11 @@ module VBlank
 
           def set_buttons(buttons) = @core.set_keys(IR::Buttons.mask(buttons))
 
-          # The emulator gives every cartridge whose header says it has a clock chip one that reads
+          # The emulator gives every cartridge whose header declares it has a clock chip one that reads
           # the computer's clock, so a run never told a time has the chip taken away, and one told
-          # has its chip's counters set: the seconds, minutes and hours +time+ says, its days, and
+          # has its chip's counters set: the seconds, minutes and hours +time+ gives, its days, and
           # the halt bit for a chip that stopped (Lowering::Clock). The moment is the date and the
-          # hour the Time says, as the interpreter takes it.
+          # hour the Time holds, as the interpreter takes it.
           def start_clock
             return @core.remove_clock unless @clock_started
 
@@ -225,7 +225,7 @@ module VBlank
           def state = byte(runtime_place(Runtime::Frame::STATE))
           def waiting? = byte(runtime_place(Runtime::Frame::WAITING)) == 1
 
-          # Fault: what went wrong (a byte), the list's place (two bytes), and two numbers that say
+          # Fault: what went wrong (a byte), the list's place (two bytes), and two numbers that show
           # how (four bytes each).
           def read_fault
             at = runtime_place(Runtime::Frame::FAULT)
@@ -242,17 +242,17 @@ module VBlank
           end
 
           # Reference#picture_not_up_message, from what the check that stopped the game asked, the
-          # pose the sprite showed, and the numbers the game said in the set's slots as it stopped.
+          # pose the sprite showed, and the numbers the game put in the set's slots as it stopped.
           def picture_not_up_message(check, pose)
             Faults.picture_not_up(sprite: check.sprite, picture: check.poses.fetch(pose), groups: check.groups,
                                   holding: check.holdings.fetch(pose), up: groups_said_up(check))
           end
 
           # Reference#groups_not_together_message, from the set the check asked of and the numbers
-          # the game said in its slots as it stopped.
+          # the game put in its slots as it stopped.
           def groups_not_together_message(check) = Faults.groups_not_together(groups: check.groups, up: groups_said_up(check))
 
-          # Reference#up_numbers: the groups the game said are up in a set's slots, in slot order,
+          # Reference#up_numbers: the groups the game set as up in a set's slots, in slot order,
           # each once, and only the numbers that name a group.
           def groups_said_up(check)
             check.said_at.map { |at| word(at) }.select { |number| check.group_numbers.include?(number) }.uniq
