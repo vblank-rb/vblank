@@ -104,13 +104,6 @@ module Shmup
       @shot_live = 0
     end
 
-    # Back to the start: ship centred, no shot in flight, and hittable.
-    def reset
-      @ship.move_to 112, 132
-      @safe = 0
-      reclaim_shot
-    end
-
     private
 
     # Load the look numbered +look+ into the ship's tiles, unless they hold it already: four

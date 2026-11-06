@@ -54,7 +54,7 @@ module Shmup
     colors :warm_red,          [:transparent, :red, :orange]
     colors :warm_orange_again, [:transparent, :orange, :yellow]
     state = PLAYING
-    new_game = false # true asks the playing scene to start over
+    new_flock = false # true asks the playing scene for the opening flock again
     leaving  = false # true while the field dims on the way to the game-over screen
 
     # The playing scene owns the whole field — declaring the parts here makes their
@@ -68,14 +68,10 @@ module Shmup
       # other, and its behaviour is `func`s declared once rather than a per-frame block.
       boss = layer(:enemies) { Boss.new(self, player, hud) }
 
-      # Start a fresh game when the game-over screen asked for one: everything back to
-      # its opening position, then clear the request.
-      if new_game
-        player.reset
-        enemies.reset
-        boss.reset
-        hud.reset
-        new_game = false
+      # After a start over the pool is empty, so the opening flock is spawned again.
+      if new_flock
+        enemies.spawn_flock
+        new_flock = false
       end
 
       player.update
@@ -107,12 +103,14 @@ module Shmup
     end
 
     # The game-over screen: its own text, shown only while this scene is active. START
-    # begins a fresh game (the playing scene does the resetting).
+    # begins a fresh game: `start_over` puts the playing scene's variables, pool and sprites
+    # back as declared, and the playing scene then spawns the opening flock.
     scene :game_over do
       draw_text "GAME OVER",   :center, 68, :red
       draw_text "PRESS START", :center, 88, :white
       if pressed(:start)
-        new_game = true
+        start_over :playing # the scene's whole play back as declared
+        new_flock = true
         state = PLAYING
       end
     end

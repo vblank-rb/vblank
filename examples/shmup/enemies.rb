@@ -75,7 +75,7 @@ module Shmup
       # which is also which pair of pictures it draws from.
       @enemies = build.pool :enemy, x: 0, y: 0, capacity: LIVE, rate: 8,
                                     facing: { left: %i[flap_l1 flap_l2], right: %i[flap_r1 flap_r2] }
-      LIVE.times { |i| @enemies.spawn x: 36 + (i * 72), y: i * 52 }
+      spawn_flock
     end
 
     def update(player, hud)
@@ -110,9 +110,9 @@ module Shmup
       end
     end
 
-    # Back to the start: every slot empty, then the opening flock again.
-    def reset
-      @enemies.each(&:remove)
+    # The opening flock, spread across the screen. A new game calls it once the pool is empty
+    # again, which `start_over` does with the rest of the play.
+    def spawn_flock
       LIVE.times { |i| @enemies.spawn x: 36 + (i * 72), y: i * 52 }
     end
 

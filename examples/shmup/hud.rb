@@ -47,11 +47,5 @@ module Shmup
       @lives -= 1
       @lives.clamp! 0, 9 # keep the display sane if two enemies land on the same frame
     end
-
-    # Back to a fresh game.
-    def reset
-      @score = 0
-      @lives = START_LIVES
-    end
   end
 end

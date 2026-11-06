@@ -142,14 +142,6 @@ module Shmup
       take_fire if @hits > 0
     end
 
-    # Back to a fresh game: no boss, and a full wave to run before the next one.
-    def reset
-      @boss.hide
-      @phase = :away
-      @hits = 0
-      @due = WAVE
-    end
-
     private
 
     def declare_phases
