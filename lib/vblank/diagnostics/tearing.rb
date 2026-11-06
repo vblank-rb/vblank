@@ -52,7 +52,7 @@ module VBlank
       # WHAT A RUN SAW. +rows+ is how many of the visible rows the display showed before the
       # game had finished them — 0 for a picture that held together. +first+ and +last+ are
       # where the seam ran, which is what a person wants to look at. A reading that does not
-      # apply to this screen asks for it with #measured? false, so "we did not look" can never be
+      # apply to this screen says so with #measured? false, so "we did not look" can never be
       # mistaken for "nothing was wrong".
       Reading = Data.define(:rows, :first, :last) do
         def self.none = new(rows: nil, first: nil, last: nil)

@@ -1288,7 +1288,7 @@ module VBlank
       # write to one is followed by the wrap to that width (IR::KeptWidths), so what it holds
       # needs nothing more from any backend; a console may keep it in fewer bytes.
       #
-      # +players+ is [fewest, most]: how many players the game set it to take on this build
+      # +players+ is [fewest, most]: how many players the game takes on this build
       # (Cartridge::Players), or nil where it gave nothing. +for_computer+ is true for a build that
       # plays on a computer, whose controllers are not the console's (#described_build).
       #
@@ -1314,10 +1314,10 @@ module VBlank
         # +start_file+ is the file the program is handed as it starts, which some of its tables and
         # pictures are read from (a StartFile), or absent for a program that reads none.
 
-        # The most players the game set it to take on this build, or nil where it gave nothing.
+        # The most players the game takes on this build, or nil where it gave nothing.
         def most_players = players&.last
 
-        # Whether the game set it to take more than one player, which is what a match of several machines
+        # Whether the game takes more than one player, which is what a match of several machines
         # needs. A build carries what a match needs (its seed routine, the runtime that plays one) only then.
         def several_players? = most_players.to_i > 1
 

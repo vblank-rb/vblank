@@ -688,7 +688,7 @@ module VBlank
           ASK_PRIORITY = 5 # The priority of the effect asked for
           ASK_TABLE = 6    # The table's start
           ASK_MEMBER = 7   # The place of the one of the group being looked at
-          ASK_STATE = 8    # Its state
+          ASK_STATE = 8    # That one's state
           ASK_KEEPS = [ASK_BLOB, ASK_PRIORITY, ASK_TABLE, ASK_MEMBER, ASK_STATE].freeze
 
           # ASK FOR THE EFFECT AT A TABLE PLACE — +place+, or with none given, the place in ACC —

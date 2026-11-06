@@ -86,7 +86,7 @@ module VBlank
       REG_DMA_LENGTH_HIGH = 20
       REG_DMA_SOURCE_LOW = 21
       REG_DMA_SOURCE_MIDDLE = 22
-      REG_DMA_SOURCE_HIGH = 23 # And the kind of copy, in the top two bits
+      REG_DMA_SOURCE_HIGH = 23 # Also the kind of copy, in the top two bits
 
       # Register values a game's set-up writes.
       MODE1_NORMAL = 0x04

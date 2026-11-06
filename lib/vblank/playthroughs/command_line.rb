@@ -365,7 +365,7 @@ module VBlank
 
       # Every setting that was said, as `compare` takes them from Ruby: each is the option of
       # the same name, and the ones a command line can only give as text are read here. One
-      # that was not said is left out, so that what it is with nothing given stays the
+      # that was not given is left out, so that what it is with nothing given stays the
       # library's to say.
       def comparison_settings
         said = Comparison.settings.to_h { |setting| [setting, options[setting]] }.compact

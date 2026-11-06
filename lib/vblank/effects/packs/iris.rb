@@ -30,7 +30,7 @@ module VBlank
         ACTIVE = :__iris_active    # 1 while the walk is running
         SHUT = :__iris_shut        # 1 once a walk out has arrived
         RADIUS = :__iris_radius    # The light's own radius, to give back
-        DARK = :__iris_dark        # Its own darkness
+        DARK = :__iris_dark        # The light's own darkness, to give back
         REACH = :__iris_reach      # How far the farthest corner is, which a walk starts and ends at
         ROUTINE = :__iris_tick
 

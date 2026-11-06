@@ -43,7 +43,7 @@ module VBlank
             NUMBER = "rt clip number" # The clip playing
             LEFT = "rt clip left" # 16 bits: the bytes still to read
             PLACE = "rt clip place" # 16 bits: where the next byte is
-            BANK = "rt clip bank" # Its bank
+            BANK = "rt clip bank" # The clip's bank
             SHOWN = "rt clip bank shown" # The bank the game has in view
             # In quick memory, read at every sample: the byte being played, moved up a bit each
             # sample with a 1 below the bits still to play, and the volume a 1 plays at.

@@ -28,7 +28,7 @@ module VBlank
           # painting to the area the game has opened (`inside`, AREA: a left, a top, a right and a
           # bottom, each a word, the screen's own to begin with).
           module Paint
-            ACROSS = 40 # Tiles
+            ACROSS = 40 # Tiles across
             DOWN = 28
             TILES = ACROSS * DOWN
             TILE_BYTES = 32

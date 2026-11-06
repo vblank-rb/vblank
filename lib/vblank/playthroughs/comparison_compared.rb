@@ -5,7 +5,7 @@ module VBlank
     class Comparison
       # WHAT A COMPARISON COMPARES ON EACH FRAME: the picture, the named readings, or both.
       #
-      # It is a list, said where the comparison is made, and with nothing given it is the
+      # It is a list, given where the comparison is made, and with nothing given it is the
       # picture and whatever readings were given. The picture is compared by how alike it
       # has to be (see Likeness); a reading has to be the same on both.
       #

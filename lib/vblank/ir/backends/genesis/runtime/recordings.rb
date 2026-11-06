@@ -35,7 +35,7 @@ module VBlank
             LENGTH = 4 # A long, as are the next two
             BACK = 8
             ADVANCE = 12 # Whole samples a frame
-            ADVANCE_FRACTION = 16 # 65536ths
+            ADVANCE_FRACTION = 16 # Its fraction, in 65536ths
             LOGGED = 18 # The number of its entry in the sound log
             NAME = 20
             STEP = 22 # Samples of the recording a sample of the Z80's, in 256ths

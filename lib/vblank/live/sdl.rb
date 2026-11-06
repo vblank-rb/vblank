@@ -69,14 +69,14 @@ module VBlank
       EVENT_KEY_DOWN = 0x300
       EVENT_KEY_UP = 0x301
       KEY_SCANCODE_AT = 24 # Where in a key's event the key is, as a scancode (4 bytes)
-      KEY_DOWN_AT = 36 # Whether it went down (1 byte)
-      KEY_REPEAT_AT = 37 # Whether it is a key held down, heard again (1 byte)
+      KEY_DOWN_AT = 36 # Where in a key's event it says whether the key went down (1 byte)
+      KEY_REPEAT_AT = 37 # Where it says whether this is a held key heard again (1 byte)
       EVENT_BYTES = 128 # An SDL_Event is a union of at most this many bytes
       BLENDMODE_BLEND = 0x1 # What is drawn lets what is under it show through, as much as it is clear
       WINDOW_FLAGS_FULLSCREEN = 0x1
       INIT_AUDIO = 0x10
       AUDIO_S16 = 0x8010 # 16-bit samples, the low byte first
-      SAMPLE_BYTES = 2 # So two bytes each
+      SAMPLE_BYTES = 2 # Two bytes a sample
       SPEAKERS = 2 # The left's sample and the right's, a moment at a time
       MOMENT_BYTES = SAMPLE_BYTES * SPEAKERS
       AUDIO_DEVICE_DEFAULT_PLAYBACK = 0xFFFFFFFF
@@ -127,7 +127,7 @@ module VBlank
       EVENT_GAMEPAD_ADDED = 0x653
       EVENT_GAMEPAD_REMOVED = 0x654
       PAD_ID_AT = 16 # Where in a pad's event its number is (4 bytes)
-      PAD_BUTTON_AT = 20 # In a button's event, which button (1 byte)
+      PAD_BUTTON_AT = 20 # Where in a button's event the button is (1 byte)
       # The gamepad buttons the menu names (WindowMenu), by SDL's number: A and B are
       # the console's, east and south, as PAD_BUTTONS has them.
       PAD_CODES = Ractor.make_shareable({ guide: 5, back: PAD_BACK, start: PAD_START, dpad_up: PAD_DPAD_UP,
