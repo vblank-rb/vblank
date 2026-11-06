@@ -408,7 +408,7 @@ module VBlank
           # It goes in the first 8K while that has more room than the runtime still asks for after
           # the lowering (NEAR_BYTES_LAST), and past it after that, as the variables named least do.
           def keep_local(what, start: 0)
-            name = :"#{@routine || 'game'}.#{what}#{@locals.length + 1}"
+            name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
             label = "the game's number #{name}"
             @locals[name] = @memory.near_bytes_left >= NEAR_BYTES_LAST + 4 ? @memory.reserve(label, 4) : @memory.reserve_far(label, 4)
             @starts << [@locals[name], start] unless start.zero?

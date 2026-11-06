@@ -308,7 +308,7 @@ module VBlank
           # A number of the routine's own, kept in RAM, by a name of its own that a value can read as a
           # variable. +start+ is what it holds from power-on.
           def keep_local(what, start: 0)
-            name = :"#{@routine || 'game'}.#{what}#{@locals.length + 1}"
+            name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
             @locals[name] = @memory.reserve_scratchpad("the game's number #{name}", 4)
             @starts << [@locals[name], start] unless start.zero?
             name

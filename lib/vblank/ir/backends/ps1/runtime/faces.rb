@@ -338,8 +338,8 @@ module VBlank
               end
               # Nothing to draw between edges that meet or cross.
               %i[LEFT RIGHT TOP BOTTOM].each_slice(2) do |low, high|
-                asm.lw(:t0, at + const_get(:"#{low}_OFFSET_BYTES"), FACE_BASE)
-                asm.lw(:t1, at + const_get(:"#{high}_OFFSET_BYTES"), FACE_BASE)
+                asm.lw(:t0, at + const_get("#{low}_OFFSET_BYTES"), FACE_BASE)
+                asm.lw(:t1, at + const_get("#{high}_OFFSET_BYTES"), FACE_BASE)
                 asm.slt(:t2, :t0, :t1)
                 asm.beq(:t2, :zero, "rt_fill_face_done")
               end

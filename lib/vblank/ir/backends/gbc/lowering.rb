@@ -518,7 +518,7 @@ module VBlank
           # can read as a variable. +start+ is what it holds from power-on. Code made only to be
           # measured (#bytes_of) is given a place that is never kept.
           def keep_local(what, start: 0)
-            name = :"#{@routine || 'game'}.#{what}#{@locals.length + 1}"
+            name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
             return name.tap { @locals[name] = Memory::FIRST } if @measuring
 
             @locals[name] = @memory.reserve("the game's number #{name}", 4)
