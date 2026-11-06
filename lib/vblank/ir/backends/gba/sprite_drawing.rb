@@ -1091,7 +1091,7 @@ module VBlank
           ROOMS = SpriteLayout::SharedRooms
           def room_table(rooms) = @layout.room_tables.fetch(rooms)
           def room_pose_at(rooms, room) = room_table(rooms) + rooms.room_at(room)
-          def room_users_at(rooms, room) = room_pose_at(rooms, room) + ROOMS::USERS_AT
+          def room_sprite_count_at(rooms, room) = room_pose_at(rooms, room) + ROOMS::SPRITE_COUNT_OFFSET
           def room_held_at(rooms, member) = room_table(rooms) + rooms.held_at(member)
 
           # Where the tiles of the room a sprite holds start, counted from its first room, while the
@@ -1103,7 +1103,7 @@ module VBlank
           def emit_empty_shared_rooms(rooms)
             rooms.count.times do |room|
               store_word_immediate(NO_FRAME, room_pose_at(rooms, room))
-              store_word_immediate(0, room_users_at(rooms, room))
+              store_word_immediate(0, room_sprite_count_at(rooms, room))
               store_word_immediate(rooms.count, room_held_at(rooms, room)) # a sprite each, as many as rooms
             end
           end
@@ -1373,9 +1373,9 @@ module VBlank
             emit_branch(:bcond, none, cond: :hs)
             emit(ASM.lsl_imm(5, 3, ROOMS::ROOM_WORDS_SHIFT))
             emit(ASM.add_reg(5, 5, 2))
-            emit(ASM.ldr_offset(ADDR, 5, ROOMS::USERS_AT))
+            emit(ASM.ldr_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
             emit(ASM.sub_imm(ADDR, ADDR, 1))
-            emit(ASM.str_offset(ADDR, 5, ROOMS::USERS_AT))
+            emit(ASM.str_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
             place_label(none)
           end
 
@@ -1388,7 +1388,7 @@ module VBlank
             found = gensym
             take = gensym
             emit_walk_rooms(rooms, 0, found) { emit(ASM.cmp_reg(ADDR, ACC)) }
-            emit_walk_rooms(rooms, ROOMS::USERS_AT, take) { emit(ASM.cmp_imm(ADDR, 0)) }
+            emit_walk_rooms(rooms, ROOMS::SPRITE_COUNT_OFFSET, take) { emit(ASM.cmp_imm(ADDR, 0)) }
             emit(ASM.sub_imm(5, 5, ROOMS::ROOM_WORDS_BYTES))
             emit(ASM.sub_imm(3, 3, 1))
             place_label(take)
@@ -1406,9 +1406,9 @@ module VBlank
             emit_start_copy_engine(from: in_register(ACC), to: in_register(2),
                                    control: (rooms.frame_bytes / 4) | DMA_ENABLE | DMA_32BIT)
             place_label(found)
-            emit(ASM.ldr_offset(ADDR, 5, ROOMS::USERS_AT))
+            emit(ASM.ldr_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
             emit(ASM.add_imm(ADDR, ADDR, 1))
-            emit(ASM.str_offset(ADDR, 5, ROOMS::USERS_AT))
+            emit(ASM.str_offset(ADDR, 5, ROOMS::SPRITE_COUNT_OFFSET))
             emit(ASM.str(3, 4)) # the asking sprite holds it
           end
 

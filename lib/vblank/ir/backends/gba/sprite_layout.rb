@@ -63,11 +63,11 @@ module VBlank
           end
 
           class SharedRooms
-            ROOM_WORDS_BYTES = 8 # Bytes in a room's two words
-            ROOM_WORDS_SHIFT = 3 # Shift from a room's number to where its words start
-            USERS_AT = 4         # How many sprites draw from it, the second of them
-            HELD_WORD_BYTES = 4  # Bytes in a sprite's word
-            HELD_WORD_SHIFT = 2  # Shift from a sprite's number to where its word is
+            ROOM_WORDS_BYTES = 8    # Bytes in a room's two words
+            ROOM_WORDS_SHIFT = 3    # Shift from a room's number to where its words start
+            SPRITE_COUNT_OFFSET = 4 # Bytes from a room's start to its second word, how many sprites draw from it
+            HELD_WORD_BYTES = 4     # Bytes in a sprite's word
+            HELD_WORD_SHIFT = 2     # Shift from a sprite's number to where its word is
           end
 
           # +pictures+ is every sprite's pictures by name, +one_frame+ the names kept to one

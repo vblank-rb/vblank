@@ -761,11 +761,11 @@ module VBlank
 
     # Remember that +name+ can be handed a whole different map, so the copy is made once a
     # frame in the gap between frames rather than wherever the game happened to name which
-    # map it wants. +shown_var+ is what the game asked for; +live_var+ is what is really in the
-    # background's cells. A {Background} calls this from `show_map`.
-    def defer_map_swap(name, shown_var, live_var, node)
-      declared_background(name).shown_map = shown_var
-      declared_background(name).live_map = live_var
+    # map it wants. +requested_var+ is what the game asked for; +applied_var+ is what is really
+    # in the background's cells. A {Background} calls this from `show_map`.
+    def defer_map_swap(name, requested_var, applied_var, node)
+      declared_background(name).shown_map = requested_var
+      declared_background(name).live_map = applied_var
       @inline_map_nodes << node
     end
 
@@ -790,10 +790,10 @@ module VBlank
     # The colour counterpart to {#defer_map_swap}: remember that +name+ can be handed a
     # whole different list of colours, so the display's table is written once a frame in the
     # gap between frames rather than wherever the game happened to name which list it wants.
-    # +shown_var+ is what the game asked for; +live_var+ is what is really in the table.
-    def defer_recolor_write(name, shown_var, live_var, node)
-      declared_background(name).shown_colors = shown_var
-      declared_background(name).live_colors = live_var
+    # +requested_var+ is what the game asked for; +applied_var+ is what is really in the table.
+    def defer_recolor_write(name, requested_var, applied_var, node)
+      declared_background(name).shown_colors = requested_var
+      declared_background(name).live_colors = applied_var
       @inline_color_nodes << node if node
     end
 
@@ -1383,16 +1383,16 @@ module VBlank
       end
     end
 
-    # A WRITE MADE ONLY ON A FRAME WHERE THE ANSWER CHANGED. +said+ is the variable holding
-    # what the game last set, and +in_force+ the one holding what the write last put in
-    # place; they differ exactly on the frame to write on, and the write then makes them
+    # A WRITE MADE ONLY ON A FRAME WHERE THE ANSWER CHANGED. +requested+ is the variable
+    # holding what the game last set, and +in_force+ the one holding what the write last put
+    # in place; they differ exactly on the frame to write on, and the write then makes them
     # agree. See #finalize_background_maps for why it is two variables and not a write
     # where the game set it.
-    def write_if_changed(said:, in_force:, write:)
+    def write_if_changed(requested:, in_force:, write:)
       # A fresh var_ref each time: no node is ever shared between two places in the tree.
-      Build.if_(Build.binop(:!=, Build.var_ref(said), Build.var_ref(in_force)),
+      Build.if_(Build.binop(:!=, Build.var_ref(requested), Build.var_ref(in_force)),
                 *Array(write),
-                Build.set(in_force, Build.var_ref(said)))
+                Build.set(in_force, Build.var_ref(requested)))
     end
 
     # COPY A WHOLE MAP INTO A BACKGROUND'S CELLS, in the gap between frames, and only on a
@@ -1414,7 +1414,7 @@ module VBlank
       write_between_frames(@inline_map_nodes, backgrounds_that(&:swaps_maps?)) do |name, background|
         # ...and the walls the game changes of it are the new map's, as declared, from then on.
         walls = every_kept_walls.select { |kept| kept.background == name }.map { |kept| Build.set(kept.fresh, Build.int(0)) }
-        write_if_changed(said: background.shown_map, in_force: background.live_map,
+        write_if_changed(requested: background.shown_map, in_force: background.live_map,
                          write: [Build.show_map(name, which: Build.var_ref(background.shown_map)), *walls])
       end
     end
@@ -1444,7 +1444,7 @@ module VBlank
     # reading shows the top of the screen in one set of colours and the bottom in another.
     def finalize_background_colors
       write_between_frames(@inline_color_nodes, backgrounds_that(&:draws_with_colors?)) do |name, background|
-        write = write_if_changed(said: background.shown_colors, in_force: background.live_colors,
+        write = write_if_changed(requested: background.shown_colors, in_force: background.live_colors,
                                  write: Build.background_colors(name, which: Build.var_ref(background.shown_colors)))
         # Gated to the owning scene, as a scroll is: a scene's backgrounds draw from colour
         # groups other scenes use while they are up, so a list asked for from elsewhere waits

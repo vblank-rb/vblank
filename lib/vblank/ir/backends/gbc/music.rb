@@ -80,11 +80,11 @@ module VBlank
           # A NOTE'S FADE RIDES IN ITS TUNING'S TOP FOUR BITS, which a square or noise note never
           # uses: a square voice's period is eleven bits and the hiss's clock eight. The player
           # takes them out and puts them under the note's volume, where the voice's register keeps
-          # them. A noise note that names a fade also sets NOISE_SAID_FADE, since a drum that names none
+          # them. A noise note that names a fade also sets NOISE_HAS_FADE, since a drum that names none
           # rings out as its part sets and a fade of nothing — a hit that holds — would read the
           # same. A song that names no fade has nothing there, and is the bytes it was.
           FADE_SHIFT = 12
-          NOISE_SAID_FADE = 0x0800
+          NOISE_HAS_FADE = 0x0800
 
           # A SOUND EFFECT as the Color's player reads it (Runtime::Effects): its name, its number
           # among the game's effects in the order declared, its rank as a number of a byte (#rank),
@@ -343,7 +343,7 @@ module VBlank
             clock = Tunes.said_noise_clock(event)
             return tuning(voice, pitch, clock) unless fade
 
-            tuning(voice, pitch, clock) | (fade.bits << FADE_SHIFT) | (voice == NOISE_VOICE ? NOISE_SAID_FADE : 0)
+            tuning(voice, pitch, clock) | (fade.bits << FADE_SHIFT) | (voice == NOISE_VOICE ? NOISE_HAS_FADE : 0)
           end
 
           # Every rank the game's songs and sound effects can have, and nobody's, lowest first.

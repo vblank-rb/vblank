@@ -1176,18 +1176,18 @@ module VBlank
               asm.load(:c, :a)
               if fades
                 # A hit that sets how it fades has it under its volume already; one that sets
-                # nothing rings out as its part sets. NOISE_SAID_FADE is bit 3 of the tuning's high byte.
+                # nothing rings out as its part sets. NOISE_HAS_FADE is bit 3 of the tuning's high byte.
                 # (A rest has every bit of its tuning set, so it takes this way too, at no volume:
                 # silent either way.)
                 asm.bit(3, :d)
-                asm.jump_relative(:nz, "rt_music_noise_said_fade")
+                asm.jump_relative(:nz, "rt_music_noise_has_fade")
               end
               asm.load(:a, [part + 1])
               asm.and_a(7) # the fade
               asm.or_a(:c)
               if fades
                 asm.jump_relative("rt_music_noise_fade_set")
-                asm.label("rt_music_noise_said_fade")
+                asm.label("rt_music_noise_has_fade")
                 asm.load(:a, :c)
                 asm.label("rt_music_noise_fade_set")
               end

@@ -88,12 +88,12 @@
  *       number and reads the pitch back from it), its volume, and the ticks it lasts on its
  *       voice's clock (one wave, or one step of the hiss) — or, on a recorded part, which row of
  *       rg_game_note_sounds it sounds (-1 for a rest) — and how it fades or swells when the note
- *       or its part set it: the voice's four bits of it (Audio::NoteFade#bits) with SAID_FADE
+ *       or its part set it: the voice's four bits of it (Audio::NoteFade#bits) with HAS_FADE
  *       set, or 0 to leave it to the voice (see note_fade) — and in the same number, how it
- *       slides its pitch when it or its part set it: SAID_SLIDE set, and the slide's seven bits
- *       (Audio::PitchSlide#bits) from SLIDE_AT up (see note_slide), how it wobbles (SAID_VIBRATO
+ *       slides its pitch when it or its part set it: HAS_SLIDE set, and the slide's seven bits
+ *       (Audio::PitchSlide#bits) from SLIDE_AT up (see note_slide), how it wobbles (HAS_VIBRATO
  *       and VIBRATO_AT), and the speaker it plays from in the top two bits (see note_pan) — and
- *       a square note's shapes when it or its part set them: SAID_DUTY set, and the shapes'
+ *       a square note's shapes when it or its part set them: HAS_DUTY set, and the shapes'
  *       eight bits under it (Audio::Duty#bits; see shape_start), or 0 for its part's one shape
  *
  * rg_game_note_sounds: how many rows, then eight numbers each — the recording a note plays, how
@@ -132,8 +132,8 @@
 #define NUMBERS_PER_NOTE 6
 #define FADE_STEP_BITS 7 /* a note's fade (Audio::NoteFade#bits): the 64ths of a second a step lasts */
 #define FADE_UP 8        /* ...set when it swells */
-#define SAID_FADE 16     /* ...and beside them in a note, set when the note or its part set one */
-#define SAID_SLIDE 32    /* ...and above that, set when the note or its part set a slide */
+#define HAS_FADE 16      /* ...and beside them in a note, set when the note or its part set one */
+#define HAS_SLIDE 32     /* ...and above that, set when the note or its part set a slide */
 #define SLIDE_AT 6       /* ...whose seven bits (Audio::PitchSlide#bits) are above that again */
 #define SLIDE_BITS 0x7F
 #define SLIDE_DOWN 8     /* a slide's bits: set when it slides down, */
@@ -141,7 +141,7 @@
 #define SLIDE_EVERY_AT 4 /* ...and the 128ths of a second a step waits, above them, */
 #define SLIDE_EVERY_BITS 7 /* ...in three bits */
 #define PITCH_COUNT_TOP 2048 /* the square voices keep a pitch as this less its ticks a wave */
-#define SAID_VIBRATO (1 << 13) /* ...and in a note, set when it or its part set a wobble, */
+#define HAS_VIBRATO (1 << 13)  /* ...and in a note, set when it or its part set a wobble, */
 #define VIBRATO_AT 14          /* ...whose sixteen bits (Audio::Vibrato#bits) are above it: */
 #define VIBRATO_BITS 0xFFFF
 #define VIBRATO_FOUR_BITS 0xF  /* the depth, */
@@ -151,7 +151,7 @@
 #define PAN_BITS 3
 #define PAN_LEFT 1             /* the left alone, */
 #define PAN_RIGHT 2            /* ...the right alone, or nought for both */
-#define SAID_DUTY (1 << 8)     /* a note's sixth number: set when it or its part set its shapes, */
+#define HAS_DUTY (1 << 8)      /* a note's sixth number: set when it or its part set its shapes, */
 #define DUTY_BITS 0xFF         /* ...whose eight bits (Audio::Duty#bits) are under it */
 #define CARRIES_VIBRATO (1 << 9) /* ...and above it, set when its vibrato carries its swing on */
 #define GLIDES (1 << 10)         /* ...and set on a recorded note that carries on the one sounding */
@@ -784,7 +784,7 @@ typedef struct {
 static wobble wobbles[RG_WAVE_VOICE + 1];
 
 static int32_t note_vibrato(const int32_t *note) {
-  return note[4] & SAID_VIBRATO ? (note[4] >> VIBRATO_AT) & VIBRATO_BITS : 0;
+  return note[4] & HAS_VIBRATO ? (note[4] >> VIBRATO_AT) & VIBRATO_BITS : 0;
 }
 
 /* +voice+ has just been given +note+: it wobbles that, or — a rest, or a note that sets none —
@@ -878,7 +878,7 @@ static int32_t shape_at(int32_t bits, int32_t frame) { return (bits >> (2 * (fra
 /* How many eighths of a square note's wave are high as it starts: its first shape, when it or its
  * part set its shapes, or else its part's one. */
 static int32_t note_eighths(const part_walk *part, const int32_t *note) {
-  return note[5] & SAID_DUTY ? eighths_of_shape[shape_at(note[5], 0)] : part->tone;
+  return note[5] & HAS_DUTY ? eighths_of_shape[shape_at(note[5], 0)] : part->tone;
 }
 
 /* +voice+ has just been given +note+: a square voice steps its shapes from here, or — a rest, or a
@@ -886,7 +886,7 @@ static int32_t note_eighths(const part_walk *part, const int32_t *note) {
 static void shape_start(int32_t voice, const int32_t *note) {
   swell_stop(voice);
   if (voice > RG_SQUARE_VOICES) return;
-  int32_t bits = note[1] != 0 && (note[5] & SAID_DUTY) ? note[5] & DUTY_BITS : 0;
+  int32_t bits = note[1] != 0 && (note[5] & HAS_DUTY) ? note[5] & DUTY_BITS : 0;
   int32_t steps = 0;
   for (int32_t frame = 1; frame < 4; frame++) steps |= shape_at(bits, frame) != shape_at(bits, 0);
   shapes[voice] = (shape_walk){bits, 0, steps};
@@ -1104,7 +1104,7 @@ static void play_recorded_note(const part_walk *part, const int32_t *note) {
  * four bits of it: what the note or its part set, or else the voice's own way — a drum hit rings
  * out as its part sets, and a square note holds. */
 static int32_t note_fade(const part_walk *part, const int32_t *note) {
-  if (note[4] & SAID_FADE) return note[4] & (FADE_UP | FADE_STEP_BITS);
+  if (note[4] & HAS_FADE) return note[4] & (FADE_UP | FADE_STEP_BITS);
   return part->kind == PART_NOISE ? part->fade : 0;
 }
 
@@ -1119,17 +1119,17 @@ static int32_t note_pan(const int32_t *note) { return (int32_t)(((uint32_t)note[
  * when it set one, its slide, its wobble, its speaker and its shapes after that when it set
  * them — with -1, for none, before one set after it. */
 static void log_voice_set(int32_t voice, int32_t who, int32_t pitch, int32_t volume, const int32_t *note) {
-  int32_t said[] = {note[4] & SAID_FADE ? note[4] & (FADE_UP | FADE_STEP_BITS) : -1,
-                    note[4] & SAID_SLIDE ? note_slide(note) : -1,
-                    note[4] & SAID_VIBRATO ? note_vibrato(note) | (note[5] & CARRIES_VIBRATO ? VIBRATO_CARRIES_LOGGED : 0) : -1,
-                    note_pan(note) ? note_pan(note) : -1,
-                    note[5] & SAID_DUTY ? note[5] & DUTY_BITS : -1};
+  int32_t after[] = {note[4] & HAS_FADE ? note[4] & (FADE_UP | FADE_STEP_BITS) : -1,
+                     note[4] & HAS_SLIDE ? note_slide(note) : -1,
+                     note[4] & HAS_VIBRATO ? note_vibrato(note) | (note[5] & CARRIES_VIBRATO ? VIBRATO_CARRIES_LOGGED : 0) : -1,
+                     note_pan(note) ? note_pan(note) : -1,
+                     note[5] & HAS_DUTY ? note[5] & DUTY_BITS : -1};
   int32_t count = 5;
-  while (count > 0 && said[count - 1] < 0) count--;
+  while (count > 0 && after[count - 1] < 0) count--;
   char line[64];
   int at = snprintf(line, sizeof line, "voice %d %d %d %d", (int)voice, (int)who, (int)pitch, (int)volume);
   for (int32_t i = 0; i < count && at < (int)sizeof line; i++) {
-    at += snprintf(line + at, sizeof line - (size_t)at, " %d", (int)said[i]);
+    at += snprintf(line + at, sizeof line - (size_t)at, " %d", (int)after[i]);
   }
   rg_sound_log("%s", line);
 }

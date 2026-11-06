@@ -581,7 +581,7 @@ module VBlank
       def write_changed_colors_between_frames(lists)
         writes = lists.each_value.flat_map(&:writes)
         write_between_frames(writes, lists) do |name, list|
-          write_if_changed(said: list.shown, in_force: list.live,
+          write_if_changed(requested: list.shown, in_force: list.live,
                            write: Build.color_list_holds(name, which: Build.var_ref(list.shown)))
         end
       end

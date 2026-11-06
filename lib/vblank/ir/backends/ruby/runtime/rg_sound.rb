@@ -25,8 +25,8 @@ RG_PARTS_MOST = 20
 RG_NUMBERS_PER_NOTE = 6
 RG_FADE_STEP_BITS = 7 # A note's fade (Audio::NoteFade#bits): the 64ths of a second a step lasts
 RG_FADE_UP = 8        # A note's fade: set when it swells
-RG_SAID_FADE = 16     # A note's flags: set when the note or its part set a fade
-RG_SAID_SLIDE = 32    # A note's flags: set when the note or its part set a slide
+RG_HAS_FADE = 16      # A note's flags: set when the note or its part set a fade
+RG_HAS_SLIDE = 32     # A note's flags: set when the note or its part set a slide
 RG_SLIDE_AT = 6       # A slide's seven bits (Audio::PitchSlide#bits), above the flags
 RG_SLIDE_BITS = 0x7F
 RG_SLIDE_DOWN = 8     # A slide's bits: set when it slides down
@@ -34,7 +34,7 @@ RG_SLIDE_SHIFT_BITS = 7 # A slide's bits: the shift
 RG_SLIDE_EVERY_AT = 4 # A slide's bits: the 128ths of a second a step waits, above them
 RG_SLIDE_EVERY_BITS = 7 # A slide's bits: the wait takes three bits
 RG_PITCH_COUNT_TOP = 2048 # The square voices keep a pitch as this less its ticks a wave
-RG_SAID_VIBRATO = 1 << 13 # In a note, set when it or its part set a wobble
+RG_HAS_VIBRATO = 1 << 13 # In a note, set when it or its part set a wobble
 RG_VIBRATO_AT = 14 # A vibrato's sixteen bits (Audio::Vibrato#bits), above the flag
 RG_VIBRATO_BITS = 0xFFFF
 RG_VIBRATO_FOUR_BITS = 0xF # A vibrato's bits: the depth, four bits
@@ -44,7 +44,7 @@ RG_PAN_AT = 30 # At the top of a note, its speaker (Audio::Pan.bits_of)
 RG_PAN_BITS = 3
 RG_PAN_LEFT = 1 # The left speaker alone
 RG_PAN_RIGHT = 2 # The right speaker alone; nought is both
-RG_SAID_DUTY = 1 << 8 # A note's sixth number: set when it or its part set its shapes
+RG_HAS_DUTY = 1 << 8 # A note's sixth number: set when it or its part set its shapes
 RG_DUTY_BITS = 0xFF # A note's eight shape bits (Audio::Duty#bits), under the flag
 RG_CARRIES_VIBRATO = 1 << 9 # Above the shapes: set when the vibrato carries its swing on
 RG_GLIDES = 1 << 10 # Set on a recorded note that carries on the one sounding
@@ -584,8 +584,8 @@ end
 RgWobble = Struct.new(:vibrato, :wait, :left, :rising, :steps, :ticks)
 
 def rg_note_vibrato(note)
-  said = @rg_game_music[note + 4]
-  said.anybits?(RG_SAID_VIBRATO) ? (said >> RG_VIBRATO_AT) & RG_VIBRATO_BITS : 0
+  flags = @rg_game_music[note + 4]
+  flags.anybits?(RG_HAS_VIBRATO) ? (flags >> RG_VIBRATO_AT) & RG_VIBRATO_BITS : 0
 end
 
 def rg_wobble_start(voice, note)
@@ -638,16 +638,16 @@ RG_EIGHTHS_OF_SHAPE = [1, 2, 4, 6].freeze
 def rg_shape_at(bits, frame) = (bits >> (2 * (frame % 4))) & 3
 
 def rg_note_eighths(part, note)
-  said = @rg_game_music[note + 5]
-  said.anybits?(RG_SAID_DUTY) ? RG_EIGHTHS_OF_SHAPE[rg_shape_at(said, 0)] : part.tone
+  flags = @rg_game_music[note + 5]
+  flags.anybits?(RG_HAS_DUTY) ? RG_EIGHTHS_OF_SHAPE[rg_shape_at(flags, 0)] : part.tone
 end
 
 def rg_shape_start(voice, note)
   rg_swell_stop(voice)
   return if voice > RG_SQUARE_VOICES
 
-  said = @rg_game_music[note + 5]
-  bits = @rg_game_music[note + 1] != 0 && said.anybits?(RG_SAID_DUTY) ? said & RG_DUTY_BITS : 0
+  flags = @rg_game_music[note + 5]
+  bits = @rg_game_music[note + 1] != 0 && flags.anybits?(RG_HAS_DUTY) ? flags & RG_DUTY_BITS : 0
   @rg_shapes[voice] = RgShapeWalk.new(bits, 0, (1..3).any? { |frame| rg_shape_at(bits, frame) != rg_shape_at(bits, 0) })
 end
 
@@ -822,8 +822,8 @@ end
 
 # How a note on a square or the noise voice fades or swells (rg_sound.c's note_fade says how).
 def rg_note_fade(part, note)
-  said = @rg_game_music[note + 4]
-  return said & (RG_FADE_UP | RG_FADE_STEP_BITS) if said.anybits?(RG_SAID_FADE)
+  flags = @rg_game_music[note + 4]
+  return flags & (RG_FADE_UP | RG_FADE_STEP_BITS) if flags.anybits?(RG_HAS_FADE)
 
   part.kind == RG_PART_NOISE ? part.fade : 0
 end
@@ -838,12 +838,12 @@ def rg_note_pan(note) = (@rg_game_music[note + 4] >> RG_PAN_AT) & RG_PAN_BITS
 # slide, its wobble, its speaker and its shapes after that when it set them — with -1, for none,
 # before one set after it.
 def rg_log_voice_set(voice, who, pitch, volume, note)
-  said = @rg_game_music[note + 4]
-  told = [said.anybits?(RG_SAID_FADE) ? said & (RG_FADE_UP | RG_FADE_STEP_BITS) : -1,
-          said.anybits?(RG_SAID_SLIDE) ? rg_note_slide(note) : -1,
-          said.anybits?(RG_SAID_VIBRATO) ? rg_note_vibrato(note) | (@rg_game_music[note + 5].anybits?(RG_CARRIES_VIBRATO) ? RG_VIBRATO_CARRIES_LOGGED : 0) : -1,
+  flags = @rg_game_music[note + 4]
+  told = [flags.anybits?(RG_HAS_FADE) ? flags & (RG_FADE_UP | RG_FADE_STEP_BITS) : -1,
+          flags.anybits?(RG_HAS_SLIDE) ? rg_note_slide(note) : -1,
+          flags.anybits?(RG_HAS_VIBRATO) ? rg_note_vibrato(note) | (@rg_game_music[note + 5].anybits?(RG_CARRIES_VIBRATO) ? RG_VIBRATO_CARRIES_LOGGED : 0) : -1,
           rg_note_pan(note).positive? ? rg_note_pan(note) : -1,
-          @rg_game_music[note + 5].anybits?(RG_SAID_DUTY) ? @rg_game_music[note + 5] & RG_DUTY_BITS : -1]
+          @rg_game_music[note + 5].anybits?(RG_HAS_DUTY) ? @rg_game_music[note + 5] & RG_DUTY_BITS : -1]
   told.pop while !told.empty? && told.last.negative?
   rg_sound_log(["voice #{voice} #{who} #{pitch} #{volume}", *told].join(" "))
 end

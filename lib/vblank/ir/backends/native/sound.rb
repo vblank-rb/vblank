@@ -24,17 +24,17 @@ module VBlank
           PART_KINDS = { square: 0, wave: 1, noise: 2, recorded: 3 }.freeze
 
           # Set beside a note's four bits of fade (Audio::NoteFade#bits) when the note or its part
-          # set one, rather than leaving it to the voice (rg_sound.c's SAID_FADE).
-          SAID_FADE = 16
+          # set one, rather than leaving it to the voice (rg_sound.c's HAS_FADE).
+          HAS_FADE = 16
 
           # ...and above them, set when the note or its part set a slide (Audio::PitchSlide#bits),
-          # whose seven bits are above that again (rg_sound.c's SAID_SLIDE and SLIDE_AT).
-          SAID_SLIDE = 32
+          # whose seven bits are above that again (rg_sound.c's HAS_SLIDE and SLIDE_AT).
+          HAS_SLIDE = 32
           SLIDE_AT = 6
 
           # ...and above those, set when the note or its part set a wobble (Audio::Vibrato#bits),
-          # whose sixteen bits are above that again (rg_sound.c's SAID_VIBRATO and VIBRATO_AT).
-          SAID_VIBRATO = 1 << 13
+          # whose sixteen bits are above that again (rg_sound.c's HAS_VIBRATO and VIBRATO_AT).
+          HAS_VIBRATO = 1 << 13
           VIBRATO_AT = 14
 
           # ...and at the top, the speaker it plays from (Audio::Pan.bits_of), nought for both, so
@@ -43,9 +43,9 @@ module VBlank
           PAN_AT = 30
 
           # A note's sixth number is its shapes when it or its part named them (Audio::Duty#bits), with
-          # SAID_DUTY beside them, and 0 for a note that plays its part's one shape (rg_sound.c's
-          # SAID_DUTY).
-          SAID_DUTY = 1 << 8
+          # HAS_DUTY beside them, and 0 for a note that plays its part's one shape (rg_sound.c's
+          # HAS_DUTY).
+          HAS_DUTY = 1 << 8
           # ...and above that, set when the note's vibrato carries its swing from the note before
           # (Audio::Vibrato#carries; rg_sound.c's CARRIES_VIBRATO).
           CARRIES_VIBRATO = 1 << 9
@@ -343,11 +343,11 @@ module VBlank
           # hiss on the noise voice — or, on a recorded part, the row of note_sounds_table it
           # sounds. A recorded note's volume is written as its loudness on the mixer, since it can
           # hold a fraction. Then how it fades or swells, when its part or the note asked for it
-          # (IR::Tunes.said_fade): the voice's four bits of it, and SAID_FADE beside them; 0 for a
+          # (IR::Tunes.said_fade): the voice's four bits of it, and HAS_FADE beside them; 0 for a
           # note that leaves it to the voice, and for a rest. With them, in the same number, how it
           # slides its pitch when it or its part asked for it (IR::Tunes.said_slide), how it wobbles
           # (IR::Tunes.said_vibrato), and which speaker it plays from (IR::Tunes.note_side). And
-          # after that number, a square note's shapes (IR::Tunes.said_duty; see SAID_DUTY).
+          # after that number, a square note's shapes (IR::Tunes.said_duty; see HAS_DUTY).
           def encoded_note(note, part, kind)
             at, pitch, _, volume = note
             volume ||= part.volume
@@ -359,12 +359,12 @@ module VBlank
             fade = Tunes.said_fade(part, note) unless pitch.zero?
             slide = Tunes.said_slide(part, note) unless pitch.zero?
             wobble = Tunes.said_vibrato(part, note) unless pitch.zero?
-            said = (fade ? SAID_FADE | fade.bits : 0) | (slide ? SAID_SLIDE | (slide.bits << SLIDE_AT) : 0) |
-                   (wobble ? SAID_VIBRATO | (wobble.bits << VIBRATO_AT) : 0)
+            flags = (fade ? HAS_FADE | fade.bits : 0) | (slide ? HAS_SLIDE | (slide.bits << SLIDE_AT) : 0) |
+                    (wobble ? HAS_VIBRATO | (wobble.bits << VIBRATO_AT) : 0)
             side = pitch.zero? ? 0 : Audio::Pan.bits_of(Tunes.note_side(part, note))
             shapes = Tunes.said_duty(part, note) unless pitch.zero?
-            [at, @sound_log.pitch_number(pitch), heard, last, Int32.wrap(said | (side << PAN_AT)),
-             (shapes ? SAID_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0) | (Tunes.glides?(note) ? GLIDES : 0)]
+            [at, @sound_log.pitch_number(pitch), heard, last, Int32.wrap(flags | (side << PAN_AT)),
+             (shapes ? HAS_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0) | (Tunes.glides?(note) ? GLIDES : 0)]
           end
 
           # EVERYTHING A RECORDED NOTE IS BUT HOW LOUD, the interpreter's way
