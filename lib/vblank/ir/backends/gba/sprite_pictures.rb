@@ -46,7 +46,7 @@ module VBlank
           # the poses have to sit an even distance apart in the order they were declared. A
           # pose that REPEATS an earlier one is stored once and points back at it, which
           # usually breaks the run — so such a sprite carries the pose table instead, where
-          # each pose says where its own tiles are. Usually, and not always: a cycle whose
+          # each pose holds where its own tiles are. Usually, and not always: a cycle whose
           # frames are ALL the same picture shares one run, which is an even distance of
           # nothing, and it keeps the plain draw.
           #

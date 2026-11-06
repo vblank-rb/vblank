@@ -27,7 +27,7 @@ module VBlank
         # console reads them out of. A layer is added to this and gets back the numbers its
         # map must hold; nothing else writes a tile picture.
         #
-        # TWO TILES THAT COME OUT THE SAME ARE STORED ONCE. Nothing about a tileset says
+        # TWO TILES THAT COME OUT THE SAME ARE STORED ONCE. Nothing about a tileset shows
         # which of its tiles are really the same picture — a wall's interior repeats in
         # every variation of that wall, half a metatile of grass is the same grass in
         # dozens of cells — and on a real tileset that is a large fraction. The author
@@ -111,14 +111,14 @@ module VBlank
 
           public
 
-          # Put one layer's tiles in, and say how its map can name them. +drawn+ is the
+          # Put one layer's tiles in, and return how its map can name them. +drawn+ is the
           # layer's tiles in order, each the picture it was drawn from and where its colours
           # sit; +unit+ is how big one of this layer's tiles is stored (which is also the
           # step between one tile number and the next); +most+ is how many tiles its map can
           # count across.
           #
-          # +mirrors+ says the layer's map can draw a tile reversed (see #mirrors_of). A
-          # turning layer's cells have no room to say so, and keeps a mirror as a picture.
+          # +mirrors+ marks that the layer's map can draw a tile reversed (see #mirrors_of). A
+          # turning layer's cells have no room to mark it, and keeps a mirror as a picture.
           #
           # +painted+ names the tiles, by their index in +drawn+, whose pixels the game paints
           # from a list as it runs (see Nodes::TileRun). They are never shared, with each other

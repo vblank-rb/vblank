@@ -22,7 +22,7 @@ module VBlank
         #
         # THE SLOTS ARE SHARED between the game's sounds and the notes of songs and sound effects,
         # each taking one only while it sounds (see #emit_take_music_voice_routine for who gives way
-        # when they run out). A slot's SOUNDING word says whose it is: 0 nobody's, OWNER_GAME the
+        # when they run out). A slot's SOUNDING word marks whose it is: 0 nobody's, OWNER_GAME the
         # game's, and a recorded part its own mark (Mixer.music_owner, or Mixer.ranked_owner in a
         # game whose sound effects play recordings).
         #
@@ -235,7 +235,7 @@ module VBlank
           #
           # The decoding lives here, beside the code that writes the table, so the slot layout
           # above is defined in one place and read in one place — a test that wants to know
-          # what is sounding says `verifier.voices` and never counts bytes into a slot.
+          # what is sounding calls `verifier.voices` and never counts bytes into a slot.
           #
           # +sample_addresses+ maps each sample's name to where it landed in the cartridge,
           # which is how a slot's source address becomes a name again. Two samples with
@@ -344,7 +344,7 @@ module VBlank
 
           def music_takes_voices? = @music_takes_voices
 
-          # ...said by a song's recorded part, as against a sound effect's (#ranks_voices!): its
+          # ...asked for by a song's recorded part, as against a sound effect's (#ranks_voices!): its
           # marks come to the voice routines unranked in a game that ranks them (see
           # #emit_rank_song_mark).
           def songs_have_recorded_parts!
@@ -504,7 +504,7 @@ module VBlank
             emit_zero_region(@mix_buf1, buffer_bytes)
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @primitives.store_var(ACC, MIX_FRONT)                  # ...playing buffer 0 first
-            # NOTHING HAS BEEN LOST YET, and this has to be said rather than assumed: the
+            # NOTHING HAS BEEN LOST YET, and this has to be written rather than assumed: the
             # console's memory is not zero at power-on, so a counter left unwritten reads as
             # whatever was there and a game that dropped nothing would report rubbish.
             @primitives.store_var(ACC, DROPS)
@@ -1245,7 +1245,7 @@ module VBlank
           #
           # SO THE HAND-OVER COUNTS instead of trusting its timing. Timer 1 counts every sample
           # the hardware has taken, and the grid of lots sits at a known place in that count
-          # (MIX_PHASE), so the count says exactly how many lots the DMA has taken, and so which
+          # (MIX_PHASE), so the count gives exactly how many lots the DMA has taken, and so which
           # lot it takes next. A hand-over two lots late points the DMA two lots into the new
           # buffer, where the sound meant for that moment is. The two lots taken late came from
           # past the end of the buffer before it, which is why every buffer carries the start of
@@ -1623,7 +1623,7 @@ module VBlank
           end
 
           # One output sample of one voice into its total, and the read pointer moved on, ending
-          # on the compare that says whether the recording has reached its end.
+          # on the compare that finds whether the recording has reached its end.
           def emit_mix_one_sample
             e = @emitter
             e.emit(ASM.ldrsb(0, 6))                           # r0 = the voice's raw sample (signed)

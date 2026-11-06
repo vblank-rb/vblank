@@ -52,7 +52,7 @@ module VBlank
           # THE RECORD OF THE ROOMS, which the running game keeps (see
           # SpriteDrawing#emit_shared_room_routines): two words for each room, which pose it holds
           # and how many sprites draw from it, and then a word for each sprite, which room it
-          # holds. Where it is kept is the lowering's to decide; how it is laid out is said here
+          # holds. Where it is kept is the lowering's to decide; how it is laid out is set here
           # once, for the code that sizes it and the code that reads it.
           SharedRooms = Data.define(:first, :units, :count, :frames, :frame_bytes) do
             def table_bytes = count * (self.class::ROOM_WORDS_BYTES + self.class::HELD_WORD_BYTES)
@@ -170,7 +170,7 @@ module VBlank
           # the number of the pose it holds, so two sprites share rooms only when every pose number
           # means the same picture to both: the same pictures in another order are stored alike,
           # and a room holding one's pose 1 would draw as the other's pose 1. Every pose laid out
-          # the way a room is, back to back, says exactly that.
+          # the way a room is, back to back, captures exactly that.
           def place_screen(nodes)
             @screen = nodes.first&.scene
             @sharing = nodes.select { |node| @one_frame.include?(node.name) }
@@ -276,7 +276,7 @@ module VBlank
           # A ROOM SHARED WITH THE OTHER SPRITES OF THIS SCREEN SHOWING THE SAME PICTURES (see
           # SharedRooms). The first of them to be placed lays out every room and stores the
           # frames, once for all of them; each is numbered among them, which is how the running
-          # game says which room it holds. A pose's pieces are laid out the same way in every
+          # game names which room it holds. A pose's pieces are laid out the same way in every
           # room, so its record points at the first room, and the room it draws from is added
           # while the game runs.
           def shared_room_placement(pictures, sharing)

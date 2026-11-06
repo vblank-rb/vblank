@@ -8,7 +8,7 @@ module VBlank
         #
         # The GBA saves a game's progress in a small chip on the cartridge that keeps its
         # contents when the console is off: 32K of battery-backed SRAM, or a flash chip of 64K or
-        # 128K, as the program says (see IR::SaveLayout.memory_of). What each chip does
+        # 128K, as the program asks for (see IR::SaveLayout.memory_of). What each chip does
         # differently — how a byte is written, how a block is wiped, how a place becomes an
         # address — is the chip's (see SaveChip); this lowers the ops onto whichever it is.
         #
@@ -16,7 +16,7 @@ module VBlank
         # written ONE BYTE AT A TIME (a 4-byte value becomes four byte loads or stores). And an
         # emulator or a flashcart only maps the chip when it finds a marker string in the ROM (see
         # #emit_save_signature) — an emulator also watches the first thing the game does to save
-        # memory, which is why a flash cartridge says a command to it before anything reads it
+        # memory, which is why a flash cartridge sends a command to it before anything reads it
         # (see #emit_wake_chip).
         #
         # Layout of save_var's block: a 4-byte marker at the front, then each persisted variable as
@@ -36,13 +36,13 @@ module VBlank
           end
 
           # Pick the chip for +memory+ (an IR::SaveLayout::Memory), the save memory the program
-          # says it has.
+          # declares it has.
           def use_memory(memory)
             @save_memory = memory
             @chip = chip_for(memory)
           end
 
-          # What the chip says before anything touches save memory (see FlashChip#emit_wake).
+          # What the chip is sent before anything touches save memory (see FlashChip#emit_wake).
           def emit_wake_chip = @chip.emit_wake
 
           # What the chip does as a pass of the game loop ends (see EepromChip).

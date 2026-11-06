@@ -56,7 +56,7 @@ module VBlank
 
           # Where the far end starts, once it is known what is held back above it (see
           # TopOfQuickMemory). Only before anything has been claimed there — or again where it
-          # already is, as a program lowered a second time says it.
+          # already is, as a program lowered a second time sets it.
           def ceiling=(address)
             return if address == @ceiling
             raise ArgumentError, "the quick memory's far end is set after something was claimed there" unless @far == @ceiling

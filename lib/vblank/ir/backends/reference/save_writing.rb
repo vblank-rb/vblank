@@ -26,7 +26,7 @@ module VBlank
         #
         # A save_var is written the same way, by save_vars_into: on the 32K memory into its own
         # slot, as the game writes one the moment it changes, after power-on has put the marker
-        # that says the slots are this game's; on flash by saving the record the save_vars are
+        # that marks the slots as this game's; on flash by saving the record the save_vars are
         # kept in there, which power-on loaded, so the ones the test leaves out keep their values.
         module SaveWriting
           # The things a test can write into a copy, said in an error that refuses another.

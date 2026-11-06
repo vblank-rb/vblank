@@ -12,7 +12,7 @@ module VBlank
         # price. That number is not really a measurement: it is a fact the lowering has
         # exactly and the calibration recovers approximately, so the same decision ends up
         # written twice — once here, where it is executed, and once there, where it is
-        # guessed at. Said once, by the side that knows, there is no pair left to drift.
+        # guessed at. Written once, by the side that knows, there is no pair left to drift.
         #
         # INSTRUCTIONS ARE ATTRIBUTED EXCLUSIVELY. A statement is charged for what it emitted
         # on its own, never for what its nested statements and its operands emitted, so the
@@ -28,7 +28,7 @@ module VBlank
         # a call, the count sees the handful of instructions that set the call up and none of
         # the routine; and where it holds a branch over an alternative, the frame runs one side
         # and the count has both. Straight-line code is exactly the case where what was
-        # emitted is what runs, and a node that emitted no jump says so.
+        # emitted is what runs, and a node that emitted no jump is marked so.
         #
         # KEYED BY IDENTITY, not by value. Two `add :score, 1` statements written in
         # different places are equal as trees — {IR::Node} compares by shape — and they are

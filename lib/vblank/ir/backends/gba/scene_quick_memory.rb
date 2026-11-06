@@ -28,14 +28,14 @@ module VBlank
         # A ROUTINE IN A SET RUNS FROM THE CARTRIDGE TOO, where it is written: everything in it
         # that names another place names it by its whole address, and everything inside it is
         # counted from where it is. So a call to it from outside its own set reads a word that
-        # says where it is NOW — the quick memory while its scene's set is in, the cartridge
+        # holds where it is NOW — the quick memory while its scene's set is in, the cartridge
         # otherwise — and the swap writes those words. A routine reached while another scene is
         # up is therefore slower and never wrong: a save the file screen started and play
         # finishes, say.
         module SceneQuickMemory
           include Console::Hardware
 
-          # The routine that copies a set in and says where each routine now is. It is run
+          # The routine that copies a set in and records where each routine now is. It is run
           # once per change of scene, so it lives in the cartridge.
           SWAP_ROUTINE = :__swap_quick_memory
 
@@ -129,7 +129,7 @@ module VBlank
           # The routine the block +node+ of the game loop was made into, or nil for any other node.
           def scene_loop_routine_for(node) = (@scene_loop_work || {})[node]&.first
 
-          # Each such routine with the scene routine it works for, as #routines_for_scenes says it.
+          # Each such routine with the scene routine it works for, as #routines_for_scenes returns it.
           def scene_loop_routines = (@scene_loop_work || {}).values.to_h
 
           # Each such routine with the block it was made from, for counting the calls inside it.
@@ -152,7 +152,7 @@ module VBlank
           # WHO RUNS EACH ROUTINE: the scene routines whose frames reach it, and :frame and :irq
           # for the game loop outside its scenes and the console's interrupt. Only a routine
           # exactly one scene reaches can go in a set. A routine nothing here reaches — one the
-          # build calls for itself from places the tree does not show — is said to be the
+          # build calls for itself from places the tree does not show — is counted as the
           # frame's, which keeps it out of every set.
           def scene_owners(program, scenes, dispatch)
             bodies = program.walk.select { |node| node.kind == :func }.to_h { |node| [node.name, node] }
@@ -468,7 +468,7 @@ module VBlank
             @emit.patch_word(fix.blob, fix.offset, fix.target.call)
           end
 
-          # AT POWER-ON every word says the cartridge, and then each set that has routines goes
+          # AT POWER-ON every word points at the cartridge, and then each set that has routines goes
           # in — those the game loop runs first, then the rest in the order the dispatch names
           # their scenes — unless it would put out one already in, so the opening runs with as
           # many sets in as sit side by side. Which those are is known only once every set's code
@@ -531,7 +531,7 @@ module VBlank
           SWAP_LIST = 2
           SWAP_LEFT = 3
 
-          # THE SWAP, with the set's number in r0: say which sets are in now, then make the
+          # THE SWAP, with the set's number in r0: record which sets are in now, then make the
           # copies its list holds (see #register_quick_tables). Uses r0 to r3 and r12, and
           # returns to where it was called from.
           #

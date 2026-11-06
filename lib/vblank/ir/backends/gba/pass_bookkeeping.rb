@@ -32,7 +32,7 @@ module VBlank
             STEPS = "rt steps"
             STEPS_KEPT = 16
             # What went wrong, a word each: the number, the place of the list it was about, and the
-            # two numbers that say how (CartridgeHeadlessRun#fault_message).
+            # two numbers that give how (CartridgeHeadlessRun#fault_message).
             FAULT = "rt fault"
             FAULT_BYTES = 16
 
@@ -100,7 +100,7 @@ module VBlank
             @emitter.emit(ASM.strb(ACC, TMP))
           end
 
-          # The frame after the wait shows the pass: said so, and where the reader has asked for this
+          # The frame after the wait shows the pass: marked so, and where the reader has asked for this
           # pass to be the last, the game goes no further. Then it is no longer waiting.
           def emit_pass_shown
             @primitives.load_var(ACC, Frame::WORDS.fetch(Frame::PASSES))
@@ -114,7 +114,7 @@ module VBlank
             emit_word(Frame::WAITING, 0)
           end
 
-          # THE GAME HALTS: so said, its last picture shown, and the end said to be on the screen.
+          # THE GAME HALTS: marked so, its last picture shown, and the end marked as on the screen.
           def emit_halt
             emit_word(Frame::STATE, Frame::HALTED)
             emit_jump_far(stopping_label)
@@ -142,7 +142,7 @@ module VBlank
           end
 
           # Where a halt and a fault go, emitted once at the end of the program: the frame after
-          # shows what the game drew last, then the end is said to be on the screen and the game
+          # shows what the game drew last, then the end is marked as on the screen and the game
           # sleeps from frame to frame. A held pass stops at the same sleep, with its own pass shown.
           # In a game that never waits for the screen (+frames+ false) its interrupt is not armed:
           # what it drew is on the screen already, and it stops where it is.

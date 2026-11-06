@@ -28,7 +28,7 @@ module VBlank
         # goes a few dozen bytes below where its game loop keeps it — while the build used to hold
         # back the whole 4K for it. So a game gets DEFAULT_STACK_BYTES, many times what any game
         # measured, unless its deepest chain of calls needs more (see .stack_needed), and a game that
-        # says how much it wants (`stack_room:`) gets exactly that. Too little is not an error
+        # sets how much it wants (`stack_room:`) gets exactly that. Too little is not an error
         # anything can see: the stack walks down into the game's own code and lists and writes over
         # them.
         #
@@ -58,7 +58,7 @@ module VBlank
           # The console's own, at the very top.
           CONSOLE_BYTES = 256
 
-          # The stack room a game gets unless its calls nest deeper or it says otherwise.
+          # The stack room a game gets unless its calls nest deeper or it sets otherwise.
           DEFAULT_STACK_BYTES = 1024
 
           # WHAT ONE CALL DEEPER COSTS THE STACK, held at its dearest: the return address, and the
@@ -72,10 +72,10 @@ module VBlank
           MOST_STACK_BYTES = 16_384
 
           # A game whose calls go round in a circle has no deepest chain to count, so it gets twice
-          # the usual room, and can say more.
+          # the usual room, and can ask for more.
           UNBOUNDED_STACK_BYTES = 2 * DEFAULT_STACK_BYTES
 
-          # The layout for +program+. +stack_room+ is the bytes a game said its stack wants, or nil
+          # The layout for +program+. +stack_room+ is the bytes a game asked for its stack, or nil
           # for the build to decide; +divides+ and +divides_fractions+ whether it needs each divide
           # routine, and +fills_faces+ whether it needs the routine that fills a face (+lights_faces+
           # whether it needs that routine's larger form, that lights them too).

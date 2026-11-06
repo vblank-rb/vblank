@@ -14,15 +14,15 @@ module VBlank
         # copy, and copy all of it into video memory between frames.
         #
         # This keeps the changes instead of the map: each `set_tile` on a held background adds one
-        # word to a queue in the console's big, slow work memory, saying where the cell is in video
+        # word to a queue in the console's big, slow work memory, holding where the cell is in video
         # memory and what goes there, and the gap between frames writes each word's half-word where
-        # it says. That is the same picture as copying a whole map, without copying the cells
+        # it points. That is the same picture as copying a whole map, without copying the cells
         # nobody changed, and with no second copy of a map to keep in step when `show_map` or a
         # scene taking over puts the map up again: a put-up forgets the changes waiting for the
         # cells it puts back (#emit_forget_held_tiles). Video memory is written only in the gap, so
         # a cell can never be read half-way through a change.
         #
-        # One queue serves every held background, since a word says where it goes. It holds
+        # One queue serves every held background, since a word holds where it goes. It holds
         # Nodes::ShowHeldTiles::MOST_CELLS changes. A change made with the queue full writes
         # everything waiting there and then, in the middle of the pass, so it still lands after
         # them: a pass that makes more changes than the queue holds shows the first queueful on
@@ -96,7 +96,7 @@ module VBlank
           # every other background are kept, so a box every screen shows, changed earlier in the
           # pass a scene takes over in, still shows the change on the next frame.
           #
-          # A word says only where in video memory it goes, so what is forgotten is a stretch of
+          # A word holds only where in video memory it goes, so what is forgotten is a stretch of
           # video memory. For a background every screen shows, that is its own map. For a scene's
           # background it is every place but the maps of the held backgrounds every screen shows:
           # the scenes take turns in the same video memory (ScreenLayout#place_each_scene), so a

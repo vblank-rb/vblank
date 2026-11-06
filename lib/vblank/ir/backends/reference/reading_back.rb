@@ -9,7 +9,7 @@ module VBlank
         # (Native::HeadlessRun), from the same code — so the two answer the same question the
         # same way, in the same words when the name is wrong.
         #
-        # Whoever includes this says what it holds: #list_items, a list's items oldest first by
+        # Whoever includes this defines what it holds: #list_items, a list's items oldest first by
         # its name (nil for a list it has none of); #list_names, every list's name, the
         # framework's own among them; and #variables_now, every variable by name.
         module ReadingBack
@@ -52,7 +52,7 @@ module VBlank
 
           # A pool's field is a list, and so is what the pool keeps for itself beside its fields:
           # which slots are live, which are free, the order they were spawned in. The two are
-          # spelled apart (see Messages::MadeNames), so a list's name says which it is, and of
+          # spelled apart (see Messages::MadeNames), so a list's name shows which it is, and of
           # which pool.
 
           # The list saying which slots of +pool+ are live.

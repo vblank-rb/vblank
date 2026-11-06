@@ -75,7 +75,7 @@ module VBlank
           end
 
           # Every one of them a thing of the same pool: the build names a pool's sprites as parts of
-          # the pool, and reading the name back says which.
+          # the pool, and reading the name back shows which.
           def one_pool?(names)
             pools = names.map do |name|
               kind, parts = Messages::MadeNames.read(name)

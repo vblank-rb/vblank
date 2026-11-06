@@ -70,9 +70,9 @@ module VBlank
           # BRINGING ANOTHER SET OF TILES IN, for a background that walks between areas. Every
           # set's tile pictures are in +tiles+, +stride+ bytes each, and one of them at a time
           # sits +at+ bytes into video memory. +sets_of_maps+ is a byte a map saying which set
-          # it draws from; +char_base_table+ is a byte a set saying where the layer counts that
+          # it draws from; +char_base_table+ is a byte a set holding where the layer counts that
           # set's tiles from, for sets that need different starting points (nil where they all
-          # start at one); +var+ says which set is in place now. +colors+ is the whole background
+          # start at one); +var+ names which set is in place now. +colors+ is the whole background
           # colour table of each set's area, +color_units+ entries each, which goes in with it.
           # +routine+ is the one that brings a set in (see BackgroundDrawing#emit_set_swap_routines).
           # +areas+ is each set's area by its number (see #area_number), and +area_numbers+ the
@@ -165,7 +165,7 @@ module VBlank
           # WHAT ONE SCENE NEEDS OF THE TILED SCREEN: which layers are switched on, and which
           # of the console's two arrangements this screen is — four layers that scroll, or two
           # that scroll beside one that turns and resizes.
-          # +bar+ says a status bar is on this screen, which switches the display's second window
+          # +bar+ marks that a status bar is on this screen, which switches the display's second window
           # on (see BackgroundDrawing#emit_bar_registers).
           SceneScreen = Data.define(:on, :turning, :bar)
 
@@ -221,7 +221,7 @@ module VBlank
             # Where the colours of the group lent out as number +k+ are written.
             def group_at(k) = OBJ_PALETTE + (banks[k] * PaletteBanks::BANK_SIZE * 2)
 
-            # The variables that say, for that group: which list holds it (-1 for none), the
+            # The variables that hold, for that group: which list holds it (-1 for none), the
             # frame it was last drawn with, and where in +blob+ its colours were read from (0
             # for none, which is how a tint putting colours back knows to leave it alone).
             def holder_var(k) = :"__lent_colors_#{k}_list"
@@ -451,7 +451,7 @@ module VBlank
             end
           end
 
-          # Which area a walking layer's group of colours belongs to: the variable that says which
+          # Which area a walking layer's group of colours belongs to: the variable that holds which
           # set the layer is in, the number of that set, and its area's number (see AREA_COLORS_UP).
           WalkingArea = Data.define(:set_var, :set, :area_number)
 
@@ -538,7 +538,7 @@ module VBlank
           #   sprite's own numbers on the way past, so it can only be written when the sprite
           #   is.
           #
-          #   A SPRITE DRAWN WITH A LIST THAT BORROWS ITS GROUP says it still needs the group by
+          #   A SPRITE DRAWN WITH A LIST THAT BORROWS ITS GROUP shows it still needs the group by
           #   being written: a group nothing was drawn with on the frame before is free to lend
           #   to another list (see SpriteDrawing#emit_lend_colors_routine).
           def written_every_frame
@@ -579,8 +579,8 @@ module VBlank
 
           # WHICH PLACE OF THE SPRITE TABLE EACH DECLARED SPRITE WAS GIVEN.
           #
-          # The console composes the picture from a table of 128 sprites, and each row of it says
-          # which place it is — a number the build handed out and the author never saw (a game
+          # The console composes the picture from a table of 128 sprites, and each row of it is known
+          # by its place — a number the build handed out and the author never saw (a game
           # with more than 128 keeps them in a bigger copy, and its places count there). So a
           # cartridge that did not carry this can be asked where its sprites are and cannot say
           # which of the answers is the hero.
@@ -592,7 +592,7 @@ module VBlank
           # under that name, which is what somebody asking where a thing is wants.
           #
           # Keyed on the name the AUTHOR wrote. The program's own names for these are handed out
-          # as it is built, so they say nothing to anybody, and a sprite drawn for something the
+          # as it is built, so they mean nothing to anybody, and a sprite drawn for something the
           # author named nothing (a letter of text) is left out rather than given one.
           def sprite_slots
             each_built_sprite.each_with_object({}) do |(node, sprite), places|
@@ -622,7 +622,7 @@ module VBlank
           # the worst way for a number to be wrong.
           #
           # Keyed by the PLACE in the console's table — which is the one thing a row of that table
-          # says about itself that is its own — and then by whatever tells that place's poses apart
+          # holds about itself that is its own — and then by whatever tells that place's poses apart
           # (see #pose_key, which is where the two answers to that are).
           #
           # The place has to be the outer key rather than the sprite's name, because a picture
@@ -675,7 +675,7 @@ module VBlank
           def object_scales?(node) = self.class.scales?(node)
 
           # Is this sprite in a layer the program sees through? Then its own table entry
-          # says so, and the display blends it with what is behind it.
+          # marks it so, and the display blends it with what is behind it.
           def see_through_object?(node) = @see_through.include?(node.layer)
 
           # Turn the tiled backgrounds into the data tile hardware reads — one shared color
@@ -796,7 +796,7 @@ module VBlank
           # A RUN OF PAINTED TILES IN A BACKGROUND THAT WALKS BETWEEN AREAS. Each set of tiles lays
           # the room out afresh, so the run sits somewhere else in each, or nowhere in a set
           # that leaves it out. +table+ is a word for each set, the address the run starts at, or
-          # 0; +var+ says which set is in place.
+          # 0; +var+ names which set is in place.
           WalkingRun = Data.define(:table, :var)
 
           # THE SCENERY EVERY SCREEN SHOWS GOES IN FIRST, and stays for the whole game: its
@@ -976,7 +976,7 @@ module VBlank
           # SORT EVERY TILE OF EVERY LAYER INTO THE COLOR TABLE THEY ALL READ FROM.
           #
           # A layer is stored one way or the other as a WHOLE — that is one bit in the
-          # layer's own settings — but within a small-storage layer each TILE says which
+          # layer's own settings — but within a small-storage layer each TILE names which
           # bank of sixteen it draws from. So a tileset of hundreds of colors still stores
           # small, as long as no single 8x8 tile needs more than fifteen at once, which is
           # almost always true and is why this is worth doing.
@@ -1601,7 +1601,7 @@ module VBlank
           end
 
           # Lay out the other lists of colours a background can be drawn from (see
-          # BackgroundColorLists), and say where in the display's table they are written.
+          # BackgroundColorLists), and return where in the display's table they are written.
           def background_color_lists(node, banks, small)
             return nil if node.recolors.empty?
 
@@ -1899,7 +1899,7 @@ module VBlank
           # Taking the backmost of those is what keeps every screen right. A backdrop behind
           # one layer in a quiet scene and behind three in a busy one has to be told the
           # busier number, or the busy scene draws it in front of its own backmost layer.
-          # Measured before this said `max`: a backdrop beside scenes of one and three
+          # Measured before this used `max`: a backdrop beside scenes of one and three
           # backgrounds came out in front of the three-background scene's back layer.
           #
           # Pushing it further back can never disturb the quiet screen, because there is
@@ -2096,7 +2096,7 @@ module VBlank
             best if best&.bytes_freed_by_one_frame(scene)&.positive?
           end
 
-          # THE LEAST SPRITE MEMORY EACH SCENE COULD NEED, by scene as SpriteLayout#screens says
+          # THE LEAST SPRITE MEMORY EACH SCENE COULD NEED, by scene as SpriteLayout#screens returns
           # them: laid out again with every set of pictures kept to one frame at a time where that
           # is smaller than the set kept whole. Only the report reads it, so nothing of this layout
           # is kept — not its records, not its blobs.
@@ -2115,7 +2115,7 @@ module VBlank
           # layout keeps to one frame on a screen where that is bigger is not one the build would.
           #
           # +least+ is nil where the build stopped before working it out, and then the least is
-          # said as what the scene took.
+          # given as what the scene took.
           def sprite_screens_report(objects, least)
             sent = sprites_sent_as_shown(objects)
             @sprite_art.screens.map do |scene, (bytes, rooms)|
@@ -2159,7 +2159,7 @@ module VBlank
 
           # A sprite's run of tiles: the one it was given, or, for a sprite sharing rooms with the
           # others of its scene showing the same pictures, every one of those rooms. A sprite whose
-          # pictures all come by groups keeps no run, and is said to start where its first picture
+          # pictures all come by groups keeps no run, and is counted as starting where its first picture
           # is in its set's room.
           def sprite_tile_run(record, node)
             rooms = record.rooms
@@ -2333,7 +2333,7 @@ module VBlank
               "The busiest is #{named}, with #{@sprite_rows.busiest.count}."
           end
 
-          # Which sprites are drawn as more than one object, said in the author's own names
+          # Which sprites are drawn as more than one object, given in the author's own names
           # — the pictures, since a sprite's own name is the framework's.
           def big_sprites_sentence(nodes)
             big = nodes.select { |node| @obj_pictures.fetch(node.name).pieces > 1 }
@@ -2507,7 +2507,7 @@ module VBlank
             end
           end
 
-          # Lay each changing list's sets out in the cartridge and say where its group landed.
+          # Lay each changing list's sets out in the cartridge and record where its group landed.
           def place_changing_color_lists(homes)
             homes.each do |name, scene|
               node = @color_list_nodes.fetch(name)
@@ -2778,7 +2778,7 @@ module VBlank
           # be its own run and a part that did not move between two frames is kept twice.
           # A pose built as a table of PIECES is under no such rule — each piece names its
           # own first tile — so the head and the still arm of a walk cycle are stored once
-          # and every frame points at them. Judged on the encoded bytes, which say the
+          # and every frame points at them. Judged on the encoded bytes, which hold the
           # pixels and the size of the box together, so two pieces match only when they
           # would draw the same thing.
           def sprite_pictures(node, cutter)
@@ -2818,7 +2818,7 @@ module VBlank
               starts << encoded[k].map do |bytes|
                 at = written[bytes]
                 if at
-                  repeats += bytes.bytesize # already written: point at it, and say so
+                  repeats += bytes.bytesize # already written: point at it, and count it
                 else
                   at = written[bytes] = stored.bytesize / 32
                   stored << bytes
@@ -2929,7 +2929,7 @@ module VBlank
               # that are another pose mirrored, carry a table instead (#object_pose_table),
               # read once a frame.
               alike: alike,
-              mirrors: mirrors, # which poses are drawn backwards or upside down, so the draw knows to say so
+              mirrors: mirrors, # which poses are drawn backwards or upside down, so the draw knows to mark it
               pose_table: alike ? nil : :"__poses_#{name}",
               pose_words: alike ? nil : object_pose_table(name, boxes, starts, mirrors, tile_index,
                                                           pictures.pieces),
@@ -3016,7 +3016,7 @@ module VBlank
 
           # WHAT TELLS ONE POSE FROM ANOTHER once the cartridge is built, which has two answers.
           #
-          # For nearly every sprite it is what the console's own row says — the first tile it draws
+          # For nearly every sprite it is what the console's own row holds — the first tile it draws
           # and whether it is drawn backwards — because every pose has a place in sprite memory of
           # its own: poses that trimmed alike sit an even stride apart, so the tile is worked out,
           # and poses that differ carry their tile in their word. Two poses in one place answering
@@ -3024,12 +3024,12 @@ module VBlank
           # same distance, so nothing is lost where those collapse together.
           #
           # A sprite KEPT TO ONE FRAME at a time has no such place, and that is the whole of what
-          # this used to get wrong. Every pose of one is copied into the same room, so the row says
+          # this used to get wrong. Every pose of one is copied into the same room, so the row holds
           # that one tile whichever pose is in it and all of them collapsed onto a single entry —
           # every pose then answered to whichever trim was written down last, and the position read
           # back was out by the difference for all the others. Right on most frames of a cycle and
           # wrong on a few, which is the worst way for a number to be wrong. So it is known by its
-          # pose NUMBER instead; GBA#streamed_sprite_pose_vars says where that number is read from.
+          # pose NUMBER instead; GBA#streamed_sprite_pose_vars returns where that number is read from.
           def pose_key(sprite, pose, word)
             return pose if sprite.frames
             return decode_pose_tile(word) if word

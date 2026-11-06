@@ -101,7 +101,7 @@ module VBlank
           # short of it) is added to each channel before the fraction is dropped. Toward white the two rules are
           # already the same one.
           #
-          # It is said as a color no picture can have — the bit above a 15-bit color — so it
+          # It is written as a color no picture can have — the bit above a 15-bit color — so it
           # rides in the state word like any color, tells a fade to black from `tint :black`,
           # and contributes nothing to the shares but the rounding.
           DARKEN = 0x8000
@@ -139,7 +139,7 @@ module VBlank
           # Does the sprite table this build walks change as scenes take over?
           def scene_obj_tables? = @layout.screen.scene_obj_palettes?
 
-          # Say which sprite table is in the console now, at power-on or on a change of screen,
+          # Record which sprite table is in the console now, at power-on or on a change of screen,
           # where the one every screen shows has just been sent. Nothing for a build that never
           # walks a table, or has only the one.
           def emit_record_obj_palette_source(blob)
@@ -154,7 +154,7 @@ module VBlank
           # now. A tint reads the originals from there, since the one at power-on is not it.
           BG_TABLE_AT = :_bg_table_at
 
-          # Say that the background table at power-on is the one in place. Nothing for a game
+          # Record that the background table at power-on is the one in place. Nothing for a game
           # with only the one table.
           def emit_record_bg_palette_source
             return unless @layout.bg_tables_take_turns?
@@ -164,7 +164,7 @@ module VBlank
             emit_boot_area_colors_up
           end
 
-          # Say which area's colours the table at power-on holds: the first area of the walking
+          # Record which area's colours the table at power-on holds: the first area of the walking
           # backgrounds every scene shows, or none (see ScreenLayout::AREA_COLORS_UP).
           def emit_boot_area_colors_up
             return unless @layout.screen.walks_areas?
@@ -194,7 +194,7 @@ module VBlank
           # takes over. ACC holds where its table starts. A plain copy, unless this build moves
           # its colour tables — then the table goes in through whatever tint or fade is in
           # force, the same way a scene's sprite colours do, so an area or a scene arrived at on
-          # a dark screen arrives dark. It also says this table is the one a tint reads from now
+          # a dark screen arrives dark. It also marks this table as the one a tint reads from now
           # on.
           #
           # A layer that was told `draw_with` reads some of the groups this writes over, so
@@ -216,7 +216,7 @@ module VBlank
           # its colour tables — then the table goes in through whatever tint or fade is in force,
           # the same way a layer's other colours do (see #emit_colors_into_bank), because a
           # plain copy into a screen that is meant to be dark would bring this scene's sprites
-          # in at full brightness. It also says this table is the one to walk from now on.
+          # in at full brightness. It also marks this table as the one to walk from now on.
           #
           # A list of colours that changes has a group in this table, and the table holds the
           # colours the list was DECLARED with. So each such group is written again from the set
@@ -258,7 +258,7 @@ module VBlank
           # The same goes for the background groups a layer or the backdrop is drawing from a list
           # (#emit_changed_bg_lists_again): the boot copy of the background colours reads them too.
           def emit_changed_lists_at_power_on
-            emit_no_area_colors_up # ...until the screen is set up, which says which
+            emit_no_area_colors_up # ...until the screen is set up, which sets which
             lists = @layout.screen.color_lists
             bg_lists = @layout.bg_recolor_restore_banks.map { |_dest, source_var, *| source_var }.uniq
             return if lists.empty? && @layout.screen.lending.nil? && bg_lists.empty?
@@ -375,7 +375,7 @@ module VBlank
           end
 
           # The steps of the state word in +src+, into +dest+. Thirty-seconds take six bits,
-          # which one AND keeps; 256ths take nine, which no AND can say in one instruction, so
+          # which one AND keeps; 256ths take nine, which no AND can keep in one instruction, so
           # the colour is shifted off the top and the steps back down.
           def emit_state_steps(dest, src)
             return @emitter.emit(ASM.and_imm(dest, src, (1 << state_shift) - 1)) unless @fine
@@ -406,7 +406,7 @@ module VBlank
 
           # A TINT LEFT ON WHILE THE GAME CHANGES SCREEN. The plain bitmap screen tints through
           # the display's blend and every other screen by walking its color tables, and no
-          # tint survives a change: a walked table is sent again as drawn, or has nothing to say
+          # tint survives a change: a walked table is sent again as drawn, or has nothing to send
           # to a screen with no table, and the blend reads a color a tiled screen puts its own
           # backdrop in. To the game it is one tint, so a game with more than one screen keeps
           # the tint asked for here, in the same packing as TINT_STATE, and each change of
@@ -613,7 +613,7 @@ module VBlank
           # tint step a frame hides that. A jump, such as a screen gone white coming back from
           # black as a scene takes over, shows the old colours on the lines drawn meanwhile.
           #
-          # +steps+ is how far the tint goes, where the author wrote it down: a build then says
+          # +steps+ is how far the tint goes, where the author wrote it down: a build then emits
           # only the half it needs. Nil when the game works it out.
           def emit_tint_table(blob_name, dest, units, steps: nil)
             return emit_tint_table_fill(dest, units) if steps == walk_levels
@@ -752,7 +752,7 @@ module VBlank
           # routine reads them as the walk written out here did.
           #
           # A scene's arrival calls it too. It knows the scene taking over before the note of
-          # whose scenery is up says so, so the routine is told whose layers to write in a
+          # whose scenery is up records it, so the routine is told whose layers to write in a
           # variable of its own (RECOLORED_SCENE_UP): the note's copy, or the scene arriving.
           # Written out there instead, a scene of many borrowed lists put them all in the gap
           # between frames, where the routine that walks into an area runs.
@@ -764,7 +764,7 @@ module VBlank
           end
 
           # Tell that routine whose layers to write: the scene +up+, or with it unknown the one the
-          # note says.
+          # note names.
           def emit_recolored_scene_up(up)
             entry = @drawing.scene_entry
             return entry.emit_marker_copy_into(RECOLORED_SCENE_UP, :scenery) if up == :unknown
@@ -794,10 +794,10 @@ module VBlank
             emit_recolored_banks_of(@layout.obj_recolor_restore_banks, :art, up)
           end
 
-          # +marker+ is the note that says whose groups are up (see SceneEntry): the scenery's
+          # +marker+ is the note that records whose groups are up (see SceneEntry): the scenery's
           # for a layer, the sprite pictures' for a list of sprite colours.
-          # A group is sixteen colours unless it says how many (the backdrop is one).
-          # A group of a layer that walks between areas says which area it is the layer's in (see
+          # A group is sixteen colours unless it gives how many (the backdrop is one).
+          # A group of a layer that walks between areas names which area it is the layer's in (see
           # ScreenLayout#walking_restore_banks), and is written only while that area is up.
           # +scene_up_in+ is a variable naming the scene up in place of the note.
           def emit_recolored_banks_of(banks, marker, up, scene_up_in: SceneEntry::MARKERS.fetch(marker))
@@ -944,7 +944,7 @@ module VBlank
             @emitter.place_label(skip)
           end
 
-          # Copy a table's originals back into place, from wherever #emit_table_source says they are.
+          # Copy a table's originals back into place, from wherever #emit_table_source finds them.
           def emit_restore_palette_table(blob, dest, units)
             # A table that takes turns is put back from the one in place now — a scene's sprite
             # colours, or the area a game walked into — never from the one at power-on.

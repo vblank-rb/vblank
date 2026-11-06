@@ -106,7 +106,7 @@ module VBlank
           # IS THE PASS THAT JUST ENDED LATE? — asked by a screen that may show a late page at
           # once (see IR::LatePages). Late is not "a break went by": a game aiming at thirty sees
           # one go by on every pass, and on time. It is "more breaks went by than the game aims to
-          # take", which the screen says as its pace — so a game aiming at thirty is late when a
+          # take", which the screen sets as its pace — so a game aiming at thirty is late when a
           # pass runs into a third frame, and one aiming at sixty when a pass runs into a second.
           #
           # ...plus one, for a page that would tear, after a page shown part way down the picture.
@@ -156,7 +156,7 @@ module VBlank
           # pass can take keeps the first page from being shown part way down — which is also
           # what keeps the picture from being switched on part way down the screen. A first page
           # finished in the break may still be shown there, where nothing tears. Every wait after
-          # it says what it spent.
+          # it records what it spent.
           def emit_pace_at_power_on
             @emitter.emit_number(ACC, MOST + 1)
             @primitives.store_var(ACC, SPENT)

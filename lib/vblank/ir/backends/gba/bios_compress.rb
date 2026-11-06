@@ -116,7 +116,7 @@ module VBlank
 
           # Pack with LZ77. The output is a stream of groups; each group is one flag
           # byte followed by up to eight items. The flag's bits, read high bit first,
-          # say for each item whether it is a literal byte (0) or a back-reference (1).
+          # mark for each item whether it is a literal byte (0) or a back-reference (1).
           def lz77(bytes)
             data = bytes.bytes
             n = data.length

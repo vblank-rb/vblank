@@ -36,7 +36,7 @@ module VBlank
                           layer_blend:, effects:, buffered:, uploads:, sprite_drawing:, background_drawing:,
                           backing_info:, call_cold_routine:, frames:)
             @emitter = emitter
-            @frames = frames # how many breaks a pass took, which says whether its page is late
+            @frames = frames # how many breaks a pass took, which shows whether its page is late
             @primitives = primitives
             @lowering = lowering
             @divide = divide
@@ -72,7 +72,7 @@ module VBlank
           # (see PictureGroupCopying); a scene taking over puts its own sets down.
           attr_writer :picture_group_copying
 
-          # Say no scene's scenery or sprite pictures are up (see SceneEntry#emit_clear_used_markers).
+          # Mark no scene's scenery or sprite pictures as up (see SceneEntry#emit_clear_used_markers).
           def emit_clear_used_scene_markers = @scene_entry.emit_clear_markers_at_power_on
 
           # The prepare-pass results this file reads, bundled into one record and handed
@@ -110,7 +110,7 @@ module VBlank
           # Fill the area itself, which is what clearing means when only part of the picture may
           # be painted: a row-at-a-time block fill over exactly those edges. It does not go
           # through the rectangle verb because that one holds authors to an even width, and an
-          # area's width is whatever the author said.
+          # area's width is whatever the author set.
           def emit_fill_area(color)
             scratch = @framebuffer.emit_color_fill_word(color)
             control = @framebuffer.fill_control_for_column(@framebuffer.clip_left,
@@ -130,10 +130,10 @@ module VBlank
           # preamble, so a `screen` node is only a build-time declaration of a scene's
           # mode and emits nothing here. Otherwise it's the plain one-time register write.
           #
-          # A `screen` a scene says, on a screen of the same kind as the game's, writes nothing
-          # either: the display is already as it says, and its statement runs on every pass the
+          # A `screen` a scene declares, on a screen of the same kind as the game's, writes nothing
+          # either: the display is already as it asks, and its statement runs on every pass the
           # scene runs, so writing the display's settings there held the picture off on every one
-          # (#initial_forced_blank_bit). What else it says, its backdrop, is the scene's arrival's
+          # (#initial_forced_blank_bit). What else it sets, its backdrop, is the scene's arrival's
           # (#emit_scene_backdrop).
           #
           # In a game where a screen sets a backdrop, every `screen` outside a scene's top also
@@ -179,9 +179,9 @@ module VBlank
             emit_display_control_keeping(value & ~late, late)
           end
 
-          # A GAME THAT NEVER SAYS `screen` DRAWS ON A BITMAP SCREEN, as if its first line were
+          # A GAME THAT NEVER CALLS `screen` DRAWS ON A BITMAP SCREEN, as if its first line were
           # `screen :bitmap` — the interpreter and the native build have always drawn it there.
-          # The console needs telling: at power-on its display-control register says "mode 0,
+          # The console needs telling: at power-on its display-control register holds "mode 0,
           # every layer off", so a pixel written to video memory sits there unseen and the
           # screen shows nothing but the backdrop colour. So the build writes the bitmap screen
           # here, at boot, ahead of the game's first statement. A program that draws nothing
@@ -195,11 +195,11 @@ module VBlank
           end
 
           # A SCREEN THE GAME PAINTS IS ONE BACKGROUND TO THE CONSOLE — its third — and that
-          # background's own settings say whether it is drawn in blocks, as any background's
+          # background's own settings set whether it is drawn in blocks, as any background's
           # do. Nothing else on such a screen reads those settings, so in a game that
           # pixelates they are written whole, as the screen is set up. With the size of a
           # block left at one pixel the picture is as drawn, so this costs nothing until the
-          # game says a size (see Pixelation). A game that never pixelates writes nothing.
+          # game sets a size (see Pixelation). A game that never pixelates writes nothing.
           def emit_painted_screen_in_blocks
             @emitter.write_reg16(REG_BG2CNT, BG_MOSAIC) if @layout.screen.pixelation.pixelates?
           end
@@ -230,7 +230,7 @@ module VBlank
           # — the top left pixel of each square shown for all four — so the game would still draw
           # a picture of the screen's size, and only a quarter of what it drew would be seen.
           #
-          # Written as the painted screen is set up, so a game that never says pixel_size: writes
+          # Written as the painted screen is set up, so a game that never sets pixel_size: writes
           # nothing. Nothing else writes these registers on a painted screen of big pixels: the
           # camera, which does, is refused there (Guardrails::Checks::BiggerPixelsNotMadeYet).
           def emit_bigger_pixels
@@ -290,7 +290,7 @@ module VBlank
 
           # KEEP THE PICTURE SWITCHED OFF UNTIL THE FIRST FRAME HAS BEEN SET UP.
           #
-          # Everything a game says before its loop — a screen painted, a flash it opens on — is
+          # Everything a game sets up before its loop — a screen painted, a flash it opens on — is
           # carried onto the screen by work done between frames: the effect a routine writes
           # there, the sprites placed there. Switching the picture on where the screen is
           # declared shows it before any of that has happened, and when setting up runs past the
@@ -329,8 +329,8 @@ module VBlank
           # that turns; mode 1 is two that scroll plus one that turns and resizes. A game
           # needs the second exactly when it turns a background — a title where something
           # flies at the player over a backdrop, a map that spins inside a fixed frame, a
-          # road that banks under a sky — and nothing in a program says so, because
-          # turning a background IS saying so. (The third arrangement, mode 2, is `screen
+          # road that banks under a sky — and nothing in a program asks for it, because
+          # turning a background IS asking for it. (The third arrangement, mode 2, is `screen
           # :rotozoom`: two turning layers and nothing else, and it keeps its own path.)
           # +on+ names the layers to switch on, +turning+ which arrangement THIS screen
           # wants, and +bar+ whether it shows a status bar's window. Given none of them, this is the
@@ -390,7 +390,7 @@ module VBlank
           # held to a rectangle in such a game, so the two never both want it.
           def display_window_bits = (@layout.fading.rectangle_fades? || @layout.border) ? WIN0_ENABLE : 0
 
-          # The layers a program that says nothing about scenes uses — every one its
+          # The layers a program that declares no scenes uses — every one its
           # backgrounds landed on, and the first layer for a program with none, so a tiled
           # screen always has one on.
           #
@@ -555,7 +555,7 @@ module VBlank
             emit_scene_layers(name)
           end
 
-          # THE COLOUR THIS SCENE SHOWS WHEREVER NOTHING IS DRAWN, in a game where a screen says one
+          # THE COLOUR THIS SCENE SHOWS WHEREVER NOTHING IS DRAWN, in a game where a screen sets one
           # (IR::SceneHandover::Arrival#backdrop). The console keeps it in the first place of its
           # background colours, which every tile's see-through pixels and every empty cell show;
           # it is written as the scene takes over, after the scene's own colours, whose table
@@ -581,14 +581,14 @@ module VBlank
           #
           # The blend unit is told which layers to mix by NUMBER, and scenes take turns with
           # the console's layers — so the number the see-through layer sits on belongs to
-          # the scene rather than to the game. A scene that sees through nothing says so
+          # the scene rather than to the game. A scene that sees through nothing sets that
           # here too, which is what stops whichever background inherited that number being
           # blended in its place.
           #
           # A game whose scenes all want the same thing has nothing here: boot's one write
           # stands for the whole run (see LayerBlend#blend_control_by_scene).
           #
-          # It is said on every pass the scene runs, so it too leaves a fade that holds the
+          # It is written on every pass the scene runs, so it too leaves a fade that holds the
           # blend where it is (see LayerBlend#emit_scene_blend_control).
           #
           # A scene with a light leaves the register to the light, whose word on this pass is the
@@ -605,10 +605,10 @@ module VBlank
             @layer_blend.emit_screen_marker(name)
           end
 
-          # SAY WHERE EACH PAINTED RUN SITS ON THIS SCENE'S SCREEN, for a run shown in several
+          # SET WHERE EACH PAINTED RUN SITS ON THIS SCENE'S SCREEN, for a run shown in several
           # scenes that each lay it out somewhere else (see ScreenLayout::PaintedRun). The copy
           # that paints it reads this, both the one as the scene takes over and the one the
-          # game asks for with `changed`; a scene that does not show the run says 0, so a copy
+          # game asks for with `changed`; a scene that does not show the run sets 0, so a copy
           # asked for there goes nowhere rather than over this screen's own pictures.
           #
           # Written every pass rather than guarded, the same as #emit_scene_layers: it is one
@@ -637,8 +637,8 @@ module VBlank
           # A game whose scenery belongs to no scene emits none of this.
           def emit_scene_scenery(name)
             arrival = scene_handover.arrival(name)
-            # A SCENE WITH NO SCENERY OF ITS OWN STILL TAKES THE LAST ONE'S DOWN, so it says
-            # nobody's is up. Without this, a scene that comes back after one with no
+            # A SCENE WITH NO SCENERY OF ITS OWN STILL TAKES THE LAST ONE'S DOWN, so it marks
+            # nobody's as up. Without this, a scene that comes back after one with no
             # scenery found its own marked as still up and skipped putting it up again —
             # keeping the cells and painted tiles of the last visit, where the scene rules
             # say it goes up as declared (see IR::SceneHandover). It is one store a frame,
@@ -662,7 +662,7 @@ module VBlank
                 arrival.painted_tiles.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
                 @raster.emit_bends_on_arrival(name)
               end
-              # The maps just sent are the first ones declared, so what says which map is
+              # The maps just sent are the first ones declared, so what marks which map is
               # showing goes back to the first as well (see IR::SceneHandover).
               arrival.map_choices.each { |var| @primitives.store_word_immediate(0, @primitives.var_addr(var)) }
               @background_drawing.emit_first_area_colors(arrival.scenery, up: name) # ...and a walking one to its first area's colours
@@ -702,7 +702,7 @@ module VBlank
             emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # What a scene does to the screen as it takes over, said once for both backends.
+          # What a scene does to the screen as it takes over, worked out once for both backends.
           def scene_handover = @layout.screen.handover
 
           # The screen this scene draws on, in a program whose scenes differ. One that does
@@ -739,7 +739,7 @@ module VBlank
           # of another kind (see IR::SceneHandover#always_up). Entering the mode sends the
           # pictures again; the maps of the scenery declared in no scene, and what the game
           # paints from lists, were sent once at power-on and nothing else sends them. The maps
-          # go up as declared, so what says which one is showing goes back to the first.
+          # go up as declared, so what marks which one is showing goes back to the first.
           def emit_always_up
             always = scene_handover.always_up
             always.scenery.each { |node| @background_drawing.emit_background_hardware(node) }
@@ -785,7 +785,7 @@ module VBlank
           # game that declares its sprites at the top level. A scene whose characters keep one
           # frame at a time has art of its own even when it has nothing to send: another
           # scene's pictures go into the same memory, so taking over has to mark those frames
-          # as gone and say this scene is the one loaded.
+          # as gone and mark this scene as the one loaded.
           #
           # The copy lands where the scene's own routine runs, which is near the top of a
           # frame rather than strictly between frames. A sprite caught half-replaced would
@@ -804,7 +804,7 @@ module VBlank
               # A scene with no sprite art of its own normally leaves the last scene's marked as
               # loaded, which is right: nothing overwrote it. A painted picture is the exception,
               # since its list can change while its scene is away and it goes up from the list
-              # as it is then — so in a game with one, this scene says nobody's is loaded.
+              # as it is then — so in a game with one, this scene marks nobody's as loaded.
               @scene_entry.emit_clear_marker(:art) if @layout.screen.scene_art? && arrival.takes_down_art?
               return
             end
@@ -873,10 +873,10 @@ module VBlank
           end
 
           # What the screen a scene draws on does with a late page — its own `screen`, or the
-          # game's — said at the top of the scene's routine every pass. That is every scene,
+          # game's — set at the top of the scene's routine every pass. That is every scene,
           # however the game reaches it: one the game loop picks with `case_var` and one it
           # calls by a name it keeps in a variable alike. A routine that is not a scene is on
-          # whatever screen is up, and says nothing.
+          # whatever screen is up, and sets nothing.
           def emit_scene_late_pages(name)
             return unless @layout.late_pages.any? && IR::LatePages.scene?(name)
 
@@ -891,7 +891,7 @@ module VBlank
             @frames.emit_pace_at_power_on
           end
 
-          # JUMP TO +shown+ INSTEAD OF WAITING, when the screen up says to show a late page at once
+          # JUMP TO +shown+ INSTEAD OF WAITING, when the screen up asks to show a late page at once
           # and the page just finished may be shown now. Waiting means sleeping until the NEXT
           # break between pictures, which for a page that missed its break is a whole picture.
           #
@@ -1441,7 +1441,7 @@ module VBlank
           # Everything else about a row is identical either way, which is the whole
           # reason this is one method.
           #
-          # +base+ says where the linear buffer lives: a Symbol names a ROM blob (its
+          # +base+ names where the linear buffer lives: a Symbol names a ROM blob (its
           # address is patched in once the data region is placed); an Integer is a
           # fixed address in RAM (a sprite's reserved backing store). The buffer is
           # addressed row-major (row*width + column), so a clipped row drops the same

@@ -53,7 +53,7 @@ module VBlank
         # What a program of this lowering is started with: none of the settings that would make
         # the Ruby it runs on load bundler and this library's gems, which it needs none of, and
         # which a test run started under `bundle exec` hands every program it starts. Nor the
-        # setting that turns YJIT on: whether a program runs with it is said on its command line
+        # setting that turns YJIT on: whether a program runs with it is set on its command line
         # (HeadlessRun#jit_flags), from the Ruby that starts it.
         PROGRAM_ENVIRONMENT = Ractor.make_shareable({ "RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLE_GEMFILE" => nil,
                                                       "BUNDLER_SETUP" => nil, "BUNDLER_VERSION" => nil,

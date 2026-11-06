@@ -15,7 +15,7 @@ module VBlank
         #
         # Sixteen sounds crippling and is not, because the sixteen are not the same
         # sixteen for every picture. The table is read in GROUPS of sixteen — a bank —
-        # and a picture says which bank it draws from. So two pictures can have sixteen
+        # and a picture names which bank it draws from. So two pictures can have sixteen
         # colours each and share none of them, and a game keeps writing colour names
         # while its art quietly halves.
         #
@@ -95,7 +95,7 @@ module VBlank
           # It pins the bank exactly: nothing is reordered and nothing is added, because
           # the pixels of art made against that table are numbers picking out of it.
           #
-          # +wide+ says the caller has ALREADY settled that this picture is read a whole
+          # +wide+ marks that the caller has ALREADY settled that this picture is read a whole
           # byte a pixel, so its colours have to run across the whole table however few of
           # them there are. Some hardware leaves no choice — a turning background's map
           # holds one byte a cell, with no room to name a bank — and then the two decisions
@@ -131,7 +131,7 @@ module VBlank
           # had, and these go in the room it left (see #allocate_after). Without it, this is
           # the whole table.
           #
-          # +first_entry_shown+ says the very first entry of this table is a colour the
+          # +first_entry_shown+ marks that the very first entry of this table is a colour the
           # display SHOWS, which is true of one of the console's two tables and not the other.
           # The scenery's table keeps the backdrop there, the colour behind every layer. The
           # sprites' table keeps nothing there that is ever drawn. A bank laid in the first
@@ -148,7 +148,7 @@ module VBlank
             @entries = [0x0000] # slot 0: the see-through slot every picture shares
             @wide_slots = {}    # a wide colour -> the slot it sits in
             @laid = []          # the banks, as laid, for a table that goes on from this one
-            @first_group_spare = false # can one last bank take the first group? Each attempt says (see #next_group)
+            @first_group_spare = false # can one last bank take the first group? Each attempt sets it (see #next_group)
             @first_entry_shown = after ? after.first_entry_shown : first_entry_shown
             after ? allocate_after(after) : allocate
           end

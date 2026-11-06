@@ -11,7 +11,7 @@ module VBlank
         # emulator and no ROM.
         #
         # Its size is the screen of the console the program is played as, which the
-        # interpreter says (Console::Description#screen_size). Writes that fall outside the
+        # interpreter gives (Console::Description#screen_size). Writes that fall outside the
         # grid are silently dropped rather than raising or scribbling onto memory — the
         # same edge-safety the DSL promises, so a stray pixel at (999, 999) can never
         # corrupt anything or crash a test.
@@ -106,7 +106,7 @@ module VBlank
           end
 
           # WHERE DRAWING IS ALLOWED TO LAND, or nil for the whole picture. Everything that
-          # paints a cell goes through #paintable?, so saying it here says it once — and a
+          # paints a cell goes through #paintable?, so setting it here sets it once — and a
           # backend that must instead work the same edges out per shape has this to agree with.
           def draw_inside(x, y, width, height)
             @area = [x, y, x + width, y + height]
@@ -135,7 +135,7 @@ module VBlank
             fade_steps_to(toward, FadeSteps.steps(amount, fraction_bits: nil, walked: false))
           end
 
-          # The same, said in the sixteenths the display counts in. +reaches+ keeps it to one
+          # The same, given in the sixteenths the display counts in. +reaches+ keeps it to one
           # part of the screen — :inside the rectangle +area+ ([left, top, right, bottom], the
           # right and bottom one past the last pixel) or :outside it — and nil is the whole screen.
           def fade_steps_to(toward, steps, reaches: nil, area: nil)
@@ -173,7 +173,7 @@ module VBlank
             tint_steps_to(color, FadeSteps.steps(amount, fraction_bits: nil, walked: true), by_display: true)
           end
 
-          # The same, said in 256ths. A tint is counted that finely because a fade
+          # The same, given in 256ths. A tint is counted that finely because a fade
           # that walks the colors is a tint toward black or white, and a walk counts as finely
           # as the console's own games do (see IR::Fading); a tint counted in sixteenths is every sixteenth
           # 256th, and the same picture.
@@ -183,7 +183,7 @@ module VBlank
           # fade rounds, with a share taken away rather than kept (see Reference#fade_by_tint
           # and IR::Backends::GBA::PaletteTint::DARKEN).
           #
-          # +by_display+ says the display mixes the tint in as it draws, rather than the game
+          # +by_display+ marks that the display mixes the tint in as it draws, rather than the game
           # writing tinted colors into the table; the two round differently (see
           # #mixed_by_display).
           def tint_steps_to(color, steps, by_display: false)
@@ -193,7 +193,7 @@ module VBlank
             @fade_steps = 0
           end
 
-          # A tint outlasts the screen it was said on, and the next screen mixes it its own way:
+          # A tint outlasts the screen it was set on, and the next screen mixes it its own way:
           # +by_display+ as the plain bitmap screen's display does, or into a colour table.
           attr_writer :tint_by_display
 
@@ -235,7 +235,7 @@ module VBlank
           # own "blend with the layer directly beneath" are then the same rule, so nothing
           # about the stack has to be modelled a second time.
           #
-          # +sprite+ says that what is painted from here on is a sprite's. A sprite is the one
+          # +sprite+ marks that what is painted from here on is a sprite's. A sprite is the one
           # thing that rule is wrong for, and it is mixed with the scenery kept apart instead
           # (see #keep_scenery).
           def set_paint_see_through(weights, sprite: false)
@@ -565,7 +565,7 @@ module VBlank
           # toward 31 is 24 here and 23 there.
           #
           # The display counts in sixteenths, and those are every sixteenth of the 256ths +steps+
-          # is said in: halving both shares and the whole leaves every answer as it was.
+          # is given in: halving both shares and the whole leaves every answer as it was.
           def mixed_by_display(color, toward, steps)
             return color if steps.zero?
 
@@ -679,7 +679,7 @@ module VBlank
           # share is ADDED here, so the fraction is dropped from the sum whichever byte a
           # channel sits in, and the three channels round alike — what makes this differ
           # from five bits is the widening alone: a channel at 16 taken half way is 24
-          # here, where five bits say 23.
+          # here, where five bits give 23.
           def brightened_by_display(color, steps)
             return color if steps.zero?
 

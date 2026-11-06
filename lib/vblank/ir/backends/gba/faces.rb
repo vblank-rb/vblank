@@ -1748,7 +1748,7 @@ module VBlank
             emit(ASM.sub_imm(3, 15, back & ~0xFF))
             emit(ASM.sub_imm(3, 3, back & 0xFF))
             # Nothing to do when the instructions already hold these shifts, as they do for every
-            # face after the first that shows a picture of the same size: the first pixel's say.
+            # face after the first that shows a picture of the same size: the first pixel decides.
             patch = gensym
             emit(ASM.load_halfword(5, 3))
             emit(ASM.sub_reg(5, 3, 5))
@@ -1833,7 +1833,7 @@ module VBlank
           end
 
           # The shade word a step on, through the registers +shade+ and +step+ (r11 and lr unless
-          # said).
+          # given).
           def emit_shade_step_in_memory(shade: 11, step: 14)
             load_var(shade, :_face_shade)
             load_var(step, :_face_step_shade)

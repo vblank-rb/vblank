@@ -17,7 +17,7 @@ module VBlank
         #
         # It lives here because this is where it is decided — which registers are free is a
         # fact about a lowering, and nothing else can work it out afterwards. It rides on the
-        # build record so a finished cartridge can still say what shape each of its loops got.
+        # build record so a finished cartridge can still show what shape each of its loops got.
         LoopShape = Data.define(:shape, :blocked_by, :spills) do
           def initialize(shape:, blocked_by: nil, spills: 0) = super
 
@@ -172,7 +172,7 @@ module VBlank
           # Where those two numbers are kept is the whole difference between the two shapes
           # below, and it is decided by the body and nothing else — see LoopForm.
           #
-          # The answer is REMEMBERED as it is made, so the build record says which shape really
+          # The answer is REMEMBERED as it is made, so the build record holds which shape really
           # runs without anyone working it out again: which registers are free is this file's
           # business. #loop_shapes hands it over the way #var_addresses hands over where a
           # variable landed.
@@ -300,7 +300,7 @@ module VBlank
           # index inside the bracket reads the true one (the fast shape only writes it back on
           # the way out, so its memory is stale until then), and the pair saved and restored
           # around the statement. How many of those still beat a pass through memory is what
-          # LoopForm::SPILL_LIMIT says.
+          # LoopForm::SPILL_LIMIT holds.
           def emit_repeat_spilled(node)
             index = node.index
             bracketed = LoopForm.blocking_children(node).to_set
@@ -338,7 +338,7 @@ module VBlank
           #
           # The test is at the end of a pass — an add, a compare and a branch back — which spends
           # no branch out of the loop on the passes that go round. Moving the count into its
-          # register sets the flags on the way, so that same instruction says whether there is a
+          # register sets the flags on the way, so that same instruction shows whether there is a
           # first pass to make at all.
           def emit_repeat_loop(node, &body)
             return emit_countdown_loop(node, &body) if counts_down?(node)
@@ -377,7 +377,7 @@ module VBlank
             @emitter.place_label(done)
           end
 
-          # A beat (`every`, `after`) is the plain statements IR::Frames says it means, emitted
+          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into, emitted
           # through the shared statement emitters. A beat shorter than the frames a pass took
           # fires once and catches up on the next pass rather than several times in one: a
           # bounded lag, against a body running three times where the author wrote it once.

@@ -648,7 +648,7 @@ module VBlank
           # ADCS rd, rn, rm, LSL #shift — add with carry, setting the flags, with rm shifted up on
           # the way. `adcs high, minus_divisor, high, lsl #1` doubles what is left of a long
           # division, takes in the next bit of the numerator from the carry, and tries taking the
-          # divisor out, all at once: the carry it leaves says whether the divisor fitted.
+          # divisor out, all at once: the carry it leaves shows whether the divisor fitted.
           def adcs_reg_lsl(rd, rn, rm, shift)
             raise ArgumentError, "shift must be 0-31" unless (0..31).cover?(shift)
 
@@ -664,7 +664,7 @@ module VBlank
           end
 
           # ORR{cond} rd, rn, rm, LSR #shift — the predicated form of #orr_reg_lsr, for moving the
-          # top bits of one register into the bottom of another only when the last compare said so.
+          # top bits of one register into the bottom of another only when the last compare calls for it.
           def orr_reg_lsr_cond(cond, rd, rn, rm, shift)
             raise ArgumentError, "shift must be 1-31" unless (1..31).cover?(shift)
 
@@ -774,7 +774,7 @@ module VBlank
           def data_processing_disturbs?(word, reg)
             # Only the register forms share this corner of the encoding with the multiplies
             # and the halfword transfers. When the operand is a plain number, bits 7 and 4
-            # are part of that number and say nothing about which instruction this is.
+            # are part of that number and show nothing about which instruction this is.
             if (word & 0x02000000).zero?
               return true if (word & 0x0FFFFFF0) == 0x012FFF10 # BX — control goes elsewhere
               return multiply_disturbs?(word, reg) if (word & 0x0F0000F0) == 0x00000090

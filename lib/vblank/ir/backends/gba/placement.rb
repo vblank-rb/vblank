@@ -158,7 +158,7 @@ module VBlank
           # it would have taken and what was left. That second one is the actionable half: a
           # routine that just missed is where a program lost the whole factor above, and
           # nothing else in the build can say so afterwards.
-          # +chosen_from+ says which of the two answers decided the list: :measurement when a
+          # +chosen_from+ names which of the two answers decided the list: :measurement when a
           # profile of a real run was handed to the build, :shape when there was none and the
           # order came from what the frame can reach. It is on the report because the
           # difference is the difference between a tuned game and an untuned one, and an
@@ -762,7 +762,7 @@ module VBlank
             end
           end
 
-          # THE CALLS COUNTED WHERE THEY ARE WRITTEN, because no node of the tree says where:
+          # THE CALLS COUNTED WHERE THEY ARE WRITTEN, because no node of the tree records where:
           #
           # Calls to routines the build made for itself — each scene's moving sprites, the
           # sprites nothing moves, a see-through layer's amounts, a big map's view brought
@@ -858,7 +858,7 @@ module VBlank
           #
           # A CROSSING CALL IS A LOAD TOO: the address it jumps through is read from the table
           # like any other (see #emit_call_func), so it grows a call by
-          # CROSS_CALL_GROWTH_WITH_TABLE rather than by CROSS_CALL_GROWTH. Nothing says where
+          # CROSS_CALL_GROWTH_WITH_TABLE rather than by CROSS_CALL_GROWTH. Nothing records where
           # in the routine such a call is — it is counted off the tree, not off the code — so
           # that is taken only for a routine small enough that a read anywhere in it reaches a
           # table of every word it could hold.
@@ -895,7 +895,7 @@ module VBlank
           # instruction of code between it and the end, and at most one word in the table
           # ahead of the other's, so the topmost read is the one that reaches least. What it
           # cannot see is a call that crosses. Such a call reads its address from the table
-          # too, nothing says where in the routine it is, and one sitting just above the line
+          # too, nothing records where in the routine it is, and one sitting just above the line
           # can put its word in first — so the topmost read is asked as though every one of
           # the +crossings+ had.
           #
@@ -914,7 +914,7 @@ module VBlank
           # with it (see #beside_frame_routine), and the routine the console interrupts into.
           def every_frame_routines = [FRAME_ROUTINE, *routines_placed_with_frame, IRQ_ROUTINE]
 
-          # WHAT WANTS A PLACE IN THE QUICK MEMORY, said as plain numbers for {QuickMemoryPlan}:
+          # WHAT WANTS A PLACE IN THE QUICK MEMORY, given as plain numbers for {QuickMemoryPlan}:
           # what the author insisted on, then what the build would pick, in its order. Each routine
           # one scene alone runs may go in that scene's set (see {SceneQuickMemory}); a save
           # record's routines go with the one scene that asks for its saves, though every pass of
@@ -971,14 +971,14 @@ module VBlank
 
           # A COLLECTION IN THE QUICK MEMORY IS A CLAIM ON IT TOO, weighed by the same rule as the
           # code: a read from the roomy memory waits about six times as long, as a routine left in
-          # the cartridge runs slower. Each the author said nothing about is one, named apart from
+          # the cartridge runs slower. Each the author set nothing about is one, named apart from
           # every routine (see #list_claim_name). +collections+ is the lists of each, by
           # collection, +lists+ the room each list holds, and +widths+ the bytes a slot of each is.
           #
           # MEASURED, a collection is weighed by what each scene's frames were measured to save by
           # keeping it, as a routine is by what they spend in it, and not as something every frame
           # needs: in a set per scene that would put every list a frame touches ahead of every
-          # routine again, whatever the counts said.
+          # routine again, whatever the counts showed.
           def collection_claims(program, collections, lists, widths, measured:)
             touched = Roomy.touched_every_frame(program)
             collections.map do |collection, names|
@@ -1019,7 +1019,7 @@ module VBlank
           #
           # NOT MEASURED (+worth+ nil), one a frame touches goes ahead of the routines the build
           # would pick, and one no frame touches after all of them. What a frame touches is waited
-          # on every frame, as the code is, and with nothing to say how often, a busy one keeps the
+          # on every frame, as the code is, and with nothing to show how often, a busy one keeps the
           # place it always had. One no frame touches is waited on by nobody, and it holds room a
           # routine a frame runs would use.
           def claims_in_planning_order(claims, worth)
@@ -1098,7 +1098,7 @@ module VBlank
           # It orders by REACHABILITY instead — the frame's own body, then what the frame calls,
           # then what those call — which is a fact about the program rather than a guess about
           # the machine. It gets the common case right (a title screen's routines rank last,
-          # because a frame never reaches them) and says nothing it cannot back.
+          # because a frame never reaches them) and claims nothing it cannot back.
           def ranked_by_frame_cost(program, sizes)
             @progress.step(choosing_phase_name)
             names = placeable_names(program, sizes)
@@ -1278,7 +1278,7 @@ module VBlank
           # THE RECORD WHOSE WORD PUT A SAVE ROUTINE HERE, by the name the game gave it, or nil
           # for a routine that is not a save routine: an author writes `fast: true` on a
           # record, never on one of the routines the record is built into, so the record is
-          # what a message has to name. A record's own routine says which record it is. A
+          # what a message has to name. A record's own routine names which record it is. A
           # routine of the queue is shared by the records and is here because one of them
           # insisted (see Builder::SaveRecords#fast_for_queue), so it names the first of
           # those among +insisted+.

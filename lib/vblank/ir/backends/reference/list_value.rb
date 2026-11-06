@@ -18,7 +18,7 @@ module VBlank
         class ListValue
           attr_reader :capacity
 
-          # +width+ says how big one slot is. A `:word` list holds whole 32-bit numbers and is
+          # +width+ sets how big one slot is. A `:word` list holds whole 32-bit numbers and is
           # what almost everything is; a narrower one holds less, and holding less is the point
           # of asking for it — a quarter or a half of the memory. A narrow slot can always go
           # below nothing (see Build.element_range for why there is no choice about that), and

@@ -7,13 +7,13 @@ module VBlank
         # AN EFFECT PLACED IN THE STACK.
         #
         # `fade :black, 100, under: :ui` blends what is behind :ui and leaves :ui and
-        # everything in front of it alone. The console has two ways to say that, and the
+        # everything in front of it alone. The console has two ways to set that, and the
         # asymmetry between them is what shapes all of this:
         #
         #   * The blend register names each background layer with a bit of its own, so
         #     scenery on the kept side simply stays out of the mask. Free.
         #   * It names every sprite on screen with ONE bit. So a line drawn between two
-        #     sprites cannot be said there at all — and a HUD is sprites, which makes
+        #     sprites cannot be set there at all — and a HUD is sprites, which makes
         #     that the case the whole feature exists for.
         #
         # The way through is the OBJECT WINDOW. A sprite can be drawn as a window instead
@@ -58,7 +58,7 @@ module VBlank
 
           # THE TWINS TAKE THE FRONT PLACES, each one a run as long as the sprite it shadows
           # — a twin has to hold exactly the shape the sprite holds, so a sprite drawn as
-          # four objects needs four windows. The block says how many places a sprite takes.
+          # four objects needs four windows. The block gives how many places a sprite takes.
           # Returns where the real sprites start.
           def place_fade_windows
             front = 0

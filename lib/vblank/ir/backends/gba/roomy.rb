@@ -26,7 +26,7 @@ module VBlank
         # AMONG THE COLLECTIONS THE RULE IS: everything stays in the quick memory until it will
         # not fit, and then the COLDEST things move — not the biggest, and not the last declared.
         #
-        #   what the author asked for      `fast: false` says "I know this is cold"; those
+        #   what the author asked for      `fast: false` means "I know this is cold"; those
         #                                  move first, whatever their size.
         #   what a frame never touches     a collection nothing in the per-frame path
         #                                  reads is one nobody waits on. Biggest first,
@@ -36,7 +36,7 @@ module VBlank
         #                                  console has near to hand.
         #
         # `fast: true` keeps one where it is and takes it out of the reckoning entirely, so
-        # an author who knows better than the rule can say so.
+        # an author who knows better than the rule can set it.
         #
         # AGAINST THE CODE that wants the same room, each collection is a claim like a routine
         # (see Placement#collection_claims, a pool being one collection): what the author
@@ -51,7 +51,7 @@ module VBlank
         # and nothing to drift.
         class Roomy
           # A collection considered for the move: its name, how much room it wants, whether
-          # a frame ever touches it, and what the author said about it (nil for nothing).
+          # a frame ever touches it, and what the author set about it (nil for nothing).
           Candidate = Data.define(:name, :bytes, :hot, :asked) do
             # Smallest number moves first. Within a group the biggest goes first, since
             # each move has to buy as much room as it can.
@@ -62,7 +62,7 @@ module VBlank
           # left, and which collections landed there. The counterpart to Candidate — that one
           # is what was considered, this is what happened — and the only way an author can see
           # it, since a collection moving here is a decision nobody wrote. Seeing it is what
-          # lets them say `fast: false` about the one that should have moved instead.
+          # lets them write `fast: false` on the one that should have moved instead.
           #
           # +touches+ is how many times one frame was measured to read or write each list that
           # moved, by name — the busiest scene's frame, in a game with scenes — or nil for a build
@@ -127,7 +127,7 @@ module VBlank
           # dispatch instead — one clause per state, each naming the routine that draws it —
           # and a game of any size puts all its per-frame work there. Following only calls, a
           # raycaster with twenty-six collections came back with none of them touched by a
-          # frame. So this follows whatever a node says it can call (IR::Node#callees).
+          # frame. So this follows whatever a node lists as calls it can make (IR::Node#callees).
           def self.collect_touched_lists(node, bodies, seen, found)
             node.walk do |n|
               found << n.name if %i[list_get list_set list_fill list_copy list_sort list_push list_drop list_len list_new].include?(n.kind)

@@ -375,7 +375,7 @@ module VBlank
         # one by name with `func :thing, fast: true`.
         # +progress+ is what this pass says it is doing while it does it. Most of a build's
         # time is spent in here, so it names its own phases; the default says nothing.
-        # +stack_room+ is the bytes the game said its stack wants, or nil for the build to decide
+        # +stack_room+ is the bytes the game asked for its stack, or nil for the build to decide
         # (see {TopOfQuickMemory}).
         #
         # +checked+ builds a cartridge that keeps how its run stands where a reader of it looks
@@ -522,7 +522,7 @@ module VBlank
           )
           # Every statement kind's handler, registered once in one place — see {Lowering}.
           # A declaration is collected during the definitions pass, earlier in #lower, and emits
-          # nothing where it is written — every kind that says it is one (see Nodes.of_role)
+          # nothing where it is written — every kind that declares it is one (see Nodes.of_role)
           # gets Lowering::NOTHING, rather than a list of them kept here. The two below that
           # are not declarations but emit nothing here either are this backend's own business:
           # a row bend and a timer handler are armed from the definitions pass.
@@ -670,7 +670,7 @@ module VBlank
         end
 
 
-        # The runs of the sprite table drawn in an order the program works out, said the way a
+        # The runs of the sprite table drawn in an order the program works out, given the way a
         # reader of the finished cartridge needs them (see BuildRecord#sprite_runs).
         def sprite_runs
           (@draw_runs || []).map do |run|
@@ -681,11 +681,11 @@ module VBlank
           end
         end
 
-        # WHERE A KEPT-TO-ONE-FRAME SPRITE SAYS WHICH POSE IT IS SHOWING: the address of the
+        # WHERE A KEPT-TO-ONE-FRAME SPRITE RECORDS WHICH POSE IT IS SHOWING: the address of the
         # variable the cartridge writes as it copies a frame into the sprite's room. Keyed by
         # the place in the console's table, the same as ScreenLayout#sprite_offsets, and a slot in here is
-        # what says that the offsets for that slot are counted by pose rather than looked up by
-        # what the row says. Empty for a game whose sprites all keep every picture they can show.
+        # what marks that the offsets for that slot are counted by pose rather than looked up by
+        # what the row holds. Empty for a game whose sprites all keep every picture they can show.
         def streamed_sprite_pose_vars
           @screen.each_built_sprite.each_with_object({}) do |(_node, sprite), where|
             next unless sprite.frames
@@ -695,8 +695,8 @@ module VBlank
           end
         end
 
-        # Room in the roomy memory for +bytes+ of a record the sprite drawing keeps, which says
-        # +what+; or the friendly error, when it is full.
+        # Room in the roomy memory for +bytes+ of a record the sprite drawing keeps, which +what+
+        # names; or the friendly error, when it is full.
         def alloc_sprite_record!(bytes, what)
           @memory.alloc_roomy(bytes) or
             raise LoweringError, "The console's roomy memory is full. So there is no room for the #{bytes} " \
@@ -765,7 +765,7 @@ module VBlank
 
         # WHERE EACH PAGE SHOWN AT ONCE ALTHOUGH IT WAS LATE IS SHOWN FROM, the same way (see
         # Drawing#emit_skip_wait_for_late_page): the instruction there runs once for each, and
-        # +tears+ says whether it shows the page part way down the picture.
+        # +tears+ marks whether it shows the page part way down the picture.
         def late_page_addresses
           @emit.late_pages_shown.flat_map do |shown|
             runtime_sites(shown.at).map { |site| { tears: shown.tears, **site } }
@@ -950,7 +950,7 @@ module VBlank
           # needs the same shared palette/character-block upload and background lowering,
           # so it counts here alongside :tiled.
           @tiled = Modes.draws_with_tiles?(program)
-          # Where every background and sprite goes, and the cartridge data that says so.
+          # Where every background and sprite goes, and the cartridge data that records it.
           #
           # PLANNED ONCE A BUILD. The plan is worked out from the program's pictures and screens
           # alone, so it comes out the same however many times the routines are measured and
@@ -1459,7 +1459,7 @@ module VBlank
           # The routines the music player calls to find its notes a voice, past the return and
           # inside this routine's span — so they move with it if it is copied to the quick
           # memory, and a call to them from in here is always near enough. The effects' step,
-          # in the cartridge, calls them too, and its calls say where they are going (see
+          # in the cartridge, calls them too, and its calls name where they are going (see
           # Audio#calling_interrupt_routines_from_cartridge).
           @mixer.emit_music_voice_routines if @mixer.music_takes_voices?
           @audio.emit_sound_effects_routine if @audio.plays_sound_effects?
@@ -1619,7 +1619,7 @@ module VBlank
         # way round, and invisible from the program.
         #
         # So the turns go: what a frame touches, then what it does not, then what the
-        # author said is cold. See Roomy for how "what a frame touches" is read off the
+        # author marked as cold. See Roomy for how "what a frame touches" is read off the
         # program rather than guessed at. A collection the plan gave the room away from (see
         # {QuickMemoryPlan}) goes to the roomy memory whatever its turn.
         def register_lists_hot_first(program, declarations)
@@ -1715,9 +1715,9 @@ module VBlank
 
         # BGxCNT bit 7 (8bpp): this layer's pixels are whole bytes, so it reads across the
         # console's whole 256-color background table. Left clear (4bpp) a pixel is half a
-        # byte and each TILE says which bank of sixteen it draws from — half the memory for
+        # byte and each TILE names which bank of sixteen it draws from — half the memory for
         # the same picture, and twice as many tiles in the block. Which a layer gets is
-        # worked out from the colors in its tiles; nothing in the DSL says. See
+        # worked out from the colors in its tiles; nothing in the DSL sets it. See
         # {PaletteBanks}, whose comment maps the framework's words onto this console's.
         BG_256_COLOR = 0x0080
 
@@ -1734,7 +1734,7 @@ module VBlank
         BG_FLIP_DOWN = 0x0800
 
         # BGxCNT bits 2-3: which 16K block this layer counts its tile numbers from. Every
-        # layer's pictures are still one run uploaded in one piece — this only says where
+        # layer's pictures are still one run uploaded in one piece — this only sets where
         # in that run a given layer starts counting. See {TileVram} and {BackgroundTiles}.
         CHAR_BASE_SHIFT = 2
 
@@ -1772,7 +1772,7 @@ module VBlank
         # console's whole 256-color sprite table. Left clear (4bpp) a pixel is half a byte
         # and the sprite draws from one bank of sixteen — half the memory for the same
         # picture. Which one a sprite gets is worked out from the colors in its art (see
-        # ScreenLayout#build_shared_object_palette); nothing in the DSL says. See {PaletteBanks}, whose
+        # ScreenLayout#build_shared_object_palette); nothing in the DSL sets it. See {PaletteBanks}, whose
         # comment maps the framework's words onto this console's.
         OBJ_256_COLOR = 0x2000
 
@@ -1809,7 +1809,7 @@ module VBlank
         # stays exactly where the last write to that table put it. A sprite nothing in the
         # program moves is therefore already right, on this frame and every frame after — and
         # writing it again is a few dozen instructions producing the numbers already there.
-        # IR::Movement says which those are, less the ones the layout has to write every frame
+        # IR::Movement works out which those are, less the ones the layout has to write every frame
         # whatever the program does (see ScreenLayout#written_every_frame).
         def prepare_still_objects(program)
           @movement = IR::Movement.still_objects(program).except(@screen.written_every_frame)
@@ -1874,13 +1874,13 @@ module VBlank
         # --- an effect placed in the stack ---
         #
         # `fade :black, 100, under: :ui` blends what is behind :ui and leaves :ui and
-        # everything in front of it alone. The console has two ways to say that, and the
+        # everything in front of it alone. The console has two ways to set that, and the
         # asymmetry between them is what shapes all of this:
         #
         #   * The blend register names each background layer with a bit of its own, so
         #     scenery on the kept side simply stays out of the mask. Free.
         #   * It names every sprite on screen with ONE bit. So a line drawn between two
-        #     sprites cannot be said there at all — and a HUD is sprites, which makes
+        #     sprites cannot be set there at all — and a HUD is sprites, which makes
         #     that the case the whole feature exists for.
         #
         # The way through is the OBJECT WINDOW. A sprite can be drawn as a window instead

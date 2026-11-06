@@ -121,7 +121,7 @@ module VBlank
             end
             write_reg16(BG_VOFS_REGS[bg.bg], unscrolled(:y))
             # ...and a status bar starts at the row it was declared with, until the gap after
-            # this pass places it where the game says (Reference#bar_top_shown).
+            # this pass places it where the game sets (Reference#bar_top_shown).
             emit_bar_registers(bg, top: node.bar_top) if node.bar?
           end
 
@@ -269,7 +269,7 @@ module VBlank
 
           # WINDOW 1 FOR A GAME THAT HOLDS A BACKGROUND TO A BOX, set at boot: every layer and the
           # colour effect inside it and outside, and a rectangle with nothing in it, so the window
-          # changes nothing until a box is said. It is switched on with the layers (see
+          # changes nothing until a box is set. It is switched on with the layers (see
           # Drawing#tiled_dispcnt), and a game with a box has no other window (see
           # Checks::BoxedBackgroundCannotShare).
           def emit_boot_box_window
@@ -282,7 +282,7 @@ module VBlank
           end
 
           # A SCENE PUTTING ITS BACKGROUNDS UP SHOWS THEM EVERYWHERE: the last scene's box is set
-          # aside, and this scene's own, if it says one, is told in the gap after this pass.
+          # aside, and this scene's own, if it sets one, is told in the gap after this pass.
           def emit_box_set_aside
             write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT) if @layout.screen.boxes_backgrounds?
           end
@@ -654,9 +654,9 @@ module VBlank
 
           # A WALKING LAYER TOLD `draw_with` keeps a version of its lists for each area (see
           # ScreenLayout#walking_color_lists), so the version it shows is pointed at the area
-          # just brought in — its first with +first+, otherwise the one its set says — before
+          # just brought in — its first with +first+, otherwise the one its set names — before
           # the area's colours go in, which put the version back over the groups it reads (see
-          # PaletteTint#emit_send_bg_colors). The list the game said stays said: an area walked
+          # PaletteTint#emit_send_bg_colors). The list the game set stays set: an area walked
           # into shows it on the lists of its own the game named, and its own colours on the
           # rest. A layer told nothing yet keeps nought there, and the area's own table is right.
           def emit_point_colors_at_area(name, bg, first: false)
@@ -707,7 +707,7 @@ module VBlank
           # what lets this be a plain copy rather than a loop that packs them.
           #
           # When it happens is decided above this, the same as a map copy: in the gap between
-          # frames, on a frame the game said `changed` (see Builder::TileRuns). A run that no
+          # frames, on a frame the game called `changed` (see Builder::TileRuns). A run that no
           # background shows has nowhere on screen to go, so it copies nothing.
           def emit_copy_tiles(node)
             run = @layout&.screen&.painted_vram&.[](node.name)
@@ -719,7 +719,7 @@ module VBlank
           # LOAD TILES OF A SET OF SPRITE TILES FROM THE CARTRIDGE (Nodes::LoadSpriteTiles): one copy,
           # from the table straight into the set's room in sprite memory, where every pose drawn
           # from the set reads them. The table keeps a tile the way sprite memory does, so the copy
-          # is plain. It is made where the game says it, as `changed now: true` copies a painted
+          # is plain. It is made where the game asks for it, as `changed now: true` copies a painted
           # picture, so the tiles are in the picture of this pass; the console may be drawing the
           # screen as it copies, and for that one frame the top of a sprite can be old and the
           # bottom new. A load that reaches past the end of the set or of the table is skipped, for
@@ -767,7 +767,7 @@ module VBlank
             end
           end
 
-          # Say where a run in a background that walks between areas sits now, from the set of
+          # Set where a run in a background that walks between areas sits now, from the set of
           # tiles in place (see ScreenLayout::WalkingRun), or 0 on a screen that does not show it.
           def emit_walking_run_place(name, run, shown: true)
             place = ScreenLayout::PaintedRun.place_var(name)
@@ -1088,7 +1088,7 @@ module VBlank
           # catches both ends: a negative number reads as a very large one, so anything outside
           # 0...count fails the same test and picks the layer's own colours, last in the blob.
           # A walking layer's versions are the area's, a multiply along (see
-          # ScreenLayout#walking_color_lists): the area its set says, or its first with +first+.
+          # ScreenLayout#walking_color_lists): the area its set names, or its first with +first+.
           def emit_version_address(bg, lists, first: false)
             emit(ASM.cmp_imm(ACC, lists.count))
             emit(ASM.mov_imm_cond(:hs, ACC, lists.count))
@@ -1190,7 +1190,7 @@ module VBlank
 
           # Where the picture turns around is the program's to name and rides on the
           # statement that turns it (see IR::Nodes::AffineBackground); the middle of the
-          # screen is only what it holds when nothing said otherwise.
+          # screen is only what it holds when nothing set otherwise.
 
           # Turn/resize the affine background: work out this frame's rotate/scale matrix
           # and write it to BG2's registers, then move the reference point so the turn
@@ -1274,7 +1274,7 @@ module VBlank
           # is meant to turn around instead of turning in place. Moving the pivot to
           # (+px+, +py+) means telling the console the texture point that SHOULD land
           # there, worked backwards through the very matrix just written: for a screen
-          # point this far from (0, 0), the matrix says how far that is from the
+          # point this far from (0, 0), the matrix gives how far that is from the
           # reference point in texture space, so read backwards, the reference point is
           # the pivot's texture position minus that offset. One multiply-and-subtract per
           # axis whatever the pivot is, so naming one costs nothing; the same shape a
@@ -1337,7 +1337,7 @@ module VBlank
             store_halfword_acc(BG_VOFS_REGS[bg_num])
           end
 
-          # What a layer's scroll register says for the map's corner at the screen's: nought, or in a
+          # What a layer's scroll register holds for the map's corner at the screen's: nought, or in a
           # border, the corner taken off.
           def unscrolled(way) = @layout.border ? @layout.border.scroll_value(0, way) : 0
 

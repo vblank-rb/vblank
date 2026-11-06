@@ -68,7 +68,7 @@ module VBlank
           Read = Data.define(:pos, :reg, :word)
 
           # A WORD THAT HOLDS AN ADDRESS NOBODY KNOWS YET, where every other word is simply
-          # its number: +kind+ says of what (:data_word for something embedded in the
+          # its number: +kind+ names of what (:data_word for something embedded in the
           # cartridge, :label_word for a place in the code) and +target+ which one. The
           # table keeps room for it and the second pass writes it in. Two loads of the same
           # address are the same word, as two loads of the same number are.
@@ -91,7 +91,7 @@ module VBlank
 
           # Is a load at +pos+ one to read? +pos+ is where it really is, which is nearer
           # the top than it was measured by whatever the reads above it saved; adding that
-          # back says where it sat in the routine as measured.
+          # back gives where it sat in the routine as measured.
           def reaches?(pos)
             @measured_end - (pos + @saved) <= @read_within
           end

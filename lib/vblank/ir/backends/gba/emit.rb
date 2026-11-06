@@ -31,18 +31,18 @@ module VBlank
           # raises rather than answering nil and patching the wrong instruction.
           #
           # +kind+ stays on all three, because it is not the same question as which record this
-          # is: it says which FLAVOUR, and #resolve_fixups dispatches on it — including to
+          # is: it names which FLAVOUR, and #resolve_fixups dispatches on it — including to
           # resolvers for kinds this class does not own (see the note above the class).
           #
           # Nothing defaults. Where a field does not apply — a plain branch has no condition,
-          # a patched-in size refers to nothing — the site writes +nil+ and says so.
+          # a patched-in size refers to nothing — the site writes +nil+ to mark it.
 
           # A jump, to be written once the label's position is known. +kind+ is :b, :bcond or
           # :bl; +cond+ is the condition a :bcond branches on, and nil for the other two.
           Branch = Data.define(:pos, :kind, :target, :cond)
 
           # A load-immediate to be rewritten with an address once the thing is placed. +kind+
-          # says whose address (:data_addr, :label_addr, :fast_addr) — or :hot_size, which is
+          # names whose address (:data_addr, :label_addr, :fast_addr) — or :hot_size, which is
           # the odd one: it patches the same shape of instruction with a transfer's SIZE, so it
           # refers to nothing and its +target+ is nil.
           AddressLoad = Data.define(:pos, :kind, :reg, :target)
@@ -70,7 +70,7 @@ module VBlank
           # A LOAD A NUMBER TABLE COULD TAKE: where it sits, how many instructions it is when
           # built, and the word a table would hold for it — two loads of the same word share
           # one. Noted in every pass, whether a table is open or not, because the pass that
-          # measures the routines runs with none open and still has to say what each routine
+          # measures the routines runs with none open and still has to work out what each routine
           # would save (see Placement#table_effects).
           NumberLoad = Data.define(:pos, :instructions, :word)
 
@@ -123,7 +123,7 @@ module VBlank
           # the way here holds on the way in.
           #
           # EVERY LABEL IS KEPT AS A SYMBOL, whichever a caller wrote it as. A table holding both
-          # finds nothing when it is asked in the other kind, and says nothing about it; so each
+          # finds nothing when it is asked in the other kind, and gives no sign of it; so each
           # method here that takes a label name turns it into a Symbol itself.
           def place_label(name)
             @address_register.forget
@@ -154,7 +154,7 @@ module VBlank
 
           # The instructions that follow run once for each page shown at once although it was
           # finished late (see Drawing#emit_skip_wait_for_late_page), so the profile's count of
-          # the first is how many there were; +tears+ says whether these show it part way down
+          # the first is how many there were; +tears+ marks whether these show it part way down
           # the picture, where it can tear. Nothing is emitted for it.
           LatePageShown = Data.define(:at, :tears)
 
@@ -168,7 +168,7 @@ module VBlank
           def emit_branch(kind, target, cond: nil)
             # A call reaches a routine that uses the registers for its own work. What is
             # emitted here is a placeholder that only becomes a call in the second pass,
-            # so nothing reading the bytes back could tell — this has to say so.
+            # so nothing reading the bytes back could tell — this has to mark it.
             if kind == :bl
               @address_register.forget
               @list_register.forget
@@ -286,7 +286,7 @@ module VBlank
           end
 
           # THE CODE BETWEEN +first+ AND +last+ IS COPIED SOMEWHERE ELSE BEFORE IT RUNS — the block
-          # boot copies into the quick memory. A plain jump says how far to go, not where, and the
+          # boot copies into the quick memory. A plain jump holds how far to go, not where, and the
           # distance is counted here in the cartridge, so one from inside the block to outside it,
           # or the other way, lands that far from the copy: in whatever the quick memory holds
           # there. Such a call has to load the address and jump through it (see
@@ -410,7 +410,7 @@ module VBlank
           private
 
           # Load an address the second pass fills in — of code label or blob +target+, as
-          # +kind+ says — as one read of a table word where the routine has a table that
+          # +kind+ names — as one read of a table word where the routine has a table that
           # reaches, and as the fixed four instructions otherwise.
           def emit_load_address(reg, kind, target)
             word = NumberTable::Address.new(kind: TABLE_WORD_FOR.fetch(kind), target: target)
@@ -446,7 +446,7 @@ module VBlank
           end
 
           # The table is at the routine's end and a read is too far above it. That is a
-          # routine that came out bigger than the most it was said it could be, so every
+          # routine that came out bigger than the most it was measured at, so every
           # "does this reach" asked while it was emitted was asked against the wrong end.
           def refuse_unreachable_table_word!(table, ahead)
             return if NumberTable.within_reach?(ahead)

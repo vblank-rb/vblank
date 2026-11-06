@@ -21,7 +21,7 @@ module VBlank
         # (0xFF), with another command, before it is written afresh, and that takes longer still.
         #
         # FLASH, 128K, is two 64K banks, and the console sees one at a time: another command
-        # says which. So a place is turned into an address a byte at a time, by a routine that
+        # selects which. So a place is turned into an address a byte at a time, by a routine that
         # shows the bank the byte is in first — a word can straddle the line between the banks,
         # and so can a run of bytes being summed.
         #
@@ -53,7 +53,7 @@ module VBlank
 
           def flash? = false
 
-          # What a chip says before anything touches save memory.
+          # What a chip is sent before anything touches save memory.
           def emit_wake; end
 
           # What a chip does at the end of each pass of the game loop, before the console sleeps
@@ -102,14 +102,14 @@ module VBlank
 
           private
 
-          # r1 = the address of the place in save memory +at+ says (a value node).
+          # r1 = the address of the place in save memory +at+ names (a value node).
           def emit_save_address(at)
             @lowering.value(at)
             @emitter.emit(ASM.load_immediate(TMP, SRAM_START))
             @emitter.emit(ASM.add_reg(TMP, TMP, ACC))
           end
 
-          # r1 = the place in save memory +at+ says, not yet an address.
+          # r1 = the place in save memory +at+ names, not yet an address.
           def emit_save_place(at)
             @lowering.value(at)
             @emitter.emit(ASM.mov_reg(TMP, ACC))
@@ -166,7 +166,7 @@ module VBlank
         class FlashChip < SaveChip
           SIGNATURE = "FLASH512_V131\x00\x00\x00".b.freeze
 
-          # The two addresses inside a flash chip every command is said to, and what is said.
+          # The two addresses inside a flash chip every command is sent to, and what is sent.
           COMMAND_AT = SRAM_START + 0x5555
           UNLOCK_AT = SRAM_START + 0x2AAA
           ERASE = 0x80
@@ -178,7 +178,7 @@ module VBlank
 
           # How many times a write or a wipe asks the chip whether it has finished before giving
           # up on it. A chip that never finishes is one the game wrote wrongly, and the read back
-          # after every save then says the save failed, where waiting for ever would stop the game.
+          # after every save then shows the save failed, where waiting for ever would stop the game.
           # A wipe finishes long before this on any chip.
           ASKS = 0x40000
 
@@ -193,7 +193,7 @@ module VBlank
           def flash? = true
           def signature = SIGNATURE
 
-          # SAY A COMMAND TO THE CHIP FIRST, before anything reads save memory. An emulator
+          # SEND A COMMAND TO THE CHIP FIRST, before anything reads save memory. An emulator
           # decides which chip a cartridge has from the first thing the game does to save memory:
           # a command makes it flash, and anything else — a read included — makes it battery
           # memory for good. Asking the chip for its maker's number and putting it back is the
@@ -223,7 +223,7 @@ module VBlank
             end
           end
 
-          # Wipe the block holding node.at, waiting for the chip to finish unless the node says
+          # Wipe the block holding node.at, waiting for the chip to finish unless the node asks
           # not to (see Nodes::SaveErase).
           def emit_wipe(node)
             emit_save_place(node.at)
@@ -238,7 +238,7 @@ module VBlank
 
           private
 
-          # The three writes that say +command+ to the chip, using registers +at+ and +value+: the
+          # The three writes that send +command+ to the chip, using registers +at+ and +value+: the
           # two that unlock it, then the command.
           def emit_command(command, at:, value:)
             emit_unlock(at: at, value: value)
@@ -272,7 +272,7 @@ module VBlank
           end
 
           # WIPE the 4K block holding the address in r1: the erase command, unlocked a second time
-          # and then said at the block. One routine leaves it at that, and the other then asks the
+          # and then sent to the block. One routine leaves it at that, and the other then asks the
           # chip until the block reads 0xFF.
           def emit_wipe_routines
             [[START_WIPE_LABEL, false], [WIPE_LABEL, true]].each do |label, wait|
@@ -345,7 +345,7 @@ module VBlank
           end
         end
 
-        # A 128K flash chip: a 64K one shown a bank at a time. A word of the roomy memory says
+        # A 128K flash chip: a 64K one shown a bank at a time. A word of the roomy memory holds
         # which bank is showing, so a run of bytes in one bank switches once rather than at
         # every byte.
         class BankedFlashChip < FlashChip
@@ -361,7 +361,7 @@ module VBlank
 
           def signature = SIGNATURE
 
-          # The first bank is shown, which the bank word says.
+          # The first bank is shown, which the bank word records.
           def emit_wake
             super
             emit_command(SWITCH_BANK, at: 0, value: 1)
@@ -382,7 +382,7 @@ module VBlank
           def emit_place_to_address = @call_cold.call(SHOW_BANK_LABEL)
 
           # r1, a place in the chip, becomes an address in the 64K window the console sees, and
-          # the bank it is in is shown first unless the bank word says it already is. Leaves r0,
+          # the bank it is in is shown first unless the bank word shows it already is. Leaves r0,
           # r2 and r3 alone; r12 is spent.
           def emit_show_bank_routine
             same = @emitter.gensym
@@ -396,7 +396,7 @@ module VBlank
             @emitter.emit(ASM.str(ADDR, 2))
             emit_command(SWITCH_BANK, at: 2, value: 3)
             @emitter.emit(ASM.load_immediate(2, SRAM_START))
-            @emitter.emit(ASM.strb(ADDR, 2))                   # the bank, said at the chip's first byte
+            @emitter.emit(ASM.strb(ADDR, 2))                   # the bank, sent to the chip's first byte
             @emitter.place_label(same)
             @emitter.emit(ASM.lsl_imm(TMP, TMP, 16))
             @emitter.emit(ASM.lsr_imm(TMP, TMP, 16))           # where in the bank
@@ -416,12 +416,12 @@ module VBlank
         # with the highest first, and a 0 — and back come 68, the first four of no meaning and
         # then the block's 64 bits, the highest bit of its first byte first. Writing one is a
         # single copy of 81 bits — 1, 0, the number, the 64 bits, a 0 — after which the chip
-        # takes most of half a frame to settle, and a read at EEPROM_AT says when it has: its
+        # takes most of half a frame to settle, and a read at EEPROM_AT shows when it has: its
         # lowest bit comes back 1.
         #
         # SO THE CHIP IS SEEN THROUGH ONE BLOCK KEPT IN THE ROOMY MEMORY. A place becomes an
         # address in that copy, and the copy is fetched first when it holds another block; a
-        # byte written goes into the copy, which says it now differs from the chip. The copy goes
+        # byte written goes into the copy, which is then marked as differing from the chip. The copy goes
         # back to the chip when another block is wanted, and at the end of every pass of the game
         # loop, before the console sleeps until the next frame. Writing straight through would
         # write a whole block for every byte a save writes, and a save writes its bytes one at a
@@ -438,7 +438,7 @@ module VBlank
         # reading, which never differs from the chip and is let go when a write lands in it.
         #
         # The routines are in the cartridge, called from wherever the code is, and leave every
-        # register as they found it but the ones each says.
+        # register as they found it but the ones each names.
         class EepromChip < SaveChip
           include PlaceFoundEachByte
 
@@ -611,7 +611,7 @@ module VBlank
           end
 
           # Read block r12 into the copy whose block number is at +held_at+ and whose bytes are at
-          # +bytes_at+. Fetching into the copy a save writes into also says it matches the chip;
+          # +bytes_at+. Fetching into the copy a save writes into also marks it as matching the chip;
           # the caller has written that copy back first. Leaves every register alone.
           def emit_fetch_routine(label, held_at:, bytes_at:)
             byte = @emitter.gensym

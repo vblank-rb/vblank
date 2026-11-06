@@ -141,7 +141,7 @@ module VBlank
           end
 
           # What the blend unit is told while the light is on: darken every layer, the sprites
-          # and the backdrop, by however much the frame says.
+          # and the backdrop, by however much the frame sets.
           LIGHT_CONTROL = BLD_DARKEN | BLD_ALL_LAYERS
 
           # Does the light take turns with scenes it is off in (see IR::LightScenes)?
@@ -152,7 +152,7 @@ module VBlank
           # was off in shows its first picture with no light, as every backend does.
           LIGHT_SHOWN = :_light_shown
 
-          # TAKING TURNS WITH THE LIGHT, said by a scene as its pass starts. The light switches
+          # TAKING TURNS WITH THE LIGHT, set by a scene as its pass starts. The light switches
           # OFF at once — the scene it is off in takes the blend unit for its own mixing there and
           # then, and lets that mixing through the light's window, inside as well as out — and
           # back ON only at the next gap between frames, where its darkness is worked out (see
@@ -160,7 +160,7 @@ module VBlank
           # (Reference#advance_frame).
           #
           # A scene the light is off in hands back the light's darkening before anything of its
-          # own is told the blend unit, so what it then says is not taken for a fade holding it.
+          # own is told the blend unit, so what it then sets is not taken for a fade holding it.
           # It hands it straight to +control+, the mixing that scene wants. An interrupt can stop
           # a pass here for dozens of rows, and the console draws them from whatever this left.
           def emit_light_leaving(scene, control)
@@ -247,7 +247,7 @@ module VBlank
             node ? node.x : Build.int(0)
           end
 
-          # +layers+ says which of the console's layers draws each background, which is what a
+          # +layers+ names which of the console's layers draws each background, which is what a
           # bend writes the offsets of. +scene_scenery+ is the backgrounds a scene puts up as it
           # takes over, each saying its scene, and +scene_entry+ keeps the note of whose are up (see
           # #emit_if_bend_up). A background not among them is up in every scene it is shown in.
@@ -327,7 +327,7 @@ module VBlank
           # is on. Its top and bottom are the whole screen, so which rows are lit is entirely
           # the spans: a row outside the circle has a span with no columns in it. The darkening
           # reaches every layer, the sprites and the backdrop, and starts at none — how dark is
-          # the frame's to say (see #emit_light_amount).
+          # the frame's to set (see #emit_light_amount).
           #
           # The window itself is switched on with the layers, in the display's control register
           # (see Drawing#tiled_bg_enable_bits), so a screen that is not drawn from tiles has none.
@@ -347,8 +347,8 @@ module VBlank
           # THE LIGHT AT THE GAP BETWEEN FRAMES, in a game where it takes turns: where the scene
           # that just ran has it on, it is the darkening and a window whose inside is left alone,
           # as at boot, and its darkness for the frame to come. Either way the gap remembers what
-          # it did, for the next pass of a lit scene to say (see #emit_light_for_lit_scene). Where
-          # the light is off the scene has already said so (see #emit_light_leaving).
+          # it did, for the next pass of a lit scene to read (see #emit_light_for_lit_scene). Where
+          # the light is off the scene has already set that (see #emit_light_leaving).
           def emit_light_for_scene
             off = @emitter.gensym
             done = @emitter.gensym

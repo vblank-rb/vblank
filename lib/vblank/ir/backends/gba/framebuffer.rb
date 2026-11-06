@@ -62,10 +62,10 @@ module VBlank
 
           # The pictures a stretched column draws, and where each of their columns holds
           # pixels — handed over once the program is known (see GBA#lower), since that is
-          # what says which pictures those are.
+          # what decides which pictures those are.
           attr_writer :stretched_columns
 
-          # WHERE DRAWING MAY LAND. The whole screen, unless an `inside` says otherwise
+          # WHERE DRAWING MAY LAND. The whole screen, unless an `inside` sets otherwise
           # — and then these four are what every shape cuts itself against.
           def clip_left = (area = @lowering.draw_area) ? area[0] : 0
           def clip_top = (area = @lowering.draw_area) ? area[1] : 0
@@ -637,7 +637,7 @@ module VBlank
           # Embed a font's ten digit glyphs as a ROM blob once, returning its blob
           # name. Laid out as glyph 0's +height+ rows, then glyph 1's, and so on, so
           # digit d begins at d*height rows — each row a byte or a word, as
-          # #digit_row_size says. A digit the font happens to lack contributes blank
+          # #digit_row_size returns. A digit the font happens to lack contributes blank
           # rows (it simply draws nothing), matching the fan-out's skip. Every blob
           # starts on a word boundary, so a table of words is read whole.
           def ensure_digit_table(name, font)

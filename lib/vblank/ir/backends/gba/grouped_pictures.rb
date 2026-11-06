@@ -21,7 +21,7 @@ module VBlank
           # starts in the blob, where it goes in sprite memory, the copy engine's control word
           # for it, and a word of nothing so an entry is ENTRY_BYTES. +groups_table+ has a word
           # for each of the +group_count+ groups, the number of its first entry and, above
-          # COUNT_SHIFT, how many it has. +shown+ holds the groups the game said are up, a word a
+          # COUNT_SHIFT, how many it has. +shown+ holds the groups the game set as up, a word a
           # slot, and +up+ the groups whose pictures are in sprite memory now; the routine copies a
           # group in when it is in the one and not the other, and then makes the two the same.
           # +most_bytes+ is the most one group copies.
@@ -93,7 +93,7 @@ module VBlank
           end
 
           # THE SETS UP ON +scene+ (nil: every screen), the scene's own and every screen's, as the map
-          # of sprite memory says them, for the sets whose rooms start at +bases+[name].
+          # of sprite memory lists them, for the sets whose rooms start at +bases+[name].
           def map_entries(scene, bases)
             sets_up_on(scene).filter_map do |set|
               base = bases[set.name]

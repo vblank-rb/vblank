@@ -19,7 +19,7 @@ module VBlank
         # ordinary case — the shape where a misspelling reads as nil and turns up as a black
         # screen a long way from the cause.
         #
-        # WHAT THE FIELDS SAY, in the four groups a reader actually wants:
+        # WHAT THE FIELDS HOLD, in the four groups a reader actually wants:
         #
         #   WHERE IT SITS   +slot+ is its first of the console's 128 places and +pieces+ how
         #                   many it takes (a picture too big to draw in one go is cut up, and
@@ -36,7 +36,7 @@ module VBlank
         #                   even +per_pose+ apart and are found by multiplying, where poses that
         #                   came out different sizes (or that mirror another) carry a table
         #                   instead — +pose_table+ and +pose_words+, both nil when +alike+.
-        #                   +mirrors+ says which poses are drawn backwards.
+        #                   +mirrors+ marks which poses are drawn backwards.
         #
         #   HOW IT IS DRAWN +x+, +y+, +active+, +angle+ and +scale+ are the live operands; the
         #                   +offset_x+/+offset_y+ pair is where the first pose sat inside the
@@ -66,7 +66,7 @@ module VBlank
         #
         # +rooms+ is set on a sprite kept to one frame that shares its rooms with the other
         # sprites of its scene showing the same pictures (see SpriteLayout::SharedRooms), and
-        # +room_member+ says which of those sprites it is. Its +tile_index+ is then the first room,
+        # +room_member+ names which of those sprites it is. Its +tile_index+ is then the first room,
         # and the room it draws from is worked out as it is drawn. nil for every other sprite,
         # a sprite kept to one frame alone among them included: that one keeps its own room.
         #
@@ -111,7 +111,7 @@ module VBlank
           # WHICH POSE IS IN THE ROOM, for a sprite kept to one frame at a time — the name of the
           # variable the cartridge keeps it in, written as each frame is copied in. Every pose of
           # such a sprite goes into the SAME place in sprite memory, so the console's own table
-          # says that one place whichever pose is showing and nothing in it can tell them apart.
+          # holds that one place whichever pose is showing and nothing in it can tell them apart.
           # This is what can. The sprite's place in the table names it, being the one thing about
           # a sprite that no other sprite shares. Meaningless for a sprite with no +frames+.
           def resident_frame_var = :"__frame_in_room_#{slot}"

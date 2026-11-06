@@ -315,7 +315,7 @@ module VBlank
           end
 
           # How far a number is from nought: turned round only when it is below nought, which
-          # the chip does in one instruction that runs only when the compare said "less".
+          # the chip does in one instruction that runs only when the compare found "less".
           def eval_absolute(node)
             @lowering.value(node.operand)
             @emitter.emit(ASM.cmp_imm(ACC, 0))
@@ -357,7 +357,7 @@ module VBlank
           # backend can settle at build time instead of leaving to the console. Returns
           # true when it handled the node, false when the general path has to.
           #
-          # This is a lowering trick, not an IR one: the tree still says divide, and a
+          # This is a lowering trick, not an IR one: the tree still holds a divide, and a
           # backend that would rather not do any of this is free to ignore it. Nothing
           # the author writes mentions a shift or a reciprocal, which is the point — the
           # speed comes from the compiler, not from asking a Ruby programmer to think in
@@ -562,7 +562,7 @@ module VBlank
           # one — so it is worked back out: the quotient times the size, taken off the
           # numerator that r2 still holds. That answer carries the sign of the NUMERATOR
           # and Ruby's carries the sign of the divisor, so one size is added back when the
-          # numerator was negative. The number's own top bit says whether it was, which
+          # numerator was negative. The number's own top bit shows whether it was, which
           # makes the correction three instructions and no branch.
           def emit_reciprocal_modulo(lhs, size)
             emit_reciprocal_divide(lhs, size)

@@ -70,7 +70,7 @@ module VBlank
           SPILL_LIMIT = 1
 
           # A blocker that cannot be bracketed. `raw` is instructions the author wrote, and
-          # nothing here can say whether they leave the stack as they found it. A body that
+          # nothing here can tell whether they leave the stack as they found it. A body that
           # writes the loop's own count would have to write the register too, and nothing in
           # the surface does that — so it is refused rather than handled.
           def unbracketable?(node, index)
@@ -80,7 +80,7 @@ module VBlank
           # THE LOOPS THAT CAN COUNT DOWN: the ones whose index nothing in the program reads.
           #
           # Counting down is cheaper because of how the processor reports a result. Every
-          # subtract that sets the flags also says whether the answer was nought, so a count
+          # subtract that sets the flags also shows whether the answer was nought, so a count
           # taken down by one IS the test for the last pass, and the branch reads it straight
           # off. Counting up has to compare against the limit as an instruction of its own —
           # and, in memory, load that limit first.

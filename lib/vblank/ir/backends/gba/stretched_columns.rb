@@ -137,7 +137,7 @@ module VBlank
             false
           end
 
-          # Ship a picture's stretches, and say what stopped it: nil when they ship, else
+          # Ship a picture's stretches, and return what stopped it: nil when they ship, else
           # :too_many.
           def store_column_runs(node, runs)
             runs = runs.map { |column| column.map { |(first, last)| avoid_end_marker(first, last) } }

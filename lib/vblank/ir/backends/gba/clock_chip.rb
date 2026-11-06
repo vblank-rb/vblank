@@ -11,7 +11,7 @@ module VBlank
         # a watch battery that keeps it counting while the console is off. The chip is not in the
         # console's memory at all: the cartridge brings four pins out at the bottom of its own
         # address space, and the chip hangs off three of them — one the console ticks as a clock
-        # (SCK), one that carries a bit either way (SIO), and one that says a conversation is going
+        # (SCK), one that carries a bit either way (SIO), and one that marks a conversation is going
         # on (CS). So the console talks to it a bit at a time: it raises CS, ticks a command byte
         # in on SIO, and then either ticks in the bytes that go with it or ticks the chip's answer
         # back out the same way, lowest bit first. The answer is the year, month, day, day of the
@@ -24,7 +24,7 @@ module VBlank
         # reading between two waits is of one moment, as on every backend, a game reading the time
         # twenty times a pass talks to the chip once, and a pass that does not ask does not talk to
         # it at all. Most passes of most games do not, and a conversation is about a thousand
-        # instructions run from the cartridge. A wait does no more than say the copy is old.
+        # instructions run from the cartridge. A wait does no more than mark the copy as old.
         #
         # IS THERE A CHIP? With none, the pins are not pins: reading them reads two bytes of the
         # cartridge's own code, which never change, so every bit the console ticks back is the same
@@ -42,7 +42,7 @@ module VBlank
           CS = 4
 
           # The commands as the chip's own documentation writes them, highest bit first: 0110 at
-          # the top says it is a command at all, the next three which register, and the lowest bit
+          # the top marks it as a command at all, the next three which register, and the lowest bit
           # whether the console reads it. They go out on the wire in that order, highest bit first —
           # and since the routine below sends a byte lowest bit first, each is kept with its bits
           # turned round.
@@ -319,15 +319,15 @@ module VBlank
           end
 
           # SETTING IT: nothing at all on a cartridge with no chip. The chip itself is never told
-          # the time — an emulator keeps its own whatever a cartridge says (mGBA does) — so what is
+          # the time — an emulator keeps its own whatever a cartridge sends it (mGBA does) — so what is
           # kept is how far the time set is from the chip's (see IR::Clock::OFFSET_DAYS), worked
           # out against a fresh reading. The copy is made from it the next time the game reads the
           # clock, which is the time set, as on every backend.
           #
           # A CHIP WHOSE BATTERY RAN OUT is put back to its first moment first: on the chip the
-          # console's own games used that is what clears what it says about the battery, so the
+          # console's own games used that is what clears what it reports about the battery, so the
           # next power-on finds it set — and it clears the chip's settings with it, so it is told
-          # again to count the hours 0 to 23. Read after that, the chip says 2000-01-01, and the
+          # again to count the hours 0 to 23. Read after that, the chip gives 2000-01-01, and the
           # offset is worked out from there. (mGBA clears the battery's flag as soon as the
           # settings are written, at every power-on, so no test there can tell this step is done.)
           def emit_set_body

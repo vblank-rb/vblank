@@ -8,8 +8,8 @@ module VBlank
         #
         # +sprite+ is the write they share: the first one's record, reading the variable
         # SpriteRepeats::INDEX where its own entry number was. +first_index+ and +index_step+
-        # say what that variable holds for the first sprite and how it changes to the next;
-        # +first_row+ and +row_step+ say the same of the address its row is written at.
+        # give what that variable holds for the first sprite and how it changes to the next;
+        # +first_row+ and +row_step+ give the same of the address its row is written at.
         SpriteRepeat = Data.define(:sprite, :names, :first_index, :index_step, :first_row, :row_step) do
           # What the variable holds once the last of them has been written.
           def index_after = first_index + (index_step * names.length)
@@ -49,7 +49,7 @@ module VBlank
           INDEX = :__sprite_repeat_index
 
           # +sprites+ is each sprite's record by name. +row_of+ gives the address a sprite's
-          # first row is written at. +alone+ says whether a sprite has to be written on its
+          # first row is written at. +alone+ returns whether a sprite has to be written on its
           # own whatever it looks like.
           def initialize(sprites:, row_of:, alone:)
             @sprites = sprites
@@ -94,7 +94,7 @@ module VBlank
           # WHAT TWO NEIGHBOURING SPRITES HAVE IN COMMON, worked out from the pair and then
           # held up against every sprite after them.
           #
-          # +first+ is the first sprite's record. +sites+ says, for each number it works out,
+          # +first+ is the first sprite's record. +sites+ gives, for each number it works out,
           # where in that sum its entry number is written — counted the way a walk of the sum
           # meets its parts.
           class Pattern

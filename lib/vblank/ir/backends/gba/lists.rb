@@ -106,7 +106,7 @@ module VBlank
           # one block of memory. The bytes are handed to one routine (see #emit_copy_routine).
           # THE LIST OF A GROUP OF `tile_pictures` IS NEVER WRITTEN. Every picture is in the cartridge
           # in the form video memory keeps, so the copy that shows one is from there, and all a
-          # "copy into the list" has to do is say where that picture starts: +held+ is each such
+          # "copy into the list" has to do is set where that picture starts: +held+ is each such
           # list's variable for it (see BackgroundDrawing#emit_copy_painted_run).
           attr_writer :held_tile_lists
 
@@ -383,11 +383,11 @@ module VBlank
           # variables. Called once per name during the definitions pass; a name
           # created twice with different capacities is a contradiction.
           #
-          # +ring+ says the program SHIFTS this one, so its head moves and its slots have to be
+          # +ring+ marks that the program SHIFTS this one, so its head moves and its slots have to be
           # rounded up to a power of two for the wrapping mask. Everything else is a plain
           # array of exactly the slots it asked for.
           #
-          # +fast+ is what the author said about where it should live: false for "I know
+          # +fast+ is what the author set about where it should live: false for "I know
           # this is cold — give it room", true to insist on the quick memory, nil to let the
           # framework decide (see #place_list). +roomy+ is the framework's own decision, made
           # by {QuickMemoryPlan}, that the room is worth more to something else.
@@ -428,7 +428,7 @@ module VBlank
             @lists.dig(owner, :roomy) || false
           end
 
-          # WHICH MEMORY THIS ONE GOES IN. The quick one unless the author said it does not
+          # WHICH MEMORY THIS ONE GOES IN. The quick one unless the author marked that it does not
           # need to be there, or there is no longer room — and then the roomy one, which is
           # eight times the size and about six times the wait on a read.
           #
@@ -436,7 +436,7 @@ module VBlank
           # collections a frame touches FIRST (see Roomy), so whatever is left when the quick
           # memory fills is the coldest thing the program has. Room for CODE is weighed before
           # this runs (see {QuickMemoryPlan}), and a collection that gives way to code comes
-          # here already said to go to the roomy memory. Running out of BOTH is a real
+          # here already set to go to the roomy memory. Running out of BOTH is a real
           # ceiling, and the message says which one gave way.
           def place_list(name, want, fast)
             if fast == false || !@memory.room_for?(want)
@@ -458,7 +458,7 @@ module VBlank
           end
 
           # THE COLLECTIONS IN THE QUICK MEMORY THAT THE FRAMEWORK MAY STILL MOVE, and the room
-          # each holds there: every one the author said nothing about. {Placement} weighs them
+          # each holds there: every one the author set nothing about. {Placement} weighs them
           # against the code that wants the same room.
           def movable_quick_lists
             @lists.reject { |_name, info| info[:roomy] || !info[:fast].nil? }.transform_values { |info| info[:want] }

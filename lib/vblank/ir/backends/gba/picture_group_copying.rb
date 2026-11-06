@@ -58,7 +58,7 @@ module VBlank
             @scene_entry.emit_if_scene_up(:art, plan.scene) { emit_bring_groups_up(plan) }
           end
 
-          # AT POWER-ON no group is wanted and none is up, whatever the memory held: the game says
+          # AT POWER-ON no group is wanted and none is up, whatever the memory held: the game names
           # which it wants before its sprites are first drawn.
           def emit_clear_groups_at_power_on
             @plans.each_value { |plan| emit_forget(plan.shown + plan.up) }
@@ -74,7 +74,7 @@ module VBlank
           # in their room. The groups it wants are still the ones it wanted as it left, as the
           # interpreter has it, and they are copied in again before its sprites are next written:
           # a scene given the screen back draws its sprites as they were left, and a scene that
-          # loads first does so before any of its own code has run to say which groups it wants.
+          # loads first does so before any of its own code has run to name which groups it wants.
           def emit_forget_sets_of(scene)
             @plans.each_value { |plan| emit_forget(plan.up) if plan.scene == scene }
           end

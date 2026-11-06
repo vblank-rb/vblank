@@ -89,7 +89,7 @@ module VBlank
 
           # BRING THE CELLS AROUND THE VIEW IN, for a background whose map is brought into view a
           # strip at a time (+stream+, its StreamedMaps), before its scroll registers are
-          # written. +x+ and +y+ are the values that say where the view is now, in the map's own
+          # written. +x+ and +y+ are the values that hold where the view is now, in the map's own
           # pixels.
           #
           # What is written here is where the view is and a call. The work is a routine of the
@@ -183,7 +183,7 @@ module VBlank
             emit_stream_view(bg.stream, x, y)
           end
 
-          # HAND THE BACKGROUND ANOTHER MAP: say which map the strips come from now, and that the
+          # HAND THE BACKGROUND ANOTHER MAP: set which map the strips come from now, and mark that the
           # grid does not hold it yet. Nothing is copied here. The scroll write later in the
           # same gap fills the whole view from the new map, at the place the view is at then,
           # so the frame shows the new map wherever the game moved the view to on the way in.
@@ -280,7 +280,7 @@ module VBlank
             emit_number(STRIP_DOWN, 0)
           end
 
-          # FILL THE WHOLE VIEW, a row at a time, for the place the view is at now, and say the
+          # FILL THE WHOLE VIEW, a row at a time, for the place the view is at now, and mark that the
           # grid holds it.
           def emit_view_fill(name, filled, strip)
             row = stream_var(name, :fill_row)

@@ -11,7 +11,7 @@ module VBlank
         # Sprite pictures live in 32K and every one a game might ever show is in there at
         # once. Nothing used to notice that two sprites were showing the same art, so a
         # game with twenty enemies all walking the same eight-frame walk stored that walk
-        # twenty times — and a POOL is the same thing said in one line, since each of its
+        # twenty times — and a POOL is the same thing written in one line, since each of its
         # slots is a sprite of its own. Thirty-two slots of a four-picture guard was
         # thirty-two copies.
         #

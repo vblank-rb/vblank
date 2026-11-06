@@ -307,7 +307,7 @@ module VBlank
             end
           end
 
-          # +starts_odd+ says the rect begins on an odd column, which is settled by here
+          # +starts_odd+ marks that the rect begins on an odd column, which is settled by here
           # (either the column is a plain number, or the caller branched on its low bit).
           # The width is a plain number too, so which pixels need splicing in one at a
           # time follows from the same rule the computed-width path works out as it runs:
@@ -956,7 +956,7 @@ module VBlank
           # why the pair it points at needed rounding only once: a row is an even number of
           # bytes across, so every row of a strip sits the same way inside its pair. That is
           # also why the walk keeps no count of which screen row it is on — the destination
-          # already says, and nothing in the walk asks.
+          # already holds it, and nothing in the walk asks.
           def emit_buffered_column_rows
             emit_row_loop(COLUMN_ROWS) do
               yield

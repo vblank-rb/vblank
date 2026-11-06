@@ -33,11 +33,11 @@ module VBlank
         #   * Any instruction that could write the register (ASM.may_write_register?, which answers
         #     yes whenever it cannot tell).
         #   * A LABEL, because a label is somewhere other code jumps to, and what a
-        #     register held on the way here says nothing about what it holds on the way in.
+        #     register held on the way here shows nothing about what it holds on the way in.
         #     Every jump in this backend goes to a label, so this one rule covers the lot.
         #   * A CALL, because the routine it reaches uses the register for its own work.
         #     A call is emitted as a placeholder and only becomes a call in the second
-        #     pass, so it is {Emit} that says so rather than anything read out of the bytes.
+        #     pass, so it is {Emit} that marks it rather than anything read out of the bytes.
         #
         # An interrupt can arrive between any two instructions and its handler does touch
         # both registers — but they are saved and restored around it, r12 by the console's
@@ -62,7 +62,7 @@ module VBlank
           # Is this what the register holds right now?
           def holds?(value) = @value == value
 
-          # It does from here on — said by whoever just put it there.
+          # It does from here on — set by whoever just put it there.
           def now_holds(value)
             @value = value
           end

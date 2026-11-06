@@ -50,7 +50,7 @@ module VBlank
 
           # The same, reading the scene from +var+, a copy of a note or a scene named outright
           # (#emit_marker_copy_into, #emit_scene_number_into): for a routine called both where
-          # the note says whose things are up and where a scene is taking over before it does.
+          # the note records whose things are up and where a scene is taking over before it does.
           def emit_if_var_names_scene(var, scene)
             @primitives.load_var(ACC, var)
             @emitter.emit(ASM.cmp_imm(ACC, scene_number(scene)))
@@ -71,13 +71,13 @@ module VBlank
             @primitives.store_word_immediate(scene_number(scene), @primitives.var_addr(var))
           end
 
-          # Say nobody's +marker+ things are up — for a scene with none of its own, which still
+          # Mark nobody's +marker+ things as up — for a scene with none of its own, which still
           # takes the last scene's down (see IR::SceneHandover::Arrival).
           def emit_clear_marker(marker)
             @primitives.store_word_immediate(0, @primitives.var_addr(MARKERS.fetch(marker)))
           end
 
-          # Say nothing is up at all. At power-on, since the console makes no promise about
+          # Mark nothing as up at all. At power-on, since the console makes no promise about
           # its memory and a stale number would make the first scene skip putting its things
           # up; and wherever the display is set up again for a screen of another kind, which
           # sends its pictures afresh. Only the notes some scene uses are written, so a game
@@ -97,7 +97,7 @@ module VBlank
 
           # END THE PASS A SCENE THAT LOADS FIRST IS HANDED OVER ON, once its pictures are up, by
           # returning from its routine before its own work: the copy has that pass to itself (see
-          # IR::SceneHandover::Arrival#loads_first?). The note says which scene ran last, so the
+          # IR::SceneHandover::Arrival#loads_first?). The note records which scene ran last, so the
           # next pass finds its own number and goes on into the scene's work. A note of nobody's
           # is power-on, where nothing handed over and the work starts on the first pass.
           #

@@ -27,12 +27,12 @@ module VBlank
         # silence.
         #
         # A NOTE WITH A SHAPE slides its loudness rather than stepping it (see #step_envelopes):
-        # once a frame the shape says where the note should be by the frame's end, and the
+        # once a frame the shape sets where the note should be by the frame's end, and the
         # loudness moves there a little with every sample. That loudness, its GAIN, keeps sixteen
         # bits of fraction, since a slow fade moves it by much less than one a sample.
         #
         # THE VOICES ARE SHARED between the game's own sounds, a song's recorded parts and a sound
-        # effect's, each taking one only while it sounds. A slot's +owner+ says whose it is:
+        # effect's, each taking one only while it sounds. A slot's +owner+ marks whose it is:
         # +:game+, a song's part by its lane number, or an effect's part as [effect, lane]. Who
         # gives way when they run out is a stated rule both backends keep — see #start_music_note.
         #
@@ -67,7 +67,7 @@ module VBlank
           # shaped note slides. A voice with no shape keeps its gain until the music volume moves
           # (see #rescale_music).
           #
-          # +ticket+ says which play started it, so the one playing longest is known when a
+          # +ticket+ marks which play started it, so the one playing longest is known when a
           # note of a song or an effect needs a voice. It is [loops?, count] so that a sound which loops sorts
           # after every one-shot — a loop never ends by itself, so it gives way last.
           # +rank+ is the rank of the song or effect whose note it is (IR::Tunes.song_rank), and
@@ -106,7 +106,7 @@ module VBlank
           # than owned, so everything a run made a noise about stays in one place and in order.
           def initialize(log:)
             @log = log
-            @slots = Array.new(Audio::Sound::MIXER_VOICES) # until the clock says the console's own (#start_clock)
+            @slots = Array.new(Audio::Sound::MIXER_VOICES) # until the clock sets the console's own (#start_clock)
             @samples = {}   # name -> Assets::Sample
             @data = {}      # name -> the recording, as signed samples
             @tickets = 0    # how many sounds the game has started, for the next ticket
@@ -123,7 +123,7 @@ module VBlank
           # any note in the program has a shape. That second one changes what the mix reads for a
           # note WITHOUT one: in a program that shapes nothing, its loudness; in one that shapes
           # something, its gain, which is set as the note starts and again whenever the music
-          # volume moves (see #rescale_music). Until this is said there is no mix. +voices+ is how
+          # volume moves (see #rescale_music). Until this is set there is no mix. +voices+ is how
           # many recordings the console sounds together (Console::Description#recordings_at_once):
           # a play past that is dropped rather than stealing one already sounding.
           def start_clock(clock:, shapes:, voices:)

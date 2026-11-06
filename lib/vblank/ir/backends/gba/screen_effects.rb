@@ -75,8 +75,8 @@ module VBlank
 
           # Blend the whole picture toward black or white.
           #
-          # The console can do this as it draws: one register says which layers to
-          # blend and which way, another says how far. Nothing is redrawn and no pixel
+          # The console can do this as it draws: one register sets which layers to
+          # blend and which way, another sets how far. Nothing is redrawn and no pixel
           # in memory changes, so a fade costs the same whatever is on screen and the
           # picture is still all there when it lifts. Every layer and the backdrop are
           # blended, so this works the same on a bitmap screen and a tiled one.
@@ -200,15 +200,15 @@ module VBlank
           end
 
           # A FADE HELD TO A RECTANGLE is the display's own fade with its first window switched
-          # on. The window is a rectangle the display is told about, and two registers say what
+          # on. The window is a rectangle the display is told about, and two registers set what
           # happens inside it and outside: which layers show (all of them, both sides, always
           # here) and whether the color effect — the darkening a fade is — applies. So holding a
           # fade inside a rectangle is the effect switched on inside and off outside, and
           # `outside:` is the other way round.
           #
           # The window is switched on for the whole of a game that holds a fade anywhere (see
-          # Drawing#display_window_bits), so every fade in it says where it reaches, a fade over
-          # the whole screen included: the effect on both sides. The last fade said is the one
+          # Drawing#display_window_bits), so every fade in it sets where it reaches, a fade over
+          # the whole screen included: the effect on both sides. The last fade set is the one
           # in force, as it always is. Four register writes, every one of a number settled at
           # build time.
           #
@@ -233,7 +233,7 @@ module VBlank
 
           # The window as power-on leaves it in a game that holds a fade, and as a tint the
           # display mixes in leaves it: no rectangle, and the effect on everywhere. A tint is the
-          # same color effect, so it has to say it reaches the whole screen, or it would stop at
+          # same color effect, so it has to set that it reaches the whole screen, or it would stop at
           # the rectangle the last fade was held to.
           def emit_whole_screen_window
             emit_fade_window(nil, nil) if @layout.fading.rectangle_fades?
@@ -449,7 +449,7 @@ module VBlank
           def emit_tint_from_kept
             emit(ASM.lsr_imm(ACC, KEPT, @palette_tint.state_shift))
             store_halfword_acc(PALETTE_START) # the backdrop IS the tint
-            emit_whole_screen_window # a tint said on another screen did not say where it reaches
+            emit_whole_screen_window # a tint set on another screen did not set where it reaches
             write_reg16(REG_BLDCNT, TINT_BLEND)
             @palette_tint.emit_state_steps_in_sixteenths(KEPT) # a walk's steps, in the display's sixteenths
             emit_blend_weights_from_acc

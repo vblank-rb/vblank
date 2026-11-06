@@ -39,11 +39,11 @@ module VBlank
             @songs = {}         # name -> :song node
             @lists = {}         # name -> the songs a song list holds, in order
             @passes = {}        # name -> each part's events, first time round and after
-            @stops = 0          # how many times the program has said stop_music...
+            @stops = 0          # how many times the program has called stop_music...
             @stops_seen = 0     # ...and how many of those this has acted on
             @wanted = nil       # the tune the program last named (nil = none)
             @playing = nil      # ...and the one this is on, which catches up each frame
-            @held = false       # the game said hold_music: the tune stays where it is (#hold)
+            @held = false       # the game called hold_music: the tune stays where it is (#hold)
             @ended = nil        # a tune that played once and reached its end (IR::Tunes.plays_once?)
             @frame = 0          # how far into that tune, in frames
             @events = []        # the events each of its parts is walking now
@@ -131,14 +131,14 @@ module VBlank
 
           # THE GAME'S OWN SOUND took +channel+ — a `beep`, the game's `wave` or `stop_wave` — so it
           # wobbles no note of a song's, and steps no song note's shapes: the next note written there
-          # says again.
+          # sets them again.
           def game_sound_on(channel)
             stop_wobble(channel)
             @stepping_shapes.delete(channel)
             @swells.delete(channel)
           end
 
-          # No tune. Counted as well as said, so a stop and a play in the same frame still reach
+          # No tune. Counted as well as set, so a stop and a play in the same frame still reach
           # the player as a stop — which is how a tune starts over.
           def stop
             @wanted = nil
@@ -168,8 +168,8 @@ module VBlank
           # starts from the top and a rest stops. It is heard in the next slice the mixer makes,
           # which is the one the console makes as the next picture starts.
           #
-          # +level+ is the music volume the game last said (see IR::Tunes::LEVEL), or nil for a
-          # program that never says one. A change reaches the notes already sounding before any
+          # +level+ is the music volume the game last set (see IR::Tunes::LEVEL), or nil for a
+          # program that never sets one. A change reaches the notes already sounding before any
           # new note is played, which is the order the console does it in.
           #
           # SOUND EFFECTS PLAY AROUND THE SONG, highest rank first (IR::Tunes.effects_by_rank): the
@@ -253,7 +253,7 @@ module VBlank
             advance_song_frame(song)
           end
 
-          # A NOTE SETTING ITS VOICE, said in the log (IR::Tunes.voice_entry), and the voice wobbling it
+          # A NOTE SETTING ITS VOICE, written in the log (IR::Tunes.voice_entry), and the voice wobbling it
           # from here when it asks for it — a note that does not, and a rest, leave the voice still.
           def set_voice(channel, who, part, event)
             frequency = event[1]
@@ -286,7 +286,7 @@ module VBlank
 
           # EVERY SWELLING NOTE HELD UNDER THE MUSIC VOLUME, at the end of the player's frame and the
           # voices in order, before the wobbles and the shapes, which put a note struck again back at
-          # its frame's pitch and shape: struck again when the music volume says (logged as
+          # its frame's pitch and shape: struck again when the music volume asks (logged as
           # [:loudness, channel, volume], with the swell after it when it swells on), then counted on
           # a frame.
           def step_swells
@@ -450,13 +450,13 @@ module VBlank
             IR::Tunes.note_sounds?(kind, frequency, volume || part.volume, IR::Tunes.said_fade(part, event))
           end
 
-          # The tune the program asked for has changed, or it said stop: silence what was
+          # The tune the program asked for has changed, or it asked to stop: silence what was
           # playing and start the new one from its first frame. A voice a sound effect holds is
           # the effect's, and is left alone.
           #
           # A TUNE THAT ENDED (IR::Tunes.plays_once?) is looked at first. While the program still names
-          # it and has not said stop, nothing plays: its parts go quiet on the frame after its
-          # last, and it stays that way. Anything else the program says forgets the end, and is
+          # it and has not asked to stop, nothing plays: its parts go quiet on the frame after its
+          # last, and it stays that way. Anything else the program asks for forgets the end, and is
           # then caught up with as usual.
           #
           # True when it changed what is playing.

@@ -126,7 +126,7 @@ module VBlank
           private
 
           # THE PICTURE THE AUTHOR DREW HAS TO BE MADE OF WHOLE TILES, and small enough that
-          # the pose table can say where each of its pieces sits. Everything between those
+          # the pose table can hold where each of its pieces sits. Everything between those
           # two the framework cuts up for itself, so this is the whole of what it refuses.
           # The message names the PICTURE rather than the sprite, since a sprite's own name
           # is the framework's and the author named the art.

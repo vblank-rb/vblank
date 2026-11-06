@@ -53,7 +53,7 @@ module VBlank
           # A map cell holds its tile number in ten bits.
           MOST_TILES = 1024
 
-          # Raised when the tiles and the maps would land on each other. The caller says
+          # Raised when the tiles and the maps would land on each other. The caller names
           # which tileset is the big one — this class knows the bytes, not the names.
           class Full < StandardError
             attr_reader :tile_bytes, :map_blocks

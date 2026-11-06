@@ -16,7 +16,7 @@ module VBlank
         #   the game's top-left corner at (40, 8) on the screen. Every write of a scroll takes the
         #   corner off (#emit_corner_off_scroll). A painted screen is the console's third
         #   background, drawn through the same turning-and-resizing numbers a turning background has,
-        #   whose "reference point" says which pixel of the picture is drawn at the screen's corner:
+        #   whose "reference point" sets which pixel of the picture is drawn at the screen's corner:
         #   pointed at (-40, -8) the picture lands at (40, 8) too (#emit_painted_screen_corner).
         # - THE SPRITES MOVE AS THEY ARE COPIED. A sprite's place is written into a copy of the
         #   console's sprite table (SpriteDrawing::HeldTable), never into the console's own, and that
@@ -39,7 +39,7 @@ module VBlank
         # screen: inside it every layer shows and the blend applies, and outside it only the sprites
         # (which there are the border's) show, and nothing is blended (#emit_window).
         #
-        # What the game sees is a 160×144 screen. `screen_width` and `screen_height` say so, the
+        # What the game sees is a 160×144 screen. `screen_width` and `screen_height` give that size, the
         # interpreter plays the game on one, and every frame of the cartridge's middle is that
         # picture.
         class BorderSprites
@@ -147,7 +147,7 @@ module VBlank
           # MOVE A SPRITE'S ROW BY THE CORNER, as it is copied into the console's table: the first half
           # of the row in ACC holds its row on the screen in its low eight bits, the second its column
           # in its low nine. Each is a count the table wraps round, so the corner is added to that
-          # count alone and the bits above it, which say how the sprite is drawn, are kept. +scratch+
+          # count alone and the bits above it, which set how the sprite is drawn, are kept. +scratch+
           # is a register free to use.
           def emit_row_moved_by_corner(scratch)
             emit(ASM.add_imm(scratch, ACC, @top))

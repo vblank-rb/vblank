@@ -191,7 +191,7 @@ module VBlank
 
             def one_set = Layout.new(by_name(@claims), { game: @room }, swaps: false)
 
-            # Each scene's room is what there is, less the words that say which set is in and where
+            # Each scene's room is what there is, less the words that hold which set is in and where
             # the far ones are; the game loop is charged for the swap at its dispatch.
             def set_per_scene
               scenes = @dispatch.scenes

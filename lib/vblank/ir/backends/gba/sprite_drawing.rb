@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBA
         # THE CODE THAT PUTS SPRITES ON A TILED SCREEN. The console draws sprites itself,
-        # every frame, out of a table of 128 rows it keeps in its own memory: each row says
+        # every frame, out of a table of 128 rows it keeps in its own memory: each row holds
         # where a sprite stands, which of the pictures in sprite memory it shows, and how.
         # So drawing a sprite here means writing its row — once for one that never moves,
         # every frame for one that does — and, for a sprite whose pictures do not all fit,
@@ -119,7 +119,7 @@ module VBlank
               @uploads.emit_dma_blob(obj.tiles, OBJ_TILE_BASE + (obj.tile_index * 32), obj.tile_units * 16) # tiles -> sprite memory
             end
             emit_reset_resident_frames(@layout.screen.objects.each_value)
-            # ...and no group's pictures are in sprite memory, so the groups the game says are up
+            # ...and no group's pictures are in sprite memory, so the groups the game set as up
             # are copied in again before the sprites are next written.
             @picture_group_copying.emit_forget_every_set_up
             emit_boot_object_windows
@@ -171,7 +171,7 @@ module VBlank
           # A LIST OF SPRITE COLOURS HOLDS ANOTHER SET: put that set into the group of sixteen
           # the sprites drawn with the list read.
           #
-          # Not a sprite is touched. A sprite's row says which group its pixels pick their
+          # Not a sprite is touched. A sprite's row names which group its pixels pick their
           # colours from, and every sprite drawn with this list names the same one — so
           # changing the sixteen entries there changes all of them at once, and costs the same
           # however many there are. That is what lets one group dress a goblin in one room and
@@ -220,7 +220,7 @@ module VBlank
           # the display to start the next picture, so it never takes the gap from this. The console composites the sprites over the background for
           # free — there's nothing to erase, unlike a software sprite.
           #
-          # The groups the game says are up are brought in first, so a sprite showing one of their
+          # The groups the game set as up are brought in first, so a sprite showing one of their
           # pictures draws it on the frame it first shows it (see PictureGroupCopying).
           def emit_present_objects(node)
             by_scene = @layout.scene_sprites
@@ -265,7 +265,7 @@ module VBlank
           # EVERY SPRITE OFF FOR A FRAME (see Builder::Sprites#hide_sprites).
           #
           # The console draws its sprites as a layer of their own over the backgrounds, and one
-          # bit of its display-control register says whether that layer is drawn at all. With it
+          # bit of its display-control register sets whether that layer is drawn at all. With it
           # off nothing of any sprite shows, and the table of rows and the pictures stay exactly
           # as they are, so turning it on again a frame later shows every sprite where it would
           # have been.
@@ -296,7 +296,7 @@ module VBlank
           # Between frames: the layer off for a frame that was asked for, and on again the gap
           # after. Turning it on is only for a screen drawn from tiles. A bitmap screen paints
           # its sprites into the picture and keeps that bit clear, and a game can go to one on
-          # the pass after asking. The low three bits of the register say which kind is up, and
+          # the pass after asking. The low three bits of the register hold which kind is up, and
           # tiled screens are the kinds below 3. A frame asked for while the layer is already
           # off keeps it off. On a frame nobody asked, this costs a load, two compares and two
           # branches.
@@ -332,8 +332,8 @@ module VBlank
           # layers of their own, the screen in play writes all of them every pass, the sprite
           # layer among them — and that write lands after the gap that switched the sprite layer
           # off for a frame, so on its own it would put the sprites straight back. So in a game
-          # that says `hide_sprites`, the sprite layer is left out of the write on the frame it is
-          # off for. A game that never says it writes the value as it is.
+          # that calls `hide_sprites`, the sprite layer is left out of the write on the frame it is
+          # off for. A game that never calls it writes the value as it is.
           def emit_screen_layers(value)
             return write_reg16(REG_DISPCNT, value) unless hides_sprites? && value.anybits?(OBJ_ENABLE)
 
@@ -383,7 +383,7 @@ module VBlank
           end
 
           # Each ordered run of +program+'s frame, with its copy given a place in +memory+ and
-          # its table put in +blobs+; +lists+ says where the program keeps each list.
+          # its table put in +blobs+; +lists+ gives where the program keeps each list.
           def self.plan_draw_runs(program, objects:, memory:, blobs:, lists:)
             present = program.walk.find { |node| node.kind == :present_objects } or return []
             (present.orders || []).each_with_index.map do |run, k|
@@ -410,7 +410,7 @@ module VBlank
             run ? run.staged(slot) : oam_slot(first, piece)
           end
 
-          # COPY ONE RUN INTO THE TABLE IN ITS ORDER. The program's list says the sprites back
+          # COPY ONE RUN INTO THE TABLE IN ITS ORDER. The program's list holds the sprites back
           # to front, and the table's front is its first row, so the list is read from its end
           # while the table is written from the run's first row onward.
           #
@@ -484,7 +484,7 @@ module VBlank
           # all — it has no table to run out of.
           #
           # +rows+ is how many rows the build handed out, +copy+ where the bigger table is, and
-          # +came_from+ a half a console row saying which row of the copy is in it this frame, so
+          # +came_from+ a half a console row holding which row of the copy is in it this frame, so
           # a reader of the running cartridge can say whose sprite each one is.
           HeldTable = Data.define(:rows, :copy, :came_from) do
             def row_address(slot) = copy + (slot * 8)
@@ -500,7 +500,7 @@ module VBlank
           # The bigger table for +rows+ rows, or nil when they fit in the console's own. +alloc+
           # claims roomy memory, given how much and what for.
           #
-          # +moved+ says every sprite stands somewhere else on the console's screen than the game put
+          # +moved+ marks that every sprite stands somewhere else on the console's screen than the game put
           # it, a smaller screen shown in the middle of this one (BorderSprites): then every game has
           # the copy, however few rows it needs, since copying is where each place is moved, and
           # the console's table is written by nothing else.
@@ -801,7 +801,7 @@ module VBlank
           # ONLY WHERE THAT RANK TEST HAS THE LAST WORD: the whole test, or one of several each of
           # which has to hold — joined by `&`, or by `*` of two tests that are each 0 or 1, which is
           # how a scene's own pool is shown only while the scene is up (Builder#gated_by_scene). A
-          # sprite past the count is then hidden whatever the rest says. Found inside anything else
+          # sprite past the count is then hidden whatever the rest sets. Found inside anything else
           # (an `|`, a test turned round) it settles nothing, and the sprites are written in full.
           #
           # Not for sprites given rooms of their own in sprite memory, whose hiding gives the room
@@ -945,9 +945,9 @@ module VBlank
           # slots from the sprite's own, so the whole thing keeps one place in the stack.
           #
           # +rows+ is where each piece's row is written: the sprite's own places in the table,
-          # unless it is one of a run and the run says where it has got to.
+          # unless it is one of a run and the run records where it has got to.
           #
-          # A sprite standing further off the screen than the table can say is kept off it
+          # A sprite standing further off the screen than the table can hold is kept off it
           # (see ROWS_KEPT): a piece at a time, since the far piece of a big picture can be
           # out of the table's reach while the near one is on the screen.
           def emit_present_object(obj, twin: nil, name: nil, rows: nil)
@@ -1036,7 +1036,7 @@ module VBlank
 
           # r0 = the depth the sprite's picked layer puts it at, on the screen that is up. Where
           # the depths differ from screen to screen the table is a row per screen, and the
-          # variable that picks the screen says which row — held to the last row, the deepest,
+          # variable that picks the screen gives which row — held to the last row, the deepest,
           # for a value that picks no screen of the sprite's own.
           def emit_pick_layer_depth(choice, depths)
             return emit_pick_from_table(choice, depths) unless depths.scene_var
@@ -1229,7 +1229,7 @@ module VBlank
           # WHERE IT FALLS SHORT OF THEM. Their groups go back the moment the last thing
           # wearing one is removed. Here a group goes back once a whole frame has passed
           # without anything drawn with it, since the rows are written one sprite at a time
-          # and nothing says, part way through, which lists the rest will wear. So with every
+          # and nothing shows, part way through, which lists the rest will wear. So with every
           # group lent out, a thing arriving on the very frame another leaves is drawn for that
           # one frame in colours not its own.
           #
@@ -1468,7 +1468,7 @@ module VBlank
           end
 
           # COPY A POOL'S POSE INTO SPRITE MEMORY THE FIRST TIME ONE OF ITS THINGS SHOWS IT since
-          # the scene took over (see PoseSends). Its byte says whether it is there; nought, and
+          # the scene took over (see PoseSends). Its byte marks whether it is there; nought, and
           # the pose's run of tiles is copied out of the cartridge to where the whole set would
           # have gone, so the table entries every pose's draw already writes point at it.
           #
@@ -1587,7 +1587,7 @@ module VBlank
             # attr0 = (y + how far down) & 0xFF, then the shape out of bits 10..11.
             load_var(ACC, POSE_DRAW_Y)
             emit(ASM.lsr_imm(TMP, POSE_WORD, 22))
-            # The two bits above the distance say which way round the pose is drawn, and
+            # The two bits above the distance set which way round the pose is drawn, and
             # are set only for a sprite with a pose that is. The test of how far off the
             # screen the row is reads the whole sum, so they are taken off before it.
             emit(ASM.and_imm(TMP, TMP, POSE_DISTANCE)) if obj.mirrors&.any?
@@ -1753,7 +1753,7 @@ module VBlank
 
           # Work out one over this sprite's size and park it in a scratch variable.
           #
-          # The matrix says which picture pixel lands on a given screen pixel, so drawing
+          # The matrix gives which picture pixel lands on a given screen pixel, so drawing
           # bigger means stepping through the picture SLOWER — the matrix carries one
           # over the size, not the size. There is nothing to precompute (the size is a
           # number the game works out), so this is a real division, once per resizing
@@ -1769,7 +1769,7 @@ module VBlank
             emit_call_divide_routine                            # r0 = SCALE_ONE * 256 / size
             emit_number(TMP, Affine::MAX)
             emit(ASM.cmp_reg(ACC, TMP))
-            emit(ASM.mov_reg_cond(:gt, ACC, TMP))               # too tiny to say: hold at the largest
+            emit(ASM.mov_reg_cond(:gt, ACC, TMP))               # too tiny to fit: hold at the largest
             store_var(ACC, OBJ_SCALE_RECIP)
           end
 
@@ -1831,7 +1831,7 @@ module VBlank
           # end comes round onto the top.
           #
           # So when none of its picture is on the screen, it is stood at that row as a plain
-          # sprite instead: the two bits that say "turned" and "in a box twice the size" are
+          # sprite instead: the two bits that mean "turned" and "in a box twice the size" are
           # left out of the word, the console draws it in a box of its own 64 rows, and that
           # box is unseen there. It is still a row of the table, which is what tells it from
           # a sprite the game hid.

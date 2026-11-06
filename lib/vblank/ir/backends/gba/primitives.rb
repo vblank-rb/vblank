@@ -45,7 +45,7 @@ module VBlank
 
           # A VARIABLE A COLLECTION OWNS GOES WHERE THE COLLECTION WENT. A list keeps how many
           # items it holds, and a pool a dozen more of its own (see Lists#roomy_counter?); a
-          # collection kept in the roomy memory, because the author said it is cold or because
+          # collection kept in the roomy memory, because the author marked it as cold or because
           # the quick one ran out, would otherwise leave those behind in the quick memory, where
           # every one of them is a word the code kept there cannot have. Reaching one there costs
           # its whole address, which the collection's own items already cost.
