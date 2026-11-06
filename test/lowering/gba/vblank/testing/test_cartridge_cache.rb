@@ -121,6 +121,31 @@ class TestCartridgeCache < Minitest::Test
     end
   end
 
+  # Two cartridges of one title, asked for under labels of their own, are two lines in the report,
+  # and each miss is explained against its own label's last build, never the other's.
+  def test_a_label_names_a_cartridge_in_the_report_and_keeps_its_last_build_apart
+    Dir.mktmpdir do |folder|
+      VBlank::Testing::CartridgeCache.new(folder).cartridge(dot_game(:red), console: :gba, label: "DOT red")
+      cache = VBlank::Testing::CartridgeCache.new(folder)
+      cache.cartridge(dot_game(:blue), console: :gba, label: "DOT blue")
+      cache.cartridge(dot_game(:green), console: :gba, label: "DOT red")
+      out = StringIO.new
+
+      cache.report(out)
+
+      assert_match(/not cached yet +DOT blue$/, out.string)
+      assert_match(/the game changed +DOT red$/, out.string)
+    end
+  end
+
+  def test_a_labelled_cartridge_is_written_as_a_file_too
+    Dir.mktmpdir do |folder|
+      path = VBlank::Testing::CartridgeCache.new(folder).cartridge_path(dot_game(:red), console: :gba, label: "DOT red")
+
+      assert path.end_with?(".gba")
+    end
+  end
+
   # A log a stopped run left days ago is not this run's, and is deleted unread.
   def test_a_stopped_run_s_old_log_is_left_out_of_the_report
     Dir.mktmpdir do |folder|

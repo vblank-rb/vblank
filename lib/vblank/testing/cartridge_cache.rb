@@ -93,11 +93,17 @@ module VBlank
       # The cartridge +game+ (a VBlank.game) builds for +console+ (and +variant+) with +settings+,
       # measured when +profile+ is true, as its build gives it back. Each ask is counted, a hit or a
       # miss, for #report.
-      def cartridge(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
+      #
+      # +label+ is how the report names it, and what its last build is kept under to explain a miss:
+      # the game's title, console and settings unless said. A game that builds many cartridges of
+      # one title (a room, an area, the game from a save) names each, or every miss reads alike and
+      # is explained against whichever was built last. The label is not part of the key: two asks
+      # with one key are one cartridge, whatever each calls it.
+      def cartridge(game, console:, variant: game.variant_for(console), settings: {}, profile: false, label: nil)
         started = clock
         key, parts = key_for(game, console, variant, settings, profile)
         key_seconds = clock - started
-        label = label_for(game, console, variant, settings, profile)
+        label ||= label_for(game, console, variant, settings, profile)
         built = (::Ractor.current[:vblank_cartridge_cache] ||= {})
         kept = built[[object_id, key]]
         return kept if kept
@@ -132,14 +138,16 @@ module VBlank
       end
 
       # The same cartridge as a file, for an emulator to open: written beside what is kept, once.
-      def cartridge_path(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
-        rom = cartridge(game, console: console, variant: variant, settings: settings, profile: profile)
+      # +label+ as #cartridge takes it.
+      def cartridge_path(game, console:, variant: game.variant_for(console), settings: {}, profile: false, label: nil)
+        rom = cartridge(game, console: console, variant: variant, settings: settings, profile: profile, label: label)
         path = entry_path(key_for(game, console, variant, settings, profile).first).sub(/\.marshal\z/, Console.described(console).extension)
         rom.write(path) unless File.file?(path)
         path
       end
 
-      # Whether a cartridge for these is kept on disk, so asking for it builds nothing.
+      # Whether a cartridge for these is kept on disk, so asking for it builds nothing. It takes no
+      # label: whether one is kept depends on the key alone.
       def cached?(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
         !@fresh && File.file?(entry_path(key_for(game, console, variant, settings, profile).first))
       end
