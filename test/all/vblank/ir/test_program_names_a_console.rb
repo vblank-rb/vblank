@@ -12,7 +12,7 @@ class TestProgramNamesAConsole < Minitest::Test
 
   # What the library does with no test kit in the way: the method the kit stands in front of.
   def test_with_no_test_kit_a_program_naming_no_console_says_how_to_name_one
-    library_answer = VBlank::IR::Nodes::Program.instance_method(:described_console).super_method
+    library_answer = VBlank::IR::Nodes::Program.instance_method(:console_description).super_method
     error = assert_raises(VBlank::BuildError) { library_answer.bind_call(VBlank::IR::Build.program) }
 
     assert_match(/names no console/, error.message)
