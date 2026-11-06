@@ -10,7 +10,7 @@ VBlank::Testing::RakeTasks.new do |t|
   # `t.consoles = %i[gba gbc]`. The test outside can name other consoles here, so one game stands
   # for every kind.
   t.consoles = ENV.fetch("GAME_SUITE_CONSOLES", "gba").split.map(&:to_sym)
-  t.golden_most_seconds = Integer(ENV["GAME_SUITE_GOLDEN_SECONDS"]) if ENV["GAME_SUITE_GOLDEN_SECONDS"]
+  t.golden_sample = Float(ENV["GAME_SUITE_GOLDEN_SAMPLE"]) if ENV["GAME_SUITE_GOLDEN_SAMPLE"]
   t.golden_list = ENV["GAME_SUITE_GOLDEN_LIST"] if ENV["GAME_SUITE_GOLDEN_LIST"]
   t.groups = "test" if ENV["GAME_SUITE_GROUPS"]
 end

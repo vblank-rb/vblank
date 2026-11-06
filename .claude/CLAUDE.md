@@ -62,7 +62,7 @@ worktrees under `.claude/worktrees/` (`git worktree list`) are the count.
 - A second item is one that touches different files: another milestone and another lowering
   than the first. Two branches in the same files collide when they land.
 - Each worktree runs its rake with `VBLANK_SUITE_LOCK=checkout`. One `rake test:golden` runs on
-  the machine at a time: two together push both past their time limit.
+  the machine at a time: two together take twice as long each.
 - An item lands by cherry-picking its commits onto `main` once its own tests pass there, then
   its worktree and branch are removed.
 
@@ -129,8 +129,10 @@ needs a C compiler and a system libmgba (`brew install mgba` / `apt install libm
 **Day to day, run `rake test:golden`, and `rake test:all` at most once a day and only after asking
 the operator.** `rake test:all` takes the machine for the best part of an hour and stops work while
 it does, so never start it, or a whole lowering's run, without the operator's say-so. The golden
-path (`test/golden.txt`) plays the core of each feature and a little of each lowering, a tenth of the
-tests or less, on every run, and it fails past eight minutes (`Testing::GoldenLimit`). While working, run the test files the change touches, then
+path plays the core of each feature and a little of each lowering (`test/golden.txt`, a tenth of the
+tests or less) and 5% of the other test files drawn at random, on every run (`Testing::GoldenSample`).
+It says its seed first and last; a failure in the drawn part is played again with `GOLDEN_SEED=<seed>
+rake test:golden`, and is a fault to fix like any other. While working, run the test files the change touches, then
 `rake test:golden` before committing anything shared. Wherever this file says a change "wants"
 `rake test:all`, that means the golden path now and the next full run the operator agrees to.
 

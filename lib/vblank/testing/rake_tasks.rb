@@ -4,7 +4,7 @@ require "rake"
 require "rake/tasklib"
 require_relative "../console/description"
 require_relative "../console/kit" # which names its parts and loads none of them
-require_relative "golden_limit"
+require_relative "golden_sample"
 require_relative "lowering"
 require_relative "run_progress"
 require_relative "suite_groups"
@@ -63,8 +63,9 @@ module VBlank
     #
     # THE GOLDEN PATH, `rake test:golden`, is the files a list names (t.golden_list, test/golden.txt
     # unless said; a test file a line, from the folder t.golden_from names, the one rake runs in
-    # unless said), on every lowering that plays each, failing past GoldenLimit's time. A game that
-    # keeps no such file has no such task.
+    # unless said), and a share of the other test files drawn at random on each run (t.golden_sample,
+    # GoldenSample::SHARE unless said), on every lowering that plays each. A game that keeps no such
+    # file has no such task.
     #
     # A TASK FOR EACH FOLDER OF TESTS, with `t.groups = "test"`: `rake test:group:enemies` plays every
     # test beneath test/enemies/ on every lowering that plays each, and `rake test:group:enemies:bat`
@@ -83,10 +84,10 @@ module VBlank
 
       # The test files; the folders a test file can require from by bare name (the game's own code
       # and its tests, lib and test unless told); the folders each lowering owns, and each console;
-      # the consoles the game is for, which every Rakefile names; the golden path's list, and how
-      # long it may take, if not GoldenLimit::MOST_SECONDS; and the folder whose folders of tests are
-      # groups, with any broad groups.
-      attr_accessor :test_files, :libs, :lowering_folders, :console_folders, :consoles, :golden_most_seconds,
+      # the consoles the game is for, which every Rakefile names; the golden path's list, and the
+      # share of the other files it draws, if not GoldenSample::SHARE; and the folder whose folders
+      # of tests are groups, with any broad groups.
+      attr_accessor :test_files, :libs, :lowering_folders, :console_folders, :consoles, :golden_sample,
                     :golden_list, :golden_from, :groups, :broad_groups
 
       def initialize
@@ -96,7 +97,7 @@ module VBlank
         @lowering_folders = {}
         @console_folders = {}
         @consoles = nil
-        @golden_most_seconds = GoldenLimit::MOST_SECONDS
+        @golden_sample = GoldenSample::SHARE
         @golden_list = GOLDEN_LIST
         @golden_from = "."
         @groups = nil
@@ -149,7 +150,7 @@ module VBlank
         namespace :test do
           desc "Run the tests on every lowering, one after the other (CONSOLE= for one console)"
           task(:all) { play_all_runs }
-          desc "Run the golden path: the files #{golden_list} names, on every lowering that plays each"
+          desc "Run the golden path: the files #{golden_list} names and a few more at random, on every lowering"
           task(:golden) { play_golden_runs } if File.file?(golden_list.to_s)
         end
 
@@ -159,10 +160,15 @@ module VBlank
         end
       end
 
+      # The list's files and a draw of the rest. The draw's seed is said first and again last, so
+      # it is on screen after a failure however long the run's output.
       def play_golden_runs
-        GoldenLimit.hold(list: golden_list, most_seconds: golden_most_seconds) do
-          play_runs(plays, golden: golden_files)
-        end
+        listed = golden_files
+        draw = GoldenSample.draw(test_files.to_a - listed, share: golden_sample)
+        puts draw.message
+        play_runs(plays, golden: listed + draw.files)
+      ensure
+        puts draw.message if draw
       end
 
       # The test files the golden list names, as paths from the folder rake runs in.
@@ -184,7 +190,7 @@ module VBlank
       def choices_message
         tasks = @lowerings.map { |lowering| "  rake test:lowering:#{lowering}" }
         ["`rake test` on its own runs no tests. Type one of these:", "",
-         "  rake test:golden                    a tenth of the tests or less, on every lowering",
+         "  rake test:golden                    a few tests chosen by hand and some at random",
          "  rake test:all                       every lowering, one after the other",
          *tasks.map { |line| format("%-37s one lowering", line) },
          "  rake test TEST=test/test_thing.rb   one file, on every lowering that plays it",

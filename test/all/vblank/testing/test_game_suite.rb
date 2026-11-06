@@ -70,22 +70,25 @@ class TestGameSuite < Minitest::Test
     end
   end
 
-  # The golden path is the everyday run, so it has a limit, and a run past it fails, saying the
-  # limit and how long it took, though every test in it passed.
-  def test_a_golden_run_past_its_limit_fails_and_says_why
+  # The golden path plays its list and a draw of the other test files, and says the seed that drew
+  # them, so a run that failed can be played again file for file.
+  def test_a_golden_run_plays_its_list_and_a_draw_of_the_rest
     game_with_a_golden_path do |game|
-      out, passed, = rake("test:golden", env: { "CONSOLE" => "gba", "GAME_SUITE_GOLDEN_SECONDS" => "0" }, game: game)
+      out, passed, = rake("test:golden", env: { "CONSOLE" => "gba", "GAME_SUITE_GOLDEN_SAMPLE" => "1" }, game: game)
 
-      refute passed, out
-      assert_match(/took \d+ seconds.*limit is 0 seconds/m, out)
+      assert passed, out
+      assert_match(/drew 1 of 1 more test files at random.*GOLDEN_SEED=\d+/, out)
+      assert_match(/\b3 runs\b/, out, "the walker's two tests and the drawn cartridge test")
     end
   end
 
-  def test_a_golden_run_inside_its_limit_passes
+  def test_a_golden_run_with_no_share_plays_its_list_alone
     game_with_a_golden_path do |game|
-      out, passed, = rake("test:golden", env: { "CONSOLE" => "gba" }, game: game)
+      out, passed, = rake("test:golden", env: { "CONSOLE" => "gba", "GAME_SUITE_GOLDEN_SAMPLE" => "0" }, game: game)
 
       assert passed, out
+      assert_match(/drew 0 of 1/, out)
+      assert_match(/\b2 runs\b/, out, "the walker's two tests alone")
     end
   end
 

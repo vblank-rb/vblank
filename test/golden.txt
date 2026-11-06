@@ -1,7 +1,8 @@
-# THE GOLDEN PATH: the files `rake test:golden` plays, each on every run that loads it. The core of
-# each thing a game does, and a little of what only one lowering can break, for a run that takes
-# minutes rather than most of an hour. test/all/vblank/testing/test_golden.rb holds it to a tenth of
-# the suite, so a file goes in here by another coming out.
+# THE GOLDEN PATH: the files `rake test:golden` plays every time, each on every run that loads it,
+# beside a share of the other test files drawn at random on each run (Testing::GoldenSample). The
+# core of each thing a game does, and a little of what only one lowering can break, for a run that
+# takes minutes rather than most of an hour. test/all/vblank/testing/test_golden.rb holds this list
+# to a tenth of the suite, so a file goes in here by another coming out.
 
 # What a game says
 test/all/vblank/dsl/test_dsl_expression.rb
@@ -13,6 +14,7 @@ test/all/vblank/builder/test_input.rb
 test/all/vblank/builder/test_random.rb
 test/all/vblank/builder/test_pool.rb
 test/all/vblank/builder/test_save.rb
+test/all/vblank/builder/test_data_packs.rb
 
 # What it shows
 test/all/vblank/builder/test_sprite.rb

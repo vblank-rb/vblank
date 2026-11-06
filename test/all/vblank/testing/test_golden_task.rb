@@ -5,7 +5,7 @@ require "tmpdir"
 require "vblank/testing/golden_task"
 
 # A game that keeps its own test tasks gets `rake test:golden` from GoldenTask: the files its list
-# names, read from the game's folder, played under the golden path's time limit.
+# names, read from the game's folder, and a draw of the game's other test files.
 class TestGoldenTask < Minitest::Test
   # It defines rake tasks, which the whole process shares.
   runs_on_the_main_ractor!
@@ -20,6 +20,19 @@ class TestGoldenTask < Minitest::Test
 
       assert_equal %w[games/rocket/test/test_ship.rb games/rocket/test/test_door.rb], golden.files
       assert Rake::Task.task_defined?("test:golden")
+    end
+  end
+
+  def test_the_draw_is_from_the_test_files_beside_the_list
+    Dir.mktmpdir do |folder|
+      list = File.join(folder, "golden.txt")
+      File.write(list, "test_ship.rb\n")
+      %w[test_ship.rb door_test.rb helper.rb].each { |file| File.write(File.join(folder, file), "") }
+      Rake.application = Rake::Application.new
+
+      golden = VBlank::Testing::GoldenTask.new(list: list)
+
+      assert_equal %w[door_test.rb test_ship.rb].map { |file| File.join(folder, file) }, golden.test_files.sort
     end
   end
 
