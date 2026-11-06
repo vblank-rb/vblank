@@ -88,7 +88,8 @@ module VBlank
         grid: works,
         camera: works("a painted screen on a Game Boy Color is the size of the screen, so moving the " \
                       "view over it shows black past the picture's edge. To move over a bigger world, " \
-                      "use a tiled background and `scroll_to`."),
+                      "use a tiled background and `scroll_to`. On a tiled screen the camera moves the " \
+                      "background and the sprites together."),
         keep_showing: works("a painted screen on a Game Boy Color is always shown whole, so a picture " \
                             "kept showing never tears."),
 

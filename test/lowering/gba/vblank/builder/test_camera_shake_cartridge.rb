@@ -31,4 +31,27 @@ class TestCameraShakeCartridge < Minitest::Test
     refute after.red?(97, 80), "settled, the block covers neither"
     refute after.red?(142, 80)
   end
+
+  # On a tiled screen the shake moves the background's scroll registers and the sprite's place
+  # together. A 2-pixel shake leans one way or the other: the green square drawn with its corner
+  # at (100, 60) has it at (98, 58) or (102, 62), and the red stripe at the left edge, 4 pixels
+  # wide, has its first or its third pixel turned blue to match.
+  def test_the_shake_moves_a_tiled_screen_on_the_console_and_restores_it
+    mid = ROM.assemble(GBA.new.lower(tiled_shaking_game(frames: 10, length: 20)),
+                       title: "SHAKE", code: "BSHK", maker: "01")
+    done = ROM.assemble(GBA.new.lower(tiled_shaking_game(frames: 14, length: 3)),
+                        title: "SHAKE", code: "BSHK", maker: "01")
+
+    during = assert_emulator_loads_rom(mid, frames: 14)
+    after = assert_emulator_loads_rom(done, frames: 18)
+
+    corner_at = ->(x, y) { during.green?(x, y) && !during.green?(x - 1, y) && !during.green?(x, y - 1) }
+    leaned_left = corner_at.call(98, 58) && during.blue?(2, 30) && during.red?(0, 30)
+    leaned_right = corner_at.call(102, 62) && during.blue?(0, 30) && during.red?(2, 30)
+    assert leaned_left || leaned_right, "mid-shake the background and the sprite moved the same way"
+
+    assert after.green?(100, 60) && !after.green?(99, 60) && !after.green?(100, 59),
+           "settled, the sprite is back where it was placed"
+    assert after.red?(0, 30) && after.red?(3, 30) && after.blue?(4, 30), "and the background is back too"
+  end
 end

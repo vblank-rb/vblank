@@ -29,6 +29,25 @@ module CameraShakeGames
       end
     end
   end
+
+  # The same on a tiled screen: a background of red and blue stripes, 4 pixels each, and a
+  # green sprite at (100, 60), with a shake fired on frame 3.
+  private def tiled_shaking_game(frames:, intensity: 2, length: 3)
+    program do
+      screen :tiled
+      image(:stripe, "#" => :red, "." => :blue) { (["####...."] * 8).join("\n") }
+      tiles :ground, "#" => :stripe
+      background :field, tiles: :ground, map: (["#" * 32] * 20)
+      image(:hero, "#" => :green) { (["########"] * 8).join("\n") }
+      sprite :hero, at: [100, 60]
+      frame = var :frame, 0
+      game_loop do
+        frame += 1
+        shake_screen intensity: intensity, frames: length if frame == 3
+        halt if frame >= frames
+      end
+    end
+  end
 end
 
 # The camera — moving the visible window over the whole picture — and the screen
@@ -44,6 +63,8 @@ class TestCameraShake < Minitest::Test
 
   RED = VBlank::Graphics::Color.resolve(:red)
   BLUE = VBlank::Graphics::Color.resolve(:blue)
+  GREEN = VBlank::Graphics::Color.resolve(:green)
+  WHITE = VBlank::Graphics::Color.resolve(:white)
 
   # --- the camera on its own ---
 
@@ -143,18 +164,101 @@ class TestCameraShake < Minitest::Test
     assert_match(/positive/, err.message)
   end
 
-  # A tiled screen has no framebuffer to slide, so say so and name what to use.
-  def test_the_camera_on_a_tiled_screen_is_a_friendly_error
+  # --- on a tiled screen ---
+  #
+  # A tiled screen has no one picture to slide: it is backgrounds and sprites, each placed by
+  # the console. So the camera moves all of them by the same amount, on top of wherever the
+  # game scrolled each background. The thing to assert is that a background and a sprite show
+  # moved by the same amount on the same frame, and both back in place once the shake ends.
+
+  # Where the sprite's green square shows, as [x, y]: drawn at (100, 60).
+  private def sprite_corner(screen)
+    (50..70).each do |y|
+      (90..110).each { |x| return [x, y] if screen.pixel(x, y) == GREEN }
+    end
+    nil
+  end
+
+  # How far the background's red and blue stripes, 4 pixels each, show moved to the left:
+  # 0 to 7, read off the first red pixel after a blue one on row +y+.
+  private def stripes_moved(screen, y)
+    x = (1..20).find { |at| screen.pixel(at, y) == RED && screen.pixel(at - 1, y) == BLUE }
+    (8 - x) % 8
+  end
+
+  def test_a_shake_moves_a_tiled_background_and_its_sprites_together
+    i = game_player.run(tiled_shaking_game(frames: 10, length: 20))
+
+    corner = sprite_corner(i.screen)
+    refute_nil corner, "the sprite is on screen"
+    across, down = corner.zip([100, 60]).map { |seen, drawn| drawn - seen }
+
+    refute_equal 0, across, "mid-shake the sprite is off its place"
+    assert_equal across, down, "a shake moves the picture the same way across and down"
+    assert_equal across % 8, stripes_moved(i.screen, 30), "the background moved as far as the sprite, the same frame"
+  end
+
+  def test_a_tiled_shake_puts_the_picture_back_exactly_where_it_was
+    i = game_player.run(tiled_shaking_game(frames: 14, length: 3))
+
+    assert_equal [100, 60], sprite_corner(i.screen)
+    assert_equal 0, stripes_moved(i.screen, 30)
+  end
+
+  # A game with no game loop has no gap between frames, so the camera moves the background where
+  # it is written.
+  def test_the_camera_moves_a_tiled_screen_with_no_game_loop
     prog = program do
       screen :tiled
-      image(:t, "#" => :blue) { (["########"] * 8).join("\n") }
-      tiles :ground, "#" => :t
-      background :field, tiles: :ground, map: (["####"] * 4)
-      game_loop { camera 4, 4 }
+      image(:stripe, "#" => :red, "." => :blue) { (["####...."] * 8).join("\n") }
+      tiles :ground, "#" => :stripe
+      background :field, tiles: :ground, map: (["#" * 32] * 20)
+      camera 2, 0
+      halt
+    end
+    i = game_player.run(prog)
+
+    assert_equal 2, stripes_moved(i.screen, 30)
+  end
+
+  # The score is the part of the screen that stays still, as a status bar does: its letters are
+  # where they were written, whatever the camera does.
+  def test_the_camera_leaves_tiled_text_where_it_was_written
+    moved, still = [2, 0].map do |across|
+      prog = program do
+        screen :tiled
+        image(:stripe, "#" => :red, "." => :blue) { (["####...."] * 8).join("\n") }
+        tiles :ground, "#" => :stripe
+        background :field, tiles: :ground, map: (["#" * 32] * 20)
+        draw_text "SCORE", 40, 100, :white
+        game_loop { camera across, 0 }
+      end
+      screen = game_player.run(prog, frames: 4).screen
+      (40...80).flat_map { |x| (100...108).map { |y| screen.pixel(x, y) == WHITE } }
     end
 
-    err = assert_raises(VBlank::IR::Backends::GBA::LoweringError) { GBA.new.lower(prog) }
-    assert_match(/scroll_by/, err.message, "it names what to use instead")
+    assert_includes still, true, "the text is on screen"
+    assert_equal still, moved
+  end
+
+  # The camera on its own: the whole picture, on top of the game's own scroll.
+  def test_the_camera_moves_a_scrolled_tiled_screen_further
+    prog = program do
+      screen :tiled
+      image(:stripe, "#" => :red, "." => :blue) { (["####...."] * 8).join("\n") }
+      tiles :ground, "#" => :stripe
+      field = background :field, tiles: :ground, map: (["#" * 32] * 20)
+      image(:hero, "#" => :green) { (["########"] * 8).join("\n") }
+      sprite :hero, at: [100, 60]
+      game_loop do
+        field.scroll_to 1, 0
+        camera 2, 0
+      end
+    end
+    i = game_player.run(prog, frames: 4)
+
+    assert_equal [98, 60], sprite_corner(i.screen), "the sprite moves with the camera alone"
+    assert_equal 3, stripes_moved(i.screen, 30), "the background moves by its scroll and the camera together"
   end
 
   # --- the guardrail ---

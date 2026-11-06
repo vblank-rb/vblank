@@ -606,6 +606,7 @@ module VBlank
       finalize_present_lists
       finalize_pool_stacking
       finalize_draw_orders # after the pools: a pool's numbers are copied with its things
+      finalize_tiled_camera # before the scrolls: it makes a scroll write for every background it moves
       finalize_background_scrolls
       finalize_status_bars
       finalize_background_boxes
@@ -1272,9 +1273,7 @@ module VBlank
     # the game's nought, on a screen the game was not even on.
     def finalize_background_scrolls
       write_between_frames(@inline_scroll_nodes, backgrounds_that(&:scrolls?)) do |name, background|
-        scroll = Build.scroll_background(name, x: Build.var_ref(background.scroll_x),
-                                               y: Build.var_ref(background.scroll_y))
-        while_any_scene_up(background.scene_gates, scroll)
+        scroll_write_node(name, background)
       end
     end
 

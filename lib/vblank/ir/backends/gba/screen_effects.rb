@@ -55,10 +55,14 @@ module VBlank
             emit_camera_axis(node.y, REG_BG2Y, :y)
           end
 
+          # A game whose every screen is tiled never reaches here: the builder moves its
+          # backgrounds and sprites instead (Builder::Drawing#finalize_tiled_camera). What is left
+          # is a game whose first screen is tiled and that paints a screen too.
           CAMERA_NEEDS_BITMAP =
-            "the camera cannot move a tiled screen yet. It moves the bitmap screen, so " \
-            "`shake_screen` needs `screen :bitmap`. To move a tiled background, use " \
-            "`scroll_by` or `scroll_to` on the background."
+            "This game moves the camera (`camera` or `shake_screen`). Its first screen is tiled, and " \
+            "it has a painted (bitmap) screen too. The camera can move a game whose screens are all " \
+            "tiled, or a game whose first screen is painted. To fix this, make every screen tiled, " \
+            "or put the painted screen first."
 
           # A game's screen in a border starts at its corner, so the corner is taken off too (see
           # BorderSprites).

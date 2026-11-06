@@ -49,7 +49,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `clear_screen` — works: the same as on the Advance.
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
-- `camera` — works: a painted screen on a Game Boy Color is the size of the screen, so moving the view over it shows black past the picture's edge. To move over a bigger world, use a tiled background and `scroll_to`.
+- `camera` — works: a painted screen on a Game Boy Color is the size of the screen, so moving the view over it shows black past the picture's edge. To move over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the camera moves the background and the sprites together.
 - `keep_showing` — works: a painted screen on a Game Boy Color is always shown whole, so a picture kept showing never tears.
 - `fade` — works: `fade` and `tint` change the colours the console shows, not the picture, as on the Advance. `under:` works where it falls between the background and the sprites; `inside:` and `outside:` are refused, since a Game Boy Color cannot fade part of the screen.
 - `tint` — works: the same as on the Advance.

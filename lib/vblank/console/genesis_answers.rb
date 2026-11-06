@@ -76,7 +76,8 @@ module VBlank
         camera: works("a painted screen is the size of the screen, so moving the view over it shows " \
                       "the backdrop past the picture's edge. The view can move 192 pixels across and 32 " \
                       "down, either way. If a game moves it further, the game stops and says so. To move " \
-                      "over a bigger world, use a tiled background and `scroll_to`."),
+                      "over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the " \
+                      "camera moves the backgrounds and the sprites together, with no such limit."),
         keep_showing: works("a painted screen is copied to the console in the blank between frames, and only " \
                             "the squares that changed. A blank holds about a tenth of the screen, so a pass " \
                             "that changes all of it takes about eleven frames to show."),
@@ -289,7 +290,6 @@ module VBlank
       # than kinds of step, so the page cannot read them from the lowering's list.
       UNMADE_PICTURE = [
         "a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)",
-        "a camera on a tiled screen, which `camera_follows` is",
         "a game with both a painted (bitmap) screen and a tiled one",
         "a background on a painted (bitmap) screen",
         "a sprite put in another layer, or behind a background",

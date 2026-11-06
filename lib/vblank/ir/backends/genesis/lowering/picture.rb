@@ -78,7 +78,6 @@ module VBlank
               refuse_unmade!("a `screen :#{others.first}`") unless others.empty?
               refuse_unmade!("both a painted (bitmap) screen and a tiled one") if screens.include?(:tiled) && painted?
               refuse_unmade!("a background on a painted (bitmap) screen") if painted? && !@backgrounds.empty?
-              refuse_unmade!("a camera on a tiled screen") if !painted? && @program.walk.any? { |node| node.kind == :camera }
               refuse_backdrops_of_its_own!
               refuse_unmade_backgrounds!
               refuse_unmade_sprites!

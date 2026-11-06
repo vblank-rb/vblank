@@ -351,6 +351,23 @@ module VBlank
       # the picture there is nothing to show, and the backdrop appears along that edge,
       # which is why a shake keeps its offset small.
       #
+      # ON A TILED SCREEN there is no one picture to slide. What the console shows is its
+      # backgrounds and its sprites, each placed by the console as it draws, so the camera
+      # moves every one of them by the same amount: each background's scroll registers get
+      # the camera added to wherever the game scrolled it, and each sprite is placed that far
+      # the other way. The game's own numbers never change — a sprite's x is still where the
+      # game put it, and `blocked_by` still reads the world — only where the console shows
+      # them. Past a background's edge shows what a scroll there shows. A status bar and the
+      # letters of `draw_text`/`draw_number` stay where they are, as the part of the screen
+      # that holds the score, and so does a turning background, which turns about a point
+      # rather than scrolling.
+      #
+      # It is written in the gap between frames with the scrolls, so a background and a
+      # sprite move on the same frame. Nothing here is one console's: every lowering already
+      # writes a background's scroll and places its sprites, so each does this its own way
+      # (see #finalize_tiled_camera). That is for a game whose every screen is tiled; a game
+      # with a painted screen too keeps the camera for its painted one.
+      #
       # @param x [Symbol, Integer, Value] the window's left edge, in pixels
       # @param y [Symbol, Integer, Value] the window's top edge, in pixels
       def camera(x, y)
@@ -358,6 +375,117 @@ module VBlank
         ensure_var(x)
         ensure_var(y)
       end
+
+      # The two variables a tiled screen's camera is kept in, across then down. Only a game
+      # that moves the camera on a tiled screen has them, so every other builds as it did.
+      TILED_CAMERA_VARS = %i[__camera_x __camera_y].freeze
+
+      private
+
+      # MOVE EVERYTHING ON A TILED SCREEN BY THE CAMERA, once the whole program is built (see
+      # #camera), in a game whose every screen is tiled. Each `camera` becomes the two
+      # variables the camera is kept in. Every sprite the console places is placed the
+      # camera's distance the other way. Each background's scroll write then adds the camera
+      # to the game's own scroll (Builder#finalize_background_scrolls), which makes one for a
+      # background the game never scrolled. The camera's numbers are read where the sprite and
+      # the scroll are placed, in the gap between frames, so both show the same frame's camera.
+      #
+      # Decided over the whole game rather than at the `camera` line, because the line that
+      # moves the camera for a shake is in a routine every scene runs, built before anything
+      # knows which screen is up when it runs.
+      def finalize_tiled_camera
+        cameras = @program.walk.select { |node| node.kind == :camera }
+        return if cameras.empty? || !every_screen_tiled?
+
+        @tiled_camera = TILED_CAMERA_VARS
+        @tiled_camera.each do |var|
+          at_boot(Build.set(var, Build.int(0)))
+          ensure_var(var)
+        end
+        across, down = @tiled_camera
+        moved = backgrounds_that { |background| moved_by_tiled_camera?(background) }
+        moved.each do |name, background|
+          background.scroll_x ||= IR::Nodes::Background.scroll_vars(name).first
+          background.scroll_y ||= IR::Nodes::Background.scroll_vars(name).last
+        end
+        add_camera_to_scrolls_in_place(moved)
+        cameras.each do |node|
+          replace_statement_with(node, Build.set(across, node.x), Build.set(down, node.y),
+                                 *scrolls_written_in_place(moved))
+        end
+        @program.walk.select { |node| moved_by_tiled_camera_object?(node) }.each do |object|
+          object.x = Build.binop(:-, object.x, Build.var_ref(across))
+          object.y = Build.binop(:-, object.y, Build.var_ref(down))
+        end
+      end
+
+      # A game with no game loop has no gap between frames to write the scrolls in, so it keeps
+      # each scroll where the game wrote it (Builder#write_between_frames). Those scrolls take the
+      # camera too, and the camera writes the scroll of every background it moves where it is
+      # moved. A game with a loop changes nothing here: its scrolls are written in the gap.
+      def scrolls_written_in_place(moved)
+        return [] unless @frame_boundaries.empty?
+
+        moved.map { |name, background| scroll_write_node(name, background) }
+      end
+
+      def add_camera_to_scrolls_in_place(moved)
+        return unless @frame_boundaries.empty?
+
+        across, down = @tiled_camera
+        @inline_scroll_nodes.each do |node|
+          next unless moved.key?(node.name)
+
+          node.x = Build.binop(:+, node.x, Build.var_ref(across))
+          node.y = Build.binop(:+, node.y, Build.var_ref(down))
+        end
+      end
+
+      # Whether the game shows tiled screens alone: it says `screen :tiled`, and no other kind. A
+      # game that says no screen paints; one that turns a `screen :rotozoom` keeps the camera's
+      # own meaning there.
+      def every_screen_tiled?
+        @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq == [:tiled]
+      end
+
+      # Put +fresh+ statements where +node+ is, in its parent's statements, each one's parent
+      # that statement's. +node+ is a statement, never an operand.
+      def replace_statement_with(node, *fresh)
+        container = node.parent
+        at = container.children.index { |child| child.equal?(node) }
+        container.children[at, 1] = fresh
+        fresh.each { |statement| statement.parent = container }
+      end
+
+      # Whether the tiled camera moves +background+ (a DeclaredBackground): every one but a
+      # status bar and a turning background.
+      def moved_by_tiled_camera?(background)
+        !background.node.bar? && !background.node.affine && !background.turns_each_frame?
+      end
+
+      # Whether the tiled camera moves +node+, a sprite: every one but a letter or digit of
+      # `draw_text`/`draw_number`, which is the score and the lives at a fixed place on the
+      # screen and stays still as a status bar does, and one over a painted picture.
+      def moved_by_tiled_camera_object?(node)
+        node.kind == :object && !node.over_picture && !@hud_objects.include?(node.name)
+      end
+
+      # THE SCROLL WRITE OF BACKGROUND +name+ (a DeclaredBackground's), gated to its scenes: the
+      # game's own scroll, plus the tiled camera where the game moves one and it moves this
+      # background. Fresh nodes each call, so no node is in two places in the tree.
+      def scroll_write_node(name, background)
+        across, down = @tiled_camera if @tiled_camera && moved_by_tiled_camera?(background)
+        scroll = Build.scroll_background(name, x: scroll_plus_camera(background.scroll_x, across),
+                                               y: scroll_plus_camera(background.scroll_y, down))
+        while_any_scene_up(background.scene_gates, scroll)
+      end
+
+      def scroll_plus_camera(scroll_var, camera_var)
+        scroll = Build.var_ref(scroll_var)
+        camera_var ? Build.binop(:+, scroll, Build.var_ref(camera_var)) : scroll
+      end
+
+      public
 
       # The colors a fade can go to. Black and white are what the display can blend
       # the whole screen toward without redrawing anything.

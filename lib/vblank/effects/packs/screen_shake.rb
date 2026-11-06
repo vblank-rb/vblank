@@ -18,6 +18,9 @@ module VBlank
       # matters. A shake that does not restore leaves the whole game off centre with a
       # stripe of backdrop down one edge, forever.
       #
+      # On a tiled screen the camera is the backgrounds' scroll and the sprites' places, all
+      # moved together (Builder::Drawing#camera), so the shake needs nothing of its own there.
+      #
       # The jitter alternates rather than being random, which makes it repeatable: the
       # same hit shakes the same way every time, and both backends agree frame for
       # frame.

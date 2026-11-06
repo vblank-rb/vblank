@@ -508,17 +508,19 @@ module VBlank
             end
 
             # Reference#exec_camera: the view moved over the painted picture (Runtime::Paint's
-            # rt_paint_camera). A tiled screen's view moves with its background's scroll instead, as
-            # on the Advance.
+            # rt_paint_camera). A game whose screens are all tiled has no camera step left: the
+            # builder moves its backgrounds' scroll and its sprites instead
+            # (Builder::Drawing#finalize_tiled_camera). What is refused here is a game with neither
+            # kind of screen: a turning one alone, or none that it paints.
             def emit_camera(node)
               raise LoweringError, CAMERA_ON_TILES unless painted?
 
               runtime_call("rt_paint_camera", [value_node(node.x), value_node(node.y)])
             end
 
-            CAMERA_ON_TILES = "This game moves the camera on a tiled screen. The camera moves a painted " \
-                              "(bitmap) screen only. To move a tiled background, use `scroll_to` or " \
-                              "`scroll_by` on the background."
+            CAMERA_ON_TILES = "This game moves the camera, but it paints no picture and has no tiled " \
+                              "screen. So the camera has nothing to move. To fix this, say " \
+                              "`screen :tiled`, or paint a picture for the camera to move."
 
             # Reference#exec_save_region and #exec_restore_region.
             def emit_save_region(node) = emit_patch("rt_paint_save", node)

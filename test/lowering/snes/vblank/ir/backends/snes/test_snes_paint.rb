@@ -341,17 +341,17 @@ class TestSNESPaint < Minitest::Test
     assert_equal 12, run[:n]
   end
 
-  # A tiled screen's view moves with `scroll_to`; the camera there is refused in plain words, as
-  # it is on the Advance.
-  def test_the_camera_on_a_tiled_screen_is_refused_in_plain_words
+  # A tiled screen's camera is its backgrounds' scroll and its sprites' places (that is in
+  # test/all/vblank/builder/test_camera_shake.rb). A game with no screen of either kind has nothing
+  # for the camera to move, and is refused in plain words.
+  def test_the_camera_with_no_screen_to_move_is_refused_in_plain_words
     error = assert_raises(SNES::LoweringError) do
       SNES.new.build(program_of do
-        screen :tiled
         game_loop { camera 3, 3 }
       end)
     end
 
-    assert_match(/scroll_to/, error.message)
+    assert_match(/screen :tiled/, error.message)
   end
 
   # A PAINTED SPRITE moving every pass costs the patch under it put back, the patch at its new place

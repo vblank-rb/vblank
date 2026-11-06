@@ -52,17 +52,24 @@ class TestGenesisCamera < Minitest::Test
     end
   end
 
-  def test_a_camera_on_a_tiled_screen_is_refused_in_words
-    error = assert_raises(Genesis::Lowering::NotMadeYet) do
-      Genesis.new.build(program_of do
-        screen :tiled
-        image(:dot, "#" => :red) { "##\n##" }
-        sprite :dot, at: [10, 10]
-        game_loop { camera 4, 0 }
-      end)
-    end
+  # On a tiled screen the camera moves the planes' scroll and the sprites' places together, every
+  # way. The checked run compares the picture with the interpreter's on every pass.
+  def test_a_camera_on_a_tiled_screen_agrees_with_the_interpreter_pass_for_pass
+    Genesis::CheckedRun.new.run(program_of do
+      screen :tiled
+      image(:stripe, "#" => :red, "." => :blue) { (["####...."] * 8).join("\n") }
+      tiles :ground, "#" => :stripe
+      background :field, tiles: :ground, map: (["#" * 32] * 20)
+      image(:dot, "#" => :green) { (["########"] * 8).join("\n") }
+      sprite :dot, at: [10, 10]
+      step = 0
+      game_loop do
+        step += 1
+        camera step - 5, 5 - step
+      end
+    end, frames: 12)
 
-    assert_match(/camera on a tiled screen/, error.message)
+    pass # the checked run raises at the first pass the two pictures differ
   end
 
   private

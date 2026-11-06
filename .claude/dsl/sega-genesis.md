@@ -48,7 +48,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `clear_screen` — works: the same as on the Advance.
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
-- `camera` — works: a painted screen is the size of the screen, so moving the view over it shows the backdrop past the picture's edge. The view can move 192 pixels across and 32 down, either way. If a game moves it further, the game stops and says so. To move over a bigger world, use a tiled background and `scroll_to`.
+- `camera` — works: a painted screen is the size of the screen, so moving the view over it shows the backdrop past the picture's edge. The view can move 192 pixels across and 32 down, either way. If a game moves it further, the game stops and says so. To move over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the camera moves the backgrounds and the sprites together, with no such limit.
 - `keep_showing` — works: a painted screen is copied to the console in the blank between frames, and only the squares that changed. A blank holds about a tenth of the screen, so a pass that changes all of it takes about eleven frames to show.
 - `fade` — works: `fade` and `tint` change the colours the console shows, not the picture: the colour memory is written again for each step, since a Genesis has no brightness control. `inside:`, `outside:` and `under:` are refused: the build cannot fade part of the screen on a Genesis.
 - `tint` — works: the same as on the Advance.
@@ -189,7 +189,6 @@ and a game that reaches one of these steps is refused, naming the step, until it
 Parts of the picture are refused the same way, naming the part:
 
 - a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)
-- a camera on a tiled screen, which `camera_follows` is
 - a game with both a painted (bitmap) screen and a tiled one
 - a background on a painted (bitmap) screen
 - a sprite put in another layer, or behind a background
