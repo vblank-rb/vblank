@@ -16,7 +16,7 @@ This file is `Console::GenesisAnswers.reference` written out (`ruby tools/consol
 and a test fails when the two differ. The Advance's answers are in
 `.claude/dsl/game-boy-advance.md`.
 
-- `screen` — works: `screen :tiled` and `screen :bitmap` work. A Genesis has no painted screen, so a painted (bitmap) screen is made of tiles internally, which holds fifteen colours and black: a game that paints more is refused. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. A backdrop that follows a list of colours (`backdrop:` names a list) works: where the backdrop is a colour the list keeps in its own list of sixteen, the console shows it from there, and otherwise its colour is copied in with the list's. `screen :rotozoom` is refused: a Genesis cannot turn a background.
+- `screen` — works: `screen :tiled` and `screen :bitmap` work. A Genesis has no painted screen, so a painted (bitmap) screen is made of tiles internally, which holds fifteen colours and black: a game that paints more is refused. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. A backdrop that follows a list of colours (`backdrop:` names a list) works: where the backdrop is a colour the list keeps in its own list of sixteen, the console shows it from there, and otherwise its colour is copied in with the list's. `screen :rotozoom` is refused: a Genesis cannot turn a background. `pixel_size: 2` is refused: a Genesis cannot show a pixel bigger.
 - `setting` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a cartridge.
 - `built_for?` — works: true when asked about :genesis.

@@ -16,7 +16,7 @@ This file is `Console::SNESAnswers.reference` written out (`ruby tools/console_a
 and a test fails when the two differ. The Advance's answers are in
 `.claude/dsl/game-boy-advance.md`.
 
-- `screen` — works: `screen :tiled` and `screen :bitmap` work. A Super Nintendo has no painted screen, so a painted (bitmap) screen is made of tiles internally. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. `screen :rotozoom` is refused: the build does not use the one layer a Super Nintendo can turn.
+- `screen` — works: `screen :tiled` and `screen :bitmap` work. A Super Nintendo has no painted screen, so a painted (bitmap) screen is made of tiles internally. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. `screen :rotozoom` is refused: the build does not use the one layer a Super Nintendo can turn. `pixel_size: 2` is refused: the build does not show a painted screen bigger yet.
 - `setting` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a cartridge.
 - `built_for?` — works: true when asked about :snes.

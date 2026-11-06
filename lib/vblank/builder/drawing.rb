@@ -22,10 +22,19 @@ module VBlank
       #
       #   paddle_x = screen_width - 12
       #   draw_text "PONG", :center, screen_height / 4, :white
-      def screen_width = console.screen_width
+      #
+      # On a screen of big pixels (`screen :bitmap, pixel_size: 2`) these are the small picture's
+      # size, which is what the game draws in.
+      def screen_width
+        @screen_size_read = :screen_width
+        console.screen_width
+      end
 
       # See #screen_width.
-      def screen_height = console.screen_height
+      def screen_height
+        @screen_size_read = :screen_height
+        console.screen_height
+      end
 
       # Choose what kind of screen you're drawing on.
       #
@@ -99,7 +108,19 @@ module VBlank
       #   colors :screen_colors, [:navy, :white, :gray]
       #   screen :tiled, backdrop: :screen_colors
       #   recolor :screen_colors, color_walk(:screen_colors, from: :black), showing: step
-      def screen(mode, tear_free: false, colors: nil, late: :wait, pace: 60, backdrop: nil, backdrop_place: nil)
+      #
+      # +pixel_size: 2+ shows each pixel of a painted screen twice as wide and twice as tall: the
+      # game draws a picture half the screen's width and height, and the console shows it filling
+      # the screen. Everything the game draws costs a quarter of what it did — the old games that
+      # drew a first-person view did this for speed — at a chunkier look. `screen_width` and
+      # `screen_height` answer the small picture's size, and every verb draws in its pixels. It is
+      # the whole game's, so it goes on the game's first `screen` line, before anything reads the
+      # screen's size; every later screen is a painted one too.
+      #
+      # @example A first-person view drawn at half size
+      #   screen :bitmap, tear_free: true, pixel_size: 2
+      def screen(mode, tear_free: false, colors: nil, late: :wait, pace: 60, backdrop: nil, backdrop_place: nil,
+                 pixel_size: 1)
         case mode
         when Symbol
           unless SCREEN_NAMES.include?(mode)
@@ -123,15 +144,60 @@ module VBlank
         # screen draws sprites in software; a tiled screen uses the console's sprite
         # hardware). A raw register value doesn't map to a friendly name, so it leaves
         # the mode unnamed.
+        size_said = apply_pixel_size!(pixel_size, mode)
+        @screen_line_written = true
         @screen_mode = mode if mode.is_a?(Symbol)
         @tear_free = tear_free
         late_rows = resolve_late_pages(late, tear_free)
         followed = followed_backdrop_list(backdrop, backdrop_place, mode)
         node = record(Build.screen(mode, buffered: tear_free, colors: resolve_screen_colors(colors, tear_free),
                                          late: late_rows, late_pace: resolve_late_pace(pace, late_rows),
-                                         backdrop: followed ? followed.color : resolve_backdrop(backdrop, mode)))
+                                         backdrop: followed ? followed.color : resolve_backdrop(backdrop, mode),
+                                         pixel_size: size_said))
         @backdrop_list = followed.with(screen: node) if followed
         node
+      end
+
+      # SETS THE GAME'S PIXEL SIZE on the program and the builder's console, and returns it as the
+      # screen node keeps it: nil for one. It is the whole game's, so it is said once, on the game's
+      # first screen line, and the program carries it (Program#pixel_size). From that line on the
+      # builder lays the game out on the small screen the console description then answers, which
+      # is why nothing may have read the screen's size before it.
+      private def apply_pixel_size!(size, mode)
+        refuse_unpainted_screen_with_big_pixels!(mode) if @program.pixel_size
+        return nil if size == 1
+
+        unless Console::Description::PIXEL_SIZES.include?(size)
+          raise ArgumentError, "`pixel_size: #{size.inspect}` is not a size the screen can show. Use 1 (the " \
+                               "default) or 2."
+        end
+        unless mode == :bitmap
+          raise ArgumentError, "`pixel_size: #{size}` works only with `screen :bitmap`. A screen of tiles cannot " \
+                               "show its pixels bigger. To fix this, write `screen :bitmap, pixel_size: #{size}`."
+        end
+        if @screen_line_written || @building_scene
+          raise ArgumentError, "`pixel_size: #{size}` must be on the game's first `screen` line, outside any " \
+                               "scene. It sets the size of the screen for the whole game. To fix this, move " \
+                               "pixel_size: to that line."
+        end
+        if @screen_size_read
+          raise ArgumentError, "The game reads `#{@screen_size_read}` before `screen :bitmap, pixel_size: #{size}`. " \
+                               "pixel_size: makes the screen smaller, so the size that the game read is wrong. To " \
+                               "fix this, put the `screen` line first."
+        end
+
+        @program.pixel_size = size
+        @console = @program.described_console
+        size
+      end
+
+      # A game of big pixels shows every one of its screens through the painted screen.
+      private def refuse_unpainted_screen_with_big_pixels!(mode)
+        return if mode == :bitmap
+
+        raise ArgumentError, "This game says `pixel_size: #{@program.pixel_size}`, and this line asks for " \
+                             "`screen #{mode.inspect}`. In a game with big pixels, every screen must be " \
+                             "`screen :bitmap`. To fix this, use `screen :bitmap` here, or remove pixel_size:."
       end
 
       # THE COLOUR A SCREEN SHOWS WHEREVER NOTHING IS DRAWN, as the IR keeps it: nil for a screen

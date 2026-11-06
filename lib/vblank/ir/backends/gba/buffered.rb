@@ -66,14 +66,14 @@ module VBlank
 
             scratch = emit_index_fill_word(node.color)
             load_var(ACC, BACKBUF) # to the hidden page, wherever it is this frame
-            count = SCREEN_WIDTH * SCREEN_HEIGHT / 4 # 32-bit words, 4 indices each
+            count = SCREEN_WIDTH * @layout.shown_rows / 4 # 32-bit words, 4 indices each
             emit_start_copy_engine(from: scratch, to: in_register(ACC), control: @framebuffer.dma_fill_control(count))
           end
 
           # Both pages in +color+, for a tear-free screen arriving over what another screen left.
           def emit_both_pages_filled(color)
             scratch = emit_index_fill_word(color)
-            count = SCREEN_WIDTH * SCREEN_HEIGHT / 4
+            count = SCREEN_WIDTH * @layout.shown_rows / 4
             [PAGE0, PAGE1].each do |page|
               emit_start_copy_engine(from: scratch, to: page, control: @framebuffer.dma_fill_control(count))
             end

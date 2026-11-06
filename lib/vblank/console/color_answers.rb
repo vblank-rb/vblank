@@ -43,7 +43,8 @@ module VBlank
                       "backdrop is refused. A backdrop that follows a list of colours (`backdrop:` " \
                       "names a list) is not made yet: the build refuses it and says so. " \
                       "`screen :rotozoom` is refused: " \
-                      "a Game Boy Color cannot turn or resize a background."),
+                      "a Game Boy Color cannot turn or resize a background. " \
+                      "`pixel_size: 2` is refused: a Game Boy Color cannot show a pixel bigger."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :gbc."),

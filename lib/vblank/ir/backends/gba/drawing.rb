@@ -88,10 +88,17 @@ module VBlank
           Layout = Data.define(:screen, :bitmaps, :palette, :indexed_bitmaps, :blob_codecs, :blob_raw_bytes,
                                 :modes, :fading, :tiled, :has_objects, :scene_blend, :movement,
                                 :scene_sprites, :gated_sprites, :waits_for_frames, :draw_runs, :pose_sent_bytes,
-                                :room_tables, :late_pages, :held_sprites, :border) do
+                                :room_tables, :late_pages, :held_sprites, :border, :pixel_size) do
             # +border+ is the border round a smaller screen shown in the middle of the Advance's
-            # (BorderSprites), or nil for a game shown on the whole screen.
-            def initialize(held_sprites: nil, border: nil, **rest) = super
+            # (BorderSprites), or nil for a game shown on the whole screen. +pixel_size+ is how many
+            # of the console's pixels across and down one of the game's is shown as (1, or 2 for
+            # `screen :bitmap, pixel_size: 2`: Drawing#emit_bigger_pixels).
+            def initialize(held_sprites: nil, border: nil, pixel_size: 1, **rest) = super
+
+            # How many rows of the painted screen's memory the console shows: every row, or the
+            # small picture's alone in a game of big pixels. A whole-screen fill fills these and
+            # leaves the rows under them, which are never shown.
+            def shown_rows = SCREEN_HEIGHT / pixel_size
             # The backgrounds that turn AND sit on the tiled screen — the ones that decide
             # which way the console arranges that screen's layers. A background that turns
             # on `screen :rotozoom` is on a screen of its own, up at a different moment, so
@@ -157,7 +164,7 @@ module VBlank
                     elsif mode.is_a?(Integer)
                       mode
                     else
-                      emit_painted_screen_in_blocks
+                      emit_painted_screen_settings
                       SCREEN_MODES.fetch(mode) do
                         raise LoweringError, "the GBA backend cannot lower screen mode #{mode.inspect} yet"
                       end
@@ -195,6 +202,45 @@ module VBlank
           # game says a size (see Pixelation). A game that never pixelates writes nothing.
           def emit_painted_screen_in_blocks
             @emitter.write_reg16(REG_BG2CNT, BG_MOSAIC) if @layout.screen.pixelation.pixelates?
+          end
+
+          # Everything the painted screen's background is told as the screen is set up: whether it is
+          # drawn in blocks, and how big its pixels are. Each way into a painted screen calls this
+          # one, so none of them can leave a setting out.
+          def emit_painted_screen_settings
+            emit_painted_screen_in_blocks
+            emit_bigger_pixels
+          end
+
+          # A GAME OF BIG PIXELS (`screen :bitmap, pixel_size: 2`) DRAWS A SMALL PICTURE IN THE TOP
+          # LEFT OF THE PAINTED SCREEN'S MEMORY, AND THE DISPLAY SHOWS IT BIGGER, copying nothing.
+          #
+          # The painted screen is the console's third background, the one that can turn and resize:
+          # for each pixel of the screen it shows, the display steps through the picture by the
+          # amounts in four registers, a step across and a step down, in 8 fraction bits. One whole
+          # pixel a step shows the picture as drawn. Half a pixel a step (0x80) shows every pixel of
+          # the picture twice across and twice down, so the picture's top left 120×80 fills the
+          # screen, each pixel a square of four, exactly: the display works out which pixel of the
+          # picture a pixel of the screen is by shifting away the fraction, so screen pixel 2x and
+          # 2x + 1 are both picture pixel x. The picture keeps its rows 240 pixels apart in memory,
+          # as every painted screen does, so every drawing verb writes where it always did; it only
+          # draws in fewer of them.
+          #
+          # This is the hardware's way and not mosaic. Mosaic shows blocks of the WHOLE picture
+          # — the top left pixel of each square shown for all four — so the game would still draw
+          # a picture of the screen's size, and only a quarter of what it drew would be seen.
+          #
+          # Written as the painted screen is set up, so a game that never says pixel_size: writes
+          # nothing. Nothing else writes these registers on a painted screen of big pixels: the
+          # camera, which does, is refused there (Guardrails::Checks::BiggerPixelsNotMadeYet).
+          def emit_bigger_pixels
+            return if @layout.pixel_size == 1
+
+            step = FIXED_ONE / @layout.pixel_size
+            @emitter.write_reg16(REG_BG2PA, step)
+            @emitter.write_reg16(REG_BG2PB, 0)
+            @emitter.write_reg16(REG_BG2PC, 0)
+            @emitter.write_reg16(REG_BG2PD, step)
           end
 
           # A LAYER OF A PROGRAM SHOWN AS IT IS DECLARED WAITS FOR ITS OWN BACKGROUND.
@@ -383,7 +429,7 @@ module VBlank
           # given only by the boot (see #emit_boot_screen).
           def enter_buffered_mode(held = 0)
             @background_drawing.reset_bg2_affine_if_needed
-            emit_painted_screen_in_blocks
+            emit_painted_screen_settings
             emit_sprites_over_picture_again
             base = MODE_4 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits
             @primitives.store_word_immediate(base, @primitives.var_addr(DISPCNT_STATE))
@@ -409,7 +455,7 @@ module VBlank
           # framebuffer) shows, which the bitmap scene redraws.
           def enter_direct_mode(held = 0)
             @background_drawing.reset_bg2_affine_if_needed
-            emit_painted_screen_in_blocks
+            emit_painted_screen_settings
             emit_sprites_over_picture_again
             @emitter.write_reg16(REG_DISPCNT, MODE_3 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits | held)
             @primitives.store_word_immediate(MODE_DIRECT, @primitives.var_addr(MODE_STATE))
@@ -995,7 +1041,7 @@ module VBlank
           # The whole picture of the painted screen in +color+, a 15-bit colour.
           def emit_screen_filled(color)
             word = (color << 16) | color
-            count = SCREEN_WIDTH * SCREEN_HEIGHT / 2
+            count = SCREEN_WIDTH * @layout.shown_rows / 2
             scratch = var_addr(Primitives::FILL_SCRATCH)
 
             store_word_immediate(word, scratch) # hold the fill word in IWRAM

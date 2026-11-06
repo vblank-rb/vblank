@@ -33,7 +33,8 @@ module VBlank
                       "`screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen " \
                       "bits in each pixel, the same colours as on the Advance. " \
                       "`tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` " \
-                      "works too: the chip draws the turned background as a textured shape."),
+                      "works too: the chip draws the turned background as a textured shape. `pixel_size: 2` " \
+                      "is refused: the build does not show a painted screen bigger yet."),
         setting: works,
         built_for_computer?: works("false on a PlayStation."),
         built_for?: works("true when asked about :ps1."),

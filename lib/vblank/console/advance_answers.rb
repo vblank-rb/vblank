@@ -19,11 +19,15 @@ module VBlank
 
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
-        screen: works, setting: works, built_for_computer?: works("false on a cartridge."),
+        screen: works("`screen :bitmap, pixel_size: 2` shows each pixel of the game's 120×80 picture as a " \
+                      "square of four. The console draws the painted screen through a background that can " \
+                      "resize. It shows that background bigger, and the build copies nothing."),
+        setting: works, built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :gba."),
-        screen_width: works("240 on a Game Boy Advance. 160 on a game built with " \
+        screen_width: works("240 on a Game Boy Advance. 120 with `pixel_size: 2`. 160 on a game built with " \
                             "`variants: { gba: :color_screen }`, which is laid out for a Game Boy Color."),
-        screen_height: works("160 on a Game Boy Advance. 144 with `variants: { gba: :color_screen }`."),
+        screen_height: works("160 on a Game Boy Advance. 80 with `pixel_size: 2`. 144 with " \
+                             "`variants: { gba: :color_screen }`."),
         border: works("with `variants: { gba: :color_screen }`, the build shows the game's 160×144 screen at " \
                       "its own size in the middle of the screen, and the border fills the 40 columns at each " \
                       "side and the 8 rows above and below. Without `border`, the build draws a border of its " \

@@ -10,10 +10,11 @@ verbs were written for the Advance first. The answers are decided in
 This file is `Console::AdvanceAnswers.reference` written out (`ruby tools/console_answers.rb`),
 and a test fails when the two differ.
 
+- `screen` — works: `screen :bitmap, pixel_size: 2` shows each pixel of the game's 120×80 picture as a square of four. The console draws the painted screen through a background that can resize. It shows that background bigger, and the build copies nothing.
 - `built_for_computer?` — works: false on a cartridge.
 - `built_for?` — works: true when asked about :gba.
-- `screen_width` — works: 240 on a Game Boy Advance. 160 on a game built with `variants: { gba: :color_screen }`, which is laid out for a Game Boy Color.
-- `screen_height` — works: 160 on a Game Boy Advance. 144 with `variants: { gba: :color_screen }`.
+- `screen_width` — works: 240 on a Game Boy Advance. 120 with `pixel_size: 2`. 160 on a game built with `variants: { gba: :color_screen }`, which is laid out for a Game Boy Color.
+- `screen_height` — works: 160 on a Game Boy Advance. 80 with `pixel_size: 2`. 144 with `variants: { gba: :color_screen }`.
 - `border` — works: with `variants: { gba: :color_screen }`, the build shows the game's 160×144 screen at its own size in the middle of the screen, and the border fills the 40 columns at each side and the 8 rows above and below. Without `border`, the build draws a border of its own. A fade or a tint does not change the border. That build does not make a status bar, a light, a fade held to a rectangle or under a layer, a background bent row by row or one that turns, `pixelate`, `hide_sprites` or `read_scanline` yet, and refuses each. It gives the game 32 fewer sprites, which draw the border. Without the variant, `border` does nothing.
 - `draw_place` — works: on `screen :bitmap, tear_free: true` only. The processor turns each point and fills each face a pixel at a time. Each `perspective:` setting is made.
 - `shading` — works: the processor finds each lit pixel's colour in a table the build makes from the shading, one load a pixel. Each pixel is the colour the shading gives, exactly.
@@ -35,7 +36,7 @@ and a test fails when the two differ.
 
 These work as their group files say:
 
-`screen`, `setting`, `wait_vblank`, `halt`, `debug_halt`, `game_loop`, `once_a_frame`,
+`setting`, `wait_vblank`, `halt`, `debug_halt`, `game_loop`, `once_a_frame`,
 `frames_since_power_on`, `each_pass`, `every`, `after`, `repeat`, `timer`, `pixel`, `fill_rect`,
 `dma_fill_rect`, `draw_rect_at`, `draw_column_at`, `clear_screen`, `inside`, `grid`, `camera`,
 `keep_showing`, `place`, `viewer`, `screen_spot`, `change_picture`, `fade`, `tint`, `fade_in`,

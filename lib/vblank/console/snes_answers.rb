@@ -30,7 +30,8 @@ module VBlank
                       "screen, so a painted (bitmap) screen is made of tiles internally. " \
                       "`tear_free: true` keeps one picture, because the picture is copied to the " \
                       "console whole before it shows. `screen :rotozoom` is refused: the build does " \
-                      "not use the one layer a Super Nintendo can turn."),
+                      "not use the one layer a Super Nintendo can turn. `pixel_size: 2` is refused: the " \
+                      "build does not show a painted screen bigger yet."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :snes."),

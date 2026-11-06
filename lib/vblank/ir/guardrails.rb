@@ -334,6 +334,7 @@ require_relative "guardrails/routine_never_called"
 require_relative "guardrails/console_answers"
 require_relative "guardrails/clock_never_asked"
 require_relative "guardrails/border_not_made_yet"
+require_relative "guardrails/bigger_pixels_not_made_yet"
 require_relative "guardrails/web_portability" # not always on: the web build runs it, and a game may register it
 
 module VBlank
@@ -388,6 +389,7 @@ module VBlank
         Checks::ConsoleAnswers.new,
         Checks::ClockNeverAsked.new,
         Checks::BorderNotMadeYet.new,
+        Checks::BiggerPixelsNotMadeYet.new,
       ])
     end
   end

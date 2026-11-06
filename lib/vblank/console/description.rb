@@ -132,7 +132,8 @@ module VBlank
                               :recording_voice_hz, :lowest_square_hz,
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
-                              :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window) do
+                              :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
+                              :pixel_size, :shows_bigger_pixels) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -144,9 +145,34 @@ module VBlank
       # work for it, so the shared drawing leaves its own test of that out (IR::PlaceDrawing::OUTCODE_EDGES).
       # The drawing is made once for the console, so a computer's build of such a game (as C,
       # JavaScript or Ruby) leaves it out too: it fills those faces and draws nothing of them.
-      def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, **rest) = super
+      #
+      # +pixel_size+ is how many of the console's pixels across, and as many down, one pixel of the
+      # game's picture is shown as: 1 for a game that says nothing, 2 for a game that draws a picture
+      # half as wide and half as tall and has the console show each pixel as a square of four
+      # (`screen :bitmap, pixel_size: 2`, #with_pixel_size). The screen size above is then the
+      # game's small picture, which is what the game lays itself out on and what the interpreter
+      # plays. +shows_bigger_pixels+ says whether the console's hardware can show it that way.
+      def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, pixel_size: 1,
+                     shows_bigger_pixels: false, **rest) = super
 
       def screen_size = [screen_width, screen_height]
+
+      # This console with each of the game's pixels shown +size+ pixels across and down: its screen,
+      # as the game sees it, that many times smaller. The console as it is for a size of 1 or nil.
+      # A desktop build of it plays no start-up, whose logo is drawn for the whole screen.
+      def with_pixel_size(size)
+        return self if size.nil? || size == 1
+
+        with(screen_width: screen_width / size, screen_height: screen_height / size, pixel_size: size,
+             plays_bios_start_up: false)
+      end
+
+      # Whether a pixel of the game's picture is shown bigger than one of the console's.
+      def bigger_pixels? = pixel_size > 1
+
+      # The size of the picture the console shows, in its own pixels: the game's screen with each of
+      # its pixels shown #pixel_size times across and down.
+      def shown_screen_size = [screen_width * pixel_size, screen_height * pixel_size]
 
       # Whether the game's screen is shown in a border, inside a bigger screen (#whole_screen_size).
       def bordered? = !whole_screen_size.nil?
@@ -192,6 +218,10 @@ module VBlank
       def middle = [screen_width / 2, screen_height / 2]
     end
 
+    # The sizes of pixel a game can ask for (`screen :bitmap, pixel_size:`). Each divides every
+    # console's screen into whole pixels.
+    Description::PIXEL_SIZES = [1, 2].freeze
+
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
@@ -235,7 +265,10 @@ module VBlank
                               plays_bios_start_up: true, whole_screen_size: nil, extension: ".gba",
                               # The fill in ARM (Backends::GBA::Faces) tests a face's corners against
                               # its window itself, in fewer instructions than the shared test.
-                              face_fill_skips_outside_window: true)
+                              face_fill_skips_outside_window: true,
+                              # The painted screen is drawn through a background that resizes, so
+                              # told to read half a pixel a step it shows each pixel as four.
+                              shows_bigger_pixels: true)
 
     # The Game Boy Color: a smaller screen, eight buttons, forty sprites and ten on a row, one
     # background, nothing that turns, lists of four colours, and a clock that counts days. What

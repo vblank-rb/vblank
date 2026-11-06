@@ -37,7 +37,8 @@ module VBlank
                       "A backdrop that follows a list of colours (`backdrop:` names a list) works: where " \
                       "the backdrop is a colour the list keeps in its own list of sixteen, the console " \
                       "shows it from there, and otherwise its colour is copied in with the list's. " \
-                      "`screen :rotozoom` is refused: a Genesis cannot turn a background."),
+                      "`screen :rotozoom` is refused: a Genesis cannot turn a background. " \
+                      "`pixel_size: 2` is refused: a Genesis cannot show a pixel bigger."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :genesis."),

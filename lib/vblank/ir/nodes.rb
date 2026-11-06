@@ -1283,12 +1283,17 @@ module VBlank
       # border is drawn (Console::Description#bordered?). A border is a picture of the whole screen
       # around the game's, not something the game does, so it is not a statement and every backend
       # that draws no border has nothing to do with it.
+      #
+      # +pixel_size+ is how many of the console's pixels across and down one of the game's is shown
+      # as (`screen :bitmap, pixel_size: 2`), or nil for one. It is the whole game's, so it is the
+      # program's: the game is laid out and played on a screen that many times smaller
+      # (#described_console), and each console's build shows that picture bigger.
       class Program
         include Node
         kind :program
         category :root
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list, players: :list,
-                 for_computer: :flag, border: :text, border_size: :list
+                 for_computer: :flag, border: :text, border_size: :list, pixel_size: :int
 
         # The most players the game said it takes on this build, or nil where it said nothing.
         def most_players = players&.last
@@ -1308,11 +1313,16 @@ module VBlank
         # The width variable +name+ is kept at, or nil for the whole number.
         def kept_width_of(name) = (kept_widths || []).to_h[name]
 
-        # What the console this program was built for can do: its screen, buttons, sprites.
-        # A program that names none cannot be laid out, and no console is assumed for it. A game
-        # names its consoles and a build its console; a test's program plays as its run's, and
-        # the test kit says how it is laid out (Testing::LaidOutForTheAdvance).
-        def described_console
+        # What the console this program was built for can do: its screen, buttons, sprites — the
+        # screen as the game sees it, so with the game's pixel size (#pixel_size) it is that many
+        # times smaller than the console's.
+        def described_console = console_description.with_pixel_size(pixel_size)
+
+        # The console this program was built for, with its variant, as it is whatever the game's
+        # pixel size. A program that names none cannot be laid out, and no console is assumed for
+        # it. A game names its consoles and a build its console; a test's program plays as its
+        # run's, and the test kit says how it is laid out (Testing::LaidOutForTheAdvance).
+        def console_description
           return Console.described(console, variant: variant) if console
 
           raise VBlank::BuildError, "This program names no console, so it cannot be laid out. To fix this, name " \
@@ -1476,7 +1486,11 @@ module VBlank
         # rather than at the next break (see IR::LatePages); nil, the default, always waits.
         # +late_pace+: how many breaks a pass may take and be on time; nil is one.
         # +backdrop+: the colour shown wherever nothing is drawn, as a 15-bit colour; nil is black.
-        operands mode: :mode, buffered: :flag, colors: :list, late: :int, late_pace: :int, backdrop: :int
+        # +pixel_size+: on the game's first screen, how many of the console's pixels across and down
+        # one of the game's is shown as; nil is one. The program carries it for the whole game
+        # (Program#pixel_size); here it is the line that asked, for a console that cannot.
+        operands mode: :mode, buffered: :flag, colors: :list, late: :int, late_pace: :int, backdrop: :int,
+                 pixel_size: :int
       end
 
       class ScrollBackground

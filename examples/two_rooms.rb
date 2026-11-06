@@ -58,7 +58,10 @@ module TwoRooms
   BRICK = 1
 
   GAME = VBlank.game("TWO ROOMS", consoles: %i[gba ps1]) do
-    screen :bitmap, tear_free: true
+    # `vblank build examples/two_rooms.rb --console gba --set pixel_size=2` draws the rooms at half
+    # the width and half the height, and the Advance shows each pixel as a square of four: a
+    # quarter of the drawing for a chunkier look.
+    screen :bitmap, tear_free: true, pixel_size: setting(:pixel_size, 1)
     image :stone, "#" => rgb(8, 8, 9), "." => rgb(20, 20, 22) do
       BLOCKS
     end

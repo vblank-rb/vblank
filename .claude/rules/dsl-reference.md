@@ -14,7 +14,7 @@ Coordinates are pixels from the top left of a 240×160 screen. A `:symbol` names
 Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`, `List`,
 `Sprite`, `Condition`…) are `VBlank::DSL::*` in `lib/vblank/dsl/`.
 
-**Mistakes that raise nothing** (each in full in its group file):
+**Mistakes that raise nothing** (each in its group file):
 
 - A fraction divide that saturates, then has something added, wraps negative; floor the divisor (`d.clamp(NEAR, FAR)`). (variables)
 - A `:byte`/`:half` slot keeps the low bits: 200 in a `:byte` reads -56. (lists)
@@ -25,8 +25,8 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 ## Build / screen — `.claude/dsl/screen.md`
 
 - `VBlank.game "NAME", consoles: %i[gba]` — the game and the consoles it is for (`%i[gba gbc]` for the Color too); `vblank build` makes a cartridge for each. `stack_room:`; `sprite_piece_size: { gbc: [8, 16] }` (taller sprite pieces); `menu: false` (no menu in a computer's window); `players: 4` (input).
-- `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default. `backdrop: :list` (`backdrop_place:`) — a backdrop that fades with a list.
-- `screen_width` / `screen_height` — the size to lay a game out from.
+- `screen :bitmap` / `:tiled` / `:rotozoom` (`tear_free:`, `colors:`, `late:`, `pace:`, `backdrop:`) — the display, per scene; `:bitmap` by default. `backdrop: :list` (`backdrop_place:`) follows a list. `pixel_size: 2` (game-wide).
+- `screen_width` / `screen_height` — the size to lay out on.
 - `border` — round a Color game on the Advance (`:color_screen`).
 - `setting :floors, 60` — a value handed to one build (`settings:`, `--set`).
 - `built_for_computer?`, `built_for?(:snes)` — true on a computer, or that console.

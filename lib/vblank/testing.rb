@@ -61,7 +61,7 @@ module VBlank
     # so; only a test suite has this. Laying such a test out as its run's console is the better
     # answer, and fails every test that says a place on the Advance's screen.
     module LaidOutForTheAdvance
-      def described_console = console ? super : Console::ADVANCE
+      def console_description = console ? super : Console::ADVANCE
     end
     IR::Nodes::Program.prepend(LaidOutForTheAdvance)
 

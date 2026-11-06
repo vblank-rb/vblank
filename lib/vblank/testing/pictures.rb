@@ -252,13 +252,28 @@ module VBlank
       # interpreter on a screen of its own size, so the cartridge's is compared in the middle, where
       # the game's screen is; the border is the cartridge's own, checked by tests of its own. Any
       # other game's screen is the whole picture.
+      #
+      # A game of big pixels (Console::Description#bigger_pixels?) is played by the interpreter on
+      # its small screen, so the cartridge's picture is read a pixel of the game's at a time: the
+      # top left of each square the console shows it as. That the other three of the square match it
+      # is the lowering's own test's to say (test/lowering/gba/).
       def game_screen_of(program, picture)
         console = program.described_console
+        return pixel_squares_of(console, picture) if console.bigger_pixels?
         return picture unless console.bordered?
 
         left, top = console.border_corner
         across = console.whole_screen_size[0]
         (0...console.screen_height).flat_map { |y| picture[((top + y) * across) + left, console.screen_width] }
+      end
+
+      # The top left pixel of each square +console+ shows one of the game's pixels as, in rows.
+      def pixel_squares_of(console, picture)
+        size = console.pixel_size
+        across = console.shown_screen_size[0]
+        (0...console.screen_height).flat_map do |y|
+          (0...console.screen_width).map { |x| picture[(y * size * across) + (x * size)] }
+        end
       end
 
       # The interpreter's picture and the game as C's (or as JavaScript's) after +frames+ frames,
