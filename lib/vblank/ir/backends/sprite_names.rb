@@ -5,7 +5,7 @@ module VBlank
     module Backends
       # WHICH SPRITES A LOWERED GAME DREW, by the numbers it keeps them by.
       #
-      # The interpreter says what it drew by name (Reference#sprites): whose each sprite is, under
+      # The interpreter reports what it drew by name (Reference#sprites): whose each sprite is, under
       # the name the game declared it with, and which of its pictures it is showing, under the name
       # the author gave that picture. A lowered game keeps the same rows as numbers — the C prints
       # them (Native::DrawnSprites), a Color cartridge keeps them in a table (GBC::Places). Both

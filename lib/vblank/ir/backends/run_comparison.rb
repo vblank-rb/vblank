@@ -8,8 +8,8 @@ module VBlank
       # WHAT TELLS A LOWERED GAME FROM THE SAME GAME ON THE INTERPRETER, the one comparison every
       # checked run makes: the game as C (Native::CheckedRun), as JavaScript (JS::CheckedRun) and as
       # a Game Boy Color cartridge (GBC::CheckedRun) each play their game, play the same buttons on
-      # the interpreter, and hand the two runs' Moments to #first_difference. The rest say the
-      # sound log, the mixed sound, the sounds lost and the save memory apart, at the end of a run.
+      # the interpreter, and hand the two runs' Moments to #first_difference. The rest compare the
+      # sound log, the mixed sound, the sounds lost and the save memory, at the end of a run.
       #
       # Each says what it found in words a person can act on, with the side being checked named
       # by #lowered_side, which a checked run gives its own name.
@@ -18,7 +18,7 @@ module VBlank
         # every variable, the picture as a check number (see .picture_check), how long the sound
         # log was, the sprites it last drew, its lists and pools as Reference#game_state reads
         # them, and the recordings the mixer is sounding, a voice each in the order of the voices —
-        # which says whose voice a new note took; and whether the cartridge's motor runs on the frame
+        # which shows whose voice a new note took; and whether the cartridge's motor runs on the frame
         # the picture is (Reference#motor_on?), off on a console without one.
         Moment = Data.define(:frame, :variables, :picture, :sounds, :sprites, :collections, :sounding, :motor) do
           def initialize(frame:, variables:, picture:, sounds:, sprites:, collections: { lists: {}, pools: {} },
@@ -158,7 +158,7 @@ module VBlank
         end
 
         # What the side being checked against the interpreter is called: the game as C, unless the
-        # checked run says otherwise.
+        # checked run names it otherwise.
         def lowered_side = "C"
 
         def heading(frame) = frame == :end ? "the end of the run" : "frame #{frame}"

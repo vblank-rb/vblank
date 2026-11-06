@@ -9,7 +9,7 @@ module VBlank
       # the reader of the running cartridge turns it back into the interpreter's words
       # (CartridgeHeadlessRun#fault_message). One table, so a number means the same on every console
       # and the words are written once. Where each runtime keeps the number, and the two numbers
-      # beside it that say how, is that runtime's own.
+      # beside it that show how, is that runtime's own.
       #
       # A console whose runtime never stops for one of these never writes its number: the Super
       # Nintendo's copies no list, and the Color's has no queue of cells to fill.

@@ -14,7 +14,7 @@ module VBlank
         # Only a loop at power-on that certainly fills the list is named: one in the game's
         # setup, with a count that is the list's capacity and a body that is that one push of a
         # number written in the game. A loop that fills part of a list, or pushes a different
-        # value each time, is something `full_of:` cannot say; and one that runs later, filling
+        # value each time, is something `full_of:` cannot express; and one that runs later, filling
         # a list the game emptied, is not what a declaration does.
         #
         # The value is named in the advice only when it is nought. A list of fractions keeps

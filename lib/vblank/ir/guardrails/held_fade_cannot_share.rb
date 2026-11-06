@@ -10,12 +10,12 @@ module VBlank
         # and off in the other, with that window on for the whole game (see
         # GBA::ScreenEffects#emit_fade_window). A light wants the same window cut into a
         # circle a row at a time; a see-through layer wants the blend unit the darkening is;
-        # and a fade placed in the stack wants the window's other regions to say which sprites
+        # and a fade placed in the stack wants the window's other regions to mark which sprites
         # it leaves alone. Each looks right where it is written, so it is refused here, naming
         # both halves.
         #
         # A plain fade and a tint are NOT among them: in a game that holds a fade, each of those
-        # says it reaches the whole screen, and the last one said is the one in force.
+        # is set to reach the whole screen, and the last one set is the one in force.
         #
         # A console that blends nothing (Console::Description#blends) holds no fade to a
         # rectangle: Checks::ConsoleAnswers refuses the held fade itself.

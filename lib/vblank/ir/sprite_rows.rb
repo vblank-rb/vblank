@@ -13,7 +13,7 @@ module VBlank
     # the room the game is played in take turns, so they can take turns at the same rows.
     #
     # WHAT SHARES, AND WHAT KEEPS A ROW OF ITS OWN. A sprite shares when its scene is the only
-    # thing that puts it up, said in the shape the builder writes (see
+    # thing that puts it up, written in the shape the builder writes (see
     # Movement#objects_shown_by_scene), and its scene is picked by the variable that picks the
     # most of them. Everything else keeps a row of its own for the whole program: what every
     # scene shows, a scene some other variable picks (it can be up beside one of these), and a
@@ -33,7 +33,7 @@ module VBlank
 
       # +rows+ maps each sprite's name to its first row, counted from the front (a sprite drawn
       # as several pieces takes the rows after it too), +count+ is how many rows they take in
-      # all, +screens+ is what each screen holds, +keys+ says, for each sprite that takes turns
+      # all, +screens+ is what each screen holds, +keys+ gives, for each sprite that takes turns
       # at rows, the variable and value that put it up, and +between+ names the sprites of rows
       # of their own that stand between two stretches of sprites that share.
       Plan = Data.define(:rows, :count, :screens, :keys, :between) do

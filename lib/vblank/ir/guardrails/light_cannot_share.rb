@@ -10,7 +10,7 @@ module VBlank
         # for the whole game, and its first window, cut a row at a time into the shape of a
         # circle. So a game that also asks the display's blend for something else, or that
         # draws a screen where there are no layers to cut a window in, is asking for two
-        # answers from one register. Nothing at either call site says so — each looks right
+        # answers from one register. Nothing at either call site shows it — each looks right
         # where it is written — so it is refused here, naming both halves.
         #
         # A plain fade is NOT among them: a game with a light fades by walking its colours,

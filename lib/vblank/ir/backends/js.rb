@@ -49,7 +49,7 @@ module VBlank
       # JavaScript too (`rake test:lowering:js` plays only that), checked against the interpreter
       # on every frame, so a feature is not done until it works here as well.
       #
-      # HOW IT IS MADE. The native lowering already says a program as a tree of statements and
+      # HOW IT IS MADE. The native lowering already writes a program as a tree of statements and
       # calls into a runtime, with no operator anywhere on a game's number (see the comment atop
       # Native); JS::Lowering prints that same tree as JavaScript, and the runtime is
       # runtime/*.js, the native runtime's C written again in JavaScript, function for function,
@@ -124,7 +124,7 @@ module VBlank
         # what +host+ may hold and what comes back) all inside it, so every game made has its own
         # state and two never meet. It is the one thing every web output wraps: the page calls it
         # (the page's mount, runtime/rg_mount.js), and the module and the classic script hand it
-        # out. The text is the function's declaration alone; whatever wraps it says strict mode.
+        # out. The text is the function's declaration alone; whatever wraps it declares strict mode.
         # Its big tables are in it (see #factory_and_data_file for them in a file of their own).
         def factory(program, title: "VBlank") = factory_and_data_file(program, title: title).first
 
@@ -153,7 +153,7 @@ module VBlank
         # the game fetches before its first frame — so a hosted game's code is small and its data
         # is cached apart from it. A browser will not fetch a file beside a page opened from a
         # disk, so a game with its data separate has to be served (`vblank preview`, any web
-        # server). See runtime/rg_page.js for how a page can say where the data file is instead.
+        # server). See runtime/rg_page.js for how a page can set where the data file is instead.
         #
         # Each takes +console+, the one the game is built as (#checked_program).
 
@@ -261,7 +261,7 @@ module VBlank
         # The data file's name beside the output at +path+: game.mjs's is game.data.
         def data_file_name(path) = "#{File.basename(path, '.*')}.data"
 
-        # The JavaScript that says where a game's data file is fetched from unless the host says
+        # The JavaScript that sets where a game's data file is fetched from unless the host sets it
         # (+beside+, an expression), for a game with a +data_file+; nothing for one without.
         def data_beside_declaration(data_file, beside) = data_file ? "const rg_data_beside = #{beside};\n" : ""
 

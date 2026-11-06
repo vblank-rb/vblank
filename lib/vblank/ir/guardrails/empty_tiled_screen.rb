@@ -88,7 +88,7 @@ module VBlank
             TiledDisplay.paints?(program)
           end
 
-          # True when a screen says its backdrop, the colour shown wherever nothing is drawn. Such a
+          # True when a screen names its backdrop, the colour shown wherever nothing is drawn. Such a
           # screen with no background and no sprite shows that colour, which the author chose: a
           # title card of one colour, or a colour a fade walks. It is not the silent black screen.
           def backdrop?(program)

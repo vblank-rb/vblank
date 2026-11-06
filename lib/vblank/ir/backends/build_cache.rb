@@ -6,11 +6,11 @@ module VBlank
       # WHAT A CARTRIDGE BUILD WORKS OUT FROM ITS PROGRAM ALONE, ONCE, FOR EVERY TRY. A console whose
       # cartridge is seen a bank at a time builds a game by trying: a try lowers the whole game, and
       # stops at the first thing that does not fit (too many tiles, too many lists of colours, a part
-      # of the cartridge too full), which says what the next try changes. A big game takes several.
+      # of the cartridge too full), which decides what the next try changes. A big game takes several.
       # But much of what a try works out has nothing to do with how it is built: what a run reaches
       # and the numbers scenes are known by (LoweringPlan), what each scene hands the next
       # (SceneHandover), how the layers stack (Stacking), each picture's pixels (Assets::Image), and
-      # what a tile's picture alone says about its colours. Those are worked out here, once a build,
+      # what a tile's picture alone shows of its colours. Those are worked out here, once a build,
       # and every try reads them.
       #
       # What goes in depends on the program and the console, and on nothing a try chooses: what a
@@ -25,7 +25,7 @@ module VBlank
       # makes its own.
       class BuildCache
         # A cache for a build of +program+ by the cartridge backend +backend+ (GBC, SNES, Genesis):
-        # its Lowering says the console and what else that console keeps (its BuildFacts), and its
+        # its Lowering names the console and what else that console keeps (its BuildFacts), and its
         # LoweringError is what the plan's refusals raise.
         def self.for(backend, program) = new(program, lowering: backend::Lowering, error: backend::LoweringError)
 

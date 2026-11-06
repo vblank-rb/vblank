@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # ONE CLASS PER KIND OF NODE. Each says what it is and what operands it carries, and
+    # ONE CLASS PER KIND OF NODE. Each declares what it is and what operands it carries, and
     # gets a real reader for each of them — so asking a pixel for its width is a
     # NoMethodError at the line that asked, not a nil that travels.
     #
@@ -58,14 +58,14 @@ module VBlank
       # given the colours themselves: two lists named apart are two lists even when they hold
       # the same colours, so a tile finds its own by #drawn_lists.
       #
-      # +choice+ names the variables that say which of +maps+ is showing, empty where there is
+      # +choice+ names the variables that hold which of +maps+ is showing, empty where there is
       # only one. A background that belongs to a scene is put up as declared each time that
       # scene takes over, so every one of them goes back to 0, the first map, at that moment:
       # left alone they would name the map chosen on the last visit while the cells hold the
       # first, and choosing that map again would be taken as already done.
       #
       # +sets+, on a background whose maps draw from more than one SET of tiles, names each
-      # set; +set_starts+ is where each one's tiles begin in +tiles+, and +map_sets+ says which
+      # set; +set_starts+ is where each one's tiles begin in +tiles+, and +map_sets+ gives which
       # set each of +maps+ draws from. A map's cells only ever name tiles of its own set. A
       # target that has room for only one set at a time brings a map's set in with the map;
       # one that draws every tile by name needs none of this. All three are absent on a
@@ -82,7 +82,7 @@ module VBlank
         # is not drawn at all and what is behind shows. Absent on every other background.
         #
         # +boxed+, on a background the game holds to a box (BoxBackground), names the variable that
-        # says whether it is held to one now. It goes back to 0, shown everywhere, as the scene the
+        # holds whether it is held to one now. It goes back to 0, shown everywhere, as the scene the
         # background belongs to takes over, as +choice+ does. Absent on every other background.
         #
         # +follows+, on a background drawn with a list of colours the game changes (ColorList),
@@ -95,7 +95,7 @@ module VBlank
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
                  above_row: :int, boxed: :name, follows: :name
 
-        # Each of +palettes+ as a tile drawn from it says which list it was drawn from
+        # Each of +palettes+ as a tile drawn from it gives which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.
         def drawn_lists = palettes.each_with_index.map { |colors, at| [palette_names&.at(at), colors] }
 
@@ -120,12 +120,12 @@ module VBlank
           swaps
         end
 
-        # The variable that says which of a background's sets is in place now, one a target
+        # The variable that holds which of a background's sets is in place now, one a target
         # with room for a single set keeps. Named here so every part of the program that resets
         # it as a scene takes over names the same one.
         def self.set_var(name) = :"__bg_#{name}_set"
 
-        # The variable that says which list of colours a background told `draw_with` is really
+        # The variable that holds which list of colours a background told `draw_with` is really
         # drawn with now, written in the gap between frames (BackgroundColors).
         def self.live_colors_var(name) = :"__bg_#{name}_live_colors"
 
@@ -193,7 +193,7 @@ module VBlank
       end
 
       # A background's tiles all draw from a different list of colours — the whole layer at
-      # once, where an Object's +recolor+ says it about one picture. +which+ counts from 0
+      # once, where an Object's +recolor+ does it for one picture. +which+ counts from 0
       # through the lists the background was given, and may be worked out as the program
       # runs; a number naming none of them is the background's own colours.
       #
@@ -258,7 +258,7 @@ module VBlank
         operands name: :name, list: :name, tiles: :list, colors: :list, picture: :name, width: :int,
                  height: :int, colors_name: :name, console_format: :flag, held_in: :name, tile_side: :int
 
-        # A run of `tile_pictures` says the table its list only ever copies from, in +held_in+. A
+        # A run of `tile_pictures` names the table its list only ever copies from, in +held_in+. A
         # console that can read that table with its copying engine is free to take the bytes from
         # there rather than through the list (see GBA::BackgroundDrawing#emit_copy_painted_run).
 
@@ -281,7 +281,7 @@ module VBlank
         operands name: :name
       end
 
-      # Copy every run in +runs+ whose list the game said moved, as one step. Which runs those
+      # Copy every run in +runs+ whose list the game marked moved, as one step. Which runs those
       # are is kept as bits of the variables in +masks+: run number +i+ is bit
       # +i % RUNS_PER_MASK+ of +masks[i / RUNS_PER_MASK]+. Thirty to a variable, so a mask
       # never reaches the sign bit. The bits are only read here; clearing them is the program's.
@@ -354,7 +354,7 @@ module VBlank
       # +around_x+/+around_y+ are the point the picture turns around, in screen pixels —
       # the one place that stays still while the rest swings or grows about it, and the
       # place the same point of the picture keeps landing on. The middle of the screen
-      # unless the program says otherwise. They are settled while the program is written
+      # unless the program sets another. They are settled while the program is written
       # rather than worked out as it runs, so they are plain numbers on the statement.
       class AffineBackground
         include Node
@@ -562,9 +562,9 @@ module VBlank
       # ColorListHolds counts them. A list of colours nothing ever changes has no node at
       # all: an Object carries its colours outright.
       #
-      # +backdrop_place+ says the colour shown wherever nothing is drawn follows this list: it is
+      # +backdrop_place+ means the colour shown wherever nothing is drawn follows this list: it is
       # the colour at that place of whatever set the list holds, changing as the list does
-      # (ColorListHolds). Nil for a list the backdrop does not follow. The game's `screen` says
+      # (ColorListHolds). Nil for a list the backdrop does not follow. The game's `screen` sets
       # the colour at that place of the declared set, which is what the backdrop is until the list
       # is told anything, and a scene arriving leaves the backdrop as the list has it
       # (SceneHandover#backdrop_follows_list?).
@@ -577,14 +577,14 @@ module VBlank
 
         # A variable for a target that keeps the colours somewhere of its own and has to
         # put them back there — after it has rewritten that place for some other reason —
-        # to say which set is in force. Nought is "nothing has been said yet"; what goes
+        # to record which set is in force. Nought is "nothing has been set yet"; what goes
         # there otherwise is that target's business alone. Named here so the program and
         # the target name the same one.
         def self.source_var(name) = :"__colors_#{name}_at"
 
         SHARED_PREFIX = "__shared_colors_"
 
-        # The name of a list that lists a game says are never in use together take turns in.
+        # The name of a list that lists a game declares are never in use together take turns in.
         # Several such lists are drawn through one of these, so they need one place between
         # them where each would have needed its own. +family+ counts the lists placed
         # together (one scene's, or the lists every scene draws with), and +number+ counts
@@ -627,7 +627,7 @@ module VBlank
         category :data
         operands name: :name, groups: :list, together: :list, scene: :name
 
-        # No group: what a slot of ShowPictureGroup holds before the game says, and when it
+        # No group: what a slot of ShowPictureGroup holds before the game names one, and when it
         # names no group.
         NONE = -1
 
@@ -772,7 +772,7 @@ module VBlank
       # game runs.
       #
       # How the corners become pixels is written down once, in Reference#exec_fill_face, and
-      # every target lands every pixel where that says.
+      # every target lands every pixel where that puts it.
       class FillFace
         include Node
         kind :fill_face
@@ -803,8 +803,8 @@ module VBlank
       end
 
       # A GAME'S SHADING: what each colour becomes at each level of light, from the darkest level
-      # to the brightest, as the game's own tables say. +colors+ are the game's colours (15-bit,
-      # its palette), and each of +levels+ says, for each of those colours by its place, the place
+      # to the brightest, as the game's own tables give. +colors+ are the game's colours (15-bit,
+      # its palette), and each of +levels+ gives, for each of those colours by its place, the place
       # of the colour it becomes at that level. A colour not among +colors+ stays as it is.
       #
       # A face filled with a shading (FillFace's +shading+) is lit from its corners: each corner's
@@ -882,7 +882,7 @@ module VBlank
       end
 
       # THE PLAYER'S HANDS SHAKEN: a motor run for +frames+ frames, on or off on each by +pattern+'s
-      # eight bits from the top, round again after the eighth. A rumble said while one runs takes its
+      # eight bits from the top, round again after the eighth. A rumble asked for while one runs takes its
       # place, and nought frames stops it. Felt only on a console whose cartridge has a motor
       # (Console::Description#rumbles).
       class Rumble
@@ -916,7 +916,7 @@ module VBlank
       # so the pixels outside are not merely covered up afterwards, they are never worked out.
       #
       # A program that shows one part of the picture over another — a strip of the world with a
-      # panel of numbers under it — needs this to say which part is which. Without it the world
+      # panel of numbers under it — needs this to mark which part is which. Without it the world
       # is drawn over the whole picture and the panel painted on top, and everything under the
       # panel was worked out for nothing.
       #
@@ -992,7 +992,7 @@ module VBlank
       # not add to 100 — past it the mix is brighter than either side and stops at full
       # brightness, which is how a glow or a shaft of light looks.
       #
-      # +split+ marks the one-number form, where the author said how much of what is
+      # +split+ marks the one-number form, where the author gave how much of what is
       # behind shows and the layer takes the rest. The two forms round differently, so
       # it is carried rather than inferred: the rest is what is LEFT of a whole once the
       # far side is counted, where two amounts are each taken to the nearest step.
@@ -1049,7 +1049,7 @@ module VBlank
         include Node
         kind :list_new
         category :list
-        # +fast+ is what the author said about where this should live, on a machine with
+        # +fast+ is what the author asked for about where this should live, on a machine with
         # more than one work memory: false for "I know this is cold — give it room", true
         # to insist on the quick one, absent to let the framework decide. It is the same
         # word a routine takes for the same question, and it changes nothing a program
@@ -1163,7 +1163,7 @@ module VBlank
         # operand already carries — what the NAME adds is that a target with somewhere
         # finite to keep pictures knows which of them are needed at the same time.
         #
-        # +recolors+ is every other list of colours it can be drawn with, and +recolor+ says
+        # +recolors+ is every other list of colours it can be drawn with, and +recolor+ holds
         # which of them it is drawn with now, counting from 0; any other number draws it in
         # its own. A pixel keeps its place in the picture's own list, so drawn with another
         # list it shows whatever colour that list holds at the same place. Each entry is the
@@ -1182,7 +1182,7 @@ module VBlank
         # leaves it in +layer+, the one it was declared in. That is how one thing walks
         # behind scenery on one floor of a room and in front of it on the next.
         #
-        # +over_picture+ says it is shown over a screen the program paints, rather than over
+        # +over_picture+ means it is shown over a screen the program paints, rather than over
         # scenery drawn from tiles. It is drawn over the painted picture and never into it,
         # so painting the picture again does not touch it, and it is in front of everything
         # the program paints there.
@@ -1284,7 +1284,7 @@ module VBlank
       # program carries it to whichever console a run plays it as. What a sprite shows is the same
       # at every size; only how a console's build cuts it up differs.
       #
-      # +kept_widths+ is each variable the game said is narrow, as [name, :byte or :half] pairs. Every
+      # +kept_widths+ is each variable the game declared narrow, as [name, :byte or :half] pairs. Every
       # write to one is followed by the wrap to that width (IR::KeptWidths), so what it holds
       # needs nothing more from any backend; a console may keep it in fewer bytes.
       #
@@ -1340,7 +1340,7 @@ module VBlank
         # The console this program was built for, with its variant, as it is whatever the game's
         # pixel size. A program that names none cannot be laid out, and no console is assumed for
         # it. A game names its consoles and a build its console; a test's program plays as its
-        # run's, and the test kit says how it is laid out (Testing::LaidOutForTheAdvance).
+        # run's, and the test kit sets how it is laid out (Testing::LaidOutForTheAdvance).
         def console_description
           return Console.described(console, variant: variant) if console
 
@@ -1454,7 +1454,7 @@ module VBlank
       # wiped a block at a time before a block is written again (IR::SaveLayout::Memory says
       # which). A program that names none has the smallest.
       #
-      # It also says how the size came about, for a report to read and nothing to run:
+      # It also records how the size came about, for a report to read and nothing to run:
       # +asked_for+ is whether the program's author named it, and +records+ is each record laid
       # out in it as [name, half bytes, copies, kept], in the order they were declared — +kept+
       # being what it keeps as [kind, name] (see Builder::Saves#laid_out_records), which a test
@@ -1535,7 +1535,7 @@ module VBlank
 
       # The picture darkened everywhere outside one span of each row: a light. Standing
       # once it is declared, like a bend, and read again before every frame — the row
-      # variable is set to each row of the screen in turn, and +left+ and +right+ say where
+      # variable is set to each row of the screen in turn, and +left+ and +right+ give where
       # that row's span starts and ends (the end not included), both worked out from it.
       # +amount+ is how dark the rest of the row goes, 0 (as drawn) to 100 (black).
       class ShadeOutside
@@ -1565,8 +1565,8 @@ module VBlank
       # +loop_frame+ when it has one, so an introduction plays once — unless it +plays_once+,
       # and then it ends there (IR::Tunes.plays_once?). Played as a sound effect, the
       # others of its +group+ are the effects it stops (IR::Tunes.priority_of). +low_notes_intended+
-      # says a note lower than its voice can play is played at the lowest it can on purpose.
-      # +keeps_voices+ says a sound effect holds each voice it has taken until it ends, through a
+      # means a note lower than its voice can play is played at the lowest it can on purpose.
+      # +keeps_voices+ means a sound effect holds each voice it has taken until it ends, through a
       # rest or a note at volume 0.
       class Song
         include Node
@@ -1627,7 +1627,7 @@ module VBlank
       end
 
       # The tune playing stays where it is (+held+ true): what it sounds rings on and nothing new
-      # starts, until this says otherwise (+held+ false) or another tune, or a stop, takes over.
+      # starts, until this is set the other way (+held+ false) or another tune, or a stop, takes over.
       class HoldMusic
         include Node
         kind :hold_music

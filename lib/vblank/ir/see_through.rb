@@ -41,7 +41,7 @@ module VBlank
       # The one-number form keeps the arithmetic it always had: what is behind is its
       # share rounded down, and the layer takes whatever is left of a whole. Two amounts
       # are each rounded to the nearest step, so 94 and 63 are the 15 and 10 a cartridge
-      # that was drawn in steps says.
+      # that was drawn in steps gives.
       def weights(layer, shows, behind)
         if layer.split
           far = floor_steps(behind)

@@ -4,7 +4,7 @@ module VBlank
   module IR
     # WHAT EACH KIND OF NODE CARRIES, read off the classes that declare it.
     #
-    # Every kind is a class that says its own operands (see {Nodes}), so this is a view over
+    # Every kind is a class that declares its own operands (see {Nodes}), so this is a view over
     # those declarations rather than a table kept beside them. It is here for the two callers
     # that hold a kind's NAME rather than one of its nodes — a coverage check, and the cost
     # model reading an op off a cost entry. Anything holding a node asks the node.

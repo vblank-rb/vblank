@@ -6,7 +6,7 @@ module VBlank
       module Checks
         # A GAME BUILT FOR A BROWSER TOO, told which of its lines keep it on the console.
         #
-        # Nearly everything a game says — move, draw, play a note — means the same on the
+        # Nearly everything a game writes — move, draw, play a note — means the same on the
         # console, on a desktop and in a browser, and the JavaScript lowering plays it the same.
         # A few kinds of step mean something only on the console itself: raw instructions handed
         # to its processor (`entry`), or a reading of where its display has got to. IR::Portability
@@ -46,7 +46,7 @@ module VBlank
           # +reached+, when given, is every step a run of the game can reach — the lowering's own
           # list (JS#refuse_console_only_steps!). A console-only step outside it is in a routine
           # nothing calls: it never runs, the web build leaves it out and plays the game the same,
-          # as the interpreter does, so it is a warning whatever +severity+ says. It is still
+          # as the interpreter does, so it is a warning whatever +severity+ sets. It is still
           # said, since the day something calls that routine the web build stops there.
           def initialize(severity: :warning, reached: nil)
             @severity = severity

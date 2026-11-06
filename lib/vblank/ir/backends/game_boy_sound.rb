@@ -7,9 +7,9 @@ module VBlank
       # square, wave and noise voices when it was made. So the numbers a beep, a note or a hit
       # comes to are the same on both, and are worked out once, here, from the musical values
       # Audio::Sound resolves; where those numbers go is each console's own. The chip's registers
-      # are named below for what each does, and each lowering says where it keeps them
+      # are named below for what each does, and each lowering sets where it keeps them
       # (GBA::SoundRegisters, GBC::SoundRegisters). No other console has this chip, so no other
-      # lowering reads this, and a test says so (test/all/vblank/audio/test_registers_seam.rb).
+      # lowering reads this, and a test checks it (test/all/vblank/audio/test_registers_seam.rb).
       #
       # Each method returns a list of [register, 16-bit value] pairs in the order they must be
       # written. A value holds two of the chip's byte-wide registers side by side, low byte first,
@@ -69,7 +69,7 @@ module VBlank
         # A single music note on one of the two square-wave voices (the music
         # channels): channel 1 or channel 2. A note holds its pitch until the next note
         # replaces it, so both voices of a layered tune hold between events; its loudness
-        # holds too, unless +fade+ (an Audio::NoteFade) says it fades out or swells in.
+        # holds too, unless +fade+ (an Audio::NoteFade) makes it fade out or swell in.
         # A song's parts map to these in order; +channel+ is chosen by the backend, not
         # the score.
         def channel_note(channel, frequency:, duty:, volume:, fade: Audio::NoteFade::HOLD)
@@ -145,8 +145,8 @@ module VBlank
         # a melody has one. What it does have is a CLOCK, and a faster clock is a higher, thinner
         # hiss where a slower one is a low rumble. So a note's pitch picks the clock nearest to it
         # (#noise_clock), which is what a tracker's noise channel does and what makes a low note a
-        # kick and a high one a hat. A drum hit rings out as its part's +decay+ says, and is not
-        # held until the next one — unless +fade+ (an Audio::NoteFade) says how this one fades.
+        # kick and a high one a hat. A drum hit rings out as its part's +decay+ sets, and is not
+        # held until the next one — unless +fade+ (an Audio::NoteFade) sets how this one fades.
         #
         # A frequency of 0 is a rest: the voice restarts at no volume at all, which stops a hit
         # that was still ringing.

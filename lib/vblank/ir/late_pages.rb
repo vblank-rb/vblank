@@ -17,7 +17,7 @@ module VBlank
     # page that misses the break its game aims at is late; one a game aiming at thirty finishes
     # in its second frame is not, and waits like any page on time.
     #
-    # It says when a page is SHOWN, never what is on it, so a backend with no breaks between
+    # It sets when a page is SHOWN, never what is on it, so a backend with no breaks between
     # pictures to miss draws exactly the same game and has nothing here to read.
     class LatePages
       # The pictures a second a game can aim at, by the breaks a pass may take for each.
@@ -47,7 +47,7 @@ module VBlank
       # game's when it has none.
       def setting_on(screen) = self.class.setting_of(screen || @game_screen)
 
-      # ...and of the game's own screen, the one up before any scene says otherwise.
+      # ...and of the game's own screen, the one up before any scene sets another.
       def game_setting = setting_on(nil)
     end
   end

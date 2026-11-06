@@ -106,7 +106,7 @@ module VBlank
 
       # Is the display switched as each scene takes over? A program whose scenes do not
       # all draw the same way has to be set up once and then re-set on a scene's change,
-      # rather than leaving each `screen` to say it where it is written.
+      # rather than leaving each `screen` to set it where it is written.
       def switched_per_scene? = any_buffered? || crosses_display_systems?
 
       # Every mode some part of the program draws in, the boot mode among them.

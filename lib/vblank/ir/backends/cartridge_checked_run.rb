@@ -17,7 +17,7 @@ module VBlank
       #
       # The interpreter plays the program on the screen of the console it was built for, and the two
       # pictures are compared over that console's screen. What a console adds to the comparison is a
-      # subclass's to say: #further_difference for its sound unit and save memory, #prepare_interpreter
+      # subclass's to give: #further_difference for its sound unit and save memory, #prepare_interpreter
       # for what the interpreter is told before it plays, #sounding_levels, #motor_of and #picture_check
       # for what a moment holds, and #moments_difference for what it says of them.
       class CartridgeCheckedRun
@@ -82,7 +82,7 @@ module VBlank
         def kit = @cartridge.send(:kit)
 
         # THE CARTRIDGE IS BUILT BEFORE THE INTERPRETER PLAYS A FRAME, so that what the build does not
-        # make yet (NotMadeYet) is said before a game it could never be held to is played. Any other
+        # make yet (NotMadeYet) is raised before a game it could never be held to is played. Any other
         # refusal is left for the cartridge's own run to make, after the interpreter has had its say:
         # a program the interpreter calls wrong is wrong in the interpreter's words.
         def build_before_playing(program)

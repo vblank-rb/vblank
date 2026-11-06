@@ -43,7 +43,7 @@ module VBlank
       # checked in Genesis Plus GX through ruby-genesis-emulator, which `rake compile_genesis_core`
       # builds.
       class Genesis
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes says: every
+        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every
         # variable by the game's name (its address in work RAM), every list ([its address, its
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built from,
@@ -52,7 +52,7 @@ module VBlank
         # makes no sound), and what the chip writes for those entries are worked out with
         # (ChipWrites::Voicing), and the game's recordings by the number the place playing one keeps
         # (Runtime::Recordings).
-        # +bytes+ says what the cartridge's sections come to, as :code (what the processor runs) and :data
+        # +bytes+ gives what the cartridge's sections come to, as :code (what the processor runs) and :data
         # (what it only reads), for the cost recorded in tools/emitted_baseline.json.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
                              :sound_entries, :sound_voicing, :recording_names) do

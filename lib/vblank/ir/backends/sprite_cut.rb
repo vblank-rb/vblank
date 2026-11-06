@@ -25,7 +25,7 @@ module VBlank
         OBJ_MAX_SIDE = 64
 
         # The largest picture the framework will cut up into objects. The ceiling is the
-        # pose table's own: it says where each piece sits inside the picture as a whole
+        # pose table's own: it records where each piece sits inside the picture as a whole
         # byte each way, so a bigger picture has corners it could not name.
         MAX_OBJECT_CANVAS = 256
 
@@ -82,7 +82,7 @@ module VBlank
         # own pixels after all. That happens where a box is bigger than the picture it came
         # from — a 24x24 picture stored as one 32x32 object overhangs by eight, and its
         # reflection would have to be drawn eight pixels to the left of the canvas, which
-        # the pose table has no way to say. Rare, and costs only the memory the sharing
+        # the pose table has no way to hold. Rare, and costs only the memory the sharing
         # would have saved.
         def reflect_mirrored_poses(poses, mirrors, boxes)
           mirrors.each_with_index.map do |mirror, k|
@@ -107,7 +107,7 @@ module VBlank
         # to 128 tiles rather than 256; a four-way character whose left mirrors its right,
         # 240 rather than 320.
         #
-        # NOBODY HAS TO SAY SO. The sameness is judged on the pixels, so a game that drew
+        # NOBODY HAS TO DECLARE IT. The sameness is judged on the pixels, so a game that drew
         # its left-facing art by hand gets this with nothing to change, exactly as two
         # sprites showing the same picture already share it (see ObjectArt). Saying it —
         # `mirror(:hero_right)` — is then a way to skip drawing the art, not a way to ask
@@ -121,7 +121,7 @@ module VBlank
         # top to bottom for nothing as well — a reflection, a stalactite from a stalagmite, an
         # arrow pointing either way. So is a pose turned both ways. Left to right is looked for
         # first, since it is the common one. These are looked for on every sprite, not only one
-        # that said `upside_down`: the look is three hashes of a pose where it was one, at build
+        # that asked for `upside_down`: the look is three hashes of a pose where it was one, at build
         # time, and a sprite moves onto the per-pose word only where a turned pose was found —
         # which is where it saves the memory of a whole pose.
         #
@@ -148,7 +148,7 @@ module VBlank
           end
         end
 
-        # What +bmp+ looks like mirrored, upside down, and both, as #pose_identity says it.
+        # What +bmp+ looks like mirrored, upside down, and both, as #pose_identity gives it.
         def turned_identities(bmp)
           Remembered.fetch(:turned_identities, bmp) do
             [bmp.mirrored, bmp.upside_down, bmp.mirrored.upside_down].map { |turned| pose_identity(turned) }

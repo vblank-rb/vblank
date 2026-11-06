@@ -13,7 +13,7 @@ module VBlank
     #
     # +slot+ is counted from 0 in declaration order, and what a slot MEANS is the backend's
     # business: the console turns it into a byte offset into the cartridge's save memory, and
-    # the interpreter uses it as a key into a fake one. Nothing here says a word about SRAM.
+    # the interpreter uses it as a key into a fake one. Nothing here mentions SRAM.
     SavedVar = Data.define(:name, :default, :slot)
   end
 end

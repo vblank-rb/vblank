@@ -7,16 +7,16 @@ module VBlank
         # A note on a square-wave part that is lower than the square-wave voice can play.
         #
         # A sound chip can tune a square-wave voice with a number that has a bottom, which the
-        # console says (Console::Description#lowest_square_hz; one with none is not asked). On the
+        # console sets (Console::Description#lowest_square_hz; one with none is not asked). On the
         # Game Boys it is 64 Hz — between the B and the C two octaves below middle C. A lower note is played
         # AT the bottom: it still sounds, it is just a different note, and nothing about the
-        # music says so. A song block's note names start at C2 and never reach it, but a pitch
+        # music shows it. A song block's note names start at C2 and never reach it, but a pitch
         # written in Hz can, and a Score's MIDI keys go all the way down to 0.
         #
         # A part that plays an instrument has no such bottom — a recording is simply read more
         # slowly — which is one of the two ways out the message offers.
         #
-        # Music decoded off a cartridge is left alone when its Score says `low_notes_intended: true`:
+        # Music decoded off a cartridge is left alone when its Score sets `low_notes_intended: true`:
         # the cartridge's own sound engine played those notes at the bottom too, so every way out
         # would make it less like the original.
         class SquareNoteTooLow

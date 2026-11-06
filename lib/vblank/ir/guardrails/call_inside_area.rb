@@ -30,7 +30,7 @@ module VBlank
 
           # Every draw op `inside` actually clips on the console — see
           # IR::Backends::GBA::Lowering#draw_area and the framebuffer clip bounds it
-          # feeds. Kept apart from TiledDisplay::BITMAP_DRAWS, which says a different
+          # feeds. Kept apart from TiledDisplay::BITMAP_DRAWS, which means a different
           # thing (what a tiled screen never shows), though today the two hold the same
           # draws.
           CLIPPED_DRAWS = %i[pixel fill_rect dma_fill_rect draw_rect_at draw_column_at

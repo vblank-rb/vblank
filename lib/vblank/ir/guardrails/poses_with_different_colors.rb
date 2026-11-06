@@ -9,7 +9,7 @@ module VBlank
         # ONE SPRITE, PICTURES GIVEN DIFFERENT LISTS OF COLORS.
         #
         # A sprite's pixels are not colors. Each is a small number, a place in a list of
-        # sixteen colors, and which list that is gets said once for the whole sprite, in its
+        # sixteen colors, and which list that is gets set once for the whole sprite, in its
         # row of the table the console composes from. So every picture a sprite can show is
         # drawn from the one list, and pictures that each came with a list of their own
         # cannot all be shown by one sprite: whichever list the row names, the others'

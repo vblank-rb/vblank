@@ -47,10 +47,10 @@ module VBlank
       # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
       class PS1
-        # WHERE A RUNNING PROGRAM KEEPS WHAT A READER WANTS, which nothing in its bytes says: every variable
+        # WHERE A RUNNING PROGRAM KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every variable
         # by the game's name (its address in RAM), every list ([its address, its capacity, the bytes a
         # slot, its name]), where the runtime keeps how the run stands (Runtime::Frame's names), where
-        # every label of the code went, and the program it was built from. +bytes+ says what the program's
+        # every label of the code went, and the program it was built from. +bytes+ gives what the program's
         # sections come to (ByteCounts), and +routines+ where each of the game's routines went
         # (GameRoutine), for a profile naming where a frame's time went.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines) do

@@ -64,12 +64,12 @@ module VBlank
       end
 
       # The variable a game with dark scenes keeps the light switched on or off in, 1 or 0:
-      # each scene sets it as it runs, and the light's darkness is that much of what it says.
+      # each scene sets it as it runs, and the light's darkness is that much of what it holds.
       ON = :__spotlight_on
 
       # Does +program+ switch its light as its scenes take turns? Asked of the program itself,
       # by whether anything sets the switch, so a backend handed a program nobody gave a switch
-      # — one built by hand — keeps its light on throughout, as it says.
+      # — one built by hand — keeps its light on throughout, as it asks.
       def switches?(program) = program.walk.any? { |node| node.kind == :set && node.var == ON }
 
       def light_of(program) = program.walk.find { |node| node.kind == :shade_outside }

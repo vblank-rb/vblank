@@ -15,7 +15,7 @@ module VBlank
       # want, and hands each note's groups to the chips, so it plays a note exactly as the lowering
       # plays a beep.
       #
-      # What a subclass says: SONGS, what a cartridge too full calls the songs; RECORDED_PARTS and
+      # What a subclass supplies: SONGS, what a cartridge too full calls the songs; RECORDED_PARTS and
       # PARTS; LoweringError, its console's; #song_writes, its chip writes; #sound_command, one of
       # them as a command of a group; #music_assembler; #recording_volume, a recorded note's volume
       # as its chip wants it; #not_made_yet_error; and #console_title.
@@ -581,7 +581,7 @@ module VBlank
 
         # A RECORDED NOTE UNDER THE MUSIC VOLUME, at every level there is: the group that logs its
         # loudness there, and the voice's volume for it. Whole numbers worked out here, so the player
-        # only looks one up. The note's own NOTE_WOBBLE word says where, a recorded note having
+        # only looks one up. The note's own NOTE_WOBBLE word marks where, a recorded note having
         # no wobble.
         def recorded_level_record(channel, loudness)
           lane = channel - RECORDED_CHANNEL

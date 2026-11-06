@@ -18,7 +18,7 @@ module VBlank
       # make the pass's moment. The buttons for each frame are set before the emulator plays it, and
       # the game reads them in its blank.
       #
-      # What a console's run says for itself:
+      # What a console's run supplies for itself:
       #
       #   kit                     the console's kit (Console::CheckedKit): its lowering builds the
       #                           cartridge, its title is in every refusal
@@ -103,7 +103,7 @@ module VBlank
         def screen = @screen
 
         # The cartridge made from +program+, before anything is played: a checked run builds it first of
-        # all, so whatever the lowering does not make is said before the interpreter plays a frame of a
+        # all, so whatever the lowering does not make is raised before the interpreter plays a frame of a
         # game it could never be held to.
         def build(program)
           @rom = kit.lowering.new.build(program, title: "CHECKED")
@@ -140,7 +140,7 @@ module VBlank
         # it (Reference#frames_each_pass): one, for a game that keeps up.
         def frames_took(pass) = @frames_took.fetch(pass, 1)
 
-        # What it drew at the moment the run ended, as the interpreter says it (Reference#sprites):
+        # What it drew at the moment the run ended, as the interpreter gives it (Reference#sprites):
         # every sprite, back to front, or the ones the game declared as +name+.
         def sprites(name = nil) = name ? @drawn_sprites.rows_named(@sprites, name) : @sprites
         def sprites_by_depth = sprites # A console's sprite table holds them that way round
@@ -292,7 +292,7 @@ module VBlank
 
         def read_variables = @places.variables.transform_values { |address| word(address) }
 
-        # Every list as the runtime keeps it: a header (each runtime's Lists says where in it the
+        # Every list as the runtime keeps it: a header (each runtime's Lists sets where in it the
         # capacity, the front and the length are) and then its slots, a ring from the front.
         def read_lists
           layout = runtime::Lists

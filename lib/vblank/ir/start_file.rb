@@ -9,7 +9,7 @@ module VBlank
     # the game's unpacking (Original::Unpacking), is built the same way and handed the player's copy
     # of the original.
     #
-    # What the program says about the file, on Nodes::Program#start_file: what it is +called+ in
+    # What the program declares about the file, on Nodes::Program#start_file: what it is +called+ in
     # what a player is told ("data pack"), its +size+ in bytes, and the +checks+ (each a Check):
     # bytes the file must hold at a place, which tell a file for this build from any other. The
     # size and the checks are known when the program is built, since the file's layout follows
@@ -18,7 +18,7 @@ module VBlank
     # WHAT IS READ FROM IT, each at a place in the file fixed when the program is built:
     #
     # - a table (Nodes::Table#from_file, where its first entry starts, and #entries_in_file): its
-    #   entries one after another, each as wide as the table says, low byte first, below zero only
+    #   entries one after another, each as wide as the table sets, low byte first, below zero only
     #   for a signed table (Build.elements_of);
     # - a picture given as places into a list of colours (Nodes::Bitmap#from_file, a Picture): the
     #   colours, two bytes each with five bits a channel, and the places, two to a byte with the
@@ -86,7 +86,7 @@ module VBlank
         filled
       end
 
-      # A table's entries, read from where it says.
+      # A table's entries, read from the place it names.
       def self.fill_table(node, bytes)
         count = node.entries_in_file
         node.values = Build.elements_of(bytes.byteslice(node.from_file, count * Build::ELEMENT_BYTES.fetch(node.width)),
@@ -95,7 +95,7 @@ module VBlank
         node.entries_in_file = nil
       end
 
-      # A picture's colours and places, read from where it says, and its pixels made from them as
+      # A picture's colours and places, read from the place it names, and its pixels made from them as
       # `image colors:, places:` makes them. A place past the colours shows colour 0, as each
       # runtime fills it.
       def self.fill_picture(node, bytes)

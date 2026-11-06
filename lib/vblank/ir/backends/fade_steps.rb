@@ -66,7 +66,7 @@ module VBlank
           [levels, 100 << fraction_bits]
         end
 
-        # A number of the display's steps, said in the walk's when +walked+.
+        # A number of the display's steps, given in the walk's when +walked+.
         def in_walk_steps(display_steps, walked = true)
           walked ? display_steps * (WALK / DISPLAY) : display_steps
         end

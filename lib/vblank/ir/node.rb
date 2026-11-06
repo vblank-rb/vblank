@@ -189,7 +189,7 @@ module VBlank
       # -- what a node is, for code that walks every kind --
       #
       # A tree walk cannot read a size off a node that has no size, so it asks first. These
-      # say what the node is in the words of the thing being asked about, rather than asking
+      # describe what the node is in the words of the thing being asked about, rather than asking
       # after a field by name — the caller wants to know whether there is a rectangle here,
       # not whether a :w exists.
 
@@ -217,7 +217,7 @@ module VBlank
       end
 
       # The routines this node can hand control to, by name — none, for nearly every kind. A
-      # kind that calls says which (see Nodes::Call and its siblings), so code following the
+      # kind that calls names which (see Nodes::Call and its siblings), so code following the
       # calls through a program asks this, and a new way of reaching a routine is followed
       # everywhere as soon as its kind answers it.
       def callees = []
@@ -342,7 +342,7 @@ module VBlank
       # walk that has to carry something down to them, which #walk cannot.
       def operand_nodes = node_fields.flat_map { |field| Array(public_send(field)).flatten.grep(Node) }
 
-      # Put +fresh+ in the operand of this node that holds +old+ itself, and say whether there
+      # Put +fresh+ in the operand of this node that holds +old+ itself, and return whether there
       # was one. A node held inside a list is not such an operand, and is left where it is.
       def replace_operand(old, fresh)
         field, = attrs.find { |_name, held| held.equal?(old) }
@@ -389,7 +389,7 @@ module VBlank
         value
       end
 
-      # +fields+ with +name+ in it or out of it, as +wanted+ says. In the order the kind
+      # +fields+ with +name+ in it or out of it, as +wanted+ asks. In the order the kind
       # DECLARES its operands, not the order they were written in, so a pass that collects as
       # it walks — the colours a program draws in, the routines it can reach — gets them in the
       # order the kind reads in.

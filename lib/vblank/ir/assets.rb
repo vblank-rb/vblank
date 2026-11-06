@@ -23,7 +23,7 @@ module VBlank
       # numbers into that table, one byte a pixel saying which place it came from (nil
       # where the art was given as colors). The two are the same picture until the table
       # holds one color at two places, which a palette taken off a real cartridge usually
-      # does — then a pixel's color no longer says which place drew it, and anything that
+      # does — then a pixel's color no longer shows which place drew it, and anything that
       # reads a pixel as a NUMBER has to ask here instead.
       #
       # +colors_name+ is the name of the list of colours it was drawn from, where the game named one
@@ -97,8 +97,8 @@ module VBlank
 
         # Does the layer behind show through this pixel when the picture is a background
         # tile? A tile has no marker of its own for "nothing here", so it is the backdrop
-        # color, black, that says it — except in art that came with its place numbers,
-        # where place 0 says it and black at any other place is a color like the rest. Every
+        # color, black, that marks it — except in art that came with its place numbers,
+        # where place 0 marks it and black at any other place is a color like the rest. Every
         # backend asks this one question, so a black pixel is solid or see-through on each.
         def tile_see_through_at?(index)
           place = place_at(index)
@@ -132,7 +132,7 @@ module VBlank
         # THE SAME PICTURE THE OTHER WAY ROUND — every row read right to left.
         #
         # "Left is the right one, backwards" is close to universal in 2D games, and this
-        # is the one place a picture is turned round. A program that SAYS a pose is a
+        # is the one place a picture is turned round. A program that DECLARES a pose is a
         # mirror and a build that NOTICES one already is therefore compare the same bytes,
         # which is what lets the second recognize the first.
         def mirrored

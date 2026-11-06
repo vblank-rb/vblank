@@ -11,7 +11,7 @@ module VBlank
       # `loop`, a `repeat` — has what is inside it cut the same way instead. The parts share the
       # routine's own numbers, which are kept in work memory, so nothing is handed between them.
       #
-      # How big a bank is, and so how big a routine may come to, is the console's; the lowering says
+      # How big a bank is, and so how big a routine may come to, is the console's; the lowering sets
       # it. Where to cut is the same on every console, and decided here.
       #
       # EACH ROUTINE IS MADE ONCE. Nearly every routine fits a bank, so it is made for real straight
@@ -31,7 +31,7 @@ module VBlank
         # A call of a part cut off a routine, standing where its statements stood.
         PartCall = Data.define(:label)
 
-        # The cuts of +lowering+, a try of the build +cache+ is for. The lowering's class says how
+        # The cuts of +lowering+, a try of the build +cache+ is for. The lowering's class sets how
         # big a routine and a part may come to (MOST_ROUTINE_BYTES, MOST_PART_BYTES), how many bytes
         # the instruction that ends a routine section takes (RETURN_BYTES: a section holds it and a
         # measurement does not) and what it holds while it makes one (LOWERING_STATE); its

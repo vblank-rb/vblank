@@ -54,7 +54,7 @@ module VBlank
       # the slow speed, with the chip's registers and RAM beside it, and the routines the game marks
       # `on_chip: true` lowered to the chip's own code (ChipCode). The SA-1 and the MSU-1 are not made.
       class SNES
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes says: every
+        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every
         # variable by the game's name (its address in work RAM), every list ([its 24-bit place, its
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built
@@ -68,7 +68,7 @@ module VBlank
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
-          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them
+          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
           # (Reference#sprites): what the runtime keeps of what it placed (Runtime::Picture::DRAWN).
           # +drawn+ is the program's SpriteNames; +read16+ reads a word of the running cartridge's
           # memory, given its address. A picture copied in other colours is named as the picture
@@ -135,7 +135,7 @@ module VBlank
 
         private
 
-        # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ says.
+        # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ sets.
         def build_laid_out(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false,
                            sprite_tiles: false, background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false,
                            far_tables: false, cache:)

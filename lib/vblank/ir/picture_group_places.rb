@@ -7,7 +7,7 @@ module VBlank
     #
     # A scene of many rooms shows one room's things at a time, two while the screen slides,
     # so its things need not all be in sprite memory at once: a room's pictures are copied in
-    # as the game says the room is up. Each picture is given ONE place for as long as its
+    # as the game puts the room up. Each picture is given ONE place for as long as its
     # scene is up, and is copied there every time one of its groups comes up. Then a picture
     # never moves while it is shown, and the table each sprite reads to find its pictures is
     # written once, when the cartridge is built.
@@ -15,7 +15,7 @@ module VBlank
     # TWO PICTURES CAN SHARE A PLACE when no group of the one can ever be up with a group of
     # the other: when it comes up, the other has gone. A picture in two groups is up while
     # either is, so it keeps clear of both. Which groups can be up at once is what
-    # up_together: says; a group is always up with itself.
+    # up_together: declares; a group is always up with itself.
     #
     # This is the problem of giving each live value a register, laid out in a line: the
     # pictures are the values, being up together is being live at once, and the place is
@@ -25,9 +25,9 @@ module VBlank
     # needs is where the last of them ends.
     #
     # The places are counted in whatever units the machine keeps pictures in, a tile's worth or
-    # less; each lowering says how many a picture takes.
+    # less; each lowering sets how many a picture takes.
     class PictureGroupPlaces
-      # One picture to place: +key+ says which (a lowering may use its bytes, so two sprites that
+      # One picture to place: +key+ names which (a lowering may use its bytes, so two sprites that
       # store a picture alike share it), +units+ how many units it takes, +even_start+ whether the
       # machine reads it only from an even unit, and +groups+ the numbers of its groups.
       Picture = Data.define(:key, :units, :even_start, :groups)
@@ -75,7 +75,7 @@ module VBlank
       def overlap?(at, units, other_at, other_units) = at < other_at + other_units && other_at < at + units
 
       # Can the two be up at the same moment: a group they share, or two of theirs that
-      # up_together: says can be up at once.
+      # up_together: allows up at once.
       def up_with?(one, other)
         one.groups.intersect?(other.groups) ||
           one.groups.product(other.groups).any? { |pair| @together.any? { |set| (pair - set).empty? } }

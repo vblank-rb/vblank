@@ -8,7 +8,7 @@ module VBlank
         #
         # The console has two square-wave voices and only the first has the circuit that slides
         # a note's pitch by itself (Audio::PitchSlide). A song's first square part plays on it and
-        # its second on the other, so a slide said by the second has nothing to play it — the
+        # its second on the other, so a slide set by the second has nothing to play it — the
         # note would hold its pitch, with nothing to say why. The fix costs nothing: the two parts
         # trade places in the song.
         #

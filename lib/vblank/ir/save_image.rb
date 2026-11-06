@@ -15,14 +15,14 @@ module VBlank
     #
     # A byte nothing ever wrote reads as 0xFF, which is what a fresh chip holds.
     #
-    # It keeps the rules of the memory the program says it has. Battery-backed memory takes any
+    # It keeps the rules of the memory the program declares it has. Battery-backed memory takes any
     # byte anywhere. Flash can only turn bits off in a write, and the only way to turn them back
     # on is to wipe the whole 4K block holding them, which leaves every byte of it 0xFF.
     class SaveImage
       FRESH_BYTE = 0xFF
 
       # What a byte of a block being wiped reads: the top bit the other way round from the
-      # 0xFF it is on its way to, which is how a flash chip says it is busy.
+      # 0xFF it is on its way to, which is how a flash chip shows it is busy.
       BUSY_BYTE = 0x00
 
       # Raised by a write once the power has gone off (see #cut_power_after).
@@ -32,8 +32,8 @@ module VBlank
       # or a place past the end of the chip.
       class Refused < StandardError; end
 
-      # +kilobytes+ is the size of the chip, which also says what kind it is. Left out, it is
-      # whatever the first program run on it says it has. +bytes+ is what the chip holds
+      # +kilobytes+ is the size of the chip, which also sets what kind it is. Left out, it is
+      # whatever the first program run on it declares it has. +bytes+ is what the chip holds
       # already, address to byte — the save memory a console run left behind, say.
       def initialize(kilobytes: nil, bytes: {})
         @memory = kilobytes && SaveLayout.memory(kilobytes)
@@ -54,7 +54,7 @@ module VBlank
       # The kind and size of the chip (an IR::SaveLayout::Memory).
       def memory = @memory || SaveLayout::PACKED
 
-      # Take the save memory +program_memory+ a program says it has. A chip cannot change, so
+      # Take the save memory +program_memory+ a program declares it has. A chip cannot change, so
       # one that was already another size is refused.
       def use_memory!(program_memory)
         @memory ||= program_memory
@@ -219,7 +219,7 @@ module VBlank
 
       # Hold the bytes of a .sav file in place of everything this chip held: what a game that
       # keeps its save memory in a file (the desktop build) left there. A chip cannot change
-      # size, so the file has to be as big as the chip. +from+ says where the bytes came from,
+      # size, so the file has to be as big as the chip. +from+ names where the bytes came from,
       # for the error to name. Returns self.
       def replace_with_sav(bytes, from: "These bytes")
         unless bytes.bytesize == memory.size
@@ -233,7 +233,7 @@ module VBlank
 
       # A chip holding the bytes of a .sav file, and as big as they are. Save memory comes
       # in a few sizes and a .sav file is exactly one of them, so bytes of any other length
-      # are something else. +from+ says where they came from, for the error to name.
+      # are something else. +from+ names where they came from, for the error to name.
       def self.from_sav(bytes, from: "These bytes")
         kilobytes = SaveLayout::NAMEABLE.find { |size| bytes.bytesize == size * 1024 }
         unless kilobytes

@@ -98,7 +98,7 @@ module VBlank
       # TWO PLACES OF ONE COLOUR THAT DARKEN APART. A shading finds a pixel's darkening by its
       # number on this screen, and two places of a shading that hold one colour have one number
       # unless something gives them two. A picture given as numbers into the shading's colours
-      # (Nodes::Bitmap#places_in_shading) says which place each pixel is, so every place that
+      # (Nodes::Bitmap#places_in_shading) gives which place each pixel is, so every place that
       # holds the colour of an earlier place and darkens differently gets a number of its own,
       # holding the same colour. Its own palette puts it after every other colour, so a game
       # without such a picture keeps its numbers; a palette the game gives must hold the colour
@@ -116,7 +116,7 @@ module VBlank
 
       # Can #indices_for be asked about +bitmap+: does it draw on a painted screen, or hold only
       # colors the table has? A picture that is only ever a tile, of a color no tear-free screen
-      # shows, has nothing to say to this table, and asking would refuse a color nobody put here.
+      # shows, has nothing to do with this table, and asking would refuse a color nobody put here.
       def covers?(bitmap)
         @drawn_pictures ||= @roots.flat_map { |root| pictures_drawn_in(root) }
         return true if @drawn_pictures.include?(bitmap.name)
@@ -127,7 +127,7 @@ module VBlank
 
       # A see-through pixel needs a number that is not any slot, since every slot is a real
       # color a drawer would paint. The first number past the end of the table is that, and it
-      # exists only while the table has room — a full one leaves nothing to say it with.
+      # exists only while the table has room — a full one leaves nothing to mark it with.
       def transparent_index(bitmap)
         return @entries.size if @entries.size < CAPACITY
 
@@ -281,7 +281,7 @@ module VBlank
         nil
       end
 
-      # A screen may say which colors it shows. Several scenes may each name a screen,
+      # A screen may name which colors it shows. Several scenes may each name a screen,
       # but the display has one table, so two different ones is a contradiction rather
       # than a choice.
       def given_entries(program)

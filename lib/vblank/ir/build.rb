@@ -45,7 +45,7 @@ module VBlank
       # +sprite_piece_sizes+ is the size of sprite piece by console, as [console, [width, height]]
       # pairs. +players+ is [fewest, most] players the game takes on this build, or nil
       # where it gave nothing; +for_computer+ is true for a build that plays on a computer. Each is
-      # left off the node unless it is said, so a program that says neither is the tree it was.
+      # left off the node unless it is given, so a program that gives neither is the tree it was.
       def program(*statements, console: nil, variant: nil, sprite_piece_sizes: [], players: nil, for_computer: false)
         said = { players: players, for_computer: (true if for_computer) }.compact
         Nodes.build(:program, children: statements, console: console, variant: variant,
@@ -310,13 +310,13 @@ module VBlank
       # +loop_frame:+ is where the song goes back to at its end, so what comes before it
       # plays once — an introduction. Left out, the song loops from its start.
       #
-      # +plays_once:+ says the song does not come round at all: at its end its parts go quiet,
+      # +plays_once:+ means the song does not come round at all: at its end its parts go quiet,
       # and it stays ended until the program stops the music or names another tune.
       #
-      # +low_notes_intended:+ says a note lower than its voice can play is meant to be played at
+      # +low_notes_intended:+ means a note lower than its voice can play is meant to be played at
       # the lowest it can, as the music's source played it (see Audio::Score).
       #
-      # +keeps_voices:+ says a sound effect holds each voice it has taken until it ends.
+      # +keeps_voices:+ means a sound effect holds each voice it has taken until it ends.
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
                group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
@@ -346,7 +346,7 @@ module VBlank
         Nodes.build(:play_song, name: name, this_frame: this_frame)
       end
 
-      # No tune is playing now. Said in the same frame as naming a tune, it starts that tune
+      # No tune is playing now. Given in the same frame as naming a tune, it starts that tune
       # over from its first note.
       def stop_music
         Nodes.build(:stop_music)
@@ -438,7 +438,7 @@ module VBlank
       # A repeating timer: run +body+ once every +period+ frames. +counter+ names
       # the hidden frame counter (cleared once at boot) that a backend ticks each
       # frame and resets when it reaches the period. The whole point of it being a
-      # node — not the counter+compare it lowers to — is that the tree still says
+      # node — not the counter+compare it lowers to — is that the tree still reads
       # "every N frames", so anything reading the tree reads the intent.
       def every(counter, period, *body)
         Nodes.build(:every, children: body, counter: counter, period: period)
@@ -447,7 +447,7 @@ module VBlank
       # A one-shot timer: run +body+ exactly once, +frames+ frames in, then never
       # again. +counter+ names the hidden frame counter (cleared at boot) that
       # counts up only until it lands on the target. Like +every+, kept as a node so
-      # the tree still says "after N frames".
+      # the tree still reads "after N frames".
       def after(counter, frames, *body)
         Nodes.build(:after, children: body, counter: counter, frames: frames)
       end
@@ -633,7 +633,7 @@ module VBlank
       #
       # A picture is made of things at different depths: the scenery behind, the
       # characters over it, the score on top. The program names those depths once, and
-      # anything it draws says which one it belongs to (see the +layer+ field on
+      # anything it draws names which one it belongs to (see the +layer+ field on
       # +background+ and +object+). A layer is nothing but a name and its place in the
       # order — what a machine turns that into is the backend's business, and the
       # answers differ wildly (dedicated stacking hardware, or simply painting in that
@@ -662,7 +662,7 @@ module VBlank
         Nodes.build(:see_through_layer, name: name, shows: rest, behind: amount, split: true)
       end
 
-      # Say again how see-through +layer+ is, just before a frame is drawn.
+      # Set again how see-through +layer+ is, just before a frame is drawn.
       def see_through(layer, added: nil)
         Nodes.build(:see_through, layer: layer, added: added)
       end
@@ -671,13 +671,13 @@ module VBlank
       # +tiles+ is an ordered list of defined image names (the distinct tiles);
       # +map+ is the grid — an array of rows, each an array of indices into +tiles+
       # (or nil for an empty cell). +tile_w+/+tile_h+ are the tile size in pixels.
-      # This says *what* the background is, not how a machine draws it: one backend
+      # This describes *what* the background is, not how a machine draws it: one backend
       # stamps the tiles pixel by pixel, another can hand the grid to tile hardware,
       # but the picture is the same.
       # +maps+ is every grid this background can be handed, the first being +map+ (the one
       # showing when the program starts). Left empty for a background declared with one map,
       # whose cells only ever change one at a time (see #set_tile). +choice+ is the variables
-      # that say which of them is showing (see Nodes::Background).
+      # that hold which of them is showing (see Nodes::Background).
       def background(name, tiles:, map:, tile_w:, tile_h:, maps: [], choice: [], layer: nil, scene: nil,
                      affine: false, recolors: [], palettes: [], sets: [], set_starts: [], map_sets: [],
                      bar_top: nil, above_row: nil)
@@ -711,7 +711,7 @@ module VBlank
       # (see Nodes::TileRun). +colors+ are the run's colours, place 0 first. A run that is one
       # sprite's picture names it +picture+, +width+ by +height+ pixels, and has no +tiles+.
       # +colors_name+ names +colors+ where the game declared them with `colors`. +console_format+
-      # says the list holds its tiles in the console's own form (Console::Description#tile_planes).
+      # means the list holds its tiles in the console's own form (Console::Description#tile_planes).
       def tile_run(name, list:, tiles:, colors:, picture: nil, width: 0, height: 0, colors_name: nil, console_format: false,
                    held_in: nil, tile_side: 8)
         Nodes.build(:tile_run, name: name, list: list, tiles: tiles, colors: colors, picture: picture,
@@ -784,8 +784,8 @@ module VBlank
       # rotate/scale hardware is a different pair of layers (BG2/BG3) from the ones a
       # `screen :tiled` background scrolls on.
       # +around+ is the point on the screen the picture turns around, in pixels, as [x, y].
-      # The builder gives the middle of the screen the game is built for when the game says
-      # nothing (Console::Description#middle), which is where a picture that swings or grows
+      # The builder gives the middle of the screen the game is built for when the game gives
+      # none (Console::Description#middle), which is where a picture that swings or grows
       # about nothing in particular belongs.
       def affine_background(name, angle:, scale:, around:)
         x, y = around
@@ -796,7 +796,7 @@ module VBlank
       # Show the named background scrolled to the offset (+x+, +y+) in pixels — the
       # top-left of the visible window over the map. x/y are value operands (variables
       # the game moves), so the view slides as they change; a map is a torus, so an
-      # offset past its edge wraps around. This says *where the window sits*, not how a
+      # offset past its edge wraps around. This describes *where the window sits*, not how a
       # machine scrolls: one backend re-renders the window, another nudges the tile
       # hardware's scroll offset.
       def scroll_background(name, x:, y:)
@@ -815,10 +815,10 @@ module VBlank
       # Give every ROW of the picture its own sideways offset on top of the named
       # background's scroll. +row+ names the variable the row number is put in (0 at the
       # top of the picture, counting down), and +offset+ is the expression worked out from
-      # it — so a program says "row R sits this many pixels across" and the whole picture
+      # it — so a program sets "row R sits this many pixels across" and the whole picture
       # bends. +body+ is any statement that has to run before the offset is worked out.
       #
-      # This says *the picture is not one flat rectangle* — each row is windowed
+      # This records that *the picture is not one flat rectangle* — each row is windowed
       # separately. A backend that draws the picture itself reads the offset per row as it
       # paints; a backend with display hardware that re-reads its scroll position for
       # every row it draws can hand the whole thing over and pay nothing per pixel.
@@ -869,7 +869,7 @@ module VBlank
       # behind it blends. Left out, the effect is under the whole picture, which is
       # every picture that names no layers.
       #
-      # +fraction_bits+ says the amount carries a fraction with that many bits, and nil a
+      # +fraction_bits+ means the amount carries a fraction with that many bits, and nil a
       # whole percentage. A fraction is also a request for finer steps than a hundredth can
       # give over a long fade (see IR::Fading).
       def fade(toward:, amount:, under: nil, fraction_bits: nil, reaches: nil, area: nil)
@@ -924,7 +924,7 @@ module VBlank
       # at a position that can change as the game runs — a hero, an enemy, a coin. It
       # composites over whatever's behind it (its see-through pixels let the scene
       # show) and leaves no trail, because the display redraws the whole picture each
-      # frame rather than smearing pixels into a buffer. This says *what* the object
+      # frame rather than smearing pixels into a buffer. This describes *what* the object
       # is; a backend realizes it however its target does (one composites in software,
       # another hands it to sprite hardware).
 
@@ -1038,7 +1038,7 @@ module VBlank
 
       # Create a named list that can hold up to `capacity` items.
       #
-      # `fast` is what the author said about where it should live on a machine with more
+      # `fast` is what the author asked for about where it should live on a machine with more
       # than one work memory: false for "I know this is cold — give it room", true to
       # insist on the quick one, nil to let the framework decide. It changes nothing the
       # program does, only how long a read takes.
@@ -1128,7 +1128,7 @@ module VBlank
 
       # Embed a build-time array as a read-only ROM table. +values+ is a Ruby array
       # of whole numbers computed at build time (a trig curve, a level row, ...).
-      # +width+ is the element size (:byte / :half / :word) and +signed+ says whether
+      # +width+ is the element size (:byte / :half / :word) and +signed+ marks whether
       # the values are signed (a read sign-extends). A definition — it emits nothing on
       # its own; table_get reads it.
       def table(name, values, width:, signed:)

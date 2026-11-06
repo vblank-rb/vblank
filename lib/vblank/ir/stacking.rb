@@ -5,7 +5,7 @@ module VBlank
     # PUTTING THINGS IN THE ORDER THE STACK ASKS FOR.
     #
     # A program can name the depths its picture is built from (see the +layers+ node)
-    # and say which one a thing belongs to. Turning that into a drawing order is one
+    # and name which one a thing belongs to. Turning that into a drawing order is one
     # rule, and it lives here rather than in each consumer, because two consumers that
     # each worked it out would eventually disagree — and a disagreement about which
     # thing is in front is exactly the kind that shows up as a wrong picture on one
@@ -17,8 +17,8 @@ module VBlank
     #     things in the same layer keep the order they were declared in.
     #   * Things that named NO layer do not move. They keep the exact places they had,
     #     and the layered things are rearranged among the places THEY had. So wrapping
-    #     one part of a game in a layer cannot pick up and move a part that says
-    #     nothing about layers.
+    #     one part of a game in a layer cannot pick up and move a part that names
+    #     no layer.
     module Stacking
       module_function
 
@@ -227,7 +227,7 @@ module VBlank
       end
 
       # Are +before+ and +scenery+, scenery next to each other in the sequence, in layers of
-      # one shared level? Two in one layer are not: only the stack's list says to share.
+      # one shared level? Two in one layer are not: only the stack's list asks to share.
       def same_shared_level?(before, scenery, shared)
         return false if before.nil? || before.layer == scenery.layer
 
@@ -296,7 +296,7 @@ module VBlank
       #
       # Something that named no layer is never on the kept side. There is no place in the
       # stack to read for it, and the answer that surprises nobody is that an effect
-      # reaches what you did not say to keep.
+      # reaches what you did not ask to keep.
       def at_or_above(picture, layer)
         line = picture.stack.index(layer)
         return [] if line.nil?

@@ -14,7 +14,7 @@ module VBlank
           binop: %i[lhs rhs], mul_fix: %i[lhs rhs], div_fix: %i[lhs rhs] }
       )
 
-      # Whether working +node+ out changes nothing. The block says whether a part is a number the
+      # Whether working +node+ out changes nothing. The block returns whether a part is a number the
       # lowering already knows.
       def self.value?(node, &known)
         return true if known&.call(node)

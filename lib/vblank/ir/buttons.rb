@@ -18,7 +18,7 @@ module VBlank
       # buttons, then the two only a Super Nintendo controller has, then the one only a Sega Genesis
       # pad has (C: its B and C are the Advance's B and A's neighbours, and it has no Select). A new
       # button goes on the end, since the first ten keep the order the Advance's key register has
-      # them in. Which a console has is its description's to say (Console::Description#buttons),
+      # them in. Which a console has is its description's to list (Console::Description#buttons),
       # and the build refuses the rest.
       NAMES = %i[a b select start right left up down r l x y c].freeze
 

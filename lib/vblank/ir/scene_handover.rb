@@ -9,7 +9,7 @@ module VBlank
     # layers a display has (see Stacking#screenfuls). Handing the screen from one scene to
     # the next is therefore a handful of rules, and every backend has to keep all of them —
     # the interpreter by painting its fake screen, the lowering by telling the console — so
-    # they are said here, once, and each backend carries them out.
+    # they are set out here, once, and each backend carries them out.
     #
     #   * The scenery every screen shows (a background declared in no scene) stays up
     #     throughout. Nothing hands it over.
@@ -19,11 +19,11 @@ module VBlank
     #     again puts it back exactly as declared — throwing away the scroll the game had
     #     asked for and every cell it had changed.
     #   * It goes up AS DECLARED each time: a cell changed with set_tile, or a map chosen
-    #     with show_map, is left behind with the visit that changed it, and what says which
+    #     with show_map, is left behind with the visit that changed it, and what records which
     #     map is showing goes back to the first. A game that remembers an opened door opens
     #     it again on the way in.
     #   * A run of tiles the game paints from a list (`tiles ..., from: list`) goes up showing
-    #     what its list holds AT THAT MOMENT, as if the game had said `changed`. There is
+    #     what its list holds AT THAT MOMENT, as if the game had written `changed`. There is
     #     nowhere else it could come from: the scene before has used the same video memory
     #     for its own scenery, and the list is the only place the pixels are kept.
     #   * The scene before's own scenery comes down, or it would show through wherever this
@@ -56,7 +56,7 @@ module VBlank
       # scene with none of its own: the last scene's scenery or painted pictures still come
       # down, and a backend that only keeps note of whose are up has to be told.
       #
-      # +loads_first+ says the scene's own work waits for the pass after it takes over, which
+      # +loads_first+ means the scene's own work waits for the pass after it takes over, which
       # a scene asks for with `loads_first: true`. Putting its pictures up is a copy as big as
       # the pictures are, and on a pass shared with the scene's first pass of game the two
       # together can run past the end of the frame — later the more the scene holds. Asked
@@ -70,7 +70,7 @@ module VBlank
       # scene starts at once.
       #
       # Its +backdrop+ is the colour it shows wherever nothing is drawn: what its own `screen`
-      # says, or else what the game's says (#game_backdrop), 0 being black.
+      # names, or else what the game's names (#game_backdrop), 0 being black.
       Arrival = Data.define(:scene, :screen, :mode, :scenery, :map_choices, :painted_tiles, :painted_pictures,
                             :takes_down_scenery, :takes_down_art, :loads_first, :backdrop) do
         def takes_down_scenery? = takes_down_scenery
@@ -129,11 +129,11 @@ module VBlank
       end
 
       # THE COLOUR THE GAME SHOWS WHEREVER NOTHING IS DRAWN, as its own `screen` — the one in no
-      # scene — says it: 0, black, when it says none. A scene that says no backdrop shows this.
+      # scene — names it: 0, black, when it names none. A scene that names no backdrop shows this.
       def game_backdrop = (@game_screen&.backdrop if @game_screen && DISPLAYS.key?(@game_screen.mode)) || 0
 
-      # Does any `screen` say a backdrop? A game where none does shows black wherever nothing is
-      # drawn, as every game did before a screen could say one, and a backend emits nothing for it.
+      # Does any `screen` name a backdrop? A game where none does shows black wherever nothing is
+      # drawn, as every game did before a screen could name one, and a backend emits nothing for it.
       def backdrops? = @backdrops
 
       # DOES THE BACKDROP FOLLOW A LIST OF COLOURS the game recolours (Nodes::ColorList#backdrop_place)?
@@ -143,7 +143,7 @@ module VBlank
       # game had faded to black would flash it for a frame.
       def backdrop_follows_list? = @backdrop_follows_list
 
-      # Is +node+ a `screen` naming a kind of screen that a scene says, at the top of its own routine
+      # Is +node+ a `screen` naming a kind of screen that a scene names, at the top of its own routine
       # (rather than the game's)? A raw display setting is the author's own register write.
       def scene_screen?(node) = DISPLAYS.key?(node.mode) && !scene_of_screen(node).nil?
 
@@ -170,7 +170,7 @@ module VBlank
         screen&.backdrop || game_backdrop
       end
 
-      # The scene whose routine says +node+ at its top, or nil — a scene, and not any other routine.
+      # The scene whose routine has +node+ at its top, or nil — a scene, and not any other routine.
       def scene_of_screen(node)
         @funcs.find { |name, func| Modes.scene_func?(name) && func.children.any? { |child| child.equal?(node) } }&.first
       end
@@ -186,7 +186,7 @@ module VBlank
       # Whether any scene loads first.
       def any_loads_first? = @funcs.each_value.any? { |func| loads_first_in_loop?(func) }
 
-      # What says a scene that loads first is up, as [variable, value, scene], for each one.
+      # What marks a scene that loads first as up, as [variable, value, scene], for each one.
       def choices_loading_first
         @cases.flat_map do |choice|
           choice.clauses.filter_map { |value, scene| [choice.var, value, scene] if arrival(scene).loads_first? }

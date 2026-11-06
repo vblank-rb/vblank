@@ -12,10 +12,10 @@ module VBlank
       # cartridge too full for the game says so are decided here.
       module Sections
         # A place named in an instruction, filled in once everything is placed. Which +kind+s there
-        # are is the assembler's own: each says what it fills in (an address, a distance, a bank).
+        # are is the assembler's own: each names what it fills in (an address, a distance, a bank).
         Fixup = Data.define(:offset, :kind, :label, :plus)
 
-        # A named run of bytes, with the labels it defines and the holes it leaves. +home+ says where
+        # A named run of bytes, with the labels it defines and the holes it leaves. +home+ gives where
         # it must go, in the words of the console's linker. +holds+ is what of the GAME's it keeps (a
         # Holding), so a cartridge too full for the game can say which of the game's parts is too big
         # and how to make it smaller; nil for the framework's own code, which is not the author's to
@@ -30,7 +30,7 @@ module VBlank
         Holding = Data.define(:what, :fix)
 
         # THE BANKS, FILLED FIRST FIT. Each section goes in the first bank, counting from +first+,
-        # with room for it after what is already there; a bank holds what +room+ says it does (a
+        # with room for it after what is already there; a bank holds what +room+ gives it (a
         # bank's last bytes can be the cartridge's own, as the Super Nintendo's first bank's header
         # is). A section that must start at a multiple of +align+ skips the bytes up to the next one.
         class Banks

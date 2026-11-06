@@ -17,7 +17,7 @@ module VBlank
         #
         # Reached means reached from somewhere that runs: anything outside a routine (the
         # main body, the game loop, a timer's handler), and from there every routine a
-        # reached one can call. Whatever way a node hands control to a routine, it says so
+        # reached one can call. Whatever way a node hands control to a routine, it declares that
         # through #callees — a plain `call`, a call picked by number, a call on a variable
         # holding routine names, a scene a `case_var` lands on — so a new way of calling is
         # followed here as soon as its kind answers that. The routines the framework writes

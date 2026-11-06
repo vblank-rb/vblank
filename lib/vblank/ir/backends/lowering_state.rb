@@ -15,7 +15,7 @@ module VBlank
       # - a routine made for real and then found too big for a bank (#snapshot, RoutineCuts#sections):
       #   what it reserved is put back, into the very objects the lowering and the build hold.
       #
-      # Which of the lowering's things are which is the lowering's to say, as three lists:
+      # Which of the lowering's things are which is the lowering's to give, as three lists:
       #
       # - +copied+: classes it changes the insides of as it makes a statement (a palette gaining a
       #   colour), copied all the way down;

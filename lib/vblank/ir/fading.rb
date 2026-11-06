@@ -7,7 +7,7 @@ module VBlank
     # There are two ways to darken a whole picture on this console, and a picture can
     # only be having one of them done to it at a time.
     #
-    # The display can do it as it draws. One register says how far toward black or white
+    # The display can do it as it draws. One register sets how far toward black or white
     # the picture goes, and every pixel is moved that far on its way to the screen.
     # Nothing in memory changes and nothing is redrawn, so it costs the same however much
     # is on screen. That is the free one, and it is what a fade has always been here.
@@ -120,7 +120,7 @@ module VBlank
         def fine_palette_fade? = @fine
 
         # Is any fade in this program held to a rectangle of the screen? Then every fade in it
-        # says where it reaches, a plain one included.
+        # names where it reaches, a plain one included.
         def rectangle_fades? = @fades.any?(&:reaches)
 
         # The fades that asked for the finer steps and cannot have them, being placed in the

@@ -10,7 +10,7 @@ module VBlank
     # is its own business — one that redraws everything from scratch each frame has no use
     # for it, one whose target remembers what it was last told can do less work.
     #
-    # NOTHING IN A PROGRAM SAYS "THIS ONE DOES NOT MOVE", and nothing should: asking the
+    # NOTHING IN A PROGRAM DECLARES "THIS ONE DOES NOT MOVE", and nothing should: asking the
     # author to repeat what they have already written is asking them to get it wrong. It is
     # read off what the program DOES instead — a thing is still when nothing that can run
     # more than once writes any of the numbers it is drawn from.
@@ -27,7 +27,7 @@ module VBlank
     # painted from stale numbers, which is a bug nobody can see the cause of; getting it wrong
     # in the other leaves a thing drawn again that need not have been, which is what every
     # program did before any of this existed. So every question here is answered "it moves"
-    # unless the program plainly says otherwise: an unrecognised way of working a number out,
+    # unless the program plainly shows otherwise: an unrecognised way of working a number out,
     # a scene nothing dispatches to, instructions of the author's own anywhere in the program.
     #
     # ONE STATE VARIABLE, and a program that picks its scenes with two gets nothing from this.
@@ -43,7 +43,7 @@ module VBlank
         # The same answer with some of the still things handed back, for a consumer that has
         # reasons of its own to redraw one anyway. The variable to watch goes with the last of
         # them, so "nothing is still, and there is nothing to watch for it" stays one fact
-        # said in one place rather than two that can drift apart.
+        # kept in one place rather than two that can drift apart.
         def except(names)
           kept = still - names
           Answer.new(still: kept, watching: (watching if kept.any?))

@@ -168,7 +168,7 @@ module VBlank
       end
 
       # THE STATEMENTS A BEAT MEANS — `every` and `after` (Reference#exec_every, #exec_after) —
-      # said as the plain ones every lowering already makes, so none of them writes the rule
+      # written as the plain ones every lowering already makes, so none of them writes the rule
       # again. The beat's counter moves on by the frames the pass answers for, and at least one:
       # before the first frame has ended nothing has been counted yet, and that pass is a frame.
       #

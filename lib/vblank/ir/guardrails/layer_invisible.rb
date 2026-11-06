@@ -6,7 +6,7 @@ module VBlank
       module Checks
         # A layer made so see-through that it cannot be seen.
         #
-        # `transparency: 100` says none of the layer shows and all of what is behind it
+        # `transparency: 100` means none of the layer shows and all of what is behind it
         # does — which is the same picture as not declaring the layer at all, except that
         # the game still holds its art, its tiles and (for scenery) one of the console's
         # four levels of depth. Nothing crashes and nothing looks broken; the layer is

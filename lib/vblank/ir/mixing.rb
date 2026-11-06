@@ -19,8 +19,8 @@ module VBlank
       # DOES ANYTHING IN THIS PROGRAM SHAPE A NOTE? Asked once, of the whole program, because the
       # answer decides what the mix reads for EVERY voice: a voice's GAIN, which a shape moves,
       # in a program that shapes something, and its loudness as it stands in one that shapes
-      # nothing. Three places can say so: a recording declared with one, a part of a played tune
-      # or a sound effect, or one of that part's notes. A tune nobody plays says nothing.
+      # nothing. Three places can ask for one: a recording declared with one, a part of a played tune
+      # or a sound effect, or one of that part's notes. A tune nobody plays asks for nothing.
       def shapes_any_note?(program)
         program.walk.any? { |node| node.kind == :sample && node.envelope } ||
           Tunes.playable_songs(program).any? do |song|

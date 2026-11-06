@@ -7,7 +7,7 @@ module VBlank
         # A PICTURE THE GAME PAINTS FROM A LIST IS THE WHOLE OF THE SPRITE THAT SHOWS IT.
         #
         # The console keeps such a picture in one room of sprite memory, which the game's list
-        # is copied into whenever it says `changed`, and the sprite points at that room. A
+        # is copied into whenever the game marks it `changed`, and the sprite points at that room. A
         # sprite that switches between poses points at a different picture for each, laid out
         # one after another; a painted picture among them would need a room of its own inside
         # that run, and nothing lays one out there. So the mix is refused, on both backends,

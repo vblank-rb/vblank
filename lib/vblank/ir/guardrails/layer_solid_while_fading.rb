@@ -19,7 +19,7 @@ module VBlank
         # lifts.
         #
         # None of that is visible from the code. The verbs are written in different
-        # places, often in different files, and nothing about `fade_out under: :ui` says
+        # places, often in different files, and nothing about `fade_out under: :ui` shows
         # it reaches a layer somebody else declared. The picture during the fade is the
         # only clue, and a fade is over in half a second.
         #

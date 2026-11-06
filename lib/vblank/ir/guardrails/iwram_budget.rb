@@ -182,7 +182,7 @@ module VBlank
               "fits.#{made_variables_message}"
           end
 
-          # What the author can look for, since no line of theirs says `var` for these.
+          # What the author can look for, since no line of theirs writes `var` for these.
           def made_variables_message
             names = @made_names.to_a
             hidden = @hidden_count.to_i

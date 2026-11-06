@@ -7,7 +7,7 @@ module VBlank
         # Shared machinery for the one-time-setup guardrails. Several footguns are the
         # same shape: a verb meant to run ONCE (seed the random stream, create a list)
         # written directly inside a per-frame context, where it silently re-runs every
-        # frame. This finds those contexts so each check only has to say which verb it
+        # frame. This finds those contexts so each check only has to name which verb it
         # cares about and how to phrase the fix.
         #
         # A "per-frame container" is one whose body re-runs each frame: the game loop, a

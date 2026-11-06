@@ -8,7 +8,7 @@ module VBlank
     # Nothing in a backend knows that. Once a game is written, every statement that changes such a
     # variable is followed by a second one, `x = (x << 24) >> 24`, which is the wrap in the
     # arithmetic every backend already does. So the interpreter and each lowering agree with no
-    # work of their own, and a game that says no width has nothing added.
+    # work of their own, and a game that names no width has nothing added.
     #
     # A console with a reason to may keep the variable in fewer bytes (the Color's processor works a
     # byte at a time, so four bytes is four times the work). Writing to those bytes is the wrap, and
@@ -53,7 +53,7 @@ module VBlank
           up.lhs.name == node.var && [up.rhs, down.rhs].all? { |bits| written_number(bits) == bits_above(width) }
       end
 
-      # The number +operand+ says, if it was written in the program.
+      # The number +operand+ holds, if it was written in the program.
       def written_number(operand)
         return operand if operand.is_a?(Integer)
 

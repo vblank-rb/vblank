@@ -51,7 +51,7 @@ module VBlank
       # +reading+ of a clock at +time+ — a Time, or nil for no clock at all — that was set when
       # +set+ is true.
       #
-      # The time is read as the date and the hour it SAYS, with no time zone: a clock holds the
+      # The time is read as the date and the hour it SHOWS, with no time zone: a clock holds the
       # local time it was set to and moves one second a second, through a change to summer time
       # and out of one. So a Time a test gives is taken at its word, and moving it on never makes
       # an hour appear or vanish.
@@ -69,7 +69,7 @@ module VBlank
         end
       end
 
-      # +time+ moved on by +seconds+ (a Rational), keeping the date and the hour it says: worked
+      # +time+ moved on by +seconds+ (a Rational), keeping the date and the hour it shows: worked
       # out as if no place had summer time, which is how a clock counts.
       def moved_on(time, seconds)
         Time.utc(time.year, time.month, time.day, time.hour, time.min, time.sec + time.subsec) + seconds

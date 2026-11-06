@@ -9,7 +9,7 @@ module VBlank
         # `hide_sprites` where there is no sprite layer to switch off.
         #
         # On a screen drawn from tiles the console draws its sprites as a layer of their own,
-        # over the backgrounds, and one bit says whether that layer is drawn at all — which is
+        # over the backgrounds, and one bit sets whether that layer is drawn at all — which is
         # what `hide_sprites` turns off for a frame. A bitmap screen has no such layer: its
         # sprites are painted into the one picture and taken out of it again, by the game's own
         # code. So the call would build, run, and change nothing, and nothing would say why. It

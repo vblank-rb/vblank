@@ -8,14 +8,14 @@ module VBlank
         # that sprite in blocks.
         #
         # Each half is fine alone, and the two together are the one mix of this family a
-        # display cannot show the way the game says it. A fade placed between two sprites
+        # display cannot show the way the game asks for it. A fade placed between two sprites
         # is held off the kept one by the sprite's own SHAPE: where its drawn pixels are,
         # the fade does not apply. A sprite in blocks no longer has that shape — its
         # blocks run past its edge on one side and stop short on another — so the hole in
         # the fade and the sprite drawn in it do not line up, and the sprite comes out
         # part faded with an unfaded outline of itself beside it.
         #
-        # Nothing at either call site says so: one is a fade, the other is a pixelate, and
+        # Nothing at either call site shows it: one is a fade, the other is a pixelate, and
         # both look right where they are written. So it is refused here, with the way
         # round, which is nearly always what was meant anyway — a thing kept out of the
         # fade is a thing to keep readable, so keep it out of the blocks as well.

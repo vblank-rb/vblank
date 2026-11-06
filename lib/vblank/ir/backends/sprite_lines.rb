@@ -13,7 +13,7 @@ module VBlank
       # first, so what goes is what is furthest back.
       #
       # Every backend draws a console's sprites this way (Console::Description
-      # #sprite_pieces_drawn_a_line says how many, nil where none counts them), the interpreter and the
+      # #sprite_pieces_drawn_a_line gives how many, nil where none counts them), the interpreter and the
       # runtimes that play a game as that console alike, so all of them leave out the same slices
       # the cartridge does. The pieces are the console's own (Backends::SpritePieces): blank ones are
       # not in the table, so they take nothing; a piece wholly off the left or right of the screen is
@@ -52,7 +52,7 @@ module VBlank
         # is how many pieces a line draws. What comes back is one entry for each sprite: nil for one
         # drawn whole, or for one that loses a slice, by each line of the screen it loses one on, the
         # pieces of it that cover that line as [across, left out?]. A pixel of it is then left out
-        # where #left_out_at? says.
+        # where #left_out_at? answers true.
         def self.left_out(sprites, most:, piece_height:, screen_width:, screen_height:)
           taken = Hash.new(0)
           sprites.map do |x, y, places|

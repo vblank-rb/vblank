@@ -61,7 +61,7 @@ module VBlank
       # interpreter, given the Color's screen, and comparing every variable, list and pixel after
       # every pass of the game loop (GBC::CheckedRun).
       class GBC
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes says:
+        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows:
         # every variable by the game's name, every list (its place, its capacity, its slot width),
         # where the runtime keeps how the run stands (Runtime::Frame's names), where every label of
         # the code went (the Linker's places), and where each of the game's routines is — a
@@ -75,7 +75,7 @@ module VBlank
         # run one stops says what stopped it in the interpreter's words.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_tables, :notes,
                              :music_follows_level, :sound_effects, :recordings, :picture_checks, :together_checks) do
-          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter says them
+          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
           # (Reference#sprites): who each is, which picture it shows and where, back to front. The
           # runtime keeps them in a table of its own (Runtime::Picture::DRAWN), front-most first as
           # the console draws them, so anything reading a running cartridge asks the same of it.
@@ -104,12 +104,12 @@ module VBlank
         # One of the cartridge's checks that a sprite's picture is up (Lowering::Picture
         # #emit_refuse_pictures_not_up): the sprite, by the game's name, the picture groups asked
         # about, the sprite's pictures by pose and the groups holding each, the numbers that name a
-        # group, and where the number the game said is kept for each of the groups' slots.
+        # group, and where the number the game gave is kept for each of the groups' slots.
         PictureCheck = Data.define(:sprite, :groups, :poses, :holdings, :group_numbers, :said_at)
 
         # One of the cartridge's checks that a set's groups up can be up together (Lowering::Picture
         # #emit_refuse_groups_not_together): the picture groups, the numbers that name a group, and
-        # where the number the game said is kept for each of their slots.
+        # where the number the game gave is kept for each of their slots.
         TogetherCheck = Data.define(:groups, :group_numbers, :said_at)
 
         # One routine of the game's in the cartridge: its bank, the addresses its code takes there,
@@ -124,7 +124,7 @@ module VBlank
         # What one try at a build keeps in the cartridge's banks rather than the part always in view
         # (#build_in_view): its songs' notes, its sprites' tables of poses, its backgrounds' tables of
         # colours, every table of its own at least +banked_table_bytes+ long, its sound effects, and
-        # the indexes that say where each thing is. Each is Lowering's setting of the same name.
+        # the indexes that record where each thing is. Each is Lowering's setting of the same name.
         ViewSettings = Data.define(:banked_songs, :bank_pose_tables, :bank_background_colors, :banked_table_bytes,
                                    :effects_in_banks, :indexes_in_banks) do
           # Everything in view that can be: a game that fits so builds the bytes it always has.
@@ -138,7 +138,7 @@ module VBlank
         # +program+ as a cartridge (Cartridge::GBCROM), carrying its Places.
         #
         # A BUILD IS A SERIES OF TRIES, each a whole lowering, until one fits. The first keeps
-        # everything the simple way. A try stops at the first thing that does not fit, which says
+        # everything the simple way. A try stops at the first thing that does not fit, which decides
         # what the next try changes:
         #
         # - sprites that wear more lists of colours than the console holds: the lists borrow them as
@@ -256,7 +256,7 @@ module VBlank
         # THE LAST WAY TO FIT THE PART ALWAYS IN VIEW: everything kept in the banks that the build
         # can keep there — its songs' notes, its sound effects, its sprites' pose tables, its fades'
         # colour tables and every table of its own but the smallest — and the INDEXES as well, the
-        # small tables that say where each of those things is. Each is a few bytes, but a few bytes
+        # small tables that record where each of those things is. Each is a few bytes, but a few bytes
         # for every song, every sprite picture, every screen and every routine a call picks from
         # add up, so a game that keeps adding songs and screens fills the part always in view with
         # them long after the things themselves went to the banks. Kept there, a song or a screen
@@ -284,7 +284,7 @@ module VBlank
 
         # AT MOST HOW MANY BYTES +later+ MOVES OUT OF VIEW that +view+ kept there, read off the try
         # that +spans+ measured (#in_view_spans) and +lowering+ made. Moving a thing to the banks
-        # never shrinks the rest of what is in view: what stays to say where it went, and the code
+        # never shrinks the rest of what is in view: what stays to record where it went, and the code
         # that puts its bank in view, is the same size or bigger. So a try's part in view, less these bytes, is the least
         # the later one's can be. A later step that changes how the sound effects or the indexes are
         # kept is not measured here (Infinity): those move things this try's parts do not name, and
@@ -393,7 +393,7 @@ module VBlank
           Lowered.new(lowering: lowering, memory: memory, sections: runtime + game + data)
         end
 
-        # The cartridge of +lowered+, placed as +linked+ says.
+        # The cartridge of +lowered+, placed as +linked+ sets.
         def cartridge(program, title, lowered, linked)
           lowering = lowered.lowering
           routines = lowering.section_routines.map do |label, routine|

@@ -4,7 +4,7 @@ require "zlib"
 
 module VBlank
   module IR
-    # WHERE SAVE DATA LIVES IN SAVE MEMORY, and how a copy of it says whether it is good.
+    # WHERE SAVE DATA LIVES IN SAVE MEMORY, and how a copy of it shows whether it is good.
     #
     # A fact about the program's save memory rather than about any machine, so every backend
     # reads it from here: the console lays its chip out this way and the interpreter lays its
@@ -25,7 +25,7 @@ module VBlank
     # written leaves the last good one.
     #
     # EVERY COPY IS KEPT TWICE. A save goes into the older of the two, and only once the whole
-    # of it is written does its header say it is newer. So a save cut off half way — the
+    # of it is written does its header mark it newer. So a save cut off half way — the
     # power going off, the cartridge pulled — leaves the other one as it was, and the copy is
     # still the last good save. Each half starts with a header:
     #
@@ -33,7 +33,7 @@ module VBlank
     #   shape     a word worked out from what the record keeps, so a game whose record has
     #             changed shape reads last version's saves as empty rather than as nonsense
     #   sequence  a word, one more than the other half's, so the newer half is known
-    #   kind      a word: this half holds a save, or says the copy was erased
+    #   kind      a word: this half holds a save, or marks the copy erased
     #   checksum  a word over the half's bytes, written LAST: until it is, the half cannot
     #             pass for good
     module SaveLayout
@@ -187,7 +187,7 @@ module VBlank
       # The save memory of +kilobytes+.
       def memory(kilobytes) = Memory.new(kilobytes)
 
-      # The packed 32K memory, which a table is read from and written to unless it says otherwise.
+      # The packed 32K memory, which a table is read from and written to unless it declares otherwise.
       PACKED = memory(MEMORIES.first)
 
       # The kinds that reach save memory. A program holding none of them has none.
@@ -197,8 +197,8 @@ module VBlank
       # a save file and its cartridge worth giving save memory at all.
       def named_by?(program) = program.walk.any? { |node| KINDS.include?(node.kind) }
 
-      # The save memory +program+ says it has (a `save_memory` node), or the 32K when it says
-      # nothing. Every backend asks this, so none can run a program on memory another lays out
+      # The save memory +program+ declares it has (a `save_memory` node), or the 32K when it
+      # declares none. Every backend asks this, so none can run a program on memory another lays out
       # differently.
       def memory_of(program)
         named = program.walk.find { |node| node.kind == :save_memory }
@@ -234,7 +234,7 @@ module VBlank
       # How many bytes one half of a copy takes: its header and its body, kept to whole words.
       def half_bytes(body) = HEADER + (((body + 3) / 4) * 4)
 
-      # THE CHECKSUM, said once so both backends compute the same one. Two running totals,
+      # THE CHECKSUM, written once so both backends compute the same one. Two running totals,
       # the bytes and the totals so far, each kept to sixteen bits: the second is what notices
       # two bytes that swapped places, which a plain sum does not.
       def checksum(bytes)
@@ -250,7 +250,7 @@ module VBlank
       # How many records the table has rows for.
       TABLE_ROWS = 16
 
-      # What a row says, each a column of its own: the record's name as a number, where it
+      # What a row holds, each a column of its own: the record's name as a number, where it
       # starts, how many bytes one half of a copy takes, and how many copies it has.
       TABLE_COLUMNS = %i[key at half copies].freeze
 
@@ -273,7 +273,7 @@ module VBlank
       end
 
       # THE TABLE OF PLACES' OWN FACTS. The build writes the table through the same routines a
-      # record uses; SaveImage#write_table and SaveImage#table say the same layout directly, for
+      # record uses; SaveImage#write_table and SaveImage#table write the same layout directly, for
       # a test that wants to start a game from a table it chose and see where each record went.
       module Table
         # One row: the record's key (see SaveLayout.record_key), where it starts, how many

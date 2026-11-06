@@ -20,7 +20,7 @@ module VBlank
         # window". The light, a status bar and a fade held to part of the screen or put under a
         # layer each set those switches too, and the one window left over cannot hold the box: where
         # the two windows cross, the first one's switches win, so the boxed layer would show inside
-        # the light whatever its box said. So a game with a box does none of them, anywhere in it.
+        # the light whatever its box set. So a game with a box does none of them, anywhere in it.
         #
         # Asked of the console the program is built for (Console::Description#background_box), so
         # the interpreter refuses what the cartridge would get wrong, in the same words.

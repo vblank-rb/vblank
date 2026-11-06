@@ -13,7 +13,7 @@ module VBlank
         # straight into it where it is declared. After that it is not a background at
         # all, only pixels somebody already painted, and no ordering applied later can
         # reach back and move them. So the order backgrounds come out in is the order
-        # the declarations ran, whatever the stack says.
+        # the declarations ran, whatever the stack asks for.
         #
         # SPRITES ARE NOT LIKE THAT, and used to be caught here too. A software sprite
         # is repainted every frame, so its place in the stack is a live question the

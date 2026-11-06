@@ -75,9 +75,9 @@ module VBlank
       # inspects as `#<data ...>`, which DESCRIBES it rather than rebuilding it, so the
       # fields are written out as keyword arguments instead.
       #
-      # Only the ones the author actually said: a record that publishes a DEFAULTS table
-      # has the fields still at their defaults left out, so a song part that says nothing
-      # but its notes reads that way in the dump too. One with no such table says
+      # Only the ones the author actually set: a record that publishes a DEFAULTS table
+      # has the fields still at their defaults left out, so a song part that sets nothing
+      # but its notes reads that way in the dump too. One with no such table writes out
       # everything, which is right — nothing there is implied.
       def record_source(record)
         defaults = record.class.const_defined?(:DEFAULTS) ? record.class::DEFAULTS : {}

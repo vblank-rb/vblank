@@ -21,13 +21,13 @@ module VBlank
         # A GAME CAN KEEP MORE ROWS THAN ITS CONSOLE DRAWS ON ONE FRAME: a pool keeps a row for
         # every thing it can hold, and a room shows a handful of them, so what has to fit the
         # console's table is one frame's sprites, and how a backend keeps the rest is its own
-        # business. How many places a game can keep is the console's to say
+        # business. How many places a game can keep is the console's to set
         # (Console::Description#sprite_places); a game over that has a sprite with nowhere to go.
         #
         # This used to be a number an author counted, until tiled text: the console draws
         # every character of a tiled `draw_text` as a sprite of its own, and a menu is two
         # of those per row, so a game crosses the line by rewording a label. The count
-        # alone is no help then. The tree says what every sprite is — a letter's is named
+        # alone is no help then. The tree records what every sprite is — a letter's is named
         # by the framework, a pool's comes from its pool, and the rest from the picture
         # the game named — so the refusal says how the places were spent.
         #

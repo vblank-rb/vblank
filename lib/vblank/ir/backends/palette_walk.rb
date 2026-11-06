@@ -6,8 +6,8 @@ module VBlank
       # A FADE OR A TINT THAT WALKS THE COLOURS (IR::Fading#palette_walk?), as a console with no
       # blend does every one: every colour the game shows moved part of the way toward black, white
       # or a colour of the game's, and the moved colours sent to the console's colour memory. What that walk is, and when it is done, is the
-      # same on every console that does it, so it is said here once and each lowering hands its
-      # runtime what this says. The runtime then does only what its own hardware asks: how it
+      # same on every console that does it, so it is set out here once and each lowering hands its
+      # runtime what this works out. The runtime then does only what its own hardware asks: how it
       # multiplies a channel, how many bits a channel keeps, where it keeps the colours and how it
       # sends them in the blank.
       #
@@ -22,13 +22,13 @@ module VBlank
       #   the game. At power-on the state is toward black by no steps.
       # - No steps is the colours as they are, whatever they were walked toward, and a runtime
       #   asks the steps, not where they go, whether there is any walk to do.
-      # - Said again the same as the walk in force, it does nothing: a game says `tint :red, hurt`
+      # - Asked for again the same as the walk in force, it does nothing: a game writes `tint :red, hurt`
       #   every pass, and almost every pass nothing moved. Only a change works the colours out.
       # - The colours walked are the ones each picture is drawn in NOW: the declared set of a list,
       #   or the set the game told it to hold (Reference#colors_held_by), so a list that changes
       #   and a walk in force meet on the same pass, whichever was given first.
       # - The work is done as the pass ends and sent in the blank, so the moved colours show on the
-      #   picture of the pass that said them, with the sprites and the scroll, and a pass that says
+      #   picture of the pass that asked for them, with the sprites and the scroll, and a pass that asks for
       #   several walks (a fade catching up on frames a slow pass took) works the colours out once.
       #
       # A walk placed under a layer or held to part of the screen needs a blend, and a console with

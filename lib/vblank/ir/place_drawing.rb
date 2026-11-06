@@ -97,10 +97,10 @@ module VBlank
       #
       # +shading+ is the shading a lit drawing of the place fills its faces with (nil for a place
       # never lit), and +point_lights+ the list of light the game adds to each point as it runs
-      # (nil for none). +corners_in_a_loop+ says a face's corners are worked in a loop rather than written
-      # out four times (#face_loop_statements). +outcode_test+ says the drawing passes over a face wholly
+      # (nil for none). +corners_in_a_loop+ means a face's corners are worked in a loop rather than written
+      # out four times (#face_loop_statements). +outcode_test+ means the drawing passes over a face wholly
       # outside its window itself (OUTCODE_EDGES); false where the target's fill does that already.
-      # +fill_by_row_middles+ says a face drawn whole whose corners cross no row's middle is passed over before
+      # +fill_by_row_middles+ means a face drawn whole whose corners cross no row's middle is passed over before
       # its corners are handed on (#whole_face_statements): true where the fill draws a row only where
       # an edge crosses its middle, as the interpreter's does.
       def initialize(place, faces:, points:, pictures:, shading: nil, point_lights: nil, corners_in_a_loop: false,
@@ -197,7 +197,7 @@ module VBlank
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
 
-      # A SHAPE DRAWN WHERE THE GAME SAYS IT STANDS, facing the way the game says (`draw_place ...,
+      # A SHAPE DRAWN WHERE THE GAME PUTS IT, facing the way the game asks (`draw_place ...,
       # at:, facing:`): one shape, a robot, drawn several times a pass, each where it is now. The
       # stance is a spot and three arrows, kept as a viewer's are (VIEWER_PARTS), the shape's own
       # right, up and ahead as they lie in the place.
@@ -330,7 +330,7 @@ module VBlank
       # tested for which way it faces or filled: a face beside the view, or behind a doorway's window,
       # is most of the faces of a place seen from inside, and a game of rooms draws each room through
       # the window its doorway makes. Every corner gets an outcode, a bit for each edge it is past
-      # (the clipping test of Cohen and Sutherland), and the bits every corner shares say an edge the
+      # (the clipping test of Cohen and Sutherland), and the bits every corner shares mark an edge the
       # whole face is past.
       #
       # The corners tested are the ones the face is cut to at the near limit, each as the cut hands it
@@ -360,7 +360,7 @@ module VBlank
       #
       # Each edge: which side of the window it is, the corner's number it is tested on (x or y), its
       # outcode bit (as a shift), its line's offset from the window's side in sixteenths, and the
-      # comparison that says a corner is past it.
+      # comparison that finds a corner past it.
       OutcodeEdge = Data.define(:side, :axis, :shift, :sixteenths, :past) do
         def bit = 1 << shift
       end
@@ -409,12 +409,12 @@ module VBlank
       # for each edge of the VIEW its place on the screen is past (the same lines, from the view's own
       # edges rather than a window's), or BEHIND_BIT alone for a point nearer than the near limit it
       # was turned with, which is put on no screen. A face reads its corners' codes before anything
-      # else, and a bit all four share says the face draws nothing: all its corners behind the
+      # else, and a bit all four share means the face draws nothing: all its corners behind the
       # viewer, or all past one edge of the view and so of any window held inside it. The old
       # first-person games did the same (Descent's g3_code_point gives each point its codes as it is
       # turned, and a face whose points' codes share a bit is never clipped or drawn).
       #
-      # The codes also say when a face needs no cut: no corner behind, so every corner is a point
+      # The codes also show when a face needs no cut: no corner behind, so every corner is a point
       # put on the screen as it is, and the face goes to the fill as its four corners
       # (#whole_face_statements), with none of the cut's tests.
       #
@@ -530,7 +530,7 @@ module VBlank
         [Build.repeat(@faces, name(:face), Build.call(face_routine))]
       end
 
-      # The faces whose numbers list +list+ holds, in its order, drawn where the game says; a
+      # The faces whose numbers list +list+ holds, in its order, drawn where the game puts them; a
       # number that is not one of the place's faces is passed over. The list's length is read
       # once, as the drawing starts.
       def listed_statements(list)
@@ -648,7 +648,7 @@ module VBlank
       # faces table, rather than from variables of its own, so the numbers are the same numbers, worked
       # out by the same sums in the same order: first every corner turned, then every edge cut. The
       # corners' codes are gathered as they are turned, both the bits all four share and the bits any
-      # has: a face they say draws nothing is passed over before its picture is read, and one with no
+      # has: a face they mark as drawing nothing is passed over before its picture is read, and one with no
       # corner behind is drawn whole, in a loop of its own (#looped_whole_face), with none of the cut's
       # tests (see POINT CODES).
       def face_loop_statements
@@ -900,7 +900,7 @@ module VBlank
       def turned(field, k) = Build.var_ref(turned_var(field, k))
 
       # A cut corner's place on the screen, +across+ and +down+ (values), put in the corner list where
-      # +place+ (the corner's number in the list for an offset) says, and its bits taken into the face's
+      # +place+ (the corner's number in the list for an offset) gives, and its bits taken into the face's
       # outcode (#corner_outcode_statements). Where the drawing tests the window, the place is kept in
       # at_x and at_y as it is put in the list, which costs less than reading the list back to test it.
       def corner_on_screen_statements(place, across, down)
@@ -1050,7 +1050,7 @@ module VBlank
         fill = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges, perspective: perspective)
         return fill unless @shading
 
-        # A place with a shading is drawn lit unless the drawing says not.
+        # A place with a shading is drawn lit unless the drawing asks for it unlit.
         lit = Build.fill_face(@pictures, var(:picture), corners_list, var(:count), edges, perspective: perspective,
                                                                                       shading: @shading)
         lit_or_not = Build.if_(Build.binop(:==, Build.var_ref(view_var(:lit)), 1), lit)

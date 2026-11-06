@@ -64,7 +64,7 @@ module VBlank
       end
 
       # The picture groups +groups+ have the groups numbered +up+ up together, which their
-      # up_together: does not say they can be. Said by the same backends as #picture_not_up, and
+      # up_together: does not allow. Said by the same backends as #picture_not_up, and
       # for the same reason.
       def groups_not_together(groups:, up:)
         "The groups #{up.join(' and ')} of :#{groups} are up together, and up_together: does not say " \

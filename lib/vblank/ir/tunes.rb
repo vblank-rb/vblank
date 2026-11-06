@@ -12,7 +12,7 @@ module VBlank
       # HOW LOUD THE MUSIC PLAYS RIGHT NOW, as a variable the game writes and the player reads
       # at the start of each frame — the same arrangement as the tune it names. It runs 0 to
       # FULL_LEVEL, and a part sounds at its written volume times that, over FULL_LEVEL. A
-      # program that never says `music_volume` has no such variable, and plays every part at
+      # program that never writes `music_volume` has no such variable, and plays every part at
       # its written volume with nothing worked out at all.
       #
       # Sixteen steps and not a hundred because a console voice's volume has sixteen (0..15), so
@@ -71,7 +71,7 @@ module VBlank
       Sounding = Data.define(:name, :envelope)
 
       # Every sounding a song asks for. A note's own instrument and envelope win over the part's,
-      # and the part's own pairing is here too, for a part whose notes all say nothing.
+      # and the part's own pairing is here too, for a part whose notes all set nothing.
       def soundings(song)
         song.voices.flat_map do |part|
           next [] unless part.instrument
@@ -91,12 +91,12 @@ module VBlank
       # of the others existed and is still what most parts are.
       def part_kind(part) = Audio::Music.kind_played({ instrument: part.instrument, wave: part.wave, noise: part.noise })
 
-      # HOW A NOTE FADES OR SWELLS, as a part or the note itself SAID it (an Audio::NoteFade), or
-      # nil when neither did. A note's own comes first. What was said is what the log names, so
-      # a song that says nothing of fading logs what it always did.
+      # HOW A NOTE FADES OR SWELLS, as a part or the note itself SET it (an Audio::NoteFade), or
+      # nil when neither did. A note's own comes first. What was set is what the log names, so
+      # a song that sets nothing about fading logs what it always did.
       #
-      # A note that said nothing is left to its voice: a drum hit rings out as its part's +decay+
-      # says, and a square note holds. Every backend that plays a note works that out itself, from
+      # A note that set nothing is left to its voice: a drum hit rings out as its part's +decay+
+      # sets, and a square note holds. Every backend that plays a note works that out itself, from
       # this and the part.
       def said_fade(part, event) = event[Audio::Music::Part::FADE_SLOT] || part.fade
 
@@ -124,12 +124,12 @@ module VBlank
       def said_vibrato(part, event) = event[Audio::Music::Part::VIBRATO_SLOT] || part.vibrato
 
       # THE SPEAKER A NOTE PLAYS FROM, as the note or its part set it: :left or :right, or nil for
-      # both (Audio::Pan.side_of) — which a note that says :center plays from, in a part that pans.
+      # both (Audio::Pan.side_of) — which a note that names :center plays from, in a part that pans.
       def note_side(part, event) = Audio::Pan.side_of(event[Audio::Music::Part::PAN_SLOT] || part.pan)
 
       # A SQUARE NOTE'S SHAPE, or the shapes it steps through (an Audio::Duty), as the note or its
-      # part said a Duty, or nil when neither did — a part that names one shape plays it, as it
-      # always did, and says nothing here.
+      # part named a Duty, or nil when neither did — a part that names one shape plays it, as it
+      # always did, and sets nothing here.
       def said_duty(part, event) = event[Audio::Music::Part::DUTY_SLOT] || part.duties
 
       # A DRUM'S OWN NOISE SETTING, [divider, halvings], when its note set one, or nil. Only a
@@ -140,9 +140,9 @@ module VBlank
       def glides?(event) = event[Audio::Music::Part::GLIDE_SLOT] == true
 
       # A NOTE SETTING ITS VOICE, as every backend's log says it: [:voice, channel, who, frequency,
-      # volume], then the note's fade, its slide and its wobble when it said them (#said_fade,
+      # volume], then the note's fade, its slide and its wobble when it set them (#said_fade,
       # #said_slide, #said_vibrato), its side when it is one speaker (#note_side), and its shape
-      # when it set one (#said_duty), with a nil before one said after it. A rest says none of
+      # when it set one (#said_duty), with a nil before one set after it. A rest sets none of
       # them: nothing sounds to change.
       def voice_entry(channel, who, frequency, volume, fade: nil, slide: nil, vibrato: nil, side: nil, duty: nil)
         said = frequency.positive? ? Audio::Music.without_trailing_nils([fade, slide, vibrato, side, duty]) : []
@@ -244,7 +244,7 @@ module VBlank
         swelling.map { |part| part_kind(part) }.uniq & %i[square noise]
       end
 
-      # DOES THE VOICE CHANGE THIS NOTE ITSELF — a square note that said a fade or a swell with a
+      # DOES THE VOICE CHANGE THIS NOTE ITSELF — a square note that set a fade or a swell with a
       # step to count, or a slide? Such a note is not held for the music volume: the volume reaches
       # a held note by striking it again, which would start its counting over, so a plucked note
       # would never die away while the music fades, and a swoop would start again from the top. It
@@ -271,7 +271,7 @@ module VBlank
       def loop_frame(song) = song.loop_frame || 0
 
       # DOES THE SONG PLAY ONCE, and end rather than come round? One that does lasts exactly its
-      # length, and a song node that says so and names a loop frame as well still ends. On the
+      # length, and a song node that is marked so and names a loop frame as well still ends. On the
       # frame after its last, its parts go quiet the way they do when the program stops the
       # music, and from then on no tune is playing — though the program may go on naming this
       # one, since naming the tune already named changes nothing. It is heard again when the
