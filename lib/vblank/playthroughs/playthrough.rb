@@ -56,12 +56,23 @@ module VBlank
 
       # +script+ is the block of steps. It is read here, once, so a mistake in it is reported
       # where the playthrough is declared and not part way through playing it.
+      #
+      # EACH PLAYING READS IT AGAIN (#steps_for_playing). A steer or a wait is a block, and a
+      # script can keep a count beside it (`walked = 0; steer("walk") { walked += 1; ... }`):
+      # steps read once would share that count between playings, and a playthrough played a
+      # second time (a comparison plays its first lead-in twice, once to learn the presses and
+      # once beside the other cartridge) would find its count already run out. Read again, every
+      # playing starts with the script as written. What a script reaches outside its block is
+      # its own to start again.
       def initialize(name, &script)
         raise ArgumentError, %(VBlank.playthrough needs a block of steps: VBlank.playthrough("NAME") { ... }) unless script
 
         @name = name
-        @steps = Script.new(name).tap { |steps| steps.instance_eval(&script) }.steps.freeze
+        @script = script
+        @steps = steps_for_playing
       end
+
+      private def steps_for_playing = Script.new(@name).tap { |steps| steps.instance_eval(&@script) }.steps.freeze
 
       # Play the script on +cartridge+, from power-on unless it is given a save to hold or a
       # lead-in to play first. At each named moment the block is
@@ -84,7 +95,7 @@ module VBlank
       # from the start and one on from each moment, and the frame each has reached.
       def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
                progress: Messages::Progress.silent, &at_each_moment)
-        Playing.play(@name, @steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
+        Playing.play(@name, steps_for_playing, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
                                                in_passes: in_passes, progress: progress, &at_each_moment)
       end
 
@@ -97,7 +108,7 @@ module VBlank
       # is never asked for what it came to: it is here for its hands on the console.
       def play_as_lead_in(game)
         playing = Playing.new(@name, nil, game, nil, save: nil, folder: nil)
-        @steps.each { |step| step.play(playing) }
+        steps_for_playing.each { |step| step.play(playing) }
         game
       end
 

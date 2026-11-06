@@ -81,6 +81,44 @@ class TestPlaythroughSteering < Minitest::Test
     assert_equal [[1..4, [:right]]], played.tape.presses_within(1..4).map { |stretch| [stretch.frames, stretch.buttons] }
   end
 
+  # A COUNT KEPT BESIDE A STEER STARTS AGAIN ON EVERY PLAYING: the same playthrough played twice
+  # walks as far each time.
+  private def walk_ten
+    VBlank.playthrough("walk ten") do
+      walked = 0
+      steer "walk ten frames" do
+        walked += 1
+        walked > 10 ? :done : [:right]
+      end
+    end
+  end
+
+  def test_a_count_kept_beside_a_steer_starts_again_on_each_playing
+    walk = walk_ten
+    rom = prize_game
+    once = walk_ten.play(rom).game.var(:me)
+
+    assert_operator once, :>, 0
+    assert_equal [once, once], Array.new(2) { walk.play(rom).game.var(:me) }
+  end
+
+  # A comparison plays the first cartridge's lead-in twice, once to learn the presses and once
+  # beside the second cartridge. The side-by-side run starts where one playing of it ends, read
+  # on the first cartridge and held to what a single playing of the lead-in walks.
+  def test_a_comparison_lead_in_that_counts_brings_the_first_cartridge_to_the_same_place
+    rom = prize_game
+    one_frame = VBlank.playthrough("one frame") do
+      wait frames: 1
+      moment :looked
+    end
+    walked = walk_ten.play(rom).game.var(:me)
+    as_far = { me: [:me, ->(_game) { walked }] }
+
+    result = one_frame.compare(rom, rom, lead_ins: [walk_ten, nil], readings: as_far, comparing: [:readings])
+
+    refute_predicate result, :drift?, -> { "the first cartridge read #{result.drift.readings.inspect}" }
+  end
+
   def test_a_step_that_never_ends_gives_up_with_its_words_and_a_picture
     never = VBlank.playthrough("no end") { steer("reach the moon", within: 5) { [] } }
     error = assert_raises(VBlank::Playthroughs::GaveUp) { never.play(prize_game) }
