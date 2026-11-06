@@ -10,6 +10,7 @@
 #ifndef RG_RUNTIME_H
 #define RG_RUNTIME_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* --- what the game provides --- */
@@ -145,6 +146,10 @@ enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
 void rg_start_file_hand(const uint8_t *bytes, int32_t size);
 void rg_start_file_open(const char *called, const int32_t *rules);
+/* The words rg_start_file_open would stop with for +bytes+ (NULL for none handed over), 1 and the words in
+ * +words+ when it would, else 0. A shell asks it of a kept pack before it hands the pack to the game. */
+int rg_start_file_refusal(const uint8_t *bytes, int32_t size, const char *called, const int32_t *rules, char *words,
+                          size_t room);
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at);
 void rg_start_file_fill_picture(const int32_t *rules);
 

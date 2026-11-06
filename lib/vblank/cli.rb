@@ -375,7 +375,7 @@ module VBlank
                                  game's data pack out. The game reads the pack
                                  from a file as it starts (a program takes
                                  --data-pack PATH). A cartridge cannot do this.
-        --shell                  With --format ruby or web: build the game as a shell,
+        --shell                  With --format ruby, web or native: build the game as a shell,
                                  with none of the original's data in it. The
                                  first time it is played, a menu asks for the
                                  player's copy of the original (Load ROM). The
@@ -1804,8 +1804,16 @@ module VBlank
       path = options[:output] || begin
         plain = file_beside(game, game_file, console, "")
         plain = "#{plain}-#{options[:target]}" if target
-        plain = "#{plain}-desktop" if File.directory?(plain)
-        target == :windows ? "#{plain}.exe" : plain
+        plain = "#{plain}-shell" if options[:shell]
+        plain = "#{plain}-desktop" if File.directory?(plain) && !options[:shell]
+        target == :windows && !options[:shell] ? "#{plain}.exe" : plain
+      end
+      if options[:shell]
+        say "Building #{File.basename(path)} as a shell for #{target ? options[:target] : 'this computer'} - Please wait."
+        VBlank::IR::Backends::Native.new.build_desktop_shell(game, path, console: console, settings: given_settings, target: target,
+                                                                         strip: options[:strip])
+        say "Built #{path}, a folder. Run the program in it called #{File.basename(path)}."
+        return
       end
       say "Building #{File.basename(path)} for #{target ? options[:target] : 'this computer'} - Please wait."
       VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
@@ -1855,9 +1863,9 @@ module VBlank
     # --pack-at-start leaves a game's data pack out, which only a build for a computer can do: a
     # cartridge holds its own data (Builder::DataPacks).
     def refuse_pack_at_start_on_cartridge!
-      if options[:shell] && !%w[ruby web].include?(options[:format])
-        raise Thor::Error, "--shell works only with --format ruby or web now. A cartridge holds its own data, and the " \
-                           "desktop program cannot make its pack from a copy yet. Add --format ruby or --format web."
+      if options[:shell] && !%w[ruby web native].include?(options[:format])
+        raise Thor::Error, "--shell works only with --format ruby, web or native. A cartridge holds its own data. " \
+                           "Add --format ruby, --format web or --format native."
       end
       if options[:shell] && options[:format] == "web" && options[:js] != "page"
         raise Thor::Error, "--shell makes a page. Remove --js, or leave out --shell."

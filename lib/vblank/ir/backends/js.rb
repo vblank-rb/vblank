@@ -248,19 +248,18 @@ module VBlank
         # The facts of +shell+ as data (the Original::Shell the page's runtime reads) and the line that
         # starts the page on its programs.
         def shell_start_text(shell)
-          file = shell.pack_form.start_file
-          base64 = ->(bytes) { [bytes.b].pack("m0") }
-          releases = shell.releases.list.map { |release| { name: release.name, sha1: release.sha1, size: release.size, read: release.read } }
-          facts = { title: shell.title.to_s, folder: shell.folder, called: file.called, size: file.size,
-                    checks: file.checks.map { |check| { at: check.at, bytes: base64.call(check.bytes) } },
-                    before: base64.call(shell.pack_form.before_sha1), after: base64.call(shell.pack_form.after_sha1),
-                    releases: { title: shell.releases.title.to_s, list: releases },
-                    names: { bytes: Original::Unpacking::BYTES.to_s, finished: Original::Unpacking::FINISHED.to_s,
-                             faultKind: Original::Unpacking::FAULT_KIND.to_s },
-                    menuChoice: Original::Shell::MENU_CHOICE.to_s,
-                    choices: { Original::Shell::LOAD_ROM.to_s => "load_rom", Original::Shell::SETTINGS.to_s => "settings" } }
-          unpackings = shell.unpackings.each_key.with_index.map { |name, number| "#{JSON.generate(name)}: createUnpacking#{number}" }
-          "rg_mount_page(rg_shell_game(#{JSON.generate(facts)}, " \
+          facts = shell.facts
+          base64 = ->(bytes) { [bytes].pack("m0") }
+          releases = facts[:releases].map { |release| release.slice(:name, :sha1, :size).merge(read: release[:readable]) }
+          page = { title: facts[:title], folder: facts[:folder], called: facts[:called], size: facts[:pack_size],
+                   checks: facts[:checks].map { |check| { at: check[:at], bytes: base64.call(check[:bytes]) } },
+                   before: base64.call(facts[:before]), after: base64.call(facts[:after]),
+                   releases: { title: facts[:releases_title], list: releases },
+                   names: { bytes: facts[:bytes_list], finished: facts[:finished_variable], faultKind: facts[:fault_variable] },
+                   menuChoice: facts[:choice_variable],
+                   choices: { facts[:load_rom_choice].to_s => "load_rom", facts[:settings_choice].to_s => "settings" } }
+          unpackings = facts[:releases].filter_map { |release| "#{JSON.generate(release[:name])}: createUnpacking#{release[:unpacking]}" if release[:unpacking] }
+          "rg_mount_page(rg_shell_game(#{JSON.generate(page)}, " \
             "{ game: createGame, menu: createMenu, unpackings: { #{unpackings.join(', ')} } }));\n"
         end
 

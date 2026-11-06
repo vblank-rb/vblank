@@ -1,0 +1,62 @@
+/*
+ * A PORT BUILT AS A SHELL, ON A COMPUTER (Original::Shell says what a shell is; rg_shell.c is the
+ * flow, written again from Live::Shell). The program holds none of the original's data. It is
+ * built with its parts in a folder beside it: the game itself, and under parts/ the menu and one
+ * unpacking for each release of the original the game reads. Each part is a whole desktop program
+ * of its own, since the native lowering names every global of one program for the runtime and two
+ * programs cannot share one executable.
+ *
+ * rg_shell_facts is what the build knows: the releases, the pack's header, how a kept pack is
+ * known to be this shell's. A build that is no shell has none (NULL), and nothing here runs.
+ */
+#ifndef RG_SHELL_H
+#define RG_SHELL_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct {
+  const char *name;
+  const char *sha1; /* 40 lowercase hex digits */
+  int32_t size;     /* in bytes, or -1 where it is not known */
+  int readable;     /* whether the game reads this release */
+  const char *part; /* the file under parts/ that unpacks it */
+} rg_shell_release;
+
+typedef struct {
+  const char *title;
+  const char *folder; /* the game's folder among the files the computer keeps for each program */
+  const char *releases_title;
+  const rg_shell_release *releases;
+  int release_count;
+  const uint8_t *before; /* the pack's header before the copy's SHA-1 */
+  int before_size;
+  const uint8_t *after; /* ...and after it */
+  int after_size;
+  const char *called;           /* what the pack is called to a player */
+  const int32_t *pack_rules;    /* as rg_start_file_open takes them */
+  const char *menu_part;        /* the file under parts/ that plays the menu */
+  const char *choice_variable;  /* the menu's variable, and what each number in it means */
+  int load_rom_choice;
+  int settings_choice;
+  const char *bytes_list;       /* the unpacking's list of the pack's bytes, and its two variables */
+  const char *finished_variable;
+  const char *fault_variable;
+} rg_shell_description;
+
+extern const rg_shell_description *const rg_shell_facts;
+
+/* What a test names in place of what a person does (--shell-copy, --shell-menu-keys), and where the
+ * pack is kept where the player has not chosen (--pack-folder). All NULL for a player's run. */
+typedef struct {
+  const char *pack_folder;
+  const char *copy;      /* the file picked, in place of the file dialog */
+  const char *menu_keys; /* a script of buttons the menu is played with, in place of a person */
+} rg_shell_asked;
+
+/* The path of a data pack this shell reads, made from the player's copy if it was not kept yet; NULL
+ * when the player stopped. Frees with SDL_free. A test that names a copy this shell refuses ends
+ * the program here, saying why. */
+char *rg_shell_pack_path(const rg_shell_asked *asked);
+
+#endif

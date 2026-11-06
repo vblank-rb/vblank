@@ -21,6 +21,7 @@ require_relative "native/rules_run" # ...and a game's rules alone, read only as 
 require_relative "native/differences"
 require_relative "native/checked_run"
 require_relative "native/menu_data"
+require_relative "native/shell_data"
 
 module VBlank
   module IR
@@ -93,7 +94,7 @@ module VBlank
         # at all.
         SHARED_RUNTIME = %w[rg_headless.c rg_mix.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c].freeze
         HEADLESS_RUNTIME = (["rg_headless_main.c"] + SHARED_RUNTIME).freeze
-        DESKTOP_RUNTIME = (%w[rg_sdl.c rg_window.c rg_window_menu.c rg_menu_font.c rg_bios_boot.c] + [MenuData::FILE] +
+        DESKTOP_RUNTIME = (%w[rg_sdl.c rg_window.c rg_window_menu.c rg_menu_font.c rg_bios_boot.c rg_shell.c] + [MenuData::FILE, ShellData::FILE] +
                            SHARED_RUNTIME).freeze
 
         # The program written out as C, as one file's text. A program from a game should come
@@ -137,22 +138,39 @@ module VBlank
           program = cartridge&.source_program ||
                     checked_program(game, console: console, settings: settings, err: err, pack_at_start: true)
           refuse_start_up_without_cartridge!(program) unless cartridge
-          source = lower(program, title: game.title)
-          Dir.mktmpdir("vblank-native") do |dir|
-            src = File.join(dir, "src")
-            FileUtils.mkdir_p(src)
-            File.write(File.join(src, "game.c"), source)
-            File.write(File.join(src, ConsoleNumbers::FILE), ConsoleNumbers.header(program.described_console))
-            if program.described_console.plays_bios_start_up
-              File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
-            end
-            File.write(File.join(src, MenuData::FILE), MenuData.source(menu: game.menu?))
-            Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
-            exe = Zig.build_with_sdl(src, ["game.c", *DESKTOP_RUNTIME], name: "game", prefix: File.join(dir, "out"),
-                                                                        target: target && TARGETS.fetch(target), strip: strip)
-            FileUtils.cp(exe, path)
-          end
+          compile_desktop(program, path, title: game.title, menu: game.menu?, cartridge: cartridge, target: target, strip: strip)
           FileUtils.chmod(0o755, path)
+          path
+        end
+
+        # +game+ built as a SHELL (Original::Shell) for a computer, into the FOLDER +path+: the game, with
+        # none of the original's data in it, named for the folder, and under parts/ the menu and one
+        # unpacking for each release of the original the game reads, each a whole desktop program of its
+        # own (runtime/rg_shell.h says why). Run the game: with no data pack kept in its folder among the
+        # computer's files for the program, the menu plays; LOAD ROM opens the system's file dialog, the
+        # copy is checked and unpacked, and the pack is kept and the game starts.
+        #
+        # The programs have no cartridge to read the console's start-up from, so a shell for the Advance
+        # starts without it.
+        def build_desktop_shell(game, path, console: nil, settings: {}, target: nil, strip: false, err: $stderr,
+                                progress: Messages::Progress.silent)
+          refuse_unknown_target!(target)
+          if File.file?(path)
+            raise LoweringError, "#{path} is a file, and a shell is a folder of programs. Name a folder instead."
+          end
+
+          shell = Original::Shell.build(game, console: console || game.consoles.first, settings: settings, err: err, progress: progress)
+          FileUtils.mkdir_p(File.join(path, ShellData::PARTS_FOLDER))
+          ending = target == :windows || (target.nil? && Gem.win_platform?) ? ".exe" : ""
+          parts = { File.join(path, "#{File.basename(path)}#{ending}") => [shell.game, shell, game.menu?],
+                    File.join(path, ShellData::PARTS_FOLDER, "#{ShellData::MENU_PART}#{ending}") => [shell.menu, nil, true] }
+          shell.unpackings.each_value.with_index do |unpacking, number|
+            parts[File.join(path, ShellData::PARTS_FOLDER, "#{ShellData.unpacking_part(number)}#{ending}")] = [unpacking.program, nil, false]
+          end
+          parts.each do |file, (program, with_shell, menu)|
+            compile_desktop(program, file, title: game.title, menu: menu, cartridge: nil, target: target, strip: strip, shell: with_shell)
+            FileUtils.chmod(0o755, file)
+          end
           path
         end
 
@@ -175,6 +193,28 @@ module VBlank
         end
 
         private
+
+        # +program+ compiled with the runtime and SDL into the executable +path+. The console's
+        # start-up is played only where +cartridge+ holds the start of the game's cartridge to read it
+        # from. +shell+ (an Original::Shell) makes the program a shell's game.
+        def compile_desktop(program, path, title:, menu:, cartridge:, target:, strip:, shell: nil)
+          source = lower(program, title: title)
+          Dir.mktmpdir("vblank-native") do |dir|
+            src = File.join(dir, "src")
+            FileUtils.mkdir_p(src)
+            File.write(File.join(src, "game.c"), source)
+            File.write(File.join(src, ConsoleNumbers::FILE), ConsoleNumbers.header(program.described_console, start_up: !cartridge.nil?))
+            if cartridge && program.described_console.plays_bios_start_up
+              File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
+            end
+            File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu))
+            File.write(File.join(src, ShellData::FILE), Printer.new.print_file(ShellData.items(shell)))
+            Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
+            exe = Zig.build_with_sdl(src, ["game.c", *DESKTOP_RUNTIME], name: "game", prefix: File.join(dir, "out"),
+                                                                        target: target && TARGETS.fetch(target), strip: strip)
+            FileUtils.cp(exe, path)
+          end
+        end
 
         # The C on disk, where the compiler can read it, with the console's numbers beside it
         # (ConsoleNumbers), in a folder named for what it holds so two programs never write over

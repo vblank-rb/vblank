@@ -48,9 +48,9 @@ module TestSuites
 
   NATIVE_DIR = "#{lowering_dir(:native)}/vblank/ir/backends/native".freeze
 
-  # The test of the program a player runs, with its window. It builds with SDL, whose first build
+  # The tests of the program a player runs, with its window. It builds with SDL, whose first build
   # fetches its source over the network, so it is loaded only when asked (SDL=1).
-  DESKTOP_TEST = Ractor.make_shareable("#{NATIVE_DIR}/test_native_desktop.rb")
+  DESKTOP_TESTS = Ractor.make_shareable(%w[test_native_desktop.rb test_native_shell.rb].map { |file| "#{NATIVE_DIR}/#{file}" })
 
   module_function
 
@@ -59,6 +59,6 @@ module TestSuites
   # each run the folders it does not own (VBlank::Testing::Lowering.files_for).
   def all_files(desktop: false)
     found = Dir.glob("test/**/test_*.rb").sort - ["test/test_helper.rb"]
-    desktop ? found : found - [DESKTOP_TEST]
+    desktop ? found : found - DESKTOP_TESTS
   end
 end

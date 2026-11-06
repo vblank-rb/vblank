@@ -25,6 +25,7 @@ module VBlank
             when C::Include then line(0, "#include \"#{item.header}\"")
             when C::Global then line(0, "static #{item.type} #{item.name.text} = #{expression(C::Int.new(item.value))};")
             when C::ConstArray then print_const_array(item)
+            when C::ConstGlobal then print_const_global(item)
             # Zeros until the start file fills it: a static array with no initializer.
             when C::StartFileArray then line(0, "static #{item.type} #{item.name.text}[#{[item.count, 1].max}];")
             when C::Prototype then line(0, "#{linkage(item)}void #{item.name.text}(void);")
@@ -48,9 +49,17 @@ module VBlank
           # Sixteen numbers a line, so a table of thousands is still a file a person can scroll.
           def print_const_array(item)
             line(0, "#{linkage(item)}const #{item.type} #{item.name.text}[#{[item.values.size, 1].max}] = {")
+            # C has no empty initializer, so an array with no values holds one zero (its size is 1).
             values = item.values.empty? ? [0] : item.values
-            values.each_slice(16) { |row| line(1, "#{row.map { |v| expression(C::Int.new(v)) }.join(', ')},") }
+            values.each_slice(16) { |row| line(1, "#{row.map { |value| array_value(value) }.join(', ')},") }
             line(0, "};")
+          end
+
+          # A number, or a Struct for an array of them.
+          def array_value(value) = value.is_a?(Integer) ? integer(value) : expression(value)
+
+          def print_const_global(item)
+            line(0, "#{linkage(item)}const #{item.type} #{item.name.text} = #{expression(item.value)};")
           end
 
           def print_function_table(item)
@@ -113,6 +122,7 @@ module VBlank
             when C::Name then item.text
             when C::AddressOf then "&#{item.name.text}"
             when C::Text then string(item.value)
+            when C::Struct then "{#{item.fields.map { |field, value| ".#{field} = #{expression(value)}" }.join(', ')}}"
             when C::Index then "#{expression(item.array)}[#{expression(item.index)}]"
             when C::Call then "#{item.function.text}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
             else raise LoweringError, "the printer has no expression form for #{item.class}"

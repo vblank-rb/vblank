@@ -129,6 +129,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "rg_driver.h"
+#include "rg_list.h"
 #include "rg_menu.h"
 #include "rg_menu_font.h"
 #include "rg_pacing.h"
@@ -137,6 +138,7 @@
 #include "rg_save.h"
 #include "rg_screen.h"
 #include "rg_settings_root.h"
+#include "rg_shell.h"
 #include "rg_sound.h"
 #include "rg_window.h"
 #include "rg_window_menu.h"
@@ -301,6 +303,12 @@ static int scripted;
 static long frames_to_play;
 static long frames_played;
 static uint32_t scripted_keys;
+/* A PART OF A SHELL (--part RESULT; rg_shell.c): played like any game, and where a game would halt it
+ * writes where every variable and list stands into the RESULT file, and ends. --part-fast is an
+ * unpacking: no waiting for the end of a frame, and a picture only now and then. */
+static const char *part_result_path;
+static FILE *part_result;
+static int part_fast;
 static int printing_script_end; /* the variables being printed are the script's last word */
 static const char *window_picture_file; /* --window-picture: where the window is saved as the script ends */
 
@@ -1331,6 +1339,16 @@ static void push_key(SDL_Scancode key, bool down) {
   SDL_PushEvent(&event);
 }
 
+/* A part's last word: where every variable and list stands, in its RESULT file. */
+static _Noreturn void finish_part(void) {
+  part_result = fopen(part_result_path, "wb");
+  if (!part_result) refuse_to_start("its answer cannot be written");
+  rg_game_dump_state();
+  fclose(part_result);
+  part_result = NULL;
+  quit(0);
+}
+
 /* A scripted run's last word: every variable, as --headless prints them at its end. */
 static _Noreturn void finish_script(void) {
   if (window_picture_file) save_window_picture();
@@ -1528,10 +1546,10 @@ static void sdl_wait_vblank(void) {
   if (scripted && frames_played >= frames_to_play) finish_script();
   Uint64 frame_ended = SDL_GetTicksNS();
   rg_window_frame_played(frame_ended, game_resumed_ns ? frame_ended - game_resumed_ns : 0);
-  play_frame_sound();
+  if (!part_fast) play_frame_sound();
   rg_frame_begins();
   frames_played++;
-  bool shown = end_of_slot();
+  bool shown = part_fast ? frames_played % 30 == 0 : end_of_slot();
   if (shown) present();
   write_files_due();
   read_events();
@@ -1548,6 +1566,7 @@ static void sdl_wait_vblank(void) {
 
 /* The game stopped on purpose: its last picture stays up until the window is closed. */
 static void sdl_halt(void) {
+  if (part_result_path) finish_part();
   if (scripted) finish_script();
   for (;;) {
     present();
@@ -1570,7 +1589,9 @@ static void sdl_fault(const char *format, va_list args) {
 /* A player's window has nobody to print the variables to: only a trace, on the error stream as
  * it goes, and a script's end, on the output, do; and the menu's window of them, which keeps them. */
 static void sdl_dump_variable(const char *name, int32_t value) {
-  if (collecting_variables) {
+  if (part_result) {
+    fprintf(part_result, "var %s %d\n", name, (int)value);
+  } else if (collecting_variables) {
     rg_window_watch_note(name, value);
   } else if (printing_script_end) {
     printf("var %s %d\n", name, (int)value);
@@ -1582,8 +1603,15 @@ static void sdl_dump_variable(const char *name, int32_t value) {
 /* ...nor the log of what was played: the window plays the sound itself. */
 static void sdl_sound_logged(const char *line) { (void)line; }
 
-/* ...nor the lists. */
-static const rg_driver sdl = {sdl_wait_vblank, sdl_halt, sdl_fault, sdl_dump_variable, sdl_sound_logged, NULL};
+/* ...nor the lists, but a part's answer holds them: "list NAME COUNT" and the items, oldest first. */
+static void sdl_dump_list(const rg_list *list) {
+  if (!part_result) return;
+  fprintf(part_result, "list %s %d", list->name, (int)list->length);
+  for (int32_t i = 0; i < list->length; i++) fprintf(part_result, " %d", (int)list->items[rg_list_slot(list, i)]);
+  fputc('\n', part_result);
+}
+
+static const rg_driver sdl = {sdl_wait_vblank, sdl_halt, sdl_fault, sdl_dump_variable, sdl_sound_logged, sdl_dump_list};
 
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
 /* The player's BIOS, read whole, or NULL. */
@@ -1738,6 +1766,7 @@ static void print_usage(const char *program) {
          "  --save-file PATH       Keep the save in PATH. A .sav file from an emulator\n"
          "                         works.\n"
          "  --data-pack PATH       The data pack, for a game built with its pack left out.\n"
+         "  --pack-folder DIR      With a shell, keep the data pack in DIR.\n"
          "  --settings-file PATH   Read and write the settings in PATH only.\n"
          "  --config-dir DIR       Keep the settings files in DIR.\n"
          "  -h, --help             Print this.\n");
@@ -1751,6 +1780,7 @@ int main(int argc, char **argv) {
       return 0;
     }
   }
+  rg_shell_asked shell_asked = {NULL, NULL, NULL};
   const char *save_file_asked_for = NULL;
   const char *settings_file_asked_for = NULL;
   int usual_settings_asked_for = 0;
@@ -1761,6 +1791,11 @@ int main(int argc, char **argv) {
     if (strcmp(argv[i], "--usual-settings") == 0) usual_settings_asked_for = 1;
     if (strcmp(argv[i], "--window-picture") == 0 && i + 1 < argc) window_picture_file = argv[i + 1];
     if (strcmp(argv[i], "--trace") == 0) tracing = 1;
+    if (strcmp(argv[i], "--part") == 0 && i + 1 < argc) part_result_path = argv[i + 1];
+    if (strcmp(argv[i], "--part-fast") == 0) part_fast = 1;
+    if (strcmp(argv[i], "--pack-folder") == 0 && i + 1 < argc) shell_asked.pack_folder = argv[i + 1];
+    if (strcmp(argv[i], "--shell-copy") == 0 && i + 1 < argc) shell_asked.copy = argv[i + 1];
+    if (strcmp(argv[i], "--shell-menu-keys") == 0 && i + 1 < argc) shell_asked.menu_keys = argv[i + 1];
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
     if (strcmp(argv[i], "--start-up") == 0) start_up_asked = 1;
 #endif
@@ -1777,6 +1812,17 @@ int main(int argc, char **argv) {
 
   if (!SDL_Init(SDL_INIT_VIDEO)) refuse_to_start("the display cannot be reached");
   if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) refuse_to_start("the buttons cannot be read");
+  /* A shell has no data pack until the player's copy has been unpacked: the pack is made first, by
+   * its parts (rg_shell.c), and then the game starts as any game handed its pack does. */
+  if (rg_shell_facts && !part_result_path) {
+    char *pack = rg_shell_pack_path(&shell_asked);
+    if (!pack) {
+      SDL_Quit();
+      return 0;
+    }
+    if (!rg_start_file_read(pack)) refuse_to_start("the data pack cannot be read");
+    SDL_free(pack);
+  }
   load_settings(settings_file_asked_for, usual_settings_asked_for);
   /* High pixel density asks for the screen's real pixels on a Retina display. Without it the
    * whole number the picture is scaled by is worked out in the display's larger "points", and the

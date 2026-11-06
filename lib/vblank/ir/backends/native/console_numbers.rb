@@ -35,8 +35,9 @@ module VBlank
           def as_number(value) = { true => 1, false => 0 }.fetch(value, value)
 
           # The header for +console+.
-          def header(console)
-            defines = values(console).map { |name, value| "#define #{name} #{as_number(value)}\n" }
+          # +start_up+ false leaves the console's start-up out, for a program with no cartridge to read it from.
+          def header(console, start_up: true)
+            defines = values(console).merge(start_up ? {} : { "RG_CONSOLE_PLAYS_BIOS_START_UP" => false }).map { |name, value| "#define #{name} #{as_number(value)}\n" }
             "/* Written by Native::ConsoleNumbers: the #{console.title}. */\n#{defines.join}"
           end
         end

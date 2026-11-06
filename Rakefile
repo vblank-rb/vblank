@@ -109,7 +109,7 @@ end
 # own folder, or one console's, is played by those runs alone; see TestSuites::LOWERING_FOLDERS
 # and TestSuites::CONSOLE_FOLDERS).
 VBlank::Testing::RakeTasks.new do |t|
-  # SDL=1 also builds and runs the desktop program, with its window (TestSuites::DESKTOP_TEST).
+  # SDL=1 also builds and runs the desktop program, with its window (TestSuites::DESKTOP_TESTS).
   t.test_files = TestSuites.all_files(desktop: ENV["SDL"] == "1")
   t.lowering_folders = TestSuites::LOWERING_FOLDERS
   t.console_folders = TestSuites::CONSOLE_FOLDERS

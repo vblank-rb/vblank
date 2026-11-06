@@ -36,6 +36,11 @@ module VBlank
             end
           end
 
+          # { .field = value, ... }: a struct's value by the names of its fields, so the order they are
+          # declared in does not matter. +fields+ maps a field's name (a Symbol) to any expression here,
+          # a Struct or a Name included.
+          Struct = Data.define(:fields)
+
           # name[index], for reading a table or a list.
           Index = Data.define(:array, :index)
 
@@ -82,10 +87,19 @@ module VBlank
             end
           end
 
-          # Numbers fixed when the program is built: a table, a picture. +exported+ is for the
-          # art the runtime reads by name (see runtime/rg_screen.h).
+          # Numbers fixed when the program is built: a table, a picture, or +values+ that are Structs
+          # (+type+ then the struct's). +exported+ is for the art the runtime reads by name (see
+          # runtime/rg_screen.h).
           ConstArray = Data.define(:name, :type, :values, :exported) do
             def initialize(name:, type:, values:, exported: false)
+              super
+            end
+          end
+
+          # A constant of a type that is not a number: a struct, a pointer. +value+ is any expression,
+          # &another global included. Private to the generated file unless +exported+.
+          ConstGlobal = Data.define(:name, :type, :value, :exported) do
+            def initialize(name:, type:, value:, exported: false)
               super
             end
           end

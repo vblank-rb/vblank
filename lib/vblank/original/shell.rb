@@ -47,6 +47,26 @@ module VBlank
     end
 
     class Shell
+      # WHAT A RUNTIME IS TOLD ABOUT THE SHELL, by name, the one list the web page's runtime and the
+      # desktop program's are both written from (JS#build_shell_page, Native::ShellData): the title,
+      # the folder, the releases (each with the number of its unpacking, from 0, where the game reads
+      # it), the pack's header around the copy's SHA-1 as bytes, the pack's size and checks, and the
+      # names of the menu's and the unpacking's variables.
+      def facts
+        numbers = unpackings.keys.each_with_index.to_h
+        file = pack_form.start_file
+        { title: title.to_s, folder: folder, releases_title: releases.title.to_s, called: file.called,
+          releases: releases.list.map do |release|
+            { name: release.name, sha1: release.sha1, size: release.size, readable: release.read,
+              unpacking: release.read ? numbers[release.name] : nil }
+          end,
+          before: pack_form.before_sha1.b, after: pack_form.after_sha1.b, pack_size: file.size,
+          checks: file.checks.map { |check| { at: check.at, bytes: check.bytes.b } },
+          choice_variable: MENU_CHOICE.to_s, load_rom_choice: LOAD_ROM, settings_choice: SETTINGS,
+          bytes_list: Unpacking::BYTES.to_s, finished_variable: Unpacking::FINISHED.to_s,
+          fault_variable: Unpacking::FAULT_KIND.to_s }
+      end
+
       # The name of the file the pack is kept in, inside the game's folder.
       PACK_FILE = "data.pack"
 
