@@ -136,20 +136,96 @@ module VBlank
         parts = %i[x y]
         parts << :pose if posed?
         parts << :colors if recolorable?
-        parts << :order_key if ordered?
+        parts << :order_key if ordered? && !order_key_read_from_copy?
         parts
       end
 
       # PUT THIS POOL'S THINGS IN AN ORDER THE GAME WORKS OUT (see Builder#draw_in_order).
       # +key+ is handed an instance and gives back the number that thing is ordered by, so
       # the number is worked out per thing as the copy above walks them and copied for its
-      # place beside where it is.
+      # place beside where it is — unless it can be read from the copy (#order_key_read_from_copy?).
       def order_by(key)
         @order_key = key
       end
 
       # Whether this pool is in a draw order.
       def ordered? = !@order_key.nil?
+
+      # A KEY READ FROM THE COPY. The copy above already holds where each thing is, by its rank,
+      # so a key that reads nothing of a thing but its x and y — `bottom`, the default, is y and
+      # the box — is the same number worked out from the copy, in the order's own routine, which
+      # runs after the copy is made. The copy then neither works the key out nor keeps it, and
+      # the routine reads it at a fixed place rather than through the pool's slot.
+      #
+      # Worked out in the copy, each key was read through the slot, written into a list of its
+      # own through the count the copy keeps (an index tested each time), and copied on again by
+      # the order's routine; read from the copy, it is one read at a fixed place and the sum.
+      #
+      # A key that reads anything else of the thing (another field, its slot) is worked out
+      # during the copy as before, and so is one with anything in it but the thing's place,
+      # numbers written in the program and sums of them: a variable could have changed for a
+      # place the copy has not filled since, which would then sort by today's number rather
+      # than the one it had. The one difference left is a place no thing has filled yet, which
+      # reads the copy's noughts through the sum rather than a nought; nothing is drawn there.
+      def order_key_read_from_copy?
+        return @order_key_read_from_copy unless @order_key_read_from_copy.nil?
+
+        key = order_key_at_cursor
+        @order_key_read_from_copy = key_reads_copy_only?(Value.node_for(key))
+        key.discard! if key.is_a?(Value)
+        @order_key_read_from_copy
+      end
+
+      # The number the sprite at +place+ is put in order by, as a value node: worked out from the
+      # copy, or read from the list the copy keeps it in.
+      def order_key_at_place(place)
+        rank = rank_at_place(place)
+        order_key_read_from_copy? ? copied_order_key(rank) : stacked_at(:order_key, rank)
+      end
+
+      # The key of the thing with +rank+ older things before it, as a value node read from the
+      # copy (see #order_key_read_from_copy?).
+      private def copied_order_key(rank)
+        node = Value.node_for(order_key_at_cursor)
+        return copied_field_read(node, rank) if cursor_field_read?(node)
+
+        node.walk.select { |each_node| cursor_field_read?(each_node) }.each do |read|
+          read.parent.replace_operand(read, copied_field_read(read, rank))
+        end
+        node
+      end
+
+      # The kinds a key read from the copy may be made of besides the thing's place: numbers
+      # written in the program and sums of them.
+      COPY_KEY_KINDS = %i[int binop bit_not absolute].freeze
+
+      # The fields the copy holds for every pool that draws.
+      COPIED_FIELDS = %i[x y].freeze
+
+      # The key the game's block gives for the thing in the slot the copy is on.
+      private def order_key_at_cursor
+        @order_key.call(Instance.new(self, Value.handed_to_block(@builder, Build.var_ref(stacking_cursor_var))))
+      end
+
+      # Whether +node+ reads the slot the copy is on only to read a copied field there.
+      private def key_reads_copy_only?(node)
+        node.walk.all? do |each_node|
+          case each_node.kind
+          when :list_get then cursor_field_read?(each_node)
+          when :var_ref then cursor_field_read?(each_node.parent) && each_node.parent.index.equal?(each_node)
+          else COPY_KEY_KINDS.include?(each_node.kind)
+          end
+        end
+      end
+
+      private def cursor_field_read?(node)
+        node.is_a?(IR::Node) && node.kind == :list_get && node.index.kind == :var_ref &&
+          node.index.name == stacking_cursor_var && COPIED_FIELDS.any? { |field| node.name == field_list(field) }
+      end
+
+      private def copied_field_read(read, rank)
+        stacked_at(COPIED_FIELDS.find { |field| read.name == field_list(field) }, rank)
+      end
 
       # Whether a thing's picture is something to read at all: a pool given one picture
       # always shows it.

@@ -174,6 +174,21 @@ module VBlank
           end
         end
 
+        # SORTS A CARTRIDGE LOWERING MAY KEEP ITS OWN WAY, by the name of the list each sorts: a draw
+        # order's (Builder::DrawOrder#order_sort_nodes). Each sorts a list made empty and filled by one
+        # loop pushing its places in order as the game starts, so the order starts as declared, by a
+        # list of whole words made full and written only at places written in the program, every one
+        # of them; and nothing else in the program names either list. Both are the framework's own,
+        # which nothing compares with the interpreter's, so a lowering that keeps the order in tables
+        # of its own (SNES::Lowering#emit_keyed_sort, Genesis::Lowering#emit_keyed_sort) answers for
+        # what is drawn from it and nothing else.
+        def sorts_kept_apart
+          @sorts_kept_apart ||= begin
+            uses = list_uses
+            @reachable.select { |node| node.kind == :list_sort && sort_kept_apart?(node, uses) }.to_h { |node| [node.name, node] }
+          end
+        end
+
         # Every game loop of the program.
         def game_loops = @game_loops ||= @program.walk.select { |node| node.kind == :loop }
 
@@ -252,6 +267,36 @@ module VBlank
         end
 
         private
+
+        # Every node of the program naming a list, by the list's name.
+        def list_uses
+          @program.walk.each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |node, uses|
+            node.named_operands.each { |_field, held| Array(held).flatten.grep(Symbol).each { |name| uses[name] << node } }
+          end
+        end
+
+        # Whether +sort+ is one #sorts_kept_apart takes, given every node naming each list (+uses+).
+        def sort_kept_apart?(sort, uses)
+          order = @declared_lists[sort.name]
+          keys = @declared_lists[sort.by]
+          return false unless order && keys && !order.full_of && keys.full_of && [:word, nil].include?(keys.width)
+          return false unless keys.capacity == order.capacity && order.capacity >= 2 && %i[byte half].include?(order.width)
+
+          order_uses = uses[sort.name].reject { |node| node.equal?(order) || node.equal?(sort) }
+          key_uses = uses[sort.by].reject { |node| node.equal?(keys) || node.equal?(sort) }
+          return false unless uses[sort.name].count { |node| node.kind == :list_sort } == 1
+          return false unless order_uses.one? && places_pushed_in_order?(order_uses.first, order.capacity)
+          return false unless key_uses.all? { |node| node.kind == :list_set && node.name == sort.by }
+
+          key_uses.map { |node| folded(node.index) }.sort == (0...keys.capacity).to_a
+        end
+
+        # Whether +push+ is the only step of a loop that pushes the numbers from nought to +count+.
+        def places_pushed_in_order?(push, count)
+          loop = push.parent
+          push.kind == :list_push && loop&.kind == :repeat && loop.children == [push] && folded(loop.stop_when)&.zero? &&
+            folded(loop.count) == count && push.value.kind == :var_ref && push.value.name == loop.index
+        end
 
         def folded_node(node)
           case node.kind

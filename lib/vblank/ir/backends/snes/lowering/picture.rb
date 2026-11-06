@@ -1846,21 +1846,23 @@ module VBlank
 
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS (Reference#names_in_draw_order): its list holds the
             # run's sprites back to front, each by its place in the run, so each entry in turn places
-            # the sprite it names — back-most first, as every sprite here is. A sprite's placing is a
-            # routine of its own (#sprite_placing_sections), so the entries share it. +depths+ is the
-            # names of the depth being placed, by sprite, for a frame with sprites that change layer;
-            # a sprite not named has no place at that depth.
+            # the sprite it names — back-most first, as every sprite here is. +depths+ is the names of
+            # the depth being placed, by sprite, for a frame with sprites that change layer; a sprite
+            # not named has no place at that depth.
             #
             # The list is the framework's own (Builder::DrawOrder#declare_order_lists): a place of the
             # run pushed for each sprite as the game starts, before anything is drawn, and from then on
             # only sorted or copied whole from a table of places, never made shorter or taken from the
             # front. So every entry is in its slot and names a place of the run, and nothing is tested:
             # each is read straight from its slot and doubled into X, and JSR (table,X) jumps to the entry's
-            # stub in a table of them written here, a JSL to its sprite's placing and an RTS: five
-            # instructions an entry however long the run, where comparing the entry with each place in
-            # turn would grow with the square of the run. The table is in this routine's own code, so
-            # in its bank, which is where JSR (table,X) reads it. A sprite with no place at this depth
-            # has a stub that only returns.
+            # stub in a table of them written here: the sprite's placing itself, written out once for
+            # the run, and an RTS. Five instructions an entry however long the run, where comparing the
+            # entry with each place in turn would grow with the square of the run. The table is in this
+            # routine's own code, so in its bank, which is where JSR (table,X) reads it. A sprite with no
+            # place at this depth has a stub that only returns.
+            #
+            # The placing is in the stub rather than a routine the stub calls: the JSL there and the
+            # RTL back were two of the seven instructions an ordered sprite cost beyond its placing.
             def emit_ordered_run(run, depths = nil)
               return emit_ordered_run_by_reads(run, depths) if front_dropped_lists.include?(run.order)
 
@@ -1875,15 +1877,21 @@ module VBlank
               @asm.data_words(stubs)
               run.objects.each_with_index do |name, at|
                 @asm.label(stubs[at])
-                call_routine(sprite_placing_label(name, depths&.fetch(name))) unless depths && !depths.key?(name)
+                emit_ordered_sprite_placing(name, depths) unless depths && !depths.key?(name)
                 @asm.rts
               end
               @asm.label(placing)
+              keyed = @keyed_sorts&.fetch(run.order, nil)
               run.objects.each_index do |k|
-                @asm.lda(@asm.long(place + Runtime::Lists::HEADER + (k * width)))
-                @asm.and_a(0x00FF) if width == 1
-                @asm.asl
-                @asm.tax
+                if keyed
+                  # A sorted order keeps its items doubled in the first 8K as well (Lowering#emit_keyed_sort).
+                  @asm.ldx(@asm.abs(keyed.entries + (k * 2)))
+                else
+                  @asm.lda(@asm.long(place + Runtime::Lists::HEADER + (k * width)))
+                  @asm.and_a(0x00FF) if width == 1
+                  @asm.asl
+                  @asm.tax
+                end
                 @asm.jsr(@asm.ind_abs_x(table))
               end
             end
@@ -1906,6 +1914,14 @@ module VBlank
                 end
                 @asm.label(past)
               end
+            end
+
+            # Sprite +name+ of an ordered run placed, or placed when it is at the depth +depths+ names
+            # for it.
+            def emit_ordered_sprite_placing(name, depths)
+              return emit_sprite_placing(object_named(name)) unless depths
+
+              emit_sprite_placed_at(object_named(name), depths.fetch(name), @cache.stacking.depths)
             end
 
             # The routine placing sprite +name+, or placing it when it is at the depth called +at+.

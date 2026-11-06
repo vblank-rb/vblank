@@ -65,10 +65,10 @@ class TestDrawInOrderCost < Minitest::Test
 
   # AN ORDER WORKED OUT FROM WHERE EVERYTHING STANDS: seven things sorted by height every pass, as
   # a console's own games sort their sprites, cost a few of the frame's 262 lines, and thirty under
-  # an eighth of them. The cost is the sort, each thing's number worked out, and each sprite placed
-  # through a routine of its own picked by the order (Lowering::Picture#emit_ordered_run).
-  BOUND_SEVEN = 8
-  BOUND_THIRTY = 32
+  # a thirteenth of them. The cost is each thing's number worked out, the sort, and each sprite's
+  # placing picked by the order (Lowering::Picture#emit_ordered_run).
+  BOUND_SEVEN = 3
+  BOUND_THIRTY = 20
 
   private def lines_order_costs(sprites)
     spare = ->(ordered) { DrawOrderCostGames.profile(:genesis, ordered: ordered, sprites: sprites).fewest_lines_spare }
@@ -81,7 +81,7 @@ class TestDrawInOrderCost < Minitest::Test
     assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs #{cost} lines"
   end
 
-  def test_an_order_of_thirty_costs_under_an_eighth_of_the_frame
+  def test_an_order_of_thirty_costs_under_a_thirteenth_of_the_frame
     cost = lines_order_costs(27)
 
     assert_operator cost, :<=, BOUND_THIRTY, "an order of thirty costs #{cost} lines"

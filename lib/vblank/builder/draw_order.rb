@@ -93,7 +93,8 @@ module VBlank
 
         key ||= ->(thing) { thing.bottom }
         order = Order.new(number: draw_orders.length + 1, things: things, front: front, key: key, turns: turns)
-        things.each { |thing| order_pool_things(thing, key) if thing.is_a?(DSL::Pool) } unless turns
+        # A pool's things are ordered one by one, so each needs its number (see Pool#order_by).
+        things.each { |thing| thing.order_by(key) if thing.is_a?(DSL::Pool) } unless turns
         draw_orders << order
         nil
       end
@@ -108,23 +109,23 @@ module VBlank
         thing.is_a?(DSL::Pool) ? thing.stacked_objects : [thing.object_node]
       end
 
-      # A pool's things are ordered one by one, so each needs its number worked out where the
-      # pool copies them into the order it draws them in (see Pool#order_by).
-      def order_pool_things(pool, key)
-        at_boot(Build.list_new(pool.stacked_list(:order_key), pool.capacity, full_of: 0))
-        pool.order_by(key)
+      # The list a pool keeps its things' numbers in, for a pool whose copy works them out
+      # (Pool#order_key_read_from_copy?): one number a place, from the start.
+      def declare_pool_order_keys(order)
+        order.things.each do |thing|
+          next unless thing.is_a?(DSL::Pool) && thing.ordered? && !thing.order_key_read_from_copy?
+
+          at_boot(Build.list_new(thing.stacked_list(:order_key), thing.capacity, full_of: 0))
+        end
       end
 
-
       # The number each object of +order+ is ordered by, by the object's name: a sprite's
-      # worked out from its handle, a pool object's read from what the pool copied for its
-      # place.
+      # worked out from its handle, a pool object's from what the pool copied for its place
+      # (Pool#order_key_at_place).
       def order_keys(order)
         order.things.flat_map do |thing|
           if thing.is_a?(DSL::Pool)
-            thing.stacked_objects.each_with_index.map do |node, place|
-              [node.name, thing.stacked_at(:order_key, thing.rank_at_place(place))]
-            end
+            thing.stacked_objects.each_with_index.map { |node, place| [node.name, thing.order_key_at_place(place)] }
           else
             [[thing.object_name, DSL::Value.node_for(order.key.call(thing))]]
           end
@@ -169,6 +170,7 @@ module VBlank
 
         draw_orders.each do |order|
           declare_order_lists(order)
+          declare_pool_order_keys(order)
           @functions[order.routine] = proc {}
           push_container(Build.func(order.routine)) { order_sort_nodes(order).each { |node| record(node) } }
         end

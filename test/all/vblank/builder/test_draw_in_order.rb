@@ -248,6 +248,31 @@ class TestDrawInOrder < Minitest::Test
     assert_backends_agree(puffs_program(ordered: true), frames: 3)
   end
 
+  # A NUMBER READ FROM ANOTHER OF A THING'S FIELDS. Most numbers are where a thing stands, which
+  # the pool's copy for drawing already holds; this one adds a field of the pool's own, so it is
+  # worked out as the copy is made. The older puff stands lower and would be in front, but the
+  # younger is lifted twenty pixels nearer the front.
+  private def lifted_program(lift)
+    block = BLOCK
+    program do
+      screen :tiled
+      colors :puff_colors, %i[transparent red]
+      colors :young_colors, %i[transparent green]
+      image(:puff, "#" => :red, colors: :puff_colors) { block }
+      puffs = pool :puffs, x: 0, y: 0, lift: 0, capacity: 4, image: :puff
+      draw_in_order(puffs) { |puff| puff.y + puff.lift }
+      puffs.spawn(x: 60, y: 62, lift: 0)
+      puffs.spawn(x: 64, y: 54, lift: lift)
+      game_loop { puffs.each { |puff| puff.draw_with :young_colors if puff.y == 54 } }
+    end
+  end
+
+  def test_a_pools_number_can_read_any_of_its_fields
+    assert_equal RED, shown(lifted_program(0), frames: 3), "the lower puff is in front"
+    assert_equal GREEN, shown(lifted_program(20), frames: 3), "the lifted puff is in front"
+    assert_backends_agree(lifted_program(20), frames: 3)
+  end
+
   # --- seven in one order ---
 
   private def color_named(name) = VBlank::Graphics::Color.resolve(name)

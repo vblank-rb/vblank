@@ -246,6 +246,7 @@ module VBlank
             keep_scene_tiles_up
             keep_loop_running
             keep_column_numbers
+            keep_order_tables
             make_chip_code
             routines = @called.flat_map do |name|
               next [chip_routine_section(name)] if on_chip?(name)
@@ -515,7 +516,7 @@ module VBlank
             copied: [Memory, Art, PaintedArt, TextLayerArt],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover,
                      SpriteNames, Music, W65816, RoutineCuts::PartCall, LoweringPlan, ChipCode],
-            unchanged: %i[@cuts @cache @tile_memo]
+            unchanged: %i[@cuts @cache @tile_memo @keyed_sorts @keys_by_place]
           )
 
           # --- statements ---
@@ -852,7 +853,10 @@ module VBlank
           # --- lists (Runtime::Lists does the work and the checking) ---
 
           # Reference::ListValue.of: empty, or holding its capacity of the one number it is full of.
+          # A draw order's list, kept in tables of its own (#emit_keyed_sort), starts them here too.
           def emit_list_new(node)
+            keyed = @keyed_sorts&.fetch(node.name, nil)
+            emit_order_tables_start(keyed) if keyed
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -914,6 +918,8 @@ module VBlank
           # that is a variable or a written number is read where it is, after the value: working a
           # value out never changes a variable, so it reads the same.
           def emit_list_set(node)
+            keyed = @keys_by_place&.fetch(node.name, nil)
+            return emit_key_by_place(node, keyed) if keyed
             return list_call("rt_list_set", node, node.index, node.value) if front_dropped_lists.include?(node.name)
 
             place, _capacity, width = list_placed(node)
@@ -1104,6 +1110,9 @@ module VBlank
           #   R2  the item that moves, as its slot holds it        is, and (high half) the list's end
           #   R3  its number    R4  pointer to the slot before Y's    R5  pointer to Y's slot
           def emit_list_sort(node)
+            keyed = @keyed_sorts&.fetch(node.name, nil)
+            return emit_keyed_sort(keyed) if keyed
+
             refuse_ring_sort!(node)
             place, _capacity, width = list_placed(node)
             keys_place, _keys_capacity, key_width = @lists.fetch(node.by) do
@@ -1284,6 +1293,230 @@ module VBlank
             @asm.sep(0x20)
             @asm.sta(@asm.ind_long_y(SORT_AT))
             @asm.rep(0x20)
+          end
+
+          # A SORT WHOSE NUMBERS ARE KEPT BY PLACE IN THE ORDER, the way a draw order's is
+          # (Builder::DrawOrder#order_sort_nodes): every frame its routine works out one number for
+          # each thing, by the thing's place in the run, and sorts the order by them.
+          #
+          # The sort above reaches an item's number through the item, so each compare is first a read
+          # of the order and a sum for where the number is, and then a copy of that number for the
+          # next compare: nineteen instructions a thing on a frame where nobody passed anybody. Here each
+          # number is kept in the place in the order its thing is in, not by the thing. A thing's
+          # number is written there as it is worked out, through one index read from a table of where
+          # each thing is, and the sort then compares each place's number with the one before it at
+          # addresses known as the cartridge is built: four loads and a branch, written out once for
+          # each place, six instructions a thing. An item that does move swaps with the one
+          # before it there and then, also written out for each place, since two things passing is
+          # nearly every move; one that goes further goes on to one routine that moves it back as the
+          # sort above does, its number and its item with it.
+          #
+          # What is left is mostly the numbers themselves, worked out as whole words: eight
+          # instructions a thing, the index read among them.
+          #
+          # THE ORDER IS KEPT IN THESE TABLES, NOT IN THE LIST. Three tables in the first 8K, where a
+          # 16-bit address reaches them: the numbers, by place, low halves and high halves apart;
+          # where each item is, as twice its place, by item; and each place's item doubled, by place, which is
+          # what the sprites are placed from (Picture#emit_ordered_run), so placing an ordered sprite
+          # is a load and a jump. The two lists the IR names are the framework's own, nothing else
+          # reads them (LoweringPlan#sorts_kept_apart holds to that), and nothing compares them with the
+          # interpreter's, so the numbers list is not written and the order list keeps the order the
+          # game started in. What is drawn is the interpreter's order, and that is what is checked.
+          # A sort is kept this way only in the first 8K's room for its tables.
+          #
+          # Every table is two bytes a place, the numbers' low halves and high halves kept apart, so
+          # one index reaches a place's number and its item, and an item doubled is where it is in the
+          # table of places: two times its place.
+          KeyedSort = Data.define(:order, :keys, :count, :lows, :highs, :places, :entries, :descending) do
+            # The operands for the two halves of the number +plus+ bytes into the numbers (two bytes
+            # a place), plus X when +x+.
+            def number(asm, plus, x: false)
+              [lows, highs].map { |at| x ? asm.abs_x(at, plus) : asm.abs(at + plus) }
+            end
+          end
+
+          # Which sorts keep their numbers by place (LoweringPlan#sorts_kept_apart, with room in the
+          # first 8K for their tables), and where each one's tables are.
+          def keep_order_tables
+            @keyed_sorts = {}
+            @keys_by_place = {}
+            @plan.sorts_kept_apart.each_value do |node|
+              count = @declared_lists.fetch(node.name).capacity
+              next if @memory.near_bytes_left < NEAR_BYTES_LAST + (count * 8)
+
+              said = "the order #{node.name.inspect}"
+              keyed = KeyedSort.new(order: node.name, keys: node.by, count: count, descending: node.descending,
+                                    lows: @memory.reserve("the numbers of #{said}", count * 2),
+                                    highs: @memory.reserve("the numbers' high halves of #{said}", count * 2),
+                                    places: @memory.reserve("the places in #{said}", count * 2),
+                                    entries: @memory.reserve("the items of #{said}", count * 2))
+              @keyed_sorts[node.name] = keyed
+              @keys_by_place[node.by] = keyed
+            end
+          end
+
+          # The tables as the order starts: item +n+ in place +n+.
+          def emit_order_tables_start(keyed)
+            keyed.count.times do |item|
+              @asm.lda(item * 2)
+              @asm.sta(@asm.abs(keyed.places + (item * 2)))
+              @asm.sta(@asm.abs(keyed.entries + (item * 2)))
+            end
+          end
+
+          # A thing's number, written into the slot of the order its thing is in: X from the table of
+          # places, then the number into the slot there, a half at a time.
+          def emit_key_by_place(node, keyed)
+            place = @asm.abs(keyed.places + (folded(node.index) * 2))
+            to = keyed.number(@asm, 0, x: true)
+            value = node.value
+            if sum_in_halves?(value) && %i[+ -].include?(value.op)
+              carry, sum = IN_PLACE_SUMS.fetch(value.op)
+              return with_key_halves(without_added_nought(value.lhs), value.rhs) do |lefts, rights|
+                @asm.ldx(place)
+                @asm.public_send(carry)
+                2.times do |i|
+                  @asm.lda(lefts[i])
+                  @asm.public_send(sum, rights[i])
+                  @asm.sta(to[i])
+                end
+              end
+            end
+
+            halves = operand_halves(value) || fixed_word_slot_halves(value)
+            unless halves
+              value(value)
+              halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
+            end
+            @asm.ldx(place)
+            2.times do |i|
+              @asm.lda(halves[i])
+              @asm.sta(to[i])
+            end
+          end
+
+          # with_both_halves, also reading a word list's slot at a place written in the program where
+          # it is.
+          def with_key_halves(left, right, &)
+            lefts = operand_halves(left) || fixed_word_slot_halves(left)
+            rights = operand_halves(right) || fixed_word_slot_halves(right)
+            return yield(lefts, rights) if lefts && rights
+
+            with_both_halves(left, right, &)
+          end
+
+          # The sort itself: each place after the first compared with the one before it, and the
+          # routine that moves an item back called only for one that has to go.
+          def emit_keyed_sort(keyed)
+            mover = fresh("sort_move")
+            done = fresh("sort_done")
+            (1...keyed.count).each do |place|
+              stays = fresh("sort_stays")
+              emit_keyed_compare(keyed, keyed.number(@asm, place * 2), keyed.number(@asm, (place * 2) - 2))
+              @asm.bpl(stays)
+              emit_keyed_swap(keyed, place)
+              if place > 1
+                emit_keyed_compare(keyed, keyed.number(@asm, (place * 2) - 2), keyed.number(@asm, (place * 2) - 4))
+                @asm.bpl(stays)
+                @asm.ldx((place - 1) * 2)
+                @asm.jsr(@asm.abs(mover))
+              end
+              @asm.label(stays)
+            end
+            @asm.brl(done)
+            emit_keyed_move(keyed, mover)
+            @asm.label(done)
+          end
+
+          # The item in +place+ and the one before it swapped, at addresses known as the cartridge is
+          # built: the step nearly every move is, when two things pass each other. Twenty
+          # instructions, about half what the general step takes (#emit_keyed_move).
+          def emit_keyed_swap(keyed, place)
+            at = place * 2
+            [keyed.lows, keyed.highs].each do |table|
+              @asm.lda(@asm.abs(table + at))
+              @asm.ldy(@asm.abs(table + at - 2))
+              @asm.sta(@asm.abs(table + at - 2))
+              @asm.sty(@asm.abs(table + at))
+            end
+            @asm.lda(@asm.abs(keyed.entries + at))
+            @asm.ldx(@asm.abs(keyed.entries + at - 2))
+            @asm.sta(@asm.abs(keyed.entries + at - 2))
+            @asm.stx(@asm.abs(keyed.entries + at))
+            @asm.tay
+            @asm.lda(at - 2)
+            @asm.sta(@asm.abs_y(keyed.places))
+            @asm.lda(at)
+            @asm.sta(@asm.abs_x(keyed.places))
+          end
+
+          # N set when the number at +item+ (two halves) is strictly beyond the one at +before+, so the
+          # item moves back past it.
+          def emit_keyed_compare(keyed, item, before)
+            first, second = keyed.descending ? [before, item] : [item, before]
+            signed = fresh("sort_signed")
+            @asm.lda(first[0])
+            @asm.cmp(second[0])
+            @asm.lda(first[1])
+            @asm.sbc(second[1])
+            @asm.bvc(signed)
+            @asm.eor(0x8000)
+            @asm.label(signed)
+          end
+
+          # The item in the place X says (X twice the place) moved back past every item before it
+          # whose number is strictly beyond its own, as the sort above moves one: each of those a
+          # place on, its number and its item with it, and the table of places told. X is twice the
+          # place the item is going to, which reaches that place in every table, and Y the item there
+          # (itself twice a place), which reaches the item in the table of places. The first compare
+          # is the one that sent the item here, so the first step is taken without it. The sort comes
+          # here only for an item that goes back more than one place (#emit_keyed_swap takes the
+          # first), and each place it goes back is about twenty instructions.
+          #
+          #   R2  the item, doubled    R3  its number
+          def emit_keyed_move(keyed, mover)
+            step = fresh("sort_step")
+            placed = fresh("sort_placed")
+            key = [@asm.direct(SORT_KEY), @asm.direct(SORT_KEY + 2)]
+            here = keyed.number(@asm, 0, x: true)
+            before = keyed.number(@asm, -2, x: true)
+            @asm.label(mover)
+            2.times do |half|
+              @asm.lda(here[half])
+              @asm.sta(key[half])
+            end
+            @asm.lda(@asm.abs_x(keyed.entries))
+            @asm.sta(@asm.direct(SORT_ITEM))
+
+            @asm.label(step)
+            2.times do |half|
+              @asm.lda(before[half])
+              @asm.sta(here[half])
+            end
+            @asm.lda(@asm.abs_x(keyed.entries, -2))
+            emit_item_placed(keyed)
+            2.times { @asm.dex }
+            @asm.beq(placed)
+            emit_keyed_compare(keyed, key, before)
+            @asm.bmi(step)
+
+            @asm.label(placed)
+            2.times do |half|
+              @asm.lda(key[half])
+              @asm.sta(here[half])
+            end
+            @asm.lda(@asm.direct(SORT_ITEM))
+            emit_item_placed(keyed)
+            @asm.rts
+          end
+
+          # The item doubled in A put in the place X says, in the table of items and the table of
+          # places.
+          def emit_item_placed(keyed)
+            @asm.sta(@asm.abs_x(keyed.entries))
+            @asm.tay
+            @asm.txa
+            @asm.sta(@asm.abs_y(keyed.places))
           end
 
           # A list taken from the front keeps its items round a ring, so its slots are not where the

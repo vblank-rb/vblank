@@ -230,6 +230,7 @@ module VBlank
             keep_timer_numbers
             keep_corner_notes
             keep_loop_running
+            keep_order_tables
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
               routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
@@ -237,8 +238,7 @@ module VBlank
             timers = timer_sections
             @lowering_scene = nil
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
-            placings = sprite_placing_sections
-            [data_section, video_registers_section, *table_sections, *routines, *timers, *main, *placings,
+            [data_section, video_registers_section, *table_sections, *routines, *timers, *main,
              *paint_sections, *art_sections, *collision_sections]
           end
 
@@ -447,7 +447,7 @@ module VBlank
             copied: [Memory, PaintedArt, Art],
             shared: [Integer, Symbol, String, NilClass, TrueClass, FalseClass, IR::Node, SceneHandover, SpriteNames,
                      M68000, Music, RoutineCuts::PartCall, LoweringPlan],
-            unchanged: %i[@cuts @cache]
+            unchanged: %i[@cuts @cache @keyed_sorts]
           )
 
           # --- statements ---
@@ -729,7 +729,10 @@ module VBlank
           # --- lists (Runtime::Lists does the work and the checking) ---
 
           # Reference::ListValue.of: empty, or holding its capacity of the one number it is full of.
+          # A draw order's list, kept in a table of its own (#emit_keyed_sort), starts it here too.
           def emit_list_new(node)
+            keyed = @keyed_sorts&.fetch(node.name, nil)
+            emit_order_tables_start(keyed) if keyed
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
@@ -828,6 +831,9 @@ module VBlank
           # first item can be in any slot; it is sorted by index instead, each slot found as the
           # runtime finds one (#emit_ring_slot).
           def emit_list_sort(node)
+            keyed = @keyed_sorts&.fetch(node.name, nil)
+            return emit_keyed_sort(keyed) if keyed
+
             order = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is sorted and never declared" }
             keys = @lists.fetch(node.by) { raise LoweringError, "the list #{node.by.inspect} is sorted by and never declared" }
             stays = node.descending ? :ge : :le # the number before is not beyond this one's: it stays
@@ -913,6 +919,90 @@ module VBlank
             @asm.addq(:l, 1, @asm.d(1))
             @asm.cmp(:l, @asm.d(7), @asm.d(1))
             @asm.branch(:lt, item)
+          end
+
+          # A DRAW ORDER'S SORT, KEPT IN A TABLE OF ITS OWN (LoweringPlan#sorts_kept_apart): the order
+          # list is the framework's, nothing else reads it and nothing compares it with the
+          # interpreter's, so the order is kept instead as a table of words in reach of A5, one a place,
+          # each its item already four times over — how far into the numbers its number is, and into
+          # the table of the sprites' placings (Picture#emit_ordered_run) its placing. The order list
+          # keeps the order the game started in. The numbers stay in their list, as every backend
+          # keeps them.
+          #
+          # The sort above takes each item out, reads its number and walks back from it with two
+          # pointers, about fourteen instructions a thing on a frame where nobody passed anybody. Here
+          # every place is written out once as the cartridge is built: its item read where it lies, its
+          # number read through it, one compare with the number before, which stays in D2 for the next.
+          # Five instructions a thing. An item that does move goes to one routine that moves it back
+          # as the sort above does.
+          KeyedSort = Data.define(:order, :keys, :count, :entries, :descending)
+
+          # Which sorts are kept in a table of their own, and where each table is.
+          def keep_order_tables
+            @keyed_sorts = @plan.sorts_kept_apart.transform_values do |node|
+              count = @declared_lists.fetch(node.name).capacity
+              KeyedSort.new(order: node.name, keys: node.by, count: count, descending: node.descending,
+                            entries: @memory.reserve("the items of the order #{node.name.inspect}", count * 2))
+            end
+          end
+
+          # The table as the order starts: item +n+ in place +n+.
+          def emit_order_tables_start(keyed)
+            keyed.count.times { |place| @asm.move(:w, @asm.imm(place * 4), at(keyed.entries, place * 2)) }
+          end
+
+          # Each place after the first compared with the one before it. D1 is this place's number and
+          # D2 the one before's; D0 this place's item. A1 is the first of the numbers' slots.
+          def emit_keyed_sort(keyed)
+            mover = fresh("sort_move")
+            done = fresh("sorted")
+            stays = keyed.descending ? :le : :ge # this number is not beyond the one before: it stays
+            @asm.lea(@asm.abs_l(@lists.fetch(keyed.keys).first, Runtime::Lists::HEADER), @asm.a(1))
+            @asm.move(:w, at(keyed.entries), @asm.d(0))
+            @asm.move(:l, @asm.idx(1, 0, 0, :w), @asm.d(2))
+            (1...keyed.count).each do |place|
+              stay = fresh("sort_stays")
+              past = fresh("sort_past")
+              @asm.move(:w, at(keyed.entries, place * 2), @asm.d(0))
+              @asm.move(:l, @asm.idx(1, 0, 0, :w), @asm.d(1))
+              @asm.cmp(:l, @asm.d(2), @asm.d(1))
+              @asm.branch(stays, stay)
+              @asm.move(:w, @asm.imm(place * 2), @asm.d(3))
+              @asm.bsr(mover)
+              @asm.bra(past)
+              @asm.label(stay)
+              @asm.move(:l, @asm.d(1), @asm.d(2))
+              @asm.label(past)
+            end
+            @asm.bra(done)
+            emit_keyed_move(keyed, mover)
+            @asm.label(done)
+          end
+
+          # The item in D0, with its number in D1, at the place D3 says (twice it), moved back past
+          # every item before it whose number is strictly beyond its own, each of those a place on. A3
+          # walks back from the place; D4 is the item before it, D5 that one's number. The number before
+          # the place the item started in, in D2, is still the number before the next place, since
+          # that place now holds the item that was before it.
+          def emit_keyed_move(keyed, mover)
+            back = fresh("sort_back")
+            place = fresh("sort_place")
+            stop = keyed.descending ? :ge : :le # the number before is not beyond the item's: it stops
+            @asm.label(mover)
+            @asm.lea(at(keyed.entries), @asm.a(3))
+            @asm.add(:w, @asm.d(3), @asm.a(3))
+            @asm.label(back)
+            @asm.move(:w, @asm.disp(3, -2), @asm.d(4))
+            @asm.move(:l, @asm.idx(1, 0, 4, :w), @asm.d(5))
+            @asm.cmp(:l, @asm.d(1), @asm.d(5))
+            @asm.branch(stop, place)
+            @asm.move(:w, @asm.d(4), @asm.ind(3))
+            @asm.subq(:l, 2, @asm.a(3))
+            @asm.cmp(:l, @asm.imm(keyed.entries), @asm.a(3))
+            @asm.branch(:ne, back)
+            @asm.label(place)
+            @asm.move(:w, @asm.d(0), @asm.ind(3))
+            @asm.rts
           end
 
           # D(+into+) = the item at +from+, a place in the numbers' list, so never below nought.

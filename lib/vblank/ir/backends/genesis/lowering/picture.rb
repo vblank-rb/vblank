@@ -856,26 +856,40 @@ module VBlank
 
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS (Reference#names_in_draw_order): its list holds the
             # run's sprites back to front, each by its place in the run, so each entry in turn places
-            # the sprite it names. A sprite's placing is a routine of its own (#sprite_placing_sections),
+            # the sprite it names. Each sprite's placing is written out once, here, ending in a return,
             # so the entries share it.
             #
-            # The entry picks its routine from a table of their addresses, a long each, kept beside
+            # The entry picks its placing from a table of their addresses, a long each, kept beside
             # the code: four instructions an entry, whatever the run's length. Asking each entry "is
             # it the first? the second?..." in turn would cost every entry a test for each sprite
-            # before it, so the whole run a test for every pair of its sprites.
+            # before it, so the whole run a test for every pair of its sprites. A sorted order keeps
+            # its items four times over in a table of its own (Lowering#emit_keyed_sort), so its entry
+            # is one read. The placing is here rather than a routine of its own, which took a long
+            # JSR and an RTS more for every ordered sprite.
             def emit_ordered_run(run)
               table = fresh("ordered_placings")
               past = fresh("past_ordered_placings")
+              placings = run.objects.map { fresh("ordered_placing") }
               @asm.bra(past)
               @asm.label(table)
-              @asm.data_longs(run.objects.map { |name| sprite_placing_label(name) })
+              @asm.data_longs(placings)
+              run.objects.each_with_index do |name, place|
+                @asm.label(placings[place])
+                emit_sprite_placing(object_named(name))
+                @asm.rts
+              end
               @asm.label(past)
-              outside = fresh("order_outside") unless @lists_dropped_from_front.include?(run.order)
+              keyed = @keyed_sorts&.fetch(run.order, nil)
+              outside = fresh("order_outside") unless keyed || @lists_dropped_from_front.include?(run.order)
               run.objects.each_index do |k|
-                outside ? emit_order_entry_read(run.order, k, outside) : value(Build.list_get(run.order, Build.int(k)))
-                @asm.lsl(:l, 2, @asm.d(0))
-                @asm.lea(@asm.abs_l(table), @asm.a(0))
-                @asm.movea(:l, @asm.idx(0, 0, 0), @asm.a(0))
+                if keyed
+                  @asm.move(:w, at(keyed.entries, k * 2), @asm.d(0))
+                else
+                  outside ? emit_order_entry_read(run.order, k, outside) : value(Build.list_get(run.order, Build.int(k)))
+                  @asm.lsl(:l, 2, @asm.d(0))
+                end
+                @asm.lea(@asm.pc_rel(table), @asm.a(0))
+                @asm.movea(:l, @asm.idx(0, 0, 0, keyed ? :w : :l), @asm.a(0))
                 @asm.jsr(@asm.ind(0))
               end
               emit_order_index_fault(run.order, outside) if outside
@@ -905,16 +919,6 @@ module VBlank
               @asm.movea(:l, @asm.d(0), @asm.a(0))
               @asm.jmp(@asm.abs_l("rt_list_index_fault"))
               @asm.label(past)
-            end
-
-            def sprite_placing_label(name) = (@sprite_placings ||= {})[name] ||= "sprite placing #{@sprite_placings.length}"
-
-            # The routine each sprite of an ordered run is placed by (#emit_ordered_run), made once the
-            # game's routines are.
-            def sprite_placing_sections
-              (@sprite_placings || {}).map do |name, label|
-                routine_section(label, [], routine: "placing the sprite #{name.inspect}") { emit_sprite_placing(object_named(name)) }
-              end
             end
 
             # The table of a sprite's pictures: how many, then each one's number.
