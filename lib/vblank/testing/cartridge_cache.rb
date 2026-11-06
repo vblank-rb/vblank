@@ -159,7 +159,10 @@ module VBlank
       def key_for(game, console, variant, settings, profile)
         keys = (::Ractor.current[:vblank_cartridge_cache_keys] ||= {})
         keys[[game.object_id, @folder, @inputs, @sources, console, variant, settings, profile]] ||= begin
-          what = @sources || Digest::SHA256.hexdigest(Marshal.dump(game.program(settings: settings, console: console, variant: variant)))
+          # The program as IR::Dump writes it, which is the same text for the same program every time.
+          # Marshal is not: it writes an object it has met before as a link back, so a program whose
+          # pieces are shared on one process and equal copies on another gave two keys.
+          what = @sources || Digest::SHA256.hexdigest(IR::Dump.source(game.program(settings: settings, console: console, variant: variant)))
           header = Digest::SHA256.hexdigest(Marshal.dump([game.title, game.code, game.maker, game.options.to_h, console, variant,
                                                           settings, profile]))
           parts = KeyParts.new(library: @library, ruby: @ruby, game: what, header: header, inputs: @inputs)

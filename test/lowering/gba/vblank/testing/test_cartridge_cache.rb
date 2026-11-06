@@ -31,6 +31,41 @@ class TestCartridgeCache < Minitest::Test
     end
   end
 
+  # Two games whose programs say the same thing, one holding a picture's rows as one shared object
+  # and one as two equal copies, as the same game does on a process that has shared some of its
+  # pieces with tests before it and one that has not. Marshal writes those differently, so a key
+  # made from it rebuilt one cartridge on several processes.
+  #
+  # A game here is what the cache asks of one, around a program built by hand: one fill step in it
+  # twice, or two equal fill steps.
+  HandBuiltGame = Struct.new(:program_made, :title, :code, :maker, :options) do
+    def program(**) = program_made
+    def variant_for(_console) = nil
+  end
+
+  # The fill steps are made by IR::Build, mixed into a module of its own so its names stay out of this
+  # class.
+  module HandBuilt
+    extend VBlank::IR::Build
+
+    def self.two_fills(shared:)
+      first = fill_rect(0, 0, 8, 8, :red)
+      program(screen(:bitmap), first, shared ? first : fill_rect(0, 0, 8, 8, :red), halt, console: :gba)
+    end
+  end
+
+  private def two_fills_game(shared:) = HandBuiltGame.new(HandBuilt.two_fills(shared: shared), "TWO", nil, nil, {})
+
+  def test_a_game_is_known_by_what_its_program_says_not_by_which_pieces_it_shares
+    Dir.mktmpdir do |folder|
+      cache = VBlank::Testing::CartridgeCache.new(folder)
+
+      keys = [true, false].map { |shared| cache.send(:key_for, two_fills_game(shared: shared), :gba, nil, {}, false).first }
+
+      assert keys.uniq.one?, "one program gave two keys" # (a plain assert: the diff of two digests says nothing)
+    end
+  end
+
   def test_a_game_that_builds_something_else_is_built_again
     Dir.mktmpdir do |folder|
       cache = VBlank::Testing::CartridgeCache.new(folder)
