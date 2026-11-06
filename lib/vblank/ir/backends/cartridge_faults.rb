@@ -16,18 +16,18 @@ module VBlank
       module CartridgeFaults
         INDEX_OUT_OF_RANGE = 1
         LIST_FULL = 2
-        LIST_EMPTY = 3 # the first number: nought for the back, anything else the front
+        LIST_EMPTY = 3 # The first number: nought for the back, anything else the front
         COPY_TOO_LONG = 4
         COPY_PAST_TABLE = 5
-        PICTURE_NOT_THERE = 6 # a sprite showing a picture its list does not have: the pose, the count
+        PICTURE_NOT_THERE = 6 # A sprite showing a picture its list does not have: the pose, the count
         SAVE_READ_OUTSIDE = 7
         SAVE_WRITE_OUTSIDE = 8
-        PICTURE_NOT_UP = 9 # the numbers: which check stopped it (GBC::Places#picture_checks), and the pose
-        GROUPS_NOT_TOGETHER = 10 # the number: which set of picture groups (GBC::Places#together_checks)
-        CELLS_FULL = 11 # more cells of a background changed in one pass than the queue for the blank holds
-        CPU_EXCEPTION = 12 # the processor stopped on something it cannot do: an odd address, a bad instruction
-        CAMERA_TOO_FAR = 13 # a painted screen's camera past what the console's scrolling can show
-        TILE_LOADS_FULL = 14 # more loads of sprite tiles in one pass than the queue for the blank holds
+        PICTURE_NOT_UP = 9 # The numbers: which check stopped it (GBC::Places#picture_checks), and the pose
+        GROUPS_NOT_TOGETHER = 10 # The number: which set of picture groups (GBC::Places#together_checks)
+        CELLS_FULL = 11 # More cells of a background changed in one pass than the queue for the blank holds
+        CPU_EXCEPTION = 12 # The processor stopped on something it cannot do: an odd address, a bad instruction
+        CAMERA_TOO_FAR = 13 # A painted screen's camera past what the console's scrolling can show
+        TILE_LOADS_FULL = 14 # More loads of sprite tiles in one pass than the queue for the blank holds
       end
     end
   end

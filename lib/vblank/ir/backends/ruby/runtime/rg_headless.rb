@@ -50,7 +50,7 @@
 
 require "zlib"
 
-RG_GAME_WENT_WRONG = 3 # how a run ends when the game did something the interpreter refuses
+RG_GAME_WENT_WRONG = 3 # How a run ends when the game did something the interpreter refuses
 
 def rg_headless_main(argv)
   if argv.empty?

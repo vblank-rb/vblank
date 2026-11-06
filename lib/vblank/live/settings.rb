@@ -48,8 +48,8 @@ module VBlank
       PAD_BUTTONS = %i[south east west north back guide start left_stick right_stick left_shoulder right_shoulder
                        dpad_up dpad_down dpad_left dpad_right].freeze
 
-      KEYS_A_BUTTON = 2 # the most keys one button can have
-      ESCAPE = 41 # gives up choosing a key, and so can be no button's or hotkey's
+      KEYS_A_BUTTON = 2 # The most keys one button can have
+      ESCAPE = 41 # Gives up choosing a key, and so can be no button's or hotkey's
       LONGEST_LINE = 255
       FAST_SPEEDS = (2..8)
       FLAGS = { "fullscreen" => :fullscreen, "mute" => :muted, "frame_rate" => :frame_rate, "frame_time" => :frame_time }.freeze

@@ -34,8 +34,8 @@ module VBlank
           # The pins' registers: what is on each pin, which way each one points (a 1 is the
           # console driving it), and whether the console can read them back at all.
           PINS = 0x080000C4
-          DIRECTION = 2 # ...after PINS
-          READABLE = 4  # ...after PINS
+          DIRECTION = 2 # After PINS
+          READABLE = 4  # After PINS
 
           SCK = 1
           SIO = 2

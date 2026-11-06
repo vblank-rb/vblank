@@ -28,12 +28,12 @@ module VBlank
           # painting to the area the game has opened (`inside`, AREA: a left, a top, a right and a
           # bottom, each a word, the screen's own to begin with).
           module Paint
-            ACROSS = 40 # tiles
+            ACROSS = 40 # Tiles
             DOWN = 28
             TILES = ACROSS * DOWN
             TILE_BYTES = 32
             SCREEN_BYTES = TILES * TILE_BYTES
-            ROW_BYTES = ACROSS * TILE_BYTES # a row of tiles
+            ROW_BYTES = ACROSS * TILE_BYTES # A row of tiles
             WIDTH = ACROSS * 8
             HEIGHT = DOWN * 8
             # What a picture's pixel holds where it is see-through.
@@ -243,7 +243,7 @@ module VBlank
             #
             # rt_camera_to(x, y): the window's corner, once it is within what the plane can show.
             # rt_camera_written: the scroll registers made to say it.
-            CAMERA = "rt camera" # the window's corner, a word each: across, then down
+            CAMERA = "rt camera" # The window's corner, a word each: across, then down
             CAMERA_ACROSS = 192
             CAMERA_DOWN = 32
 

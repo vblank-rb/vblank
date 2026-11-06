@@ -82,15 +82,15 @@ module VBlank
 
           # Registers held across the walk. It runs as a whole statement, so every
           # register but the variable-address scratch is free.
-          TINT_SRC = 2   # where the originals are being read from (the cartridge)
-          TINT_DST = 3   # where the blended entries are being written (the color table)
-          TINT_END = 4   # one past the last original, which is what ends the walk
-          TINT_KEEP = 5  # how much of the original survives, in the walk's steps
-          TINT_RB = 6    # the red/blue mask, held rather than rebuilt per entry (the fine walk's spare)
-          TINT_G = 7     # the green mask, likewise
-          TINT_ADD = 8   # the color's own red and blue share — the same for every entry
-          TINT_ADD_G = 9 # ...and its green one
-          TINT_STEPS = 10 # where the steps wait while the remembered tint is compared
+          TINT_SRC = 2   # Where the originals are being read from (the cartridge)
+          TINT_DST = 3   # Where the blended entries are being written (the color table)
+          TINT_END = 4   # One past the last original, which is what ends the walk
+          TINT_KEEP = 5  # How much of the original survives, in the walk's steps
+          TINT_RB = 6    # The red/blue mask, held rather than rebuilt per entry (the fine walk's spare)
+          TINT_G = 7     # The green mask, likewise
+          TINT_ADD = 8   # The color's own red and blue share — the same for every entry
+          TINT_ADD_G = 9 # Its green one
+          TINT_STEPS = 10 # Where the steps wait while the remembered tint is compared
 
           # A FADE TOWARD BLACK, which is not quite a tint toward black. A mix KEEPS a share of
           # each channel and drops the fraction, so it rounds down; the display's own fade takes

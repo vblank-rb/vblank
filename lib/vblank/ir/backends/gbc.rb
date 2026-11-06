@@ -321,7 +321,7 @@ module VBlank
         SONG_PARTS = /\Amusic_notes_\d+_\d+_first\z/
         POSE_TABLES = /\A(?:pose_pictures|pose_attributes|pose_lent_palettes|posed_sprite) \d+\z/
         BACKGROUND_COLORS = /\Abackground_colors \d+\z/
-        GAME_TABLES = /\Atable (?!.* parts\z)/ # and not where the parts of one already in the banks are
+        GAME_TABLES = /\Atable (?!.* parts\z)/ # And not where the parts of one already in the banks are
 
         # Every label in the part always in view, with how many bytes run from it to the next label
         # after it: what it labels. Labels at one place each count what follows them all, so a sum of

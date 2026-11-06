@@ -42,8 +42,8 @@ module VBlank
     module Processes
       PROCESSES_SETTING = "TEST_PROCESSES"
       CHILD_SETTING = "TEST_PROCESS_CHILD"
-      RECORDS_FD = 3 # a child's results, and its asks for work, to the parent
-      WORK_FD = 4    # the parent's answers: the next test, or the pipe closed when there are none
+      RECORDS_FD = 3 # A child's results, and its asks for work, to the parent
+      WORK_FD = 4    # The parent's answers: the next test, or the pipe closed when there are none
 
       # The command this process was started with, taken while ARGV still holds the test files:
       # rake's loader takes them out of ARGV as it loads them. The load paths are the project's

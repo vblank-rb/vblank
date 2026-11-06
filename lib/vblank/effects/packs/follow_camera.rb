@@ -34,7 +34,7 @@ module VBlank
       # something placed in the world do not line up with it. Moving, facing, animating
       # and turning all do.
       module FollowCamera
-        HOME_X = :__camera_home_x # where the followed sprite sits on screen
+        HOME_X = :__camera_home_x # Where the followed sprite sits on screen
         HOME_Y = :__camera_home_y
         ROUTINE = :__camera_follow
 

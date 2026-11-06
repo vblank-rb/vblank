@@ -55,9 +55,9 @@ module VBlank
       # SDL's own numbers, from its headers.
       INIT_VIDEO = 0x20
       WINDOW_RESIZABLE = 0x20
-      WINDOW_HIGH_PIXEL_DENSITY = 0x2000 # a Retina screen's own pixels, not one a point
+      WINDOW_HIGH_PIXEL_DENSITY = 0x2000 # A Retina screen's own pixels, not one a point
       PIXELFORMAT_XBGR1555 = 0x15530f02
-      PIXELFORMAT_ABGR8888 = 0x16762004 # red, green, blue, opacity: a byte each, in that order
+      PIXELFORMAT_ABGR8888 = 0x16762004 # Red, green, blue, opacity: a byte each, in that order
       TEXTUREACCESS_STATIC = 0
       TEXTUREACCESS_STREAMING = 1
       SCALEMODE_NEAREST = 0
@@ -68,16 +68,16 @@ module VBlank
       EVENT_WINDOW_CLOSE_REQUESTED = 0x210
       EVENT_KEY_DOWN = 0x300
       EVENT_KEY_UP = 0x301
-      KEY_SCANCODE_AT = 24 # where in a key's event the key is, as a scancode (4 bytes)
-      KEY_DOWN_AT = 36 # ...whether it went down (1 byte)
-      KEY_REPEAT_AT = 37 # ...and whether it is a key held down, heard again (1 byte)
-      EVENT_BYTES = 128 # an SDL_Event is a union of at most this many bytes
-      BLENDMODE_BLEND = 0x1 # what is drawn lets what is under it show through, as much as it is clear
+      KEY_SCANCODE_AT = 24 # Where in a key's event the key is, as a scancode (4 bytes)
+      KEY_DOWN_AT = 36 # Whether it went down (1 byte)
+      KEY_REPEAT_AT = 37 # Whether it is a key held down, heard again (1 byte)
+      EVENT_BYTES = 128 # An SDL_Event is a union of at most this many bytes
+      BLENDMODE_BLEND = 0x1 # What is drawn lets what is under it show through, as much as it is clear
       WINDOW_FLAGS_FULLSCREEN = 0x1
       INIT_AUDIO = 0x10
       AUDIO_S16 = 0x8010 # 16-bit samples, the low byte first
-      SAMPLE_BYTES = 2 # ...so two bytes each
-      SPEAKERS = 2 # the left's sample and the right's, a moment at a time
+      SAMPLE_BYTES = 2 # So two bytes each
+      SPEAKERS = 2 # The left's sample and the right's, a moment at a time
       MOMENT_BYTES = SAMPLE_BYTES * SPEAKERS
       AUDIO_DEVICE_DEFAULT_PLAYBACK = 0xFFFFFFFF
 
@@ -98,7 +98,7 @@ module VBlank
       STEP = Settings.starting_key(:step) # N, while paused
       FAST_FORWARD = Settings.starting_key(:fast_forward) # Tab, held
       MENU = Settings.starting_key(:menu) # F1
-      GRAVE = 53 # the key above Tab, which opens the menu too while no console button has it
+      GRAVE = 53 # The key above Tab, which opens the menu too while no console button has it
       KEY_CODES = Ractor.make_shareable({ up: 82, down: 81, left: 80, right: 79, enter: 40 })
 
       # A GAMEPAD'S BUTTONS, by SDL's numbers for them (each one's place in Settings::PAD_BUTTONS),
@@ -126,8 +126,8 @@ module VBlank
       EVENT_PAD_BUTTON_UP = 0x652
       EVENT_GAMEPAD_ADDED = 0x653
       EVENT_GAMEPAD_REMOVED = 0x654
-      PAD_ID_AT = 16 # where in a pad's event its number is (4 bytes)
-      PAD_BUTTON_AT = 20 # ...and in a button's event, which button (1 byte)
+      PAD_ID_AT = 16 # Where in a pad's event its number is (4 bytes)
+      PAD_BUTTON_AT = 20 # In a button's event, which button (1 byte)
       # The gamepad buttons the menu names (WindowMenu), by SDL's number: A and B are
       # the console's, east and south, as PAD_BUTTONS has them.
       PAD_CODES = Ractor.make_shareable({ guide: 5, back: PAD_BACK, start: PAD_START, dpad_up: PAD_DPAD_UP,
@@ -636,7 +636,7 @@ module VBlank
                                 triangles.size)
       end
 
-      CORNER_STEPS = 8 # straight pieces a round corner is drawn with
+      CORNER_STEPS = 8 # Straight pieces a round corner is drawn with
 
       # The edge of +box+, a point at a time, each with which way is out from it: round the four
       # corners, top left first.
@@ -692,7 +692,7 @@ module VBlank
         write_settings_soon
       end
 
-      SETTINGS_QUIET = 0.5 # seconds
+      SETTINGS_QUIET = 0.5 # Seconds
 
       def write_settings_soon
         @write_settings_at = now + SETTINGS_QUIET if @player_settings.unwritten?

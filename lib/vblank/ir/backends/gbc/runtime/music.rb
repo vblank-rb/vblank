@@ -18,14 +18,14 @@ module VBlank
           # It runs between any two instructions of the game, so it keeps every register, uses
           # nothing the game's code uses, and reads only the part of the cartridge always in view.
           module Music
-            NAMED = "rt music named" # the tune the game named last, 1 up (0 for none)
-            PLAYING = "rt music playing" # the tune playing, 1 up
+            NAMED = "rt music named" # The tune the game named last, 1 up (0 for none)
+            PLAYING = "rt music playing" # The tune playing, 1 up
             START = "rt music start" # 1 when the named tune is to start at the next frame
             FRAME = "rt music frame" # 16 bits: the frame of the tune about to play
             AGAIN = "rt music again" # 1 once the tune has come round
-            SONG = "rt music song" # where the playing tune is in the music table
-            NEXT = "rt music next" # each part's next note, 16 bits each
-            PART = "rt music part" # the part being played: its voice, its tone, how many notes, where they are
+            SONG = "rt music song" # Where the playing tune is in the music table
+            NEXT = "rt music next" # Each part's next note, 16 bits each
+            PART = "rt music part" # The part being played: its voice, its tone, how many notes, where they are
             PARTS = 4
             # WHAT EACH VOICE IS HOLDING, for a new music level to reach it: the volume its note was
             # written at (0 for a rest), for the two square voices and the wave voice; and for the
@@ -37,7 +37,7 @@ module VBlank
             TUNINGS = "rt music tunings"
             DUTIES = "rt music duties"
             LEVEL_SET = "rt music level set"
-            NOTE_VOLUME = "rt music note volume" # the note being played's volume, as written
+            NOTE_VOLUME = "rt music note volume" # The note being played's volume, as written
             # ...and how it slides its pitch, in a game where a note does (GBC::Music.note_bytes).
             NOTE_SLIDE = "rt music note slide"
             HELD_VOICES = 3
@@ -117,7 +117,7 @@ module VBlank
             SWELLS = "rt music swells"
             SWELL_BYTES = 6
             SQUARE_SWELLS = [1, 2].freeze
-            SWELL_VOICES = [*SQUARE_SWELLS, 4].freeze # the two squares, and GBC::Music::NOISE_VOICE
+            SWELL_VOICES = [*SQUARE_SWELLS, 4].freeze # The two squares, and GBC::Music::NOISE_VOICE
             SWELL_NOISE_TONE = "rt music swell noise tone"
             SWELL_STEP = 1
             SWELL_VOLUME = 2

@@ -10,12 +10,12 @@ module VBlank
         class Music < SongTable
           SONGS = M68000::Holding.new(what: SONGS_WHAT, fix: SONGS_FIX)
 
-          SHAPE_FRAMES_MASK = Audio::Duty::FRAMES - 1 # a note's frame among the frames of its shapes
+          SHAPE_FRAMES_MASK = Audio::Duty::FRAMES - 1 # A note's frame among the frames of its shapes
 
           # Parts that play recordings, which take turns on the one recording a Genesis sounds
           # (Runtime::Recordings).
           RECORDED_PARTS = 4
-          PARTS = CONSOLE_PARTS + RECORDED_PARTS # ...and a sound effect, the same
+          PARTS = CONSOLE_PARTS + RECORDED_PARTS # A sound effect, the same
 
           LoweringError = Genesis::LoweringError
 

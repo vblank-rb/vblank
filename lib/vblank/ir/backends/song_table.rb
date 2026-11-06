@@ -75,8 +75,8 @@ module VBlank
         RECORD_BYTES = 14
         NOTES_AT = 0
         NOTE_COUNT = 2
-        AGAIN = 4 # the same two for every time round after the first
-        LOUDNESS_GROUPS = 8 # where the places of the part's loudness groups are, one for each of VOLUMES
+        AGAIN = 4 # The same two for every time round after the first
+        LOUDNESS_GROUPS = 8 # Where the places of the part's loudness groups are, one for each of VOLUMES
         HOLDS = 10 # 1 when its voice holds a note for a new level to reach
         CHANNEL = 12
         PART_BYTES = 16
@@ -84,19 +84,19 @@ module VBlank
         NOTE_HEAD = 2
         NOTE_TAIL = 4
         NOTE_VOLUME = 6
-        RINGS_ALONE = 0x100 # in a note's volume word: it fades by itself, and is not held for a new level
-        SLIDES = 0x200 # ...and it slides, so its NOTE_WOBBLE word is where its slide's record is
-        PLAIN_VOLUME = RINGS_ALONE - 1 # what of the word is the volume
+        RINGS_ALONE = 0x100 # In a note's volume word: it fades by itself, and is not held for a new level
+        SLIDES = 0x200 # It slides, so its NOTE_WOBBLE word is where its slide's record is
+        PLAIN_VOLUME = RINGS_ALONE - 1 # What of the word is the volume
         # ...and which of the part's lists of loudness groups a note from one speaker takes, kept
         # with its volume, so a held note strikes again on its own side.
         LEFT_ONLY = 0x400
         RIGHT_ONLY = 0x800
         NOTE_SOUNDS = 8
-        NOTE_RECORDING = 10 # a recorded part's note: its row of "recording_plays", one up; nought for a rest
-        GLIDES = 0x8000 # ...and in that word: it carries on the note sounding, rather than striking
-        NOTE_SWELL = 10 # the same word, on a console voice: where its swell's record is, nought for none
-        NOTE_WOBBLE = 12 # where its wobble's record is, nought for a note that holds its pitch
-        NOTE_SHAPES = 14 # where its shapes' record is, nought for a note that holds its shape
+        NOTE_RECORDING = 10 # A recorded part's note: its row of "recording_plays", one up; nought for a rest
+        GLIDES = 0x8000 # In that word: it carries on the note sounding, rather than striking
+        NOTE_SWELL = 10 # The same word, on a console voice: where its swell's record is, nought for none
+        NOTE_WOBBLE = 12 # Where its wobble's record is, nought for a note that holds its pitch
+        NOTE_SHAPES = 14 # Where its shapes' record is, nought for a note that holds its shape
         NOTE_BYTES = 16
         # A WOBBLE'S RECORD (#wobble_record), in bytes: the frames it waits, the frames each swing
         # holds, and the groups that take the voice above and below the note's pitch and log it.
@@ -111,9 +111,9 @@ module VBlank
         SWELL_STARTS = 2
         SWELL_HOLDS = 34
         SWELL_ONWARDS = 66
-        SLIDE_END = 0xFFFF # ends a slide's record (#slide_record)
-        LEVEL_VOLUMES = (IR::Tunes::FULL_LEVEL + 1) * 2 # a recorded note's voice volumes, after its log groups (#recorded_level_record)
-        SLIDING_CHANNEL = 1 # the one voice that slides, a song's first square part
+        SLIDE_END = 0xFFFF # Ends a slide's record (#slide_record)
+        LEVEL_VOLUMES = (IR::Tunes::FULL_LEVEL + 1) * 2 # A recorded note's voice volumes, after its log groups (#recorded_level_record)
+        SLIDING_CHANNEL = 1 # The one voice that slides, a song's first square part
         COMMAND_FIRST = 2
         COMMAND_SECOND = 4
         COMMAND_BYTES = 6

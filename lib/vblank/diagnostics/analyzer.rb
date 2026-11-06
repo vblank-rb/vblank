@@ -37,9 +37,9 @@ module VBlank
       # MEASUREMENT and says nothing yet about whether the program fits — a frame can very
       # nearly fill and still meet every one. It means "go and count the frames instead".
       SATURATED = 200
-      SETTLE = 8            # frames to run before reading, so the game reaches steady state
-      WINDOW = 30           # frames read per attempt; the worst is its cost and the middle its typical
-      FPS_WINDOW = 90       # emulated frames to count game frames over, for a saturated scene's real rate
+      SETTLE = 8            # Frames to run before reading, so the game reaches steady state
+      WINDOW = 30           # Frames read per attempt; the worst is its cost and the middle its typical
+      FPS_WINDOW = 90       # Emulated frames to count game frames over, for a saturated scene's real rate
 
       # The op kinds that read a button, so the profiler can ask a program which buttons it
       # cares about instead of holding all ten.

@@ -21,7 +21,7 @@
 # come first in the game's class, written by the lowering (Lowering#console_text).
 
 RG_SCREEN_CELLS = RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT
-RG_SWITCHED_OFF = 0x7FFF # what a switched-off display shows: plain white
+RG_SWITCHED_OFF = 0x7FFF # What a switched-off display shows: plain white
 
 # The kinds of screen a `screen` can name.
 RG_BITMAP = 0
@@ -32,13 +32,13 @@ RG_FADE_WHOLE_SCREEN = 0
 RG_FADE_INSIDE = 1
 RG_FADE_OUTSIDE = 2
 
-RG_NOT_DRAWN = -1      # a sprite picture's pixel where what is behind shows
-RG_SEE_THROUGH = 0xFFFF # a tile's pixel where the layer behind shows
+RG_NOT_DRAWN = -1      # A sprite picture's pixel where what is behind shows
+RG_SEE_THROUGH = 0xFFFF # A tile's pixel where the layer behind shows
 
 # Backends::FadeSteps: a walk of the colors counts in 256ths, sixteen to a display's step.
 RG_WALK_STEPS = 256
 RG_WALK_PER_DISPLAY = 16
-RG_SOLID = -1          # a thing in no see-through layer
+RG_SOLID = -1          # A thing in no see-through layer
 RG_NO_NAME = -1
 RG_NOT_IN_BLOCKS = -1
 RG_EVERY_SCENE = -1
@@ -130,7 +130,7 @@ RG_SIZE_IMAGES = 9
 RG_SIZE_SPRITES_OVER_PICTURE = 10
 
 RG_NOBODY_ASKED = -1
-RG_NO_CELL = -1        # a cell of a saved patch that hung off the picture
+RG_NO_CELL = -1        # A cell of a saved patch that hung off the picture
 RG_NOTHING_ON_SHEET = -1
 RG_NO_PLACE = -1
 # The display counts the rows of a turned sprite's box in this many lines that come round.

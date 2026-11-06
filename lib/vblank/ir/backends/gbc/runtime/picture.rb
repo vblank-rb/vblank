@@ -25,16 +25,16 @@ module VBlank
             # Where each of the runtime's own picture places is, by name.
             SHADOW_PALETTES = "rt picture palettes" # 64 bytes for the backgrounds, then 64 for the sprites
             PALETTES_CHANGED = "rt picture palettes changed"
-            SCROLL = "rt picture scroll" # x, then y
-            NEXT_SPRITE = "rt picture next sprite" # the next free entry of the sprite table's copy (low byte)
-            MAP_JOB = "rt picture map job" # the grid being put up: rows left, where from, where to, its bank
+            SCROLL = "rt picture scroll" # X, then y
+            NEXT_SPRITE = "rt picture next sprite" # The next free entry of the sprite table's copy (low byte)
+            MAP_JOB = "rt picture map job" # The grid being put up: rows left, where from, where to, its bank
             # The display's switches the game wants, which the blank writes to the console's LCDC
             # register: the screen on or off, which grid the background is read from, and the
             # sprite layer on or off — all forty sprites at once, with the sprite table left as it
             # is (rt_sprites_on, rt_sprites_off).
             LCDC_WANTED = "rt picture lcdc"
-            OVERLAP = "rt picture overlap" # two sprites' masks and where they meet, while they are tested
-            GRID_UP = "rt picture grid up" # the number of the grid up, or being put up
+            OVERLAP = "rt picture overlap" # Two sprites' masks and where they meet, while they are tested
+            GRID_UP = "rt picture grid up" # The number of the grid up, or being put up
             # The cells of the background changed during the pass, written in the blank after it:
             # how many, then for each where it is in the console's grid (16 bits), its tile and its
             # colours. A pass that fills it has the list written where it asks, each cell waiting
@@ -66,7 +66,7 @@ module VBlank
             BENDS_FROM = "rt picture bends from"
             BEND_BASE = "rt picture bend base"
             BENDING = "rt picture bending"
-            TINT = "rt picture tint" # what the colours are moved toward (TOWARD_*), the colour, and how far (two bytes)
+            TINT = "rt picture tint" # What the colours are moved toward (TOWARD_*), the colour, and how far (two bytes)
             # The sprites placed this pass, for a reader of the run: how many, then for each whose it
             # is (one up), which picture, and where, x and y (16 bits each) — DRAWN_BYTES a sprite.
             DRAWN = "rt picture drawn"

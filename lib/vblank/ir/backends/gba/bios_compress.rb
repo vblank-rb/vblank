@@ -91,8 +91,8 @@ module VBlank
           MAX_MATCH = 18
           MAX_WINDOW = 4096
 
-          TYPE_LZ77 = 1 # header scheme nibble for LZ77
-          TYPE_RLE  = 3 # header scheme nibble for run-length
+          TYPE_LZ77 = 1 # Header scheme nibble for LZ77
+          TYPE_RLE  = 3 # Header scheme nibble for run-length
 
           # Pack +bytes+ with whichever scheme comes out smallest. Returns
           # [codec, blob] where codec is :lz77, :rle, or :none. For :lz77/:rle the blob

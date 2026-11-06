@@ -41,10 +41,10 @@ module VBlank
             NUMBER = 0
             RANK = 1
             BANK = 2
-            STATE_AT = 3 # two bytes
-            ROW_AT = 5 # two bytes
+            STATE_AT = 3 # Two bytes
+            ROW_AT = 5 # Two bytes
             PART = 7
-            CURSOR_AT = 8 # two bytes
+            CURSOR_AT = 8 # Two bytes
             # The effect asked for, and how far a walk over the effects has gone.
             ASKED_FOR = 10
             WALKED = 11

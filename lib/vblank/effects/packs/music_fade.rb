@@ -18,14 +18,14 @@ module VBlank
       # that names its song every frame, which a jukebox does — the old tune would start over
       # the frame after it stopped.
       module MusicFade
-        LEVEL = :__music_fade_level   # how loud, 0.0 to 100.0
-        TARGET = :__music_fade_target # where the ramp is heading
-        STEP = :__music_fade_step     # how far it moves each frame
+        LEVEL = :__music_fade_level   # How loud, 0.0 to 100.0
+        TARGET = :__music_fade_target # Where the ramp is heading
+        STEP = :__music_fade_step     # How far it moves each frame
         ACTIVE = :__music_fade_active # 1 while the ramp is running
         ROUTINE = :__music_fade_tick
 
         FULL = 100.0
-        DEFAULT_FRAMES = 30 # half a second, the same as a screen fade — they are usually said together
+        DEFAULT_FRAMES = 30 # Half a second, the same as a screen fade — they are usually said together
 
         # TARGET starts below nothing, so the guardrail can tell a fade in (which writes FULL) from
         # the declaration. The value is never used: the routine runs only once a fade has set both.

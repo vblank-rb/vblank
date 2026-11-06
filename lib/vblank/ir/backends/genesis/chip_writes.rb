@@ -45,7 +45,7 @@ module VBlank
           BEEP_VOICE = 1
           WAVE_VOICE = 2
           NOISE_VOICE = 3
-          NOISE_CLOCK_VOICE = 2 # the PSG voice that steps the noise voice
+          NOISE_CLOCK_VOICE = 2 # The PSG voice that steps the noise voice
 
           SQUARE_VOICES = { 1 => 0, 2 => 1 }.freeze
           CHANNEL_VOICES = SQUARE_VOICES.merge(3 => WAVE_VOICE, 4 => NOISE_VOICE).freeze
@@ -56,7 +56,7 @@ module VBlank
           HISS = 4
 
           PSG_CLOCK = 3_579_545
-          PSG_TOP = 1023 # the longest wave its ten bits hold
+          PSG_TOP = 1023 # The longest wave its ten bits hold
 
           # The loudest a volume can be written, and each volume's step down from that.
           SILENT = 15
@@ -75,8 +75,8 @@ module VBlank
           DAC_SAMPLE = 0x2A
           KEY_ON = 0xF0
           KEY_OFF = 0x00
-          OPERATOR_SETTINGS = 0x30 # the pitch multiple
-          OPERATOR_LEVEL = 0x40 # how far down it is
+          OPERATOR_SETTINGS = 0x30 # The pitch multiple
+          OPERATOR_LEVEL = 0x40 # How far down it is
           OPERATOR_ATTACK = 0x50
           OPERATOR_DECAY = 0x60
           OPERATOR_SUSTAIN = 0x70
@@ -89,7 +89,7 @@ module VBlank
           BOTH_SPEAKERS = 0xC0
           LEFT_SPEAKER = 0x80
           RIGHT_SPEAKER = 0x40
-          FOUR_SINES = 7 # the algorithm that adds the four operators, none changing another
+          FOUR_SINES = 7 # The algorithm that adds the four operators, none changing another
           FASTEST_ATTACK = 31
           FASTEST_RELEASE = 0x0F
           # The chip keeps its operators in the order first, third, second, fourth.

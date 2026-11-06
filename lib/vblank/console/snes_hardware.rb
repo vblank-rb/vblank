@@ -24,27 +24,27 @@ module VBlank
     # the screen switched off ("forced blank").
     module SNESHardware
       # --- memory ---
-      WRAM_BANK = 0x7E # all 128K of work RAM starts at $7E:0000
-      LOW_WRAM_SIZE = 0x2000 # the part in view from the cartridge's banks
+      WRAM_BANK = 0x7E # All 128K of work RAM starts at $7E:0000
+      LOW_WRAM_SIZE = 0x2000 # The part in view from the cartridge's banks
       WRAM_SIZE = 0x20000
       VRAM_SIZE = 0x10000
       SRAM_BANK = 0x70
 
       # --- the picture chip (PPU) ---
-      INIDISP = 0x2100 # bit 7 forced blank (the screen off); bits 0-3 brightness
-      OBSEL = 0x2101 # sprite sizes and where their tiles are in video RAM
+      INIDISP = 0x2100 # Bit 7 forced blank (the screen off); bits 0-3 brightness
+      OBSEL = 0x2101 # Sprite sizes and where their tiles are in video RAM
       OAMADDL = 0x2102
       OAMADDH = 0x2103
       OAMDATA = 0x2104
-      BGMODE = 0x2105 # which of the eight background arrangements, and tile sizes
+      BGMODE = 0x2105 # Which of the eight background arrangements, and tile sizes
       MOSAIC = 0x2106
-      BG1SC = 0x2107 # where each background's map is in video RAM, and how many screens it is
+      BG1SC = 0x2107 # Where each background's map is in video RAM, and how many screens it is
       BG2SC = 0x2108
       BG3SC = 0x2109
       BG4SC = 0x210A
-      BG12NBA = 0x210B # where backgrounds 1 and 2 find their tiles
+      BG12NBA = 0x210B # Where backgrounds 1 and 2 find their tiles
       BG34NBA = 0x210C
-      BG1HOFS = 0x210D # each background's scroll, written twice: low byte, then high
+      BG1HOFS = 0x210D # Each background's scroll, written twice: low byte, then high
       BG1VOFS = 0x210E
       BG2HOFS = 0x210F
       BG2VOFS = 0x2110
@@ -52,7 +52,7 @@ module VBlank
       BG3VOFS = 0x2112
       BG4HOFS = 0x2113
       BG4VOFS = 0x2114
-      VMAIN = 0x2115 # how the video RAM address moves on after each write
+      VMAIN = 0x2115 # How the video RAM address moves on after each write
       VMADDL = 0x2116
       VMADDH = 0x2117
       VMDATAL = 0x2118
@@ -64,8 +64,8 @@ module VBlank
       M7D = 0x211E
       M7X = 0x211F
       M7Y = 0x2120
-      CGADD = 0x2121 # which colour the next write to CGDATA goes to
-      CGDATA = 0x2122 # a colour, written twice: low byte, then high
+      CGADD = 0x2121 # Which colour the next write to CGDATA goes to
+      CGDATA = 0x2122 # A colour, written twice: low byte, then high
       W12SEL = 0x2123
       W34SEL = 0x2124
       WOBJSEL = 0x2125
@@ -75,14 +75,14 @@ module VBlank
       WH3 = 0x2129
       WBGLOG = 0x212A
       WOBJLOG = 0x212B
-      TM = 0x212C # which layers are on the main screen
-      TS = 0x212D # ...and on the sub screen, which colour maths mixes in
+      TM = 0x212C # Which layers are on the main screen
+      TS = 0x212D # On the sub screen, which colour maths mixes in
       TMW = 0x212E
       TSW = 0x212F
-      CGWSEL = 0x2130 # colour maths: what is added or subtracted
-      CGADSUB = 0x2131 # colour maths: which layers, add or subtract, halved or not
-      COLDATA = 0x2132 # the fixed colour colour maths can use
-      SETINI = 0x2133 # screen height (224 or 239 lines), interlace
+      CGWSEL = 0x2130 # Colour maths: what is added or subtracted
+      CGADSUB = 0x2131 # Colour maths: which layers, add or subtract, halved or not
+      COLDATA = 0x2132 # The fixed colour colour maths can use
+      SETINI = 0x2133 # Screen height (224 or 239 lines), interlace
       SLHV = 0x2137
       RDOAM = 0x2138
       RDVRAML = 0x2139
@@ -105,39 +105,39 @@ module VBlank
       WMADDL = 0x2181
 
       # --- the processor's own registers ---
-      NMITIMEN = 0x4200 # bit 7: the vertical blank's interrupt; bit 0: read the buttons for us
+      NMITIMEN = 0x4200 # Bit 7: the vertical blank's interrupt; bit 0: read the buttons for us
       WRIO = 0x4201
-      WRMPYA = 0x4202 # the 8×8 multiplier: write one byte here...
-      WRMPYB = 0x4203 # ...and the other here; 16 bits come out at RDMPYL, eight cycles later
-      WRDIVL = 0x4204 # the 16÷8 divider: the 16-bit number here...
+      WRMPYA = 0x4202 # The 8×8 multiplier: write one byte here
+      WRMPYB = 0x4203 # Write the other byte here; 16 bits come out at RDMPYL, eight cycles later
+      WRDIVL = 0x4204 # The 16÷8 divider: write the 16-bit number here
       WRDIVH = 0x4205
-      WRDIVB = 0x4206 # ...divided by this byte; 16 cycles later, quotient at RDDIVL, rest at RDMPYL
+      WRDIVB = 0x4206 # Write the divisor byte here; 16 cycles later, quotient at RDDIVL, rest at RDMPYL
       HTIMEL = 0x4207
       HTIMEH = 0x4208
       VTIMEL = 0x4209
       VTIMEH = 0x420A
-      MDMAEN = 0x420B # start copying on these channels (a bit each)
-      HDMAEN = 0x420C # copy on these channels a line at a time, as the screen is drawn
-      MEMSEL = 0x420D # bit 0: read banks $80-$FF of the cartridge at the faster speed
-      RDNMI = 0x4210 # reading it says (bit 7) a vertical blank began since it was last read
+      MDMAEN = 0x420B # Start copying on these channels (a bit each)
+      HDMAEN = 0x420C # Copy on these channels a line at a time, as the screen is drawn
+      MEMSEL = 0x420D # Bit 0: read banks $80-$FF of the cartridge at the faster speed
+      RDNMI = 0x4210 # Reading it says (bit 7) a vertical blank began since it was last read
       TIMEUP = 0x4211
-      HVBJOY = 0x4212 # bit 7: in the vertical blank; bit 0: the buttons are still being read
+      HVBJOY = 0x4212 # Bit 7: in the vertical blank; bit 0: the buttons are still being read
       RDIO = 0x4213
       RDDIVL = 0x4214
       RDDIVH = 0x4215
       RDMPYL = 0x4216
       RDMPYH = 0x4217
-      JOY1L = 0x4218 # the first controller's buttons, as the console read them in the blank
+      JOY1L = 0x4218 # The first controller's buttons, as the console read them in the blank
       JOY1H = 0x4219
 
       # The copying engine: eight channels, each sixteen registers from $4300 + $10 × channel.
       DMA_BASE = 0x4300
-      DMAP = 0x0 # how it copies: which way, and how the port address moves (DMA_TO_ONE_PORT...)
-      BBAD = 0x1 # the picture chip's port it copies to or from ($21xx, the low byte)
-      A1TL = 0x2 # where in the processor's memory, 24 bits
+      DMAP = 0x0 # How it copies: which way, and how the port address moves (DMA_TO_ONE_PORT...)
+      BBAD = 0x1 # The picture chip's port it copies to or from ($21xx, the low byte)
+      A1TL = 0x2 # Where in the processor's memory, 24 bits
       A1TH = 0x3
       A1B = 0x4
-      DASL = 0x5 # how many bytes (0 means 65536)
+      DASL = 0x5 # How many bytes (0 means 65536)
       DASH = 0x6
 
       # DMAP's ways of copying: to one port each byte, to two ports by turns (VMDATAL and VMDATAH),
@@ -153,7 +153,7 @@ module VBlank
       FULL_BRIGHTNESS = 0x0F
       NMI_ON = 0x80
       AUTO_JOYPAD = 0x01
-      VMAIN_WORD = 0x80 # move on after the high byte (VMDATAH) is written, by one word
+      VMAIN_WORD = 0x80 # Move on after the high byte (VMDATAH) is written, by one word
 
       # The buttons as JOY1L/JOY1H read them, a bit each in the 16-bit word.
       JOYPAD_BITS = { b: 15, y: 14, select: 13, start: 12, up: 11, down: 10, left: 9, right: 8,
@@ -225,17 +225,17 @@ module VBlank
       # --- the Super FX's registers, which the console sees at $3000-$32FF of banks $00-$3F ---
       #
       # (fullsnes, "SNES Cart GSU-n I/O Map"; bsnes, sfc/coprocessor/superfx/io.cpp.)
-      GSU_R0 = 0x3000      # its sixteen 16-bit registers, R0 to R15, two bytes each, low byte first.
+      GSU_R0 = 0x3000      # Its sixteen 16-bit registers, R0 to R15, two bytes each, low byte first.
       GSU_R15 = 0x301E     # R15 is its program counter: writing the high byte ($301F) starts it.
-      GSU_SFR = 0x3030     # its status: bit 5 (GO) is set while it runs and cleared when it stops.
-      GSU_SFR_HIGH = 0x3031 # reading it clears the chip's interrupt.
-      GSU_PBR = 0x3034     # the bank its program is read from.
-      GSU_CFGR = 0x3037    # bit 7 set: the chip does not interrupt the console when it stops.
-      GSU_SCBR = 0x3038    # where in its RAM the picture it plots starts, in kilobytes.
-      GSU_CLSR = 0x3039    # bit 0 set: run at 21 MHz rather than 10.7.
-      GSU_SCMR = 0x303A    # which of the cartridge's ROM (bit 4) and RAM (bit 3) it may use, and how
+      GSU_SFR = 0x3030     # Its status: bit 5 (GO) is set while it runs and cleared when it stops.
+      GSU_SFR_HIGH = 0x3031 # Reading it clears the chip's interrupt.
+      GSU_PBR = 0x3034     # The bank its program is read from.
+      GSU_CFGR = 0x3037    # Bit 7 set: the chip does not interrupt the console when it stops.
+      GSU_SCBR = 0x3038    # Where in its RAM the picture it plots starts, in kilobytes.
+      GSU_CLSR = 0x3039    # Bit 0 set: run at 21 MHz rather than 10.7.
+      GSU_SCMR = 0x303A    # Which of the cartridge's ROM (bit 4) and RAM (bit 3) it may use, and how
                            # the picture it plots is laid out (its colours and height).
-      GSU_VCR = 0x303B     # the chip's version, read only.
+      GSU_VCR = 0x303B     # The chip's version, read only.
       GSU_GO = 0x20
       GSU_IRQ_OFF = 0x80
       GSU_FAST_CLOCK = 0x01

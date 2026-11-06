@@ -26,20 +26,20 @@ module VBlank
 
           # The hidden variables the routine works in (IWRAM scratch, reused each call —
           # a collision test never runs nested inside another).
-          PO_AX = :__po_ax   # sprite A's top-left x / y
+          PO_AX = :__po_ax   # Sprite A's top-left x / y
           PO_AY = :__po_ay
-          PO_BX = :__po_bx   # sprite B's top-left x / y
+          PO_BX = :__po_bx   # Sprite B's top-left x / y
           PO_BY = :__po_by
-          PO_A_MASK = :__po_a_mask # address of A's solid-pixel table for its current pose
+          PO_A_MASK = :__po_a_mask # Address of A's solid-pixel table for its current pose
           PO_B_MASK = :__po_b_mask
-          PO_X0 = :__po_x0   # the overlapping rectangle
+          PO_X0 = :__po_x0   # The overlapping rectangle
           PO_Y0 = :__po_y0
           PO_X1 = :__po_x1
           PO_Y1 = :__po_y1
-          PO_X = :__po_x     # the walk cursor
+          PO_X = :__po_x     # The walk cursor
           PO_Y = :__po_y
-          PO_ROW = :__po_row # a scratch row offset while indexing a mask
-          PO_RES = :__po_res # the answer, 0 or 1
+          PO_ROW = :__po_row # A scratch row offset while indexing a mask
+          PO_RES = :__po_res # The answer, 0 or 1
 
           def initialize(emitter:, primitives:, lowering:, bitmaps:)
             @emitter = emitter

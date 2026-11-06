@@ -14,7 +14,7 @@ module VBlank
       include Header
 
       HEADER_SIZE  = 0xC0
-      ENTRY_OFFSET = HEADER_SIZE  # code starts after the full header
+      ENTRY_OFFSET = HEADER_SIZE  # Code starts after the full header
       TITLE_LENGTH = 12
       CODE_LENGTH  = 4
       MAKER_LENGTH = 2

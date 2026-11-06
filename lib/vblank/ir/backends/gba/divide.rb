@@ -58,20 +58,20 @@ module VBlank
           # answer belongs.
           DIV_NUM = 1   # in: the numerator; out: what was left over
           DIV_DEN = 0   # in: the divisor, scaled up as it goes; out: the quotient
-          DIV_ANS = 2   # the answer, built one bit at a time
-          DIV_COUNT = 3 # how far the divisor was scaled up
+          DIV_ANS = 2   # The answer, built one bit at a time
+          DIV_COUNT = 3 # How far the divisor was scaled up
           DIV_SIGNS = 12
 
           # The widened-numerator routine's own registers. It takes a third thing in —
           # how far to widen — and needs two registers for a numerator that no longer
           # fits in one.
           FIX_BITS = 2  # in: how far to widen the numerator
-          FIX_WIDE = 3  # the other end of that widening (32 - bits)
-          FIX_LOW = 4   # the low half of the widened numerator; then the answer
-          FIX_HIGH = 5  # the high half; then what is left over as the division walks
+          FIX_WIDE = 3  # The other end of that widening (32 - bits)
+          FIX_LOW = 4   # The low half of the widened numerator; then the answer
+          FIX_HIGH = 5  # The high half; then what is left over as the division walks
           # Once the numerator is widened, the registers that brought it in are free again.
-          FIX_NEG_DEN = DIV_NUM # minus the divisor, which a step adds to take it out
-          FIX_SKIP = FIX_BITS   # how far into the written-out steps to jump, in bytes
+          FIX_NEG_DEN = DIV_NUM # Minus the divisor, which a step adds to take it out
+          FIX_SKIP = FIX_BITS   # How far into the written-out steps to jump, in bytes
           # What is left over once the steps have run. A divide made whole reads it after the
           # routine returns, with minus the divisor still in FIX_NEG_DEN; both mean something
           # only when the routine neither divided by nought nor ran out of room.

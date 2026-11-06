@@ -40,11 +40,11 @@ module VBlank
           # with a clip every bank switch writes the bank down first (SM83#select_rom_bank_unnoted, at
           # SHOWN). Written first, an interrupt between the two puts back the bank about to be shown.
           module Clips
-            NUMBER = "rt clip number" # the clip playing
+            NUMBER = "rt clip number" # The clip playing
             LEFT = "rt clip left" # 16 bits: the bytes still to read
             PLACE = "rt clip place" # 16 bits: where the next byte is
-            BANK = "rt clip bank" # ...and its bank
-            SHOWN = "rt clip bank shown" # the bank the game has in view
+            BANK = "rt clip bank" # Its bank
+            SHOWN = "rt clip bank shown" # The bank the game has in view
             # In quick memory, read at every sample: the byte being played, moved up a bit each
             # sample with a 1 below the bits still to play, and the volume a 1 plays at.
             BITS = "rt clip bits"

@@ -32,7 +32,7 @@ module VBlank
           # The working numbers every runtime routine takes and gives (see Runtime): R0 holds a
           # value as the lowering works it out, and a routine's numbers are handed in R0, R1, R2...
           REGISTERS = 8
-          SCRATCH = 0x20 # the runtime's scratch on the direct page, past the registers
+          SCRATCH = 0x20 # The runtime's scratch on the direct page, past the registers
           SCRATCH_END = 0x100
           INTERRUPT_PAGE = 0x0100
 

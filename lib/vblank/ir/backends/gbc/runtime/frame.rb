@@ -34,12 +34,12 @@ module VBlank
             # Where the reader finds each of them: the place in work memory each was given.
             STATE = "rt state" # RUNNING, HALTED or WENT_WRONG
             WAITING = "rt waiting" # 1 while the game waits for its next frame's buttons
-            PASSES = "rt passes" # passes of the game loop ended, 32 bits
-            SHOWN = "rt shown" # the pass whose picture the console shows, 32 bits
+            PASSES = "rt passes" # Passes of the game loop ended, 32 bits
+            SHOWN = "rt shown" # The pass whose picture the console shows, 32 bits
             HELD = "rt held"
             SEEN = "rt seen"
             PRESSED = "rt pressed"
-            FAULT = "rt fault" # what went wrong, then the list, then two numbers that say how
+            FAULT = "rt fault" # What went wrong, then the list, then two numbers that say how
             # Set by whoever reads the run (GBC::HeadlessRun) when it has the pass it wanted last:
             # the game then shows that pass and goes no further, so nothing it would do next —
             # writing its save memory above all — happens after the moment the run ended on.
@@ -55,7 +55,7 @@ module VBlank
             FRAMES = "rt frames"
             FRAMES_MARK = "rt frames mark"
             STEP_TAKEN = "rt step"
-            FRAMES_TAKEN = "rt frames taken" # the same, not held at the cap: what IR::Frames::COUNT moves on by
+            FRAMES_TAKEN = "rt frames taken" # The same, not held at the cap: what IR::Frames::COUNT moves on by
             # ...and the real number for each of the last STEPS_KEPT passes, by the pass's number
             # (PASSES) less its multiples of STEPS_KEPT, for a reader of the run: the music and the
             # buttons take every frame, past the cap.
@@ -89,7 +89,7 @@ module VBlank
             # and it interrupts every DARK_COUNTS, which divides that, so DARK_TICKS_A_FRAME of its
             # interrupts are exactly a frame.
             DARK_FRAMES = "rt frames dark" # 16 bits, which a reader of the run reads too
-            DARK_TICKS = "rt dark ticks" # the timer's interrupts since the last whole frame
+            DARK_TICKS = "rt dark ticks" # The timer's interrupts since the last whole frame
             DARK_IN_MEMORY = "rt dark in memory" # 1 once the count is kept in memory (#emit_dark_to_memory)
             # ...and DARK_OVER there once the screen is on, from when a game that plays a recording has
             # the timer for its samples (#emit_dark_end, #emit_timer_tick).

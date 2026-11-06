@@ -187,10 +187,10 @@ module VBlank
       # one — its region isn't a rectangle at all, it's the shape of the pixels that
       # sprites marked "window" paint, so a region can be the shape of a letter.
       WIN_ALL_LAYERS = 0x001F # BG0 | BG1 | BG2 | BG3 | OBJ
-      WIN_EFFECT     = 0x0020 # ...and the color effect applies here
-      WINOUT_OBJ_SHIFT = 8    # the object window's field starts here
-      WIN_OBJ        = 0x0010 # the sprites, in one field
-      WIN1_SHIFT     = 8      # the second window's field in WININ starts here
+      WIN_EFFECT     = 0x0020 # The color effect applies here
+      WINOUT_OBJ_SHIFT = 8    # The object window's field starts here
+      WIN_OBJ        = 0x0010 # The sprites, in one field
+      WIN1_SHIFT     = 8      # The second window's field in WININ starts here
 
       # ========================================================================
       # Mosaic Register — drawing a layer in flat blocks
@@ -211,9 +211,9 @@ module VBlank
 
       REG_MOSAIC = 0x0400004C
 
-      MOSAIC_LARGEST = 16 # the biggest block, in pixels
-      MOSAIC_DOWN_SHIFT = 4 # how tall sits above how wide
-      MOSAIC_SPRITES_SHIFT = 8 # ...and the two sprite fields above the two background ones
+      MOSAIC_LARGEST = 16 # The biggest block, in pixels
+      MOSAIC_DOWN_SHIFT = 4 # How tall sits above how wide
+      MOSAIC_SPRITES_SHIFT = 8 # The two sprite fields above the two background ones
 
       BG_MOSAIC  = 0x0040 # BGxCNT bit 6: this background is drawn in blocks
       OBJ_MOSAIC = 0x1000 # attr0 bit 12: so is this sprite
@@ -230,9 +230,9 @@ module VBlank
       # or fully black); values above 16 act as 16.
       # ========================================================================
 
-      REG_BLDCNT   = 0x04000050 # what to blend, and how
-      REG_BLDALPHA = 0x04000052 # the two weights, for the alpha-blend effect only
-      REG_BLDY     = 0x04000054 # how far toward white/black (0-16)
+      REG_BLDCNT   = 0x04000050 # What to blend, and how
+      REG_BLDALPHA = 0x04000052 # The two weights, for the alpha-blend effect only
+      REG_BLDY     = 0x04000054 # How far toward white/black (0-16)
 
       # Which layers the blend applies to. All of them, plus the backdrop, so a fade
       # covers the whole screen and doesn't leave the backdrop showing through at
@@ -243,7 +243,7 @@ module VBlank
       # the asymmetry that shapes everything built on this: each background layer has
       # a bit of its own, and every sprite on screen shares the single OBJ bit.
       BLD_BG0      = 0x0001
-      BLD_BG2      = 0x0004 # the layer the direct-color and buffered screens draw into
+      BLD_BG2      = 0x0004 # The layer the direct-color and buffered screens draw into
       BLD_OBJ      = 0x0010
       BLD_BACKDROP = 0x0020
 
@@ -254,9 +254,9 @@ module VBlank
 
       # The effect, in bits 6-7 of BLDCNT.
       BLD_OFF      = 0x0000
-      BLD_ALPHA    = 0x0040 # blend two layers together
-      BLD_BRIGHTEN = 0x0080 # toward white
-      BLD_DARKEN   = 0x00C0 # toward black
+      BLD_ALPHA    = 0x0040 # Blend two layers together
+      BLD_BRIGHTEN = 0x0080 # Toward white
+      BLD_DARKEN   = 0x00C0 # Toward black
 
       BLD_MAX = 16 # BLDY's full-strength value
 
@@ -298,8 +298,8 @@ module VBlank
 
       # Two well-known spots the BIOS reads, both living in the top of Internal Work RAM
       # (mirrored, so the same bytes also answer to 0x03FFFFFC / 0x03FFFFF8):
-      REG_INTR_VECTOR = 0x03007FFC # the BIOS jumps here on every IRQ — we store our handler's address
-      REG_IFBIOS      = 0x03007FF8 # the BIOS's own copy of "which IRQs fired"; IntrWait/VBlankIntrWait
+      REG_INTR_VECTOR = 0x03007FFC # The BIOS jumps here on every IRQ — we store our handler's address
+      REG_IFBIOS      = 0x03007FF8 # The BIOS's own copy of "which IRQs fired"; IntrWait/VBlankIntrWait
       #                              wait on it, so a handler must OR the acknowledged bit in here too
       DISPSTAT_VBLANK_IRQ = 0x0008 # REG_DISPSTAT bit 3: have the display raise a VBlank interrupt each frame
       DISPSTAT_HBLANK_IRQ = 0x0010 # REG_DISPSTAT bit 4: ...and one at the end of every scanline
@@ -394,13 +394,13 @@ module VBlank
       REG_FIFO_B = 0x040000A4  # Direct Sound B's sample FIFO
 
       # SOUNDCNT_H bits for Direct Sound A:
-      PSG_VOLUME_FULL      = 0x0002  # bits 0-1 = 2: the PSG channels at 100% (what enable_sound sets)
-      DSOUND_A_VOLUME_FULL = 0x0004  # bit 2: channel A at 100% volume (else 50%)
-      DSOUND_A_RIGHT       = 0x0100  # bit 8: mix A into the right speaker
-      DSOUND_A_LEFT        = 0x0200  # bit 9: ...and the left
-      DSOUND_A_TIMER0      = 0x0000  # bit 10 = 0: timer 0 clocks A's sample rate
-      DSOUND_A_TIMER1      = 0x0400  # bit 10 = 1: timer 1 clocks it instead
-      DSOUND_A_RESET_FIFO  = 0x0800  # bit 11: clear A's FIFO (set once when (re)starting playback)
+      PSG_VOLUME_FULL      = 0x0002  # Bits 0-1 = 2: the PSG channels at 100% (what enable_sound sets)
+      DSOUND_A_VOLUME_FULL = 0x0004  # Bit 2: channel A at 100% volume (else 50%)
+      DSOUND_A_RIGHT       = 0x0100  # Bit 8: mix A into the right speaker
+      DSOUND_A_LEFT        = 0x0200  # Bit 9: ...and the left
+      DSOUND_A_TIMER0      = 0x0000  # Bit 10 = 0: timer 0 clocks A's sample rate
+      DSOUND_A_TIMER1      = 0x0400  # Bit 10 = 1: timer 1 clocks it instead
+      DSOUND_A_RESET_FIFO  = 0x0800  # Bit 11: clear A's FIFO (set once when (re)starting playback)
 
       # Channel 1 — square wave with sweep
       REG_SOUND1CNT_L = 0x04000060  # Sweep (shift, direction, time)

@@ -143,7 +143,7 @@ module VBlank
         # What it drew at the moment the run ended, as the interpreter says it (Reference#sprites):
         # every sprite, back to front, or the ones the game declared as +name+.
         def sprites(name = nil) = name ? @drawn_sprites.rows_named(@sprites, name) : @sprites
-        def sprites_by_depth = sprites # a console's sprite table holds them that way round
+        def sprites_by_depth = sprites # A console's sprite table holds them that way round
 
         # The rest of what the interpreter answers that no console's run can, each refused by name.
         refuses :peak_voices, :sound_drops, :sound_owners, :frame, :log, :screen_mode, :buffered, :volume_of,

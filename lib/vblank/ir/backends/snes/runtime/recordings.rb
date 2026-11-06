@@ -99,7 +99,7 @@ module VBlank
             CLIMBING = 1
             HOLDING = 2
             FALLING = 3
-            DONE = 4 # fallen to nothing: the place comes free on the frame after
+            DONE = 4 # Fallen to nothing: the place comes free on the frame after
             FULL = Audio::Envelope::FULL
             # A row's LOGGED for a note of a song: nothing is logged as it comes round again.
             NOT_LOGGED = 0xFFFF

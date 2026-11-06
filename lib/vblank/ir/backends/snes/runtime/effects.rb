@@ -67,7 +67,7 @@ module VBlank
             RUNNING = 6
             FRAME = 8
             CURSORS = 10
-            STATE_BYTES = 64 # past CURSORS and a word for each of the most parts an effect has
+            STATE_BYTES = 64 # Past CURSORS and a word for each of the most parts an effect has
             # The effects a frame has to look at, by their places in the rank order, each one up, and
             # nought after the last (rt_sfx_live_list). A word a place; LIVE_AT walks it, and
             # LIVE_CHANGED says an effect was asked for or ended, so it is out of date.

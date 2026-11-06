@@ -44,19 +44,19 @@ module VBlank
     # (Console::Description#color_bits), or no picture could ever agree.
     module GenesisHardware
       # --- memory ---
-      WRAM = 0xFF0000 # all 64K of work RAM starts here
+      WRAM = 0xFF0000 # All 64K of work RAM starts here
       WRAM_SIZE = 0x10000
       VRAM_SIZE = 0x10000
-      CRAM_COLORS = 64 # four lists of sixteen
+      CRAM_COLORS = 64 # Four lists of sixteen
       VSRAM_WORDS = 40
       CARTRIDGE_END = 0x400000
 
       # --- the video chip's ports ---
-      VDP_DATA = 0xC00000 # a word written here goes where the last command pointed
-      VDP_CONTROL = 0xC00004 # commands and register writes; read, it is the status
-      VDP_COUNTER = 0xC00008 # the beam's place: vertical counter in the high byte
-      PSG = 0xC00011 # the sound chip's square voices, written a byte at a time
-      FM = 0xA04000 # the FM chip's two parts, a register port and a value port each
+      VDP_DATA = 0xC00000 # A word written here goes where the last command pointed
+      VDP_CONTROL = 0xC00004 # Commands and register writes; read, it is the status
+      VDP_COUNTER = 0xC00008 # The beam's place: vertical counter in the high byte
+      PSG = 0xC00011 # The sound chip's square voices, written a byte at a time
+      FM = 0xA04000 # The FM chip's two parts, a register port and a value port each
 
       # A register write is one word to the control port: $80 + the register's number in the high
       # byte, and the value in the low byte (`VDP_REGISTER | (number << 8) | value`).
@@ -68,32 +68,32 @@ module VBlank
       # be set: with it clear the chip keeps only some of each colour's bits (the Master System's
       # way) and every colour comes out wrong.
       REG_MODE1 = 0
-      REG_MODE2 = 1 # bit 6: the screen on; bit 5: the vertical interrupt; bit 3: 30 rows of tiles; bit 2: mode 5
-      REG_PLANE_A = 2 # where plane A's map is, in video RAM: the address's top bits (value << 10)
-      REG_WINDOW = 3 # where the window's map is (value << 10)
-      REG_PLANE_B = 4 # where plane B's map is (value << 13)
-      REG_SPRITES = 5 # where the sprite table is (value << 9)
-      REG_BACKDROP = 7 # which colour shows where no plane or sprite does: list in bits 5-4, colour in 3-0
-      REG_HINT = 10 # the lines between horizontal interrupts
-      REG_MODE3 = 11 # how the planes scroll: whole screen, or by row (bits 1-0 horizontal, bit 2 vertical)
-      REG_MODE4 = 12 # bit 0 (and bit 7): 40 tiles across, not 32; bits 2-1: interlace
-      REG_HSCROLL = 13 # where the horizontal scroll table is (value << 10)
-      REG_INCREMENT = 15 # how far the address moves after each write
-      REG_PLANE_SIZE = 16 # the planes' sizes: bits 1-0 across, bits 5-4 down (0 is 32, 1 is 64, 3 is 128)
+      REG_MODE2 = 1 # Bit 6: the screen on; bit 5: the vertical interrupt; bit 3: 30 rows of tiles; bit 2: mode 5
+      REG_PLANE_A = 2 # Where plane A's map is, in video RAM: the address's top bits (value << 10)
+      REG_WINDOW = 3 # Where the window's map is (value << 10)
+      REG_PLANE_B = 4 # Where plane B's map is (value << 13)
+      REG_SPRITES = 5 # Where the sprite table is (value << 9)
+      REG_BACKDROP = 7 # Which colour shows where no plane or sprite does: list in bits 5-4, colour in 3-0
+      REG_HINT = 10 # The lines between horizontal interrupts
+      REG_MODE3 = 11 # How the planes scroll: whole screen, or by row (bits 1-0 horizontal, bit 2 vertical)
+      REG_MODE4 = 12 # Bit 0 (and bit 7): 40 tiles across, not 32; bits 2-1: interlace
+      REG_HSCROLL = 13 # Where the horizontal scroll table is (value << 10)
+      REG_INCREMENT = 15 # How far the address moves after each write
+      REG_PLANE_SIZE = 16 # The planes' sizes: bits 1-0 across, bits 5-4 down (0 is 32, 1 is 64, 3 is 128)
       REG_WINDOW_X = 17
       REG_WINDOW_Y = 18
       REG_DMA_LENGTH_LOW = 19
       REG_DMA_LENGTH_HIGH = 20
       REG_DMA_SOURCE_LOW = 21
       REG_DMA_SOURCE_MIDDLE = 22
-      REG_DMA_SOURCE_HIGH = 23 # and the kind of copy, in the top two bits
+      REG_DMA_SOURCE_HIGH = 23 # And the kind of copy, in the top two bits
 
       # Register values a game's set-up writes.
       MODE1_NORMAL = 0x04
-      MODE2_SCREEN_ON = 0x44 # mode 5, the screen on, no interrupt
+      MODE2_SCREEN_ON = 0x44 # Mode 5, the screen on, no interrupt
       MODE2_SCREEN_OFF = 0x04
-      MODE2_VBLANK_INTERRUPT = 0x20 # added to switch the vertical blank's interrupt on
-      MODE2_DMA = 0x10 # added to let the video chip copy from work RAM by itself
+      MODE2_VBLANK_INTERRUPT = 0x20 # Added to switch the vertical blank's interrupt on
+      MODE2_DMA = 0x10 # Added to let the video chip copy from work RAM by itself
 
       # Added to a write command, it starts that copy: the video chip takes the bus and moves the
       # words the DMA registers name, with the processor stopped until it is done. In the blank it

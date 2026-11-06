@@ -31,7 +31,7 @@ module VBlank
       RAM = 0x8000_0000
       RAM_SIZE = 0x20_0000
       KERNEL_SIZE = 0x1_0000
-      EXE_AT = RAM + KERNEL_SIZE # where a PS-X EXE's code is loaded, and the first byte a program owns
+      EXE_AT = RAM + KERNEL_SIZE # Where a PS-X EXE's code is loaded, and the first byte a program owns
       RAM_END = RAM + RAM_SIZE
       # Where the stack starts, at the top of RAM less a few words: the MIPS habit keeps the 16 bytes over
       # the pointer for a routine's arguments. The PS-X EXE's header names it, and the runtime sets it.
@@ -53,15 +53,15 @@ module VBlank
 
       # --- the ports, all reached from one register holding 1F800000h, at a 16-bit distance ---
       IO = 0x1F80_0000
-      I_STAT = 0x1F80_1070 # which interrupts have happened; a 0 written to a bit clears it
-      I_MASK = 0x1F80_1074 # which of them reach the processor
-      GP0 = 0x1F80_1810 # drawing commands in; read, it answers a VRAM read
-      GP1 = 0x1F80_1814 # display commands in; read, it is GPUSTAT
-      DPCR = 0x1F80_10F0 # which DMA channels are on
-      DMA2_MADR = 0x1F80_10A0 # the graphics chip's DMA: where in RAM
-      DMA2_BCR = 0x1F80_10A4 # how many words
-      DMA2_CHCR = 0x1F80_10A8 # how, and go
-      JOY_DATA = 0x1F80_1040 # the pads' and memory cards' serial port (SIO0): a byte out and a byte back
+      I_STAT = 0x1F80_1070 # Which interrupts have happened; a 0 written to a bit clears it
+      I_MASK = 0x1F80_1074 # Which of them reach the processor
+      GP0 = 0x1F80_1810 # Drawing commands in; read, it answers a VRAM read
+      GP1 = 0x1F80_1814 # Display commands in; read, it is GPUSTAT
+      DPCR = 0x1F80_10F0 # Which DMA channels are on
+      DMA2_MADR = 0x1F80_10A0 # The graphics chip's DMA: where in RAM
+      DMA2_BCR = 0x1F80_10A4 # How many words
+      DMA2_CHCR = 0x1F80_10A8 # How, and go
+      JOY_DATA = 0x1F80_1040 # The pads' and memory cards' serial port (SIO0): a byte out and a byte back
       JOY_STAT = 0x1F80_1044
       JOY_MODE = 0x1F80_1048
       JOY_CTRL = 0x1F80_104A
@@ -85,8 +85,8 @@ module VBlank
       # --- the graphics chip ---
       # GP1 commands: the command in the top byte, its setting below.
       GP1_RESET = 0x00 << 24
-      GP1_DISPLAY_ON = 0x03 << 24 # bit 0 clear: on
-      GP1_DISPLAY_START = 0x05 << 24 # x | y << 10: the top left of the picture shown, in video RAM
+      GP1_DISPLAY_ON = 0x03 << 24 # Bit 0 clear: on
+      GP1_DISPLAY_START = 0x05 << 24 # X | y << 10: the top left of the picture shown, in video RAM
       GP1_HORIZONTAL_RANGE = 0x06 << 24 # x1 | x2 << 12, in the chip's dot clock
       GP1_VERTICAL_RANGE = 0x07 << 24 # y1 | y2 << 10, in lines
       GP1_DISPLAY_MODE = 0x08 << 24
@@ -114,8 +114,8 @@ module VBlank
       GPUSTAT_READY_FOR_COMMAND = 1 << 28
 
       # GP0 commands.
-      GP0_CLEAR_CACHE = 0x01 << 24 # the texture cache emptied, so texels copied in since are read afresh
-      GP0_FILL = 0x02 << 24 # colour, then y << 16 | x, then height << 16 | width
+      GP0_CLEAR_CACHE = 0x01 << 24 # The texture cache emptied, so texels copied in since are read afresh
+      GP0_FILL = 0x02 << 24 # Colour, then y << 16 | x, then height << 16 | width
       # A flat rectangle of any size, in the colour in the command's low 24 bits: then y << 16 | x, then
       # height << 16 | width. It is held to the drawing area, and a rectangle is never dithered.
       GP0_RECTANGLE = 0x60 << 24
@@ -152,9 +152,9 @@ module VBlank
       # 10-14 and 15-19 what they are replaced with (where the texture starts, in eights). Nought for
       # none: the whole page.
       GP0_TEXTURE_WINDOW = 0xE2 << 24
-      GP0_DRAWING_AREA_TOP_LEFT = 0xE3 << 24 # x | y << 10
+      GP0_DRAWING_AREA_TOP_LEFT = 0xE3 << 24 # X | y << 10
       GP0_DRAWING_AREA_BOTTOM_RIGHT = 0xE4 << 24
-      GP0_DRAWING_OFFSET = 0xE5 << 24 # x | y << 11, each signed 11 bits
+      GP0_DRAWING_OFFSET = 0xE5 << 24 # X | y << 11, each signed 11 bits
 
       SCREEN_WIDTH = 320
       SCREEN_HEIGHT = 240

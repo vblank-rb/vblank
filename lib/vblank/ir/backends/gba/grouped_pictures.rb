@@ -30,7 +30,7 @@ module VBlank
 
           COUNT_SHIFT = 16
           ENTRY_BYTES = 16
-          ENTRY_SHIFT = 4 # ...so an entry's number shifted this far is where it starts
+          ENTRY_SHIFT = 4 # Shift from an entry's number to where it starts
 
           # One set's pictures, where each goes in the set's room, and the bytes each picture name
           # the set's sprites show was stored as.

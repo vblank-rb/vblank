@@ -116,7 +116,7 @@ module VBlank
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
         end
 
-        MAGIC_COMMENT = "# frozen_string_literal: true\n" # the first line of every file of the library's
+        MAGIC_COMMENT = "# frozen_string_literal: true\n" # The first line of every file of the library's
         SCRIPT_TOP = "#!/usr/bin/env ruby\n#{MAGIC_COMMENT}#{WRITTEN_BY}" \
                      "# Play it with `ruby` and this file's name. It needs Ruby 4.0 or newer, fiddle and SDL3.\n"
         # The library files a script carries, in the order they load: what the play code names
@@ -125,7 +125,7 @@ module VBlank
                           vblank/graphics/menu_font.rb vblank/live/window_menu.rb vblank/live/lateness.rb vblank/live/rate.rb
                           vblank/live/menu.rb vblank/live/settings.rb vblank/live/settings_file.rb
                           vblank/live/session.rb vblank/live/sdl.rb].freeze
-        SCRIPT_MAIN = "rg_script_main.rb" # in RUNTIME_DIR: what plays the game, last in a script
+        SCRIPT_MAIN = "rg_script_main.rb" # In RUNTIME_DIR: what plays the game, last in a script
         # The line the game's Ruby ends at in a script, which no line of the game's can be, and the
         # line the menu's letters (Graphics::MenuFont::PATH, carried after the parts) end at.
         SCRIPT_END = "RG_END_OF_THE_GAME"

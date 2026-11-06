@@ -22,11 +22,11 @@ module VBlank
 
             STATE = "rt state"
             WAITING = "rt waiting" # 1 while the game waits for the screen at the end of a pass
-            PASSES = "rt passes" # passes of the game loop ended
-            SHOWN = "rt shown" # the pass whose picture the screen shows
-            HOLD = "rt hold" # set by the reader: show this pass and go no further
-            LAST_PASS_TAKEN = "rt last pass taken" # set by the reader after the last pass it compares
-            FRAMES = "rt frames" # every frame the screen has drawn (IR::Frames::COUNT)
+            PASSES = "rt passes" # Passes of the game loop ended
+            SHOWN = "rt shown" # The pass whose picture the screen shows
+            HOLD = "rt hold" # Set by the reader: show this pass and go no further
+            LAST_PASS_TAKEN = "rt last pass taken" # Set by the reader after the last pass it compares
+            FRAMES = "rt frames" # Every frame the screen has drawn (IR::Frames::COUNT)
             # How many frames each of the last STEPS_KEPT passes really took, a byte each, by the
             # pass's number less its multiples of STEPS_KEPT.
             STEPS = "rt steps"

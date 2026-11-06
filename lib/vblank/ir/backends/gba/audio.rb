@@ -129,9 +129,9 @@ module VBlank
           # THE MUSIC PLAYER'S STATE, in the console's quick memory. The game writes the first
           # and nothing else; the rest belong to the player, which runs in the screen's
           # interrupt. That split is what makes sharing them safe — see #emit_music_tick.
-          MUSIC_WANTED = :__music_wanted   # the tune the game named, by number (0 = none)
-          MUSIC_PLAYING = :__music_playing # the tune the player is on
-          MUSIC_FRAME = :__music_frame     # how far into it, in frames
+          MUSIC_WANTED = :__music_wanted   # The tune the game named, by number (0 = none)
+          MUSIC_PLAYING = :__music_playing # The tune the player is on
+          MUSIC_FRAME = :__music_frame     # How far into it, in frames
           # How many times the game has said stop_music, and how many of those the player has
           # acted on. Counted rather than only said, so a stop and a play in one frame still
           # reach the player as a stop — which is how a tune starts over from its first note.
@@ -277,8 +277,8 @@ module VBlank
           # when it asked: an effect stopped by another of its group is STOPPING, and one of a group
           # asked for again while it sounds is RESTARTING — its voices are let go before it starts.
           EFFECT_STATE = 0    # 0, EFFECT_ASKED, EFFECT_SOUNDING, EFFECT_STOPPING or EFFECT_RESTARTING
-          EFFECT_FRAME = 4    # how far into the effect, in frames
-          EFFECT_CURSORS = 8  # each lane's next event, as a byte offset into the score
+          EFFECT_FRAME = 4    # How far into the effect, in frames
+          EFFECT_CURSORS = 8  # Each lane's next event, as a byte offset into the score
           EFFECT_ASKED = 1
           EFFECT_SOUNDING = 2
           EFFECT_STOPPING = 3
@@ -681,14 +681,14 @@ module VBlank
           # THE REGISTERS THE ASK IN A GROUP WORKS IN. The place asked for is handed over in
           # ASK_PLACE; the rest are kept on the stack and given back, except ACC and TMP, which
           # every statement may use, and r3, where the interrupts' master switch waits.
-          ASK_LIST = 0     # the group's list, walked
-          ASK_LEFT = 1     # how many of it are left
-          ASK_PLACE = 2    # the place in the table asked for
-          ASK_BLOB = 4     # the groups' data
-          ASK_PRIORITY = 5 # the priority of the effect asked for
-          ASK_TABLE = 6    # the table's start
-          ASK_MEMBER = 7   # the place of the one of the group being looked at
-          ASK_STATE = 8    # its state
+          ASK_LIST = 0     # The group's list, walked
+          ASK_LEFT = 1     # How many of it are left
+          ASK_PLACE = 2    # The place in the table asked for
+          ASK_BLOB = 4     # The groups' data
+          ASK_PRIORITY = 5 # The priority of the effect asked for
+          ASK_TABLE = 6    # The table's start
+          ASK_MEMBER = 7   # The place of the one of the group being looked at
+          ASK_STATE = 8    # Its state
           ASK_KEEPS = [ASK_BLOB, ASK_PRIORITY, ASK_TABLE, ASK_MEMBER, ASK_STATE].freeze
 
           # ASK FOR THE EFFECT AT A TABLE PLACE — +place+, or with none given, the place in ACC —
@@ -2301,7 +2301,7 @@ module VBlank
           # its voice at. The screen's interrupt, where the player sets a voice's switches, is held
           # off while they are read and written, so it cannot set one between the two and have it
           # undone.
-          SAVED_IME = 2 # a statement's own register, as every low one is (see GAME_CALL_KEEPS)
+          SAVED_IME = 2 # A statement's own register, as every low one is (see GAME_CALL_KEEPS)
 
           def emit_speakers_both(channel)
             return unless @pans

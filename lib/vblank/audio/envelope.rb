@@ -72,7 +72,7 @@ module VBlank
       # kept finer they take about twice as long, and every note rings on past where its music
       # wanted it. There is nothing to lose either, because what the mix multiplies by is 0 to 256 —
       # one step of the gain is already one step of the level.
-      SCALE = 8 # a level is out of 1 << this
+      SCALE = 8 # A level is out of 1 << this
 
       # A loudness (out of 512) times a level, shifted down this far, is the whole number of
       # 256ths a shaped note's gain aims at for the frame: the level's scale, and the bit of

@@ -26,10 +26,10 @@ module VBlank
         # (Cartridge::SNESROM).
         class Linker
           BANK_SIZE = 0x8000
-          FIRST_BANK = 0x80 # the fast copy of the cartridge's first 32K
-          ORIGIN = 0x8000 # where a bank's 32K start in the processor's view
-          HEADER_FROM = 0x7FB0 # the first bank's header and vectors, written by the cartridge
-          MOST_BANKS = 128 # four megabytes, as large as a LoROM cartridge's header can say
+          FIRST_BANK = 0x80 # The fast copy of the cartridge's first 32K
+          ORIGIN = 0x8000 # Where a bank's 32K start in the processor's view
+          HEADER_FROM = 0x7FB0 # The first bank's header and vectors, written by the cartridge
+          MOST_BANKS = 128 # Four megabytes, as large as a LoROM cartridge's header can say
 
           # Where each label went: its 24-bit address.
           Linked = Data.define(:banks, :places, :sections) do

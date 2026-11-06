@@ -16,17 +16,17 @@ module VBlank
 
           # --- Condition codes ---
           # Used by conditional branches and (eventually) conditional execution.
-          COND_EQ = 0x0  # equal (Z=1)
-          COND_NE = 0x1  # not equal (Z=0)
-          COND_HS = 0x2  # unsigned higher or same (C=1)
-          COND_LO = 0x3  # unsigned lower (C=0)
-          COND_HI = 0x8  # unsigned higher (C=1 and Z=0)
-          COND_LS = 0x9  # unsigned lower or same (C=0 or Z=1)
-          COND_GE = 0xA  # signed greater or equal (N=V)
-          COND_LT = 0xB  # signed less than (N!=V)
-          COND_GT = 0xC  # signed greater than (Z=0, N=V)
-          COND_LE = 0xD  # signed less or equal (Z=1 or N!=V)
-          COND_AL = 0xE  # always (unconditional)
+          COND_EQ = 0x0  # Equal (Z=1)
+          COND_NE = 0x1  # Not equal (Z=0)
+          COND_HS = 0x2  # Unsigned higher or same (C=1)
+          COND_LO = 0x3  # Unsigned lower (C=0)
+          COND_HI = 0x8  # Unsigned higher (C=1 and Z=0)
+          COND_LS = 0x9  # Unsigned lower or same (C=0 or Z=1)
+          COND_GE = 0xA  # Signed greater or equal (N=V)
+          COND_LT = 0xB  # Signed less than (N!=V)
+          COND_GT = 0xC  # Signed greater than (Z=0, N=V)
+          COND_LE = 0xD  # Signed less or equal (Z=1 or N!=V)
+          COND_AL = 0xE  # Always (unconditional)
 
           COND_BY_NAME = {
             eq: COND_EQ, ne: COND_NE,

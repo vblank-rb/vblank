@@ -23,20 +23,20 @@ module VBlank
           # register across one. Where the player has got to is in work RAM, the tune, the part and the
           # note as addresses in the song table, which A0 and A1 are loaded from as each is wanted.
           module Music
-            NAMED = "rt music named" # the tune the game named last (Genesis::Music#number), nought for none
-            PLAYING = "rt music playing" # ...and the tune playing
-            STOPS = "rt music stops" # how many times the game said stop_music...
-            STOPS_SEEN = "rt music stops seen" # ...and how many of those the player has acted on
-            ENDED = "rt music ended" # a tune that played once and reached its end
+            NAMED = "rt music named" # The tune the game named last (Genesis::Music#number), nought for none
+            PLAYING = "rt music playing" # The tune playing
+            STOPS = "rt music stops" # How many times the game asked stop_music
+            STOPS_SEEN = "rt music stops seen" # How many of those stops the player has acted on
+            ENDED = "rt music ended" # A tune that played once and reached its end
             TUNE_HELD = "rt music tune held" # 1 while the game holds the tune, in a game that says so
-            FRAME = "rt music frame" # how far into the tune, in frames
+            FRAME = "rt music frame" # How far into the tune, in frames
             AGAIN = "rt music again" # 1 once the tune has come round
-            SONG = "rt music song" # where the playing tune's record is, an address
-            CURSORS = "rt music cursors" # each part's next note
-            PART = "rt music part" # the part being played...
-            PARTS_IN = "rt music parts in" # ...of how many
-            ENTRY = "rt music entry" # where the part being played's entry is, an address
-            NOTE = "rt music note" # ...and its note being played
+            SONG = "rt music song" # Where the playing tune's record is, an address
+            CURSORS = "rt music cursors" # Each part's next note
+            PART = "rt music part" # The part being played
+            PARTS_IN = "rt music parts in" # How many parts there are
+            ENTRY = "rt music entry" # Where the part being played's entry is, an address
+            NOTE = "rt music note" # Its note being played
             # THE MUSIC VOLUME, in a game that sets it (Genesis::Music#follows_level?): the level the notes
             # sounding were set at, with its FULL_LEVEL bit turned over so the nought memory starts at says
             # full; each part's note's volume as written, while its voice holds it (nought for a rest, or
@@ -49,7 +49,7 @@ module VBlank
             HELD_IN = "rt music held in"
             HELD_WALK = "rt music held walk"
             CHANNEL_FOUND = "rt music channel found"
-            LOUDNESS_LIST = "rt music loudness list" # which of a part's lists of loudness groups a strike reads
+            LOUDNESS_LIST = "rt music loudness list" # Which of a part's lists of loudness groups a strike reads
             # EACH CONSOLE VOICE'S NOTE THAT CHANGES AS IT PLAYS, VOICE_BYTES a voice, in a game with one: a
             # wobble's record (Genesis::Music#wobble_record), nought for a voice holding still, the frames still
             # to wait, the frames its swing has left, and whether it is above the note's pitch.
@@ -69,9 +69,9 @@ module VBlank
             SWELL_COUNTED = 4
             SWELL_RISING = 6
             VOICE_BYTES = 8
-            VOICE_AT = "rt music voice at" # the voice being stepped, VOICE_BYTES a voice
+            VOICE_AT = "rt music voice at" # The voice being stepped, VOICE_BYTES a voice
             SWELL_CEILING = "rt music swell ceiling"
-            SLIDE_CURSOR = "rt music slide cursor" # where the sliding note's next frame is; nought when none slides
+            SLIDE_CURSOR = "rt music slide cursor" # Where the sliding note's next frame is; nought when none slides
 
             PARTS = Genesis::Music::PARTS
             CONSOLE_PARTS = Genesis::Music::CONSOLE_PARTS

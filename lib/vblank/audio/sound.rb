@@ -78,7 +78,7 @@ module VBlank
       LOUDNESS_FRACTION = 1
       STEP_SHIFT = 16
       GAIN_FRACTION = 16
-      LOUDNESS_TO_GAIN = GAIN_FRACTION - LOUDNESS_FRACTION # a loudness shifted up this far is its gain
+      LOUDNESS_TO_GAIN = GAIN_FRACTION - LOUDNESS_FRACTION # A loudness shifted up this far is its gain
       RAMP_SPLIT = 8
 
       # Resolve a beep into concrete musical values. +tone+ is either a preset name

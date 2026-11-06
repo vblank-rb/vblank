@@ -24,21 +24,21 @@ module VBlank
       # far past it — so the circle is seen moving from the first frame to the last.
       module Iris
         # The hidden state, named with the framework's underscore prefix.
-        SIZE = :__iris_size        # how far the circle reaches now, a fraction
-        TARGET = :__iris_target    # where the walk is heading
-        STEP = :__iris_step        # how far it moves each frame
+        SIZE = :__iris_size        # How far the circle reaches now, a fraction
+        TARGET = :__iris_target    # Where the walk is heading
+        STEP = :__iris_step        # How far it moves each frame
         ACTIVE = :__iris_active    # 1 while the walk is running
         SHUT = :__iris_shut        # 1 once a walk out has arrived
-        RADIUS = :__iris_radius    # the light's own radius, to give back
-        DARK = :__iris_dark        # ...and its own darkness
-        REACH = :__iris_reach      # how far the farthest corner is, which a walk starts and ends at
+        RADIUS = :__iris_radius    # The light's own radius, to give back
+        DARK = :__iris_dark        # Its own darkness
+        REACH = :__iris_reach      # How far the farthest corner is, which a walk starts and ends at
         ROUTINE = :__iris_tick
 
         # TARGET starts here, which is what lets the guardrail below tell a real `iris_in`
         # from the declaration: nothing else writes this variable.
         NEVER_WALKED = -1.0
 
-        DEFAULT_FRAMES = 30 # half a second — a scene change, not a blink
+        DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
 
         # Close a circle on a point until the screen is black. Call it once, at the moment the
         # change begins; the framework walks the circle in on every frame from there.

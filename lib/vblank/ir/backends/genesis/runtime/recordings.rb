@@ -31,20 +31,20 @@ module VBlank
           # rest gives the part's place back, and so does the tune stopping.
           module Recordings
             # A play's row of "recording_plays", in bytes.
-            START = 0 # where the recording is in the cartridge, a long
-            LENGTH = 4 # a long, as are the next two
+            START = 0 # Where the recording is in the cartridge, a long
+            LENGTH = 4 # A long, as are the next two
             BACK = 8
-            ADVANCE = 12 # whole samples a frame
-            ADVANCE_FRACTION = 16 # ...and 65536ths
-            LOGGED = 18 # the number of its entry in the sound log
+            ADVANCE = 12 # Whole samples a frame
+            ADVANCE_FRACTION = 16 # 65536ths
+            LOGGED = 18 # The number of its entry in the sound log
             NAME = 20
-            STEP = 22 # samples of the recording a sample of the Z80's, in 256ths
+            STEP = 22 # Samples of the recording a sample of the Z80's, in 256ths
             ROW_BYTES = 24
 
             # The place's state, in bytes.
             PLACE = "rt recordings place"
-            HELD = 0 # which recording, its number plus one, nought when the place is free
-            POSITION = 2 # a long, and FRACTION its 65536ths
+            HELD = 0 # Which recording, its number plus one, nought when the place is free
+            POSITION = 2 # A long, and FRACTION its 65536ths
             FRACTION = 6
             PLACE_LENGTH = 8
             PLACE_BACK = 12
@@ -75,13 +75,13 @@ module VBlank
 
             # THE Z80'S SIDE. Everything it reads is in its own memory, at MAILBOX on.
             MAILBOX = 0x1F00
-            NEW_PLAY = 0 # a byte the 68000 adds one to
-            PLAYS = 1 # nought to go quiet
-            AT = 2 # where to start, in the window: two bytes, low first
-            BANK = 4 # the window's place in the cartridge, two bytes
-            END_AT = 6 # where it ends, the same way
+            NEW_PLAY = 0 # A byte the 68000 adds one to
+            PLAYS = 1 # Nought to go quiet
+            AT = 2 # Where to start, in the window: two bytes, low first
+            BANK = 4 # The window's place in the cartridge, two bytes
+            END_AT = 6 # Where it ends, the same way
             END_BANK = 8
-            LOOP_AT = 10 # where it goes back to, the same way
+            LOOP_AT = 10 # Where it goes back to, the same way
             LOOP_BANK = 12
             Z80_STEP = 14 # 256ths, two bytes
             LOOPS = 16
@@ -89,7 +89,7 @@ module VBlank
             END_HIGH_NOW = 19 # END_AT's high byte, while the window is on the last bank; nought otherwise
 
             Z80_MEMORY = 0xA00000
-            WINDOW = 0x8000 # where the window starts in the Z80's memory, and how much it shows
+            WINDOW = 0x8000 # Where the window starts in the Z80's memory, and how much it shows
 
             # The program's cycles between one sample and the next, and how many times the wait in it goes
             # round to make that come to Console::GENESIS's recording_voice_hz.

@@ -397,7 +397,7 @@ module VBlank
           # A draw_in_order's sort, and a pool's copy of its things into the order it draws them in.
           SPRITE_WORK_ROUTINE = /\A__(draw_order_\d+__sort|stacking_pool_)/
 
-          def emit_raw(node) = @emitter.emit(node.bytes) # escape hatch: pre-assembled bytes, verbatim
+          def emit_raw(node) = @emitter.emit(node.bytes) # Escape hatch: pre-assembled bytes, verbatim
           def emit_halt(_node) = @emitter.emit(ASM.loop_forever)
         end
       end

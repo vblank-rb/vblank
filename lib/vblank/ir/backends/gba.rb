@@ -168,10 +168,10 @@ module VBlank
         # on the TV while the program draws into the other, then a flip swaps them at
         # a frame boundary; because the TV never reads a half-drawn page, the picture
         # can't tear. DISPCNT bit 4 selects which page is shown.
-        PAGE0 = VRAM_START            # the first framebuffer page (0x06000000)
-        PAGE1 = VRAM_START + 0xA000   # the second (0x0600A000)
-        PAGE_PAIR_SUM = PAGE0 + PAGE1 # flip trick: the other page is (this sum − current)
-        DISPCNT_FRAME_SELECT = 0x0010 # the DISPCNT bit that chooses which page shows
+        PAGE0 = VRAM_START            # The first framebuffer page (0x06000000)
+        PAGE1 = VRAM_START + 0xA000   # The second (0x0600A000)
+        PAGE_PAIR_SUM = PAGE0 + PAGE1 # Flip trick: the other page is (this sum − current)
+        DISPCNT_FRAME_SELECT = 0x0010 # The DISPCNT bit that chooses which page shows
 
         # A reserved data-blob name for the color table Mode 4 uploads, and the two
         # hidden variables that track the double-buffer state at run time: the live
@@ -219,17 +219,17 @@ module VBlank
         KEYS_SEEN = :__keys_seen
         KEYS_COLLECTED = :__keys_collected
         KEYS_PRESSED = :__keys_pressed
-        KEY_MASK = 0x3FF # the ten button bits
+        KEY_MASK = 0x3FF # The ten button bits
 
         # The kinds that reach save memory, any one of which means the cartridge has a save
         # chip and has to carry the marker that tells an emulator so.
         SAVE_KINDS = %i[save_memory save_init save_write save_read save_sum save_erase].freeze
 
-        ACC = 0   # accumulator register
-        TMP = 1   # temporary / I/O address register
-        ADDR = 12 # variable address scratch
-        LIST_ADDR = 9 # where a collection's own base waits between two touches of it
-        STACK = 13 # the stack pointer, for the rare value with nowhere else to wait
+        ACC = 0   # Accumulator register
+        TMP = 1   # Temporary / I/O address register
+        ADDR = 12 # Variable address scratch
+        LIST_ADDR = 9 # Where a collection's own base waits between two touches of it
+        STACK = 13 # The stack pointer, for the rare value with nowhere else to wait
 
         # WHAT THIS BACKEND DECIDED ABOUT AN ASSET, as against what the asset IS (that is
         # IR::Assets, shared with every backend). These are facts about the cartridge and
@@ -243,8 +243,8 @@ module VBlank
         # Two more scratch registers, live only inside one arithmetic expression and
         # never across a statement. A 64-bit multiply needs both of them, because its
         # answer does not fit in one register.
-        SPARE = 2 # somewhere to keep a value while the accumulator is busy
-        HIGH = 3  # the top half of a 64-bit product
+        SPARE = 2 # Somewhere to keep a value while the accumulator is busy
+        HIGH = 3  # The top half of a 64-bit product
 
         # How many bits of fraction the walk down a stretched column keeps. The step is a
         # picture row per screen row and is almost never whole — a wall twice as tall as its
@@ -277,7 +277,7 @@ module VBlank
         # VBlank interrupt has fired, which needs the interrupts set up at boot and a
         # small handler that acknowledges each one (see #emit_irq_setup / #emit_irq_handler).
         SWI_VBLANK_INTR_WAIT = 0x05
-        IRQ_HANDLER_LABEL = :__irq_vblank # the interrupt routine, addressed by the vector
+        IRQ_HANDLER_LABEL = :__irq_vblank # The interrupt routine, addressed by the vector
 
         # Comparison operator → the ARM condition that is TRUE for it and the
         # condition under which it is FALSE (used to skip setting the result to 1).
@@ -1738,8 +1738,8 @@ module VBlank
         # in that run a given layer starts counting. See {TileVram} and {BackgroundTiles}.
         CHAR_BASE_SHIFT = 2
 
-        BG_SHARED_PAL = :__bg_shared_pal   # the one palette every layer indexes into
-        BG_SHARED_CHAR = :__bg_shared_char # every layer's tile pictures, uploaded as one piece
+        BG_SHARED_PAL = :__bg_shared_pal   # The one palette every layer indexes into
+        BG_SHARED_CHAR = :__bg_shared_char # Every layer's tile pictures, uploaded as one piece
 
 
         # How many cells one screen block holds: a block is 2K and a regular map's cell is
@@ -1893,7 +1893,7 @@ module VBlank
         # where they are the only answer: a fade that keeps EVERY sprite leaves the OBJ
         # bit out of the mask instead, and costs nothing at all. See PlacedFade, which owns
         # all of it; these are the numbers the hardware reads.
-        EFFECT_LINE = :__effect_line # where in the stack the fade now in force is sitting
+        EFFECT_LINE = :__effect_line # Where in the stack the fade now in force is sitting
         OBJ_WINDOW_MODE = 0x0800     # attr0 bits 10-11 = 2: a window rather than a picture
         OBJ_WINDOW_ENABLE = 0x8000   # DISPCNT bit 15: the object window is on
       end

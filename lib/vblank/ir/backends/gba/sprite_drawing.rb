@@ -38,9 +38,9 @@ module VBlank
           # Where a sprite's tiles live: the object tile area of video memory, and the
           # sprite table itself. In tile mode the console draws sprites from tiles kept
           # in this region, separate from the background's, so the two never collide.
-          OBJ_TILE_BASE = VRAM_START + 0x10000 # object tiles start 64KB into video memory
+          OBJ_TILE_BASE = VRAM_START + 0x10000 # Object tiles start 64KB into video memory
           OBJ_HIDDEN_ATTR0 = 0x0200            # attr0 marking a sprite-table slot unused
-          OBJ_HIDDEN_WORD  = 0x02000200        # two hidden attr0s, for a fast table clear
+          OBJ_HIDDEN_WORD  = 0x02000200        # Two hidden attr0s, for a fast table clear
 
           # A turning sprite sets two more attr0 bits. Rotate/scale (bit 8) tells the
           # console to draw this sprite through an affine parameter group instead of
@@ -274,9 +274,9 @@ module VBlank
           # where nothing is being drawn: changed while the pass runs, it would take the sprites
           # off the lower part of the frame being drawn then. The note is one of three:
           SPRITES_HIDDEN = :_sprites_hidden
-          SPRITES_SHOWN = 0 # the layer is on, and nothing asked
-          SPRITES_ASKED = 1 # the pass just run asked for a frame without them
-          SPRITES_OFF = 2   # the layer is off for this frame, and comes on again at the next gap
+          SPRITES_SHOWN = 0 # The layer is on, and nothing asked
+          SPRITES_ASKED = 1 # The pass just run asked for a frame without them
+          SPRITES_OFF = 2   # The layer is off for this frame, and comes on again at the next gap
 
           # Whether the game ever asks, so that a game that never does emits nothing for it.
           attr_writer :hides_sprites

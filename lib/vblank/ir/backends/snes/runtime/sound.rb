@@ -100,8 +100,8 @@ module VBlank
             PATIENCE = 256
 
             LIVE = "rt sound live" # 1 once the program was sent and started
-            SENT = "rt sound sent" # the number of the last command sent, in mailbox 0
-            DROPPED = "rt sound dropped" # writes dropped because the sound unit had not answered
+            SENT = "rt sound sent" # The number of the last command sent, in mailbox 0
+            DROPPED = "rt sound dropped" # Writes dropped because the sound unit had not answered
 
             # THE WRITES WAITING TO GO, in a game with music: a ring of entries, the oldest at
             # QUEUE_HEAD and the next free at QUEUE_TAIL, both as offsets into it, so the two are equal

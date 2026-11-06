@@ -42,9 +42,9 @@ module VBlank
 
             STATE = "rt state" # RUNNING, HALTED or WENT_WRONG
             WAITING = "rt waiting" # 1 while the game waits for its next frame's buttons
-            PASSES = "rt passes" # passes of the game loop ended, 32 bits
-            SHOWN = "rt shown" # the pass whose picture the console shows, 32 bits
-            HELD = "rt held" # the buttons held through the pass, a bit each in IR::Buttons's order
+            PASSES = "rt passes" # Passes of the game loop ended, 32 bits
+            SHOWN = "rt shown" # The pass whose picture the console shows, 32 bits
+            HELD = "rt held" # The buttons held through the pass, a bit each in IR::Buttons's order
             SEEN = "rt seen"
             PRESSED = "rt pressed"
             FAULT = "rt fault"

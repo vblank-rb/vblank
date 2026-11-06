@@ -87,9 +87,9 @@ module VBlank
 
       # --- the memory bank controller (MBC5), written by storing into the cartridge's address range ---
       MBC_RAM_ENABLE = 0x0000 # 0x0A switches the cartridge's memory on, anything else off
-      MBC_ROM_BANK_LOW = 0x2000 # the low eight bits of the bank in view at 0x4000
-      MBC_ROM_BANK_HIGH = 0x3000 # its ninth bit
-      MBC_RAM_BANK = 0x4000 # which 8K of the cartridge's memory is in view at 0xA000
+      MBC_ROM_BANK_LOW = 0x2000 # The low eight bits of the bank in view at 0x4000
+      MBC_ROM_BANK_HIGH = 0x3000 # Its ninth bit
+      MBC_RAM_BANK = 0x4000 # Which 8K of the cartridge's memory is in view at 0xA000
       MBC_RAM_ON = 0x0A
 
       # --- the clock chip beside an MBC3 (Pan Docs, "MBC3") ---
@@ -114,15 +114,15 @@ module VBlank
       CLOCK_CARRY = 0x80
 
       # --- buttons ---
-      P1 = 0xFF00 # write 0x20 to read the directions, 0x10 to read the four buttons; 0 means held
+      P1 = 0xFF00 # Write 0x20 to read the directions, 0x10 to read the four buttons; 0 means held
 
       # --- timer and interrupts ---
       DIV = 0xFF04
       TIMA = 0xFF05
       TMA = 0xFF06
       TAC = 0xFF07
-      IF = 0xFF0F # which interrupts are waiting
-      IE = 0xFFFF # which interrupts are switched on
+      IF = 0xFF0F # Which interrupts are waiting
+      IE = 0xFFFF # Which interrupts are switched on
 
       INT_VBLANK = 0x01
       INT_STAT = 0x02
@@ -131,60 +131,60 @@ module VBlank
       INT_JOYPAD = 0x10
 
       # --- sound ---
-      NR10 = 0xFF10 # voice 1 (square, with a sweep): sweep
-      NR11 = 0xFF11 #   duty and length
-      NR12 = 0xFF12 #   volume and envelope
-      NR13 = 0xFF13 #   period, low eight bits
-      NR14 = 0xFF14 #   period, high three bits, length on, start
-      NR21 = 0xFF16 # voice 2 (square)
+      NR10 = 0xFF10 # Voice 1 (square, with a sweep): sweep
+      NR11 = 0xFF11 #   Duty and length
+      NR12 = 0xFF12 #   Volume and envelope
+      NR13 = 0xFF13 #   Period, low eight bits
+      NR14 = 0xFF14 #   Period, high three bits, length on, start
+      NR21 = 0xFF16 # Voice 2 (square)
       NR22 = 0xFF17
       NR23 = 0xFF18
       NR24 = 0xFF19
-      NR30 = 0xFF1A # voice 3 (wave): on
-      NR31 = 0xFF1B #   length
-      NR32 = 0xFF1C #   volume
-      NR33 = 0xFF1D #   period, low
-      NR34 = 0xFF1E #   period, high, start
-      NR41 = 0xFF20 # voice 4 (noise): length
-      NR42 = 0xFF21 #   volume and envelope
-      NR43 = 0xFF22 #   the noise's clock
-      NR44 = 0xFF23 #   length on, start
-      NR50 = 0xFF24 # master volume, left and right
-      NR51 = 0xFF25 # which voice goes to which side
-      NR52 = 0xFF26 # sound on
-      WAVE_RAM = 0xFF30 # the wave voice's 32 steps, two to a byte
+      NR30 = 0xFF1A # Voice 3 (wave): on
+      NR31 = 0xFF1B #   Length
+      NR32 = 0xFF1C #   Volume
+      NR33 = 0xFF1D #   Period, low
+      NR34 = 0xFF1E #   Period, high, start
+      NR41 = 0xFF20 # Voice 4 (noise): length
+      NR42 = 0xFF21 #   Volume and envelope
+      NR43 = 0xFF22 #   The noise's clock
+      NR44 = 0xFF23 #   Length on, start
+      NR50 = 0xFF24 # Master volume, left and right
+      NR51 = 0xFF25 # Which voice goes to which side
+      NR52 = 0xFF26 # Sound on
+      WAVE_RAM = 0xFF30 # The wave voice's 32 steps, two to a byte
 
       # --- the picture ---
-      LCDC = 0xFF40 # the display's switches (below)
-      STAT = 0xFF41 # what the display is doing, and which of that raises the status interrupt
-      SCY = 0xFF42 # the background's scroll
+      LCDC = 0xFF40 # The display's switches (below)
+      STAT = 0xFF41 # What the display is doing, and which of that raises the status interrupt
+      SCY = 0xFF42 # The background's scroll
       SCX = 0xFF43
-      LY = 0xFF44 # the line being drawn, 0-153; 144 and up is the vertical blank
+      LY = 0xFF44 # The line being drawn, 0-153; 144 and up is the vertical blank
       LYC = 0xFF45
-      DMA = 0xFF46 # copies 160 bytes into the sprite table from (value × 256)
-      WY = 0xFF4A # the window's place
+      DMA = 0xFF46 # Copies 160 bytes into the sprite table from (value × 256)
+      WY = 0xFF4A # The window's place
       WX = 0xFF4B
-      KEY1 = 0xFF4D # double speed: set bit 0, then STOP, and the processor runs twice as fast
-      VBK = 0xFF4F # which bank of video memory is in view
-      HDMA1 = 0xFF51 # a copy into video memory: from (high, low)
+      KEY1 = 0xFF4D # Double speed: set bit 0, then STOP, and the processor runs twice as fast
+      VBK = 0xFF4F # Which bank of video memory is in view
+      HDMA1 = 0xFF51 # A copy into video memory: from (high, low)
       HDMA2 = 0xFF52
-      HDMA3 = 0xFF53 # to (high, low)
+      HDMA3 = 0xFF53 # To (high, low)
       HDMA4 = 0xFF54
-      HDMA5 = 0xFF55 # how many 16-byte blocks less one; bit 7 asks for it a line at a time
-      BCPS = 0xFF68 # which background colour BCPD writes, bit 7 to move on after each byte
+      HDMA5 = 0xFF55 # How many 16-byte blocks less one; bit 7 asks for it a line at a time
+      BCPS = 0xFF68 # Which background colour BCPD writes, bit 7 to move on after each byte
       BCPD = 0xFF69
-      OCPS = 0xFF6A # the same for the sprites' colours
+      OCPS = 0xFF6A # The same for the sprites' colours
       OCPD = 0xFF6B
-      SVBK = 0xFF70 # which bank of work memory is in view at 0xD000
+      SVBK = 0xFF70 # Which bank of work memory is in view at 0xD000
 
       LCDC_ON = 0x80
       LCDC_WINDOW_MAP1 = 0x40
       LCDC_WINDOW_ON = 0x20
-      LCDC_TILES_8000 = 0x10 # the background's tiles numbered from 0x8000, unsigned
+      LCDC_TILES_8000 = 0x10 # The background's tiles numbered from 0x8000, unsigned
       LCDC_BG_MAP1 = 0x08
-      LCDC_TALL_SPRITES = 0x04 # sprites 8×16
+      LCDC_TALL_SPRITES = 0x04 # Sprites 8×16
       LCDC_SPRITES_ON = 0x02
-      LCDC_BG_PRIORITY = 0x01 # on a Color: the background and window can be in front of sprites
+      LCDC_BG_PRIORITY = 0x01 # On a Color: the background and window can be in front of sprites
 
       # A cell's attributes in bank 1 of video memory, beside its tile number in bank 0.
       ATTR_PALETTE = 0x07

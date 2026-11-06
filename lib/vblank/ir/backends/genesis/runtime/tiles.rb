@@ -53,8 +53,8 @@ module VBlank
             DRAWN = "rt drawn"
             DRAWN_BYTES = 8
 
-            SCROLL = "rt scroll" # each plane's left, then its top, a word each: plane A's, plane B's
-            PENDING = "rt pending maps" # each plane's grid still to be copied, a long each, or nought
+            SCROLL = "rt scroll" # Each plane's left, then its top, a word each: plane A's, plane B's
+            PENDING = "rt pending maps" # Each plane's grid still to be copied, a long each, or nought
             CELL_COUNT = "rt cell count"
             CELLS = "rt cells"
             SPRITE_COUNT = "rt sprite count"

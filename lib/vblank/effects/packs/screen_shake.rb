@@ -28,10 +28,10 @@ module VBlank
         # The hidden variables the shake runs on, and the routine that drives them.
         # Named with the framework's underscore prefix so they can never collide with
         # a game's own variables.
-        LEFT = :__shake_left       # frames of shaking still to run (-1 = settled)
-        POWER = :__shake_power     # how far to move, in pixels
+        LEFT = :__shake_left       # Frames of shaking still to run (-1 = settled)
+        POWER = :__shake_power     # How far to move, in pixels
         DIRECTION = :__shake_dir   # +1 / -1, flipped every frame to make the jitter
-        OFFSET = :__shake_offset   # this frame's offset, power * direction
+        OFFSET = :__shake_offset   # This frame's offset, power * direction
         ROUTINE = :__shake_tick
 
         # Shake the screen — the impact effect for a hit, an explosion, a life lost.

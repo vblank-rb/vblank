@@ -24,24 +24,24 @@ module VBlank
           # next note if its frame has come, then the frame on, round to the tune's loop frame at its
           # end.
           module Music
-            NAMED = "rt music named" # the tune the game named last (SNES::Music#number), nought for none
-            PLAYING = "rt music playing" # ...and the tune playing
-            STOPS = "rt music stops" # how many times the game said stop_music...
-            STOPS_SEEN = "rt music stops seen" # ...and how many of those the player has acted on
-            ENDED = "rt music ended" # a tune that played once and reached its end
+            NAMED = "rt music named" # The tune the game named last (SNES::Music#number), nought for none
+            PLAYING = "rt music playing" # The tune playing
+            STOPS = "rt music stops" # How many times the game asked stop_music
+            STOPS_SEEN = "rt music stops seen" # How many of those stops the player has acted on
+            ENDED = "rt music ended" # A tune that played once and reached its end
             TUNE_HELD = "rt music tune held" # 1 while the game holds the tune, in a game that says so
-            FRAME = "rt music frame" # how far into the tune, in frames
+            FRAME = "rt music frame" # How far into the tune, in frames
             AGAIN = "rt music again" # 1 once the tune has come round
-            SONG = "rt music song" # where the playing tune's record is in the table
-            CURSORS = "rt music cursors" # each part's next note
-            NEXT_NOTE_FRAME = "rt music next note frame" # the frame the next of those is due
-            NO_NOTE_DUE = 0xFFFF # ...when no part has a note left this time round
-            PART = "rt music part" # the part being played...
-            PARTS_IN = "rt music parts in" # ...of how many
-            COUNT = "rt music count" # how many notes the part has this time round...
-            LIST = "rt music list" # ...and where they are
-            ENTRY = "rt music entry" # where the part being played's entry is in the table
-            NOTE = "rt music note" # ...and its note being played
+            SONG = "rt music song" # Where the playing tune's record is in the table
+            CURSORS = "rt music cursors" # Each part's next note
+            NEXT_NOTE_FRAME = "rt music next note frame" # The frame the next of those is due
+            NO_NOTE_DUE = 0xFFFF # Value for when no part has a note left this time round
+            PART = "rt music part" # The part being played
+            PARTS_IN = "rt music parts in" # How many parts there are
+            COUNT = "rt music count" # How many notes the part has this time round
+            LIST = "rt music list" # Where those notes are
+            ENTRY = "rt music entry" # Where the part being played's entry is in the table
+            NOTE = "rt music note" # Its note being played
             # THE MUSIC VOLUME, in a game that sets it (SNES::Music#follows_level?): the level the
             # notes sounding were set at, kept with its FULL_LEVEL bit turned over so the nought
             # memory starts at says full; each part's note's volume as written, while its voice holds

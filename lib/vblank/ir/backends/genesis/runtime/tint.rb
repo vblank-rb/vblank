@@ -38,18 +38,18 @@ module VBlank
           #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to say it
           #   rt_colors_written                      the blank's work: the copy written to the colour memory
           module Tint
-            MODE = "rt tint" # the fade or tint in force: its mode, its steps, 256 less its steps, the tint
+            MODE = "rt tint" # The fade or tint in force: its mode, its steps, 256 less its steps, the tint
             STEPS = 2 #           colour's three channels, and the colour as it was handed over, a word each
             KEEP = 4
             TARGET = 6
             COLOR = 12
             TINT_BYTES = 14
-            COLORS = "rt colors" # the game's colours, a word for each of the 64 places of the colour memory
-            USED = "rt colors used" # how many places of each palette the game uses, a word each
+            COLORS = "rt colors" # The game's colours, a word for each of the 64 places of the colour memory
+            USED = "rt colors used" # How many places of each palette the game uses, a word each
             DIRTY = "rt colors dirty"
-            CRAM = "rt cram" # the colour memory as it is to be, a word for each of its 64 places
+            CRAM = "rt cram" # The colour memory as it is to be, a word for each of its 64 places
             OWED = "rt cram owed" # 1 while CRAM is not yet in the colour memory
-            SETS = "rt colors sets" # for each palette, the set of a list it holds now (a long), or nought
+            SETS = "rt colors sets" # For each palette, the set of a list it holds now (a long), or nought
 
             TOWARD_BLACK = PaletteWalk::TOWARD_BLACK
             TOWARD_WHITE = PaletteWalk::TOWARD_WHITE

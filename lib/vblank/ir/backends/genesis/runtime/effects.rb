@@ -63,7 +63,7 @@ module VBlank
             RUNNING = 6
             FRAME = 8
             CURSORS = 10
-            STATE_BYTES = 64 # past CURSORS and a word for each of the most parts an effect has
+            STATE_BYTES = 64 # Past CURSORS and a word for each of the most parts an effect has
 
             CHANNELS = (1..4).freeze
 

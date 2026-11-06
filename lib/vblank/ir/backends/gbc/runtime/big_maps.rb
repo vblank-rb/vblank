@@ -25,14 +25,14 @@ module VBlank
           module BigMaps
             STATE = "rt big map"
             ON = 0 # 1 while a big map is up
-            MAP = 1 # where its table of rows is (GBC::Art#big_map), and a byte unused
+            MAP = 1 # Where its table of rows is (GBC::Art#big_map), and a byte unused
             COLS = 4
             ROWS = 5
-            WANT = 6 # the view's top-left cell, x then y, 16 bits each, below nought allowed
-            DRAWN = 10 # ...and the one the grid holds the cells around
+            WANT = 6 # The view's top-left cell, x then y, 16 bits each, below nought allowed
+            DRAWN = 10 # The one the grid holds the cells around
             VALID = 14 # 1 once the grid holds a whole view
             STAGING = 15 # 1 while cells worked out go in the list for the blank too
-            CELL = 16 # the cell being worked out, x then y
+            CELL = 16 # The cell being worked out, x then y
             COUNT = 20
             ALONG_Y = 21 # 1 to step down a column, 0 along a row
             STEP_X = 22

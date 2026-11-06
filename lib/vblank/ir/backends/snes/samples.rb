@@ -41,13 +41,13 @@ module VBlank
           SHIFT = 11
           HIGH = 7
           LOW = -7
-          LOWEST = -8 # the lowest a sample's nibble holds
-          HIGHEST = 7 # ...and the highest
-          LOOP = 3 # the end of a recording, looped back to its loop point
-          END_ONLY = 1 # the end of a recording played once
-          ROW = 4  # a table row: start, loop
-          MOST_RANGE = 12 # the largest shift a block takes before fullsnes's decoding goes wrong
-          BYTE_TO_SAMPLE = 256 # a byte of a game's recording, as the Advance's mix reads it (see #recording)
+          LOWEST = -8 # The lowest a sample's nibble holds
+          HIGHEST = 7 # The highest
+          LOOP = 3 # The end of a recording, looped back to its loop point
+          END_ONLY = 1 # The end of a recording played once
+          ROW = 4  # A table row: start, loop
+          MOST_RANGE = 12 # The largest shift a block takes before fullsnes's decoding goes wrong
+          BYTE_TO_SAMPLE = 256 # A byte of a game's recording, as the Advance's mix reads it (see #recording)
 
           module_function
 

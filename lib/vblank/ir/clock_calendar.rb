@@ -18,7 +18,7 @@ module VBlank
     module ClockCalendar
       FROM = 1600
       STARTS_ON = 3 # 1 March 1600 was a Wednesday
-      DAYS_A_CYCLE = 146_097 # four hundred years
+      DAYS_A_CYCLE = 146_097 # Four hundred years
 
       # The day number of 1 January 2000, which a chip that keeps no date counts its days from
       # (IR::Clock.undated): a cycle to 1 March 2000, less January and February of that leap year.

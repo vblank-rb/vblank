@@ -15,7 +15,7 @@ module VBlank
       # Raised for a file that isn't a plain PCM WAV we can read.
       class Error < StandardError; end
 
-      PCM_FORMAT = 1 # the "fmt " audio-format code for uncompressed PCM
+      PCM_FORMAT = 1 # The "fmt " audio-format code for uncompressed PCM
 
       # Load +path+ and return { bytes:, rate: } — the converted 8-bit signed PCM (a binary
       # String) and the sample rate in Hz read from the file.

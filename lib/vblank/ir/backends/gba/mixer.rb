@@ -189,7 +189,7 @@ module VBlank
           MARK_RANK_SHIFT = 5
           def self.ranked_owner(rank, lane) = ((rank + 1) << MARK_RANK_SHIFT) | lane
 
-          TICKETS = :__mix_tickets # how many sounds the game has started, for the next ticket
+          TICKETS = :__mix_tickets # How many sounds the game has started, for the next ticket
           LOOPS_LAST = 0x8000_0000
 
           # WHAT DID NOT PLAY, counted on the console so a run can be asked about it.

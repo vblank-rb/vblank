@@ -28,11 +28,11 @@ module VBlank
       module ScreenPixelate
         # The hidden state, named with the framework's underscore prefix so a game's own
         # variables can never collide with it.
-        BROKEN = :__pixelate_broken   # how far the picture has broken up, 0.0 to FULL
-        TARGET = :__pixelate_target   # where the walk is heading
-        STEP = :__pixelate_step       # how far it moves each frame
+        BROKEN = :__pixelate_broken   # How far the picture has broken up, 0.0 to FULL
+        TARGET = :__pixelate_target   # Where the walk is heading
+        STEP = :__pixelate_step       # How far it moves each frame
         ACTIVE = :__pixelate_active   # 1 while the walk is running
-        SHOWN = :__pixelate_shown     # the size of block on screen now, 1 to the biggest
+        SHOWN = :__pixelate_shown     # The size of block on screen now, 1 to the biggest
         ROUTINE = :__pixelate_tick
 
         # As far as a picture breaks up: every size of block past the first.
@@ -42,7 +42,7 @@ module VBlank
         # `pixelate_in` from the declaration: nothing else writes this variable.
         NEVER_WALKED = -1.0
 
-        DEFAULT_FRAMES = 30 # half a second — a scene change, not a blink
+        DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
 
         # Break the picture up into bigger and bigger blocks, until they are the biggest
         # the console draws. Call it once, at the moment the change begins; the framework

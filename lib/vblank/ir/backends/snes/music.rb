@@ -12,7 +12,7 @@ module VBlank
 
           # One part for each recording the Super Nintendo sounds at once.
           RECORDED_PARTS = Console::SUPER_NINTENDO.recordings_at_once
-          PARTS = CONSOLE_PARTS + RECORDED_PARTS # ...and a sound effect, the same
+          PARTS = CONSOLE_PARTS + RECORDED_PARTS # A sound effect, the same
 
           LoweringError = SNES::LoweringError
 

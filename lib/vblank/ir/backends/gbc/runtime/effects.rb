@@ -23,14 +23,14 @@ module VBlank
           # Each effect keeps a few bytes (STATE_BYTES, and two for each part's next note): asked
           # for since the last frame, to be stopped first, sounding, and how far into it.
           module Effects
-            HOLDERS = "rt sfx holders" # the rank holding each voice, by voice 1 to 4
-            TUNE_RANK = "rt sfx tune rank" # the playing song's rank this frame (0 for none)
+            HOLDERS = "rt sfx holders" # The rank holding each voice, by voice 1 to 4
+            TUNE_RANK = "rt sfx tune rank" # The playing song's rank this frame (0 for none)
 
             ASKED = 0
             STOPPING = 1
             RUNNING = 2
             FRAME = 3 # 16 bits
-            CURSORS = 5 # each part's next note, 16 bits each
+            CURSORS = 5 # Each part's next note, 16 bits each
             STATE_BYTES = CURSORS
 
             module_function

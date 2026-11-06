@@ -139,7 +139,7 @@ module VBlank
             # Kept in a game that holds a background above a row, whose runtime then makes the table
             # that way round (#emit_background_held_above).
             ROW_HELD = "rt row held"
-            BAR_CHANNEL = 0x10 # channel 1's registers, past channel 0's
+            BAR_CHANNEL = 0x10 # Channel 1's registers, past channel 0's
             # Which layers TM shows on a tiled screen: BG1 and BG2 (a bit each) and the sprites.
             LAYERS_SHOWN = 0x13
             SPRITES_SHOWN = 0x10
@@ -159,7 +159,7 @@ module VBlank
             # scene: the layer's rows go straight, and the next scene using it shows no bend.
             LAYERS_STRAIGHT = "rt layers straight"
             BEND_STEP_LINES = SCREEN_HEIGHT / 2
-            REPEAT = 0x80 # a step's count with this bit: a new value on every line of it
+            REPEAT = 0x80 # A step's count with this bit: a new value on every line of it
             BEND_TABLE_BYTES = 1 + (BEND_STEP_LINES * 2) + 1 + (BEND_STEP_LINES * 2) + 1
             # A BEND THAT SAYS A THING ABOUT WHOLE BANDS OF ROWS needs no value for every line. A step
             # with no REPEAT bit writes the register once and leaves it for as many lines as it counts,
@@ -175,7 +175,7 @@ module VBlank
             # spare each), its first tile's word in video RAM, its tiles, its bytes, and a spare.
             def self.tile_run_staging(number) = "rt tile run #{number}"
             TILE_RUNS_OWED = "rt tile runs owed"
-            HELD_STRIP_BYTES = 6 # bytes, where in video RAM, how far into the picture: a word each
+            HELD_STRIP_BYTES = 6 # Bytes, where in video RAM, how far into the picture: a word each
 
             # The word that says how far into its table the picture a held run shows starts.
             def self.tile_run_held(number) = "rt tile run #{number} held"

@@ -25,9 +25,9 @@ module VBlank
           # or with the interrupt held off), and the save code and rt_rumble run in a pass.
           module Rumble
             LEFT = "rt rumble left" # 16 bits: the frames the motor has still to run for
-            BITS = "rt rumble bits" # the pattern, turned a place each frame
-            MOTOR = "rt rumble motor" # the register's motor bit as it stands: 0 or MOTOR_BIT
-            BANK = "rt rumble bank" # the save memory's bank in view
+            BITS = "rt rumble bits" # The pattern, turned a place each frame
+            MOTOR = "rt rumble motor" # The register's motor bit as it stands: 0 or MOTOR_BIT
+            BANK = "rt rumble bank" # The save memory's bank in view
 
             # The register's bit that runs the motor.
             MOTOR_BIT = 0x08

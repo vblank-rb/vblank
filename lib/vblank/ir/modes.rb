@@ -24,8 +24,8 @@ module VBlank
 
       DIRECT = :direct     # single-buffered direct color (bitmap)
       BUFFERED = :buffered # double-buffered, tear-free (bitmap)
-      TILED = :tiled       # tile backgrounds + hardware sprites
-      AFFINE = :affine     # the rotate/scale background layer (BG2), its own display system
+      TILED = :tiled       # Tile backgrounds + hardware sprites
+      AFFINE = :affine     # The rotate/scale background layer (BG2), its own display system
 
       # The two bitmap display modes — the same linear framebuffer, single- or
       # double-buffered. They're one display *system*; tiled is the other. The

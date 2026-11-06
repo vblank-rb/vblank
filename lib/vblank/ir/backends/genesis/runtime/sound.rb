@@ -27,11 +27,11 @@ module VBlank
           module Sound
             # The commands of a group of the song table (Genesis::Music), by what each does: the first
             # number and the second, each a word.
-            WRITE_PSG = 1 # one byte, or two for a voice's length of wave
-            WRITE_FM = 2 # a register, its value
-            SET_LOUD = 3 # a voice and a volume (high byte and low), the step it moves by
-            SET_LEVEL = 5 # a voice and a volume
-            SILENCE = 6 # the voices stopped, a bit each
+            WRITE_PSG = 1 # One byte, or two for a voice's length of wave
+            WRITE_FM = 2 # A register, its value
+            SET_LOUD = 3 # A voice and a volume (high byte and low), the step it moves by
+            SET_LEVEL = 5 # A voice and a volume
+            SILENCE = 6 # The voices stopped, a bit each
 
             ROUTINES = { WRITE_PSG => "rt_psg_write", WRITE_FM => "rt_fm_write", SET_LOUD => "rt_sound_loud",
                          SET_LEVEL => "rt_sound_level", SILENCE => "rt_sound_silence" }.freeze
@@ -40,9 +40,9 @@ module VBlank
             ONE_BYTE = 0xFFFF
 
             ON = "rt sound on" # 1 once the game has said `enable_sound`
-            VOLUMES = "rt sound volumes" # a word for each PSG voice: its volume, 0 to 15...
-            STEPS = "rt sound steps" # ...the 64ths of a second between its steps, above nought when it climbs...
-            COUNTS = "rt sound counts" # ...and how far to the next one
+            VOLUMES = "rt sound volumes" # A word for each PSG voice: its volume, 0 to 15
+            STEPS = "rt sound steps" # A word for each voice: the 64ths of a second between its steps, above nought when it climbs
+            COUNTS = "rt sound counts" # A word for each voice: how far to its next step
             VOICES = 4
 
             # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the number
@@ -56,7 +56,7 @@ module VBlank
             # the pass's number's low word, so a reader can tell the slot is this pass's, then the count.
             LOGGED_BY_PASS = "rt sound logged by pass"
             LOGGED_SLOT_BYTES = 4
-            TICKS_LEFT = "rt sound ticks left" # frames still to move the music on by, where a wait ends
+            TICKS_LEFT = "rt sound ticks left" # Frames still to move the music on by, where a wait ends
 
             # How many times the FM chip is asked if it is ready before it is written anyway.
             PATIENCE = 256

@@ -89,7 +89,7 @@ module VBlank
 
       private
 
-      ADVANCE = 6 # where in a letter's measures the pen's move after it is
+      ADVANCE = 6 # Where in a letter's measures the pen's move after it is
 
       def nearest_density(density) = density >= 1.5 ? 2 : 1
 

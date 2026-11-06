@@ -672,7 +672,7 @@ module VBlank
 
       PIECE_SIZE = IR::Assets::PIECE_SIZE
       BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE
-      PICTURE_REACH = 255 # a pose table says where a piece sits as a byte each way
+      PICTURE_REACH = 255 # A pose table says where a piece sits as a byte each way
 
       def refuse_bad_pieces!(name, pieces, colors)
         unless pieces.is_a?(Array) && !pieces.empty?

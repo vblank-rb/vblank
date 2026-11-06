@@ -573,7 +573,7 @@ module VBlank
               def height = image.height
               def drawn_at?(at) = image.drawn_at?(at)
               def color_at(at) = recolor.color_for(at, image.color_at(at))
-              def pieces = nil # cut from its swapped pixels, since its pieces name the first list's colours
+              def pieces = nil # Cut from its swapped pixels, since its pieces name the first list's colours
             end
 
             def color_list_named(name)

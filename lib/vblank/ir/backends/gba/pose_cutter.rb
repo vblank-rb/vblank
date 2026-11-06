@@ -22,7 +22,7 @@ module VBlank
         class PoseCutter
           include Console::Hardware
 
-          Mirror = SpriteCut::Mirror # a pose that is another pose turned
+          Mirror = SpriteCut::Mirror # A pose that is another pose turned
 
           def initialize(bitmaps)
             @bitmaps = bitmaps

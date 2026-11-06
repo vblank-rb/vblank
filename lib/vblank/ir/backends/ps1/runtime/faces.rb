@@ -82,7 +82,7 @@ module VBlank
             RIGHT_OFFSET_BYTES = 16
             BOTTOM_OFFSET_BYTES = 20
             SPANS_OFFSET_BYTES = 24
-            SIDE_OFFSET_BYTES = 28 # the side of a square a face in perspective is cut into, in sixteenths
+            SIDE_OFFSET_BYTES = 28 # The side of a square a face in perspective is cut into, in sixteenths
             # Nought for a face not lit; for a lit one, what its darkest light adds to a corner's colour, with
             # sixteen bits of fraction (FacePieces.light_floor).
             LIGHT_FLOOR_OFFSET_BYTES = 32
@@ -90,7 +90,7 @@ module VBlank
             # that order (rt_face_extents).
             EXTENTS_OFFSET_BYTES = 36
             EXTENT_NUMBERS = [FacePieces::TEXEL_U, FacePieces::TEXEL_V].freeze
-            POOL_NEXT_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + (EXTENT_NUMBERS.length * 8) # the pool's next free corner
+            POOL_NEXT_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + (EXTENT_NUMBERS.length * 8) # The pool's next free corner
             # The pool's next free corner as each piece waiting was put there, a word each.
             WAITING_MARKS_OFFSET_BYTES = POOL_NEXT_OFFSET_BYTES + 4
             # Where a face in perspective's squares start (FacePieces.each_cell): its least x, then its least

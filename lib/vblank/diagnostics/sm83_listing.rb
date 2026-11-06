@@ -26,8 +26,8 @@ module VBlank
                   0x1A => "ld a,[de]", 0x2A => "ld a,[hl+]", 0x3A => "ld a,[hl-]", 0xE2 => "ld [c],a",
                   0xF2 => "ld a,[c]" }.freeze
 
-      BANK_SIZE = 0x4000 # what each bank of the cartridge holds, the size of its window in the address space
-      HIGH_PAGE = 0xFF00 # where `ldh`'s one-byte address counts from
+      BANK_SIZE = 0x4000 # What each bank of the cartridge holds, the size of its window in the address space
+      HIGH_PAGE = 0xFF00 # Where `ldh`'s one-byte address counts from
 
       # The instruction at +at+ in +bytes+, which sits at +address+: [its words, how many bytes it
       # takes]. +name+ turns an address into what it is called, for the three kinds of operand

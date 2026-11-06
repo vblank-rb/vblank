@@ -37,19 +37,19 @@ module VBlank
       module ScreenFade
         # The hidden state, named with the framework's underscore prefix so a game's own
         # variables can never collide with it.
-        LEVEL = :__fade_level     # how far toward the color, 0.0 to 100.0
-        TARGET = :__fade_target   # where the ramp is heading
-        STEP = :__fade_step       # how far it moves each frame
-        COLOR = :__fade_color     # which color owns the screen right now
+        LEVEL = :__fade_level     # How far toward the color, 0.0 to 100.0
+        TARGET = :__fade_target   # Where the ramp is heading
+        STEP = :__fade_step       # How far it moves each frame
+        COLOR = :__fade_color     # Which color owns the screen right now
         ACTIVE = :__fade_active   # 1 while the ramp is running
         ROUTINE = :__fade_tick
 
         BLACK = 0
         WHITE = 1
         COLORS = { black: BLACK, white: WHITE }.freeze
-        FIRST_TINT = 2 # every other color takes the next code after these two
+        FIRST_TINT = 2 # Every other color takes the next code after these two
 
-        FULL = 100.0 # the amount at which nothing of the picture shows through
+        FULL = 100.0 # The amount at which nothing of the picture shows through
 
         # TARGET starts here rather than at 0, and that is not arbitrary: it is what lets
         # the guardrail below tell a real `fade_in` from the declaration. A fade_in writes
@@ -59,8 +59,8 @@ module VBlank
         # target and its step.
         NEVER_FADED = -1.0
 
-        DEFAULT_FRAMES = 30 # half a second — a scene change, not a blink
-        FLASH_FRAMES = 6    # a hit, which wants to be over before it is read as a fade
+        DEFAULT_FRAMES = 30 # Half a second — a scene change, not a blink
+        FLASH_FRAMES = 6    # A hit, which wants to be over before it is read as a fade
 
         # How many frames the display's own fade can step through without showing a level
         # twice: one for each of its levels. A game with a fade longer than this walks the
