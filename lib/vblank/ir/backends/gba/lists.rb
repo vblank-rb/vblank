@@ -627,6 +627,12 @@ module VBlank
           # slot at worst, never a neighbouring variable.
           def emit_list_set(node)
             info = list_info(node.name)
+            if (offset = written_slot_offset(info, node.index))
+              @lowering.value(node.value)                   # r0 = value
+              @primitives.emit_list_base(info[:base])       # after the value, which may use r9 itself
+              @emitter.emit(ASM.str_offset(ACC, LIST_ADDR, offset))
+              return
+            end
 
             @lowering.value(node.index)                     # r0 = index
             @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
@@ -640,6 +646,12 @@ module VBlank
           # list_get: read the item at an index into the accumulator (a value).
           def eval_list_get(node)
             info = list_info(node.name)
+            if (offset = written_slot_offset(info, node.index))
+              @primitives.emit_list_base(info[:base])
+              @emitter.emit(ASM.ldr_offset(ACC, LIST_ADDR, offset))
+              return
+            end
+
             @lowering.value(node.index)                     # r0 = index
             @bookkeeping&.emit_refuse_index_past_length(length_var(node.name), info[:base])
             emit_slot_address(info, node.name)         # r1 = &slot[(head+index)&mask]
@@ -653,6 +665,19 @@ module VBlank
           end
 
           private
+
+          # A SLOT NAMED BY A WRITTEN NUMBER, in a list of words whose items never move (no ring) and
+          # with no check on its length, is a fixed distance from the list's first slot: one load or
+          # store from the list's base, where a worked-out index takes six instructions or more to
+          # bound and scale. The byte offset, or nil where the slot must be found as the game runs
+          # (a ring, a narrow list, a number past the capacity, which the bound sends to slot nought).
+          def written_slot_offset(info, index)
+            return nil unless index.kind == :int && !info[:ring] && info[:width] == :word && @bookkeeping.nil?
+            return nil unless index.value.between?(0, info[:capacity] - 1)
+
+            offset = index.value * info[:bytes]
+            offset <= 0xFFF ? offset : nil
+          end
 
           # Turn an offset (already in r0 — an index, or length for a push) into the physical
           # slot address. Clobbers r0/r1 and the list's address register; leaves the address

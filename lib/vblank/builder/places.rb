@@ -389,7 +389,7 @@ module VBlank
              capacity: IR::Nodes::FillFace::MOST_CORNERS * IR::Nodes::FillFace::CORNER_NUMBERS, full_of: 0)
         list(IR::PlaceDrawing.name_of(shape.name, :seen), capacity: shape.points.length * IR::PlaceDrawing::SEEN_STRIDE,
                                                           full_of: 0)
-        list(IR::PlaceDrawing.name_of(shape.name, :stamps), capacity: shape.points.length, full_of: 0)
+        list(IR::PlaceDrawing.name_of(shape.name, :codes), capacity: shape.points.length, full_of: 0)
       end
 
       # The drawing of +shape+, its variables declared the first time the game draws it or asks
@@ -399,7 +399,8 @@ module VBlank
                                                    pictures: shape.listed_pictures, shading: shape.shading,
                                                    point_lights: shape.point_lights&.name,
                                                    corners_in_a_loop: !@console.code_cache_bytes.nil?,
-                                                   outcode_test: !@console.face_fill_skips_outside_window)
+                                                   outcode_test: !@console.face_fill_skips_outside_window,
+                                                   fill_by_row_middles: @console.face_fill_by_row_middles)
         @place_variables ||= {}
         @place_variables[shape.name] ||= drawing.variables.each { |variable| ensure_var(variable) }
         drawing

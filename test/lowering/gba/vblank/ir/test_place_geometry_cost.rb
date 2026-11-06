@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "differential"
+require "place_games"
 
 # WHAT A PLACE'S POINTS COST on the console before anything is filled: a grid of small faces far
 # off, each a few pixels on the screen and sharing its corners with its neighbours, so nearly all
@@ -50,5 +51,19 @@ class TestPlaceGeometryCost < Minitest::Test
 
     assert_operator cycles, :<, 6000, "a point took #{cycles.round} cycles; turned once a face it took 6270"
     assert_backends_agree(program, frames: 3, console_frames: 30, name: "GEOMCOST")
+  end
+
+  # A FLOOR OF ABOUT A THOUSAND FACES drawn whole every pass, as a level read from a file is, about
+  # half of them behind the viewer or beside the view and most of the rest far off and under a row
+  # high (PlaceGames.big_floor). A face out of view is passed over by its points' codes before any of
+  # its corners is read, and one under a row high before it is handed to the fill, so the pass goes
+  # on the faces that show. When every face was read, cut and tested before anything passed it over,
+  # the floor drew half as often.
+  def test_a_floor_of_a_thousand_faces_draws_at_least_eight_times_a_second
+    program = PlaceGames.big_floor(perspective: :none)
+    profile = VBlank::Diagnostics::Profiler.run(assemble_rom(program, name: "FLOORCOST"), frames: 120, picture: false)
+
+    assert_operator profile.fps, :>=, 8.0, "the floor drew #{profile.fps} times a second"
+    assert_backends_agree(program, frames: 2, console_frames: 30, name: "FLOORCOST")
   end
 end

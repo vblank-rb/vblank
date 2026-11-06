@@ -26,7 +26,7 @@
       "data": 0
     },
     "cave": {
-      "code": 38744,
+      "code": 38684,
       "data": 0
     },
     "chip_band": {
@@ -42,11 +42,11 @@
       "data": 0
     },
     "corridor": {
-      "code": 10538,
+      "code": 10454,
       "data": 0
     },
     "cube3d": {
-      "code": 35440,
+      "code": 36952,
       "data": 0
     },
     "dive": {
@@ -98,7 +98,7 @@
       "data": 44
     },
     "hero": {
-      "code": 79972,
+      "code": 79956,
       "data": 0
     },
     "jukebox": {
@@ -106,11 +106,11 @@
       "data": 0
     },
     "lake": {
-      "code": 4898,
+      "code": 4814,
       "data": 0
     },
     "level": {
-      "code": 4004,
+      "code": 3932,
       "data": 0
     },
     "level@genesis": {
@@ -118,11 +118,11 @@
       "data": 2370
     },
     "lit_corridor": {
-      "code": 39432,
+      "code": 40956,
       "data": 0
     },
     "maze": {
-      "code": 3348,
+      "code": 3300,
       "data": 0
     },
     "maze@genesis": {
@@ -174,7 +174,7 @@
       "data": 28080
     },
     "raycaster": {
-      "code": 6172,
+      "code": 6112,
       "data": 0
     },
     "rotozoom_bg": {
@@ -198,7 +198,7 @@
       "data": 8472
     },
     "sheet": {
-      "code": 4004,
+      "code": 3932,
       "data": 0
     },
     "shmup": {
@@ -234,7 +234,7 @@
       "data": 2776
     },
     "tower": {
-      "code": 15676,
+      "code": 15580,
       "data": 0
     },
     "tower@gbc": {
@@ -246,7 +246,7 @@
       "data": 3730
     },
     "two_rooms": {
-      "code": 36478,
+      "code": 38050,
       "data": 0
     },
     "wanderers": {

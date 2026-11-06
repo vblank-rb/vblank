@@ -141,7 +141,7 @@ module VBlank
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
-                              :pixel_size, :shows_bigger_pixels) do
+                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -154,14 +154,20 @@ module VBlank
       # The drawing is made once for the console, so a computer's build of such a game (as C,
       # JavaScript or Ruby) leaves it out too: it fills those faces and draws nothing of them.
       #
+      # +face_fill_by_row_middles+ is true where a face is filled as the interpreter fills it
+      # (Reference#exec_fill_face): a row is drawn where an edge crosses the row's middle. There a face
+      # whose corners all lie between two rows' middles draws nothing, and the shared drawing passes
+      # it over before it hands the corners on (IR::PlaceDrawing#whole_face_statements). False for a
+      # console whose fill puts the corners on whole pixels first, which can draw such a face's row.
+      #
       # +pixel_size+ is how many of the console's pixels across, and as many down, one pixel of the
       # game's picture is shown as: 1 for a game that says nothing, 2 for a game that draws a picture
       # half as wide and half as tall and has the console show each pixel as a square of four
       # (`screen :bitmap, pixel_size: 2`, #with_pixel_size). The screen size above is then the
       # game's small picture, which is what the game lays itself out on and what the interpreter
       # plays. +shows_bigger_pixels+ says whether the console's hardware can show it that way.
-      def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, pixel_size: 1,
-                     shows_bigger_pixels: false, **rest) = super
+      def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
+                     pixel_size: 1, shows_bigger_pixels: false, **rest) = super
 
       def screen_size = [screen_width, screen_height]
 
@@ -495,7 +501,10 @@ module VBlank
                                   rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
                                   extension: ".exe",
                                   # The R3000 keeps the last 4K of code it ran (psx-spx, "Memory Map").
-                                  code_cache_bytes: 4096)
+                                  code_cache_bytes: 4096,
+                                  # Its graphics chip fills a face from corners on whole pixels, not by
+                                  # rows' middles (Backends::PS1::PolygonFill).
+                                  face_fill_by_row_middles: false)
 
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 

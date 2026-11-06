@@ -735,6 +735,43 @@ module PlaceGames
     builder.program
   end
 
+  # A FLOOR OF ABOUT A THOUSAND FACES, as a level file gives a mine: BIG_FLOOR_SIDE points each way,
+  # one whole apart, a whole below a viewer standing over its middle a quarter of the way in, so
+  # about half its faces are behind the viewer or beside the view. Each face shows the tile.
+  BIG_FLOOR_SIDE = 32
+  BIG_FLOOR_FACES = (BIG_FLOOR_SIDE - 1) * (BIG_FLOOR_SIDE - 1)
+
+  def self.big_floor_data
+    side = BIG_FLOOR_SIDE
+    points = (0...side).flat_map { |row| (0...side).map { |col| [col - (side / 2) + 0.5, -1.0, row - (side / 4) + 0.5] } }
+    faces = (0...(side - 1)).flat_map do |row|
+      (0...(side - 1)).map do |col|
+        near = (row * side) + col
+        far = near + side
+        { points: [far, far + 1, near + 1, near], picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]] }
+      end
+    end
+    { points: points, faces: faces }
+  end
+
+  # The floor drawn every pass in perspective +perspective+.
+  def self.big_floor(perspective: :every_8_pixels)
+    level = big_floor_data
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      place :floor, **level
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        draw_place :floor, seen_by: eye, perspective: perspective
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # The colour the door shows on pass +pass+ of changing_door(passes:): the step's own, or for a
   # step passed over, the last one shown before it.
   def self.door_color(pass, passes: 3)

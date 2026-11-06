@@ -40,10 +40,11 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   string keys), a face with no `points:`, `picture:` or `on_picture:`, both a block and data, and
   `points:` without `faces:` or the other way round. **What it costs**: building costs what the block form
   costs, a small part of a second for a place of about a thousand faces on any console. Drawn whole,
-  a place that size takes many frames a drawing on the Advance and the PlayStation, the most of it in
-  each face's own work (its turned points read back, cut and tested) rather than the turning or the
-  fill; the commit that added the data form has the numbers. A game of that size draws only the
-  faces it can see (`faces:` and `window:` below).
+  a floor of about a thousand faces, half of them out of view, draws at least eight times a second on
+  the Advance with `perspective: :none` (`PlaceGames.big_floor`, held by a cost test), and takes several
+  frames a drawing in perspective and on the PlayStation; the faces out of view cost little (see "How
+  it is drawn"). A game of that size still does best drawing only the faces it can see (`faces:` and
+  `window:` below).
 - **Walls whose picture changes**: a door sliding through its frames, a wall of lava, a forcefield.
   Inside the place, `pictures :door0, :door1, :door2` lists pictures the place can show, numbered in a
   row after those listed before (a face's `picture:` lists its picture too, where it first names it);
@@ -214,7 +215,15 @@ other way round too: a game of rooms that asks where each room's corners land an
 draws each room with its own call turns a doorway's corners once, not once for the asking and once
 for each room beside it. A `screen_spot` with a nearer `near:` than the drawings' still shares. On a
 console whose processor runs its code from a small cache (the PlayStation's) a face's corners are
-worked in a loop, so a face's code stays in the cache from one face to the next. On every lowering a
+worked in a loop, so a face's code stays in the cache from one face to the next. **Each point gets a
+code as it is turned** (`IR::PlaceDrawing`, "POINT CODES"), as Descent's points did: which edges of the
+view it lies past, or that it is behind the viewer. A face whose corners share such a bit (all behind,
+or all past one edge of the view) is passed over before any of its corners is read, and a face with no
+corner behind is handed to the fill as it is, with none of the cut's tests. Where the near limit was
+nearer when the points were turned (a `screen_spot` with its own `near:`), only the behind bit is used,
+and the rest goes to the cut as before. A face drawn whole and seen from behind is passed over before
+its corners are handed on, and on every console but the PlayStation so is one whose corners all lie
+between two rows' middles, which draws nothing (most of a far floor). On every lowering a
 face whose corners, once it is cut at `near:`, all lie past one edge of the screen or the window is
 passed over before it is tested for which way it faces or filled, a face reaching behind the viewer
 included, so a game that draws a room through a doorway's window pays little for the faces the window

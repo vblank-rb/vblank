@@ -64,6 +64,14 @@ module VBlank
               emit_clamp_acc(0, info.count - 1)                    # clamp: 0..count-1
             end
             shift = { 1 => 0, 2 => 1, 4 => 2 }.fetch(info.elem_bytes)
+            if shift == 2
+              # A word is read in one instruction that scales the index itself, and through r1, so the
+              # variables' address in r12 is left where it was.
+              @emitter.emit_load_data_address(TMP, node.name)             # r1 = table base
+              @emitter.emit(ASM.ldr_reg_lsl(ACC, TMP, ACC, 2))            # r0 = table[index]
+              return
+            end
+
             @emitter.emit(ASM.lsl_imm(ACC, ACC, shift)) unless shift.zero?  # r0 = index * elem_bytes
             @emitter.emit_load_data_address(TMP, node.name)               # r1 = table base
             @emitter.emit(ASM.add_reg(ADDR, TMP, ACC))                      # r12 = &table[index]
@@ -83,22 +91,25 @@ module VBlank
             end
           end
 
-          # Clamp the accumulator into [low, high] in place — the branch-per-bound way
-          # emit_clamp uses for a variable, but on r0.
+          # Clamp the accumulator into [low, high] in place, each bound a compare and a move made only
+          # when it is past: no jump, which costs the processor two cycles more than an instruction
+          # skipped, and no label, after which nothing is known about the registers.
           def emit_clamp_acc(low, high)
-            keep_low = @emitter.gensym
-            @emitter.emit_number(TMP, low)
-            @emitter.emit(ASM.cmp_reg(ACC, TMP))
-            @emitter.emit_branch(:bcond, keep_low, cond: :ge)
-            @emitter.emit(ASM.mov_reg(ACC, TMP))
-            @emitter.place_label(keep_low)
+            emit_bound_acc(low, :lt)
+            emit_bound_acc(high, :gt)
+          end
 
-            keep_high = @emitter.gensym
-            @emitter.emit_number(TMP, high)
-            @emitter.emit(ASM.cmp_reg(ACC, TMP))
-            @emitter.emit_branch(:bcond, keep_high, cond: :le)
-            @emitter.emit(ASM.mov_reg(ACC, TMP))
-            @emitter.place_label(keep_high)
+          # The accumulator set to +bound+ where it is past it (+past+, :lt or :gt): a written number
+          # the instruction can carry rides in it, any other is built in TMP first.
+          def emit_bound_acc(bound, past)
+            if bound >= 0 && ASM.encode_rotated_immediate(bound)
+              @emitter.emit(ASM.cmp_imm(ACC, bound))
+              @emitter.emit(ASM.mov_imm_cond(past, ACC, bound))
+            else
+              @emitter.emit_number(TMP, bound)
+              @emitter.emit(ASM.cmp_reg(ACC, TMP))
+              @emitter.emit(ASM.mov_reg_cond(past, ACC, TMP))
+            end
           end
 
           # Evaluate lhs and rhs and combine them, the two sides in r0 and r1. Which side is in

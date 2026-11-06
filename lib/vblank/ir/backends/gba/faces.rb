@@ -153,12 +153,18 @@ module VBlank
             emit(ASM.cmp_imm(ACC, 3))
             emit_branch(:bcond, done, cond: :lt)
             store_var(ACC, :_face_corners)
+            # Only the face's own corners are handed over: the routine reads no corner past its
+            # count, and a face of four corners is most faces, so the copy stops there.
+            copied = gensym
             CORNER_WORDS.each_with_index do |word, at|
-              next if node.shading.nil? && at % LISTED_FIELDS.length == LISTED_FIELDS.index("light")
+              corner, field = at.divmod(LISTED_FIELDS.length)
+              emit_branch_past_corner_count(corner, copied, TMP) if field.zero?
+              next if node.shading.nil? && field == LISTED_FIELDS.index("light")
 
               @lowering.value(Build.list_get(node.corners, Build.int(at)))
               store_var(ACC, word)
             end
+            place_label(copied)
             emit_shading_words(node) if @lit
             node.edges.zip(EDGE_WORDS).each do |value, word|
               @lowering.value(value)
@@ -175,6 +181,17 @@ module VBlank
             store_var(ACC, :_face_perspective)
             @divide.emit_call_routine_at(@routine_iwram)
             place_label(done)
+          end
+
+          # On to +past+ when corner +corner+ is past the face's own: from the fourth on, the corner
+          # count read into +reg+ and compared. A face of three corners or four is most faces, so the
+          # work for the corners after its last is left undone.
+          def emit_branch_past_corner_count(corner, past, reg)
+            return if corner < 3
+
+            load_var(reg, :_face_corners)
+            emit(ASM.cmp_imm(reg, corner))
+            emit_branch(:bcond, past, cond: :le)
           end
 
           # Where the routine runs in the quick memory, which TopOfQuickMemory keeps for it; nil
@@ -436,7 +453,9 @@ module VBlank
           # The byte offset of edge field +field+ from the start of an edge's words.
           def edge_offset(field) = 4 * EDGE_FIELDS.index(field.to_s)
 
-          # Every edge, one turn of a loop each (see #emit_edge_body). The corners' words and the
+          # Every edge of the face's own corners, one turn of a loop each (see #emit_edge_body); the
+          # words of an edge past them keep whatever an earlier face left, and nothing reads them, as
+          # every loop over the edges stops at the corner count. The corners' words and the
           # edges' are side by side in memory (Faces.words is named first, in order), so each turn
           # reaches its corner and edge by where the first ones are; that is checked here, since a
           # different layout would read the wrong words.
@@ -448,7 +467,8 @@ module VBlank
             store_var(0, :_face_edge_at)
             place_label(top)
             load_var(0, :_face_edge_at)
-            emit(ASM.cmp_imm(0, MOST_CORNERS))
+            load_var(1, :_face_corners)
+            emit(ASM.cmp_reg(0, 1))
             emit_branch(:bcond, finished, cond: :ge)
             emit_edge_body
             load_var(0, :_face_edge_at)
@@ -624,6 +644,15 @@ module VBlank
             emit_branch(:bcond, each, cond: :ne)
             [4, 5, 6, 7].each { |reg| emit_row_of(reg, reg) } # each as the pixel its middle reaches
 
+            # A FACE CROSSING NO ROW'S MIDDLE draws nothing either. An edge's rows run from the row of
+            # its upper end to the row of its lower one (#emit_edge_body), so every row of the face is
+            # at or below the row of its highest corner and above the row of its lowest: where those
+            # are the same row, no edge has a row at all. The shared drawing passes over such a face
+            # when it is drawn whole (IR::PlaceDrawing#whole_face_statements); this is the fill's own
+            # test, two instructions, for a face cut at the near limit and a fill written in a program.
+            emit(ASM.cmp_reg(6, 7))
+            emit_branch(:bcond, out, cond: :ge)
+
             emit_edge_bound(1, :_face_left, 0, :at_least)
             emit(ASM.cmp_reg(5, 1))
             emit_branch(:bcond, out, cond: :lt)
@@ -676,7 +705,7 @@ module VBlank
             emit_number(4, Int32::MAX)
             emit_number(5, Int32::MIN)
             emit_number(3, var_addr(edge_word(0, :first)))
-            emit_number(2, MOST_CORNERS)
+            load_var(2, :_face_corners) # an edge past the corners is never worked out (#emit_edges)
             place_label(each)
             emit(ASM.ldr_offset(0, 3, edge_offset(:first)))
             emit(ASM.ldr_offset(1, 3, edge_offset(:past)))
@@ -731,10 +760,12 @@ module VBlank
             emit_number(6, 0)
             emit_number(7, Int32::MAX)
             emit_number(10, Int32::MIN)
+            counted = gensym
             MOST_CORNERS.times do |k|
               skip = gensym
               not_left = gensym
               not_right = gensym
+              emit_branch_past_corner_count(k, counted, 0) # an edge past the corners is never worked out
               load_var(0, edge_word(k, :first))
               emit(ASM.cmp_reg(4, 0))
               emit_branch(:bcond, skip, cond: :lt)
@@ -773,6 +804,7 @@ module VBlank
               place_label(not_right)
               place_label(skip)
             end
+            place_label(counted)
             emit(ASM.cmp_imm(6, 2))
             emit_branch(:bcond, next_row, cond: :lt)
             [7, 8, 9, 10, 11, 14].zip(ROW_ENDS).each { |reg, word| store_var(reg, word) }

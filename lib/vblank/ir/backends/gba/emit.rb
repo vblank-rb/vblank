@@ -191,6 +191,9 @@ module VBlank
             emit(ASM.mov_reg(14, 15)) # lr = the instruction after the jump below
             @branches += 1
             emit(ASM.bx(reg))
+            # ...a call, as #emit_branch's is: what the routine does with the registers is not seen here.
+            @address_register.forget
+            @list_register.forget
           end
 
           # --- a routine's number table (see {NumberTable}) ---
