@@ -375,13 +375,14 @@ module VBlank
                                  game's data pack out. The game reads the pack
                                  from a file as it starts (a program takes
                                  --data-pack PATH). A cartridge cannot do this.
-        --shell                  With --format ruby, web or native: build the game as a shell,
-                                 with none of the original's data in it. The
-                                 first time it is played, a menu asks for the
-                                 player's copy of the original (Load ROM). The
-                                 shell checks it, makes the data pack from it,
-                                 and keeps the pack. After that, the game
-                                 starts at once.
+        --shell                  With --format ruby, web or native: build the
+                                 game as a shell, with none of the original's
+                                 data in it. The first time it is played, a
+                                 menu asks for the player's copy of the
+                                 original (Load ROM). The shell checks it,
+                                 makes the data pack from it, and keeps the
+                                 pack. After that, the game starts at once.
+                                 With native, the output is a folder.
         #{SET}
 
       Measuring (see vblank profile --help):
