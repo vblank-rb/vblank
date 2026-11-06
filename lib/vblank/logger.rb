@@ -13,10 +13,16 @@ module VBlank
   #
   #   VBlank.logger = VBlank::Logger.new(io = StringIO.new, level: :debug)
   #
-  # Anything that takes the same calls will do, Ruby's own Logger included, on the main Ractor. The
-  # library keeps this small one rather than that, because Ruby's cannot be made in any other Ractor:
-  # Logger.new reads Logger::Severity::LEVELS, a constant Ruby will not share, and a test playing in a
-  # Ractor makes its logger there.
+  # WHY NOT RUBY'S OWN LOGGER: Ractors. The library's tests play in Ractors, and so can a game, and
+  # each Ractor makes its own logger (below). Ruby's Logger (the logger gem) cannot be made in any
+  # Ractor but the main one: Logger.new sets its level through Logger::Severity.coerce, which reads
+  # Logger::Severity::LEVELS, a constant the gem never makes shareable, so the call raises
+  # Ractor::IsolationError. Working round it means freezing the gem's own constants from here, or
+  # keeping every test that logs out of the Ractors, and either costs more than these few lines. Tried
+  # with logger 1.7.0 on Ruby 4.0. If a later logger makes its constants shareable, swap this class
+  # for it: the calls are the same, so nothing that logs changes.
+  #
+  # Anything that takes the same calls can stand in, Ruby's own Logger included on the main Ractor.
   #
   # Each Ractor keeps its own, since a test in a Ractor cannot reach one the whole process shares; a
   # Ractor that set none gets a new default. Threads in one Ractor share it.
