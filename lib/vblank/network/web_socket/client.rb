@@ -28,6 +28,7 @@ module VBlank
           io = open_socket(uri, port, ssl_context)
           client = new(io, host: uri.host, path: uri.request_uri.then { |path| path.empty? ? "/" : path }, address: url).tap(&:handshake)
           io = nil # the client keeps it now
+          VBlank.logger.debug("network") { "connected to the relay at #{url}" }
           client
         rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, SocketError, OpenSSL::SSL::SSLError => e
           raise HandshakeFailed, connection_words(url, e)
@@ -91,6 +92,7 @@ module VBlank
         def send_text(text)
           return if @ended || @closing
 
+          VBlank.logger.debug("network") { "sent #{text}" }
           write(Framing.encode(:text, text.b, mask_key: @mask_key.call))
         end
 
@@ -111,9 +113,24 @@ module VBlank
           @ended && @messages.empty?
         end
 
-        # Returns when there is a message to read, or the connection is closed.
-        def wait_for_text
-          IO.select([@io.respond_to?(:to_io) ? @io.to_io : @io]) until pending? || closed? || buffered_in_tls?
+        # Returns true when there is a message to read or the connection is closed, and false when +seconds+
+        # (nil for no limit) went by first.
+        #
+        # THE SOCKET IS READ ONCE A LOOK, and what decides whether to sleep is what that one read left. Asking
+        # pending? and then closed? read it twice: a message that came between the two was kept by the second,
+        # and the wait then slept on a socket with nothing more to come.
+        def wait_for_text(seconds = nil)
+          deadline = seconds && (clock + seconds)
+          loop do
+            read_what_has_arrived
+            return true if @ended || !@messages.empty?
+            next if buffered_in_tls?
+
+            left = deadline && (deadline - clock)
+            return false if left && left <= 0
+
+            IO.select([@io.respond_to?(:to_io) ? @io.to_io : @io], nil, nil, left)
+          end
         end
 
         # Says goodbye and closes. The relay tells the others this machine has gone.
@@ -127,6 +144,8 @@ module VBlank
         end
 
         private
+
+        def clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         # TLS holds bytes it has read and not given out, which a wait on the socket would not wake for.
         def buffered_in_tls? = @io.respond_to?(:pending) && @io.pending.to_i.positive?
@@ -187,6 +206,7 @@ module VBlank
           end
           return unless frame.fin
 
+          VBlank.logger.debug("network") { "received #{@pieces}" }
           @messages << @pieces.force_encoding(Encoding::UTF_8)
           @pieces = nil
         end

@@ -2,6 +2,7 @@
 
 require_relative "vblank/version"
 require_relative "vblank/root"
+require_relative "vblank/logger"
 
 module VBlank
   # A BUILD THAT STOPPED, whichever console or format it was for and whatever stopped it: the

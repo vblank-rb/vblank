@@ -341,7 +341,8 @@ required in its own module's front door, never in `lib/vblank.rb`**, which names
 only: a line for each, and that is the whole library. The order of those lines is not free, and
 the comment above them says which steps are real dependencies between modules and why.
 
-What stays at the top besides the front doors: `version.rb`, `root.rb`, and `cli.rb` and
+What stays at the top besides the front doors: `version.rb`, `root.rb`, `logger.rb` (`VBlank.logger`, where
+what runs says what it is doing, the network above all; `VBLANK_LOG=debug` shows it), and `cli.rb` and
 `pager.rb`, the command-line program, which `bin/vblank` requires and the library never does.
 `VBlank.game` and the library's error classes stay on `VBlank` itself: `BuildError`, which every
 build failure is one of (each lowering's own error included), `ROMError` and `ProfileError`.

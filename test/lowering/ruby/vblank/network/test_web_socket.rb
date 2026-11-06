@@ -93,6 +93,46 @@ class TestWebSocket < Minitest::Test
 
   private def wait_for_message(client) = Timeout.timeout(FUSE_SECONDS) { client.wait_for_text }
 
+  # A socket whose first read finds nothing, and whose other end sends +bytes+ just after that read: the
+  # message arrives between one look at the socket and the next, every time.
+  class ArrivesAfterFirstRead
+    def initialize(socket, other_end, bytes)
+      @socket = socket
+      @other_end = other_end
+      @bytes = bytes
+    end
+
+    def to_io = @socket
+
+    def read_nonblock(...)
+      return @socket.read_nonblock(...) unless @bytes
+
+      @other_end.write(@bytes)
+      @bytes = nil
+      raise IO::EAGAINWaitReadable
+    end
+
+    def method_missing(name, ...) = @socket.respond_to?(name) ? @socket.public_send(name, ...) : super
+    def respond_to_missing?(name, include_private = false) = @socket.respond_to?(name, include_private) || super
+  end
+
+  # The wait once read the socket a second time while deciding whether to sleep, kept what it found, and
+  # then slept on a socket with nothing left in it: the machine making a room waited for ever.
+  def test_a_message_that_arrives_while_the_wait_looks_still_ends_the_wait
+    ours, theirs = UNIXSocket.pair
+    client = WebSocket::Client.new(ArrivesAfterFirstRead.new(ours, theirs, Framing.encode(:text, "room made")), host: "relay.test")
+
+    assert client.wait_for_text(2), "the wait slept through a message it had already read"
+    assert_equal "room made", client.receive_text
+  end
+
+  def test_a_wait_with_a_time_limit_says_so_when_nothing_comes
+    ours, _theirs = UNIXSocket.pair
+    client = WebSocket::Client.new(ours, host: "relay.test")
+
+    refute client.wait_for_text(0.05)
+  end
+
   def test_a_client_and_a_server_pass_text_both_ways
     client, server = connected do |peer|
       IO.select([peer.io])

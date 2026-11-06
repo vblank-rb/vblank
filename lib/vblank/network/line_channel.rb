@@ -67,17 +67,27 @@ module VBlank
         @ended && @lines.empty?
       end
 
-      # Returns when there is a line to read, or the line is closed. +seconds+ is the longest to wait, for a
-      # caller that has other things to look at; nil waits for the socket however long that is. A byte that is
-      # not yet a whole line wakes the select but not the caller: the wait goes on until the deadline.
+      # Returns true when there is a line to read or the line is closed, and false when +seconds+ went by
+      # first: the longest to wait, for a caller that has other things to look at; nil waits for the socket
+      # however long that is. A byte that is not yet a whole line wakes the select but not the caller.
+      #
+      # The socket is read once a look, as WebSocket::Client#wait_for_text says why.
       def wait_for_text(seconds = nil)
         deadline = seconds && (Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds)
-        until pending? || closed?
+        loop do
+          return true if ready?
+
           left = deadline && (deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC))
-          return if left && left <= 0
+          return false if left && left <= 0
 
           IO.select([@io], nil, nil, left)
         end
+      end
+
+      # Whether a caller has something to do: a line to read, or the end to notice. One read of the socket.
+      def ready?
+        read_what_has_arrived
+        @ended || !@lines.empty?
       end
 
       # Ends the line without losing what was sent on it last (SocketEnd).

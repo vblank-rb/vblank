@@ -87,6 +87,7 @@ module VBlank
         return unless head
 
         @greetings.delete(greeting)
+        VBlank.logger.debug("relay") { "a machine connected (#{@peers.size + 1} now)" }
         @peers << Peer.new(socket: WebSocket::ServerPeer.answer(greeting.io, head, rest), connection: @relay.connect)
       rescue IO::WaitReadable
         nil
@@ -103,12 +104,16 @@ module VBlank
       def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       def carry_to_relay(peer)
-        peer.socket.read_messages.each { |text| peer.connection.send_text(text) }
+        peer.socket.read_messages.each do |text|
+          VBlank.logger.debug("relay") { "from a machine: #{text}" }
+          peer.connection.send_text(text)
+        end
         peer.connection.close if peer.socket.ended?
       end
 
       def carry_from_relay(peer)
         while (text = peer.connection.receive_text)
+          VBlank.logger.debug("relay") { "to a machine: #{text}" }
           peer.socket.send_text(text)
         end
       end

@@ -189,6 +189,39 @@ class TestDirectConnection < Minitest::Test
     assert_equal %w[second third], [channel.receive_text, channel.receive_text]
   end
 
+  # A socket whose first read finds nothing, and whose other end sends +bytes+ just after that read: the
+  # line arrives between one look at the socket and the next, every time.
+  class ArrivesAfterFirstRead
+    def initialize(socket, other_end, bytes)
+      @socket = socket
+      @other_end = other_end
+      @bytes = bytes
+    end
+
+    def to_io = @socket
+
+    def read_nonblock(...)
+      return @socket.read_nonblock(...) unless @bytes
+
+      @other_end.write(@bytes)
+      @bytes = nil
+      raise IO::EAGAINWaitReadable
+    end
+
+    def method_missing(name, ...) = @socket.respond_to?(name) ? @socket.public_send(name, ...) : super
+    def respond_to_missing?(name, include_private = false) = @socket.respond_to?(name, include_private) || super
+  end
+
+  # The wait once read the socket a second time while deciding whether to sleep, kept the line it found,
+  # and then slept on a socket with nothing left in it.
+  def test_a_line_that_arrives_while_the_wait_looks_still_ends_the_wait
+    ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(ArrivesAfterFirstRead.new(theirs, ours, "a line\n"))
+
+    assert channel.wait_for_text(2), "the wait slept through a line it had already read"
+    assert_equal "a line", channel.receive_text
+  end
+
   def test_a_wait_with_a_time_limit_waits_that_long_when_nothing_comes
     _ours, theirs = UNIXSocket.pair
     channel = Network::LineChannel.new(theirs)

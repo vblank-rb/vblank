@@ -53,7 +53,7 @@ module VBlank
       def wait_for_traffic
         sockets = @peers.map { |peer| peer.channel.io }.reject(&:closed?)
         sockets << @listener if @listener
-        IO.select(sockets) unless sockets.empty? || @peers.any? { |peer| peer.channel.pending? || peer.channel.closed? }
+        IO.select(sockets) unless sockets.empty? || @peers.any? { |peer| peer.channel.ready? }
         pump
       end
 
@@ -114,9 +114,12 @@ module VBlank
 
         def closed? = @connection.closed?
 
-        def wait_for_text
+        # +_seconds+ is taken as any line takes it and not used: the room is in this process and answers the
+        # host as it pumps, so its answer cannot be lost on the way.
+        def wait_for_text(_seconds = nil)
           @room.pump
           @room.wait_for_traffic until @connection.pending? || @connection.closed?
+          true
         end
       end
     end

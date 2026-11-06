@@ -16,8 +16,10 @@ module VBlank
       def close = @connection.close
       def closed? = @connection.closed?
 
-      # Returns once there is text to receive, or the link is closed. The other copies play meanwhile.
-      def wait_for_text
+      # Returns true once there is text to receive, or the link is closed. The other copies play meanwhile.
+      # +_seconds+ is taken as any line takes it and not used: in one process nothing comes late, and a wait
+      # that can never end raises Scheduler::Stalled instead.
+      def wait_for_text(_seconds = nil)
         until @connection.pending? || @connection.closed?
           unless @scheduler.inside?
             raise Scheduler::Stalled, "This machine waits for the relay and no other copy is playing. " \
@@ -25,6 +27,7 @@ module VBlank
           end
           @scheduler.wait
         end
+        true
       end
     end
   end

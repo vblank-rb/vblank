@@ -11,18 +11,31 @@ module VBlank
     class RelayTransport
       attr_reader :id, :code
 
+      # HOW LONG A MACHINE WAITS FOR THE RELAY TO ANSWER a request (make a room, join one, list them) before it
+      # says the relay is not answering. A person waits this long at most, and is told what to do. A relay on
+      # the other side of the world answers in well under a second, so this is room for a slow network, not a
+      # guess at the relay's speed. A test passes a short one, so a lost answer fails at once.
+      ANSWER_SECONDS = 15
+
       # Makes a room on the relay behind +line+. +code+ is what to tell the others. With +listing+ (a PublicListing)
       # the relay lists the room to machines that play the same game.
-      def self.make_room(line, listing: nil) = new(line).tap { |transport| transport.make_room(listing) }
+      def self.make_room(line, listing: nil, answer_seconds: ANSWER_SECONDS)
+        new(line, answer_seconds: answer_seconds).tap { |transport| transport.make_room(listing) }
+      end
 
       # The public rooms on the relay behind +line+ for the game with +fingerprint+: an Array of PublicRoom.
-      def self.list_rooms(line, fingerprint) = new(line).list_rooms(fingerprint)
+      def self.list_rooms(line, fingerprint, answer_seconds: ANSWER_SECONDS)
+        new(line, answer_seconds: answer_seconds).list_rooms(fingerprint)
+      end
 
       # Joins the room that has +code+. Raises RoomRefused when there is none.
-      def self.join_room(line, code) = new(line).tap { |transport| transport.join_room(code) }
+      def self.join_room(line, code, answer_seconds: ANSWER_SECONDS)
+        new(line, answer_seconds: answer_seconds).tap { |transport| transport.join_room(code) }
+      end
 
-      def initialize(line)
+      def initialize(line, answer_seconds: ANSWER_SECONDS)
         @line = line
+        @answer_seconds = answer_seconds
       end
 
       def send_message(message) = (@line.send_text(Wire.encode(message)) unless closed?)
@@ -63,13 +76,26 @@ module VBlank
 
       # The relay's reply to what was just asked, or an error in plain words.
       def answer
-        @line.wait_for_text
+        VBlank.logger.debug("network") { "waiting up to #{@answer_seconds} s for the relay to answer" }
+        @line.wait_for_text(@answer_seconds) or raise RelayNotAnswering, @answer_seconds
         text = @line.receive_text or raise ConnectionLost
+        VBlank.logger.debug("network") { "the relay answered #{text}" }
         reply = Wire.decode(text)
         return reply unless reply.is_a?(RelayError)
         raise VersionMismatch.by_relay(reply.supported) if reply.reason == :version
 
         raise RoomRefused.new(reply.reason, reply.words)
+      end
+    end
+
+    # A relay that did not answer a request in RelayTransport::ANSWER_SECONDS (or the time a caller gave).
+    class RelayNotAnswering < StandardError
+      attr_reader :seconds
+
+      def initialize(seconds)
+        @seconds = seconds
+        super("The relay did not answer in #{seconds} seconds. To fix this, check the network and try again. " \
+              "If it happens again, set VBLANK_LOG=debug and send what it says.")
       end
     end
 
