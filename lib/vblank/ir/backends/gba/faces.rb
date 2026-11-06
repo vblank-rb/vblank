@@ -79,7 +79,9 @@ module VBlank
                              _face_past _face_along _face_far_along _face_near_u _face_near_v _face_far_u
                              _face_far_v _face_du _face_dv _face_edge_at _face_edge_words _face_pending
                              _face_shading _face_levels _face_top_shade _face_bottom_shade _face_left_shade
-                             _face_right_shade _face_step_shade _face_shade].freeze
+                             _face_right_shade _face_step_shade _face_shade _face_run_end _face_moved_u
+                             _face_moved_v _face_over_u _face_over_v _face_over_w _face_stretch_u
+                             _face_stretch_v _face_stretch_w].freeze
 
           # EVERY WORD THE ROUTINE READS OR WRITES, which the lowering names before any of the game's
           # own variables (GBA#lower), so each is in reach of one instruction. A word past that reach
