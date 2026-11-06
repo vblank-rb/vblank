@@ -67,8 +67,10 @@ module VBlank
       # Declare the table, kept the way a record is, and the routine that places every record,
       # run at power-on before any record is looked at.
       def declare
+        # Each column starts as a whole table of empty rows, which a good table on the chip then
+        # replaces: on an empty chip the table needs no rows added one at a time.
         kept = IR::SaveLayout::TABLE_COLUMNS.map do |column|
-          at_boot(Build.list_new(table_list(column), ROWS, width: :word))
+          at_boot(Build.list_new(table_list(column), ROWS, width: :word, full_of: 0))
           SaveRecords::Kept.new(kind: :list, name: table_list(column), at: 0, width: :word, count: ROWS)
         end
         @save_table = @table_record.call(kept, place: @memory.table_at)
@@ -109,7 +111,8 @@ module VBlank
         record(Build.set(@save_table.scratch(:copy), sd_int(0)))
         record(Build.call(@save_table.routine(:scan)))
         record(Build.call(@save_table.routine(:load)))
-        # A table never written, or written with fewer rows, is filled out with empty ones.
+        # A table written with fewer rows is filled out with empty ones. One never written, or
+        # damaged, is not loaded at all, so its columns are still the empty rows they started as.
         IR::SaveLayout::TABLE_COLUMNS.each do |column|
           short = sd_op(:-, sd_int(ROWS), Build.list_len(table_list(column)))
           repeat(DSL::Value.new(handle, short)) { |_| record(Build.list_push(table_list(column), sd_int(0))) }
@@ -294,10 +297,15 @@ module VBlank
       def save_places_fits
         ends = sd_add(place_var(:probe), place_var(:need))
         set_place_var(:fits, sd_op(:<=, ends, sd_int(@memory.size)))
+        # A row nothing uses costs one test: the overlap, with its multiplications, is worked out
+        # only for a row in use. Most of the table is empty, and on a slow console the overlap
+        # worked out for every row was most of the time spent placing a record.
         repeat(ROWS) do |i|
-          clear = sd_op(:|, sd_op(:<=, ends, cell(:at, i.node)), sd_op(:>=, place_var(:probe), row_end(i.node)))
-          sd_when(sd_and(sd_and(row_in_use(i.node), sd_op(:!=, i.node, place_var(:skip))), sd_eq(clear, sd_int(0)))) do
-            set_place_var(:fits, 0)
+          sd_when(row_in_use(i.node)) do
+            clear = sd_op(:|, sd_op(:<=, ends, cell(:at, i.node)), sd_op(:>=, place_var(:probe), row_end(i.node)))
+            sd_when(sd_and(sd_op(:!=, i.node, place_var(:skip)), sd_eq(clear, sd_int(0)))) do
+              set_place_var(:fits, 0)
+            end
           end
         end
       end

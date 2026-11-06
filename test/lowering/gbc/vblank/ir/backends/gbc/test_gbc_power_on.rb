@@ -191,6 +191,50 @@ class TestGBCPowerOn < Minitest::Test
     assert_equal slow_frame - 1, slow, "and the frames spent setting up are counted"
   end
 
+  # A GAME THAT KEEPS A SMALL SAVE RECORD, as a high-score table is: a list of 61 bytes, so a body
+  # of 65, loaded at power-on. Pokémon Pinball's retail cartridge checks four such blocks at
+  # power-on (home/save.asm, LoadSavedData) and reaches its main loop's first pass on frame 11,
+  # measured in the emulator; setting the record up must cost no more than that.
+  private def saving_game(record: true)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :bitmap
+      if record
+        scores = list :scores, capacity: 61, width: :byte
+        high = save_data(:high, copies: 1) { keep scores }
+        high[0].load
+      end
+      passes = 0
+      game_loop { passes += 1 }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The frame the first pass of +program+'s cartridge is first seen on, from +save+.
+  private def first_pass_frame(program, save: nil)
+    rom = VBlank::Console.for(:gbc).builder.cartridge_for(program, title: "SAVESTART")
+    v = VBlank::Diagnostics::Verifier.new(rom, frames: 1, vars: rom.built.variables, save: save)
+    frame = 1
+    until v.var(:passes).positive?
+      flunk "no pass ran in 200 frames" if frame == 200
+      v.step
+      frame += 1
+    end
+    frame
+  end
+
+  def test_a_small_save_record_on_an_empty_chip_starts_by_frame_eleven
+    assert_operator first_pass_frame(saving_game), :<=, 11, "the first pass, on an empty chip"
+  end
+
+  def test_a_small_save_record_with_a_good_save_starts_by_frame_eleven
+    program = saving_game
+    good = Reference.save_into(SaveImage.new, program, :high, 0, scores: (1..61).to_a)
+
+    assert_operator first_pass_frame(program, save: good), :<=, 11, "the first pass, with a good save"
+  end
+
   def test_a_recording_started_while_the_game_sets_up_is_heard_once_it_runs
     program = counting_game(3_000, plays: true)
     first = game_player.run(program, frames: 3)[:first]

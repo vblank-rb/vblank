@@ -149,7 +149,7 @@ class TestSaveDataFast < Minitest::Test
   # memory's speed, and not for one at the cartridge's. It is a number picked for the
   # cartridge the build makes today. A change to how a loop or a save is built can move it,
   # and then the two tests below say which half no longer holds.
-  MOST_OF_A_FRAME = 14_000
+  MOST_OF_A_FRAME = 15_000
 
   # A measured build of +game+, played to the frame before the press that saves.
   private def played_to_the_press(game)
@@ -200,7 +200,7 @@ class TestSaveDataFast < Minitest::Test
     VBlank.game("SAVEFULL", consoles: %i[gba]) do
       screen :bitmap
       hearts = var :hearts, 3
-      hoard = list :hoard, capacity: 6800, fast: true
+      hoard = list :hoard, capacity: 6850, fast: true
       files = save_data(:file, fast: true) { keep hearts }
       game_loop do
         hoard.push 1

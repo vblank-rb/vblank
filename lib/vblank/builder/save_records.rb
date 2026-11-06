@@ -401,22 +401,31 @@ module VBlank
       # neither good, a half that was started — marker and shape, but a checksum that does not
       # match — is a save cut off before it could finish: the copy is damaged. A half with no
       # marker, or another record's shape, was never this record's, and the copy is empty.
+      #
+      # The body is summed only for a half that has the marker and the shape, as a retail
+      # cartridge checks a block's signature before its sum: a half never written costs two
+      # reads, not a pass over every byte of it. So setting up at power-on costs what the saves
+      # on the chip hold, which on an empty chip is nothing, and on a slow console that was most
+      # of the frames before the first pass.
       def save_data_scan(layout)
         copy = sd_var(layout.scratch(:copy))
-        started = sd_int(0)
+        started = layout.scratch(:started)
+        record(Build.set(started, sd_int(0)))
         2.times do |half|
           at = layout.scratch(:"at#{half}")
           record(Build.set(at, @halves.half_at(layout, copy, sd_int(half))))
           here = sd_var(at)
-          marked = sd_and(sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::MARKER_AT))), sd_int(IR::SaveLayout::MARKER)),
-                          sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::SHAPE_AT))), sd_int(layout.shape)))
-          summed = sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::CHECKSUM_AT))),
-                         Build.save_sum(sd_add(here, sd_int(IR::SaveLayout::HEADER)), sd_int(layout.body)))
-          record(Build.set(layout.scratch(:"v#{half}"), sd_and(marked, summed)))
+          # Good starts as marked, and is narrowed to summed only where it was marked.
+          good = layout.scratch(:"v#{half}")
+          record(Build.set(good, sd_and(sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::MARKER_AT))), sd_int(IR::SaveLayout::MARKER)),
+                                        sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::SHAPE_AT))), sd_int(layout.shape)))))
+          record(Build.set(started, Build.binop(:|, sd_var(started), sd_var(good))))
+          sd_when(sd_eq(sd_var(good), sd_int(1))) do
+            record(Build.set(good, sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::CHECKSUM_AT))),
+                                         Build.save_sum(sd_add(here, sd_int(IR::SaveLayout::HEADER)), sd_int(layout.body)))))
+          end
           record(Build.set(layout.scratch(:"s#{half}"), sd_read(sd_add(here, sd_int(IR::SaveLayout::SEQUENCE_AT)))))
-          started = Build.binop(:|, started, marked)
         end
-        record(Build.set(layout.scratch(:started), started))
         winner = layout.scratch(:winner)
         record(Build.set(winner, sd_int(-1)))
         sd_when(sd_eq(sd_var(layout.scratch(:v0)), sd_int(1))) { record(Build.set(winner, sd_int(0))) }

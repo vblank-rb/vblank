@@ -87,7 +87,15 @@ module VBlank
               asm.jump_relative(:nz, "rt_save_write_byte")
               asm.jump("rt_save_off")
 
-              asm.label("rt_save_sum") # (at, length): low += byte, high += low, each 16 bits
+              # (at, length): low += byte, high += low, each 16 bits.
+              #
+              # The loop over the bytes is the routine's whole cost, so it keeps what it can in
+              # registers, as a retail game's checksum loop does: the place in HL, the bytes left
+              # in BC, the low sum in DE, and only the high sum in the quick memory, for want of a
+              # fourth pair. The end of a bank is tested in line, and rt_save_next (which tests
+              # it again) called only there. Four reads and writes of the quick memory a byte,
+              # where keeping every number there took fourteen and a call.
+              asm.label("rt_save_sum")
               asm.load_hl_sp(2)
               asm.load(:b, 8)
               asm.call("rt_take_args")
@@ -96,41 +104,46 @@ module VBlank
               asm.load(:a, Frame::SAVE_READ_OUTSIDE)
               asm.call("rt_save_at")
               asm.xor_a(:a)
-              4.times { |i| asm.load_high(memory.args + 24 + i, :a) } # low, then high
+              asm.load_high(memory.args + 26, :a) # the high sum
+              asm.load_high(memory.args + 27, :a)
+              asm.load(:d, :a) # the low sum
+              asm.load(:e, :a)
               asm.load_high(:a, arg2.call(1) + 3)
               asm.bit(7, :a)
               asm.jump_relative(:nz, "rt_save_sum_done") # a length below nought: no bytes
-              asm.label("rt_save_sum_byte")
-              asm.load_high(:a, arg2.call(1)) # how many left: the length's low 16 bits, counted down
+              # The length's low 16 bits: rt_save_at has held the place and the length inside
+              # the 32K, so the high ones are nought.
+              asm.load_high(:a, arg2.call(1))
               asm.load(:c, :a)
               asm.load_high(:a, arg2.call(1) + 1)
+              asm.load(:b, :a)
               asm.or_a(:c)
               asm.jump_relative(:z, "rt_save_sum_done")
-              asm.load_high(:a, arg2.call(1))
-              asm.sub_a(1)
-              asm.load_high(arg2.call(1), :a)
-              asm.load_high(:a, arg2.call(1) + 1)
-              asm.sbc_a(0)
-              asm.load_high(arg2.call(1) + 1, :a)
-              asm.call("rt_save_next")
+              asm.label("rt_save_sum_byte")
+              asm.load(:a, :h)
+              asm.cp_a((h::SRAM + BANK_SIZE) >> 8)
+              asm.call(:z, "rt_save_next")
               asm.load(:a, [:hli])
-              asm.load(:c, :a)
-              asm.load_high(:a, memory.args + 24)
-              asm.add_a(:c)
-              asm.load_high(memory.args + 24, :a)
+              asm.add_a(:e)
               asm.load(:e, :a)
-              asm.load_high(:a, memory.args + 25)
-              asm.adc_a(0)
-              asm.load_high(memory.args + 25, :a)
-              asm.load(:d, :a) # DE = low
+              asm.jump_relative(:nc, "rt_save_sum_low")
+              asm.inc(:d)
+              asm.label("rt_save_sum_low")
               asm.load_high(:a, memory.args + 26)
               asm.add_a(:e)
               asm.load_high(memory.args + 26, :a)
               asm.load_high(:a, memory.args + 27)
               asm.adc_a(:d)
               asm.load_high(memory.args + 27, :a)
-              asm.jump_relative("rt_save_sum_byte")
+              asm.dec(:bc)
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_save_sum_byte")
               asm.label("rt_save_sum_done")
+              asm.load(:a, :e)
+              asm.load_high(memory.args + 24, :a)
+              asm.load(:a, :d)
+              asm.load_high(memory.args + 25, :a)
               asm.call("rt_save_off")
               asm.load(:hl, memory.args + 24)
               asm.jump("rt_load32")
