@@ -303,10 +303,30 @@ module VBlank
         ensure_rendered!
         # Kept so that it cannot be changed: it is handed out as `picture`, and the emulator's own
         # reader holds the same string. Read once per step, the first time it is asked for.
-        @pixels ||= (@probe.frame_buffer.freeze if @played.positive?)
+        @pixels ||= (shown_picture(@probe.frame_buffer) if @played.positive?)
         @pixels || raise(RuntimeError,
                          "This run has played no frames, so there is no picture to read. " \
                          "Give the Verifier `frames:` of 1 or more, or call `step` first.")
+      end
+
+      # TAKE THE BACKDROP OUT OF THE PICTURE, for the rest of the run: every pixel of the colour
+      # most of the screen is reads black, in {#picture} and everything read from it. It is for a
+      # picture of the sprites alone (`showing(only: :sprites)`), which shows the backdrop wherever
+      # no sprite draws: two cartridges can keep that colour differently under a room that hides
+      # it, and a comparison of what the sprites draw has no use for it. A sprite pixel of the
+      # backdrop's colour reads black with it.
+      #
+      # @return [self]
+      def leave_out_backdrop!
+        @backdrop_left_out = true
+        @pixels = nil
+        self
+      end
+
+      private def shown_picture(frame)
+        return frame.freeze unless @backdrop_left_out
+
+        Emulator.screen_questions.without_commonest_color(frame)
       end
 
       # THE PICTURE ON SCREEN WRITTEN AS A PNG at +path+, which is handed back: the frame the run

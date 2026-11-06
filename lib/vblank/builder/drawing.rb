@@ -210,7 +210,7 @@ module VBlank
         refuse_backdrop_on_painted_screen!(mode)
         if backdrop.is_a?(Symbol) && !Graphics::Color::PRESETS.key?(backdrop)
           raise ArgumentError, "`screen ... backdrop: :#{backdrop}` names no color and no list of colors. " \
-                               "To fix this, give a color name such as :navy, or declare the list first with " \
+                               "To fix this, give a color name such as :blue, or declare the list first with " \
                                "`colors :#{backdrop}, [...]`."
         end
 

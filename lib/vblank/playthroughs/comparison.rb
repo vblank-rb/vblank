@@ -419,7 +419,10 @@ module VBlank
         return unless @shown_layers
 
         consoles.zip(%w[first second], cartridges, @shown_layers).each do |console, which, cartridge, shown|
-          console.showing(**shown) if shown
+          next unless shown
+
+          console.showing(**shown)
+          console.leave_out_backdrop! if sprites_alone?(console, shown)
         rescue ArgumentError => e
           raise ArgumentError, "`layers:` was #{@layers.inspect}, and the #{which} cartridge is for a " \
                                "#{Console.for(cartridge.console).title}. #{e.message} Remove `layers:`, or leave the " \
@@ -618,6 +621,14 @@ module VBlank
         raise ArgumentError, "The comparison is on the same script. It was given #{said.join('; ')}. On the same script, " \
                              "the comparison looks at each named moment, not at each frame. Remove " \
                              "#{said.size == 1 ? 'that setting' : 'those settings'}, or compare on the same tape."
+      end
+
+      # Whether +console+ is told to show no background, so all its picture is the sprites and the
+      # backdrop behind them. The backdrop is then taken out (Verifier#leave_out_backdrop!): it is
+      # a colour each cartridge keeps its own way, and what is compared is what the sprites draw.
+      private def sprites_alone?(console, shown)
+        kept = shown[:only] ? Array(shown[:only]) : console.layers - Array(shown[:without])
+        (kept - [:sprites]).empty?
       end
 
       # What each console is told to show, the first's and then the second's, as the reader's

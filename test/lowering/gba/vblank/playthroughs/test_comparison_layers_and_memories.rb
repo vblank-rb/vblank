@@ -11,9 +11,9 @@ require "tmpdir"
 class TestComparisonLayersAndMemories < Minitest::Test
   include VBlank::Testing::PlaysAlike
 
-  private def field(box_x: 40, sea: :blue)
+  private def field(box_x: 40, sea: :blue, backdrop: :black)
     VBlank.build("FIELD", console: :gba, out: StringIO.new, err: StringIO.new) do
-      screen :tiled
+      screen :tiled, backdrop: backdrop
       image(:box, "#" => :white) { "########\n" * 8 }
       image(:sea, "." => sea) { "........\n" * 8 }
       tiles :set, "." => :sea
@@ -33,6 +33,17 @@ class TestComparisonLayersAndMemories < Minitest::Test
   def test_a_background_another_colour_is_forgiven_by_the_sprites_alone
     assert_raises(Minitest::Assertion) { assert_plays_alike field, field(sea: :green), stand }
     assert_plays_alike field, field(sea: :green), stand, layers: :sprites
+  end
+
+  # THE SPRITES ALONE ARE WHAT THE SPRITES DRAW: the colour behind them, which a room covers on
+  # the whole screen, is each cartridge's own. The two are alike under the sprites alone, and
+  # still differ when the box is a pixel off.
+  def test_the_sprites_alone_leave_the_colour_behind_them_out
+    red = field(backdrop: :red)
+
+    assert_plays_alike field, red, stand, layers: :sprites
+    assert_plays_alike field, red, stand, layers: [%i[sprites], { only: :sprites }]
+    assert_raises(Minitest::Assertion) { assert_plays_alike field, field(box_x: 41, backdrop: :red), stand, layers: :sprites }
   end
 
   def test_the_picture_without_sprites_still_finds_a_background_another_colour

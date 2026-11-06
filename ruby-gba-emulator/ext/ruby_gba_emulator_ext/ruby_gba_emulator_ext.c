@@ -1819,6 +1819,47 @@ screen_same_p(VALUE mod, VALUE one, VALUE other)
 }
 
 /*
+ * RubyGBAEmulator::Screen.without_commonest_color(screen) → String
+ *
+ * The screen again, with every pixel of the colour most of it is (at
+ * the precision a console shows) made black, every byte nought. A
+ * picture of the sprites alone shows the backdrop everywhere no sprite
+ * draws, and two cartridges can keep that colour differently under a
+ * room that hides it; this is the picture with the backdrop taken out,
+ * so two of them are alike where only the backdrop differs. A sprite
+ * pixel of the backdrop's colour is taken out with it, and so is the
+ * commonest colour of a screen the sprites cover more than any one
+ * other colour does.
+ */
+static VALUE
+screen_without_commonest_color(VALUE mod, VALUE screen)
+{
+    (void)mod;
+    StringValue(screen);
+    long count = screen_pixel_count(screen);
+    VALUE copy = rb_str_new(RSTRING_PTR(screen), RSTRING_LEN(screen));
+    if (count == 0) return rb_obj_freeze(copy);
+
+    uint32_t *seen = ALLOC_N(uint32_t, 1u << 15);
+    memset(seen, 0, sizeof(uint32_t) << 15);
+    const unsigned char *src = (const unsigned char *)RSTRING_PTR(screen);
+    uint32_t commonest = 0;
+    for (long i = 0; i < count; i++) {
+        uint32_t color = screen_console_color(screen_pixel(src, i));
+        if (++seen[color] > seen[commonest]) commonest = color;
+    }
+    xfree(seen);
+
+    unsigned char *dst = (unsigned char *)RSTRING_PTR(copy);
+    for (long i = 0; i < count; i++) {
+        if (screen_console_color(screen_pixel(dst, i)) == commonest)
+            memset(dst + i * SCREEN_BYTES_PER_PIXEL, 0, SCREEN_BYTES_PER_PIXEL);
+    }
+    RB_GC_GUARD(screen);
+    return rb_obj_freeze(copy);
+}
+
+/*
  * RubyGBAEmulator::Screen.difference(one, other, width, looked_at = nil) → Hash or nil
  *
  * How two screens differ, at the precision a console shows, or nil
@@ -4727,6 +4768,7 @@ Init_ruby_gba_emulator_ext(void)
     rb_define_module_function(mScreen, "only_color", screen_only_color, -1);
     rb_define_module_function(mScreen, "same?", screen_same_p, 2);
     rb_define_module_function(mScreen, "difference", screen_difference, -1);
+    rb_define_module_function(mScreen, "without_commonest_color", screen_without_commonest_color, 1);
     rb_define_module_function(mScreen, "brightness", screen_brightness, -1);
 
 #ifdef RUBY_GBA_EMULATOR_RCHEEVOS
