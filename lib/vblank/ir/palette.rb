@@ -84,13 +84,34 @@ module VBlank
         clear = bitmap.transparent
         marker = clear && transparent_index(bitmap)
 
-        bytes = bitmap.pixels.unpack("v*").map do |value|
+        numbers = bitmap.shading && bitmap.places_in_shading(bitmap.shading)
+        bytes = bitmap.pixels.unpack("v*").each_with_index.map do |value, at|
           next marker if clear && value == clear
+          next slot_for_place(bitmap.shading, numbers[at]) if numbers && @place_slots.key?([bitmap.shading, numbers[at]])
 
           @slots.fetch(value & 0x7FFF) { raise Missing, unplaceable_message(bitmap, value) }
         end
 
         [bytes.pack("C*"), marker]
+      end
+
+      # TWO PLACES OF ONE COLOUR THAT DARKEN APART. A shading finds a pixel's darkening by its
+      # number on this screen, and two places of a shading that hold one colour have one number
+      # unless something gives them two. A picture given as numbers into the shading's colours
+      # (Nodes::Bitmap#places_in_shading) says which place each pixel is, so every place that
+      # holds the colour of an earlier place and darkens differently gets a number of its own,
+      # holding the same colour. Its own palette puts it after every other colour, so a game
+      # without such a picture keeps its numbers; a palette the game gives must hold the colour
+      # once more for it (#claim_given_slots!).
+      #
+      # The number a place of shading +shading_name+ is drawn with.
+      def slot_for_place(shading_name, place) = @place_slots.fetch([shading_name, place])
+
+      # The place of shading +shading_name+ the number +slot+ was given to, or nil for a number
+      # that is its colour's (the shading finds that one's place by its colour).
+      def place_at_slot(shading_name, slot)
+        owner, place = @slot_places[slot]
+        place if owner == shading_name
       end
 
       # Can #indices_for be asked about +bitmap+: does it draw on a painted screen, or hold only
@@ -133,18 +154,71 @@ module VBlank
         roots = scopes || [program] # the subtrees to gather colors from
         @program = program
         @roots = roots
+        @place_slots = {} # [shading name, place] => the number that place is drawn with (#slot_for_place)
+        @slot_places = {} # that number => [shading name, place]
+        @slots_by_darkening = {} # PlaceDarkenedApart#slot_key => its number, shared by places that darken alike
+        apart = places_darkened_apart(roots)
         given = given_entries(program)
-        return use_given_palette!(given, roots) if given
+        return use_given_palette!(given, roots, apart) if given
 
         distinct = colors_drawn_in(roots).uniq # first-seen order, deduped by resolved value
-        needed = (distinct + [BLACK]).uniq.size # one slot per color, plus reserved black
-        raise Overflow, overflow_message(distinct.size) if needed > CAPACITY
+        extra = apart.map(&:slot_key).uniq.size
+        needed = (distinct + [BLACK]).uniq.size + extra # one slot per color, plus reserved black
+        raise Overflow, overflow_message(distinct.size + extra) if needed > CAPACITY
 
         # value(15-bit) => slot. Black goes in first so it lands at 0; the rest take
         # slots in first-seen order.
         @slots = { BLACK => 0 }
         distinct.each { |value| @slots[value] ||= @slots.size }
         @entries = @slots.keys # keys are inserted in slot order, so this is the table
+        apart.each { |place| assign_place_slot(place) { @entries.size.tap { @entries << place.color } } }
+      end
+
+      # A place of a lit picture of numbers that holds the colour of an earlier place of its
+      # shading and darkens another way: the shading's name, the place, its colour, and its colour
+      # at each level. Places of one shading and colour that darken alike share a number, found
+      # by #slot_key.
+      PlaceDarkenedApart = Data.define(:shading, :place, :color, :darkening) do
+        def slot_key = [shading, color, darkening]
+      end
+
+      # Every PlaceDarkenedApart the lit fills under +roots+ draw, in the order their pictures name them.
+      def places_darkened_apart(roots)
+        lit = roots.flat_map { |root| root.walk.select { |node| node.kind == :fill_face && node.shading } }
+        return [] if lit.empty?
+
+        shadings, bitmaps = shadings_and_bitmaps
+        lit.flat_map do |fill|
+          shading = shadings[fill.shading]
+          next [] unless shading
+
+          darkening = ->(place) { shading.levels.map { |level| shading.colors[level[place]] } }
+          fill.pictures.filter_map { |name| bitmaps[name]&.places_in_shading(fill.shading) }.flatten.uniq.filter_map do |place|
+            color = shading.colors[place]
+            place_darkening = darkening.call(place)
+            next if place_darkening == darkening.call(shading.places[color])
+
+            PlaceDarkenedApart.new(shading: fill.shading, place: place, color: color, darkening: place_darkening)
+          end
+        end.uniq
+      end
+
+      # The program's shadings and pictures by name, the program walked once.
+      def shadings_and_bitmaps
+        shadings = {}
+        bitmaps = {}
+        @program.walk do |node|
+          shadings[node.name] = node if node.kind == :shading
+          bitmaps[node.name] = node if node.kind == :bitmap
+        end
+        [shadings, bitmaps]
+      end
+
+      # Gives +place+ a number: the one an earlier place that darkens alike has, or the block's.
+      def assign_place_slot(place)
+        slot = (@slots_by_darkening[place.slot_key] ||= yield)
+        @place_slots[[place.shading, place.place]] = slot
+        @slot_places[slot] ||= [place.shading, place.place]
       end
 
       # A table the program brought with it, because its pictures were made against that
@@ -156,13 +230,40 @@ module VBlank
       # A duplicate color keeps its FIRST slot for drawing, and both slots stay in the
       # table: a real imported palette repeats colors, and dropping the later one would
       # shift every slot after it and break every picture.
-      def use_given_palette!(given, roots)
+      def use_given_palette!(given, roots, apart)
         @entries = given
         @slots = {}
         given.each_with_index { |value, slot| @slots[value] ||= slot }
 
         missing = colors_drawn_in(roots).uniq.reject { |value| @slots.key?(value) }
         raise Missing, missing_message(missing, roots) unless missing.empty?
+
+        claim_given_slots!(apart)
+      end
+
+      # A place that darkens apart from an earlier place of its colour takes a later slot of the
+      # given table that holds the colour and nothing has taken: the slot of its own number where
+      # that holds it (a game whose table and shading are one list), else the first such slot.
+      def claim_given_slots!(apart)
+        taken = @slots.values
+        apart.each do |place|
+          assign_place_slot(place) do
+            free = (0...@entries.size).select { |slot| @entries[slot] == place.color && !taken.include?(slot) }
+            slot = free.include?(place.place) ? place.place : free.first
+            raise Missing, place_without_slot_message(place) unless slot
+
+            taken << slot
+            slot
+          end
+        end
+      end
+
+      def place_without_slot_message(place)
+        color = name_for(place.color)
+        "Shading :#{place.shading} has #{color} at place #{place.place} and at an earlier place, and the " \
+          "two places darken to different colors. A lit picture draws place #{place.place}. The screen's " \
+          "`colors:` does not hold #{color} once more for it, so the screen cannot keep the two places " \
+          "apart. Add #{color} to the screen's `colors:` again."
       end
 
       # Which picture a color came from, where one did. An unexpected color usually arrives in a
@@ -219,22 +320,23 @@ module VBlank
       # Every colour the lit fills +fills+ can draw beside their pictures' own: each of those
       # colours at every level of its fill's shading (Nodes::Shading). The program is walked once
       # for all of them.
+      #
+      # A picture given as numbers into the fill's shading (Nodes::Bitmap#places_in_shading) is
+      # darkened by its numbers, so those are what it reaches; any other by its colours.
       def shaded_colors(fills)
-        shadings = {}
-        bitmaps = {}
-        @program.walk do |node|
-          shadings[node.name] = node if node.kind == :shading
-          bitmaps[node.name] = node if node.kind == :bitmap
-        end
+        shadings, bitmaps = shadings_and_bitmaps
         fills.flat_map do |fill|
           shading = shadings[fill.shading]
           next [] unless shading
 
           places = shading.places
-          fill.pictures.filter_map { |name| bitmaps[name] }
-              .flat_map { |bitmap| bitmap.pixels.unpack("v*").reject { |pixel| pixel == bitmap.transparent } }.uniq
-              .filter_map { |pixel| places[pixel & 0x7FFF] }
-              .flat_map { |place| shading.levels.map { |level| shading.colors[level[place]] } }
+          fill.pictures.filter_map { |name| bitmaps[name] }.flat_map do |bitmap|
+            numbers = bitmap.places_in_shading(fill.shading)
+            next numbers if numbers
+
+            bitmap.pixels.unpack("v*").reject { |pixel| pixel == bitmap.transparent }
+                  .filter_map { |pixel| places[pixel & 0x7FFF] }
+          end.uniq.flat_map { |place| shading.levels.map { |level| shading.colors[level[place]] } }
         end
       end
 

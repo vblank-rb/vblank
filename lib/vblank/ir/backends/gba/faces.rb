@@ -343,17 +343,24 @@ module VBlank
           # palette does not hold, keeps its own number: no lit picture holds that colour (the
           # palette has every level of each colour one does), so no lit pixel ever looks it up.
           # The colour is on the screen for something else, a clear or a line of text.
+          #
+          # A number the palette gave to one place of the shading, for a lit picture of numbers whose
+          # place holds an earlier place's colour and darkens apart from it (Palette#place_at_slot),
+          # darkens by that place.
           def palette_shading_bytes(shading)
             places = shading.places
             shading.levels.flat_map do |level|
               (0...256).map do |number|
-                place = number < @palette.size ? places[@palette.color_at(number)] : nil
+                place = number < @palette.size ? @palette.place_at_slot(shading.name, number) || places[@palette.color_at(number)] : nil
                 shaded = place && shading.colors[level[place]]
                 shaded && @palette.holds_color?(shaded) ? @palette.index_of(shaded) : number
               end
             end.pack("C*")
           end
 
+          # A pixel here is found among the colours, so a picture given as numbers into the shading
+          # darkens by its first place of each colour: no place is drawn on this screen (only a
+          # fill written straight into a program is), so nothing tells two places apart here.
           def color_shading_bytes(shading)
             shaded = shading.levels.flat_map { |level| level.map { |place| shading.colors[place] } }
             [shading.colors.length].pack("l<") + (shading.colors + shaded).pack("v*")

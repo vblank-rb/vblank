@@ -238,6 +238,35 @@ module PlaceGames
     builder.program
   end
 
+  # A shading whose first two colours are one white that darkens two ways: place 0 goes black at
+  # the darker level, place 1 only gray. Places 2 and 3 are the gray and the black.
+  TWIN_WHITES = Ractor.make_shareable([0x7FFF, 0x7FFF, 0x2108, 0x0000])
+  TWIN_WHITE_LEVELS = Ractor.make_shareable([[3, 2, 2, 3], [0, 1, 2, 3]])
+
+  # The square face (x 60 to 179, y 20 to 139), every corner's light +light+, its picture given as
+  # numbers into the shading's colours: its left half place 0 and its right half place 1, both the
+  # same white. So lit dark, the left half is black and the right half gray; lit bright, all white.
+  # +screen_colors+ is the tear-free screen's own list of colours, where the game gives one.
+  def self.twin_whites(light:, screen_colors: nil)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen_colors ? screen(:bitmap, tear_free: true, colors: screen_colors) : screen(:bitmap, tear_free: true)
+      shading :fade, colors: TWIN_WHITES, levels: TWIN_WHITE_LEVELS
+      image :halves, width: 8, height: 8, shading: :fade, places: Array.new(64) { |at| (at % 8) < 4 ? 0 : 1 }
+      place :wall, shading: :fade do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
+             picture: :halves, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: light
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        draw_place :wall, seen_by: eye, perspective: :none
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # Two squares two wholes ahead, the big one (face 0, the tile) covering x 60 to 179 and y 20 to
   # 139 and the small one (face 1, stripes) in its middle, x 90 to 149 and y 50 to 109. The game
   # draws the face numbers in +order+, from a list it fills, so a later face is drawn over an

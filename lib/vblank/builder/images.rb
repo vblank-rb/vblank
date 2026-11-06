@@ -71,6 +71,10 @@ module VBlank
       # The list can also be one declared with `colors`, by its name — `colors: :sea` — which is
       # what a layer drawn from several lists needs, so `draw_with` can say which of them is
       # which (see Background#draw_with).
+      #
+      # A picture a place is lit by can count into its shading's colours instead (#define_shaded_image):
+      #
+      #   image :wall, width: 64, height: 64, shading: :fade, places: [3, 228, ...]
       def image(name, opts = {}, &block)
         # A picture the game paints itself, kept in a list of its own (see TileRuns).
         return define_picture_run(name, opts) if opts[:from].is_a?(DSL::List)
@@ -85,6 +89,9 @@ module VBlank
           define_ascii_image(name, opts, colors_name: colors_name, &block)
         elsif opts[:pieces]
           define_pieced_image(name, pieces: opts[:pieces], colors: opts[:colors], colors_name: colors_name)
+        elsif opts.key?(:shading)
+          define_shaded_image(name, places: opts[:places], width: opts[:width], height: opts[:height],
+                                    shading: opts[:shading], colors: opts[:colors])
         elsif opts[:places]
           define_placed_image(name, places: opts[:places], width: opts[:width], height: opts[:height],
                                     colors: opts[:colors], colors_name: colors_name)
@@ -582,6 +589,44 @@ module VBlank
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)
       end
 
+      # A LIT PICTURE GIVEN AS NUMBERS INTO ITS SHADING'S COLOURS (see Places#shading): each pixel
+      # the place in the shading's `colors:` of its colour, as a game's own art counts into the
+      # palette its fade tables are made for. Every place is a colour; none is see-through.
+      #
+      # A shading finds a pixel's darkening by its colour, so of two places with one colour the
+      # first one's darkening is the only one a picture of colours can have. A picture of numbers
+      # keeps each pixel's place (Nodes::Bitmap#shading_places), and a face lit by this shading
+      # darkens each pixel by its own place's levels. Everything else draws the colours.
+      def define_shaded_image(name, places:, width:, height:, shading:, colors:)
+        positive_dims!(name, width, height)
+        unless colors.nil?
+          raise ArgumentError, "image :#{name} was given shading: and colors:. Its places count into the shading's " \
+                               "colors. To fix this, give shading: alone."
+        end
+        shading_node = (@shadings || {})[shading]
+        unless shading_node
+          raise ArgumentError, "image :#{name} was given places in shading: #{shading.inspect}, and there is no such " \
+                               "shading. To fix this, declare it with `shading :#{shading}, colors: [...], levels: [...]` first."
+        end
+        expected = width * height
+        unless places.is_a?(Array) && places.length == expected
+          raise ArgumentError, "image :#{name} is #{width}x#{height}, so it needs #{expected} places. " \
+                               "Got #{places.is_a?(Array) ? places.length : 'none'}. A picture lit by its " \
+                               "shading's numbers is given as `image :#{name}, width:, height:, shading:, places: [...]`."
+        end
+        last = shading_node.colors.length - 1
+        stray = places.uniq.find { |place| !(place.is_a?(Integer) && place.between?(0, last)) }
+        unless stray.nil?
+          raise ArgumentError, "image :#{name} has the place #{stray.inspect}. Shading :#{shading} has " \
+                               "#{last + 1} colors, so a place is a whole number from 0 to #{last}."
+        end
+
+        drawn = places.map { |place| shading_node.colors[place] }
+        record_picture(Build.bitmap(name, width: width, height: height, pixels: drawn.pack("v*"),
+                                          shading: shading, shading_places: places.pack("v*")))
+        record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: nil)
+      end
+
       # A PICTURE MADE OF 8x8 PIECES, each where the game puts it, as a cartridge's own sprites are
       # kept: a list of pieces, each [dx, dy, places] — where its top left sits in the picture, and
       # its 64 pixels row by row as places in the `colors:` list, nought see-through. Pieces may
@@ -645,6 +690,11 @@ module VBlank
       # three ways of saying it, and two of them would have to agree with nothing able to
       # check that they did.
       def one_source_of_pixels!(name, opts, block)
+        if opts.key?(:shading) && (block || %i[pieces data from transparent].any? { |key| opts.key?(key) })
+          raise ArgumentError,
+                "image :#{name} was given shading: and another way to say its pixels. A picture lit by its " \
+                "shading's numbers takes its pixels from places: alone. Give width:, height:, shading: and places:."
+        end
         if opts[:pieces] && (block || %i[places data from width height].any? { |key| opts[key] })
           raise ArgumentError,
                 "image :#{name} was given pieces: and another way to say its pixels or its size. A picture " \

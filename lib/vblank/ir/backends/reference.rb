@@ -250,6 +250,7 @@ module VBlank
           @bg_shown = []           # the backgrounds painted onto the screen so far, in that order
           @tables = {}             # name -> { values:, signed: } (a read-only ROM table)
           @shadings = {}           # name -> Shade (a game's shading, see Nodes::Shading)
+          @shaded_pictures = {}    # name -> the Bitmap of a picture given as numbers into a shading's colours
           @timers = {}            # name -> { hz:, running:, parts: } (a hardware timer; see #accrue_timer)
           @timer_handlers = {}    # name -> on_timer node whose body runs on each overflow
           @audio = []             # observable audio: [:enabled], [:beep, ..], [:note, ..]
@@ -604,6 +605,7 @@ module VBlank
             when :bitmap
               @data[n.name] = n.pixels
               @bitmaps[n.name] = Assets::Image.of(n)
+              @shaded_pictures[n.name] = n if n.shading
             when :tile_run
               # Tiles the game paints from a list: see-through until the first copy.
               @tile_runs[n.name] = n
@@ -3300,6 +3302,8 @@ module VBlank
           bottom = [bottom, @screen.height].min
           spans = eval_value(node.perspective)
           shade = node.shading && @shadings.fetch(node.shading) { raise ProgramError, "fill_face with undeclared shading #{node.shading.inspect}" }
+          # A console's own model of its drawing shades as its chip does, by colour, and reads no
+          # shading tables, so a picture given as numbers is its colours there.
           if @face_filler
             return @face_filler.fill_face(@screen, picture: picture, pixels: pixels, corners: corners,
                                                    edges: [left, top, right, bottom], spans: spans, shade: shade)
@@ -3310,6 +3314,7 @@ module VBlank
           edges = FaceEdges.of(corners)
           return if edges.empty?
 
+          shade = shade.with_places(@shaded_pictures[name]&.places_in_shading(node.shading)) if shade
           first = [edges.map(&:first_row).min, top].max
           last = [edges.map(&:past_row).max, bottom].min
           (first...last).each do |row|
@@ -3325,10 +3330,26 @@ module VBlank
         # FillFace::LIGHTEST) times how many levels there are is what steps across the face, and its
         # whole part is the level a pixel is drawn at.
         class Shade
-          def initialize(node)
+          def initialize(node, picture_places: nil)
+            @node = node
             @levels = node.levels
             @colors = node.colors
             @places = node.places
+            @picture_places = picture_places
+          end
+
+          # The same shading for filling one picture: +picture_places+ are its pixels' numbers in
+          # the shading's colours (Nodes::Bitmap#places_in_shading), or nil for a picture of
+          # colours, each pixel found among the shading's colours by its colour.
+          def with_places(picture_places) = picture_places ? Shade.new(@node, picture_places: picture_places) : self
+
+          # The colour the picture's pixel +at+ (counting across the rows), of colour +color+,
+          # becomes at the level +shade+ has reached: by its own number where the picture gave
+          # numbers, else by its colour (#color_at).
+          def pixel_color_at(at, color, shade)
+            return color_at(color, shade) unless @picture_places
+
+            @colors[@levels[Nodes::Shading.level_of(shade)][@picture_places[at]]]
           end
 
           # How many levels of light the shading has.
@@ -3395,7 +3416,7 @@ module VBlank
             color = pixels.getbyte(at) | (pixels.getbyte(at + 1) << 8)
             next if picture.transparent && color == picture.transparent
 
-            color = shade.color_at(color, Int32.add(from[4], Int32.mul(steps[3], along))) if shade
+            color = shade.pixel_color_at(at / 2, color, Int32.add(from[4], Int32.mul(steps[3], along))) if shade
             @screen.set_pixel(x, row, color)
           end
         end

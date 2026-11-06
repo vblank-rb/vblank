@@ -435,11 +435,22 @@ module VBlank
         declaration!
         category :data
         operands name: :name, width: :int, height: :int, pixels: :text, transparent: :int,
-                 colors: :list, places: :text, colors_name: :name, pieces: :list
+                 colors: :list, places: :text, colors_name: :name, pieces: :list,
+                 shading: :name, shading_places: :text
 
         # The list of colours it was drawn from, as a background's recolouring keeps them apart
         # (Assets::Image#list_drawn_from).
         def list_drawn_from = [colors_name, colors]
+
+        # A picture given as numbers into a shading's colours (Builder#image with +shading+) keeps
+        # each pixel's number, two bytes a pixel, in +shading_places+: two numbers of one colour
+        # that darken apart are told apart by it. A face lit by +shading+ darkens each pixel by
+        # its own number's levels; nothing else reads them, and every other drawing draws +pixels+.
+        #
+        # The numbers, one a pixel, when +shading_name+ is the shading they count into; else nil.
+        def places_in_shading(shading_name)
+          shading_places&.unpack("v*") if shading && shading == shading_name
+        end
       end
 
       class Blit

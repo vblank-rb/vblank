@@ -7,8 +7,8 @@ names, under `.claude/dsl/`. **Read that file before using, changing or document
 grep `.claude/dsl/` for an option or handle method not named here.
 
 A drift test (`test/all/vblank/test_dsl_reference.rb`) fails if a builder verb is missing from
-this index or from its section's group file. A new verb gets a few words here and its whole
-story in the group file.
+this index or from its section's group file. A new verb gets a line here, its story in the
+group file.
 
 Coordinates are pixels from the top left of a 240×160 screen. A `:symbol` names a variable, an
 Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`, `List`,
@@ -73,7 +73,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Places — `.claude/dsl/places.md`
 
-- `place :cube do … end` or `points:, faces:` (data), `viewer`, `draw_place` (`at:`, `facing:`), `screen_spot`, `change_picture` — 3D, lit by `shading`.
+- `place :cube do … end` or `points:, faces:` (data), `viewer`, `draw_place` (`at:`, `facing:`), `screen_spot`, `change_picture` — 3D, lit by `shading` (`image shading:`).
 
 ## Collision — `.claude/dsl/collision.md`
 

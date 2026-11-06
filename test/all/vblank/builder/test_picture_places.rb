@@ -269,4 +269,56 @@ class TestPicturePlaces < Minitest::Test
     assert_match(/draws at place 9/, error.message)
     assert_match(/0 to 3/, error.message)
   end
+
+  # --- friendly errors on places into a shading's colours ---
+
+  def test_places_in_a_shading_that_is_not_declared_is_a_friendly_error
+    error = refused do
+      screen :bitmap, tear_free: true
+      image :wall, width: 8, height: 8, shading: :fade, places: PLACES
+    end
+
+    assert_match(/no such shading/, error.message)
+  end
+
+  def test_places_in_a_shading_with_colors_too_is_a_friendly_error
+    error = refused do
+      screen :bitmap, tear_free: true
+      shading :fade, colors: [0x7FFF, 0x0000], levels: [[1, 1], [0, 1]]
+      image :wall, width: 8, height: 8, shading: :fade, places: Array.new(64) { 1 }, colors: OWN
+    end
+
+    assert_match(/shading: and colors:/, error.message)
+  end
+
+  def test_a_shading_without_places_is_a_friendly_error
+    error = refused do
+      screen :bitmap, tear_free: true
+      shading :fade, colors: [0x7FFF, 0x0000], levels: [[1, 1], [0, 1]]
+      image :wall, width: 8, height: 8, shading: :fade
+    end
+
+    assert_match(/needs 64 places. Got none/, error.message)
+  end
+
+  def test_a_shading_with_pixels_given_another_way_is_a_friendly_error
+    error = refused do
+      screen :bitmap, tear_free: true
+      shading :fade, colors: [0x7FFF, 0x0000], levels: [[1, 1], [0, 1]]
+      image :wall, width: 8, height: 8, shading: :fade, data: COLORS
+    end
+
+    assert_match(/shading: and another way to say its pixels/, error.message)
+  end
+
+  def test_a_place_the_shading_does_not_hold_is_a_friendly_error
+    error = refused do
+      screen :bitmap, tear_free: true
+      shading :fade, colors: [0x7FFF, 0x0000], levels: [[1, 1], [0, 1]]
+      image :wall, width: 8, height: 8, shading: :fade, places: Array.new(64) { 2 }
+    end
+
+    assert_match(/the place 2/, error.message)
+    assert_match(/0 to 1/, error.message)
+  end
 end

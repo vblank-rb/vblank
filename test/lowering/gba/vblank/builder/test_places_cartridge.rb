@@ -99,6 +99,27 @@ class TestPlacesCartridge < Minitest::Test
                                                                                       name: "LAMP")
   end
 
+  # A picture given as numbers into its shading's colours, two of them the same white that darken
+  # apart: the cartridge gives each its own number on the screen, from its own palette or from the
+  # one the game gives (which holds that white twice), and draws as the interpreter does.
+  def test_two_equal_colours_given_as_numbers_agree
+    [nil, [0x0000, 0x7FFF, 0x2108, 0x7FFF]].each do |screen_colors|
+      [0.0, [0.0, 1.0, 1.0, 0.0]].each do |light|
+        assert_backends_agree(PlaceGames.twin_whites(light: light, screen_colors: screen_colors), frames: 3,
+                                                                                                  console_frames: 30, name: "TWINS")
+      end
+    end
+  end
+
+  # The screen's own list holds that white once, so it has no second number to keep the two apart.
+  def test_a_screen_list_without_a_second_white_is_a_friendly_error
+    program = PlaceGames.twin_whites(light: 0.0, screen_colors: [0x0000, 0x7FFF, 0x2108])
+    error = assert_raises(VBlank::IR::Palette::Missing) { assemble_rom(program) }
+
+    assert_match(/place 1/, error.message)
+    assert_match(/again/, error.message)
+  end
+
   # A shading may list a colour the screen shows for something else (here black, cleared to) and
   # give it, at a level, a colour no lit picture can come to (navy). Nothing lit is ever black, so
   # the screen never needs navy: the cartridge builds, and draws as the interpreter does.

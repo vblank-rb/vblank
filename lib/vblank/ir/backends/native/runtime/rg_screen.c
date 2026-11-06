@@ -2004,18 +2004,26 @@ static int32_t shading_place_of(const int32_t *shading, int32_t color) {
   return shading_places[color];
 }
 
-/* Reference::Shade#color_at: the colour +color+ becomes at +shade+ (its level in the top sixteen
- * bits). A colour not in the shading's list stays as it is. */
-static int32_t shaded_color(const int32_t *shading, int32_t color, int32_t shade) {
-  int32_t place = shading_place_of(shading, color);
-  if (place < 0) return color;
+/* Reference::Shade#pixel_color_at: the colour place +place+ of the shading's colours becomes at
+ * +shade+ (its level in the top sixteen bits). */
+static int32_t shaded_place(const int32_t *shading, int32_t place, int32_t shade) {
   int32_t colors = shading[1];
   int32_t level = rg_shr(shade, 16);
   return shading[2 + shading[2 + colors + level * colors + place]];
 }
 
+/* Reference::Shade#color_at: the colour +color+ becomes at +shade+. A colour not in the shading's
+ * list stays as it is. */
+static int32_t shaded_color(const int32_t *shading, int32_t color, int32_t shade) {
+  int32_t place = shading_place_of(shading, color);
+  if (place < 0) return color;
+  return shaded_place(shading, place, shade);
+}
+
+/* +numbers+ is, for a picture given as numbers into the shading's colours, those numbers as a
+ * picture of the same size (Native::Picture#shading_array); its pixels is NULL for any other. */
 static void face_row(int32_t row, int32_t *from, int32_t *to, int32_t left, int32_t right, picture art,
-                     int32_t spans, const int32_t *shading) {
+                     picture numbers, int32_t spans, const int32_t *shading) {
   int32_t start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16);
   int32_t stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16);
   int32_t count = rg_sub(stop, start);
@@ -2052,7 +2060,11 @@ static void face_row(int32_t row, int32_t *from, int32_t *to, int32_t left, int3
     int32_t down = rg_and(rg_shr(v, 16), art.height - 1);
     int32_t color = art.pixels[down * art.width + across];
     if (color == RG_NOT_DRAWN) continue;
-    if (shading) color = shaded_color(shading, color, rg_add(from[4], rg_mul(steps[3], along)));
+    if (shading) {
+      int32_t shade = rg_add(from[4], rg_mul(steps[3], along));
+      color = numbers.pixels ? shaded_place(shading, numbers.pixels[down * art.width + across], shade)
+                             : shaded_color(shading, color, shade);
+    }
     set_pixel(x, row, color);
   }
 }
@@ -2105,6 +2117,13 @@ void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t whic
   if (first < top) first = top;
   if (past > bottom) past = bottom;
   picture art = picture_of(image);
+  /* After the levels' places, a lit fill lists, for each of its pictures, the image of its numbers
+   * into the shading's colours, or -1 for a picture of colours. */
+  picture numbers = {NULL, 0, 0};
+  if (shading) {
+    int32_t numbered = shading[2 + shading[1] + shading[0] * shading[1] + clamp32(which, 0, picture_count - 1)];
+    if (numbered >= 0) numbers = picture_of(numbered);
+  }
   for (int32_t row = first; row < past; row++) {
     int32_t from[5] = {INT32_MAX, 0, 0, 0, 0}, to[5] = {INT32_MIN, 0, 0, 0, 0};
     int crossing = 0;
@@ -2119,7 +2138,7 @@ void rg_screen_face(const int32_t *pictures, int32_t picture_count, int32_t whic
       if (at[0] < from[0]) memcpy(from, at, sizeof at);
       if (at[0] >= to[0]) memcpy(to, at, sizeof at);
     }
-    if (crossing >= 2) face_row(row, from, to, left, right, art, spans, shading);
+    if (crossing >= 2) face_row(row, from, to, left, right, art, numbers, spans, shading);
   }
 }
 

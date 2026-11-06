@@ -198,6 +198,20 @@ class TestPlacesOnTheAdvance < Minitest::Test
     end
   end
 
+  # A picture given as numbers into its shading's colours darkens by each pixel's own number, though
+  # two of the numbers are the same white: lit dark, place 0 is black and place 1 gray.
+  def test_two_equal_colours_given_as_numbers_darken_by_their_own_levels
+    [nil, [0x0000, 0x7FFF, 0x2108, 0x7FFF]].each do |screen_colors|
+      dark = game_player.run(PlaceGames.twin_whites(light: 0.0, screen_colors: screen_colors), frames: 2).screen
+      bright = game_player.run(PlaceGames.twin_whites(light: 1.0, screen_colors: screen_colors), frames: 2).screen
+
+      assert_equal shown(0x0000), dark.pixel(80, 80), "place 0 darkens to black"
+      assert_equal shown(0x2108), dark.pixel(160, 80), "place 1, the same white, darkens to gray"
+      assert_equal shown(0x7FFF), bright.pixel(80, 80)
+      assert_equal shown(0x7FFF), bright.pixel(160, 80)
+    end
+  end
+
   # What the game adds to each point's light as it runs lights the face, held to the brightest.
   def test_light_the_game_adds_to_its_points_lights_the_face
     screen = game_player.run(PlaceGames.lit_square(left: 0.0, right: 0.0, added: 0.8), frames: 2).screen

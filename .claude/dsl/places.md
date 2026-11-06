@@ -165,6 +165,20 @@ a corridor whose lamp flickers.
   `colors:` of the colour it becomes at that level. A game's own shading tables come over as they are
   (32 levels, say). A colour not in `colors:` is drawn as it is. Friendly errors: a level whose length
   is not the number of colours, a place out of range, no levels, a second shading of the same name.
+- **Two places of one colour that darken apart**: a shading finds a pixel's darkening by its colour,
+  so where `colors:` holds one colour at two places with different levels (a game's palette nearly
+  always repeats some), a picture of colours darkens all of it by the first place's levels.
+  `image :wall, width: 64, height: 64, shading: :lamplight, places: [...]` gives the picture as
+  NUMBERS into the shading's `colors:` instead, one for each pixel, as a game's own art counts into the
+  palette its fade tables were made for: each pixel is the colour at its place, and a face lit by that
+  shading darkens each pixel by its own place's levels. Every place is a colour (none is see-through).
+  Anything else that draws the picture, and a face lit by another shading, draws its colours. The
+  Advance gives each such place a number of its own on the tear-free screen, holding the same colour,
+  one of its 256 for each colour and darkening; a screen given `colors:` must hold that colour once more
+  for it (a game whose screen list and shading list are one list holds it already). A game that
+  gives no picture of numbers builds as before. Friendly errors: a shading not declared yet, `colors:`
+  as well, places of the wrong count or that the shading does not hold, and a screen's `colors:`
+  with no second slot of the colour. Worked example: `PlaceGames.twin_whites` in `test/place_games.rb`.
 - `place :hall, shading: :lamplight do … end` lights the place. `face …, light: 0.5` gives every
   corner of the face that light, and `light: [1.0, 0.5, 0.5, 1.0]` one for each corner in order;
   left out, 1. A number outside 0 to 1 is a friendly error. A light is held to just under 1.
@@ -185,7 +199,8 @@ a corridor whose lamp flickers.
   costs about what it does unlit however many levels its shading has and however steeply its light
   falls. Where the shading darkens each colour evenly (a game's fade tables), a pixel is within a level
   of the shading's colour; a shading that does anything else (a tint, a fog) is drawn as the colour
-  made darker. Any picture can be lit there.
+  made darker. Any picture can be lit there; a picture given as numbers is its colours made darker, as
+  the chip shades by colour and reads no tables.
 
 **How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`

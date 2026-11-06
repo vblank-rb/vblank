@@ -2093,13 +2093,22 @@ def rg_shaded_color(shading, color, shade)
   place = places[color]
   return color if place.nil?
 
+  rg_shaded_place(shading, place, shade)
+end
+
+# Reference::Shade#pixel_color_at: the colour place +place+ of the shading's colours becomes at
+# +shade+.
+def rg_shaded_place(shading, place, shade)
+  colors = shading[1]
   level = rg_shr(shade, 16)
   shading[2 + shading[2 + colors + (level * colors) + place]]
 end
 
 # Reference#fill_face_row: one row of a face, from +from+ to +to+ (each x, u, v, w, shade), in
 # perspective every +spans+ pixels (none when nought), each pixel through +shading+ when lit.
-def rg_face_row(row, from, to, left, right, image, spans, shading)
+# +numbers+ is, for a picture given as numbers into the shading's colours, the image of those
+# numbers; nil for any other.
+def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
   start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16)
   stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16)
   count = rg_sub(stop, start)
@@ -2110,6 +2119,7 @@ def rg_face_row(row, from, to, left, right, image, spans, shading)
     to[4] = rg_clamp_wide(to[4], 0, (shading[0] << 16) - 1)
   end
   art, at, art_width, art_height = rg_picture_of(image)
+  numbered, numbered_at, = rg_picture_of(numbers) if numbers
   steps = (1..4).map { |part| rg_div(rg_sub(to[part], from[part]), count) }
   near_at = -1
   near = far = nil
@@ -2136,7 +2146,14 @@ def rg_face_row(row, from, to, left, right, image, spans, shading)
     color = art[at + (down * art_width) + across]
     next if color == RG_NOT_DRAWN
 
-    color = rg_shaded_color(shading, color, rg_add(from[4], rg_mul(steps[3], along))) if shading
+    if shading
+      shade = rg_add(from[4], rg_mul(steps[3], along))
+      color = if numbers
+                rg_shaded_place(shading, numbered[numbered_at + (down * art_width) + across], shade)
+              else
+                rg_shaded_color(shading, color, shade)
+              end
+    end
     rg_set_pixel(x, row, color)
   end
 end
@@ -2173,6 +2190,13 @@ def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, 
   end
   return if edges.empty?
 
+  # After the levels' places, a lit fill lists, for each of its pictures, the image of its numbers
+  # into the shading's colours, or -1 for a picture of colours.
+  numbers = nil
+  if shading
+    numbered = shading[2 + shading[1] + (shading[0] * shading[1]) + rg_clamp_wide(picture, 0, picture_count - 1)]
+    numbers = numbered unless numbered.negative?
+  end
   first = [edges.map(&:first_row).min, top].max
   past = [edges.map(&:past_row).max, bottom].min
   (first...past).each do |row|
@@ -2188,7 +2212,7 @@ def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, 
       from = at if from.nil? || at[0] < from[0]
       to = at if to.nil? || at[0] >= to[0]
     end
-    rg_face_row(row, from, to, left, right, image, spans, shading) if crossing >= 2
+    rg_face_row(row, from, to, left, right, image, numbers, spans, shading) if crossing >= 2
   end
 end
 

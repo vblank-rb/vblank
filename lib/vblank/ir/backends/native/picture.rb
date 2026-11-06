@@ -181,7 +181,12 @@ module VBlank
             @images.each_key do |name, colors|
               image = picture_named(name)
               info.push(pixels.length, image.width, image.height)
-              drawn = sprite_pixels(image, colors)
+              drawn = if colors == SHADING_PLACES
+                        bitmap = @data.fetch(name)
+                        bitmap.places_in_shading(bitmap.shading)
+                      else
+                        sprite_pixels(image, colors)
+                      end
               if drawn.any? { |pixel| pixel > MAX_COLOR }
                 raise LoweringError, "picture #{name.inspect} holds a pixel past the fifteen bits a colour has, " \
                                      "so #{build_name} cannot make it."
@@ -667,13 +672,26 @@ module VBlank
           end
 
           # A lit fill's shading as the runtime reads it: how many levels, how many colours, the
-          # colours, then each level's places (Nodes::Shading); a fill that is not lit hands the one
-          # number nought.
+          # colours, then each level's places (Nodes::Shading), then for each of the fill's pictures
+          # the image of its numbers into the shading's colours (Nodes::Bitmap#places_in_shading),
+          # or -1 for a picture of colours; a fill that is not lit hands the one number nought.
           def shading_array(node)
             shading = node.shading && @shadings.fetch(node.shading)
-            values = shading ? [shading.levels.length, shading.colors.length, *shading.colors, *shading.levels.flatten] : [0]
+            values = if shading
+                       numbered = node.pictures.map do |name|
+                         picture = @data[name]
+                         picture&.kind == :bitmap && picture.places_in_shading(node.shading) ? image_number(name, SHADING_PLACES) : -1
+                       end
+                       [shading.levels.length, shading.colors.length, *shading.colors, *shading.levels.flatten, *numbered]
+                     else
+                       [0]
+                     end
             drawing_array("shading", "int32_t", values)
           end
+
+          # The key, in place of a list of colours, of an image whose pixels are a picture's numbers
+          # into its shading's colours (#shading_array).
+          SHADING_PLACES = :shading_places
 
           def lower_save_region(node) = [patch_statement("rg_patch_save", node)]
           def lower_restore_region(node) = [patch_statement("rg_patch_restore", node)]
