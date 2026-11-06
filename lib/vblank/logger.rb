@@ -13,8 +13,10 @@ module VBlank
   #
   #   VBlank.logger = VBlank::Logger.new(io = StringIO.new, level: :debug)
   #
-  # Anything that takes the same calls will do, Ruby's own Logger included (a gem of its own since
-  # Ruby 4.0, which is why the library keeps this small one rather than needing it).
+  # Anything that takes the same calls will do, Ruby's own Logger included, on the main Ractor. The
+  # library keeps this small one rather than that, because Ruby's cannot be made in any other Ractor:
+  # Logger.new reads Logger::Severity::LEVELS, a constant Ruby will not share, and a test playing in a
+  # Ractor makes its logger there.
   #
   # Each Ractor keeps its own, since a test in a Ractor cannot reach one the whole process shares; a
   # Ractor that set none gets a new default. Threads in one Ractor share it.
