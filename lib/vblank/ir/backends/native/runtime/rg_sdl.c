@@ -1780,7 +1780,8 @@ int main(int argc, char **argv) {
       return 0;
     }
   }
-  rg_shell_asked shell_asked = {NULL, NULL, NULL};
+  rg_shell_asked shell_asked = {NULL, NULL, NULL, NULL};
+  int menu_open_asked = 0; /* --open-menu: the window's menu open as the game starts (a shell's SETTINGS) */
   const char *save_file_asked_for = NULL;
   const char *settings_file_asked_for = NULL;
   int usual_settings_asked_for = 0;
@@ -1796,6 +1797,8 @@ int main(int argc, char **argv) {
     if (strcmp(argv[i], "--pack-folder") == 0 && i + 1 < argc) shell_asked.pack_folder = argv[i + 1];
     if (strcmp(argv[i], "--shell-copy") == 0 && i + 1 < argc) shell_asked.copy = argv[i + 1];
     if (strcmp(argv[i], "--shell-menu-keys") == 0 && i + 1 < argc) shell_asked.menu_keys = argv[i + 1];
+    if (strcmp(argv[i], "--shell-settings-keys") == 0 && i + 1 < argc) shell_asked.settings_keys = argv[i + 1];
+    if (strcmp(argv[i], "--open-menu") == 0) menu_open_asked = 1;
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
     if (strcmp(argv[i], "--start-up") == 0) start_up_asked = 1;
 #endif
@@ -1844,6 +1847,7 @@ int main(int argc, char **argv) {
   /* The menu's boxes are see-through, and fade at their edges. */
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
   rg_window_menu_reset(RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
+  if (menu_open_asked && rg_game_has_menu) rg_window_menu_toggle();
   /* If the windows of keys and variables cannot start the window says so, and the menu and the
    * hotkeys still work. */
   if (!rg_menu_start(window, renderer)) {

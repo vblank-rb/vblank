@@ -5,9 +5,9 @@
  * - the pack kept in the game's folder, if it passes the check, is the pack;
  * - otherwise the menu part plays until the player picks a line. LOAD ROM asks for a file through
  *   the system's file dialog; it must be a release the game reads (its size, then its SHA-1), and
- *   the release's unpacking part plays handed the file, as fast as the computer goes, drawing its
+ *   the release's unpacking part plays handed the bytes that were checked, as fast as the computer goes, drawing its
  *   progress bar. The bytes it made, after the header for the file's SHA-1, are the pack, written to
- *   the folder.
+ *   the folder. SETTINGS plays the menu again with the window's menu open.
  *
  * Every sentence is the build's (rg_shell_facts), filled in here by rg_words_fill.
  *
@@ -122,9 +122,10 @@ static char *part_file(const char *name) {
 }
 
 /* Runs the part called +name+ to its end: with the copy for its start file where it has one, played
- * from the script of buttons in +keys+ where a test names one, and its answer written to +result+.
- * Whether it ended well. */
-static int run_part(const char *name, const char *copy, const char *keys, const char *result, int fast) {
+ * from the script of buttons in +keys+ where a test names one, and its answer written to +result+;
+ * +fast+ for an unpacking, and +menu_open+ to open the window's menu as it starts. Whether it ended
+ * well. */
+static int run_part(const char *name, const char *copy, const char *keys, const char *result, int fast, int menu_open) {
   char *exe = part_file(name);
   if (!exe) return 0;
   const char *args[12];
@@ -137,6 +138,7 @@ static int run_part(const char *name, const char *copy, const char *keys, const 
     args[count++] = copy;
   }
   if (fast) args[count++] = "--part-fast";
+  if (menu_open) args[count++] = "--open-menu";
   if (keys) {
     args[count++] = "--scripted-keys";
     args[count++] = "100000";
@@ -255,8 +257,8 @@ static int kept_pack_passes(const char *path) {
   return 0;
 }
 
-/* The pack made from the copy at +copy+ (a path, called +named+), unpacked by its release's part,
- * written to +pack_path+. 1 when it is written, else 0, the player told why. */
+/* The pack made from the copy at +copy+ (a path, called +named+), read once, checked, and unpacked
+ * by its release's part; written to +pack_path+. 1 when it is written, else 0, the player told why. */
 static int make_pack(const char *copy, const char *named, const char *pack_path, const char *result, int quiet) {
   const rg_shell_description *shell = rg_shell_facts;
   size_t size = 0;
@@ -277,13 +279,23 @@ static int make_pack(const char *copy, const char *named, const char *pack_path,
     return 0;
   }
   rg_sha1_hex(copy_bytes, size, sha1);
-  SDL_free(copy_bytes);
   if (rg_shell_digest_refusal(named, sha1, &release, words)) {
     tell(words, quiet);
+    SDL_free(copy_bytes);
     return 0;
   }
 
-  if (!run_part(release->part, copy, NULL, result, 1)) return 0;
+  /* The unpacking is handed the bytes that were checked, written beside the pack where only this
+   * program writes, never the player's file again: that file could change between the two reads,
+   * and the unpacking checks only a copy's size. (The unpacking checking the SHA-1 itself would put a
+   * SHA-1 into every runtime's check of a start file, for this one use.) */
+  char *checked = NULL;
+  int handed = SDL_asprintf(&checked, "%s.copy", pack_path) >= 0 && SDL_SaveFile(checked, copy_bytes, size);
+  SDL_free(copy_bytes);
+  int unpacked = handed && run_part(release->part, checked, NULL, result, 1, 0);
+  if (checked) SDL_RemovePath(checked);
+  SDL_free(checked);
+  if (!unpacked) return 0;
   size_t answer_size = 0;
   char *answer = SDL_LoadFile(result, &answer_size);
   if (!answer) return 0;
@@ -331,16 +343,20 @@ char *rg_shell_pack_path(const rg_shell_asked *asked) {
     SDL_free(result);
     return pack_path;
   }
+  /* SETTINGS plays the menu again with the window's menu open, where the settings are. */
+  int settings_open = 0;
   for (;;) {
     int32_t choice = 0;
     size_t answer_size = 0;
-    int played = run_part(shell->menu_part, NULL, asked->menu_keys, result, 0);
+    const char *keys = settings_open && asked->settings_keys ? asked->settings_keys : asked->menu_keys;
+    int played = run_part(shell->menu_part, NULL, keys, result, 0, settings_open);
     char *answer = played ? SDL_LoadFile(result, &answer_size) : NULL;
     if (!answer || !result_variable(answer, shell->choice_variable, &choice)) {
       SDL_free(answer);
       break; /* the player closed the menu */
     }
     SDL_free(answer);
+    settings_open = choice == shell->settings;
     if (choice != shell->load_rom) continue;
 
     char *picked = asked->copy ? SDL_strdup(asked->copy) : pick_copy();

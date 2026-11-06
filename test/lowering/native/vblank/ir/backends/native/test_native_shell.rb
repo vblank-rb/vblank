@@ -56,7 +56,26 @@ class TestNativeShell < Minitest::Test
       assert_plays_from_the_kept_pack_with_the_copy_gone(shell, dir, answer)
       assert_asks_again_for_a_pack_made_for_another_build(shell, dir)
       assert_refuses_files_that_are_no_release(shell, dir)
+      assert_settings_opens_the_window_menu(shell, dir)
     end
+  end
+
+  # A script of buttons, a line a frame, with nothing held once its lines run out.
+  private def keys_file(dir, name, lines)
+    File.join(dir, name).tap { |path| File.write(path, [*lines, *(["0"] * 20)].map { |line| "#{line}\n" }.join) }
+  end
+
+  # SETTINGS plays the menu again with the window's menu open. The script it plays with then closes
+  # that menu with its first line and chooses LOAD ROM; had the window's menu been shut, that line
+  # would open it, and the A after it would never reach the shell's menu.
+  private def assert_settings_opens_the_window_menu(shell, dir)
+    FileUtils.rm_rf(File.join(dir, "kept"))
+    choose_settings = keys_file(dir, "settings-menu.keys", %w[0 0 128 0 1])
+    close_and_load = keys_file(dir, "settings-open.keys", ["0 hotkey:menu", "0", "0", "1"])
+    play(shell_exe(shell), dir, "settings", options: ["--pack-folder", File.join(dir, "kept"), "--shell-menu-keys", choose_settings,
+                                                      "--shell-settings-keys", close_and_load, "--shell-copy", copy_at(dir)])
+
+    assert_equal ALL_IN_ONE_PACK, kept_pack(dir), "LOAD ROM was chosen after SETTINGS"
   end
 
   # The game as the window plays it for GAME_FRAMES frames with nothing held.

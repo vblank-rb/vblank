@@ -56,12 +56,14 @@ typedef struct {
 
 extern const rg_shell_description *const rg_shell_facts;
 
-/* What a test names in place of what a person does (--shell-copy, --shell-menu-keys), and where the
- * pack is kept where the player has not chosen (--pack-folder). All NULL for a player's run. */
+/* What a test names in place of what a person does (--shell-copy, --shell-menu-keys,
+ * --shell-settings-keys), and where the pack is kept where the player has not chosen
+ * (--pack-folder). All NULL for a player's run. */
 typedef struct {
   const char *pack_folder;
-  const char *copy;      /* the file picked, in place of the file dialog */
-  const char *menu_keys; /* a script of buttons the menu is played with, in place of a person */
+  const char *copy;          /* the file picked, in place of the file dialog */
+  const char *menu_keys;     /* a script of buttons the menu is played with, in place of a person */
+  const char *settings_keys; /* ...and the one once SETTINGS has opened the window's menu */
 } rg_shell_asked;
 
 /* The path of a data pack this shell reads, made from the player's copy if it was not kept yet; NULL
