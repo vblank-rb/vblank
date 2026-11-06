@@ -2,6 +2,7 @@
 
 require "digest"
 require "fileutils"
+require "json"
 require "rbconfig"
 require "tmpdir"
 require_relative "ruby/printer"
@@ -39,7 +40,7 @@ module VBlank
 
         # The runtime every program carries, in the order it is put together, and the driver with
         # no window that follows it in a program the tests play.
-        RUNTIME = Ractor.make_shareable(%w[rg_int32.rb rg_runtime.rb rg_list.rb rg_screen.rb rg_sound.rb rg_mix.rb
+        RUNTIME = Ractor.make_shareable(%w[rg_int32.rb rg_refusal.rb rg_runtime.rb rg_list.rb rg_screen.rb rg_sound.rb rg_mix.rb
                                            rg_save.rb])
         HEADLESS_DRIVER = "rg_headless.rb"
         LIVE_DRIVER = "rg_live.rb"
@@ -119,7 +120,7 @@ module VBlank
            "VBlank::Graphics::MenuFont::CARRIED = <<'#{FONT_END}'\n#{File.read(Graphics::MenuFont::PATH, encoding: Encoding::UTF_8)}#{FONT_END}\n",
            "module VBlankScript\n  TITLE = #{title.to_s.inspect}\n  MENU = #{menu}\n",
            "  SOURCE = #{script_heredoc(live_source(program), SCRIPT_END)}",
-           shell ? script_shell_text(shell) : "  SHELL = nil\n", "end\n",
+           shell ? script_shell_text(shell) : "  SHELL_FACTS = nil\n", "end\n",
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
         end
 
@@ -133,8 +134,10 @@ module VBlank
                           vblank/live/menu.rb vblank/live/settings.rb vblank/live/settings_file.rb
                           vblank/live/session.rb vblank/live/sdl.rb].freeze
         # What a shell's script carries besides: the check of a kept pack, the words for a wrong copy,
-        # and the shell itself, each needing nothing of the library the script does not carry.
-        SHELL_PARTS = %w[vblank/ir/start_file.rb vblank/original/releases.rb vblank/live/shell.rb].freeze
+        # the shell's facts and the shell itself, each needing nothing of the library the script does
+        # not carry.
+        SHELL_PARTS = %w[vblank/ir/start_file.rb vblank/original/releases.rb vblank/original/shell_facts.rb
+                         vblank/live/shell.rb].freeze
         SCRIPT_MAIN = "rg_script_main.rb" # In RUNTIME_DIR: what plays the game, last in a script
         # The line the game's Ruby ends at in a script, which no line of the game's can be, and the
         # line the menu's letters (Graphics::MenuFont::PATH, carried after the parts) end at.
@@ -161,33 +164,16 @@ module VBlank
           "<<'#{ending}'#{after}\n#{text}\n#{ending}\n"
         end
 
-        # A string of bytes as Ruby that reads back the same bytes.
-        def script_bytes(bytes) = "#{bytes.b.inspect}.b"
-
-        # VBlankScript::SHELL, the Live::Shell for +shell+ (an Original::Shell), written out: its three
-        # kinds of program as Ruby in heredocs, and its facts as literals.
+        # The data of +shell+ (an Original::Shell) a script holds, from which rg_script_main.rb makes
+        # its Live::Shell: SHELL_FACTS, the ShellFacts as JSON (ShellFacts#to_plain), and SHELL_MENU
+        # and SHELL_UNPACKINGS, the menu and each unpacking as Ruby, in heredocs.
         def script_shell_text(shell)
-          file = shell.pack_form.start_file
-          checks = file.checks.map { |check| "VBlank::IR::StartFile::Check.new(at: #{check.at}, bytes: #{script_bytes(check.bytes)})" }
-          releases = shell.releases.list.map do |release|
-            "VBlank::Original::Release.new(name: #{release.name.inspect}, sha1: #{release.sha1.inspect}, md5: #{release.md5.inspect}, " \
-              "size: #{release.size.inspect}, read: #{release.read})"
+          unpackings = shell.unpackings.each_with_index.map do |unpacking, number|
+            "    #{script_heredoc(live_source(unpacking.program), "#{SCRIPT_END}_UNPACKING_#{number}", ',')}"
           end
-          unpackings = shell.unpackings.each_with_index.map do |(name, unpacking), number|
-            "      #{name.inspect} => #{script_heredoc(live_source(unpacking.program), "#{SCRIPT_END}_UNPACKING_#{number}", ',')}"
-          end
-          ["  SHELL = VBlank::Live::Shell.new(\n",
-           "    title: #{shell.title.to_s.inspect}, folder: #{shell.folder.inspect},\n",
-           "    game: SOURCE, menu: #{script_heredoc(live_source(shell.menu), "#{SCRIPT_END}_MENU", ',')}",
-           "    unpackings: {\n#{unpackings.join}    },\n",
-           "    releases: VBlank::Original::Releases.new(title: #{shell.releases.title.to_s.inspect}, list: [#{releases.join(', ')}]),\n",
-           "    start_file: VBlank::IR::StartFile.new(called: #{file.called.inspect}, size: #{file.size}, checks: [#{checks.join(', ')}]),\n",
-           "    before_sha1: #{script_bytes(shell.pack_form.before_sha1)}, after_sha1: #{script_bytes(shell.pack_form.after_sha1)},\n",
-           "    names: VBlank::Live::Shell::UnpackingNames.new(bytes: #{Original::Unpacking::BYTES.to_s.inspect}, " \
-           "finished: #{Original::Unpacking::FINISHED.to_s.inspect}, fault_kind: #{Original::Unpacking::FAULT_KIND.to_s.inspect}),\n",
-           "    menu_choice: #{Original::Shell::MENU_CHOICE.inspect},\n",
-           "    choices: { #{Original::Shell::LOAD_ROM} => :load_rom, #{Original::Shell::SETTINGS} => :settings }\n",
-           "  )\n"].join
+          ["  SHELL_FACTS = #{script_heredoc(JSON.generate(shell.facts.to_plain), "#{SCRIPT_END}_FACTS")}",
+           "  SHELL_MENU = #{script_heredoc(live_source(shell.menu), "#{SCRIPT_END}_MENU")}",
+           "  SHELL_UNPACKINGS = [\n#{unpackings.join}  ].freeze\n"].join
         end
 
         def refuse_runtime_gaps!(gaps)

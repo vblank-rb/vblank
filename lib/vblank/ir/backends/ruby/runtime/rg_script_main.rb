@@ -5,6 +5,7 @@
 # VBlankScript::SOURCE, its title and whether it has a menu, and the window, the menu and the
 # session it plays in — was copied in when it was built, so it needs no vblank gem. It is never
 # loaded by the library itself. What vblank run says as it plays is said here in the same words.
+require "json"
 require "optparse"
 
 module VBlankScript
@@ -20,7 +21,7 @@ module VBlankScript
       parser.on("--[no-]collect-garbage", "Collect Ruby's garbage once the game has set itself up. Default: on.")
       parser.on("--settings-file FILE", "Read and write the window's settings in FILE only.")
       parser.on("--config-dir DIR", "Keep the window's settings files in DIR.")
-      parser.on("--pack-folder DIR", "Keep the game's data pack in DIR.") if SHELL
+      parser.on("--pack-folder DIR", "Keep the game's data pack in DIR.") if SHELL_FACTS
     end.parse!(arguments, into: options)
     %i[scale pictures].each do |name|
       raise OptionParser::InvalidArgument, "--#{name} must be a whole number above 0" if options[name]&.<(1)
@@ -48,7 +49,7 @@ module VBlankScript
                                 collect_garbage: options.fetch(:"collect-garbage", true))
                            .play(window)
     end
-    rate = SHELL ? play_shell(window, options, play_game) : play_game.call(game)
+    rate = SHELL_FACTS ? play_shell(window, options, play_game) : play_game.call(game)
     return unless rate
 
     if rate.passes.positive?
@@ -65,9 +66,11 @@ module VBlankScript
   # A game built as a shell (Live::Shell): the game from its kept pack, or its menu until the player
   # loads a copy. Gives back how fast the game went, or nil when the player stopped before it played.
   def self.play_shell(window, options, play_game)
-    folder = options[:"pack-folder"] || window.folder_for(SHELL.folder) or
+    shell = VBlank::Live::Shell.new(facts: VBlank::Original::ShellFacts.from_plain(JSON.parse(SHELL_FACTS)), game: SOURCE,
+                                    menu: SHELL_MENU, unpackings: SHELL_UNPACKINGS)
+    folder = options[:"pack-folder"] || window.folder_for(shell.folder) or
       raise VBlank::Live::SDL::Failed, "#{TITLE} cannot make the folder to keep its data pack in. Give one with --pack-folder."
-    SHELL.play(window, folder_path: folder, choose_copy: -> { window.choose_file }, open_settings: -> { window.open_menu },
+    shell.play(window, folder_path: folder, choose_copy: -> { window.choose_file }, open_settings: -> { window.open_menu },
                        refused: lambda { |words|
                          warn words
                          window.notice(words)

@@ -45,8 +45,7 @@ module VBlank
         sizes = @list.map(&:size)
         return nil if sizes.include?(nil) || sizes.include?(size)
 
-        "#{named} is #{size} bytes. A copy of #{title} is #{readable.map(&:size).uniq.join(' or ')} bytes. " \
-          "Name a complete copy of #{title}."
+        wrong_size_message(named, size)
       end
 
       # Why a copy +named+ whose SHA-1 is +sha1+ is refused, or nil when it is a release the game
@@ -59,13 +58,34 @@ module VBlank
         by_md5 = md5 && @list.find { |known| known.md5 == md5 }
         return unread_release_message(named, by_md5) if by_md5 && !by_md5.read
 
-        "#{named} is not a release of #{title} that this game knows. Its SHA-1 is #{sha1}. A changed or " \
-          "damaged copy has a different SHA-1. This game reads #{readable_words}. Name a copy of one of these."
+        unknown_release_message(named, sha1)
+      end
+
+      # The refusals as sentences with {named} for the file, {size} for its size and {sha1} for its
+      # SHA-1 (Words), for a runtime that is not Ruby to fill in (a shell's, Original::ShellFacts):
+      # the same sentences as the two methods above give.
+      Words = Data.define(:wrong_size, :unknown, :unread)
+
+      # This game's Words. +unread+ holds a sentence for each release the game knows and does not
+      # read, by the release's name.
+      def words
+        Words.new(wrong_size: wrong_size_message("{named}", "{size}"), unknown: unknown_release_message("{named}", "{sha1}"),
+                  unread: @list.reject(&:read).to_h { |release| [release.name, unread_release_message("{named}", release)] })
       end
 
       private
 
       def readable_words = readable.map { |release| "#{release.name} (SHA-1 #{release.sha1})" }.join(", ")
+
+      def wrong_size_message(named, size)
+        "#{named} is #{size} bytes. A copy of #{title} is #{readable.map(&:size).uniq.join(' or ')} bytes. " \
+          "Name a complete copy of #{title}."
+      end
+
+      def unknown_release_message(named, sha1)
+        "#{named} is not a release of #{title} that this game knows. Its SHA-1 is #{sha1}. A changed or " \
+          "damaged copy has a different SHA-1. This game reads #{readable_words}. Name a copy of one of these."
+      end
 
       def unread_release_message(named, release)
         "#{named} is the #{release.name} release of #{title}. This game does not read that release. " \

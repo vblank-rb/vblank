@@ -19,6 +19,7 @@ class TestPacmanPortShell < Minitest::Test
   Headless = VBlank::Live::Headless
   Session = VBlank::Live::Session
   Shell = VBlank::Live::Shell
+  PACK_FILE = VBlank::Original::ShellFacts::PACK_FILE
 
   CHOOSE_LOAD_ROM = { 2 => [:a] }.freeze
 
@@ -86,7 +87,7 @@ class TestPacmanPortShell < Minitest::Test
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: PacmanFixture::ROM_PATH)
 
-      assert_equal PacmanFixture.expected_pack, File.binread(File.join(folder, "kept", Shell::PACK_FILE))
+      assert_equal PacmanFixture.expected_pack, File.binread(File.join(folder, "kept", PACK_FILE))
     end
   end
 
@@ -113,7 +114,7 @@ class TestPacmanPortShell < Minitest::Test
       played = play_shell(shell(folder), folder, picked: wrong, menu_frames: 40)
 
       assert_match "not a release of Pac-Man that this game knows", played.refusals.first
-      refute File.exist?(File.join(folder, "kept", Shell::PACK_FILE))
+      refute File.exist?(File.join(folder, "kept", PACK_FILE))
     end
   end
 end

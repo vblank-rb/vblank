@@ -1,12 +1,15 @@
 /*
- * A shell on a computer (rg_shell.h says what one is). The flow is Live::Shell's:
+ * A shell on a computer (rg_shell.h has what one is). The flow is Live::Shell's, and rg_shell.js is
+ * this written again for a page, function for function:
  *
- * - the pack kept in the game's folder, if this shell reads it, is the pack;
+ * - the pack kept in the game's folder, if it passes the check, is the pack;
  * - otherwise the menu part plays until the player picks a line. LOAD ROM asks for a file through
- *   the system's file dialog; it must be a release the game reads (its size, then its SHA-1, in the
- *   words Original::Releases gives), and the release's unpacking part plays handed the file, as fast
- *   as the computer goes, drawing its progress bar. The bytes it made, after the header for the
- *   file's SHA-1, are the pack, written to the folder.
+ *   the system's file dialog; it must be a release the game reads (its size, then its SHA-1), and
+ *   the release's unpacking part plays handed the file, as fast as the computer goes, drawing its
+ *   progress bar. The bytes it made, after the header for the file's SHA-1, are the pack, written to
+ *   the folder.
+ *
+ * Every sentence is the build's (rg_shell_facts), filled in here by rg_words_fill.
  *
  * A part is run as a program of its own (--part RESULT): it plays in a window like any game, and
  * where a game would halt it writes where its variables and lists stand into RESULT and ends.
@@ -19,74 +22,48 @@
 #include <string.h>
 
 #include "rg_console_bios.h"
+#include "rg_refusal.h"
 #include "rg_runtime.h"
 
-#define WORDS_ROOM 2048
+/* --- the refusals, as Original::Releases makes them --- */
 
-/* --- the words, the same as Original::Releases --- */
-
-/* Why a file of +size+ bytes called +named+ is no release this game could read, or 0. */
-static int size_refusal(const char *named, int32_t size, char *words) {
+/* Whether a file called +named+ of +size+ bytes is no release this game could read: 1 with the
+ * sentence in +out+, or 0. */
+static int rg_shell_size_refusal(const char *named, int32_t size, char *out) {
   const rg_shell_description *shell = rg_shell_facts;
   for (int i = 0; i < shell->release_count; i++) {
     if (shell->releases[i].size < 0 || shell->releases[i].size == size) return 0;
   }
-  char sizes[256] = "";
-  int32_t listed[64];
-  int listed_count = 0;
-  for (int i = 0; i < shell->release_count; i++) {
-    if (!shell->releases[i].readable) continue;
-    int seen = 0;
-    for (int j = 0; j < listed_count; j++) seen |= listed[j] == shell->releases[i].size;
-    if (seen || listed_count == 64) continue;
-    listed[listed_count++] = shell->releases[i].size;
-    size_t used = strlen(sizes);
-    snprintf(sizes + used, sizeof sizes - used, "%s%d", used ? " or " : "", (int)shell->releases[i].size);
-  }
-  snprintf(words, WORDS_ROOM, "%s is %d bytes. A copy of %s is %s bytes. Name a complete copy of %s.", named, (int)size,
-           shell->releases_title, sizes, shell->releases_title);
+  char size_text[16];
+  snprintf(size_text, sizeof size_text, "%d", (int)size);
+  const char *names[] = {"named", "size"};
+  const char *values[] = {named, size_text};
+  rg_words_fill(out, RG_WORDS_ROOM, shell->wrong_size_words, 2, names, values);
   return 1;
 }
 
-static void readable_words(char *out, size_t room) {
-  const rg_shell_description *shell = rg_shell_facts;
-  out[0] = '\0';
-  for (int i = 0; i < shell->release_count; i++) {
-    if (!shell->releases[i].readable) continue;
-    size_t used = strlen(out);
-    snprintf(out + used, room - used, "%s%s (SHA-1 %s)", used ? ", " : "", shell->releases[i].name, shell->releases[i].sha1);
-  }
-}
-
-/* Why a copy called +named+ whose SHA-1 is +sha1+ is refused, or 0 when it is a release the game
- * reads, with +release+ the one it is. */
-static int digest_refusal(const char *named, const char *sha1, const rg_shell_release **release, char *words) {
+/* Whether a copy called +named+ whose SHA-1 is +sha1+ is refused: 1 with the sentence in +out+, or 0
+ * when it is a release the game reads, with +release+ the one it is. */
+static int rg_shell_digest_refusal(const char *named, const char *sha1, const rg_shell_release **release, char *out) {
   const rg_shell_description *shell = rg_shell_facts;
   const rg_shell_release *known = NULL;
   for (int i = 0; i < shell->release_count; i++) {
     if (strcmp(shell->releases[i].sha1, sha1) == 0) known = &shell->releases[i];
   }
-  if (known && known->readable) {
+  if (known && known->read) {
     *release = known;
     return 0;
   }
-  char readable[1024];
-  readable_words(readable, sizeof readable);
-  if (known) {
-    snprintf(words, WORDS_ROOM, "%s is the %s release of %s. This game does not read that release. It reads %s. Name a copy of one of these.",
-             named, known->name, shell->releases_title, readable);
-  } else {
-    snprintf(words, WORDS_ROOM,
-             "%s is not a release of %s that this game knows. Its SHA-1 is %s. A changed or damaged copy has a different "
-             "SHA-1. This game reads %s. Name a copy of one of these.",
-             named, shell->releases_title, sha1, readable);
-  }
+  const char *names[] = {"named", "sha1"};
+  const char *values[] = {named, sha1};
+  rg_words_fill(out, RG_WORDS_ROOM, known ? known->unread_words : shell->unknown_words, 2, names, values);
   return 1;
 }
 
-/* --- saying a refusal --- */
+/* --- telling the player --- */
 
-static void say(const char *words, int quiet) {
+/* A refusal, printed, and shown in a box unless +quiet+ (a test's run). */
+static void tell(const char *words, int quiet) {
   fprintf(stderr, "%s\n", words);
   if (!quiet) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, rg_shell_facts->title, words, NULL);
 }
@@ -97,7 +74,7 @@ static char *pack_file_in(const char *folder) {
   char *path = NULL;
   size_t length = strlen(folder);
   const char *between = length && (folder[length - 1] == '/' || folder[length - 1] == '\\') ? "" : "/";
-  if (SDL_asprintf(&path, "%s%sdata.pack", folder, between) < 0) return NULL;
+  if (SDL_asprintf(&path, "%s%s%s", folder, between, rg_shell_facts->pack_file) < 0) return NULL;
   return path;
 }
 
@@ -108,6 +85,25 @@ static int write_pack(const char *path, const uint8_t *bytes, size_t size) {
   int ok = SDL_SaveFile(writing, bytes, size) && SDL_RenamePath(writing, path);
   SDL_free(writing);
   return ok;
+}
+
+/* The pack for a copy whose SHA-1 is +sha1+, holding the +count+ bytes the unpacking +made+, or NULL;
+ * its size in +size+. */
+static uint8_t *rg_shell_pack_for(const char *sha1, const uint8_t *made, size_t count, size_t *size) {
+  const rg_shell_description *shell = rg_shell_facts;
+  size_t before = (size_t)shell->pack_before_sha1_size, after = (size_t)shell->pack_after_sha1_size;
+  uint8_t *pack = SDL_malloc(before + 20 + after + count);
+  if (!pack) return NULL;
+  memcpy(pack, shell->pack_before_sha1, before);
+  for (size_t i = 0; i < 20; i++) {
+    unsigned byte = 0;
+    sscanf(sha1 + 2 * i, "%2x", &byte);
+    pack[before + i] = (uint8_t)byte;
+  }
+  memcpy(pack + before + 20, shell->pack_after_sha1, after);
+  memcpy(pack + before + 20 + after, made, count);
+  *size = before + 20 + after + count;
+  return pack;
 }
 
 /* --- parts --- */
@@ -173,7 +169,7 @@ static int run_part(const char *name, const char *copy, const char *keys, const 
   return ok;
 }
 
-/* The number a variable holds in a part's answer, or 0 and not found. */
+/* The number a variable holds in a part's answer: 1 with it in +value+, or 0 when it is not there. */
 static int result_variable(const char *text, const char *name, int32_t *value) {
   char line[256];
   snprintf(line, sizeof line, "var %s ", name);
@@ -241,45 +237,49 @@ static const char *file_name_of(const char *path) {
   return name;
 }
 
-/* The pack kept at +path+ when this shell reads it, else NULL, saying why when a file is there. */
-static int kept_pack_is_read(const char *path) {
+/* Whether the pack kept at +path+ passes the check: 1, or 0, the player told why when a file is there. */
+static int kept_pack_passes(const char *path) {
   const rg_shell_description *shell = rg_shell_facts;
   size_t size = 0;
   uint8_t *bytes = SDL_LoadFile(path, &size);
   if (!bytes) return 0;
-  char words[WORDS_ROOM];
-  char refusal[512];
-  int refused = rg_start_file_refusal(bytes, (int32_t)size, shell->called, shell->pack_rules, refusal, sizeof refusal);
+  char refusal[RG_WORDS_ROOM];
+  int refused = rg_start_file_refusal(bytes, (int32_t)size, shell->pack_rules, &shell->pack_words, refusal, sizeof refusal);
   SDL_free(bytes);
   if (!refused) return 1;
-  snprintf(words, sizeof words, "%s: %s Load your copy of %s again to make it.", path, refusal, shell->title);
-  say(words, 0);
+  char words[RG_WORDS_ROOM];
+  const char *names[] = {"path", "refusal"};
+  const char *values[] = {path, refusal};
+  rg_words_fill(words, sizeof words, shell->kept_pack_refused_words, 2, names, values);
+  tell(words, 0);
   return 0;
 }
 
 /* The pack made from the copy at +copy+ (a path, called +named+), unpacked by its release's part,
- * written to +pack_path+. 1 when it is written, else 0 with the words said. */
+ * written to +pack_path+. 1 when it is written, else 0, the player told why. */
 static int make_pack(const char *copy, const char *named, const char *pack_path, const char *result, int quiet) {
   const rg_shell_description *shell = rg_shell_facts;
   size_t size = 0;
   uint8_t *copy_bytes = SDL_LoadFile(copy, &size);
-  char words[WORDS_ROOM];
+  char words[RG_WORDS_ROOM];
   if (!copy_bytes) {
-    snprintf(words, sizeof words, "%s cannot be read (%s).", named, SDL_GetError());
-    say(words, quiet);
+    const char *names[] = {"named", "why"};
+    const char *values[] = {named, SDL_GetError()};
+    rg_words_fill(words, sizeof words, shell->unreadable_words, 2, names, values);
+    tell(words, quiet);
     return 0;
   }
   const rg_shell_release *release = NULL;
   char sha1[41];
-  if (size_refusal(named, (int32_t)size, words)) {
-    say(words, quiet);
+  if (rg_shell_size_refusal(named, (int32_t)size, words)) {
+    tell(words, quiet);
     SDL_free(copy_bytes);
     return 0;
   }
   rg_sha1_hex(copy_bytes, size, sha1);
   SDL_free(copy_bytes);
-  if (digest_refusal(named, sha1, &release, words)) {
-    say(words, quiet);
+  if (rg_shell_digest_refusal(named, sha1, &release, words)) {
+    tell(words, quiet);
     return 0;
   }
 
@@ -291,32 +291,23 @@ static int make_pack(const char *copy, const char *named, const char *pack_path,
   size_t count = 0;
   uint8_t *made = result_list(answer, shell->bytes_list, &count);
   int stopped_early = !result_variable(answer, shell->finished_variable, &finished) ||
-                      !result_variable(answer, shell->fault_variable, &fault) || finished != 1 || fault != 0 || !made;
+                      !result_variable(answer, shell->fault_kind_variable, &fault) || finished != 1 || fault != 0 || !made;
   SDL_free(answer);
   if (stopped_early) {
-    snprintf(words, sizeof words,
-             "%s is a copy this game reads, and its unpacking stopped part way (fault %d). This is a fault in the game. Tell its makers.",
-             named, (int)fault);
-    say(words, quiet);
+    char fault_text[16];
+    snprintf(fault_text, sizeof fault_text, "%d", (int)fault);
+    const char *names[] = {"named", "fault"};
+    const char *values[] = {named, fault_text};
+    rg_words_fill(words, sizeof words, shell->unpacking_stopped_words, 2, names, values);
+    tell(words, quiet);
     SDL_free(made);
     return 0;
   }
 
-  size_t pack_size = (size_t)shell->before_size + 20 + (size_t)shell->after_size + count;
-  uint8_t *pack = SDL_malloc(pack_size);
-  if (!pack) {
-    SDL_free(made);
-    return 0;
-  }
-  memcpy(pack, shell->before, (size_t)shell->before_size);
-  for (int i = 0; i < 20; i++) {
-    unsigned byte = 0;
-    sscanf(sha1 + 2 * i, "%2x", &byte);
-    pack[shell->before_size + i] = (uint8_t)byte;
-  }
-  memcpy(pack + shell->before_size + 20, shell->after, (size_t)shell->after_size);
-  memcpy(pack + shell->before_size + 20 + shell->after_size, made, count);
+  size_t pack_size = 0;
+  uint8_t *pack = rg_shell_pack_for(sha1, made, count, &pack_size);
   SDL_free(made);
+  if (!pack) return 0;
   int ok = write_pack(pack_path, pack, pack_size);
   SDL_free(pack);
   return ok;
@@ -336,7 +327,7 @@ char *rg_shell_pack_path(const rg_shell_asked *asked) {
   }
 
   int quiet = asked->copy != NULL;
-  if (kept_pack_is_read(pack_path)) {
+  if (kept_pack_passes(pack_path)) {
     SDL_free(result);
     return pack_path;
   }
@@ -350,7 +341,7 @@ char *rg_shell_pack_path(const rg_shell_asked *asked) {
       break; /* the player closed the menu */
     }
     SDL_free(answer);
-    if (choice != shell->load_rom_choice) continue;
+    if (choice != shell->load_rom) continue;
 
     char *picked = asked->copy ? SDL_strdup(asked->copy) : pick_copy();
     if (!picked) continue;

@@ -9,66 +9,49 @@ module VBlank
     #
     # Prior art is Ship of Harkinian: the program ships with no assets, and on its first run checks
     # the ROM's hash and unpacks every asset into one archive kept beside it, read on every later run.
-    # Here that is three programs and the facts to join them, all made when the shell is built and
-    # none needing the copy:
+    # Here that is three kinds of program and the facts to join them, all made when the shell is
+    # built and none needing the copy:
     #
     # - +game+, the game built with its pack left out (Builder::DataPacks), which reads the pack from
     #   the file it is handed as it starts (IR::StartFile);
     # - +menu+, what shows while there is no pack: the game's title, LOAD ROM and SETTINGS (#menu_program);
-    # - +unpackings+, the game's unpacking routine built for each release the game reads, by the
-    #   release's name (Unpacking), which shows a progress bar as it goes.
+    # - +unpackings+, the game's unpacking routine built for each release the game reads, in the
+    #   order of their numbers (ShellFacts::Release#unpacking), each showing a progress bar as it goes;
+    # - +facts+ (ShellFacts), everything else a runtime is told: the releases a picked file must be
+    #   one of, by its size and its SHA-1, the pack's header and its check, the folder it is kept in,
+    #   and every sentence a file is refused in.
     #
-    # and +releases+ (Releases), which a picked file must be one of, by its size and its SHA-1,
-    # +pack_form+ (PackForm), how a pack the unpacking wrote is made a file and how a kept file is
-    # known to be this shell's, and +folder+, the name of the folder the pack is kept in.
+    # +window_menu+ is whether the game's window has its menu (Cartridge::Game#menu?).
     #
     # WHAT A RUNTIME DOES WITH IT (Live::Shell is the Ruby one). At start it reads the pack from the
-    # game's folder; a pack this shell can read (PackForm#refusal is nil) is handed to the game, and
-    # the copy is never read. Otherwise the menu plays. LOAD ROM asks for a file, and the file is
-    # refused unless it is a release the game reads; the release's unpacking plays handed the file,
-    # and its bytes, after the header PackForm makes for the file's SHA-1, are the pack, written to
-    # the folder and handed to the game. A pack for another build of the game, or in a format this
-    # build does not read, fails the check, so the menu asks for the copy again.
+    # game's folder; a pack that passes the check is handed to the game, and the copy is never read.
+    # Otherwise the menu plays. LOAD ROM asks for a file, and the file is refused unless it is a
+    # release the game reads; the release's unpacking plays handed the bytes that were checked, and
+    # what it wrote, after the header for the file's SHA-1, is the pack, written to the folder and
+    # handed to the game. SETTINGS opens the window's settings, and the menu plays again. A pack for
+    # another build of the game, or in a format this build does not read, fails the check, so the
+    # menu asks for the copy again.
     #
     # The pack a shell makes is the same file, byte for byte, as the one an all-in-one build makes
     # from the same copy: the same slots in the same order, the same header.
-    Shell = Data.define(:title, :game, :menu, :unpackings, :releases, :pack_form, :folder)
-
-    # HOW A PACK IS A FILE, for a runtime with no library to hand: the header before the copy's SHA-1
-    # (+before_sha1+) and after it (+after_sha1+), between which the 20 bytes of the SHA-1 go, then
-    # the bytes the unpacking wrote; and the file's +size+ and +checks+, which tell a pack for this
-    # shell from any other (the game's own IR::StartFile, whose #refusal gives the words).
-    PackForm = Data.define(:before_sha1, :after_sha1, :start_file) do
-      # The pack file for a copy whose SHA-1 is +sha1+ (40 hex digits), holding +bytes+.
-      def file_for(sha1, bytes) = [before_sha1, [sha1].pack("H*"), after_sha1, bytes].join.b
-
-      # Why +bytes+ (a kept file, or nil for none) is not a pack this shell reads, or nil when it is.
-      def refusal(bytes) = start_file.refusal(bytes&.b)
-    end
+    Shell = Data.define(:game, :menu, :unpackings, :facts, :window_menu)
 
     class Shell
-      # WHAT A RUNTIME IS TOLD ABOUT THE SHELL, by name, the one list the web page's runtime and the
-      # desktop program's are both written from (JS#build_shell_page, Native::ShellData): the title,
-      # the folder, the releases (each with the number of its unpacking, from 0, where the game reads
-      # it), the pack's header around the copy's SHA-1 as bytes, the pack's size and checks, and the
-      # names of the menu's and the unpacking's variables.
-      def facts
-        numbers = unpackings.keys.each_with_index.to_h
-        file = pack_form.start_file
-        { title: title.to_s, folder: folder, releases_title: releases.title.to_s, called: file.called,
-          releases: releases.list.map do |release|
-            { name: release.name, sha1: release.sha1, size: release.size, readable: release.read,
-              unpacking: release.read ? numbers[release.name] : nil }
-          end,
-          before: pack_form.before_sha1.b, after: pack_form.after_sha1.b, pack_size: file.size,
-          checks: file.checks.map { |check| { at: check.at, bytes: check.bytes.b } },
-          choice_variable: MENU_CHOICE.to_s, load_rom_choice: LOAD_ROM, settings_choice: SETTINGS,
-          bytes_list: Unpacking::BYTES.to_s, finished_variable: Unpacking::FINISHED.to_s,
-          fault_variable: Unpacking::FAULT_KIND.to_s }
+      # One program of a shell, as a backend writes it out: its +role+ (:game, :menu or :unpacking),
+      # its +number+ (an unpacking's, from 0; nil for the others), the +program+, and whether its
+      # window has the window's menu (+window_menu+).
+      Part = Data.define(:role, :number, :program, :window_menu)
+
+      # The game first, then the menu, then each unpacking in the order of its number.
+      def parts
+        [Part.new(role: :game, number: nil, program: game, window_menu: window_menu),
+         Part.new(role: :menu, number: nil, program: menu, window_menu: true),
+         *unpackings.each_with_index.map { |unpacking, number| unpacking_part(unpacking, number) }]
       end
 
-      # The name of the file the pack is kept in, inside the game's folder.
-      PACK_FILE = "data.pack"
+      private def unpacking_part(unpacking, number)
+        Part.new(role: :unpacking, number: number, program: unpacking.program, window_menu: false)
+      end
 
       # The variable the menu sets as it halts, and what each number means.
       MENU_CHOICE = :shell_choice
@@ -85,19 +68,33 @@ module VBlank
         end
         refuse_without_data_pack!(game, data_pack)
         releases = refuse_unusable_releases!(data_pack.original)
-        new(title: game.title, game: program, menu: menu_program(game.title, program),
-            unpackings: releases.readable.to_h { |release| [release.name, data_pack.unpacking(copy_size: release.size)] },
-            releases: releases, pack_form: pack_form_of(program, data_pack), folder: folder_name(game.title, releases))
+        new(game: program, menu: menu_program(game.title, program),
+            unpackings: releases.readable.map { |release| data_pack.unpacking(copy_size: release.size) },
+            facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?)
       rescue NotSet => e
         raise BuildError, needs_copy_message(game, e)
       end
 
-      # The pack's header around the copy's SHA-1, for +data_pack+, and the game's check of the file.
-      def self.pack_form_of(program, data_pack)
+      # The ShellFacts of a shell of the game called +title+, whose game is +program+.
+      def self.facts_of(title, program, data_pack, releases)
+        numbers = releases.readable.each_with_index.to_h { |release, number| [release.name, number] }
         sizes = data_pack.slots.to_h { |slot| [slot.name, slot.byte_size] }
         header = Pack.header_bytes(sha1: "0" * 40, build_version: data_pack.build_version, sizes: sizes)
-        PackForm.new(before_sha1: header.byteslice(0, Pack::SHA1_AT).freeze,
-                     after_sha1: header.byteslice(Pack::BUILD_VERSION_AT..).freeze, start_file: program.start_file)
+        ShellFacts.new(
+          title: title.to_s, folder: folder_name(title, releases), pack_file: ShellFacts::PACK_FILE,
+          releases_title: releases.title.to_s,
+          releases: releases.list.map do |release|
+            ShellFacts::Release.new(name: release.name, sha1: release.sha1, size: release.size, read: release.read,
+                                    unpacking: numbers[release.name])
+          end,
+          release_words: releases.words,
+          pack_before_sha1: header.byteslice(0, Pack::SHA1_AT).b, pack_after_sha1: header.byteslice(Pack::BUILD_VERSION_AT..).b,
+          pack_rules: program.start_file.rules,
+          menu: ShellFacts::Menu.new(choice_variable: MENU_CHOICE.to_s, load_rom: LOAD_ROM, settings: SETTINGS),
+          unpacking: ShellFacts::UnpackingNames.new(bytes: Unpacking::BYTES.to_s, finished: Unpacking::FINISHED.to_s,
+                                                    fault_kind: Unpacking::FAULT_KIND.to_s),
+          words: ShellFacts.words_for(title.to_s)
+        )
       end
 
       # THE FOLDER THE PACK IS KEPT IN, beside the game's saves. Two VBlank games can have one title,
@@ -184,7 +181,7 @@ module VBlank
           "shell holds none of the original's data, so the game's code must not depend on it. Read the data " \
           "through data_pack, which a shell fills on the player's machine. #{error.message}"
       end
-      private_class_method :pack_form_of, :refuse_without_data_pack!, :refuse_unusable_releases!, :needs_copy_message
+      private_class_method :facts_of, :refuse_without_data_pack!, :refuse_unusable_releases!, :needs_copy_message
     end
   end
 end

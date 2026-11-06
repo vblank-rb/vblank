@@ -25,6 +25,7 @@ class TestShell < Minitest::Test
   Headless = VBlank::Live::Headless
   Session = VBlank::Live::Session
   Shell = VBlank::Live::Shell
+  PACK_FILE = VBlank::Original::ShellFacts::PACK_FILE
 
   # How many passes of the game each test watches.
   GAME_PASSES = 6
@@ -74,7 +75,7 @@ class TestShell < Minitest::Test
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: copy_at(folder))
 
-      assert_equal ALL_IN_ONE_PACK, File.binread(File.join(folder, "kept", Shell::PACK_FILE))
+      assert_equal ALL_IN_ONE_PACK, File.binread(File.join(folder, "kept", PACK_FILE))
     end
   end
 
@@ -97,7 +98,7 @@ class TestShell < Minitest::Test
 
       assert_equal 1, played.times_asked
       assert_match "not the data pack this build reads", played.refusals.first
-      assert_equal VBlank::Original::Pack.read(File.join(folder, "kept", Shell::PACK_FILE)).build_version, "2"
+      assert_equal VBlank::Original::Pack.read(File.join(folder, "kept", PACK_FILE)).build_version, "2"
     end
   end
 
@@ -107,7 +108,7 @@ class TestShell < Minitest::Test
 
       assert_match "not a release of Made Up that this game knows", played.refusals.first
       assert_empty played.game_pictures
-      refute File.exist?(File.join(folder, "kept", Shell::PACK_FILE))
+      refute File.exist?(File.join(folder, "kept", PACK_FILE))
     end
   end
 
@@ -133,7 +134,7 @@ class TestShell < Minitest::Test
                                                                        play_game: ->(_) {})
 
       assert_equal 1, opened
-      assert File.exist?(File.join(folder, "kept", Shell::PACK_FILE))
+      assert File.exist?(File.join(folder, "kept", PACK_FILE))
     end
   end
 
@@ -165,7 +166,7 @@ class TestShell < Minitest::Test
                                                           console: :gba, err: StringIO.new, shell: true)
       kept = File.join(folder, "kept")
       FileUtils.mkdir_p(kept)
-      File.binwrite(File.join(kept, Shell::PACK_FILE), ALL_IN_ONE_PACK)
+      File.binwrite(File.join(kept, PACK_FILE), ALL_IN_ONE_PACK)
       played, status = Open3.capture2e(ALONE, RbConfig.ruby, path, "--pictures", "3", "--pack-folder", kept,
                                        "--settings-file", File.join(folder, "settings.txt"), chdir: folder)
 

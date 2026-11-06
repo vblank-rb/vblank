@@ -54,24 +54,60 @@ module VBlank
       # The most colours a picture's places can pick from: a place is four bits.
       PLACES = 16
 
-      # The words a program stops with when +bytes+ (a binary String, or nil when no file was
-      # handed over) is not the file it reads, or nil when it is. Every runtime says these words.
-      def refusal(bytes)
-        if bytes.nil?
-          return "This game reads its #{called} as it starts, and no #{called} was handed to it. " \
-                 "Start the game with its #{called}."
-        end
-        if bytes.bytesize != size
-          return "The #{called} handed to the game is #{bytes.bytesize} bytes. This build reads a #{called} of " \
-                 "#{size} bytes. Hand it the #{called} this build was made for."
-        end
+      # THE CHECK OF A FILE, AS EVERY RUNTIME IS HANDED IT: +numbers+, the file's size, how many
+      # checks, and each check as where it starts, how long it is and its bytes; and +words+, the
+      # sentences for a file that fails it. Built once here, so the interpreter, the shell and the C,
+      # JavaScript and Ruby runtimes (rg_start_file_refusal in each) all refuse a file alike.
+      Rules = Data.define(:numbers, :words) do
+        # Why +bytes+ (a binary String, or nil when no file was handed over) fails the check, or nil.
+        def refusal(bytes)
+          return words.missing if bytes.nil?
+          return StartFile.fill_words(words.wrong_size, size: bytes.bytesize) if bytes.bytesize != numbers[0]
 
-        wrong = checks.find { |check| bytes.byteslice(check.at, check.bytes.bytesize) != check.bytes }
-        return nil unless wrong
+          check = 2
+          numbers[1].times do
+            at = numbers[check]
+            length = numbers[check + 1]
+            if bytes.byteslice(at, length).bytes != numbers[check + 2, length]
+              return StartFile.fill_words(words.wrong_check, from: at, to: at + length - 1)
+            end
 
-        "This file is not the #{called} this build reads: bytes #{wrong.at} to #{wrong.at + wrong.bytes.bytesize - 1} " \
-          "are not what it holds there. Hand it the #{called} this build was made for."
+            check += 2 + length
+          end
+          nil
+        end
       end
+
+      # The sentences of Rules: for no file (+missing+), for a file of another size (+wrong_size+,
+      # with {size} for its size) and for a file without the bytes a check names (+wrong_check+, with
+      # {from} and {to} for the first and the last of them).
+      Words = Data.define(:missing, :wrong_size, :wrong_check)
+
+      # +text+ with each {name} in it that +values+ has a value for replaced by that value, as
+      # rg_words_fill does in each runtime. A {name} it has none for is left as it is.
+      def self.fill_words(text, **values)
+        text.gsub(/\{(\w+)\}/) do |whole|
+          name = ::Regexp.last_match(1).to_sym
+          values.key?(name) ? values[name].to_s : whole
+        end
+      end
+
+      # The Rules of this file.
+      def rules
+        fix = "Hand it the #{called} this build was made for."
+        Rules.new(
+          numbers: [size, checks.length, *checks.flat_map { |check| [check.at, check.bytes.bytesize, *check.bytes.bytes] }],
+          words: Words.new(
+            missing: "This game reads its #{called} as it starts, and no #{called} was handed to it. Start the game with its #{called}.",
+            wrong_size: "The #{called} handed to the game is {size} bytes. This build reads a #{called} of #{size} bytes. #{fix}",
+            wrong_check: "This file is not the #{called} this build reads: bytes {from} to {to} are not what it holds there. #{fix}"
+          )
+        )
+      end
+
+      # The words a program stops with when +bytes+ (a binary String, or nil when no file was
+      # handed over) is not the file it reads, or nil when it is.
+      def refusal(bytes) = rules.refusal(bytes)
 
       # +program+ as it plays handed +bytes+: a copy, its tables and pictures from the file holding
       # the file's numbers, and no file left to read. ProgramError, in #refusal's words, when

@@ -78,7 +78,7 @@ module VBlank
         # The runtime every program carries, in the order it is put together: the game's
         # arithmetic first, then everything that keeps the game's state. A driver follows it:
         # rg_headless.js for node, or rg_page.js inside createGame for a browser.
-        RUNTIME = %w[rg_int32.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_mix.js rg_save.js].freeze
+        RUNTIME = %w[rg_int32.js rg_refusal.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_mix.js rg_save.js].freeze
 
         # What only a game for several players carries: the session of a match and the relay's room
         # (Program#several_players?), with the fingerprint a match tells it by. A game for one player is
@@ -188,10 +188,13 @@ module VBlank
 
           refuse_folder!(path)
           shell = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
-          [shell.game, shell.menu, *shell.unpackings.values.map(&:program)].each { |program| refuse_console_only_steps!(program, err) }
+          shell.parts.each { |part| refuse_console_only_steps!(part.program, err) }
           progress.step("Writing JavaScript")
-          functions = shell_factories(shell, game)
-          script = WRITTEN_BY + in_own_function(*functions, *runtime_text(%w[rg_shell.js rg_mount.js]), shell_start_text(shell))
+          functions = shell.parts.map do |part|
+            factory_and_data_file(part.program, title: game.title, data: :inline, menu: part.window_menu, name: shell_factory_name(part)).first
+          end
+          script = WRITTEN_BY + in_own_function(*functions, *runtime_text(%w[rg_refusal.js rg_shell.js rg_mount.js]),
+                                                shell_start_text(shell))
           File.write(path, Page.html(title: game.title, script: script, scale: scale, template: template,
                                      screen: shell.game.described_console.screen_size,
                                      shoulders: shell.game.described_console.buttons.include?(:l)))
@@ -237,30 +240,16 @@ module VBlank
 
         private
 
-        # The createGame function of each program of +shell+: createGame (the game), createMenu, and
-        # createUnpacking0, 1... for each release read.
-        def shell_factories(shell, game)
-          parts = [["createGame", shell.game, game.menu?], ["createMenu", shell.menu, true]]
-          shell.unpackings.each_value.with_index { |unpacking, number| parts << ["createUnpacking#{number}", unpacking.program, false] }
-          parts.map { |name, program, menu| factory_and_data_file(program, title: game.title, data: :inline, menu: menu, name: name).first }
-        end
+        # The name of the createGame function of one Original::Shell::Part: createGame (the game),
+        # createMenu, and createUnpacking0, 1... by the unpacking's number.
+        def shell_factory_name(part) = { game: "createGame", menu: "createMenu", unpacking: "createUnpacking#{part.number}" }.fetch(part.role)
 
-        # The facts of +shell+ as data (the Original::Shell the page's runtime reads) and the line that
-        # starts the page on its programs.
+        # The line that starts the page on the programs of +shell+, handed its facts as data
+        # (Original::ShellFacts#to_plain), which the page's runtime reads.
         def shell_start_text(shell)
-          facts = shell.facts
-          base64 = ->(bytes) { [bytes].pack("m0") }
-          releases = facts[:releases].map { |release| release.slice(:name, :sha1, :size).merge(read: release[:readable]) }
-          page = { title: facts[:title], folder: facts[:folder], called: facts[:called], size: facts[:pack_size],
-                   checks: facts[:checks].map { |check| { at: check[:at], bytes: base64.call(check[:bytes]) } },
-                   before: base64.call(facts[:before]), after: base64.call(facts[:after]),
-                   releases: { title: facts[:releases_title], list: releases },
-                   names: { bytes: facts[:bytes_list], finished: facts[:finished_variable], faultKind: facts[:fault_variable] },
-                   menuChoice: facts[:choice_variable],
-                   choices: { facts[:load_rom_choice].to_s => "load_rom", facts[:settings_choice].to_s => "settings" } }
-          unpackings = facts[:releases].filter_map { |release| "#{JSON.generate(release[:name])}: createUnpacking#{release[:unpacking]}" if release[:unpacking] }
-          "rg_mount_page(rg_shell_game(#{JSON.generate(page)}, " \
-            "{ game: createGame, menu: createMenu, unpackings: { #{unpackings.join(', ')} } }));\n"
+          unpackings = shell.parts.select { |part| part.role == :unpacking }.map { |part| shell_factory_name(part) }
+          "rg_mount_page(rg_shell_game(#{JSON.generate(shell.facts.to_plain)}, " \
+            "{ game: createGame, menu: createMenu, unpackings: [#{unpackings.join(', ')}] }));\n"
         end
 
         # The runtime files of +names+, their text in that order.

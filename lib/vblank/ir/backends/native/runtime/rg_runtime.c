@@ -11,6 +11,7 @@
 #include "rg_list.h"
 #include "rg_mix.h"
 #include "rg_pacing.h"
+#include "rg_refusal.h"
 #include "rg_screen.h"
 #include "rg_sound.h"
 
@@ -387,41 +388,10 @@ int rg_start_file_read(const char *path) {
   return ok;
 }
 
-/* Every refusal ends the same way: what to do. */
-#define START_FILE_FIX "Hand it the %s this build was made for."
-
-int rg_start_file_refusal(const uint8_t *bytes, int32_t size, const char *called, const int32_t *rules, char *words,
-                          size_t room) {
-  if (!bytes) {
-    snprintf(words, room, "This game reads its %s as it starts, and no %s was handed to it. Start the game with its %s.", called,
-             called, called);
-    return 1;
-  }
-  if (size != rules[0]) {
-    snprintf(words, room, "The %s handed to the game is %d bytes. This build reads a %s of %d bytes. " START_FILE_FIX, called,
-             (int)size, called, (int)rules[0], called);
-    return 1;
-  }
-  const int32_t *check = rules + 2;
-  for (int32_t each = 0; each < rules[1]; each++) {
-    int32_t at = check[0];
-    int32_t length = check[1];
-    for (int32_t i = 0; i < length; i++) {
-      if (bytes[at + i] != (uint8_t)check[2 + i]) {
-        snprintf(words, room,
-                 "This file is not the %s this build reads: bytes %d to %d are not what it holds there. " START_FILE_FIX,
-                 called, (int)at, (int)(at + length - 1), called);
-        return 1;
-      }
-    }
-    check += 2 + length;
-  }
-  return 0;
-}
-
-void rg_start_file_open(const char *called, const int32_t *rules) {
-  char words[512];
-  if (rg_start_file_refusal(start_file_size < 0 ? NULL : start_file, start_file_size, called, rules, words, sizeof words))
+void rg_start_file_open(const int32_t *rules, const char *missing, const char *wrong_size, const char *wrong_check) {
+  char words[RG_WORDS_ROOM];
+  rg_start_file_words sentences = {missing, wrong_size, wrong_check};
+  if (rg_start_file_refusal(start_file_size < 0 ? NULL : start_file, start_file_size, rules, &sentences, words, sizeof words))
     rg_fault("%s", words);
 }
 

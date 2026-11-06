@@ -9,8 +9,8 @@ module VBlank
         # Lowering.
         #
         # The program's first statement asks the runtime to check the file it was handed
-        # (rg_start_file_open, which stops in plain words when there is none or it is another, as
-        # StartFile#refusal says), and then calls a routine of the game's own that fills every array
+        # (rg_start_file_open, handed StartFile#rules: the numbers to check and the sentences to stop
+        # with when there is no file or it is another), and then calls a routine of the game's own that fills every array
         # read from it: each table, written as its size alone (C::StartFileArray), from where its
         # first entry is; and each picture read from it, into the runtime's pixels: a background's
         # tile into the tile pixels, and the picture a sprite, a blit or a face draws, in the colours
@@ -31,9 +31,9 @@ module VBlank
           def build_start_file_reads
             return [] unless reads_start_file?
 
-            file = @program.start_file
-            rules = [file.size, file.checks.length, *file.checks.flat_map { |check| [check.at, check.bytes.bytesize, *check.bytes.bytes] }]
-            [eval_call("rg_start_file_open", C::Text.new(file.called), drawing_array("start_file_rules", "int32_t", rules)),
+            rules = @program.start_file.rules
+            [eval_call("rg_start_file_open", drawing_array("start_file_rules", "int32_t", rules.numbers),
+                       C::Text.new(rules.words.missing), C::Text.new(rules.words.wrong_size), C::Text.new(rules.words.wrong_check)),
              eval_call(start_file_routine.text)]
           end
 

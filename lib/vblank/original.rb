@@ -18,6 +18,7 @@ require_relative "original/decompilation"  # The decompilation, built and proven
 require_relative "original/slot"           # One piece of the original's data: name, shape, size, place
 require_relative "original/pack"           # The data pack holding every slot
 require_relative "original/unpacking"      # The routine that fills the pack, as a program of its own
+require_relative "original/shell_facts"    # What every runtime is told about a shell
 require_relative "original/shell"          # A port built with no data, which makes its pack on the player's machine
 require_relative "original/data_guard"     # The pre-commit check keeping the original's data out of the port's history
 # Its rake tasks, data_guard_tasks.rb, are a Rakefile's and are not required here.

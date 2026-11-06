@@ -177,25 +177,9 @@ def rg_start_file_hand(bytes)
   @rg_start_file = bytes.b
 end
 
-def rg_start_file_open(called, rules)
-  fix = "Hand it the #{called} this build was made for."
-  if @rg_start_file.nil?
-    rg_fault("This game reads its #{called} as it starts, and no #{called} was handed to it. Start the game with its #{called}.")
-  end
-  if @rg_start_file.bytesize != rules[0]
-    rg_fault("The #{called} handed to the game is #{@rg_start_file.bytesize} bytes. This build reads a #{called} of " \
-             "#{rules[0]} bytes. #{fix}")
-  end
-  check = 2
-  rules[1].times do
-    at = rules[check]
-    length = rules[check + 1]
-    if @rg_start_file.byteslice(at, length).bytes != rules[check + 2, length]
-      rg_fault("This file is not the #{called} this build reads: bytes #{at} to #{at + length - 1} are not what it holds " \
-               "there. #{fix}")
-    end
-    check += 2 + length
-  end
+def rg_start_file_open(rules, missing, wrong_size, wrong_check)
+  refusal = rg_start_file_refusal(@rg_start_file, rules, { missing: missing, wrong_size: wrong_size, wrong_check: wrong_check })
+  rg_fault(refusal) if refusal
 end
 
 # How each way a table is kept (RG_TABLE_INT8...) reads its entries from the file.

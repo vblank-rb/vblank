@@ -120,11 +120,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  *
  * The driver hands the file over before the game starts: rg_start_file_read reads it from a path
  * (0 when it cannot be read), and rg_start_file_hand takes bytes the driver already holds, copying
- * them. The game's first statement is rg_start_file_open, which stops the game with rg_fault, in
- * the words IR::StartFile#refusal says, when no file was handed over or it is not the one the game
- * reads. +called+ is what the file is called to a player ("data pack"), and +rules+ the game's
- * numbers for it: the file's size in bytes, how many checks, and each check as where it is, how
- * many bytes, and those bytes, which the file must hold there. Then the game fills what it reads
+ * them. The game's first statement is rg_start_file_open, handed IR::StartFile#rules: +rules+, the
+ * file's size in bytes, how many checks, and each check as where it is, how many bytes, and those
+ * bytes, which the file must hold there; and the three sentences of rg_start_file_words. It stops
+ * the game with rg_fault, in the sentence that fits (rg_start_file_refusal), when no file was handed
+ * over or it is not the one the game reads. Then the game fills what it reads
  * from the file, each once:
  *
  * rg_start_file_fill_table: +count+ entries of +table+, kept as +kept+ (RG_TABLE_INT8...), from
@@ -145,11 +145,7 @@ enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
 void rg_start_file_hand(const uint8_t *bytes, int32_t size);
-void rg_start_file_open(const char *called, const int32_t *rules);
-/* The words rg_start_file_open would stop with for +bytes+ (NULL for none handed over), 1 and the words in
- * +words+ when it would, else 0. A shell asks it of a kept pack before it hands the pack to the game. */
-int rg_start_file_refusal(const uint8_t *bytes, int32_t size, const char *called, const int32_t *rules, char *words,
-                          size_t room);
+void rg_start_file_open(const int32_t *rules, const char *missing, const char *wrong_size, const char *wrong_check);
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at);
 void rg_start_file_fill_picture(const int32_t *rules);
 

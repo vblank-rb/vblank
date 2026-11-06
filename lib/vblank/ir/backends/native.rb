@@ -92,7 +92,7 @@ module VBlank
         # build/build.zig compiles itself since it is C++ and wants flags of its own: a desktop
         # build always has them, and the builds a test makes of the game do not come through here
         # at all.
-        SHARED_RUNTIME = %w[rg_headless.c rg_mix.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c].freeze
+        SHARED_RUNTIME = %w[rg_headless.c rg_mix.c rg_refusal.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c].freeze
         HEADLESS_RUNTIME = (["rg_headless_main.c"] + SHARED_RUNTIME).freeze
         DESKTOP_RUNTIME = (%w[rg_sdl.c rg_window.c rg_window_menu.c rg_menu_font.c rg_bios_boot.c rg_shell.c] + [MenuData::FILE, ShellData::FILE] +
                            SHARED_RUNTIME).freeze
@@ -162,14 +162,12 @@ module VBlank
           shell = Original::Shell.build(game, console: console || game.consoles.first, settings: settings, err: err, progress: progress)
           FileUtils.mkdir_p(File.join(path, ShellData::PARTS_FOLDER))
           ending = target == :windows || (target.nil? && Gem.win_platform?) ? ".exe" : ""
-          parts = { File.join(path, "#{File.basename(path)}#{ending}") => [shell.game, shell, game.menu?],
-                    File.join(path, ShellData::PARTS_FOLDER, "#{ShellData::MENU_PART}#{ending}") => [shell.menu, nil, true] }
-          shell.unpackings.each_value.with_index do |unpacking, number|
-            parts[File.join(path, ShellData::PARTS_FOLDER, "#{ShellData.unpacking_part(number)}#{ending}")] = [unpacking.program, nil, false]
-          end
-          parts.each do |file, (program, with_shell, menu)|
-            compile_desktop(program, file, title: game.title, menu: menu, cartridge: nil, target: target, strip: strip, shell: with_shell)
-            FileUtils.chmod(0o755, file)
+          shell.parts.each do |part|
+            game_part = part.role == :game
+            file = game_part ? File.join(path, File.basename(path)) : File.join(path, ShellData::PARTS_FOLDER, ShellData.part_name(part))
+            compile_desktop(part.program, "#{file}#{ending}", title: game.title, menu: part.window_menu, cartridge: nil, target: target,
+                                                               strip: strip, shell: (shell if game_part))
+            FileUtils.chmod(0o755, "#{file}#{ending}")
           end
           path
         end
