@@ -25,8 +25,9 @@ module VBlank
         #
         # 1. CLIPPED to its edges (`window:`, `inside`, the screen): every corner then lies on the
         #    screen. The chip's drawing area is set to the same edges, so its pixels stop there too. A
-        #    face without perspective already on the screen is not clipped (#on_screen_without_perspective?): the
-        #    drawing area alone holds it to its edges.
+        #    face without perspective already on the screen is not clipped (#sent_unclipped?): the
+        #    drawing area alone holds it to its edges. Nor is one in perspective inside its edges, which
+        #    the cuts would leave as it is.
         # 2. IN PERSPECTIVE, CUT INTO SQUARES, along every 32nd row and column from its top left corner
         #    (every 8th for `perspective: :every_pixel`): each new corner's place on the picture is worked out
         #    exactly (the place over the distance, times the distance, as Reference#place_in_perspective
@@ -123,7 +124,7 @@ module VBlank
             return [] if left >= right || top >= bottom
 
             face = corners.map { |corner| corner_from_list(*corner.first(Nodes::FillFace::CORNER_NUMBERS), spans, levels) }
-            unless on_screen_without_perspective?(face, spans)
+            unless sent_unclipped?(face, spans, edges)
               face = keep_side(face, X, Int32.mul(left, 16), :above, spans)
               face = keep_side(face, X, Int32.mul(right, 16), :below, spans)
               face = keep_side(face, Y, Int32.mul(top, 16), :above, spans)
@@ -136,19 +137,32 @@ module VBlank
             sent
           end
 
-          # Whether +face+ is sent without being clipped to its edges (step 1 of the module's note): a face
-          # without perspective whose corners are all on the screen, so every triangle of it is well inside
-          # what the chip draws. The chip's drawing area, set to the same edges, then holds its pixels to
-          # them, as the console's own games left a polygon on the screen to the chip; clipping it on the
+          # Whether +face+ is sent without being clipped to its +edges+ (step 1 of the module's note).
+          #
+          # A face without perspective whose corners are all on the screen: every triangle of it is well
+          # inside what the chip draws, and the chip's drawing area, set to the same edges, holds its pixels
+          # to them, as the console's own games left a polygon on the screen to the chip. Clipping it on the
           # processor first costs a cut for each edge, and gives more corners, so more triangles, to send.
-          def on_screen_without_perspective?(face, spans)
-            return false unless spans == Nodes::FillFace::PERSPECTIVE_NONE
-
-            [[X, SCREEN_WIDTH], [Y, SCREEN_HEIGHT]].all? do |number, side|
+          #
+          # A face in perspective whose corners all lie inside its edges: clipping it would keep every
+          # corner and make none, so the four cuts are left out and the pieces are the same. One reaching
+          # past an edge is clipped, since its squares start at its own least corner (#each_cell), and
+          # squares wholly outside the edges would be cut and sent for the drawing area to throw away.
+          def sent_unclipped?(face, spans, edges)
+            left, top, right, bottom = edges
+            bounds = if spans == Nodes::FillFace::PERSPECTIVE_NONE
+                       [[X, 0, SCREEN_WIDTH], [Y, 0, SCREEN_HEIGHT]]
+                     else
+                       [[X, left, right], [Y, top, bottom]]
+                     end
+            bounds.all? do |number, low, high|
               least, most = face.map { |corner| corner[number] }.minmax
-              least >= 0 && most <= side * 16
+              least >= low * 16 && most <= high * 16
             end
           end
+
+          # The side of a square a face in perspective +spans+ is cut into, in sixteenths of a pixel.
+          def cell_side(spans) = Int32.mul(spans == 1 ? EVERY_PIXEL_CELL_PIXELS : CELL_PIXELS, 16)
 
           # The corner a face's corner becomes (see the module's note). On a lit face (+levels+ not nought)
           # its shade is its colour with sixteen bits of fraction: its light held to nought to
@@ -240,7 +254,7 @@ module VBlank
           def each_cell(face, spans, &block)
             return yield(face) if spans == Nodes::FillFace::PERSPECTIVE_NONE
 
-            side = Int32.mul(spans == 1 ? EVERY_PIXEL_CELL_PIXELS : CELL_PIXELS, 16)
+            side = cell_side(spans)
             left = face.map { |corner| corner[X] }.min
             top = face.map { |corner| corner[Y] }.min
             each_strip(face, Y, side, top, spans) { |strip| each_strip(strip, X, side, left, spans, &block) }

@@ -65,12 +65,15 @@ module VBlank
               [PAGE_Y, PAGED, FLIP_OWED, PASS_PAGE_Y, SHOWN_PAGE_Y, PASS_SHOWN_PAGE_Y].each { |name| memory.reserve(name, 4) }
             end
 
-            def emit(asm, memory)
+            # +faces+ is whether the game fills the faces of a place, which leave the chip's drawing area
+            # and texture window set for the next face (Faces#emit_chip_put_back_routine): then a fill and a
+            # blit give the chip its own back first.
+            def emit(asm, memory, faces: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm, at)
               emit_area(asm, at)
-              emit_fill(asm, at)
-              emit_blit(asm, at)
+              emit_fill(asm, at, faces)
+              emit_blit(asm, at, faces)
               emit_pages(asm, at)
               emit_upload(asm)
             end
@@ -156,7 +159,7 @@ module VBlank
             # rt_paint_fill: a0, a1, a2, a3 = x, y, width, height, t4 = the rectangle command with its
             # colour (GP0 60h). The part inside the area, as one rectangle on the page drawn into.
             # rt_paint_clear: a0 = the command; the whole area (Reference::Framebuffer#clear).
-            def emit_fill(asm, at)
+            def emit_fill(asm, at, faces)
               area = at.call(AREA)
               asm.label("rt_paint_clear")
               asm.move(:t4, :a0)
@@ -168,6 +171,7 @@ module VBlank
               asm.subu(:a3, :a3, :a1)
 
               asm.label("rt_paint_fill")
+              Faces.emit_chip_put_back_call(asm) if faces
               asm.move(:v1, :t4) # the command, kept clear of what the clip leaves
               emit_clip_to_area(asm, at, tag: "rt_paint_fill", empty: "rt_paint_fill_none")
               asm.addiu(:sp, :sp, -4)
@@ -220,7 +224,7 @@ module VBlank
             #
             # rt_paint_blit_one_of: a0 = a list of pictures (its length, then each one's place), a1 = which,
             # a2, a3 = x, y. A number naming none of them, below nought or past the end, draws nothing.
-            def emit_blit(asm, at)
+            def emit_blit(asm, at, faces)
               h = Console::PS1Hardware
               asm.label("rt_paint_blit_one_of")
               asm.lw(:t0, 0, :a0)
@@ -236,6 +240,7 @@ module VBlank
               asm.addiu(:sp, :sp, -20)
               asm.sw(:ra, 0, :sp)
               [:s0, :s1, :s2, :s3].each_with_index { |register, i| asm.sw(register, 4 + (i * 4), :sp) }
+              asm.jal("rt_face_chip_put_back") if faces
               asm.lw(:s1, 0, :a0)
               asm.addiu(:s0, :a0, 4)
               asm.move(:s2, :a1)

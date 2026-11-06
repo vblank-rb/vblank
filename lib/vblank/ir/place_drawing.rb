@@ -438,7 +438,8 @@ module VBlank
       # The variables a face's corners are worked in: four of each kind written out, or the loop's own.
       def corner_variables
         if @corners_in_a_loop
-          return %i[corner corner_at other_at corner_point other_point corner_z other_z face_codes].map { |part| name(part) }
+          return %i[corner corner_at other_at corner_point other_point corner_z other_z face_codes face_reach corner_code
+                    first_x first_y before_x before_y seen_at corner_slot corner_nearness].map { |part| name(part) }
         end
 
         CORNERS.times.flat_map { |k| [*TURNED_FIELDS, *WHOLE_FACE_FIELDS].map { |field| turned_var(field, k) } }
@@ -595,22 +596,91 @@ module VBlank
       # pass of the loop reads its corner from where the turning left it (the seen list) and from the
       # faces table, rather than from variables of its own, so the numbers are the same numbers, worked
       # out by the same sums in the same order: first every corner turned, then every edge cut. The
-      # corners' codes are gathered as they are turned, and a face they say draws nothing is not cut
-      # (see POINT CODES); it is always cut when it is drawn, as a loop of corners has no face drawn whole.
+      # corners' codes are gathered as they are turned, both the bits all four share and the bits any
+      # has: a face they say draws nothing is passed over before its picture is read, and one with no
+      # corner behind is drawn whole, in a loop of its own (#looped_whole_face), with none of the cut's
+      # tests (see POINT CODES).
       def face_loop_statements
-        corner = var(:corner)
+        cut = cut_and_fill(Build.repeat(CORNERS, name(:corner), *looped_cut_edge))
+        whole_or_cut = Build.if_(Build.binop(:==, Build.binop(:&, var(:face_reach), var(:cutting_codes)), 0), *looped_whole_face)
+        whole_or_cut.else = Build.else_(*cut)
         [Build.set(name(:base), Build.binop(:*, var(:face), FACE_STRIDE)),
-         Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
-         Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
          Build.set(name(:face_codes), var(:rejecting_codes)),
+         Build.set(name(:face_reach), 0),
+         Build.set(name(:corner_at), face_field(1)),
+         # The corner's code is read once, and again only after the point routine has turned it afresh.
          Build.repeat(CORNERS, name(:corner),
-                      Build.set(name(:corner_point), Build.table_get(faces_table, corner_at(corner))),
-                      Build.if_(stale_point_condition(var(:corner_point)),
+                      Build.set(name(:corner_point), Build.table_get(faces_table, var(:corner_at))),
+                      Build.set(name(:corner_code), Build.list_get(codes_list, var(:corner_point))),
+                      Build.if_(Build.binop(:!=, Build.shift_right(var(:corner_code), STAMP_SHIFT), var(:drawing)),
                                 Build.set(name(:seen_point), var(:corner_point)),
-                                Build.call(point_routine)),
-                      Build.set(name(:face_codes), Build.binop(:&, var(:face_codes), Build.list_get(codes_list, var(:corner_point))))),
+                                Build.call(point_routine),
+                                Build.set(name(:corner_code), Build.list_get(codes_list, var(:corner_point)))),
+                      Build.set(name(:face_codes), Build.binop(:&, var(:face_codes), var(:corner_code))),
+                      Build.set(name(:face_reach), Build.binop(:|, var(:face_reach), var(:corner_code))),
+                      Build.add(name(:corner_at), CORNER_FIELDS)),
          Build.if_(Build.binop(:==, var(:face_codes), 0),
-                   *cut_and_fill(Build.repeat(CORNERS, name(:corner), *looped_cut_edge)))]
+                   Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
+                   Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
+                   whole_or_cut)]
+      end
+
+      # THE LOOP'S FACE DRAWN WHOLE, every corner in front (see POINT CODES): each corner its point as put
+      # on the screen, put in the corner list where the cut would put it, so the fill is handed the same
+      # four corners. Which way it faces is summed as the corners go in, from where they land: each corner
+      # from the third on adds the part of #front_test's sum for the edge from the corner before it,
+      # measured from the first. The parts #front_test adds for the edge from the first corner and the
+      # edge back to it are nought, so the sum is the same.
+      #
+      # Where the corner's point is in the seen list is worked out once a corner (seen_at), and where it is
+      # in the faces table and goes in the corner list moved on a corner at a time (corner_at,
+      # corner_slot), rather than each worked out again for every number read or put.
+      def looped_whole_face
+        seen = ->(at) { Build.list_get(seen_list, Build.binop(:+, var(:seen_at), at)) }
+        on_face = ->(offset) { Build.table_get(faces_table, Build.binop(:+, var(:corner_at), offset)) }
+        corner = ->(offset) { offset.zero? ? var(:corner_slot) : Build.binop(:+, var(:corner_slot), offset) }
+        from_first = ->(axis, at) { Build.binop(:-, var(at), var(:"first_#{axis}")) }
+        part = Build.binop(:-, Build.mul_fix(from_first.call(:x, :before_x), from_first.call(:y, :at_y), 8),
+                           Build.mul_fix(from_first.call(:x, :at_x), from_first.call(:y, :before_y), 8))
+        first = Build.if_(Build.binop(:==, var(:count), 0),
+                          Build.set(name(:first_x), var(:at_x)), Build.set(name(:first_y), var(:at_y)))
+        # A nearness the point was turned without is worked out as the drawing first reads it (see
+        # SEEN_STRIDE), and kept.
+        nearness_read = Build.if_(Build.binop(:==, var(:corner_nearness), 0),
+                                  Build.set(name(:at_z), seen.call(2)),
+                                  Build.set(name(:corner_nearness), nearness),
+                                  Build.list_set(seen_list, Build.binop(:+, var(:seen_at), SEEN_NEARNESS), var(:corner_nearness)))
+        handed_on = [Build.set(name(:area), 0),
+                     *(@outcode_test ? [Build.set(name(:outcode), ALL_OUTCODE_BITS)] : []),
+                     Build.set(name(:count), 0),
+                     Build.set(name(:corner_at), face_field(1)),
+                     Build.set(name(:corner_slot), 0),
+                     Build.repeat(CORNERS, name(:corner),
+                                  Build.set(name(:corner_point), Build.table_get(faces_table, var(:corner_at))),
+                                  Build.set(name(:seen_at), Build.binop(:*, var(:corner_point), SEEN_STRIDE)),
+                                  Build.set(name(:at_x), seen.call(SEEN_ACROSS)),
+                                  Build.set(name(:at_y), seen.call(SEEN_DOWN)),
+                                  Build.list_set(corners_list, corner.call(0), var(:at_x)),
+                                  Build.list_set(corners_list, corner.call(1), var(:at_y)),
+                                  *(@outcode_test ? corner_outcode_statements : []),
+                                  Build.list_set(corners_list, corner.call(2), on_face.call(1)),
+                                  Build.list_set(corners_list, corner.call(3), on_face.call(2)),
+                                  Build.if_(in_perspective,
+                                            Build.set(name(:corner_nearness), seen.call(SEEN_NEARNESS)),
+                                            nearness_read,
+                                            Build.list_set(corners_list, corner.call(4), var(:corner_nearness))),
+                                  *(@shading ? [Build.list_set(corners_list, corner.call(5), looped_corner_light(var(:corner_at), :corner_point))] : []),
+                                  first,
+                                  # The first two corners' parts are measured from the first to itself: nought.
+                                  Build.if_(Build.binop(:>=, var(:count), 2), Build.set(name(:area), Build.binop(:+, var(:area), part))),
+                                  Build.set(name(:before_x), var(:at_x)),
+                                  Build.set(name(:before_y), var(:at_y)),
+                                  Build.add(name(:count), 1),
+                                  Build.add(name(:corner_at), CORNER_FIELDS),
+                                  Build.add(name(:corner_slot), Nodes::FillFace::CORNER_NUMBERS))]
+        return [*handed_on, fill_when_seen] unless @outcode_test
+
+        [*handed_on, Build.if_(Build.binop(:==, var(:outcode), 0), fill_when_seen)]
       end
 
       # What follows the turning: the face cut by +cut+, and if three corners or more are left and they

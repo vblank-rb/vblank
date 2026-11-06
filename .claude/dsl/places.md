@@ -42,7 +42,8 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   costs, a small part of a second for a place of about a thousand faces on any console. Drawn whole,
   a floor of about a thousand faces, half of them out of view, draws at least eight times a second on
   the Advance with `perspective: :none` (`PlaceGames.big_floor`, held by a cost test), and takes several
-  frames a drawing in perspective and on the PlayStation; the faces out of view cost little (see "How
+  frames a drawing in perspective; on the PlayStation it takes four frames a drawing without perspective
+  and five with `:every_8_pixels` (held by a cost test too). The faces out of view cost little (see "How
   it is drawn"). A game of that size still does best drawing only the faces it can see (`faces:` and
   `window:` below).
 - **Walls whose picture changes**: a door sliding through its frames, a wall of lava, a forcefield.
@@ -222,8 +223,13 @@ or all past one edge of the view) is passed over before any of its corners is re
 corner behind is handed to the fill as it is, with none of the cut's tests. Where the near limit was
 nearer when the points were turned (a `screen_spot` with its own `near:`), only the behind bit is used,
 and the rest goes to the cut as before. A face drawn whole and seen from behind is passed over before
-its corners are handed on, and on every console but the PlayStation so is one whose corners all lie
-between two rows' middles, which draws nothing (most of a far floor). On every lowering a
+its corners are handed on (on the PlayStation, as they are handed on, in the loop), and on every
+console but the PlayStation so is one whose corners all lie between two rows' middles, which draws
+nothing (most of a far floor). On the PlayStation a face the graphics chip can draw as it is (up to four
+corners; without perspective on the screen, in perspective inside its window and inside one of
+the squares it is cut into; its picture reaching no further than the chip's texture coordinates) is
+sent to the chip straight from its corners,
+and a drawing's corners are kept in the processor's scratchpad, where the fill reads them. On every lowering a
 face whose corners, once it is cut at `near:`, all lie past one edge of the screen or the window is
 passed over before it is tested for which way it faces or filled, a face reaching behind the viewer
 included, so a game that draws a room through a doorway's window pays little for the faces the window

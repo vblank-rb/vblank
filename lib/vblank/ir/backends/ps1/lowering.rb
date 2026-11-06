@@ -179,7 +179,11 @@ module VBlank
             end
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
-              place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
+              place = if node.name == corners_list_in_face
+                        runtime_place(Runtime::Faces::FACE) + Runtime::Faces::CORNERS_LIST_OFFSET_BYTES
+                      else
+                        @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
+                      end
               @lists[node.name] = ListPlace.new(address: place, capacity: node.capacity, slot_bytes: width, name: node.name.to_s)
             end
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
@@ -497,20 +501,23 @@ module VBlank
           # Reference#exec_repeat: the count worked out once, before the first pass; the index counting 0,
           # 1, 2... and stored in the game's variable at the top of each pass; and +stop_when+ asked BEFORE
           # the body, so a loop already finished on its first pass runs the body no times.
+          #
+          # A count written in the program is compared with as it is, with no place of its own. The index is
+          # in v0 once it has been compared, so the game's variable is set from there.
           def emit_repeat(node)
-            count = keep_local(:count)
+            known = folded(node.count)
             index = keep_local(:index)
-            emit_value(node.count)
-            emit_store(count)
+            count = known ? Build.int(known) : keep_local(:count)
+            unless known
+              emit_value(node.count)
+              emit_store(count)
+            end
             emit_store_number(index, 0)
             top = fresh_label("repeat")
             done = fresh_label("end_repeat")
             @asm.label(top)
-            jump_unless(Build.binop(:<, Build.var_ref(index), Build.var_ref(count)), done)
-            if node.index
-              emit_load_variable(index)
-              emit_store(node.index)
-            end
+            jump_unless(Build.binop(:<, Build.var_ref(index), known ? count : Build.var_ref(count)), done)
+            emit_store(node.index) if node.index
             jump_if(node.stop_when, done)
             node.children.each { |child| statement(child) }
             emit_sum(index, :+, Build.int(1))
@@ -955,6 +962,8 @@ module VBlank
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
             elsif condition.is_a?(Node) && condition.kind == :binop && COMPARISONS.include?(condition.op)
+              return if jump_unless_against_number(condition, label)
+
               with_right_operand(condition.lhs, condition.rhs) do
                 case condition.op
                 when :== then @asm.bne(:v0, :v1, label)
@@ -969,6 +978,30 @@ module VBlank
               emit_value(condition)
               @asm.beq(:v0, :zero, label)
             end
+          end
+
+          # A COMPARISON WITH A NUMBER WRITTEN IN THE PROGRAM, which the instruction can hold: against nought
+          # the zero register is the other side, and below a number of 16 bits SLTI compares with it as it
+          # is (above or at most one is below the next), so the number is never put in a register first.
+          # The left side is in v0, as it is for any comparison. True when done so.
+          def jump_unless_against_number(condition, label)
+            number = folded(condition.rhs)
+            return false unless number
+
+            op = condition.op
+            below = %i[> <=].include?(op) ? number + 1 : number
+            return false unless %i[== !=].include?(op) ? number.zero? : below.between?(-0x8000, 0x7FFF)
+
+            emit_value(condition.lhs)
+            case op
+            when :== then @asm.bne(:v0, :zero, label)
+            when :!= then @asm.beq(:v0, :zero, label)
+            else
+              @asm.slti(:t0, :v0, below)
+              # Below the number holds for < and <=, and fails for >= and >.
+              %i[< <=].include?(op) ? @asm.beq(:t0, :zero, label) : @asm.bne(:t0, :zero, label)
+            end
+            true
           end
 
           # Jump to +label+ when +lower+ < +higher+ is +holds+, as signed numbers.

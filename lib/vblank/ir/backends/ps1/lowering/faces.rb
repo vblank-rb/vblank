@@ -44,6 +44,28 @@ module VBlank
 
             private
 
+            # THE LIST A PLACE'S DRAWING HANDS EACH FACE'S CORNERS IN, kept in the scratchpad where the runtime
+            # reads a face's corners (Runtime::Faces::CORNERS_LIST_OFFSET_BYTES), or nil for none. The drawing
+            # puts every corner of every face drawn there, and the fill reads them all back: in main RAM, which
+            # has no cache, each number written and read again waits on the bus, and the fill copied every
+            # corner's six into the scratchpad first. Kept there, they are written and read in the scratchpad
+            # and copied not at all. A list is kept there only where it is the one list every fill is handed,
+            # of words and no longer than a face's corners: rt_face_corners copies any other list's corners
+            # into those slots, which would change the kept list under the game. A game drawing two places
+            # hands two lists, so keeps neither there. Nor is a list the game takes items from the front of,
+            # since rt_face_corners reads such a list's items one by one into those same slots.
+            def corners_list_in_face
+              return @corners_list_in_face if defined?(@corners_list_in_face)
+
+              room = Nodes::FillFace::MOST_CORNERS * Nodes::FillFace::CORNER_NUMBERS
+              handed = @program.walk.select { |node| node.kind == :fill_face }.map(&:corners).uniq
+              name = handed.first if handed.length == 1
+              list = name && @declared_lists[name]
+              fits = list && LoweringPlan::SLOT_BYTES.fetch(list.width) == 4 && list.capacity <= room &&
+                     !@lists_dropped_from_front.include?(name)
+              @corners_list_in_face = fits ? name : nil
+            end
+
             # A picture a face shows, as faces lit by one shading (or by none, +shading+ nil) show it: its
             # record's label, its size, and its texture.
             FacePicture = Data.define(:label, :width, :height, :texture, :shading)

@@ -47,7 +47,7 @@ module VBlank
             Frame.emit(asm, memory)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
-            Paint.emit(asm, memory)
+            Paint.emit(asm, memory, faces: faces)
             Faces.emit(asm, memory) if faces
             emit_start(asm)
             emit_frame_begins(asm, frame_begins)
