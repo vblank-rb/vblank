@@ -375,7 +375,7 @@ module VBlank
                                  game's data pack out. The game reads the pack
                                  from a file as it starts (a program takes
                                  --data-pack PATH). A cartridge cannot do this.
-        --shell                  With --format ruby: build the game as a shell,
+        --shell                  With --format ruby or web: build the game as a shell,
                                  with none of the original's data in it. The
                                  first time it is played, a menu asks for the
                                  player's copy of the original (Load ROM). The
@@ -1855,9 +1855,12 @@ module VBlank
     # --pack-at-start leaves a game's data pack out, which only a build for a computer can do: a
     # cartridge holds its own data (Builder::DataPacks).
     def refuse_pack_at_start_on_cartridge!
-      if options[:shell] && options[:format] != "ruby"
-        raise Thor::Error, "--shell works only with --format ruby now. A cartridge holds its own data, and the " \
-                           "desktop program and the web page cannot make their pack from a copy yet. Add --format ruby."
+      if options[:shell] && !%w[ruby web].include?(options[:format])
+        raise Thor::Error, "--shell works only with --format ruby or web now. A cartridge holds its own data, and the " \
+                           "desktop program cannot make its pack from a copy yet. Add --format ruby or --format web."
+      end
+      if options[:shell] && options[:format] == "web" && options[:js] != "page"
+        raise Thor::Error, "--shell makes a page. Remove --js, or leave out --shell."
       end
       return unless options[:pack_at_start] && !%w[native web ruby].include?(options[:format])
 
@@ -1879,6 +1882,12 @@ module VBlank
       web = VBlank::IR::Backends::JS.new
       data = options[:data].to_sym
       progress = VBlank::Messages::Progress.to($stderr)
+      if options[:shell]
+        template = options[:template] ? File.expand_path(options[:template]) : VBlank::IR::Backends::JS::Page::DEFAULT
+        web.build_shell_page(game, path, console: console, settings: given_settings, template: template, progress: progress)
+        say "Built #{path}"
+        return
+      end
       case js
       when "module" then web.build_module(game, path, console: console, settings: given_settings, data: data, progress: progress,
                                                       pack_at_start: options[:pack_at_start])

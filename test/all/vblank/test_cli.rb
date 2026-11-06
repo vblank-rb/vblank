@@ -1102,13 +1102,22 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # A shell makes its pack on the player's machine, which only the Ruby file does so far.
-  def test_shell_is_refused_but_for_the_ruby_file
+  # A cartridge holds its own data, so a shell is only a Ruby file, a web page or a desktop program.
+  def test_shell_is_refused_for_a_cartridge
+    Dir.mktmpdir do |dir|
+      cli("new", "demo", dir: dir)
+      out, status = cli("build", "demo.rb", "--shell", dir: dir)
+      refute status.success?, "--shell on a cartridge should fail"
+      assert_match(/--shell works only with --format/, out)
+    end
+  end
+
+  def test_shell_of_a_web_page_with_no_data_pack_is_refused
     Dir.mktmpdir do |dir|
       cli("new", "demo", dir: dir)
       out, status = cli("build", "demo.rb", "--shell", "--format", "web", dir: dir)
-      refute status.success?, "--shell on a web page should fail"
-      assert_match(/--shell works only with --format ruby/, out)
+      refute status.success?, "--shell on a game with no data pack should fail"
+      assert_match(/has no data_pack/, out)
     end
   end
 

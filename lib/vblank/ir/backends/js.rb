@@ -131,9 +131,9 @@ module VBlank
         # createGame's text and, with +data+ :separate, the data file its big tables are in (nil
         # with them :inline). A game whose data is separate fetches it from +rg_data_beside+, which
         # whatever wraps the text declares (see #data_beside_declaration).
-        def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true)
+        def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true, name: "createGame")
           text, data_file = Lowering.new(program, title: title).text_and_data_file(data: data)
-          [["function createGame(host) {\n", console_text(program.described_console), fingerprint_text(program), MenuData.source(menu: menu),
+          [["function #{name}(host) {\n", console_text(program.described_console), fingerprint_text(program), MenuData.source(menu: menu),
             *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), text, "return page_create(host || {});\n}\n"].join, data_file]
         end
 
@@ -176,6 +176,29 @@ module VBlank
           end
         end
 
+        # +game+ built as a SHELL (Original::Shell), as ONE web page written to +path+: the page holds none
+        # of the original's data. It plays the game's pack kept in the browser (IndexedDB), or else the
+        # menu, a file picker and the release's unpacking, and keeps the pack it makes (runtime/rg_shell.js).
+        # Each program is a createGame of its own, with a runtime of its own, so none shares state.
+        def build_shell_page(game, path, console: nil, settings: {}, scale: 3, template: Page::DEFAULT, err: $stderr,
+                             progress: Messages::Progress.silent)
+          unless File.file?(template)
+            raise LoweringError, "There is no page template at #{template}. Name an .html.erb file that exists."
+          end
+
+          refuse_folder!(path)
+          shell = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
+          [shell.game, shell.menu, *shell.unpackings.values.map(&:program)].each { |program| refuse_console_only_steps!(program, err) }
+          progress.step("Writing JavaScript")
+          functions = shell_factories(shell, game)
+          script = WRITTEN_BY + in_own_function(*functions, *runtime_text(%w[rg_shell.js rg_mount.js]), shell_start_text(shell))
+          File.write(path, Page.html(title: game.title, script: script, scale: scale, template: template,
+                                     screen: shell.game.described_console.screen_size,
+                                     shoulders: shell.game.described_console.buttons.include?(:l)))
+          progress.done
+          path
+        end
+
         # +game+ as an ES MODULE, written to +path+ (game.mjs): createGame, exported by name and as
         # the module's default, and the game's title, for a page of the author's own to import —
         # through a bundler, a framework, or a <script type="module"> — and call with its canvas.
@@ -213,6 +236,33 @@ module VBlank
         end
 
         private
+
+        # The createGame function of each program of +shell+: createGame (the game), createMenu, and
+        # createUnpacking0, 1... for each release read.
+        def shell_factories(shell, game)
+          parts = [["createGame", shell.game, game.menu?], ["createMenu", shell.menu, true]]
+          shell.unpackings.each_value.with_index { |unpacking, number| parts << ["createUnpacking#{number}", unpacking.program, false] }
+          parts.map { |name, program, menu| factory_and_data_file(program, title: game.title, data: :inline, menu: menu, name: name).first }
+        end
+
+        # The facts of +shell+ as data (the Original::Shell the page's runtime reads) and the line that
+        # starts the page on its programs.
+        def shell_start_text(shell)
+          file = shell.pack_form.start_file
+          base64 = ->(bytes) { [bytes.b].pack("m0") }
+          releases = shell.releases.list.map { |release| { name: release.name, sha1: release.sha1, size: release.size, read: release.read } }
+          facts = { title: shell.title.to_s, folder: shell.folder, called: file.called, size: file.size,
+                    checks: file.checks.map { |check| { at: check.at, bytes: base64.call(check.bytes) } },
+                    before: base64.call(shell.pack_form.before_sha1), after: base64.call(shell.pack_form.after_sha1),
+                    releases: { title: shell.releases.title.to_s, list: releases },
+                    names: { bytes: Original::Unpacking::BYTES.to_s, finished: Original::Unpacking::FINISHED.to_s,
+                             faultKind: Original::Unpacking::FAULT_KIND.to_s },
+                    menuChoice: Original::Shell::MENU_CHOICE.to_s,
+                    choices: { Original::Shell::LOAD_ROM.to_s => "load_rom", Original::Shell::SETTINGS.to_s => "settings" } }
+          unpackings = shell.unpackings.each_key.with_index.map { |name, number| "#{JSON.generate(name)}: createUnpacking#{number}" }
+          "rg_mount_page(rg_shell_game(#{JSON.generate(facts)}, " \
+            "{ game: createGame, menu: createMenu, unpackings: { #{unpackings.join(', ')} } }));\n"
+        end
 
         # The runtime files of +names+, their text in that order.
         def runtime_text(names) = names.map { |name| File.read(File.join(RUNTIME_DIR, name), encoding: Encoding::UTF_8) }

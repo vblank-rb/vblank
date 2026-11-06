@@ -5,7 +5,7 @@ require "fileutils"
 require "open3"
 require "tmpdir"
 require "vblank/live"
-require "all/vblank/builder/test_data_packs"
+require "shell_tests"
 
 # A PORT BUILT AS A SHELL, PLAYED AS RUBY. The shell holds none of the made-up original's data
 # (MadeUpOriginal, test_data_packs.rb's). Started with no pack kept, it shows its menu; LOAD ROM
@@ -20,7 +20,7 @@ require "all/vblank/builder/test_data_packs"
 # the unpacking, the game) counts its passes from the first again, so A held on pass 2 chooses the
 # menu's first line, LOAD ROM, every time the menu plays.
 class TestShell < Minitest::Test
-  include MadeUpOriginal
+  include ShellTests
 
   Headless = VBlank::Live::Headless
   Session = VBlank::Live::Session
@@ -29,39 +29,6 @@ class TestShell < Minitest::Test
   # How many passes of the game each test watches.
   GAME_PASSES = 6
   CHOOSE_LOAD_ROM = { 2 => [:a] }.freeze
-
-  # The made-up port: the colours copied as they are, the tiles and the heights unpacked by its
-  # routine, laid out as a background with a marker placed by the heights. +version+ is the build
-  # the pack names.
-  private def port(from, version: "1")
-    VBlank.game("MADE UP", consoles: %i[gba]) do
-      screen :bitmap
-      clear_screen :black
-      pack = data_pack(from: from, version: version) do |slots|
-        slots.colors :palette, at: PALETTE_AT, count: 16
-        slots.tiles :walls, count: 2
-        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
-        slots.fill_from_copy do |copy, into|
-          copy.unpack_lz77 at: LZ77_AT, into: into[:walls]
-          copy.unpack_rle at: RLE_AT, into: into[:heights]
-        end
-      end
-      image :wall_a, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
-      image :wall_b, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(1)
-      tiles :walls, 0 => :wall_a, 1 => :wall_b
-      background :room, tiles: :walls, map: [[0, 1, 0, 1], [1, 0, 1, 0]]
-      heights = table :heights, pack[:heights]
-      step = var :step, 0
-      game_loop do
-        draw_rect_at heights[step] * 4, 40, 4, 4, :white
-        step = (step + 1) & 15
-      end
-    end
-  end
-
-  # The pack the all-in-one build makes from the copy: every slot as the routine unpacks it.
-  ALL_IN_ONE_PACK = VBlank::Original::Pack.holding({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") },
-                                                   sha1: SHA1, build_version: "1").to_bytes
 
   # The pictures the all-in-one build of the port shows over GAME_PASSES passes.
   private def all_in_one_pictures(folder)
@@ -90,10 +57,6 @@ class TestShell < Minitest::Test
                                                                     }, refused: ->(words) { refusals << words },
                                                                     play_game: ->(game) { Session.new(game: game).play(game_device) })
     Played.new(game_pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked)
-  end
-
-  private def copy_at(folder)
-    File.join(folder, "made_up.gba").tap { |path| File.binwrite(path, COPY) }
   end
 
   def test_the_first_start_unpacks_the_copy_keeps_the_pack_and_plays_the_game
@@ -140,9 +103,7 @@ class TestShell < Minitest::Test
 
   def test_a_copy_of_the_right_size_that_is_no_release_is_refused
     Dir.mktmpdir do |folder|
-      wrong = File.join(folder, "wrong.gba")
-      File.binwrite(wrong, COPY.reverse)
-      played = play_shell(shell(folder), folder, picked: wrong, menu_frames: 40)
+      played = play_shell(shell(folder), folder, picked: wrong_copy_at(folder), menu_frames: 40)
 
       assert_match "not a release of Made Up that this game knows", played.refusals.first
       assert_empty played.game_pictures
@@ -152,9 +113,7 @@ class TestShell < Minitest::Test
 
   def test_a_file_no_release_is_the_size_of_is_refused_naming_the_size
     Dir.mktmpdir do |folder|
-      short = File.join(folder, "short.gba")
-      File.binwrite(short, COPY.byteslice(0, 100))
-      played = play_shell(shell(folder), folder, picked: short, menu_frames: 40)
+      played = play_shell(shell(folder), folder, picked: short_copy_at(folder), menu_frames: 40)
 
       assert_match "is 100 bytes", played.refusals.first
       assert_empty played.game_pictures

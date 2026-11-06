@@ -51,11 +51,19 @@
  *                       ("screen" unless named), as the console's fifteen-bit colours
  *   js CODE             runs CODE in the page, and prints "js" and what it comes to, if anything:
  *                       how a test reaches a game a page made with createGame (`games[0].pause()`)
+ *   choose PATH         the file picker, if the page opened one, is given the file at PATH
+ *   cancel-pick         ...or closed without a file
+ *   picker              prints "picker" and how many times the page opened the file picker
+ *   settle              lets the page's promises run on for a while with no frame
  *   text ID             prints "text ID", then "hidden" if it is, then the words in the page's
  *                       element of that id now, or "text ID (none)" for a page without one
  *   state               prints "state" and what the browser holds now: the sound device
  *                       (none, running or suspended), what fills the screen (none or an id),
  *                       and how many key presses the page kept from the browser
+ *
+ * The page's IndexedDB is a stand-in too: a database of byte strings. Started with "idb:FILE" it
+ * is read from FILE when the page opens and written to it as the page puts something in, so a
+ * second run of the page finds what the first kept.
  *
  * Started with "unfocused" after the page, the window starts without the keyboard, as a page in
  * a frame on another site does. With "touchscreen" the screen's main pointer is a finger, as a
@@ -190,8 +198,59 @@ function lift(n, type) {
   tell(element("touchpad"), type, { pointerId: Number(n), pointerType: "touch" });
 }
 
+/* The file picker: an <input type="file"> the page makes and clicks waits here for a "choose" or "cancel-pick" step. */
+const pickers = [];
+let picks_asked = 0;
+
+/* IndexedDB, as far as the shell uses it: one object store of byte strings under a key, kept in
+ * a file between runs where the page is started with "idb:FILE". */
+const idb_flag = flags.find((flag) => flag.startsWith("idb:"));
+const idb_path = idb_flag ? idb_flag.slice(4) : null;
+const idb_kept = new Map(idb_path && fs.existsSync(idb_path)
+  ? Object.entries(JSON.parse(fs.readFileSync(idb_path, "utf8"))).map(([key, text]) => [key, Buffer.from(text, "base64")]) : []);
+function idb_request(answer) {
+  const request = {};
+  setImmediate(() => {
+    request.result = answer();
+    if (request.onsuccess) request.onsuccess();
+  });
+  return request;
+}
+const indexedDB_stand_in = {
+  open(name) {
+    const request = {};
+    setImmediate(() => {
+      const database = {
+        createObjectStore() {},
+        transaction: () => ({
+          objectStore: () => ({
+            get: (key) => idb_request(() => {
+              const kept = idb_kept.get(`${name}/${key}`);
+              return kept ? kept.buffer.slice(kept.byteOffset, kept.byteOffset + kept.length) : undefined;
+            }),
+            put: (value, key) => idb_request(() => {
+              idb_kept.set(`${name}/${key}`, Buffer.from(value));
+              if (idb_path) fs.writeFileSync(idb_path, JSON.stringify(Object.fromEntries([...idb_kept].map(([k, v]) => [k, v.toString("base64")]))));
+              return key;
+            }),
+          }),
+        }),
+      };
+      request.result = database;
+      if (request.onupgradeneeded && !idb_kept.has(`${name}/opened`)) request.onupgradeneeded();
+      if (request.onsuccess) request.onsuccess();
+    });
+    return request;
+  },
+};
+
 const document = {
   ...listening(),
+  createElement(tag) {
+    if (tag !== "input") throw new Error(`page_harness: no element called ${tag} can be made`);
+    const input = { ...listening(), type: "", files: [], click() { picks_asked += 1; pickers.push(this); } };
+    return input;
+  },
   hidden: false,
   visibilityState: "visible",
   readyState: "loading",
@@ -296,6 +355,7 @@ const browser = {
     const bytes = fs.readFileSync(name);
     return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) };
   },
+  indexedDB: indexedDB_stand_in,
   localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
 };
 for (const [name, value] of Object.entries(browser)) {
@@ -453,6 +513,16 @@ async function steps() {
       const result = vm.runInThisContext(line.trim().slice(3));
       if (result !== undefined) printed.push(`js ${result}`);
     }
+    else if (step === "choose") {
+      const picker = pickers.shift();
+      const file = fs.readFileSync(what);
+      picker.files = [{ name: path.basename(what), arrayBuffer: async () => file.buffer.slice(file.byteOffset, file.byteOffset + file.length) }];
+      tell(picker, "change");
+      for (let i = 0; i < 20; i++) await settle();
+    }
+    else if (step === "cancel-pick") tell(pickers.shift(), "cancel");
+    else if (step === "picker") printed.push(`picker ${picks_asked}`);
+    else if (step === "settle") for (let i = 0; i < 20; i++) await settle();
     else if (step === "text") printed.push(text(what));
     else if (step === "state") printed.push(state());
     else if (step) throw new Error(`page_harness: no step called ${step}`);
