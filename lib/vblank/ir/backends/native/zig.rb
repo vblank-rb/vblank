@@ -62,14 +62,35 @@ module VBlank
             # Named for what it is rather than "program", so a person watching what is running on
             # the machine can tell these apart from everything else there.
             exe = File.join(compiled_programs_dir, cache_key(sources, folders, flags), "vblank-headless")
-            return exe if File.exist?(exe)
+            prune_compiled_programs
+            if File.exist?(exe)
+              FileUtils.touch(File.dirname(exe)) # Used now, so the next prune keeps it
+              return exe
+            end
 
             FileUtils.mkdir_p(File.dirname(exe))
             building = "#{exe}.#{Process.pid}.#{rand(1 << 30)}" # renamed into place once whole
-            capture_command("zig", "cc", *flags, "-o", building, *sources)
+            Dir.mktmpdir("vblank-zig-local") do |local|
+              capture_command(compiler_cache_env(local), "zig", "cc", *flags, "-o", building, *sources)
+            end
             File.rename(building, exe)
             exe
           end
+
+          # WHERE ZIG KEEPS WHAT IT COMPILES. Left to itself, zig cc writes every object file into
+          # ~/.cache/zig, which every zig project on the machine shares and nothing ever prunes, and
+          # since every test writes new C every compile adds files nobody reads again. zig splits
+          # what it keeps in two: the libraries every compile links (compiler_rt and the
+          # undefined-behaviour checker), which take seconds to build and stay one size, and each
+          # compile's own objects. So the libraries go in a folder of vblank's own, kept between
+          # runs, and each compile's objects go in +local+, a folder that goes when it ends.
+          # Must keep the global folder: without it every compile builds those libraries again.
+          def compiler_cache_env(local)
+            { "ZIG_GLOBAL_CACHE_DIR" => compiler_cache_dir, "ZIG_LOCAL_CACHE_DIR" => local }
+          end
+
+          # The libraries zig cc links into every program the tests build.
+          def compiler_cache_dir = File.join(Dir.home, ".cache", "vblank", "zig-cc")
 
           # Builds +sources+ (C files in +src_dir+) and SDL3 into one program called +name+, with
           # zig's build system (build/build.zig), and gives back where it landed under +prefix+.
@@ -81,6 +102,7 @@ module VBlank
             version
             capture_command("zig", "build", "--build-file", BUILD_FILE,
                             "--cache-dir", File.join(sdl_build_cache_dir, "cache"),
+                            "--global-cache-dir", File.join(sdl_build_cache_dir, "global"),
                             "--pkg-dir", File.join(sdl_build_cache_dir, "packages"),
                             "-p", prefix, "-Dsrc_dir=#{src_dir}", *sources.map { |file| "-Dsources=#{file}" },
                             "-Dname=#{name}", "-Doptimize=ReleaseFast", *(target ? ["-Dtarget=#{target}"] : []),
@@ -266,10 +288,37 @@ module VBlank
           # Where programs compiled without SDL are kept, by the hash of what made them.
           def compiled_programs_dir = File.join(Dir.tmpdir, "vblank-native")
 
-          # Runs a command to the end and gives back what it printed; a failure raises with
-          # what it printed to say why.
+          # How long a kept program stays after it was last built or used, and how often the
+          # folder is looked over. Every test writes new C, so a day of runs builds programs by
+          # the tens of thousands, and the system clears its temporary folder far too slowly to
+          # keep up. A program a run still uses is touched each time, so it stays.
+          KEEP_PROGRAM_SECONDS = 6 * 60 * 60
+          PRUNE_EVERY_SECONDS = 60 * 60
+
+          # Removes the kept programs nothing has built or used for KEEP_PROGRAM_SECONDS, at most
+          # once every PRUNE_EVERY_SECONDS across every process (a stamp file holds the time). A
+          # program another process removes first, or one it is writing, is no reason to stop.
+          def prune_compiled_programs
+            dir = compiled_programs_dir
+            stamp = File.join(dir, ".pruned")
+            return if File.exist?(stamp) && File.mtime(stamp) > Time.now - PRUNE_EVERY_SECONDS
+
+            FileUtils.mkdir_p(dir)
+            FileUtils.touch(stamp)
+            cutoff = Time.now - KEEP_PROGRAM_SECONDS
+            Dir.children(dir).each do |name|
+              path = File.join(dir, name)
+              FileUtils.rm_rf(path) if path != stamp && File.mtime(path) < cutoff
+            rescue SystemCallError
+              next
+            end
+          end
+
+          # Runs a command to the end, with +env+ added to its environment if the first argument is
+          # a Hash, and gives back what it printed; a failure raises with what it printed to say why.
           def capture_command(*command)
-            out, err, status = Open3.capture3(*command)
+            env = command.first.is_a?(Hash) ? command.shift : {}
+            out, err, status = Open3.capture3(env, *command)
             return out if status.success?
 
             raise Error, "#{command.first(2).join(' ')} failed:\n#{err}#{out}"
@@ -278,6 +327,7 @@ module VBlank
           end
 
           private_class_method :cache_key, :compiled_programs_dir, :sdl_build_cache_dir, :capture_command,
+                               :compiler_cache_env, :compiler_cache_dir, :prune_compiled_programs,
                                :refresh_checker_flags_in_checkout, :working_in_checkout?
         end
       end
