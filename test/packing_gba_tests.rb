@@ -2,7 +2,7 @@
 
 require "digest"
 require "tmpdir"
-require "all/vblank/builder/test_data_packs"
+require "made_up_original"
 
 # THE GAME BOY ADVANCE BIOS'S FORMATS AS BUILDING BLOCKS OF AN UNPACKING ROUTINE
 # (Original::Packing::GBA): `copy.unpack_lz77` and `copy.unpack_rle`, played where an unpacking

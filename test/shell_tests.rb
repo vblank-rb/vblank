@@ -3,7 +3,7 @@
 require "test_helper"
 require "fileutils"
 require "tmpdir"
-require "all/vblank/builder/test_data_packs"
+require "made_up_original"
 require VBlank.root.join("examples/pacman").to_s
 require VBlank.root.join("test/fixtures/pacman_port/pacman_fixture").to_s
 require VBlank.root.join("test/fixtures/pacman_port/pacman_port").to_s

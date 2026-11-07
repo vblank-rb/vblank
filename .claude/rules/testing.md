@@ -102,6 +102,7 @@ again in another language is held to), `runtime_sounds.rb` (the sound such a run
 to, sample for sample against the native one's), `midpoint_circle.rb` (the answer key for a light's
 rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped by room),
 `status_bar_games.rb` (small games with a status bar, for the verb's and its handle's tests),
+`made_up_original.rb` (the made-up Game Boy Advance original and a game reading it through a data pack, for the data pack, copy reader, packing and shell tests),
 `made_up_original_layouts.rb` (made-up originals in each console's layout, and a game reading them through a data pack, for the layout tests and the pack-at-start runs),
 `copy_reader_tests.rb`, `packing_gba_tests.rb` and `packing_genesis_tests.rb` (a port's unpacking routine, a format of a port's own, and each platform's packed formats in it, played on the interpreter and the native, JavaScript and Ruby runs, which are where an unpacking runs; no console runs one),
 `genesis_packing_answers.rb` (the answer key for the Genesis's packed formats, decoders written from the 68000 routines and writers of made-up blocks),

@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 require "vblank/original/shell_check_tasks"
-require "all/vblank/builder/test_data_packs"
+require "made_up_original"
 
 # A port checks its shell with one rake task, given the game's file as `vblank run` takes it.
 class TestShellCheckTasks < Minitest::Test

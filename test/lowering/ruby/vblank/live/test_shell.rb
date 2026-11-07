@@ -8,7 +8,7 @@ require "vblank/live"
 require "shell_tests"
 
 # A PORT BUILT AS A SHELL, PLAYED AS RUBY. The shell holds none of the made-up original's data
-# (MadeUpOriginal, test_data_packs.rb's). Started with no pack kept, it shows its menu; LOAD ROM
+# (MadeUpOriginal, made_up_original.rb's). Started with no pack kept, it shows its menu; LOAD ROM
 # takes the file the player picks, checks it is a release the game reads, unpacks it with the
 # game's own routine, keeps the pack in the game's folder and plays the game. The next start plays
 # the game from the kept pack and never reads the copy.

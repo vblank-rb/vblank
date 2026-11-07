@@ -2,7 +2,7 @@
 
 require "digest"
 require "tmpdir"
-require "all/vblank/builder/test_data_packs"
+require "made_up_original"
 
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.

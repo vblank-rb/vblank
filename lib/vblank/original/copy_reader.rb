@@ -35,17 +35,18 @@ module VBlank
       PLACE_SETTINGS = %i[at into start].freeze
 
       # +formats+ are the formats the copy offers, in the order a fault numbers them; +platform+ is
-      # the original's, which a refusal names. +before_wait+ is BlockKit's.
+      # the original's, which a refusal names. +before_wait+ is BlockKitInternals'.
       def initialize(builder, copy:, pack:, faults:, formats:, platform:, before_wait: nil)
         @builder = builder
-        @kit = Packing::BlockKit.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait)
+        @internals = Packing::BlockKitInternals.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait)
+        @kit = Packing::BlockKit.new(@internals)
         @formats = formats
         @platform = platform
         @block_routines = {}
       end
 
       # How many bytes have been written so far, a variable of the routine's.
-      def bytes_done = @kit.bytes_done
+      def bytes_done = @internals.bytes_done
 
       # The byte at +at+ in the copy, 0 to 255. +at+ may be worked out as the game runs. A place
       # outside the copy is a fault the build stops on.
@@ -79,7 +80,7 @@ module VBlank
       # count of bytes done, and every PROGRESS_BYTES counted the routine waits for the next frame,
       # as the formats do. +count+ may be worked out as the routine runs.
       def count_written(count)
-        @kit.count_written(count)
+        @internals.count_written(count)
         nil
       end
 
@@ -125,20 +126,20 @@ module VBlank
       # One block: what it is handed set in the kit's variables, its routine called (made the first
       # time, from the block given), and a wait for the next frame.
       def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, &routine)
-        @kit.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number)
+        @internals.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number)
         @builder.call(define_block_routine(routine_name, &routine))
-        @kit.emit_wait
+        @internals.emit_wait
         nil
       end
 
       def define_block_routine(routine_name, &routine)
         @block_routines[routine_name] ||= begin
-          name = @kit.made_name(routine_name)
-          kit = @kit
+          name = @internals.made_name(routine_name)
+          internals = @internals
           @builder.func(name) do
-            kit.emit_block_start
+            internals.emit_block_start
             routine.call
-            kit.emit_block_end
+            internals.emit_block_end
           end
           name
         end
@@ -146,11 +147,11 @@ module VBlank
 
       def emit_copy_routine
         from = @kit.from
-        @kit.expect_size(@kit.routine_variable(:count))
-        @kit.repeat(@kit.routine_variable(:count), stop_when: @kit.finished) { |i| @kit.write(@kit.byte(from + i)) }
+        @kit.expect_size(@internals.routine_variable(:count))
+        @kit.repeat(@internals.routine_variable(:count), stop_when: @kit.finished) { |i| @kit.write(@kit.byte(from + i)) }
       end
 
-      def sum_of(a, b) = a.is_a?(Integer) && b.is_a?(Integer) ? a + b : @kit.value_of(a) + b
+      def sum_of(a, b) = a.is_a?(Integer) && b.is_a?(Integer) ? a + b : @internals.value_of(a) + b
 
       def refuse_format_not_offered!(asked)
         offered = @formats.empty? ? "no packed formats" : "the formats #{@formats.map(&:format_name).join(', ')}"

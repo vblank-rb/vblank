@@ -47,9 +47,11 @@ module VBlank
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
 
       # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the three
-      # below; +at+ is a place in the copy for the first two and a byte of a slot for the third;
-      # +detail+ is the number of the format the routine was told (Unpacking#format_words), or the
-      # slot's number in the pack's order.
+      # below; +at+ is a place in the copy for the first two and a byte outside the slot for the
+      # third (a format's write names the first byte past the slot's end, whether it found the
+      # write did not fit when the size was expected or when the byte was written); +detail+ is the
+      # number of the format the routine was told (Unpacking#format_words), or the slot's number in
+      # the pack's order.
       Fault = Data.define(:kind, :at, :detail)
 
       class Fault

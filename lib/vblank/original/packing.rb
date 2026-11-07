@@ -8,9 +8,10 @@
 # Every platform's file is loaded here, not when a copy of that platform is first unpacked: an
 # unpacking may run inside a Ractor (a test's), which cannot load a file.
 
-VBlank.require_game_file "packing/format"   # A format's shape, and the kit its routine is written with
-VBlank.require_game_file "packing/gba"      # The Game Boy Advance BIOS's LZ77 and RLE
-VBlank.require_game_file "packing/genesis"  # The Sega Genesis's Nemesis tiles and Enigma plane maps
+VBlank.require_game_file "packing/format"      # What a format declares: its name and settings
+VBlank.require_game_file "packing/block_kit"   # What a format's routine is written with
+VBlank.require_game_file "packing/gba"        # The Game Boy Advance BIOS's LZ77 and RLE
+VBlank.require_game_file "packing/genesis"    # The Sega Genesis's Nemesis tiles and Enigma plane maps
 
 module VBlank
   module Original

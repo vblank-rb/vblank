@@ -2,7 +2,7 @@
 
 require "digest"
 require "tmpdir"
-require "all/vblank/builder/test_data_packs"
+require "made_up_original"
 require "made_up_original_layouts"
 
 # SEARCHING WRITTEN-OUT CODE FOR THE ORIGINAL'S BYTES. A program written as C, JavaScript or Ruby
@@ -188,7 +188,7 @@ module PackAtStartPlaceTests
 end
 
 # A GAME BUILT WITH ITS DATA PACK LEFT OUT, handed the pack file as it starts. The made-up original
-# and its game are test_data_packs.rb's (MadeUpOriginal): built all-in-one there, the pack is made
+# and its game are made_up_original.rb's (MadeUpOriginal): built all-in-one there, the pack is made
 # from the copy as the game is built and the game holds what it read. Built here with
 # `pack_at_start: true`, the build reads no copy at all, the program holds none of the original's
 # bytes, and the pack is a file handed to the program as it starts (hand_file).
