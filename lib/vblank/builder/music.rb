@@ -116,7 +116,7 @@ module VBlank
       def music_volume(amount = nil)
         @music_level ||= var(IR::Tunes::LEVEL, IR::Tunes::FULL_LEVEL)
         full = IR::Tunes::FULL_LEVEL
-        return @music_level * 100 / full if amount.nil?
+        return @music_level * IR::Tunes::FULL_PERCENT / full if amount.nil?
 
         if amount.is_a?(Integer)
           @music_level = amount.clamp(0, 100) * full / 100

@@ -1298,7 +1298,8 @@ module VBlank
       #
       # +sprite_readings+ is where each sprite the game can read by name keeps its place, an
       # IR::SpriteReading each, with an IR::SharedPicture for a picture several unnamed sprites show,
-      # for the same readers; like the two above, no backend needs it to run.
+      # for the same readers; like the two above, no backend needs it to run. +background_readings+
+      # is the same for each background, an IR::BackgroundReading each.
       #
       # +players+ is [fewest, most]: how many players the game takes on this build
       # (Cartridge::Players), or nil where it gave nothing. +for_computer+ is true for a build that
@@ -1320,7 +1321,8 @@ module VBlank
         kind :program
         category :root
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list,
-                 fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, players: :list,
+                 fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
+                 players: :list,
                  for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
                  start_file: :start_file
 
@@ -1364,6 +1366,32 @@ module VBlank
         # to its stored number; every reader asks this (Reference::ReadingBack, Bots::GameView).
         def sprite_state(name, stored) = sprite_reading(name).state_from(stored)
 
+        # Background +name+ as it stands (an IR::BackgroundState), read the same way, refusing in
+        # plain words a name no background has.
+        def background_state(name, stored)
+          readings = background_readings || []
+          found = readings.find { |reading| reading.name == name }
+          return found.state_from(stored) if found
+
+          raise ArgumentError, "This game has no background :#{name}. #{names_there_are('backgrounds', readings)}"
+        end
+
+        # The music's loudness, read through +stored+, as the game's own `music_volume` reads it: 0 to
+        # 100, whole and rounded down from the sixteenths it is kept in (IR::Tunes), and full for a
+        # game that never sets it.
+        def music_volume_from(stored)
+          return Tunes::FULL_PERCENT unless Reach.variables(self).include?(Tunes::LEVEL)
+
+          Tunes.percent_of(stored.call(Tunes::LEVEL))
+        end
+
+        # The names in +readings+, said for a refusal ("Its sprites are :a, :b.").
+        private def names_there_are(kind, readings)
+          return "It has none." if readings.empty?
+
+          "Its #{kind} are #{readings.map { |reading| ":#{reading.name}" }.join(', ')}."
+        end
+
         # Where sprite +name+ keeps its state (an IR::SpriteReading), refusing in plain words a
         # name no sprite has, and a picture several unnamed sprites show.
         def sprite_reading(name)
@@ -1372,9 +1400,7 @@ module VBlank
           return found if found.is_a?(SpriteReading)
           raise ArgumentError, found.message if found
 
-          names = readings.map { |reading| ":#{reading.name}" }
-          raise ArgumentError, "This game has no sprite :#{name}. " \
-                               "#{names.empty? ? 'It has none.' : "Its sprites are #{names.join(', ')}."}"
+          raise ArgumentError, "This game has no sprite :#{name}. #{names_there_are('sprites', readings)}"
         end
 
         # What the console this program was built for can do: its screen, buttons, sprites — the

@@ -664,6 +664,7 @@ module VBlank
       finalize_kept_widths
       finalize_fractions
       finalize_sprite_readings
+      finalize_background_readings
       refuse_local_player_outside_views!
     end
 

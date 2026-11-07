@@ -71,6 +71,12 @@ module VBlank
       # The name the background was declared with.
       attr_reader :name
 
+      # Where this background keeps its state, for reading it back (IR::BackgroundReading).
+      def reading
+        IR::BackgroundReading.new(name: @name, scroll_x: @scroll_x, scroll_y: @scroll_y,
+                                  shown_map: (shown_map_var unless @map_names.one?), maps: @map_names)
+      end
+
       # PUT A DIFFERENT TILE IN ONE CELL, while the game runs.
       #
       #   room.set_tile 4, 7, "."    # the door is open now

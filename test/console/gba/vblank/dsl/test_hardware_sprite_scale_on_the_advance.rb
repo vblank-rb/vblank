@@ -97,7 +97,7 @@ class TestHardwareSpriteScaleOnTheAdvance < Minitest::Test
     builder.finalize_program
     interpreter = game_player.run(builder.program)
     # Ten steps of a tenth from 1.0 reaches 2.0 and `approach` holds it there.
-    assert_in_delta 2.0, interpreter[:__obj1_scale] / 65_536.0, 0.01
+    assert_in_delta 2.0, interpreter.sprite(:block).scale, 0.01
   end
 
   # --- the console draws what the oracle says it draws ---

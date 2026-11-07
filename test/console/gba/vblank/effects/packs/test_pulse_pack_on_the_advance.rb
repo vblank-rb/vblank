@@ -18,7 +18,7 @@ class TestPulsePackOnTheAdvance < Minitest::Test
   # The sprite's size after +frames+ frames, as the multiple the author writes.
   private def size_after(frames, **opts)
     interpreter = game_player.run(pulse_program(frames, **opts), max_steps: 50_000_000)
-    interpreter[:__obj1_scale] / VBlank::IR::Build::SCALE_ONE.to_f
+    interpreter.sprite(:block).scale
   end
 
   # --- it breathes ---

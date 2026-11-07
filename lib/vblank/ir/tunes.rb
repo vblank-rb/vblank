@@ -22,6 +22,9 @@ module VBlank
       FULL_LEVEL = 16
       LEVEL_SHIFT = 4 # FULL_LEVEL is 1 << this
 
+      # `music_volume` as the game writes and reads it: 0 to this, a percentage of FULL_LEVEL.
+      FULL_PERCENT = 100
+
       # The loudness a recorded part's voice plays at when its written volume is 15. A mixer
       # voice's loudness runs 0 to this, where a console voice's runs 0 to 15.
       MIX_FULL = VBlank::Audio::Sound::MIX_LEVELS.fetch(:full)
@@ -32,6 +35,9 @@ module VBlank
       # back down, so it is whole numbers on every backend and never rounds up past what was
       # written.
       def scaled_volume(volume, level) = (volume * level) >> LEVEL_SHIFT
+
+      # A level kept 0..FULL_LEVEL as the percentage `music_volume` reads back, rounded down.
+      def percent_of(level) = level * FULL_PERCENT / FULL_LEVEL
 
       # A part's written volume, 0..15 like the console voices', as a mixer voice's loudness. A
       # recorded note's volume can hold a fraction (Score::Note), which is how a note gets a

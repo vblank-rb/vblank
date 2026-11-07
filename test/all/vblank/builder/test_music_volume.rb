@@ -291,6 +291,30 @@ class TestMusicVolume < Minitest::Test
                  "body of the fifth"
   end
 
+  # A test reads the music's loudness the way the game does, 0 to 100, without the hidden level.
+  def test_a_test_reads_the_music_volume_the_game_set
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pass = 0
+      game_loop do
+        pass += 1
+        music_volume 50 if pass == 2
+      end
+    end
+    b.finalize_program
+    quiet = Builder.new
+    quiet.instance_eval do
+      screen :bitmap
+      game_loop {}
+    end
+    quiet.finalize_program
+
+    assert_equal 50, game_player.run(b.program, frames: 6).music_volume
+    assert_equal 100, game_player.run(quiet.program, frames: 2).music_volume, "a game that never set it plays at full"
+  end
+
   # The note starts at its own volume, and a note ALREADY SOUNDING drops to half on the frame
   # after the game says so — the same one-frame step `play_song` takes, since the player that
   # sounds the notes reads what the game said at the start of the next frame.

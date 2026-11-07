@@ -161,6 +161,8 @@ module VBlank
       def var(name) = @reader.var(name)
       def raw_var(name) = @reader.raw_var(name)
       def sprite(name) = @reader.sprite(name)
+      def background(name) = @reader.background(name)
+      def music_volume = @reader.music_volume
       def list(name) = @reader.list(name)
       def pool(name, field) = @reader.pool(name, field)
 

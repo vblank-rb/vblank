@@ -57,6 +57,23 @@ module VBlank
         program.sprite_state(name, ->(var) { vars.fetch(var.to_s, 0) })
       end
 
+      # A background by the name the game declared it with: how far it is scrolled and the map it
+      # has set showing (IR::BackgroundState).
+      def background(name)
+        raise ArgumentError, "This game was made from its Ruby alone, so nothing names its backgrounds." unless program
+
+        vars = state.vars
+        program.background_state(name, ->(var) { vars.fetch(var.to_s, 0) })
+      end
+
+      # The music's loudness, 0 to 100, as the game's own `music_volume` reads it.
+      def music_volume
+        raise ArgumentError, "This game was made from its Ruby alone, so nothing says how loud its music is." unless program
+
+        vars = state.vars
+        program.music_volume_from(->(var) { vars.fetch(var.to_s, 0) })
+      end
+
       def variable_names = state.vars.keys.map(&:to_sym)
 
       private

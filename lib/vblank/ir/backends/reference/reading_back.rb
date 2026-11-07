@@ -31,6 +31,19 @@ module VBlank
             read_program.sprite_state(name, method(:raw_var))
           end
 
+          # The music's loudness, as the game sets it with `music_volume` (Program#music_volume_from).
+          def music_volume
+            refuse_no_program!("its music") unless read_program
+            read_program.music_volume_from(method(:raw_var))
+          end
+
+          # A background by the name the game declared it with: an IR::BackgroundState with how far
+          # it is scrolled (+scroll_x+, +scroll_y+) and the +map+ the game has set showing.
+          def background(name)
+            refuse_no_program!("its backgrounds") unless read_program
+            read_program.background_state(name, method(:raw_var))
+          end
+
           # Read a list: everything in it now, oldest first, under the name the game declared.
           # An Array, so a test asks for an item, the length, or the whole thing as it likes.
           def list(name)

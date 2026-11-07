@@ -84,6 +84,6 @@ class TestHardwareSpriteRotationOnTheAdvance < Minitest::Test
       builder.program
     end
     i = game_player.run(prog)
-    assert_equal 140, i[:__obj1_angle], "the angle accumulated and wrapped to 140"
+    assert_equal 140, i.sprite(:disc).angle, "the angle accumulated and wrapped to 140"
   end
 end

@@ -179,10 +179,10 @@ class TestShowMap < Minitest::Test
 
   # --- reading it back ---
 
-  def test_which_map_is_showing_reads_back_as_a_value
+  def test_which_map_is_showing_reads_back_by_its_name
     program = rooms_program { |rooms, frames| rooms.show_map :mixed if frames == 2 }
 
-    assert_equal 2, game_player.run(program, frames: 6)[:__bg_rooms_map]
+    assert_equal :mixed, game_player.run(program, frames: 6).background(:rooms).map
   end
 
   def test_a_map_declared_by_name_has_a_number_to_compare_against

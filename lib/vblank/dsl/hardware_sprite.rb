@@ -87,7 +87,7 @@ module VBlank
       def reading_named(name)
         IR::SpriteReading.new(name: name, x: @x_var, y: @y_var, shown: @active, poses: @poses,
                               facing: @facing_var, frame: @frame_var, frames_per_facing: @frames_per_dir,
-                              clip_start: @clip_off_var)
+                              clip_start: @clip_off_var, angle: @angle_var, scale: @scale_var)
       end
 
       # Which pose is showing right now, as a value node — the same composition the object's

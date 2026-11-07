@@ -644,6 +644,13 @@ module VBlank
 
       private
 
+      # Where each background keeps its state, for reading it back by its name
+      # (Program#background_readings). A name declared in several scenes is one background.
+      def finalize_background_readings
+        readings = @background_handles.map(&:reading).uniq(&:name)
+        @program.background_readings = readings unless readings.empty?
+      end
+
       # A LAYER THAT TURNS CANNOT ALSO SCROLL, and a program can write the two in either
       # order. Turning first and scrolling second is refused where the scroll is written
       # (see {Background#ensure_not_affine!}); this is the other order, where the scroll

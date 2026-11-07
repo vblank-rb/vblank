@@ -43,6 +43,6 @@ class TestSpriteBorrowedColorsCartridge < Minitest::Test
     rom = assemble_rom(crowded, name: "CROWDED")
     v = assert_emulator_loads_rom(rom, frames: 6, vars: rom.var_addresses)
 
-    assert_operator v.var(:__lent_colors_missed), :>, 0
+    assert_operator v.borrowed_colors_missed, :>, 0
   end
 end

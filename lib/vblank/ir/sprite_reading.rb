@@ -10,12 +10,20 @@ module VBlank
     # +x+, +y+ and +shown+ name the variables holding its place and whether it is shown. +poses+
     # is its pictures in the order its pose number counts them; the number is +facing+ (or a
     # plain sprite's 0), times +frames_per_facing+, plus +frame+ for one that animates within a
-    # facing; a sprite playing named clips counts from +clip_start+ instead.
-    SpriteReading = Data.define(:name, :x, :y, :shown, :poses, :facing, :frame, :frames_per_facing, :clip_start) do
+    # facing; a sprite playing named clips counts from +clip_start+ instead. +angle+ and +scale+
+    # name the variables a sprite told to turn or to change size keeps those in, and are nil for
+    # one never told to, which stands upright at its drawn size.
+    SpriteReading = Data.define(:name, :x, :y, :shown, :poses, :facing, :frame, :frames_per_facing, :clip_start,
+                                :angle, :scale) do
+      def initialize(angle: nil, scale: nil, **parts)
+        super
+      end
+
       # The sprite as it stands, read through +stored+ (a variable's name to its stored number).
       def state_from(stored)
         SpriteState.new(name: name, x: stored.call(x), y: stored.call(y), shown: stored.call(shown) != 0,
-                        pose: poses[pose_number(stored)])
+                        pose: poses[pose_number(stored)], angle: angle ? stored.call(angle) : 0,
+                        scale: scale ? Rational(stored.call(scale), Build::SCALE_ONE) : 1)
       end
 
       private
@@ -38,8 +46,10 @@ module VBlank
       end
     end
 
-    # A named sprite read back: where it is, whether it is shown, and the picture it is showing.
-    SpriteState = Data.define(:name, :x, :y, :shown, :pose) do
+    # A named sprite read back: where it is, whether it is shown, the picture it is showing, the
+    # angle it is turned to in degrees, and its size, 1 for as drawn (a Rational, exactly as kept:
+    # 3/2 for half as big again).
+    SpriteState = Data.define(:name, :x, :y, :shown, :pose, :angle, :scale) do
       def shown? = shown
     end
   end

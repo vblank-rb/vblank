@@ -53,6 +53,6 @@ class TestBirdExample < Minitest::Test
   # writes — read off the variable the pulse walks.
   private def drawn_size(frames)
     interp = game_player.run(Bird.program, frames: frames, max_steps: 50_000_000)
-    interp[:__obj1_scale] / VBlank::IR::Build::SCALE_ONE.to_f
+    interp.sprite(:bird).scale
   end
 end

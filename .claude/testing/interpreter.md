@@ -19,7 +19,9 @@ i.audio                            # the audio/register log
 i.mixed_sound                      # every frame's slice of mixed recordings, the bytes the cartridge's mixer writes
 i.stopped_at_budget?               # true if it was still looping when cut off
 
-i.sprite(:hero)                    # a sprite by its called: (or lone picture) name: .x .y .shown? .pose
+i.sprite(:hero)                    # a sprite by its called: (or lone picture) name: .x .y .shown? .pose .angle .scale
+i.background(:sky)                 # a background by name: .scroll_x .scroll_y .map (the map's name)
+i.music_volume                     # 0 to 100, as the game's own music_volume reads it
 i.sprites(:hero)                   # the rows it drew for that named sprite
 i.sprites                          # everything it drew, each saying whose it is
 

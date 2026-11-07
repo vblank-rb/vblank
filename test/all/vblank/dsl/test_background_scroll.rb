@@ -94,4 +94,20 @@ class TestBackgroundScroll < Minitest::Test
     assert_equal Color.resolve(:red), s.pixel(44, 84),
                  "and the background really scrolled (the landmark slid left to screen x=40)"
   end
+
+  # --- reading it back ---
+
+  def test_a_backgrounds_scroll_reads_back_by_its_name
+    world = game_player.run(world_scrolled_to(40, 12)).background(:world)
+
+    assert_equal [40, 12, :world], [world.scroll_x, world.scroll_y, world.map]
+  end
+
+  def test_a_name_no_background_has_is_refused_naming_the_ones_there_are
+    played = game_player.run(world_scrolled_to(0, 0))
+    error = assert_raises(ArgumentError) { played.background(:sky) }
+
+    assert_match "no background :sky", error.message
+    assert_match ":world", error.message
+  end
 end

@@ -227,6 +227,16 @@ module VBlank
         table ? table.read { |address| mem32(address) } : SoundDrops::Reading.unmeasured
       end
 
+      # HOW MANY TIMES A SPRITE WENT WITHOUT ITS COLOURS since the cartridge booted: drawn with a
+      # list of its own (`draw_with`), it borrows a group of the console's colours for the frame,
+      # and this counts each time every group was taken already, so it showed its own colours
+      # instead. 0 for a game that draws no sprite with another list, which borrows none.
+      def borrowed_colors_missed
+        refuse_missing_build_record!("where it counts the colours it went without")
+        address = @rom.built.colors_short_at
+        address ? IR::Int32.wrap(mem32(address)) : 0
+      end
+
       # --- the processor ---
       #
       # For debugging what the lowering emitted: stop the running cartridge at the first
