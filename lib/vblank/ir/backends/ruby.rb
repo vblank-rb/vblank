@@ -45,11 +45,13 @@ module VBlank
         HEADLESS_DRIVER = "rg_headless.rb"
         LIVE_DRIVER = "rg_live.rb"
 
-        # Every function a program's runtime defines, read from its files, for each driver: what
-        # Lowering#runtime_gaps holds a program's calls against.
-        def self.functions_in(files) = files.flat_map { |file| File.read(File.join(RUNTIME_DIR, file)).scan(/^def (\w+)/).flatten }.uniq
-        HEADLESS_FUNCTIONS = Ractor.make_shareable(functions_in(RUNTIME + [HEADLESS_DRIVER]))
-        LIVE_FUNCTIONS = Ractor.make_shareable(functions_in(RUNTIME + [LIVE_DRIVER]))
+        # Every function a program's runtime defines, read from its files and every runtime feature's,
+        # for each driver: what Lowering#runtime_gaps holds a program's calls against. A program that
+        # calls a feature's function is one whose steps need that feature, so it is built with it.
+        def self.functions_in(paths) = paths.flat_map { |path| File.read(path).scan(/^def (\w+)/).flatten }.uniq
+        def self.runtime_paths(names) = names.map { |name| File.join(RUNTIME_DIR, name) } + RuntimeFeatures.every_file("rb")
+        HEADLESS_FUNCTIONS = Ractor.make_shareable(functions_in(runtime_paths(RUNTIME + [HEADLESS_DRIVER])))
+        LIVE_FUNCTIONS = Ractor.make_shareable(functions_in(runtime_paths(RUNTIME + [LIVE_DRIVER])))
 
         # What a program of this lowering is started with: none of the settings that would make
         # the Ruby it runs on load bundler and this library's gems, which it needs none of, and
@@ -82,7 +84,8 @@ module VBlank
           text, gaps = lowering.text_and_gaps(HEADLESS_FUNCTIONS)
           refuse_runtime_gaps!(gaps)
           write_program([WRITTEN_BY, "class RgGame\n", lowering.console_text, *runtime_text(RUNTIME + [HEADLESS_DRIVER]),
-                         text, "end\n", "RgGame.new.rg_headless_main(ARGV)\n"].join)
+                         RuntimeFeatures.ruby_text(lowering.runtime_features), text, "end\n",
+                         "RgGame.new.rg_headless_main(ARGV)\n"].join)
         end
 
         # THE GAME AS AN OBJECT IN THIS PROCESS, to be played live (LiveGame). Anything its runtime
@@ -151,7 +154,7 @@ module VBlank
           lowering = Lowering.new(program)
           text, gaps = lowering.text_and_gaps(LIVE_FUNCTIONS)
           refuse_runtime_gaps!(gaps)
-          [lowering.console_text, *runtime_text(RUNTIME + [LIVE_DRIVER]), text].join
+          [lowering.console_text, *runtime_text(RUNTIME + [LIVE_DRIVER]), RuntimeFeatures.ruby_text(lowering.runtime_features), text].join
         end
 
         private

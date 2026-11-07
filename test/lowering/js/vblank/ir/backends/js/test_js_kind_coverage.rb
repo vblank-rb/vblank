@@ -12,11 +12,14 @@ class TestJSKindCoverage < Minitest::Test
 
   # The kitchen-sink fixture touches every kind, so its JavaScript calls everything a game can
   # call; a name the native runtime has and this one lacks would only be found by a game that
-  # happened to use it.
+  # happened to use it. The runtime is its files and the runtime features the fixture's steps need
+  # (RuntimeFeatures).
   def test_every_runtime_function_a_game_calls_is_defined
-    source = JS.new.lower(ConformanceFixture.program)
+    program = ConformanceFixture.program
+    source = JS.new.lower(program)
     called = source.scan(/\b(rg_[a-z0-9_]+)\(/).flatten.uniq.reject { |name| name.start_with?("rg_game_") }
-    runtime = JS::RUNTIME.map { |file| File.read(File.join(JS::RUNTIME_DIR, file), encoding: Encoding::UTF_8) }.join
+    features = VBlank::IR::Backends::RuntimeFeatures.js_text(JS::Lowering.new(program).runtime_features)
+    runtime = JS::RUNTIME.map { |file| File.read(File.join(JS::RUNTIME_DIR, file), encoding: Encoding::UTF_8) }.join + features
     defined = runtime.scan(/^function\*? (rg_[a-z0-9_]+)\(/).flatten
 
     assert_empty called - defined

@@ -215,12 +215,9 @@ def rg_screen_setup
   @rg_tint_color = 0
   @rg_tint_steps = 0
   @rg_tint_by_display = false
-  # THE PICTURE IN FLAT BLOCKS (Reference @block): how many pixels a block is each way, 1 being the
-  # picture as drawn; and the size a screen the game paints is read in (Framebuffer @block).
-  @rg_block = 1
-  @rg_read_block = 1
-  # A background being put into blocks is painted onto a sheet of its own first, rows before
-  # columns (Reference#paint_scenery_in_blocks).
+  # A background laid on the picture a part at a time (inside a box it is held to, or in blocks) is
+  # painted onto a sheet of its own first, every row the map row +@rg_rows_tall+ rows above it at
+  # most (Reference#paint_scenery_in_blocks).
   @rg_sheet = Array.new(RG_SCREEN_CELLS, RG_NOTHING_ON_SHEET)
   @rg_onto_sheet = false
   @rg_rows_tall = 1
@@ -292,6 +289,7 @@ def rg_screen_setup
   @rg_shade_steps = 0
   @rg_shade_row = 0
   @rg_shade_off = false
+  rg_hook_setup # the state of the game's runtime features (RuntimeFeatures)
 end
 
 # --- small arithmetic ---
@@ -1011,19 +1009,6 @@ def rg_screen_request_rebuild = rg_request_repaint
 # single background, whatever was painted on it, so it goes into blocks whole, as it is read.
 def rg_painted_screen? = @rg_kind < 0 || @rg_kind == RG_BITMAP
 
-# Reference#exec_pixelate. The size is read as the picture is next built, or as a painted screen
-# is next read, so the picture is owed again only when the size is a different one.
-def rg_screen_pixelate(size)
-  held_to = rg_clamp_wide(size, 1, @rg_game_picture_sizes[RG_SIZE_LARGEST_BLOCK])
-  return if held_to == @rg_block
-
-  @rg_block = held_to
-  if rg_painted_screen?
-    @rg_read_block = @rg_block
-  else
-    rg_request_repaint
-  end
-end
 
 # Reference#exec_see_through: the amounts have been worked out again for the frame about to be
 # drawn, and the picture is owed when they come to other sixteenths than the ones last told.
@@ -1567,43 +1552,14 @@ def rg_paint_background(background)
   end
 end
 
-# Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS, by the display's own rule. The
-# blocks are fixed to the screen, and each shows the color the background has at the block's top
-# left corner. Down and across are done apart, because a display draws a row at a time: the
-# background goes onto the sheet rows first, every row of a block drawn from the map row its top
-# row shows and still placed by its own bend, and is laid on the picture through the blocks across.
-# A background that can turn is left one pixel wide at a size of two, so its rows double and its
-# columns do not: the emulator's rule, kept because the console's picture is checked against it.
-def rg_paint_scenery_in_blocks(background)
-  @rg_sheet.fill(RG_NOTHING_ON_SHEET)
-  @rg_onto_sheet = true
-  @rg_rows_tall = @rg_block
-  rg_paint_background(background)
-  @rg_onto_sheet = false
-  @rg_rows_tall = 1
-  wide = rg_background_field(background, RG_BG_CAN_TURN) != 0 && @rg_block == 2 ? 1 : @rg_block
-  rg_scenery_rows.times do |py|
-    RG_SCREEN_WIDTH.times do |px|
-      next if @rg_laying_box && !rg_inside_box?(@rg_laying_box, px, py)
-
-      color = @rg_sheet[(py * RG_SCREEN_WIDTH) + px - (px % wide)]
-      rg_lay_scenery(px, py, color) if color != RG_NOTHING_ON_SHEET
-    end
-  end
-end
-
-# Whether (px, py) is inside +box+, [left, top, right, bottom].
-def rg_inside_box?(box, px, py) = px >= box[0] && px < box[2] && py >= box[1] && py < box[3]
-
-# Reference#paint_scenery_in_box
+# Reference#paint_scenery_in_box: a feature that paints the background itself (rg_hook_paint_scenery)
+# keeps to the box as it lays it (@rg_laying_box).
 def rg_paint_scenery_in_box(background, box)
   left, top, right, bottom = box
   return if right <= left || bottom <= top
 
   @rg_laying_box = box
-  if @rg_block > 1 && rg_background_field(background, RG_BG_IN_BLOCKS) != 0
-    rg_paint_scenery_in_blocks(background)
-  else
+  unless rg_hook_paint_scenery(background)
     @rg_sheet.fill(RG_NOTHING_ON_SHEET)
     @rg_onto_sheet = true
     rg_paint_background(background)
@@ -1624,9 +1580,7 @@ def rg_paint_scenery(background)
   box = @rg_boxes[rg_keeper_of(background)]
   if box
     rg_paint_scenery_in_box(background, box)
-  elsif @rg_block > 1 && rg_background_field(background, RG_BG_IN_BLOCKS) != 0
-    rg_paint_scenery_in_blocks(background)
-  else
+  elsif !rg_hook_paint_scenery(background)
     rg_paint_background(background)
   end
 end
@@ -1868,125 +1822,10 @@ def rg_draw_placed(placed)
   end
 end
 
-# --- a sprite in blocks (Reference::SpriteBlocks, which holds the rule and says why) ---
-#
-# The blocks are fixed to the screen, as a background's are. What differs is where a block takes
-# its color from, because a sprite is a small box and a block need not start inside it.
-
-# SpriteBlocks#block_start and #round_up: where the block a column or row is in starts, and the end
-# of the block an edge falls in.
-def rg_block_start(at) = at - (at % @rg_block)
-def rg_block_end(edge) = -((-edge) / @rg_block) * @rg_block
-
-# Reference#picture_reader: what a picture shows at a column and row of itself, or RG_NOT_DRAWN
-# where it is see-through and anywhere outside it.
-def rg_picture_color(picture, col, row)
-  art, start, width, height = picture
-  return RG_NOT_DRAWN if col < 0 || col >= width || row < 0 || row >= height
-
-  art[start + (row * width) + col]
-end
-
-# SpriteBlocks#paint_box: one box of a sprite whose picture's corner is at (x, y), the box's own
-# corner at (left, top) on the screen. A block that starts left of the box or above it shows the
-# box's first column or row; the last block across is drawn whole, past the box's right edge;
-# nothing is drawn past its bottom edge.
-def rg_paint_box_in_blocks(picture, x, y, left, top, width, height)
-  first_row = top > 0 ? top : 0
-  past_row = top + height < RG_SCREEN_HEIGHT ? top + height : RG_SCREEN_HEIGHT
-  first_col = left > 0 ? left : 0
-  past_col = rg_block_end(left + width)
-  past_col = RG_SCREEN_WIDTH if past_col > RG_SCREEN_WIDTH
-  (first_row...past_row).each do |py|
-    from_y = rg_clamp_wide(rg_block_start(py), top, top + height - 1)
-    (first_col...past_col).each do |px|
-      color = rg_picture_color(picture, rg_clamp_wide(rg_block_start(px), left, left + width - 1) - x, from_y - y)
-      rg_set_pixel(px, py, color) if color != RG_NOT_DRAWN
-    end
-  end
-end
-
-# SpriteBlocks#paint_upright: a sprite that stands upright, a box at a time, back to front, so where
-# one box's last block runs over the next the one in front wins. The boxes are the ones listed for
-# the picture it shows (@rg_game_sprite_boxes).
-def rg_paint_upright_in_blocks(placed)
-  listed = @rg_game_sprite_blocks[placed.sprite]
-  pictures = @rg_game_sprite_boxes[listed]
-  listed += 1
-  showing = @rg_game_image_pictures[placed.image]
-  pictures.times do
-    name = @rg_game_sprite_boxes[listed]
-    boxes = @rg_game_sprite_boxes[listed + 1]
-    box = listed + 2
-    listed = box + (4 * boxes)
-    next if name != showing
-
-    picture = rg_picture_of(placed.image)
-    (boxes - 1).downto(0) do |b|
-      at = box + (4 * b)
-      rg_paint_box_in_blocks(picture, placed.x, placed.y, placed.x + @rg_game_sprite_boxes[at],
-                             placed.y + @rg_game_sprite_boxes[at + 1], @rg_game_sprite_boxes[at + 2],
-                             @rg_game_sprite_boxes[at + 3])
-    end
-    return
-  end
-  rg_fault("sprite #{placed.sprite} is shown in blocks and has no boxes for the picture it shows")
-end
-
-# SpriteBlocks#turned_row: the row of its box a turned sprite shows on screen row +py+, which is the
-# row at the top of the block, held to the box's first row when the block began above it, worked
-# out as the display counts, in lines that come round.
-def rg_turned_row(py, top, height)
-  first = top % RG_TURNED_BOX_LINES
-  past = first + height
-  line = rg_block_start(py)
-  line = first if line < first && first < RG_SCREEN_HEIGHT
-  line = past - 1 if line >= past % RG_TURNED_BOX_LINES
-  (line - first) % RG_TURNED_BOX_LINES
-end
-
-# SpriteBlocks#paint_turned: a sprite that turns or resizes, drawn in a box twice its picture's size
-# about the picture's middle. A block that starts left of the box shows what the turned picture
-# would show ONE COLUMN before the box begins; one that starts above it shows the box's first row;
-# and the last block across is drawn whole.
-def rg_paint_turned_in_blocks(placed)
-  picture = rg_picture_of(placed.image)
-  width = picture[2]
-  height = picture[3]
-  one_th = @rg_game_turn_rules[1]
-  turn_cos, turn_sin = rg_affine_matrix(placed.angle % 360, placed.size)
-  left = placed.x - (width / 2)
-  top = placed.y - (height / 2)
-  first_col = left > 0 ? left : 0
-  past_col = rg_block_end(left + (width * 2))
-  past_col = RG_SCREEN_WIDTH if past_col > RG_SCREEN_WIDTH
-  return unless rg_turned_box_on_screen?(top, width, height, placed.resizes)
-
-  (height * 2).times do |iy|
-    py = rg_turned_box_line(top, iy)
-    next if py < 0
-
-    dy = rg_turned_row(py, top, height * 2) - height
-    (first_col...past_col).each do |px|
-      start = rg_block_start(px)
-      dx = (start >= left ? start : left - 1) - left - width
-      color = rg_picture_color(picture, (((turn_cos * dx) + (turn_sin * dy)) / one_th) + (width / 2),
-                               (((-turn_sin * dx) + (turn_cos * dy)) / one_th) + (height / 2))
-      rg_set_pixel(px, py, color) if color != RG_NOT_DRAWN
-    end
-  end
-end
-
-# Reference#paint_snapshot_object: one of the sprites kept for a rebuild, in blocks while the
-# picture is shown in them unless the game leaves it as drawn.
+# Reference#paint_snapshot_object: one of the sprites kept for a rebuild, as drawn unless a feature
+# draws it its own way (rg_hook_paint_kept_sprite).
 def rg_paint_kept_sprite(placed)
-  if @rg_block == 1 || @rg_game_sprite_blocks[placed.sprite] == RG_NOT_IN_BLOCKS
-    rg_draw_placed(placed)
-  elsif placed.turned
-    rg_paint_turned_in_blocks(placed)
-  else
-    rg_paint_upright_in_blocks(placed)
-  end
+  rg_draw_placed(placed) unless rg_hook_paint_kept_sprite(placed)
 end
 
 def rg_rebuilt_whole? = @rg_game_picture_sizes[RG_SIZE_REBUILT_WHOLE] != 0
@@ -2524,7 +2363,7 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
   @rg_kind = new_kind
   rg_show_pages(two_pages)
   @rg_tint_by_display = rg_tint_mixed_by_display? # a tint in force is mixed this screen's way
-  @rg_read_block = rg_painted_screen? ? @rg_block : 1 # the size of a block outlasts the screen it was set on
+  rg_hook_screen_set
   return 0 if !crossing || new_kind == RG_BITMAP
 
   @rg_game_picture_sizes[RG_SIZE_ALWAYS_UP].times do |i|
@@ -2601,15 +2440,6 @@ def rg_screen_stored
   @rg_viewed
 end
 
-# Framebuffer#block_corner: the screen column whose color column +x+ shows while a painted screen is
-# read in blocks, which is the first of its block. Across, the blocks are fixed to the screen while
-# the picture covers the row from its first column; when the window has been moved off the
-# picture's left edge the first block of a row starts where the picture does.
-def rg_block_corner_across(x)
-  first = @rg_camera_x < 0 ? -@rg_camera_x : 0
-  x >= first ? first + (((x - first) / @rg_read_block) * @rg_read_block) : x
-end
-
 # --- a light (Framebuffer#shade_outside) ---
 
 def rg_shade_line = @rg_shade_row
@@ -2658,12 +2488,13 @@ def rg_lit?(x, y)
 end
 
 # Framebuffer#shown and #pixel: the page a viewer is looking at, read through the window — off the
-# edge of the picture the backdrop shows — with the fade or tint in force mixed in, in blocks when a
-# painted screen is shown in them, and darkened outside a light's span. A switched-off display
-# shows plain white.
+# edge of the picture the backdrop shows — with the fade or tint in force mixed in, read from where a
+# feature says each pixel is read from (rg_hook_shown_columns, rg_hook_shown_row), and darkened
+# outside a light's span. A switched-off display shows plain white.
 #
-# With nothing over the picture — no tint, no fade, no light, not in blocks — every row is the
-# stored row moved by the window, and is copied as one, which is most frames of most games.
+# With nothing over the picture — no tint, no fade, no light, no feature reading it its own way
+# (rg_hook_shown_plain) — every row is the stored row moved by the window, and is copied as one,
+# which is most frames of most games.
 def rg_screen_shown
   rg_keep_console_colors(rg_screen_shown_in_five_bits)
 end
@@ -2693,7 +2524,7 @@ def rg_screen_shown_in_five_bits
   held = @rg_screen_held != 0
   return shown.fill(RG_SWITCHED_OFF) if held
   over = @rg_over_picture
-  if @rg_tint_mode == :none && @rg_fade_steps == 0 && @rg_read_block == 1 && rg_all_lit?
+  if @rg_tint_mode == :none && @rg_fade_steps == 0 && rg_hook_shown_plain && rg_all_lit?
     rg_screen_shown_plain(shown, viewed)
     over&.each_with_index { |color, at| shown[at] = color if color }
     return shown
@@ -2707,16 +2538,16 @@ def rg_screen_shown_in_five_bits
   faded_out = {}
   remixed = @rg_tint_mode != :none && @rg_pixels.equal?(@rg_viewed)
   mixed_cells = @rg_picture_mixes.is_mixed
-  block = @rg_read_block
+  columns = rg_hook_shown_columns
   camera_x = @rg_camera_x
   whole_fade = @rg_fade_side == RG_FADE_WHOLE_SCREEN
   all_lit = rg_all_lit?
   RG_SCREEN_HEIGHT.times do |y|
-    from_y = y - (y % block) + @rg_camera_y
+    from_y = rg_hook_shown_row(y) + @rg_camera_y
     row = y * RG_SCREEN_WIDTH
     x = 0
     while x < RG_SCREEN_WIDTH
-      from_x = (block == 1 ? x : rg_block_corner_across(x)) + camera_x
+      from_x = (columns ? columns[x] : x) + camera_x
       fade_here = whole_fade || rg_fade_reaches?(x, y)
       on_top = over && over[row + x]
       color = if on_top
@@ -2741,8 +2572,7 @@ def rg_screen_shown_in_five_bits
 end
 
 # rg_screen_shown with nothing over the picture: each row the stored row the window sits over, and
-# off the picture the backdrop, which is nought (rg_faded_where with nothing in force). In blocks of
-# one, the column a pixel shows is its own (rg_block_corner_across).
+# off the picture the backdrop, which is nought (rg_faded_where with nothing in force).
 def rg_screen_shown_plain(shown, viewed)
   camera_x = @rg_camera_x
   camera_y = @rg_camera_y

@@ -167,6 +167,15 @@ run finds.
 A new lowering for a computer that can run a runtime of that shape should start there too, and
 only write a lowering of its own when the tree cannot say what its machine needs.
 
+**A drawing feature only some games use is a runtime feature, not more of `rg_screen`.** It is a
+folder under `lib/vblank/ir/backends/runtime_features/<name>/` with its C, JavaScript and Ruby side
+by side and a `feature.rb` naming the kinds of step that need it and the hooks it takes
+(`RuntimeFeatures`, whose comment says how each language takes it in). The screen calls only the
+hooks and names no feature; a game whose steps never need it builds without it. A feature needing a
+hook the screen does not have adds the hook: a line in `RuntimeFeatures::HOOKS` and its C
+signature, the call in each screen file (with its prototype atop `rg_screen.c`), and its C default
+(`rg_screen_hook_defaults.h`). Pixelation is the worked example.
+
 **A new console's lowering is written fresh, its own code generator in Ruby.** This is the
 operator's standing rule. Never retarget the native C lowering at a console through a cross-compiler, and never bend
 one lowering to serve two consoles: a build for a console needs nothing outside Ruby, and every

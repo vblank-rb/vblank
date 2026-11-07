@@ -1,0 +1,202 @@
+# frozen_string_literal: true
+
+module VBlank
+  module IR
+    module Backends
+      # THE RUNTIMES' FEATURES. The native, JavaScript and Ruby lowerings each play a game on a runtime
+      # written by hand in their language (native/runtime/, js/runtime/, ruby/runtime/). A drawing
+      # feature only some games use is not part of those runtimes' screen files: it is a folder of its
+      # own here, runtime_features/<name>/, holding its C (rg_<name>.c, and rg_<name>.h for what the
+      # game calls), its JavaScript and its Ruby side by side, and a feature.rb that declares it: the
+      # kinds of step that need it, the hooks it takes and the features it must come after.
+      #
+      # A game's build takes in only the features its steps need. Each language joins a feature into
+      # the screen's own scope, so a feature reads the screen's state and painters as if it were written
+      # there: JavaScript and Ruby join their runtime files into one script, and the C screen includes
+      # the file the build writes for the game (#c_text) at its end.
+      #
+      # THE HOOKS are where the screen calls whatever features take them, and it names no feature.
+      # Each says how several takers are combined (+way+): :each runs every taker in order; :claim
+      # runs takers in order until one answers that it did the work; :all is true unless a taker
+      # answers false; :one is at most one taker's answer, the hook's +default+ when none takes it.
+      # A hook none of a game's features take does what the screen does with no feature at all,
+      # which is written in each language once: rg_screen_hook_defaults.h for C, and here for the two
+      # whose dispatchers this writes whole.
+      module RuntimeFeatures
+        ROOT = Ractor.make_shareable(File.expand_path("runtime_features", __dir__))
+        LANGUAGES = Ractor.make_shareable(%i[c js ruby])
+        WRITTEN_BY_C = "/* Written by VBlank's native backend: the game's runtime features. Do not edit. */\n"
+        RUBY_MAGIC_COMMENT = "# frozen_string_literal: true\n" # The first line of a feature's Ruby, left out where it is joined
+
+        # +params+ are the hook's arguments by name; +default+, for a :one hook, is the answer with no
+        # taker: one of the params, or :null. +languages+ are the runtimes that have the hook, and
+        # +c_signature+ is the C one as rg_screen.c declares it (the compiler holds the two alike).
+        Hook = Data.define(:name, :way, :params, :default, :languages, :c_signature) do
+          def initialize(name:, way:, params: [], default: nil, languages: LANGUAGES, c_signature: nil)
+            super
+          end
+        end
+
+        HOOKS = Ractor.make_shareable([
+          # Ruby keeps the runtime's state in instance variables set as it starts (rg_screen_setup).
+          Hook.new(name: :setup, way: :each, languages: %i[ruby]),
+          # A screen of a new kind is up (Reference#exec_screen).
+          Hook.new(name: :screen_set, way: :each, c_signature: "static void rg_hook_screen_set(void)"),
+          # A background is about to be painted where it sits; a taker that paints it answers true.
+          Hook.new(name: :paint_scenery, way: :claim, params: %i[background],
+                   c_signature: "static int32_t rg_hook_paint_scenery(int32_t background)"),
+          # A sprite kept for a rebuild is about to be drawn; a taker that draws it answers true.
+          Hook.new(name: :paint_kept_sprite, way: :claim, params: %i[placed],
+                   c_signature: "static int32_t rg_hook_paint_kept_sprite(const placed_object *placed)"),
+          # Whether a painted screen can be read as it is stored, row for row. JavaScript reads it a
+          # pixel at a time always, so has no such shortcut.
+          Hook.new(name: :shown_plain, way: :all, languages: %i[c ruby], c_signature: "static int32_t rg_hook_shown_plain(void)"),
+          # The stored column each screen column is read from, or null for its own.
+          Hook.new(name: :shown_columns, way: :one, default: :null, c_signature: "static const int64_t *rg_hook_shown_columns(void)"),
+          # The stored row a screen row is read from.
+          Hook.new(name: :shown_row, way: :one, params: %i[y], default: :y, c_signature: "static int64_t rg_hook_shown_row(int64_t y)")
+        ])
+
+        # +needed_by+ is the kinds of step that need the feature; +after+ the features whose hooks
+        # must run before its own when a game has both.
+        Feature = Data.define(:name, :needed_by, :hooks, :after) do
+          def folder = File.join(ROOT, name.to_s)
+          def file(extension) = File.join(folder, "rg_#{name}.#{extension}")
+
+          # The header a game that uses it includes, for the functions its steps call, if it has one.
+          def c_header = File.exist?(file("h")) ? "#{name}/rg_#{name}.h" : nil
+
+          # The text of its call for +hook+, with the hook's own arguments.
+          def hook_call_text(hook) = "rg_#{name}_#{hook.name}(#{hook.params.join(', ')})"
+        end
+
+        class << self
+          # Each feature.rb calls this as it is loaded, before ALL is set.
+          def declare(name:, needed_by:, hooks:, after: [])
+            (@declared ||= []) << Feature.new(name: name, needed_by: needed_by, hooks: hooks, after: after)
+          end
+
+          def declared = @declared || []
+
+          # Every hook a feature names is one the runtimes have, and a :one hook has one taker at most.
+          def refuse_wrong_hooks!(features)
+            features.each do |feature|
+              unknown = feature.hooks - HOOKS.map(&:name)
+              raise ArgumentError, "runtime feature #{feature.name} takes hooks no runtime has: #{unknown.join(', ')}" if unknown.any?
+            end
+            HOOKS.select { |hook| hook.way == :one }.each do |hook|
+              takers = features.select { |feature| feature.hooks.include?(hook.name) }
+              next if takers.size <= 1
+
+              raise ArgumentError, "the #{hook.name} hook has one taker at most, and #{takers.map(&:name).join(' and ')} each take it"
+            end
+          end
+
+          # The features of +among+ that +steps+ (every step a run can reach) need, each after those it
+          # names.
+          def used_by(steps, among: ALL)
+            kinds = steps.to_set(&:kind)
+            in_order(among.select { |feature| feature.needed_by.any? { |kind| kinds.include?(kind) } })
+          end
+
+          # --- C: the file the C screen includes at its end ---
+
+          def c_text(features)
+            [WRITTEN_BY_C,
+             *features.map { |feature| "#include \"#{feature.name}/rg_#{feature.name}.c\"\n" },
+             *HOOKS.filter_map { |hook| c_dispatcher(hook, takers(hook, features)) if hook.languages.include?(:c) }].join
+          end
+
+          def c_headers(features) = features.filter_map(&:c_header)
+
+          # --- JavaScript and Ruby: the features' files, and every hook's dispatcher ---
+
+          def js_text(features)
+            [*features.map { |feature| File.read(feature.file("js"), encoding: Encoding::UTF_8) },
+             *HOOKS.filter_map { |hook| js_dispatcher(hook, takers(hook, features)) if hook.languages.include?(:js) }].join
+          end
+
+          def ruby_text(features)
+            [*features.map { |feature| File.read(feature.file("rb"), encoding: Encoding::UTF_8).delete_prefix(RUBY_MAGIC_COMMENT) },
+             *HOOKS.filter_map { |hook| ruby_dispatcher(hook, takers(hook, features)) if hook.languages.include?(:ruby) }].join
+          end
+
+          # Every runtime file a feature has in +extension+, for what reads all of a runtime's functions.
+          def every_file(extension) = ALL.map { |feature| feature.file(extension) }
+
+          private
+
+          def takers(hook, features) = features.select { |feature| feature.hooks.include?(hook.name) }
+
+          # Ordered so each comes after what it names, and otherwise by name, so a build is the same
+          # whichever order the folders were found in.
+          def in_order(features)
+            placed = []
+            pending = features.sort_by(&:name)
+            until pending.empty?
+              ready = pending.find { |feature| (feature.after & pending.map(&:name)).empty? }
+              raise ArgumentError, "runtime features #{pending.map(&:name).join(', ')} each come after another" unless ready
+
+              placed << ready
+              pending.delete(ready)
+            end
+            placed
+          end
+
+          # C: only a taken hook is written, marked so the defaults leave it out.
+          def c_dispatcher(hook, found)
+            return nil if found.empty?
+
+            calls = found.map { |feature| feature.hook_call_text(hook) }
+            body = case hook.way
+                   when :each then calls.map { |line| "  #{line};\n" }.join
+                   when :claim then calls.map { |line| "  if (#{line}) return 1;\n" }.join + "  return 0;\n"
+                   when :all then "  return #{calls.join(' && ')};\n"
+                   when :one then "  return #{calls.first};\n"
+                   end
+            "#define RG_HOOK_#{hook.name.upcase}_TAKEN\n#{hook.c_signature} {\n#{body}}\n"
+          end
+
+          # The text a JavaScript or Ruby dispatcher answers with: the takers' calls combined by the
+          # hook's way, or what the hook answers with no taker (+null+ is the language's null). For an
+          # :each hook, the calls to make, one to a line.
+          def answer_text(hook, found, null)
+            calls = found.map { |feature| feature.hook_call_text(hook) }
+            case hook.way
+            when :each then calls
+            when :claim then calls.empty? ? "false" : calls.join(" || ")
+            when :all then calls.empty? ? "true" : calls.join(" && ")
+            when :one then calls.first || (hook.default == :null ? null : hook.default.to_s)
+            end
+          end
+
+          def js_dispatcher(hook, found)
+            answer = answer_text(hook, found, "null")
+            body = hook.way == :each ? answer.map { |line| "  #{line};\n" }.join : "  return #{answer};\n"
+            "function rg_hook_#{hook.name}(#{hook.params.join(', ')}) {\n#{body}}\n"
+          end
+
+          def ruby_dispatcher(hook, found)
+            answer = answer_text(hook, found, "nil")
+            params = hook.params.empty? ? "" : "(#{hook.params.join(', ')})"
+            body = hook.way == :each ? answer.map { |line| "  #{line}\n" }.join : "  #{answer}\n"
+            "def rg_hook_#{hook.name}#{params}\n#{body}end\n"
+          end
+        end
+      end
+    end
+  end
+end
+
+Dir.glob(File.join(VBlank::IR::Backends::RuntimeFeatures::ROOT, "*", "feature.rb")).sort.each { |file| require file }
+
+module VBlank
+  module IR
+    module Backends
+      module RuntimeFeatures
+        refuse_wrong_hooks!(declared)
+        ALL = Ractor.make_shareable(declared.dup)
+      end
+    end
+  end
+end

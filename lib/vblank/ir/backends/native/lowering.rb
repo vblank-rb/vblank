@@ -175,6 +175,9 @@ module VBlank
           # as the lowering about a step in a routine nothing calls asks for this.
           def reachable_steps = @reachable
 
+          # The runtime features (RuntimeFeatures) the steps a run can reach need.
+          def runtime_features = @runtime_features ||= RuntimeFeatures.used_by(@reachable)
+
           private
 
           # --- the file ---
@@ -199,7 +202,7 @@ module VBlank
             [C::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
              C::Include.new("rg_int32.h"), C::Include.new("rg_runtime.h"), C::Include.new("rg_list.h"),
              C::Include.new("rg_screen.h"), C::Include.new("rg_sound.h"), C::Include.new("rg_mix.h"),
-             C::Include.new("rg_save.h"),
+             C::Include.new("rg_save.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| C::Include.new(header) },
              *variable_names.map { |name| C::Global.new(name: variable(name)) },
              *list_storage,
              *(@scenes.empty? ? [] : [C::Global.new(name: @names.own("scene"), value: -1)]),

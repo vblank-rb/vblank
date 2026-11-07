@@ -271,13 +271,6 @@ void rg_screen_tint(int32_t color, int32_t steps);
 /* How far +amount+ (a percentage, or with +fraction_bits+ >= 0 a fraction of one) is, in steps. */
 int32_t rg_fade_steps(int32_t amount, int32_t fraction_bits, int32_t walked);
 
-/* The picture shown in flat blocks of +size+ pixels each way from now on, 1 being the picture as
- * drawn; a size past either end of the sizes there are stops at that end. Nothing drawn changes.
- * The blocks are fixed to the screen, one starting at every column and row that is a multiple of
- * the size, and each shows the color at its top left corner. Which things go into blocks was
- * settled when the game was built (RG_BG_IN_BLOCKS, rg_game_sprite_blocks). */
-void rg_screen_pixelate(int32_t size);
-
 /* Two colors for a line of text, and the test that picks which. */
 static inline int32_t rg_pick_color(int32_t showing, int32_t color, int32_t picked) {
   return showing != 0 ? picked : color;
