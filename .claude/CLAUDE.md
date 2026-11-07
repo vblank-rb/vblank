@@ -64,7 +64,7 @@ deliberately NOT a dependency of VBlank's gemspec, so somebody who only builds c
 needs no C compiler. A game that wants to verify or profile adds it to its own Gemfile:
 
 ```ruby
-git "https://github.com/jamescook/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
+git "https://github.com/vblank-rb/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
   gem "vblank"
   gem "ruby-gba-emulator"
 end

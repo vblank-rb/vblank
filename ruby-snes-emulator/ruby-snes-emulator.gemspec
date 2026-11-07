@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
     table and registers. VBlank uses it to check the cartridges it builds; building one needs
     none of this.
   DESC
-  spec.homepage    = "https://github.com/jamescook/vblank"
+  spec.homepage    = "https://github.com/vblank-rb/vblank"
   spec.license     = "MIT" # our binding code; bsnes is built separately (GPLv3)
   spec.required_ruby_version = ">= 4.0"
 

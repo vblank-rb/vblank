@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
     No SDL2 or Tk. VBlank uses it to verify and profile the cartridges it
     builds; building one needs none of this.
   DESC
-  spec.homepage    = "https://github.com/jamescook/vblank"
+  spec.homepage    = "https://github.com/vblank-rb/vblank"
   spec.license     = "MIT" # our binding code; libmgba is linked separately (MPL-2.0)
   spec.required_ruby_version = ">= 4.0"
 

@@ -114,7 +114,7 @@ Add it beside VBlank. It carries a C extension, so bundler builds it — per Rub
 means changing Ruby version rebuilds rather than leaving a library that will not load:
 
 ```ruby
-git "https://github.com/jamescook/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
+git "https://github.com/vblank-rb/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
   gem "vblank"
   gem "ruby-gba-emulator"
 end

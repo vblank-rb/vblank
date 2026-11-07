@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = "Ruby DSL for building GBA ROMs"
   spec.description   = "A Ruby DSL that generates valid Game Boy Advance ROM files"
-  spec.homepage      = "https://github.com/jamescook/vblank"
+  spec.homepage      = "https://github.com/vblank-rb/vblank"
   # MIT, but for ruby-snes-emulator/core/bsnes-vblank-probe.patch, a change to bsnes and so under
   # bsnes's licence (ruby-snes-emulator/core/LICENSE.md says more).
   spec.licenses      = ["MIT", "GPL-3.0-or-later"]

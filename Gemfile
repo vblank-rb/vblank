@@ -29,7 +29,7 @@ gemspec
 # one repository — two `gem ... github:` lines are two sources cloning into one directory,
 # which races and fails:
 #
-#   git "https://github.com/jamescook/vblank.git",
+#   git "https://github.com/vblank-rb/vblank.git",
 #       glob: "{,ruby-gba-emulator/}*.gemspec" do
 #     gem "vblank"
 #     gem "ruby-gba-emulator"

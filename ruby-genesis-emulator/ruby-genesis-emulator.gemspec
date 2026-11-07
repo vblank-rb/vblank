@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
     a time and read back its picture, work RAM, video RAM, colour memory, scroll memory and
     registers. VBlank uses it to check the cartridges it builds; building one needs none of this.
   DESC
-  spec.homepage    = "https://github.com/jamescook/vblank"
+  spec.homepage    = "https://github.com/vblank-rb/vblank"
   spec.license     = "MIT" # our binding code; Genesis Plus GX is built separately, and bars commercial use
   spec.required_ruby_version = ">= 4.0"
 

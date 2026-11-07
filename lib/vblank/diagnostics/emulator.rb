@@ -127,7 +127,7 @@ module VBlank
           An emulator is required to run a ROM, and ruby-gba-emulator will not load.
           Put this in your Gemfile, then run bundle install:
 
-              git "https://github.com/jamescook/vblank.git",
+              git "https://github.com/vblank-rb/vblank.git",
                   glob: "{,ruby-gba-emulator/}*.gemspec" do
                 gem "vblank"
                 gem "ruby-gba-emulator"

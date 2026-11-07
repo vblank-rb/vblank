@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
     the processor's registers. VBlank uses it to check the programs it builds; building one needs
     none of this.
   DESC
-  spec.homepage    = "https://github.com/jamescook/vblank"
+  spec.homepage    = "https://github.com/vblank-rb/vblank"
   spec.license     = "MIT" # our binding code; Beetle PSX is built separately, under GPL-2.0
   spec.required_ruby_version = ">= 4.0"
 
