@@ -100,9 +100,10 @@ module VBlank
           # (see Native::TARGETS), and nil is this one. +strip+ leaves the debugging data out.
           def build_with_sdl(src_dir, sources, name:, prefix:, target: nil, strip: false)
             version
-            capture_command("zig", "build", "--build-file", BUILD_FILE,
+            # zig 0.17's build takes no --global-cache-dir; the setting is how it is told.
+            capture_command({ "ZIG_GLOBAL_CACHE_DIR" => File.join(sdl_build_cache_dir, "global") },
+                            "zig", "build", "--build-file", BUILD_FILE,
                             "--cache-dir", File.join(sdl_build_cache_dir, "cache"),
-                            "--global-cache-dir", File.join(sdl_build_cache_dir, "global"),
                             "--pkg-dir", File.join(sdl_build_cache_dir, "packages"),
                             "-p", prefix, "-Dsrc_dir=#{src_dir}", *sources.map { |file| "-Dsources=#{file}" },
                             "-Dname=#{name}", "-Doptimize=ReleaseFast", *(target ? ["-Dtarget=#{target}"] : []),
