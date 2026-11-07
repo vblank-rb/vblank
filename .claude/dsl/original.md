@@ -45,8 +45,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
   the next frame every 256 bytes and after it ends, so a shell can show progress:
   `pack.unpacking.bytes_done_in(run)` of `byte_size`.
   `pack.unpacking.program` is the program, and `slot_bytes_in(run)` each slot's bytes from a run of it on
-  any backend; every lowering plays it like any game, checked against the interpreter. Genesis
-  decompressors are not here yet. Worked example: `test/all/vblank/builder/test_data_packs.rb`.
+  the interpreter and on each computer runtime, checked against the interpreter. No console runs it, so
+  its tests play on those runs only (`test/copy_reader_tests.rb` and `test/packing_<console>_tests.rb`,
+  included under `vblank/original/` in `test/interpreter/` and `test/lowering/{native,js,ruby}/`).
+  Where it lives: `copy` is `Original::CopyReader` (`lib/vblank/original/copy_reader.rb`), and each
+  console's packed formats are a module of their own mixed into it, `lib/vblank/original/packing/<console>.rb`.
+  Genesis decompressors are not here yet. Worked examples: `test/copy_reader_tests.rb` for the routine, and
+  `test/all/vblank/builder/test_data_packs.rb` for a game reading its pack.
 - **The game holds handles, never bytes.** `pack[:palette]` is a `DSL::PackSlot`: its `shape`, `count`
   and `layout` (name, place and `byte_size`), nothing it holds. The verbs read the slot themselves:
   `image ..., colors: pack[:palette], places: pack[:walls].tile(3)` and `table :speeds, pack[:speeds]`.

@@ -1,17 +1,19 @@
 # frozen_string_literal: true
 
 module VBlank
-  module DSL
+  module Original
     # THE PLAYER'S COPY OF THE ORIGINAL, AS AN UNPACKING ROUTINE READS IT: the `copy` a
-    # `slots.fill_from_copy do |copy, pack| ... end` block is handed (Original::Unpacking says where
-    # that block runs, and why). Everything here is game code, so it plays the same on every backend.
+    # `slots.fill_from_copy do |copy, pack| ... end` block is handed (Unpacking says where that
+    # block runs, and why). Everything here is game code, so it plays the same on every backend.
     #
     #   copy.byte(0x100)                          # one byte, 0 to 255
     #   copy.half(0x100)  copy.word(0x100)        # two and four bytes, low byte first...
     #   copy.half(0x100, big_endian: true)        # ...or high byte first, as a Genesis keeps them
     #   copy.copy_bytes at: 0x200, count: 64, into: pack[:walls]
-    #   copy.unpack_lz77 at: 0x300, into: pack[:sprites]
-    #   copy.unpack_rle at: 0x380, into: pack[:heights], start: 16
+    #
+    # THE PACKED FORMATS are building blocks of their own, a module for each console whose games
+    # keep their data in them, in packing/ and mixed in here: the Game Boy Advance's
+    # (Packing::GBA), `copy.unpack_lz77` and `copy.unpack_rle`, the BIOS's.
     #
     # The building blocks write into a slot from +start+ (a byte in it, 0 first), and never past its
     # end: a write that would go past is not made, and the build stops saying so (Unpacking::Fault).
@@ -20,20 +22,12 @@ module VBlank
     # goes, waiting for the next frame every PROGRESS_BYTES, so a shell can show how far the
     # unpacking has got however big one block is.
     #
-    # THE TWO DECOMPRESSORS are the formats of the Game Boy Advance's BIOS, the ones retail
-    # cartridges keep their pictures in and the ones the GBA lowering packs with (BiosCompress,
-    # which is their answer key). A packed block starts with four bytes: the scheme in the top half
-    # of the first (Unpacking::SCHEME_NAMES) and the size unpacked in the next three, low byte first.
-    #
-    # - LZ77 is groups of a flag byte and eight items, the flag's top bit first: a 0 is one byte to
-    #   copy, a 1 is two bytes saying "the 3 to 18 bytes from 1 to 4096 back again".
-    # - RLE is runs: a flag byte with its top bit set is one byte written 3 to 130 times, and with
-    #   it clear 1 to 128 bytes to copy.
-    #
     # This file is read as game code (VBlank.require_game_file), so each `if` on a test the routine
     # makes is a branch in the routine. Every variable here is written with `store!` and
     # `increase!`, so what is a variable of the routine's is plain to see.
-    class OriginalBytes
+    class CopyReader
+      include Packing::GBA
+
       # How many bytes a building block writes between one wait for the next frame and the next.
       PROGRESS_BYTES = 256
 
@@ -45,7 +39,7 @@ module VBlank
         @pack = pack
         @faults = faults
         @before_wait = before_wait
-        @done = builder.var(Original::Unpacking::BYTES_DONE, 0)
+        @done = builder.var(Unpacking::BYTES_DONE, 0)
         @block_variables = {}
         @block_routines = {}
       end
@@ -79,16 +73,9 @@ module VBlank
         emit_block_call(:copy, at, into, start, count)
       end
 
-      # The block packed with the BIOS's LZ77 at +at+ in the copy, unpacked into +into+ from its
-      # byte +start+.
-      def unpack_lz77(at:, into:, start: 0) = unpack_packed_block(:lz77, at, into, start)
-
-      # The block packed with the BIOS's RLE at +at+ in the copy, unpacked into +into+ from its
-      # byte +start+.
-      def unpack_rle(at:, into:, start: 0) = unpack_packed_block(:rle, at, into, start)
-
       private
 
+      # A building block for a packed format, which says its own size: checked, then called.
       def unpack_packed_block(kind, at, into, start)
         refuse_unless_slot!(into, "unpack_#{kind}")
         refuse_outside_slot!(into, start, 0)
@@ -105,17 +92,17 @@ module VBlank
 
       def sum_of(a, b) = a.is_a?(Integer) && b.is_a?(Integer) ? a + b : value_of(a) + b
 
-      def value_of(operand) = operand.is_a?(Value) ? operand : Value.new(@builder, Value.node_for(operand))
+      def value_of(operand) = operand.is_a?(DSL::Value) ? operand : DSL::Value.new(@builder, DSL::Value.node_for(operand))
 
       # The copy's byte at +at+, with the check before it: a place outside the copy records a fault
       # and reads a byte of the copy instead, as any table read does.
       def read_byte(at)
         if at.is_a?(Integer)
-          @faults.emit_fault(Original::Unpacking::Fault::READ_PAST_END, at, 0) unless at.between?(0, @copy.length - 1)
+          @faults.emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) unless at.between?(0, @copy.length - 1)
           return @copy[at]
         end
 
-        @faults.emit_fault(Original::Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= @copy.length
+        @faults.emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= @copy.length
         @copy[at]
       end
 
@@ -164,7 +151,7 @@ module VBlank
 
       # The fault for a write of +size+ bytes from +to+ that does not fit: its last byte, in the slot.
       def emit_outside_slot_fault(to, size)
-        @faults.emit_fault(Original::Unpacking::Fault::WRITE_OUTSIDE_SLOT, to - block_variable(:slot_first) + size - 1,
+        @faults.emit_fault(Unpacking::Fault::WRITE_OUTSIDE_SLOT, to - block_variable(:slot_first) + size - 1,
                            block_variable(:slot_number))
       end
 
@@ -189,88 +176,25 @@ module VBlank
         end
       end
 
-      # What a packed block's two schemes share: the header checked, the room in the slot checked,
-      # the reading and writing places set, the scheme's own loop (the block, handed where it reads
-      # and writes and where it stops), and what is left over counted as done.
-      def emit_packed_block(scheme)
-        from = block_variable(:from)
+      # A block of a format that says how big it unpacks to, +size+ bytes, before it is unpacked,
+      # its packed bytes from +first+ in the copy: the room in the slot checked, the reading and
+      # writing places set, the format's own loop (the block, handed where it reads and writes and
+      # where it stops), and what is left over counted as done.
+      def emit_sized_block(size, first)
         to = block_variable(:to)
         ends = block_variable(:ends)
-        size = block_variable(:size)
         src = block_variable(:src)
         out = block_variable(:out)
         mark = block_variable(:mark)
-        if (read_byte(from) >> 4) == scheme
-          size.store!(read_byte(from + 1) | (read_byte(from + 2) << 8) | (read_byte(from + 3) << 16))
-          if fits_in_slot(to, size, ends)
-            ends.store!(to + size)
-            out.store!(to)
-            mark.store!(to)
-            src.store!(from + 4)
-            yield src, out, ends, mark
-            @done.increase!(out - mark)
-          else
-            emit_outside_slot_fault(to, size)
-          end
+        if fits_in_slot(to, size, ends)
+          ends.store!(to + size)
+          out.store!(to)
+          mark.store!(to)
+          src.store!(first)
+          yield src, out, ends, mark
+          @done.increase!(out - mark)
         else
-          @faults.emit_fault(Original::Unpacking::Fault::WRONG_SCHEME, from, scheme)
-        end
-      end
-
-      def emit_lz77_routine
-        flags = block_variable(:flags)
-        reference = block_variable(:reference)
-        back = block_variable(:back)
-        pack = @pack
-        emit_packed_block(IR::Backends::GBA::BiosCompress::TYPE_LZ77) do |src, out, ends, mark|
-          @builder.repeat(ends - out, stop_when: out >= ends) do
-            flags.store!(read_byte(src))
-            src.increase!(1)
-            @builder.repeat(8, stop_when: out >= ends) do
-              if (flags & 0x80) == 0
-                pack[out] = read_byte(src)
-                src.increase!(1)
-                out.increase!(1)
-              else
-                reference.store!(read_byte(src))
-                back.store!((((reference & 0x0F) << 8) | read_byte(src + 1)) + 1)
-                src.increase!(2)
-                @builder.repeat((reference >> 4) + 3, stop_when: out >= ends) do
-                  pack[out] = pack[out - back]
-                  out.increase!(1)
-                end
-              end
-              flags.store!(flags << 1)
-            end
-            emit_progress_step(out, mark)
-          end
-        end
-      end
-
-      def emit_rle_routine
-        flag = block_variable(:flag)
-        fill = block_variable(:fill)
-        pack = @pack
-        emit_packed_block(IR::Backends::GBA::BiosCompress::TYPE_RLE) do |src, out, ends, mark|
-          @builder.repeat(ends - out, stop_when: out >= ends) do
-            flag.store!(read_byte(src))
-            src.increase!(1)
-            if (flag & 0x80) == 0
-              @builder.repeat((flag & 0x7F) + 1, stop_when: out >= ends) do
-                pack[out] = read_byte(src)
-                src.increase!(1)
-                out.increase!(1)
-              end
-            else
-              fill.store!(read_byte(src))
-              src.increase!(1)
-              @builder.repeat((flag & 0x7F) + 3, stop_when: out >= ends) do
-                pack[out] = fill
-                out.increase!(1)
-              end
-            end
-            emit_progress_step(out, mark)
-          end
+          emit_outside_slot_fault(to, size)
         end
       end
 
@@ -295,9 +219,9 @@ module VBlank
     # what the first one led to.
     class UnpackingFaults
       def initialize(builder)
-        @kind = builder.var(Original::Unpacking::FAULT_KIND, 0)
-        @at = builder.var(Original::Unpacking::FAULT_AT, 0)
-        @detail = builder.var(Original::Unpacking::FAULT_DETAIL, 0)
+        @kind = builder.var(Unpacking::FAULT_KIND, 0)
+        @at = builder.var(Unpacking::FAULT_AT, 0)
+        @detail = builder.var(Unpacking::FAULT_DETAIL, 0)
       end
 
       def emit_fault(kind, at, detail)
@@ -311,7 +235,7 @@ module VBlank
 
     # ONE SLOT OF THE PACK, AS AN UNPACKING ROUTINE WRITES IT: `pack[:walls]` inside
     # `slots.fill_from_copy`. Its bytes are a run of the pack's one list of bytes
-    # (Original::Unpacking).
+    # (Unpacking).
     #
     #   pack[:walls][i] = copy.byte(0x400 + i)   # one byte, the low 8 bits of what is given
     #   pack[:walls][i]                           # one byte back, 0 to 255
@@ -330,7 +254,7 @@ module VBlank
         @faults = faults
       end
 
-      # The Original::Slot this writes, and its place in the pack's order.
+      # The Slot this writes, and its place in the pack's order.
       attr_reader :slot, :number
 
       def byte_size = @slot.byte_size
@@ -345,12 +269,12 @@ module VBlank
         if index >= 0 && index < byte_size
           @list[place(index)] = value
         else
-          @faults.emit_fault(Original::Unpacking::Fault::WRITE_OUTSIDE_SLOT, index, @number)
+          @faults.emit_fault(Unpacking::Fault::WRITE_OUTSIDE_SLOT, index, @number)
         end
       end
 
       # Where byte +index+ of the slot is in the pack's list.
-      def place(index) = index.is_a?(Integer) ? @start + index : Value.new(@builder, Value.node_for(index)) + @start
+      def place(index) = index.is_a?(Integer) ? @start + index : DSL::Value.new(@builder, DSL::Value.node_for(index)) + @start
 
       private
 

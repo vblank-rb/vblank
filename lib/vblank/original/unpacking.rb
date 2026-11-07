@@ -29,7 +29,7 @@ module VBlank
     # WHAT IS IN IT. The copy is a table of bytes (COPY). The pack is one list of bytes (BYTES),
     # every slot in it one after another in the pack's order (#places), as the pack file keeps them.
     # The slots copied as they are (`at:`) are copied first, then the routine runs, then FINISHED is
-    # set and the program halts. The building blocks (DSL::OriginalBytes) add what they write to
+    # set and the program halts. The building blocks (CopyReader) add what they write to
     # BYTES_DONE as they go and wait for the next frame every so often, so a shell can show how far
     # the unpacking has got. The first thing that goes wrong (Fault) is kept in the FAULT_ variables
     # and nothing after it overwrites it.

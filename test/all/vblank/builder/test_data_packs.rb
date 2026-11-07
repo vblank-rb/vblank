@@ -83,6 +83,13 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
                                releases: { "Test" => { "sha1" => SHA1, "size" => COPY_SIZE } })
   end
 
+  # A copy that is +bytes+ alone, written into +folder+.
+  private def copy_of(folder, bytes)
+    path = File.join(folder, "packed.bin")
+    File.binwrite(path, bytes)
+    VBlank::Original::Copy.new(path: path, sha1: Digest::SHA1.hexdigest(bytes), release: "Test")
+  end
+
   # The game: the two tiles laid out as a background, and a marker whose place across the screen
   # is read from the table each frame. +data+ hands over the colours, each tile's places and the
   # table, from the pack or held directly. +options+ are the build's (Cartridge::Options).
@@ -259,32 +266,6 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # The unpacking routine (MadeUpOriginal#unpacked_pack), played on each run's own build of it,
-  # checked against the interpreter's on every frame there, and its slots read back from what it
-  # wrote.
-  def test_the_routine_unpacks_an_lz77_block_and_an_rle_block_into_the_same_pack_on_every_run
-    Dir.mktmpdir do |folder|
-      unpacking = unpacked_pack(Builder.new, folder).unpacking
-      played = game_player.run(unpacking.program, frames: 8)
-
-      assert_equal({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") },
-                   unpacking.slot_bytes_in(played))
-    end
-  end
-
-  # A shell shows how far the routine has got: the bytes written so far of the pack's whole size.
-  def test_the_routine_says_how_far_it_has_got
-    Dir.mktmpdir do |folder|
-      unpacking = unpacked_pack(Builder.new, folder).unpacking
-
-      assert_equal 32 + 64 + HEIGHTS.length, unpacking.byte_size
-      early = unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 1))
-      assert_operator early, :>, 0, "a frame in, some of the pack is unpacked"
-      assert_operator early, :<, unpacking.byte_size, "...and not all of it, since each block waits for a frame"
-      assert_equal unpacking.byte_size, unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 8))
-    end
-  end
-
   def test_a_game_reading_slots_its_routine_filled_plays_as_one_holding_them
     Dir.mktmpdir do |folder|
       unpacked = lambda do |builder|
@@ -301,96 +282,6 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # A copy that is +bytes+ alone, written into +folder+.
-  private def copy_of(folder, bytes)
-    path = File.join(folder, "packed.bin")
-    File.binwrite(path, bytes)
-    VBlank::Original::Copy.new(path: path, sha1: Digest::SHA1.hexdigest(bytes), release: "Test")
-  end
-
-  # One block big enough to take several frames: the count of bytes done moves on inside it, so a
-  # shell's progress does not sit at nothing until the whole block is unpacked.
-  def test_progress_moves_on_inside_one_big_block
-    raw = (0...1024).map { |at| (at * 5) & 0x3F }.pack("C*")
-    Dir.mktmpdir do |folder|
-      from = copy_of(folder, Packer.with_bios_header(Packer.lz77(raw), Packer::TYPE_LZ77, raw.bytesize))
-      unpacking = Builder.new.data_pack(from: from, version: "1") do |slots|
-        slots.numbers :big, count: raw.bytesize, width: :byte, signed: false
-        slots.fill_from_copy { |copy, pack| copy.unpack_lz77 at: 0, into: pack[:big] }
-      end.unpacking
-
-      early = unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 1))
-      assert_operator early, :>, 0, "a frame in, some of the block is unpacked"
-      assert_operator early, :<, raw.bytesize, "...and not all of it"
-      assert_equal raw.bytesize, unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 10))
-    end
-  end
-
-  # The answer key for the decompressors is BiosCompress: a longer block, with runs and repeats
-  # both, packed each way and unpacked by the routine back to its bytes.
-  def test_each_decompressor_gives_back_what_bios_compress_packed
-    raw = ((0...90).map { |at| (at * 7) & 0x3F } + [0] * 40 + (0...90).map { |at| (at * 7) & 0x3F } + [5] * 3).pack("C*")
-    copy = Packer.with_bios_header(Packer.lz77(raw), Packer::TYPE_LZ77, raw.bytesize) +
-           Packer.with_bios_header(Packer.rle(raw), Packer::TYPE_RLE, raw.bytesize)
-    rle_at = Packer.with_bios_header(Packer.lz77(raw), Packer::TYPE_LZ77, raw.bytesize).bytesize
-    Dir.mktmpdir do |folder|
-      from = copy_of(folder, copy)
-      unpacking = Builder.new.data_pack(from: from, version: "1") do |slots|
-        slots.numbers :by_lz77, count: raw.bytesize, width: :byte, signed: false
-        slots.numbers :by_rle, count: raw.bytesize, width: :byte, signed: false
-        slots.fill_from_copy do |bytes, pack|
-          bytes.unpack_lz77 at: 0, into: pack[:by_lz77]
-          bytes.unpack_rle at: rle_at, into: pack[:by_rle]
-        end
-      end.unpacking
-
-      assert_equal({ by_lz77: raw, by_rle: raw }, unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 8)))
-    end
-  end
-
-  # A routine can read the copy and write a slot a byte at a time, for a layout no building block
-  # knows: here the speeds, read as halves high byte first, kept as their low bytes reversed.
-  def test_a_routine_reads_and_writes_bytes_itself
-    Dir.mktmpdir do |folder|
-      unpacking = Builder.new.data_pack(from: original(folder), version: "1") do |slots|
-        slots.numbers :backwards, count: 4, width: :byte, signed: false
-        slots.fill_from_copy do |copy, pack|
-          4.times { |at| pack[:backwards][3 - at] = copy.half(SPEEDS_AT + (at * 2), big_endian: true) & 0xFF }
-        end
-      end.unpacking
-
-      assert_equal [SPEEDS[1], SPEEDS[3], SPEEDS[5], SPEEDS[7]].reverse.pack("C*"),
-                   unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 4))[:backwards]
-    end
-  end
-
-  # A routine in normal Ruby, as a game block is written: a `while` on a number read from the copy
-  # is a loop in the routine, played as it unpacks. The first speed is 10, so it goes round 8 times.
-  # `at` is a number the routine changes as it plays, so it is one of the routine's variables.
-  def test_a_routine_written_in_normal_ruby_loops_as_it_unpacks
-    Dir.mktmpdir do |folder|
-      from = original(folder)
-      b = Builder.new
-      b.instance_eval do
-        @made_pack = data_pack(from: from, version: "1") do |slots|
-          slots.numbers :doubled, count: 8, width: :byte, signed: false
-          slots.fill_from_copy do |copy, pack|
-            at = 0
-            rounds = copy.byte(SPEEDS_AT) - 2
-            while at < rounds
-              pack[:doubled][at] = copy.byte(SPEEDS_AT + at) * 2
-              at += 1
-            end
-          end
-        end
-      end
-      unpacking = b.instance_variable_get(:@made_pack).unpacking
-
-      assert_equal SPEEDS.map { |speed| (speed * 2) & 0xFF }.pack("C*"),
-                   unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 4))[:doubled]
-    end
-  end
-
   def test_a_slot_with_no_place_and_no_routine_is_refused
     Dir.mktmpdir do |folder|
       refused = assert_raises(ArgumentError) do
@@ -399,76 +290,6 @@ class TestDataPacks < Minitest::Test
 
       assert_match ":walls", refused.message
       assert_match "fill_from_copy", refused.message
-    end
-  end
-
-  # What a pack of two tiles filled by +routine+ is refused with, as it is built.
-  private def refusal_of_routine(error, &routine)
-    Dir.mktmpdir do |folder|
-      assert_raises(error) do
-        Builder.new.data_pack(from: original(folder), version: "1") do |slots|
-          slots.tiles :walls, count: 2
-          slots.fill_from_copy(&routine)
-        end
-      end
-    end
-  end
-
-  def test_a_block_that_is_not_packed_the_way_the_routine_says_is_refused_at_build_time
-    refused = refusal_of_routine(VBlank::Original::WrongCopy) { |copy, pack| copy.unpack_lz77 at: RLE_AT, into: pack[:walls] }
-
-    assert_match "LZ77", refused.message
-    assert_match RLE_AT.to_s, refused.message
-  end
-
-  # Ten times the first speed is 100, past the 64 bytes of two tiles: a count worked out as the
-  # routine runs cannot write into the next slot.
-  def test_a_copy_too_long_for_its_slot_is_refused_at_build_time
-    refused = refusal_of_routine(ArgumentError) do |copy, pack|
-      copy.copy_bytes at: 0, count: copy.byte(SPEEDS_AT) * 10, into: pack[:walls]
-    end
-
-    assert_match ":walls", refused.message
-    assert_match "bytes 0 to 63", refused.message
-  end
-
-  def test_a_byte_written_past_its_slot_is_refused_at_build_time
-    refused = refusal_of_routine(ArgumentError) { |copy, pack| pack[:walls][copy.byte(SPEEDS_AT) * 10] = 1 }
-
-    assert_match "byte 100 of slot :walls", refused.message
-  end
-
-  # A read past the copy's end, then a write past the slot that it led to: the read is the fault
-  # the build names, since it came first.
-  def test_a_read_past_the_end_of_the_copy_is_refused_naming_the_place
-    refused = refusal_of_routine(VBlank::Original::WrongCopy) do |copy, pack|
-      pack[:walls][0] = copy.byte(copy.byte(SPEEDS_AT) * 100)
-      pack[:walls][copy.byte(SPEEDS_AT) * 10] = 1
-    end
-
-    assert_match "byte 1000", refused.message
-    assert_match "0 to #{COPY_SIZE - 1}", refused.message
-  end
-
-  # A routine that never ends is stopped after as many frames as the copy and the pack have bytes,
-  # not left to run for hours.
-  def test_a_routine_that_never_ends_is_stopped
-    Dir.mktmpdir do |folder|
-      from = original(folder)
-      refused = assert_raises(ArgumentError) do
-        Builder.new.instance_eval do
-          data_pack(from: from, version: "1") do |slots|
-            slots.tiles :walls, count: 2
-            slots.fill_from_copy do |copy, _pack|
-              while copy.byte(0) >= 0
-                wait_vblank
-              end
-            end
-          end
-        end
-      end
-
-      assert_match "did not get to its end", refused.message
     end
   end
 

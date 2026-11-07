@@ -312,15 +312,15 @@ module VBlank
                  end
           list = maker.list(Original::Unpacking::BYTES, capacity: slots.sum(&:byte_size), width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
-          faults = DSL::UnpackingFaults.new(maker)
+          faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes)
-          reader = DSL::OriginalBytes.new(maker, copy: copy, pack: list, faults: faults, before_wait: progress)
+          reader = Original::CopyReader.new(maker, copy: copy, pack: list, faults: faults, before_wait: progress)
           define_unpacking_progress(maker, reader.bytes_done, finished, slots.sum(&:byte_size)) if progress
           places = Original::Unpacking.places_of(slots)
           writers = slots.each_with_index.to_h do |slot, number|
-            [slot.name, DSL::SlotBytes.new(maker, list, slot, places[slot.name], number: number, faults: faults)]
+            [slot.name, Original::SlotBytes.new(maker, list, slot, places[slot.name], number: number, faults: faults)]
           end
-          pack = DSL::UnpackingSlots.new(writers)
+          pack = Original::UnpackingSlots.new(writers)
           slots.reject(&:filled_by_routine?).each do |slot|
             reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
           end
@@ -347,7 +347,7 @@ module VBlank
       PROGRESS_BAR_HEIGHT = 8
 
       # THE PROGRESS BAR a shell shows while it unpacks: a routine on +maker+, called before every
-      # wait for the next frame (DSL::OriginalBytes), drawing a bar as far along as +done+ is of
+      # wait for the next frame (Original::CopyReader), drawing a bar as far along as +done+ is of
       # +total+ bytes, and the whole bar once +finished+ is 1. Game code, so every runtime draws it,
       # and the interpreter is its answer key. The division is by a number worked out here, so a
       # pack of many megabytes never makes a number too big for 32 bits.

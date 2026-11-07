@@ -55,4 +55,3 @@ require_relative "dsl/sprite_tile_set"     # Sprite tiles loaded from the cartri
 VBlank.require_game_file "dsl/canvas"      # A picture the game draws into with words
 VBlank.require_game_file "dsl/list_text"   # Words held in a list, drawn on a painted screen
 require_relative "dsl/data_pack"           # The original's data, read through the pack made from the player's copy
-VBlank.require_game_file "dsl/original_bytes"  # The copy and the pack as the game's unpacking routine sees them

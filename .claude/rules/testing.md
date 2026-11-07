@@ -103,6 +103,7 @@ to, sample for sample against the native one's), `midpoint_circle.rb` (the answe
 rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped by room),
 `status_bar_games.rb` (small games with a status bar, for the verb's and its handle's tests),
 `made_up_original_layouts.rb` (made-up originals in each console's layout, and a game reading them through a data pack, for the layout tests and the pack-at-start runs),
+`copy_reader_tests.rb` and `packing_gba_tests.rb` (a port's unpacking routine and the Advance's packed formats in it, played on the interpreter and the native, JavaScript and Ruby runs, which are where an unpacking runs; no console runs one),
 `settings_root_cases.rb` (where a player's settings folders are, the table the Ruby and C rules are both held to),
 `console_bios_cases.rb` (where a player's Game Boy Advance BIOS is found and whether it is used, the same for the Ruby and C rules, with made-up files and a made-up checksum, so no BIOS is needed),
 `repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),

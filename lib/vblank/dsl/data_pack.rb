@@ -49,7 +49,7 @@ module VBlank
       end
 
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
-      # OriginalBytes) and the pack's slots to write (an UnpackingSlots).
+      # Original::CopyReader) and the pack's slots to write (an Original::UnpackingSlots).
       def fill_from_copy(&block)
         unless block
           raise ArgumentError, "`slots.fill_from_copy` needs a block: `slots.fill_from_copy do |copy, pack| ... end`."
