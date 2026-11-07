@@ -687,11 +687,16 @@ def rg_paint_turned_window(background)
   painted_tiles = @rg_game_painted_tiles
   pixels = @rg_game_tile_pixels
   sheet = @rg_onto_sheet ? @rg_sheet : nil
-  rg_scenery_rows.times do |py|
+  rows_painted = rg_scenery_rows
+  py = 0
+  while py < rows_painted
     dy = rg_row_drawn_from(py) - pivot_y
-    # The row's part of each sum, the same for every pixel of the row.
-    row_part_x = (turn_sin * dy)
-    row_part_y = (turn_cos * dy)
+    # The two sums, turn_cos * dx + turn_sin * dy and -turn_sin * dx + turn_cos * dy, at the row's
+    # first pixel, where dx is -pivot_x. dx goes up by one a pixel, so each sum moves on by its step
+    # (turn_cos, and -turn_sin) for every pixel after: the same whole numbers the products give,
+    # with no multiply a pixel.
+    sum_x = (turn_cos * -pivot_x) + (turn_sin * dy)
+    sum_y = (turn_sin * pivot_x) + (turn_cos * dy)
     last_row = -1
     last_col = -1
     cell = RG_CELL_EMPTY
@@ -699,9 +704,8 @@ def rg_paint_turned_window(background)
     slow = false
     px = 0
     while px < RG_SCREEN_WIDTH
-      dx = px - pivot_x
-      mx = (scroll_x + pivot_x + (((turn_cos * dx) + row_part_x) / one_th)) % map_w
-      my = (scroll_y + pivot_y + (((-turn_sin * dx) + row_part_y) / one_th)) % map_h
+      mx = (scroll_x + pivot_x + (sum_x / one_th)) % map_w
+      my = (scroll_y + pivot_y + (sum_y / one_th)) % map_h
       row = my / tile_h
       col = mx / tile_w
       if row != last_row || col != last_col
@@ -725,8 +729,11 @@ def rg_paint_turned_window(background)
           end
         end
       end
+      sum_x += turn_cos
+      sum_y -= turn_sin
       px += 1
     end
+    py += 1
   end
 end
 
