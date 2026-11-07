@@ -395,38 +395,64 @@ void rg_start_file_open(const int32_t *rules, const char *missing, const char *w
     rg_fault("%s", words);
 }
 
-/* The number +width+ bytes from +at+ in the file hold, low byte first. */
-static uint32_t start_file_number(int32_t at, int32_t width) {
+/* The number +width+ bytes from +at+ in the file hold, low byte first, or high byte first where
+ * +high_byte_first+ is 1. */
+static uint32_t start_file_number(int32_t at, int32_t width, int32_t high_byte_first) {
   uint32_t number = 0;
-  for (int32_t i = width - 1; i >= 0; i--) number = (number << 8) | start_file[at + i];
+  for (int32_t i = 0; i < width; i++) number = (number << 8) | start_file[at + (high_byte_first ? i : width - 1 - i)];
   return number;
 }
 
-void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at) {
+void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at, int32_t high_byte_first) {
   for (int32_t i = 0; i < count; i++) {
     switch (kept) {
-    case RG_TABLE_INT8: ((int8_t *)table)[i] = (int8_t)start_file_number(at + i, 1); break;
-    case RG_TABLE_UINT8: ((uint8_t *)table)[i] = (uint8_t)start_file_number(at + i, 1); break;
-    case RG_TABLE_INT16: ((int16_t *)table)[i] = (int16_t)start_file_number(at + (i * 2), 2); break;
-    case RG_TABLE_UINT16: ((uint16_t *)table)[i] = (uint16_t)start_file_number(at + (i * 2), 2); break;
-    default: ((int32_t *)table)[i] = (int32_t)start_file_number(at + (i * 4), 4); break;
+    case RG_TABLE_INT8: ((int8_t *)table)[i] = (int8_t)start_file_number(at + i, 1, high_byte_first); break;
+    case RG_TABLE_UINT8: ((uint8_t *)table)[i] = (uint8_t)start_file_number(at + i, 1, high_byte_first); break;
+    case RG_TABLE_INT16: ((int16_t *)table)[i] = (int16_t)start_file_number(at + (i * 2), 2, high_byte_first); break;
+    case RG_TABLE_UINT16: ((uint16_t *)table)[i] = (uint16_t)start_file_number(at + (i * 2), 2, high_byte_first); break;
+    default: ((int32_t *)table)[i] = (int32_t)start_file_number(at + (i * 4), 4, high_byte_first); break;
     }
   }
 }
 
 /* The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles
- * wide, each tile's 64 places row by row, two to a byte with the left one in the low half. */
-static int32_t start_file_place(int32_t places_at, int32_t across, int32_t row, int32_t column) {
-  int32_t at = ((((row / 8) * across) + (column / 8)) * 64) + ((row % 8) * 8) + (column % 8);
-  uint8_t both = start_file[places_at + (at / 2)];
-  return (at % 2 == 0) ? (both & 0x0F) : (both >> 4);
+ * wide, from +places_at+ on, each tile kept as +tile+ says (rg_runtime.h, RG_TILE_FORMAT_NUMBERS):
+ * bit +plane+ of the pixel is the bit plane_bits[plane] + row * row_bits + column_bits[column] of
+ * the tile (IR::FormatReading.place). */
+static int32_t start_file_place(int32_t places_at, const int32_t *tile, int32_t across, int32_t row, int32_t column) {
+  int32_t tile_bytes = tile[0], planes = tile[1], row_bits = tile[6];
+  int32_t start = places_at + ((((row / 8) * across) + (column / 8)) * tile_bytes);
+  int32_t place = 0;
+  for (int32_t plane = 0; plane < planes; plane++) {
+    int32_t bit = tile[2 + plane] + ((row % 8) * row_bits) + tile[7 + (column % 8)];
+    place |= ((start_file[start + (bit / 8)] >> (bit % 8)) & 1) << plane;
+  }
+  return place;
+}
+
+/* The channel at bit +at+ of a colour kept as +kept+, +bits+ wide, widened to five bits by repeating
+ * its top bits (IR::FormatReading.channel). */
+static int32_t start_file_channel(uint32_t kept, int32_t at, int32_t bits) {
+  int32_t level = (int32_t)((kept >> at) & ((1u << bits) - 1u));
+  return bits >= 5 ? level : (level << (5 - bits)) | (level >> ((2 * bits) - 5));
+}
+
+/* Colour +place+ of the colours from +colors_at+ on, kept as +format+ says (rg_runtime.h,
+ * RG_COLOR_FORMAT_NUMBERS), as fifteen bits (IR::FormatReading.colors). */
+static uint16_t start_file_color(int32_t colors_at, const int32_t *format, int32_t place) {
+  uint32_t kept = start_file_number(colors_at + (place * 2), 2, format[0]);
+  int32_t bits = format[4];
+  return (uint16_t)(start_file_channel(kept, format[1], bits) | (start_file_channel(kept, format[2], bits) << 5) |
+                    (start_file_channel(kept, format[3], bits) << 10));
 }
 
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];
   int32_t colors_count = rules[9], swapped_count = rules[10];
-  const int32_t *held_places = rules + 11;
+  const int32_t *tile_format = rules + 11;
+  const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
+  const int32_t *held_places = color_format + RG_COLOR_FORMAT_NUMBERS;
   const int32_t *held_colors = held_places + (places_at < 0 ? width * height : 0);
   const int32_t *swapped = held_colors + (colors_at < 0 ? colors_count : 0);
   uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
@@ -436,15 +462,14 @@ void rg_start_file_fill_picture(const int32_t *rules) {
       int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
       int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
       int32_t place = places_at < 0 ? held_places[(from_row * width) + from_column]
-                                    : start_file_place(places_at, across, from_row, from_column);
+                                    : start_file_place(places_at, tile_format, across, from_row, from_column);
       uint16_t color = 0xFFFFu;
       if (place != 0) {
         color = 0;
         if (place < swapped_count) {
           color = (uint16_t)swapped[place];
         } else if (place < colors_count) {
-          color = colors_at < 0 ? (uint16_t)held_colors[place]
-                                : (uint16_t)(start_file_number(colors_at + (place * 2), 2) & 0x7FFFu);
+          color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
         }
       }
       if (tile_pixels) tile_pixels[start + (row * width) + column] = color;

@@ -20,6 +20,14 @@ module VBlank
     #   0xFF80-0xFFFE  a little quick memory inside the processor (HRAM)
     #   0xFFFF         which interrupts are switched on
     module GBCHardware
+      # How a Color game keeps its tiles, colours and numbers in the cartridge (OriginalFormats):
+      # tiles of four colours, 16 bytes each, a row's two bit planes one after the other (the low
+      # bit of each pixel, then the high), the left pixel in a byte's top bit; colours as the
+      # Advance's, fifteen bits low byte first; numbers low byte first.
+      ORIGINAL_FORMATS = Ractor.make_shareable(
+        OriginalFormats.new(tiles: [TWO_PLANE_TILES], colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS)
+      )
+
       # --- memory ---
       ROM0 = 0x0000
       ROMX = 0x4000

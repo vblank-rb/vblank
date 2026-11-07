@@ -15,6 +15,7 @@ require_relative "ir/fields"                # The operand tables, read from the 
 require_relative "ir/font_table"            # Which font a name means to one program
 require_relative "ir/remembered"            # What a build works out from a picture, kept for the next build
 require_relative "ir/assets"                # What a declared image or recording is, for every backend
+require_relative "ir/format_reading"        # An original's tiles, colours and numbers, read in a console's layout
 require_relative "ir/start_file"            # A file a program is handed as it starts, holding some of its data
 require_relative "ir/saved_var"             # A variable that survives power-off
 require_relative "ir/save_layout"           # Where save data lives in save memory

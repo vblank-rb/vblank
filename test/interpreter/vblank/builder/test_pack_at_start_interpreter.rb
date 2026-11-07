@@ -8,4 +8,5 @@ require "pack_at_start_tests"
 # JavaScript and as Ruby play the same tests.
 class TestPackAtStartInterpreter < Minitest::Test
   include PackAtStartTests
+  include PackAtStartLayoutTests
 end

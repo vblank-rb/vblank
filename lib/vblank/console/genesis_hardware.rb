@@ -43,6 +43,21 @@ module VBlank
     # (Console::GenesisHardware.color_word); the interpreter shows the same top three bits
     # (Console::Description#color_bits), or no picture could ever agree.
     module GenesisHardware
+      # How a Genesis game keeps its tiles, colours and numbers in the cartridge (OriginalFormats):
+      # tiles of sixteen colours, two pixels a byte with the left one in the HIGH half (the
+      # Advance's the other way round); colours as #color_word writes them, high byte first;
+      # numbers high byte first, as the 68000 keeps every number.
+      ORIGINAL_FORMATS = Ractor.make_shareable(
+        OriginalFormats.new(
+          tiles: [TileFormat.new(title: "16 colours, two pixels a byte, the left one in the high half",
+                                 plane_bits: [0, 1, 2, 3], row_bits: 32,
+                                 column_bits: (0...8).map { |x| ((x / 2) * 8) + (x.even? ? 4 : 0) })],
+          colors: ColorFormat.new(title: "9 bits, 0000 BBB0 GGG0 RRR0, high byte first", high_byte_first: true,
+                                  red_at: 1, green_at: 5, blue_at: 9, channel_bits: 3),
+          numbers: NumberFormat.new(title: "high byte first", high_byte_first: true)
+        )
+      )
+
       # --- memory ---
       WRAM = 0xFF0000 # All 64K of work RAM starts here
       WRAM_SIZE = 0x10000

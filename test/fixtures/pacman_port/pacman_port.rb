@@ -119,7 +119,7 @@ module PacmanPort
         slots.tiles   :pellet_tiles, count: 1
         slots.tiles   :ghost_tiles, count: 4
         UNDRAWN_SLOTS.each do |name, asset|
-          slots.tiles name, count: ASSETS.fetch(asset).fetch("unpacked_size") / (VBlank::Original::Slot::Tiles::PIXELS / 2)
+          slots.tiles name, count: ASSETS.fetch(asset).fetch("unpacked_size") / (VBlank::Original::Slot::TILE_PIXELS / 2)
         end
         slots.fill_from_copy do |copy, into|
           SLOT_ASSETS.each do |name, asset|

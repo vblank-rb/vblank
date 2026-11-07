@@ -7,6 +7,7 @@
 # is the table every part that talks to the hardware reads its numbers from, and the parts it
 # names are only asked for once everything is loaded, so it needs nothing loaded before it.
 
+require_relative "console/original_formats"  # How a console's games keep tiles, colours and numbers
 require_relative "console/hardware"          # Register addresses, flags and memory map
 require_relative "console/sample_clock"      # The rates a console's mix of recordings can run at
 require_relative "console/description"       # What a game can tell about a console: screen, buttons, sprites

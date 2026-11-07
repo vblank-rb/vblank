@@ -23,6 +23,20 @@ module VBlank
     # engine (DMA), and only while the screen is not being drawn: in the vertical blank, or with
     # the screen switched off ("forced blank").
     module SNESHardware
+      # How a Super Nintendo game keeps its tiles, colours and numbers in the cartridge
+      # (OriginalFormats). Tiles of four colours are the Color's, 16 bytes each. Tiles of sixteen
+      # are 32 bytes: planes 0 and 1 of each row for all eight rows, then planes 2 and 3 the same
+      # way, the left pixel in a byte's top bit. Colours are the Advance's, fifteen bits low byte
+      # first; numbers low byte first.
+      ORIGINAL_FORMATS = Ractor.make_shareable(
+        OriginalFormats.new(
+          tiles: [TWO_PLANE_TILES,
+                  TileFormat.new(title: "16 colours, planes 0 and 1 for the eight rows, then planes 2 and 3",
+                                 plane_bits: [0, 8, 128, 136], row_bits: 16, column_bits: (0...8).map { |x| 7 - x })],
+          colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS
+        )
+      )
+
       # --- memory ---
       WRAM_BANK = 0x7E # All 128K of work RAM starts at $7E:0000
       LOW_WRAM_SIZE = 0x2000 # The part in view from the cartridge's banks

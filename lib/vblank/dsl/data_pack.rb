@@ -17,8 +17,16 @@ module VBlank
     #
     # A slot with no +at+ is filled by the game's own unpacking routine, the block given to
     # #fill_from_copy (see Builder::DataPacks for how and where it runs).
+    #
+    # Each slot is kept in the layout of the console the original is for (+platform+, the
+    # original's Original::Game#platform), unless it names another with +layout+, as a slot of an
+    # original from a computer must:
+    #
+    #   slots.tiles :walls, at: 0x4000, count: 64, colors: 4    # a Super Nintendo's tiles of four colours
+    #   slots.colors :palette, count: 16, layout: :gba          # a computer game's, as its routine writes them
     class PackSlots
-      def initialize
+      def initialize(platform:)
+        @platform = platform
         @list = []
         @routine = nil
       end
@@ -27,15 +35,17 @@ module VBlank
       attr_reader :list, :routine
 
       # +count+ colours, two bytes each.
-      def colors(name, count:, at: nil) = add(Original::Slot.colors(name, at: at, count: count))
+      def colors(name, count:, at: nil, layout: nil) = add(Original::Slot.colors(name, at: at, count: count, layout: layout || @platform))
 
-      # +count+ tiles of 8x8 pixels in sixteen colours, 32 bytes each.
-      def tiles(name, count:, at: nil) = add(Original::Slot.tiles(name, at: at, count: count))
+      # +count+ tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
+      def tiles(name, count:, at: nil, colors: nil, layout: nil)
+        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @platform))
+      end
 
       # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ sets whether they can be
       # below zero.
-      def numbers(name, count:, width:, signed:, at: nil)
-        add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed))
+      def numbers(name, count:, width:, signed:, at: nil, layout: nil)
+        add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed, layout: layout || @platform))
       end
 
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
@@ -116,8 +126,11 @@ module VBlank
     # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
     # left out reads each table from a slot this way, and its unpacking reads the copy this way;
-    # the game must read such a file (`data_pack` with the pack left out declares it does).
-    StartFileEntries = Data.define(:at, :count)
+    # the game must read such a file (`data_pack` with the pack left out declares it does). Each
+    # entry is kept low byte first unless +high_byte_first+.
+    StartFileEntries = Data.define(:at, :count, :high_byte_first) do
+      def initialize(at:, count:, high_byte_first: false) = super
+    end
 
     # A HANDLE ON ONE SLOT OF A DATA PACK, or on tiles of a slot of tiles: the slot's layout (an
     # Original::Slot: its name, shape, size and place in the copy) and, for tiles, which. It never

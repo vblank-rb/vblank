@@ -1660,12 +1660,14 @@ module VBlank
         kind :table
         declaration!
         category :data
-        operands name: :name, values: :list, width: :option, signed: :flag, from_file: :int, entries_in_file: :int
+        operands name: :name, values: :list, width: :option, signed: :flag, from_file: :int, entries_in_file: :int,
+                 file_high_byte_first: :flag
 
         # +from_file+ is where its first entry is in the file the program is handed as it starts
         # (StartFile), for a table read from there, and +entries_in_file+ how many it has: its
         # +values+ are empty, since a program is written with none of them. Both are absent on
-        # every other table.
+        # every other table. +file_high_byte_first+ is true for entries kept high byte first in
+        # the file, and absent where they are kept low byte first.
 
         # How many entries the table has, wherever they are.
         def entry_count = from_file ? entries_in_file : values.length

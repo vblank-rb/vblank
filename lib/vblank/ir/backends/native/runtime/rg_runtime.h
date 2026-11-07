@@ -128,7 +128,7 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * from the file, each once:
  *
  * rg_start_file_fill_table: +count+ entries of +table+, kept as +kept+ (RG_TABLE_INT8...), from
- * byte +at+ on, each as wide as that, low byte first.
+ * byte +at+ on, each as wide as that, low byte first, or high byte first where +high_byte_first+ is 1.
  *
  * rg_start_file_fill_picture: one picture's pixels, from +rules+, which are numbers: what is filled
  * (RG_FILL_TILE: a background tile's pixels, of which there are +total+, RG_SEE_THROUGH where the
@@ -137,16 +137,23 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * there, its width and height, how it is turned (RG_TURN_MIRRORED, RG_TURN_UPSIDE_DOWN, or both), how
  * many tiles wide its places are, where in the file its places are (-1 where the game holds them),
  * where its colours are (-1 where the game holds them), how many colours, and how many colours of
- * another list it is drawn with. Then the game's own places (one for each pixel) where the file has
+ * another list it is drawn with. Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
+ * numbers (Console::TileFormat): a tile's bytes, how many bit planes, where each plane's first bit
+ * is (four, the unused ones 0), the bits from one row to the next, and where each of the eight
+ * columns' bits is, a bit counted through the tile's bytes from bit 0 of the first; and the layout its
+ * colours are kept in, RG_COLOR_FORMAT_NUMBERS numbers (Console::ColorFormat): 1 for the high byte
+ * first, where red, green and blue are in the two bytes, and how many bits each has. Each is all 0
+ * where the game holds that list. Then the game's own places (one for each pixel) where the file has
  * none, its own colours where the file has none, and the other list. A place is 0 for see-through, or
  * a place in the colours: its fifteen bits, the other list's colour at that place where it has one,
  * and 0 for a place past the colours. */
 enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
+enum { RG_TILE_FORMAT_NUMBERS = 15, RG_COLOR_FORMAT_NUMBERS = 5 };
 int rg_start_file_read(const char *path);
 void rg_start_file_hand(const uint8_t *bytes, int32_t size);
 void rg_start_file_open(const int32_t *rules, const char *missing, const char *wrong_size, const char *wrong_check);
-void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at);
+void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at, int32_t high_byte_first);
 void rg_start_file_fill_picture(const int32_t *rules);
 
 #endif

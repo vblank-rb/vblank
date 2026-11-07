@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "original_formats"
+
 module VBlank
   module Console
     # GBA hardware constants. Names follow the tonc/libgba conventions
@@ -14,6 +16,13 @@ module VBlank
     # the sound is handed over — is Console::ADVANCE's to give, so it reads the same numbers for
     # whichever console a game is played as.
     module Hardware
+      # How an Advance game keeps its tiles, colours and numbers in the cartridge (OriginalFormats):
+      # tiles of sixteen colours, two pixels a byte with the left one in the low half; colours of
+      # fifteen bits; everything low byte first.
+      ORIGINAL_FORMATS = Ractor.make_shareable(
+        OriginalFormats.new(tiles: [LOW_HALF_FIRST_TILES], colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS)
+      )
+
       # The sizes a sprite is drawn at, in pixels across and down, each mapped to the two shape and
       # size numbers that describe it. (The sizes fall out of how the hardware groups an object's
       # 8x8 tiles into a rectangle.)

@@ -82,7 +82,7 @@ module VBlank
 
         copy = from.is_a?(Original::Copy) ? from : from.copy
         refuse_copy_without_hash!(copy)
-        slots = DSL::PackSlots.new
+        slots = DSL::PackSlots.new(platform: from.platform)
         yield slots
         refuse_unfilled_slots!(slots)
         bytes = File.binread(copy.path)
@@ -104,7 +104,7 @@ module VBlank
       # program told the file it is handed as it starts, a pack of these slots for +version+.
       def declare_pack_read_at_start(from, version)
         refuse_pack_left_out_of_cartridge!
-        slots = DSL::PackSlots.new
+        slots = DSL::PackSlots.new(platform: from.platform)
         yield slots
         refuse_unfilled_slots!(slots)
         layout = Original::Pack.layout(slots.list, build_version: version)
@@ -157,6 +157,7 @@ module VBlank
         node = Build.table(name, [], width: width, signed: signed)
         node.from_file = entries.at
         node.entries_in_file = entries.count
+        node.file_high_byte_first = true if entries.high_byte_first
         record(node)
         DSL::Table.new(self, name, entries.count, fraction_bits: nil, width: width)
       end
@@ -166,8 +167,9 @@ module VBlank
         refuse_slot_from_elsewhere!(handle, "table :#{name}")
         refuse_slot_read_wrongly!(handle, :numbers, "table :#{name}")
         slot = handle.layout
-        table_from_start_file(name, DSL::StartFileEntries.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count),
-                              width: slot.width, signed: slot.signed)
+        entries = DSL::StartFileEntries.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count,
+                                            high_byte_first: slot.format.high_byte_first)
+        table_from_start_file(name, entries, width: slot.width, signed: slot.signed)
       end
 
       # `image :name, colors: pack[:palette], places: pack[:walls].tile(0)` with the pack left out:
@@ -219,7 +221,8 @@ module VBlank
                                   colors_name: colors_name)
         node.from_file = IR::StartFile::Picture.new(
           colors_at: (colors_in_pack(colors) if colors_from_file), colors_count: table.length,
-          places_at: (places_in_pack(places) if places_from_file), across: places_from_file ? places.across : 1
+          places_at: (places_in_pack(places) if places_from_file), across: places_from_file ? places.across : 1,
+          color_format: (colors.layout.format if colors_from_file), tile_format: (places.layout.format if places_from_file)
         )
         record_picture(node)
         (@pictures_from_start_file ||= {})[name] = node.from_file
@@ -233,12 +236,12 @@ module VBlank
 
       # Where in the file the first colour that +colors+ (a DSL::PackSlot on colours) reads is.
       def colors_in_pack(colors)
-        @pack_slot_starts.fetch(colors.layout.name) + ((colors.first_color || 0) * Original::Slot::Colors.item_bytes(colors.layout))
+        @pack_slot_starts.fetch(colors.layout.name) + ((colors.first_color || 0) * colors.layout.item_bytes)
       end
 
       # Where in the file the first tile that +places+ (a DSL::PackSlot on tiles) reads is.
       def places_in_pack(places)
-        @pack_slot_starts.fetch(places.layout.name) + (places.tile_index * Original::Slot::Tiles.item_bytes(places.layout))
+        @pack_slot_starts.fetch(places.layout.name) + (places.tile_index * places.layout.item_bytes)
       end
 
       # A picture turned +way+ (:mirrored, :upside_down) from +source+, which is read from the file
@@ -281,7 +284,7 @@ module VBlank
       end
 
       def refuse_picture_not_of_its_tiles!(name, width, height, places)
-        side = Original::Slot::Tiles::SIDE
+        side = Original::Slot::TILE_SIDE
         return if width == places.across * side && height == places.down * side
 
         raise ArgumentError, "image :#{name} is #{width}x#{height}, and its places are #{places.across} by #{places.down} " \

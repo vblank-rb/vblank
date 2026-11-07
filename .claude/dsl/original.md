@@ -10,9 +10,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
   `Original::Game` (its `copy` is asked for) or an `Original::Copy`. `version:` is required: it names this
   build of the game in the pack's header, so a player's pack is made again when the game's data changes.
   Inside the block, each line is a slot:
-  - `slots.colors :palette, at: 0x1000, count: 16` — the Advance's colours, two bytes each.
-  - `slots.tiles :walls, at: 0x1020, count: 40` — the Advance's 8x8 tiles of sixteen colours, 32 bytes each.
+  - `slots.colors :palette, at: 0x1000, count: 16` — colours, two bytes each.
+  - `slots.tiles :walls, at: 0x1020, count: 40` — 8x8 tiles; `colors: 4` or `colors: 16` where the
+    console keeps both (the Super Nintendo).
   - `slots.numbers :speeds, at: 0x2000, count: 8, width: :byte, signed: false` — numbers one, two or four bytes wide; `signed:` must be said.
+
+  Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`.
 
   A game has one `data_pack`. A slot with no `at:` is filled by the unpacking routine (below); a slot with
   no `at:` and no routine is refused.
@@ -65,13 +68,26 @@ VBlank.game "PINBALL PORT", consoles: %i[gba] do
 end
 ```
 
-**A shape names the layout the original keeps that data in**, and the pack holds the bytes as the
-original has them (unpacked, where the original packs them). VBlank reads each layout itself, for every
-build and every console. Today every shape is the Game Boy Advance's: colours two bytes, 5 bits each,
-low byte first; 16-colour tiles 32 bytes, the left pixel in the low half; numbers low byte first. The
-other consoles' layouts (the Color's 4-colour tiles, the Super Nintendo's tiles, the Genesis's tiles and
-colours) are shapes still to add. A computer game's data is in no console's layout, so its port's
-unpacking routine turns it into one of the shapes.
+**A slot is kept in the layout of the console the original is for**, and the pack holds the bytes as
+the original has them (unpacked, where the original packs them). The original names its platform:
+`Original::Game.new(..., platform: :gbc)`, one of `:gba` (the default), `:gbc`, `:snes`, `:genesis`, or
+`:pc` for a computer game. VBlank reads each layout itself, for every build and every console the port is
+built for:
+
+| platform | tiles | colours | numbers |
+|---|---|---|---|
+| `:gba` | 16 colours, 32 bytes, the left pixel in a byte's low half | 2 bytes, 5 bits each, red lowest, low byte first | low byte first |
+| `:gbc` | 4 colours, 16 bytes: each row's bit 0 plane, then its bit 1 plane, the left pixel in bit 7 | as the Advance's | low byte first |
+| `:snes` | `colors: 4` as the Color's; `colors: 16`, 32 bytes: planes 0 and 1 for all eight rows, then planes 2 and 3 | as the Advance's | low byte first |
+| `:genesis` | 16 colours, 32 bytes, the left pixel in a byte's HIGH half | 2 bytes high byte first, `0000 BBB0 GGG0 RRR0`, each 3 bits widened to 5 as the Genesis shows them | high byte first |
+
+Each console's layout is numbers in its hardware file (`Console::GBCHardware::ORIGINAL_FORMATS` and the
+rest), named by its kit (`Console::Kit#original_formats`); one reader reads any of them
+(`IR::FormatReading`, and `rg_start_file_fill_picture` in the C, JavaScript and Ruby runtimes). A
+`:pc` original keeps its data in no console's layout, so each of its slots names the layout its
+unpacking routine writes (`layout: :gba`); a slot without one is refused. On the Color, a tile drawn by
+place from a list of four colours or fewer goes into the cartridge place for place, so a Color
+original's tiles are its own bytes there. Worked example: `test/all/vblank/builder/test_data_pack_layouts.rb`.
 
 **All-in-one, unless told otherwise.** The pack is made from the copy as the game is built (by the routine on
 the interpreter, where there is one), written as its

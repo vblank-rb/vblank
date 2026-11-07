@@ -9,10 +9,15 @@ require "pack_at_start_tests"
 # handed, as the C runtime does.
 class TestJSPackAtStart < Minitest::Test
   include PackAtStartTests
+  include PackAtStartLayoutTests
 
   # JavaScript writes a small array as its numbers and a big one as base64.
   def test_the_game_as_javascript_holds_none_of_the_originals_bytes
     assert_written_without_the_originals_bytes(ways: %i[numbers base64]) { |program| VBlank::IR::Backends::JS.new.lower(program) }
+  end
+
+  def test_a_game_of_each_consoles_layout_as_javascript_holds_none_of_the_originals_bytes
+    assert_layouts_written_without_the_originals_bytes { |program| VBlank::IR::Backends::JS.new.lower(program) }
   end
 
   # The web build asked to leave the pack out (`vblank build --format web --pack-at-start`) reads no

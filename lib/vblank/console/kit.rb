@@ -59,6 +59,8 @@ module VBlank
     #                           (`vblank inspect`), or nil for a console with none yet
     #   words_at_any_address?   whether its processor reads a value of two or more bytes at any
     #                           address, an odd one included, and keeps it low byte first
+    #   original_formats        how its games keep tiles, colours and numbers (OriginalFormats),
+    #                           which a port of one reads its data pack in; nil for none
     #
     # What every console's cartridge answers, whichever kind it is, and all a caller that has not
     # asked which console it is for can ask of one:
@@ -89,6 +91,11 @@ module VBlank
       def measured_builds? = false
       def compared_side_by_side? = false
       def inspector = nil
+
+      # HOW ITS GAMES KEEP THEIR TILES, COLOURS AND NUMBERS (OriginalFormats), which a port of one
+      # of them reads its original's data in (Original::Slot); nil for a console VBlank reads no
+      # original of yet.
+      def original_formats = nil
 
       # WHETHER ITS PROCESSOR READS A NUMBER OF TWO OR MORE BYTES AT ANY ADDRESS. The ARM of the
       # Advance and the MIPS of the PlayStation read two bytes only at an even address and four only
@@ -219,6 +226,7 @@ module VBlank
       def measured_builds? = true
       def compared_side_by_side? = true
       def inspector = Diagnostics::Inspector
+      def original_formats = Hardware::ORIGINAL_FORMATS
     end
 
     # THE KIT OF A CONSOLE WHOSE LOWERING IS CHECKED BY A RUN OF ITS OWN: its cartridge is made by
@@ -248,6 +256,7 @@ module VBlank
       def sprite_piece_sizes = GBCHardware::SPRITE_PIECE_SIZES
       def compared_side_by_side? = true
       def words_at_any_address? = true
+      def original_formats = GBCHardware::ORIGINAL_FORMATS
     end
 
     # The Super Nintendo's. Its cartridges play in bsnes rather than libmgba, through
@@ -265,6 +274,7 @@ module VBlank
       def compared_side_by_side? = true
       def words_at_any_address? = true
       def variants = SNES_VARIANTS
+      def original_formats = SNESHardware::ORIGINAL_FORMATS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
 
@@ -306,6 +316,7 @@ module VBlank
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_genesis(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::GenesisProbe.new(path, save_dir: save_dir)
       def save_file_extension = ".srm"
+      def original_formats = GenesisHardware::ORIGINAL_FORMATS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
       # The 68000 reads a word or a long word at any even address, and stops at an odd one.

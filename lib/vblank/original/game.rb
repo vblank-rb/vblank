@@ -40,9 +40,26 @@ module VBlank
     # Whether a shell is being built here now (Original.without_copies).
     def self.copies_hidden? = Ractor.current[:vblank_copies_hidden] == true
 
-    # THE PLAYER'S COPY, ACCEPTED: where it is, the name of its release, and its SHA-1 (nil for a
-    # folder accepted by a probe, which has no one hash).
-    Copy = Data.define(:path, :release, :sha1)
+    # WHAT AN ORIGINAL FROM A COMPUTER NAMES AS ITS PLATFORM. Every other platform is a console's
+    # name (Console::KITS), whose layouts its data is kept in (Slot).
+    COMPUTER = :pc
+
+    # The platform +platform+ names, as a Symbol: a console's name, or COMPUTER. Any other is refused.
+    def self.platform_named(platform)
+      named = platform.to_s.to_sym
+      return named if named == COMPUTER || Console::KITS.key?(named)
+
+      known = [*Console::KITS.keys, COMPUTER].map(&:inspect)
+      raise ArgumentError, "The original names platform: #{platform.inspect}. An original is from #{known[..-2].join(', ')} " \
+                           "or #{known.last}. Name the console it is for, or :#{COMPUTER} for a computer game."
+    end
+
+    # THE PLAYER'S COPY, ACCEPTED: where it is, the name of its release, its SHA-1 (nil for a
+    # folder accepted by a probe, which has no one hash), and the platform of the original it is a
+    # copy of (Game#platform).
+    Copy = Data.define(:path, :release, :sha1, :platform) do
+      def initialize(path:, release:, sha1:, platform: :gba) = super(path:, release:, sha1:, platform: Original.platform_named(platform))
+    end
 
     # HOW ANOTHER PATH ON THIS MACHINE IS FOUND, the way the copy is: its environment variable, its
     # key in the settings file, whether it is a folder, and what it is, in words for a message
@@ -76,6 +93,8 @@ module VBlank
     #   not_set_help:   words of the game's own added to the message when nothing is set: what the
     #                   copy must hold, say
     #   env:            where the setting is looked up (ENV unless set; a test hands its own)
+    #   platform:       the console the original is for (:gba unless set; :gbc, :snes, :genesis), whose
+    #                   layouts a data pack's slots are read in, or :pc for a computer game (Slot)
     #
     # and one of two ways to accept the copy:
     #
@@ -103,10 +122,15 @@ module VBlank
 
       attr_reader :title, :setting, :settings_file, :key
 
+      # The platform the original is for: a console's name (:gba, :gbc, :snes, :genesis), whose
+      # layouts its data is kept in, or COMPUTER. The Advance unless the game names another.
+      attr_reader :platform
+
       def initialize(title:, setting:, settings_file:, key: "rom", releases: nil, probe: nil, not_set_help: nil, paths: {},
-                     env: ENV)
+                     env: ENV, platform: :gba)
         raise ArgumentError, "#{title}: name releases: or probe:, one of the two" unless releases.nil? ^ probe.nil?
 
+        @platform = Original.platform_named(platform)
         @title = title
         @setting = setting
         @settings_file = File.expand_path(settings_file)
@@ -132,7 +156,7 @@ module VBlank
         return probed_copy(named.path) if @probe
 
         release, sha1 = release_by_digest(named.path)
-        Copy.new(path: named.path, release: release, sha1: sha1)
+        Copy.new(path: named.path, release: release, sha1: sha1, platform: platform)
       end
 
       # The path the game names +name+ (one of +paths+), found as the copy is. NotSet when nothing
@@ -214,7 +238,7 @@ module VBlank
       # A copy accepted by the game's probe, hashed when it is one file.
       def probed_copy(path)
         release = @probe.call(path) || raise(WrongCopy, "#{path} is not a copy of #{title} that this game can read. Name a different copy.")
-        Copy.new(path: path, release: release, sha1: File.file?(path) ? Digest::SHA1.file(path).hexdigest : nil)
+        Copy.new(path: path, release: release, sha1: File.file?(path) ? Digest::SHA1.file(path).hexdigest : nil, platform: platform)
       end
 
       # The release the copy at +path+ is, by its length and then its SHA-1 (Releases has the words

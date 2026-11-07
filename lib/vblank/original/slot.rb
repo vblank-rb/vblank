@@ -11,17 +11,14 @@ module VBlank
     # So a slot of numbers names its width and whether they can be below zero, where a `table` given
     # plain numbers works that out from them.
     #
-    # A SHAPE NAMES THE LAYOUT THE ORIGINAL KEEPS THAT DATA IN, and the pack holds the bytes as the
-    # original has them (unpacked, where the original packs them). VBlank reads each layout itself,
-    # in one place, for every build and every console the game is built for. Each shape's rules are
-    # a module below (SHAPES), and nothing else knows them.
-    #
-    # Today every shape is a Game Boy Advance layout, since an Advance original is where ports
-    # start: `colors` and `tiles` are the Advance's colours and 16-colour tiles. The layouts of the
-    # other consoles VBlank knows (the Color's 4-colour tiles, the Super Nintendo's tiles, the
-    # Genesis's tiles and colours) are shapes still to add, for the ports that need them. An
-    # original whose data is in no console's layout, a computer game's, has its port's unpacking
-    # routine turn the data into one of the shapes.
+    # A SHAPE (colours, tiles or numbers) IS KEPT IN THE LAYOUT OF THE CONSOLE THE ORIGINAL IS FOR,
+    # and the pack holds the bytes as the original has them (unpacked, where the original packs
+    # them). The original names its platform (Game#platform), and a slot is in that console's
+    # layout unless it names another with +layout+; each console's layouts are numbers in its
+    # hardware file, named by its kit (Console::Kit#original_formats), and one reader reads any of
+    # them (IR::FormatReading). +format+ is the layout the slot is read in: a Console::ColorFormat,
+    # TileFormat or NumberFormat. An original from a computer (COMPUTER) keeps its data in no
+    # console's layout, so each of its slots names the layout its port's unpacking routine writes.
     #
     # Where the bytes are (+at+) marks a slot as copied out of the copy as the bytes are there. A
     # slot whose bytes are packed in the copy, or spread over it, has no +at+ (nil): the game's
@@ -29,45 +26,28 @@ module VBlank
     # and size all the same.
     #
     # +width+ and +signed+ are a slot of numbers' alone, and nil for any other shape.
-    Slot = Data.define(:name, :shape, :at, :count, :width, :signed)
+    Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format)
 
     class Slot
-      # COLOURS, the Advance's: two bytes each, five bits each of red, green and blue (red lowest),
-      # low byte first.
-      module Colors
-        def self.item_bytes(_slot) = 2
+      TILE_SIDE = IR::FormatReading::TILE_SIDE
+      TILE_PIXELS = IR::FormatReading::TILE_PIXELS
+      # How many bytes a colour is kept in, in every layout.
+      COLOR_BYTES = 2
 
-        def self.decode(_slot, bytes) = IR::Assets.colors_packed_in(bytes)
+      # +count+ colours, in the colour layout of +layout+ (a console's name).
+      def self.colors(name, count:, at: nil, layout: :gba)
+        new(name: name.to_sym, shape: :colors, at: at, count: count, width: nil, signed: nil,
+            format: formats_of(name, layout).colors)
       end
 
-      # TILES, the Advance's: 8x8 pixels of sixteen colours, 32 bytes each, two pixels a byte with the left one in
-      # the low half, row by row from the top. Each reads as its 64 places.
-      module Tiles
-        SIDE = 8
-        PIXELS = SIDE * SIDE
-
-        def self.item_bytes(_slot) = PIXELS / 2
-
-        def self.decode(_slot, bytes) = IR::Assets.places_packed_in(bytes).each_slice(PIXELS).to_a
+      # +count+ tiles of 8x8 pixels in +colors+ colours, in the tile layout of +layout+. +colors+ may
+      # be left out where the console keeps one kind of tile.
+      def self.tiles(name, count:, at: nil, layout: :gba, colors: nil)
+        new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil,
+            format: tile_format_of(name, layout, colors))
       end
 
-      # NUMBERS: one, two or four bytes each, as +width+ gives, low byte first; below zero only when
-      # +signed+ asks for it. A width is the size a table's element of that width is, read as a table's
-      # elements are (IR::Build::ELEMENT_BYTES, IR::Build.elements_of), so a slot and a table never
-      # disagree about one.
-      module Numbers
-        def self.item_bytes(slot) = IR::Build::ELEMENT_BYTES.fetch(slot.width)
-
-        def self.decode(slot, bytes) = IR::Build.elements_of(bytes, width: slot.width, signed: slot.signed)
-      end
-
-      SHAPES = { colors: Colors, tiles: Tiles, numbers: Numbers }.freeze
-
-      def self.colors(name, count:, at: nil) = new(name: name.to_sym, shape: :colors, at: at, count: count, width: nil, signed: nil)
-
-      def self.tiles(name, count:, at: nil) = new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil)
-
-      def self.numbers(name, count:, width:, signed:, at: nil)
+      def self.numbers(name, count:, width:, signed:, at: nil, layout: :gba)
         unless IR::Build::ELEMENT_BYTES.key?(width)
           raise ArgumentError, "Slot :#{name} was given width: #{width.inspect}. A slot of numbers must be :byte, :half " \
                                "or :word wide."
@@ -77,10 +57,37 @@ module VBlank
                                "or signed: false. The numbers in it cannot decide this."
         end
 
-        new(name: name.to_sym, shape: :numbers, at: at, count: count, width: width, signed: signed)
+        new(name: name.to_sym, shape: :numbers, at: at, count: count, width: width, signed: signed,
+            format: formats_of(name, layout).numbers)
       end
 
-      def initialize(name:, shape:, at:, count:, width:, signed:)
+      # The layouts of the console named +layout+ (Console::OriginalFormats).
+      def self.formats_of(name, layout)
+        if layout == COMPUTER
+          raise ArgumentError, "Slot :#{name} is from a computer game's original, which keeps its data in no console's " \
+                               "layout. Name the layout the slot holds, like `layout: :gba`."
+        end
+
+        kit = Console.for(layout)
+        kit.original_formats or
+          raise ArgumentError, "Slot :#{name} is in the #{kit.title}'s layout, and VBlank reads no data in that layout. " \
+                               "Name another layout, like `layout: :gba`."
+      end
+
+      def self.tile_format_of(name, layout, colors)
+        kinds = formats_of(name, layout).tiles
+        return kinds.first if colors.nil? && kinds.one?
+
+        found = kinds.find { |format| format.colors == colors }
+        return found if found
+
+        said = kinds.map { |format| "colors: #{format.colors}" }.join(" or ")
+        raise ArgumentError, "Slot :#{name} holds tiles in the #{Console.for(layout).title}'s layout, which keeps tiles " \
+                             "of #{kinds.map(&:colors).join(' or ')} colors. Give the slot #{said}."
+      end
+      private_class_method :formats_of, :tile_format_of
+
+      def initialize(name:, shape:, at:, count:, width:, signed:, format:)
         unless (at.nil? || (at.is_a?(Integer) && !at.negative?)) && count.is_a?(Integer) && count.positive?
           raise ArgumentError, "Slot :#{name} was given at: #{at.inspect} and count: #{count.inspect}. at: must be a " \
                                "place in the copy, 0 or more, or left out for a slot the unpacking routine fills. " \
@@ -91,7 +98,16 @@ module VBlank
       end
 
       # How many bytes the slot holds.
-      def byte_size = count * shape_rules.item_bytes(self)
+      def byte_size = count * item_bytes
+
+      # How many bytes one colour, tile or number of the slot is kept in.
+      def item_bytes
+        case shape
+        when :colors then COLOR_BYTES
+        when :tiles then format.tile_bytes
+        else IR::Build::ELEMENT_BYTES.fetch(width)
+        end
+      end
 
       # Whether the game's unpacking routine fills the slot, rather than its bytes being copied
       # from a place in the copy.
@@ -116,11 +132,13 @@ module VBlank
 
       # +bytes+ read in the slot's shape: a list of colours, a list of tiles each a list of its 64
       # places, or a list of numbers.
-      def decode(bytes) = shape_rules.decode(self, bytes)
-
-      private
-
-      def shape_rules = SHAPES.fetch(shape)
+      def decode(bytes)
+        case shape
+        when :colors then IR::FormatReading.colors(bytes, format)
+        when :tiles then IR::FormatReading.tiles(bytes, format)
+        else IR::FormatReading.numbers(bytes, format, width: width, signed: signed)
+        end
+      end
     end
   end
 end

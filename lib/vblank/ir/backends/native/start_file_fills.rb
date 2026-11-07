@@ -55,7 +55,7 @@ module VBlank
             tables_read.select(&:from_file).map do |table|
               eval_call("rg_start_file_fill_table", @names.of(:table, table.name),
                         C::Int.new(Lowering::TABLE_KEPT_AS.fetch(table_type(table))),
-                        C::Int.new(table.entry_count), C::Int.new(table.from_file))
+                        C::Int.new(table.entry_count), C::Int.new(table.from_file), C::Int.new(table.file_high_byte_first ? 1 : 0))
             end
           end
 
@@ -95,7 +95,35 @@ module VBlank
             swapped = fill.swapped || []
             [FILL_KINDS.fetch(fill.kind), total, fill.start, fill.width, fill.height, turn, where.across,
              where.places_at || -1, where.colors_at || -1, where.colors_count, swapped.length,
+             *tile_format_rules(where.tile_format), *color_format_rules(where.color_format),
              *(fill.places unless where.places_at), *(fill.colors unless where.colors_at), *swapped]
+          end
+
+          # The most bits a pixel of a tile read from the file has (Console::TileFormat#plane_bits),
+          # and how many numbers rg_runtime.h's RG_TILE_FORMAT_NUMBERS and RG_COLOR_FORMAT_NUMBERS
+          # count.
+          MOST_PLANES = 4
+          TILE_FORMAT_NUMBERS = 2 + MOST_PLANES + 1 + IR::FormatReading::TILE_SIDE
+          COLOR_FORMAT_NUMBERS = 5
+
+          # The numbers of a layout of tiles (Console::TileFormat), as start_file_place reads them:
+          # a tile's bytes, its planes, where each plane's first bit is (MOST_PLANES of them), the
+          # bits from one row to the next, and where each column's bit is. Zeros for places the game
+          # holds itself.
+          def tile_format_rules(format)
+            return Array.new(TILE_FORMAT_NUMBERS, 0) unless format
+
+            [format.tile_bytes, format.plane_bits.length, *format.plane_bits, *Array.new(MOST_PLANES - format.plane_bits.length, 0),
+             format.row_bits, *format.column_bits]
+          end
+
+          # The numbers of a layout of colours (Console::ColorFormat), as start_file_color reads
+          # them: 1 for the high byte first, where red, green and blue are, and how many bits each
+          # is. Zeros for colours the game holds itself.
+          def color_format_rules(format)
+            return Array.new(COLOR_FORMAT_NUMBERS, 0) unless format
+
+            [format.high_byte_first ? 1 : 0, format.red_at, format.green_at, format.blue_at, format.channel_bits]
           end
 
           # A picture read from the file the program is handed, by its name, or nil.

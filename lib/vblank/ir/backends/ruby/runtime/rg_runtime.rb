@@ -182,25 +182,50 @@ def rg_start_file_open(rules, missing, wrong_size, wrong_check)
   rg_fault(refusal) if refusal
 end
 
-# How each way a table is kept (RG_TABLE_INT8...) reads its entries from the file.
+# How each way a table is kept (RG_TABLE_INT8...) reads its entries from the file, low byte first
+# and high byte first.
 # Must be shareable: a game made in a Ractor (a test's) cannot set a constant that is not.
-RG_START_FILE_READS = Ractor.make_shareable(["c*", "C*", "s<*", "v*", "l<*"])
+RG_START_FILE_READS = Ractor.make_shareable([["c*", "C*", "s<*", "v*", "l<*"], ["c*", "C*", "s>*", "n*", "l>*"]])
 RG_START_FILE_ENTRY_BYTES = [1, 1, 2, 2, 4].freeze
 
-def rg_start_file_fill_table(table, kept, count, at)
-  table.replace(@rg_start_file.byteslice(at, count * RG_START_FILE_ENTRY_BYTES[kept]).unpack(RG_START_FILE_READS[kept]))
+def rg_start_file_fill_table(table, kept, count, at, high_byte_first)
+  table.replace(@rg_start_file.byteslice(at, count * RG_START_FILE_ENTRY_BYTES[kept]).unpack(RG_START_FILE_READS[high_byte_first][kept]))
 end
 
 RG_FILL_TILE = 0
 RG_TURN_MIRRORED = 1
 RG_TURN_UPSIDE_DOWN = 2
+RG_TILE_FORMAT_NUMBERS = 15
+RG_COLOR_FORMAT_NUMBERS = 5
 
 # The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles wide,
-# each tile's 64 places row by row, two to a byte with the left one in the low half.
-def rg_start_file_place(places_at, across, row, column)
-  at = ((((row / 8) * across) + (column / 8)) * 64) + ((row % 8) * 8) + (column % 8)
-  both = @rg_start_file.getbyte(places_at + (at / 2))
-  at.even? ? both & 0x0F : both >> 4
+# from +places_at+ on, each tile kept as the numbers of +rules+ from +tile+ on say (rg_runtime.c's
+# start_file_place).
+def rg_start_file_place(places_at, rules, tile, across, row, column)
+  tile_bytes = rules[tile]
+  row_bits = rules[tile + 6]
+  start = places_at + ((((row / 8) * across) + (column / 8)) * tile_bytes)
+  place = 0
+  rules[tile + 1].times do |plane|
+    bit = rules[tile + 2 + plane] + ((row % 8) * row_bits) + rules[tile + 7 + (column % 8)]
+    place |= ((@rg_start_file.getbyte(start + (bit / 8)) >> (bit % 8)) & 1) << plane
+  end
+  place
+end
+
+# rg_runtime.c's start_file_channel.
+def rg_start_file_channel(kept, at, bits)
+  level = (kept >> at) & ((1 << bits) - 1)
+  bits >= 5 ? level : (level << (5 - bits)) | (level >> ((2 * bits) - 5))
+end
+
+# Colour +place+ of the colours from +colors_at+ on, kept as the numbers of +rules+ from +format+ on
+# say (rg_runtime.c's start_file_color).
+def rg_start_file_color(colors_at, rules, format, place)
+  kept = @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1(rules[format] == 1 ? "n" : "v")
+  bits = rules[format + 4]
+  rg_start_file_channel(kept, rules[format + 1], bits) | (rg_start_file_channel(kept, rules[format + 2], bits) << 5) |
+    (rg_start_file_channel(kept, rules[format + 3], bits) << 10)
 end
 
 # One picture's pixels (rg_runtime.h, rg_start_file_fill_picture). The game's pixels are frozen, so
@@ -208,7 +233,9 @@ end
 # on. The +total+ in the rules is how many there are, which the C needs.
 def rg_start_file_fill_picture(rules)
   kind, _total, start, width, height, turn, across, places_at, colors_at, colors_count, swapped_count = rules
-  held_places = 11
+  tile_format = 11
+  color_format = tile_format + RG_TILE_FORMAT_NUMBERS
+  held_places = color_format + RG_COLOR_FORMAT_NUMBERS
   held_colors = held_places + (places_at.negative? ? width * height : 0)
   swapped = held_colors + (colors_at.negative? ? colors_count : 0)
   if kind == RG_FILL_TILE
@@ -222,7 +249,7 @@ def rg_start_file_fill_picture(rules)
     width.times do |column|
       from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
       from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
-      place = places_at.negative? ? rules[held_places + (from_row * width) + from_column] : rg_start_file_place(places_at, across, from_row, from_column)
+      place = places_at.negative? ? rules[held_places + (from_row * width) + from_column] : rg_start_file_place(places_at, rules, tile_format, across, from_row, from_column)
       color = if place.zero?
                 kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
               elsif place < swapped_count
@@ -232,7 +259,7 @@ def rg_start_file_fill_picture(rules)
               elsif colors_at.negative?
                 rules[held_colors + place]
               else
-                @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1("v") & 0x7FFF
+                rg_start_file_color(colors_at, rules, color_format, place)
               end
       pixels[start + (row * width) + column] = color
     end

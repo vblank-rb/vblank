@@ -3,6 +3,92 @@
 require "digest"
 require "tmpdir"
 require "all/vblank/builder/test_data_packs"
+require "all/vblank/builder/test_data_pack_layouts"
+
+# SEARCHING WRITTEN-OUT CODE FOR THE ORIGINAL'S BYTES. A program written as C, JavaScript or Ruby
+# holds an array as its numbers, in order, or (JavaScript's and Ruby's past a few hundred entries)
+# as base64 text of its bytes packed as the array's kind keeps them. So the search reads both:
+# every whole number in the text, in order, and every run of base64 decoded and unpacked each way
+# an array can be packed. A needle is a run of numbers the original's bytes become in a program: a
+# table's entries, or a tile's pixels in the colours its places pick.
+module WrittenOutSearch
+  PACKINGS = %w[C* c* v* s<* V* l<*].freeze
+
+  # The tables of numbers +text+ holds, by the way they are written there (:numbers, :base64).
+  private def number_runs_in(text)
+    blobs = text.scan(%r{[A-Za-z0-9+/=\n]{64,}}).map { |blob| blob.delete("\n").unpack1("m") }
+    { numbers: [text.scan(/-?\d+/).map(&:to_i)], base64: blobs.flat_map { |bytes| PACKINGS.map { |packing| bytes.unpack(packing) } } }
+  end
+
+  # The ways +runs+ (#number_runs_in) hold +needle+, a run of numbers, one after another.
+  private def ways_holding(runs, needle)
+    key = ",#{needle.join(',')},"
+    runs.select { |_, lists| lists.any? { |list| ",#{list.join(',')},".include?(key) } }.keys
+  end
+
+  # Each of +programs+ ([name, all-in-one, left out, needles]) as the block writes it out holds
+  # every needle when built all-in-one, and none when built with its pack left out. Hands back the
+  # ways the all-in-one builds held them, one for each needle.
+  private def ways_holding_needles(programs)
+    programs.flat_map do |what, whole, left_out, needles|
+      whole_runs = number_runs_in(yield(whole))
+      left_runs = number_runs_in(yield(left_out))
+      needles.flat_map do |needle|
+        held = ways_holding(whole_runs, needle)
+        refute_empty held, "#{what} built all-in-one holds the original's bytes #{needle.first(8)}..."
+        assert_empty ways_holding(left_runs, needle), "#{what} built with its pack left out holds #{needle.first(8)}..."
+        held
+      end
+    end
+  end
+end
+
+# AN ORIGINAL FROM ANOTHER CONSOLE, ITS PACK LEFT OUT (MadeUpOriginalLayouts, test_data_pack_layouts.rb):
+# each console's layout read by the runtime from the pack it is handed as it starts, played as the
+# all-in-one build plays, and written out with none of the made-up original's bytes in it.
+module PackAtStartLayoutTests
+  include MadeUpOriginalLayouts
+  include WrittenOutSearch
+
+  # Each layout's game built all-in-one, its pack file, and the game built with its pack left out
+  # on a machine with no copy.
+  private def layout_games(folder, layout)
+    whole, file = layout_game(through_layout_pack(layout_original(folder, layout), layout))
+    left_out, = layout_game(through_layout_pack(layout_original_nowhere(folder, layout), layout),
+                            options: PackAtStartPictures::PACK_AT_START)
+    [whole, file, left_out]
+  end
+
+  def test_each_consoles_layout_read_as_the_game_starts_plays_as_its_all_in_one_build
+    LAYOUTS.each do |layout|
+      Dir.mktmpdir do |folder|
+        whole, file, left_out = layout_games(folder, layout)
+
+        [1, 4, 9].each do |frames|
+          assert_equal game_player.run(whole, frames: frames).screen.to_a,
+                       game_player.hand_file(file).run(left_out, frames: frames).screen.to_a,
+                       "#{layout.title} layout: after #{frames} frames the game handed its pack shows what the all-in-one build shows"
+        end
+      end
+    end
+  end
+
+  # A tile of +layout+'s, its +places+, as a background keeps its pixels: each place's colour, and
+  # 0xFFFF (see-through) at place 0.
+  private def layout_tile_pixels(places) = places.map { |place| place.zero? ? 0xFFFF : PALETTE.fetch(place) }
+
+  # Each layout's game as the block writes it out holds its tiles' pixels and its numbers built
+  # all-in-one, and none of them built with its pack left out. A lowering's test file calls this.
+  private def assert_layouts_written_without_the_originals_bytes(&write)
+    Dir.mktmpdir do |folder|
+      programs = LAYOUTS.map do |layout|
+        whole, _, left_out = layout_games(folder, layout)
+        ["#{layout.title} layout", whole, left_out, [*layout.tiles.map { |places| layout_tile_pixels(places) }, SPEEDS]]
+      end
+      ways_holding_needles(programs, &write)
+    end
+  end
+end
 
 # THE HELPERS FOR GAMES THAT DRAW PICTURES FROM THE PACK, kept once for PackAtStartTests and for
 # PackAtStartPlaceTests.
@@ -140,25 +226,7 @@ module PackAtStartTests
   private def pack_at_start_game(folder) = game_program(through_pack(folder), options: PACK_AT_START)
   private def all_in_one_game(folder) = game_program(through_pack(folder))
 
-  # SEARCHING WRITTEN-OUT CODE FOR THE ORIGINAL'S BYTES. A program written as C, JavaScript or
-  # Ruby holds an array as its numbers, in order, or (JavaScript's and Ruby's past a few hundred
-  # entries) as base64 text of its bytes packed as the array's kind keeps them. So the search reads
-  # both: every whole number in the text, in order, and every run of base64 decoded and unpacked
-  # each way an array can be packed. A needle is a run of numbers the original's bytes become in a
-  # program: a table's entries, or a tile's pixels in the colours its places pick.
-  PACKINGS = %w[C* c* v* s<* V* l<*].freeze
-
-  # The tables of numbers +text+ holds, by the way they are written there (:numbers, :base64).
-  private def number_runs_in(text)
-    blobs = text.scan(%r{[A-Za-z0-9+/=\n]{64,}}).map { |blob| blob.delete("\n").unpack1("m") }
-    { numbers: [text.scan(/-?\d+/).map(&:to_i)], base64: blobs.flat_map { |bytes| PACKINGS.map { |packing| bytes.unpack(packing) } } }
-  end
-
-  # The ways +runs+ (#number_runs_in) hold +needle+, a run of numbers, one after another.
-  private def ways_holding(runs, needle)
-    key = ",#{needle.join(',')},"
-    runs.select { |_, lists| lists.any? { |list| ",#{list.join(',')},".include?(key) } }.keys
-  end
+  include WrittenOutSearch
 
   # A tile of the made-up original, the +bytes+ of its places, as a background keeps its pixels:
   # each place's colour, and 0xFFFF (see-through) at place 0.
@@ -235,18 +303,9 @@ module PackAtStartTests
   # built all-in-one, so the search can find them, and none when built with its pack left out.
   # +ways+ are the ways the lowering writes an array (:numbers, :base64), each of which the
   # all-in-one builds are seen to hold the original's bytes in. A lowering's test file calls this.
-  private def assert_written_without_the_originals_bytes(ways:)
+  private def assert_written_without_the_originals_bytes(ways:, &write)
     Dir.mktmpdir do |folder|
-      found = programs_searched(folder).flat_map do |what, whole, left_out, needles|
-        whole_runs = number_runs_in(yield(whole))
-        left_runs = number_runs_in(yield(left_out))
-        needles.flat_map do |needle|
-          held = ways_holding(whole_runs, needle)
-          refute_empty held, "#{what} built all-in-one holds the original's bytes #{needle.first(8)}..."
-          assert_empty ways_holding(left_runs, needle), "#{what} built with its pack left out holds #{needle.first(8)}..."
-          held
-        end
-      end
+      found = ways_holding_needles(programs_searched(folder), &write)
       assert_equal ways.sort, found.uniq.sort, "the all-in-one builds hold the original's bytes in every way an array is written"
     end
   end

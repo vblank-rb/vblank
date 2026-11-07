@@ -9,12 +9,17 @@ require "pack_at_start_tests"
 # runtime does.
 class TestRubyPackAtStart < Minitest::Test
   include PackAtStartTests
+  include PackAtStartLayoutTests
 
   # Ruby writes a small array as its numbers and a big one as base64.
   def test_the_game_as_a_ruby_script_holds_none_of_the_originals_bytes
     assert_written_without_the_originals_bytes(ways: %i[numbers base64]) do |program|
       VBlank::IR::Backends::Ruby.new.script(program, title: "Made Up")
     end
+  end
+
+  def test_a_game_of_each_consoles_layout_as_a_ruby_script_holds_none_of_the_originals_bytes
+    assert_layouts_written_without_the_originals_bytes { |program| VBlank::IR::Backends::Ruby.new.script(program, title: "Made Up") }
   end
 
   # The Ruby file asked to leave the pack out (`vblank build --format ruby --pack-at-start`) reads no
