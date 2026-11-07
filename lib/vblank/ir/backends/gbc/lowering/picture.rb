@@ -1625,6 +1625,8 @@ module VBlank
 
               image = tile_image(name)
               swapped = swaps && swaps[image.list_drawn_from]
+              return @art.kept_colors(image) { |place| (swapped && swapped[place]) || image.colors[place] } if @art.kept_places?(image)
+
               order = @art.list_order(image)
               if order
                 shown = order.map { |place| ((swapped && swapped[place]) || image.colors[place]) & 0x7FFF }
