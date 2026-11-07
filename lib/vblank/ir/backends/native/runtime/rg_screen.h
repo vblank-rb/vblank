@@ -94,26 +94,8 @@ void rg_screen_digit(int32_t value, int32_t x, int32_t y, int32_t color, const i
  * paints nothing itself (Reference#exec_scroll_rows, a bend written). */
 void rg_screen_request_rebuild(void);
 
-/* A LIGHT darkens the picture everywhere outside one span of each row, as it is shown
- * (Reference#work_out_shade, Framebuffer#shade_outside). In the gap between frames,
- * rg_screen_work_out_shade asks the game where each row's span is, by calling rg_game_shade_span
- * with one row of the screen in mind, and then how dark the rest goes, by calling
- * rg_game_shade_amount:
- *
- *   row = rg_shade_line(); rg_shade_left(left); rg_shade_right(right);    rg_shade_darkness(amount);
- *
- * The span runs from left up to but not including right; a left past its right comes round the
- * edge of the screen. The amount is out of 100.
- *
- * A game whose light takes turns with the scenes it is off in calls rg_shade_switch as each frame
- * ends, before it is shown, with whether the scene that just ran has it on (1) or off (0): off
- * darkens nothing from that picture on, and on waits for the light worked out after it. */
-void rg_screen_work_out_shade(void);
-int32_t rg_shade_line(void);
-void rg_shade_left(int32_t left);
-void rg_shade_right(int32_t right);
-void rg_shade_darkness(int32_t amount);
-void rg_shade_switch(int32_t on);
+/* The two routines a game's light is worked out by, which the game always has (empty when it has
+ * no light) and the light's runtime feature calls (rg_light.h says how). */
 void rg_game_shade_span(void);
 void rg_game_shade_amount(void);
 
@@ -153,31 +135,6 @@ void rg_see_through_told(int32_t layer);
 int32_t rg_see_through_asked(int32_t layer);
 void rg_see_through_answer(int32_t shows, int32_t behind);
 void rg_game_see_through_amounts(void);
-
-/* A fade toward black (0) or white (1), in sixteenths of the display or, when +walked+, in
- * 256ths of a walk through the colors (see Backends::FadeSteps). */
-void rg_screen_fade(int32_t toward_white, int32_t steps, int32_t walked);
-/* The same fade PLACED IN THE STACK: what is behind the layer it names fades, and that layer and
- * everything in front of it are left as drawn. +layer_place+ is how far forward that layer is
- * among the layers the game declared, or RG_NO_LAYER when it is none of them, and then
- * everything fades. Each thing gives how far forward such a layer can be and still leave it as
- * drawn (RG_BG_FADE_PLACE, rg_game_sprite_fade_places). */
-void rg_screen_fade_under(int32_t layer_place, int32_t toward_white, int32_t steps, int32_t walked);
-/* The same fade HELD TO A RECTANGLE: inside it (+reaches+ RG_FADE_INSIDE) or everywhere but it
- * (RG_FADE_OUTSIDE), the rest of the screen as drawn. The rectangle is +left+, +top+, +right+
- * and +bottom+ in screen pixels, the right and bottom one past the last pixel. Always the
- * display's own fade, in sixteenths (see IR::Fading). */
-#define RG_FADE_WHOLE_SCREEN 0
-#define RG_FADE_INSIDE 1
-#define RG_FADE_OUTSIDE 2
-void rg_screen_fade_in_area(int32_t reaches, int32_t left, int32_t top, int32_t right, int32_t bottom,
-                            int32_t toward_white, int32_t steps);
-/* A tint toward +color+, in 256ths. On the plain bitmap screen the display mixes it in as
- * it draws, at eight bits a channel; on every other screen the game writes the tinted colors
- * itself. That follows the screen up, so a tint kept across a change of screen changes with it. */
-void rg_screen_tint(int32_t color, int32_t steps);
-/* How far +amount+ (a percentage, or with +fraction_bits+ >= 0 a fraction of one) is, in steps. */
-int32_t rg_fade_steps(int32_t amount, int32_t fraction_bits, int32_t walked);
 
 /* Two colors for a line of text, and the test that picks which. */
 static inline int32_t rg_pick_color(int32_t showing, int32_t color, int32_t picked) {

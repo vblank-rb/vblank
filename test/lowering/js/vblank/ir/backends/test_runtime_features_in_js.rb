@@ -66,11 +66,41 @@ class TestRuntimeFeaturesInJS < Minitest::Test
     assert_operator text.index("rg_tiled_paint_level(level);"), :<, text.index("rg_sprites_paint_level(level);")
   end
 
+  def test_a_game_that_fades_takes_in_the_fades_feature
+    text = JS.new.factory(game_that_fades)
+
+    assert_includes text, "function rg_fades_fade_filter("
+    assert_includes text, "return rg_fades_fade_filter();"
+  end
+
+  def test_a_game_that_never_fades_holds_none_of_the_fades_feature
+    text = JS.new.factory(program(screen(:bitmap), clear_screen(:white), halt))
+
+    refute_includes text, "rg_fades"
+    refute_includes text, "function rg_screen_fade("
+  end
+
+  def test_a_game_with_a_light_takes_in_the_light_feature
+    text = JS.new.factory(game_with_a_light)
+
+    assert_includes text, "function rg_light_dim_filter("
+    assert_includes text, "return rg_light_dim_filter();"
+  end
+
+  def test_a_game_with_no_light_holds_none_of_the_light_feature
+    text = JS.new.factory(program(screen(:bitmap), clear_screen(:white), halt))
+
+    refute_includes text, "rg_light"
+    refute_includes text, "function rg_screen_work_out_shade("
+  end
+
   def test_the_screen_file_names_no_feature
     screen = File.read(File.join(JS::RUNTIME_DIR, "rg_screen.js"))
 
     refute_match(/pixelat|read_block/, screen)
     refute_match(TILED_NAMES, screen)
     refute_match(SPRITES_NAMES, screen)
+    refute_match(FADES_NAMES, screen)
+    refute_match(LIGHT_NAMES, screen)
   end
 end

@@ -10,6 +10,14 @@ module RuntimeFeatureGames
   # rg_game_sprites_over_picture is not one: the screen still calls it.)
   SPRITES_NAMES = /placed_object|sprite_layer|last_drawn|rg_objects_|rg_object_take|\bover_picture|NOTHING_OVER|left_out|turned_box|mix_as_sprite|rg_pixels_overlap|rg_pose_image|rg_place_in_ordered_run/
 
+  # What a shared screen file must not name once the fades feature holds it. (rg_game_sprite_fade_places and
+  # RG_BG_FADE_PLACE are not names of it: the screen still calls both.)
+  FADES_NAMES = /rg_screen_fade|rg_screen_tint|rg_fade_steps|\bplaced_fade\b|tint_mode|tint_by_display|walked_toward|fade_reaches|RG_FADE_(WHOLE|INSIDE|OUTSIDE)/
+
+  # What a shared screen file must not name once the light feature holds it. (The game's own
+  # rg_game_shade_span and rg_game_shade_amount are not: the lowering always writes them.)
+  LIGHT_NAMES = /rg_shade_|rg_screen_work_out_shade|shade_spans|shade_steps|shade_off/
+
   # A tiled screen with one background of one tile, put up as declared and never touched.
   private def game_with_a_background
     builder = VBlank::Builder.new
@@ -63,6 +71,25 @@ module RuntimeFeatureGames
       background :room, tiles: :wall, map: ["#"]
       sprite :brick, at: [8, 8]
       halt
+    end
+    builder.finalize_program
+    builder.program
+  end
+  # A bitmap screen faded half way to black and tinted red, and nothing else.
+  private def game_that_fades
+    program(screen(:bitmap), fade(toward: :black, amount: int(50)), tint(color: :red, amount: int(50)), halt)
+  end
+
+  # A tiled room lit by a spotlight, and nothing else that fades.
+  private def game_with_a_light
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:white_tile, "#" => :white) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :white_tile
+      background :room, tiles: :set, map: ["#" * 32] * 32
+      spotlight at: [120, 80], radius: 40, dark: 75
+      game_loop {}
     end
     builder.finalize_program
     builder.program

@@ -110,21 +110,10 @@ static int32_t picture_touched;
 static int32_t backdrop;        /* the colour shown wherever nothing is drawn (Reference @backdrop) */
 static int32_t current_scene = -1;
 
-/* What a display does to the finished picture: one effect at a time (Framebuffer#fade_to). */
-static int32_t fade_white, fade_steps;
-static enum { TINT_NONE, TINT_TOWARD, TINT_COLOR } tint_mode;
-static int32_t tint_white, tint_color, tint_steps, tint_by_display;
-
-/* A FADE PLACED IN THE STACK, while one is in force (Reference @fade_placed): how far forward the
- * layer it sits under is among the layers the game declared, which way it fades, and how far. It
- * cannot be laid over the finished picture as the screen is read, since what is in front of its
- * line has to come through as drawn. So it is painted in as the view is rebuilt. */
-typedef struct { int32_t in_force, layer_place, toward_white, steps; } fade_in_the_stack;
-static fade_in_the_stack placed_fade;
-
 /* WHAT IS PAINTED FROM HERE ON IS FADED on its way in (Framebuffer @paint_toward), by the placed
- * fade in force. On only while the view is rebuilt, for the things that fade reaches. */
-static int32_t fading_what_is_painted;
+ * fade in force: the colour table each colour goes through, or NULL to paint as drawn. Set only
+ * while the view is rebuilt, for the things that fade reaches (fade_unless_left_as_drawn). */
+static const uint16_t *paint_fade;
 
 /* WHAT IS PAINTED FROM HERE ON IS MIXED with what is already in the cell (Framebuffer @through):
  * so many sixteenths of what is painted, so many of what is under it. On only while one thing in
@@ -156,6 +145,19 @@ static uint16_t picture_without_sprites[CELLS];
 static int32_t painting_sprite; /* what is painted from here on is a sprite's (Framebuffer @painting_sprite) */
 
 
+/* A FILTER THE PICTURE IS READ THROUGH, handed over by a feature once a read (rg_hook_fade_filter,
+ * rg_hook_dim_filter), so no feature is asked about a pixel. +table+ is the colour shown for each
+ * of the 65536 values a cell can hold, indexed by its sixteen bits. It applies to every pixel when
+ * +everywhere+; otherwise +rows+ has for each screen row [from, to, inverted], and a pixel is
+ * changed when inverted XOR from <= x < to. +remix+: a cell a see-through layer was mixed into is
+ * mixed again from its two sides, each read through the table (Framebuffer#shown_color). */
+typedef struct {
+  const uint16_t *table;
+  int32_t everywhere;
+  const int32_t (*rows)[3];
+  int32_t remix;
+} shown_filter;
+
 /* --- the hooks a runtime feature takes ---
  *
  * A drawing feature that only some games use is a folder of its own under
@@ -183,6 +185,10 @@ static const uint16_t *rg_hook_front_layer(void);                    /* the laye
 static int32_t rg_hook_shown_plain(void);                            /* 0: a feature reads the picture its own way */
 static const int64_t *rg_hook_shown_columns(void);                   /* the column each shows, or NULL for its own */
 static int64_t rg_hook_shown_row(int64_t y);                         /* the row row +y+ shows */
+static const shown_filter *rg_hook_fade_filter(void);                /* what a fade or tint does to the picture read, or NULL */
+static const shown_filter *rg_hook_dim_filter(void);                 /* what a light does to it, or NULL */
+static const uint16_t *rg_hook_paint_fade_for(int32_t fade_place);   /* the colours a placed fade paints a thing as, or NULL */
+static int32_t rg_hook_blend_held_by_fade(void);                     /* 1: a fade holds the display's blend */
 
 /* --- small arithmetic --- */
 
@@ -227,7 +233,7 @@ static uint16_t mixed_with_under(int32_t color, uint16_t under, shares by) {
  * taken +steps+ sixteenths of the way to black there, and brought back to five bits. Done in the
  * channel's own byte as the interpreter does it, which rounds how much the first channel loses
  * down and how much the other two lose up. */
-static uint16_t darkened_by_display(uint16_t color, int32_t steps) {
+static FEATURE_ONLY uint16_t darkened_by_display(uint16_t color, int32_t steps) {
   if (steps == 0) return color;
   int64_t packed = 0;
   for (int32_t channel = 0; channel < 3; channel++) {
@@ -239,27 +245,12 @@ static uint16_t darkened_by_display(uint16_t color, int32_t steps) {
   return (uint16_t)packed;
 }
 
-/* Framebuffer#brightened_by_display: each channel widened to eight bits and given +steps+
- * sixteenths of the headroom it has left there, then brought back to five bits. */
-static uint16_t brightened_by_display(uint16_t color, int32_t steps) {
-  if (steps == 0) return color;
-  int32_t packed = 0;
-  for (int32_t channel = 0; channel < 3; channel++) {
-    int32_t shift = channel * 5, have = widened((color >> shift) & 0x1F);
-    packed |= ((have + ((255 - have) * steps) / 16) >> 3) << shift;
-  }
-  return (uint16_t)packed;
-}
-
-/* Framebuffer#faded_by_display: the display's own fade toward black or white. */
-static uint16_t faded_by_display(uint16_t color, int32_t white, int32_t steps) {
-  return white ? brightened_by_display(color, steps) : darkened_by_display(color, steps);
-}
-
-/* Framebuffer#apply_placed_fade: a color as it is painted while a placed fade reaches it. */
+/* Framebuffer#apply_placed_fade: a color as it is painted while a placed fade reaches it, through
+ * the table the fade handed over (paint_fade). The color is masked to the sixteen bits a cell holds
+ * either way. */
 static uint16_t faded_as_painted(int32_t color) {
-  if (!fading_what_is_painted) return (uint16_t)color;
-  return faded_by_display((uint16_t)color, placed_fade.toward_white, placed_fade.steps);
+  if (!paint_fade) return (uint16_t)color;
+  return paint_fade[(uint16_t)color];
 }
 
 /* The mixed sides kept for +page+: the picture being drawn into, or the scenery kept apart. NULL
@@ -523,24 +514,12 @@ static void forget_kept_shares(void) {
   for (int32_t layer = 0; layer < see_through_layers(); layer++) owed_shares[layer].kept = 0;
 }
 
-/* Reference#fading?: is a fade in force that takes the display's blend? The display blends two
- * layers together or moves the whole picture toward a color, one or the other, so while such a
- * fade runs a see-through layer is solid. A fade that walks the colors sets no fade amount and
- * is never found here. The copy of the scenery kept to put back under sprites is a picture of
- * its own, which no fade was ever set on, so painting into it never finds one either.
- *
- * A fade placed in the stack is the game's and not either picture's, and takes the blend
- * whichever is being painted. */
-static int32_t fade_takes_the_blend(void) {
-  if (placed_fade.in_force) return placed_fade.steps > 0;
-  return target != scenery && fade_steps > 0;
-}
-
 /* Reference#set_see_through_for, for scenery: mixing on for a thing in a see-through layer, off
- * for anything else. +layer+ is RG_SOLID for a thing in none. */
+ * for anything else. +layer+ is RG_SOLID for a thing in none. A fade that holds the display's blend
+ * (rg_hook_blend_held_by_fade, Reference#fading?) leaves the layer solid. */
 static FEATURE_ONLY void mix_as_layer(int32_t layer) {
   painting_sprite = 0;
-  mixing = layer != RG_SOLID && !fade_takes_the_blend();
+  mixing = layer != RG_SOLID && !rg_hook_blend_held_by_fade();
   if (mixing) mixed_by = mixed_cells_by = owed_shares[layer].kept ? owed_shares[layer].at : shares_now(layer);
 }
 
@@ -548,163 +527,6 @@ static FEATURE_ONLY void mix_as_layer(int32_t layer) {
 static void mix_nothing(void) {
   mixing = 0;
   painting_sprite = 0;
-}
-
-/* --- effects over the finished picture (Framebuffer#faded) --- */
-
-/* Backends::FadeSteps: a walk of the colors counts in 256ths, sixteen to a display's step. */
-#define WALK_STEPS 256
-#define WALK_PER_DISPLAY 16
-
-/* Framebuffer#walked_toward: a fade that walks the colors, in five bits a channel, each channel
- * moved a truncated share of the way to black or white. */
-static uint16_t walked_toward(uint16_t color, int32_t white, int32_t steps) {
-  if (steps == 0) return color;
-  /* FadeSteps.dimmed_levels, on a display that dims */
-  int32_t level = steps >= WALK_STEPS ? 0 : 15 - (steps * 15) / WALK_STEPS;
-  int32_t out = 0;
-  for (int32_t channel = 0; channel < 3; channel++) {
-    int32_t c = (color >> (5 * channel)) & 0x1F;
-    if (RG_CONSOLE_DIMS && !white) c = (2 * c * level + 15) / 30;
-    else c = white ? c + ((31 - c) * steps) / WALK_STEPS : c - (c * steps) / WALK_STEPS;
-    out |= c << (5 * channel);
-  }
-  return (uint16_t)out;
-}
-
-/* Framebuffer#mixed and #mixed_by_display: the two shares added, and only then the fraction
- * dropped. The display mixes at eight bits a channel; a game writing tinted colors, at five. */
-static uint16_t mixed(uint16_t color, int32_t toward, int32_t steps, int32_t by_display) {
-  if (steps == 0) return color;
-  int32_t keep = WALK_STEPS - steps, out = 0;
-  for (int32_t channel = 0; channel < 3; channel++) {
-    int32_t have = (color >> (5 * channel)) & 0x1F, want = (toward >> (5 * channel)) & 0x1F;
-    if (by_display) {
-      out |= (((widened(have) * keep + widened(want) * steps) / WALK_STEPS) >> 3) << (5 * channel);
-    } else {
-      out |= ((have * keep + want * steps) / WALK_STEPS) << (5 * channel);
-    }
-  }
-  return (uint16_t)out;
-}
-
-/* Framebuffer#faded. +fade_here+ is nought where a fade held to a rectangle does not reach
- * (fade_reaches). */
-static uint16_t faded_where(uint16_t color, int32_t fade_here) {
-  /* On the plain bitmap screen the display does a walked fade, in sixteenths. */
-  if (tint_mode == TINT_TOWARD && tint_by_display) return faded_by_display(color, tint_white, tint_steps / WALK_PER_DISPLAY);
-  if (tint_mode == TINT_TOWARD) return walked_toward(color, tint_white, tint_steps);
-  /* The display counts in sixteenths, every sixteenth 256th, so the steps between are dropped. */
-  if (tint_mode == TINT_COLOR) return mixed(color, tint_color, tint_by_display ? tint_steps - tint_steps % WALK_PER_DISPLAY : tint_steps, tint_by_display);
-  if (!fade_here) return color;
-  return faded_by_display(color, fade_white, fade_steps);
-}
-
-static uint16_t faded(uint16_t color) { return faded_where(color, 1); }
-
-/* Framebuffer#shown_color: the stored cell at +at+ with the fade or tint in force. A cell a
- * see-through layer was mixed into, under a tint, is mixed again from its two colors tinted: a
- * tint on a screen drawn through a color table moves the colors the display then mixes, so it
- * reaches each side before the two are added, and past a whole the order shows. */
-static uint16_t shown_color(int64_t at, uint16_t stored, int32_t fade_here) {
-  if (tint_mode == TINT_NONE || pixels != viewed || !picture_mixes.is_mixed[at]) return faded_where(stored, fade_here);
-  return mixed_with_under(faded(picture_mixes.tops[at]), faded(picture_mixes.unders[at]), mixed_cells_by);
-}
-
-/* Which part of the screen the display's fade reaches (Framebuffer#fade_steps_to's +reaches+):
- * RG_FADE_WHOLE_SCREEN, or RG_FADE_INSIDE or RG_FADE_OUTSIDE a rectangle held as left, top, right
- * and bottom, the right and bottom one past the last pixel. */
-static int32_t fade_side = RG_FADE_WHOLE_SCREEN;
-static int32_t fade_area[4];
-
-/* Framebuffer#fade_reaches?: does the display's fade reach the screen pixel (x, y)? */
-static int32_t fade_reaches(int32_t x, int32_t y) {
-  if (fade_side == RG_FADE_WHOLE_SCREEN) return 1;
-  int32_t within = x >= fade_area[0] && x < fade_area[2] && y >= fade_area[1] && y < fade_area[3];
-  return fade_side == RG_FADE_INSIDE ? within : !within;
-}
-
-static int32_t tint_mixed_by_display(void);
-
-/* Reference#exec_fade, through Framebuffer#fade_steps_to or, for a fade that walks the colors,
- * #tint_steps_to. +placed+ is 1 for a fade placed in the stack under the layer at +layer_place+.
- *
- * Over the whole screen it is laid over the picture as the screen is read, so nothing drawn
- * changes. Placed in the stack it is painted into the picture, so the picture is built again
- * right here, and again by the fade that takes a placed one's place, which has to take it back
- * out.
- *
- * A fade that takes the display's blend takes it from a see-through layer and hands it back as
- * it lifts, so the picture is built again at each of those two moments as well: the layer is
- * solid on one side of them and see-through on the other. */
-static void fade_to(int32_t placed, int32_t layer_place, int32_t toward_white, int32_t steps, int32_t walked) {
-  int32_t took_the_blend = fade_takes_the_blend(), was_placed = placed_fade.in_force;
-  placed_fade = (fade_in_the_stack){.in_force = placed, .layer_place = layer_place, .toward_white = toward_white, .steps = steps};
-  if (walked) {
-    tint_mode = TINT_TOWARD;
-    tint_white = toward_white;
-    tint_steps = steps;
-    tint_by_display = tint_mixed_by_display(); /* Reference#fade_by_tint */
-    fade_steps = 0;
-  } else {
-    fade_white = toward_white;
-    fade_steps = placed ? 0 : steps;
-    tint_mode = TINT_NONE;
-  }
-  int32_t blend_changed_hands = see_through_layers() > 0 && fade_takes_the_blend() != took_the_blend;
-  if (was_placed || placed || blend_changed_hands) request_repaint();
-}
-
-void rg_screen_fade(int32_t toward_white, int32_t steps, int32_t walked) {
-  fade_side = RG_FADE_WHOLE_SCREEN;
-  fade_to(0, RG_NO_LAYER, toward_white, steps, walked);
-}
-
-void rg_screen_fade_in_area(int32_t reaches, int32_t left, int32_t top, int32_t right, int32_t bottom,
-                            int32_t toward_white, int32_t steps) {
-  fade_side = reaches;
-  fade_area[0] = left;
-  fade_area[1] = top;
-  fade_area[2] = right;
-  fade_area[3] = bottom;
-  fade_to(0, RG_NO_LAYER, toward_white, steps, 0);
-}
-
-void rg_screen_fade_under(int32_t layer_place, int32_t toward_white, int32_t steps, int32_t walked) {
-  fade_side = RG_FADE_WHOLE_SCREEN;
-  fade_to(1, layer_place, toward_white, steps, walked);
-}
-
-/* Reference#tint_by_display?: does the display mix a tint in as it draws, which only the plain
- * bitmap screen does, on a console that blends? Every other screen has it mixed into a colour
- * table. */
-static int32_t painted_screen(void);
-static int32_t tint_mixed_by_display(void) { return painted_screen() && pixels == viewed && RG_CONSOLE_BLENDS; }
-
-/* Reference#exec_tint, through Framebuffer#tint_steps_to. A tint takes the place of whatever
- * fade was in force, one placed in the stack included. A fade that goes may have been holding a
- * see-through layer solid, or have been painted into the picture, so the picture is built again
- * when one does. */
-void rg_screen_tint(int32_t color, int32_t steps) {
-  int32_t took_the_blend = fade_takes_the_blend(), was_placed = placed_fade.in_force;
-  placed_fade.in_force = 0;
-  tint_mode = TINT_COLOR;
-  tint_color = color;
-  tint_steps = steps;
-  tint_by_display = tint_mixed_by_display();
-  fade_steps = 0;
-  int32_t blend_changed_hands = see_through_layers() > 0 && fade_takes_the_blend() != took_the_blend;
-  if (was_placed || blend_changed_hands) request_repaint();
-}
-
-/* Backends::FadeSteps.steps */
-int32_t rg_fade_steps(int32_t amount, int32_t fraction_bits, int32_t walked) {
-  int32_t levels = walked ? WALK_STEPS : 16;
-  if (fraction_bits < 0) {
-    int32_t sixteenths = whole_sixteenths(amount);
-    return walked ? sixteenths * WALK_PER_DISPLAY : sixteenths;
-  }
-  return clamp32(floor_div((int64_t)amount * levels, (int64_t)100 << fraction_bits), 0, levels);
 }
 
 /* WHAT THE GAME HAS PAINTED (Reference @bitmaps, for the tiles and pictures of a run): every
@@ -1147,18 +969,14 @@ rg_drawn_sprite rg_screen_drawn_sprite(int32_t place) { return rg_hook_drawn_spr
 
 /* --- the whole view, rebuilt (Reference#repaint_view) --- */
 
-/* The fade half of Reference#set_blend_for, for the thing about to be painted: the placed fade
- * in force reaches it unless that fade's layer is no further forward than +fade_place+, which is
- * the furthest forward such a layer can be and still leave the thing as drawn (RG_BG_FADE_PLACE).
- * That is RG_NO_LAYER for a thing every placed fade reaches, and for the backdrop, which is
- * behind everything. A fade under a layer the game never declared reaches everything. */
-static void fade_unless_left_as_drawn(int32_t fade_place) {
-  int32_t under = placed_fade.layer_place;
-  int32_t left_as_drawn = under != RG_NO_LAYER && fade_place != RG_NO_LAYER && fade_place >= under;
-  fading_what_is_painted = placed_fade.in_force && !left_as_drawn;
-}
+/* The fade half of Reference#set_blend_for, for the thing about to be painted: what is painted from
+ * here on goes through the colour table a placed fade in force asks for it (rg_hook_paint_fade_for),
+ * or as drawn where there is none. +fade_place+ is how far forward the thing's layer is
+ * (RG_BG_FADE_PLACE, rg_game_sprite_fade_places), or RG_NO_LAYER for a thing every placed fade
+ * reaches and for the backdrop, which is behind everything. */
+static void fade_unless_left_as_drawn(int32_t fade_place) { paint_fade = rg_hook_paint_fade_for(fade_place); }
 
-static void fade_nothing(void) { fading_what_is_painted = 0; }
+static void fade_nothing(void) { paint_fade = NULL; }
 
 /* Back to front: the backdrop, then each level's scenery and sprites (rg_hook_paint_level, scenery
  * first), with what a feature paints first and last (rg_hook_repaint_began, rg_hook_repaint_ending). */
@@ -1249,8 +1067,7 @@ int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop)
   }
   kind = new_kind;
   show_pages(two_pages);
-  tint_by_display = tint_mixed_by_display(); /* a tint in force is mixed this screen's way */
-  rg_hook_screen_set();
+  rg_hook_screen_set(); /* a tint in force is mixed this screen's way (rg_fades_screen_set) */
   if (!crossing) return 0;
   rg_hook_screen_crossed(new_kind);
   return new_kind != RG_BITMAP;
@@ -1301,50 +1118,9 @@ const uint16_t *rg_screen_stored(void) {
   return viewed;
 }
 
-/* --- a light (Framebuffer#shade_outside) --- */
-
-/* Each row's lit span as the gap between frames last worked it out, and how many sixteenths the
- * rest of the row is darkened by: nought until then, which darkens nothing. */
-static int32_t shade_spans[RG_SCREEN_HEIGHT][2];
-static int32_t shade_steps;
-static int32_t shade_row;
-
-int32_t rg_shade_line(void) { return shade_row; }
-
-/* Where the row's span starts, and then where it ends: two calls, so the game works the left
- * edge out before the right one, as the interpreter does — the arguments of one call could be
- * worked out in either order. */
-void rg_shade_left(int32_t left) { shade_spans[shade_row][0] = left; }
-void rg_shade_right(int32_t right) { shade_spans[shade_row][1] = right; }
-
-/* FadeSteps.sixteenths: the amount out of 100, in the display's sixteenths. */
-void rg_shade_darkness(int32_t amount) { shade_steps = whole_sixteenths(amount); }
-
-/* Reference#work_out_shade: every row's span from the game's own expressions, top to bottom,
- * then the amount. */
-void rg_screen_work_out_shade(void) {
-  for (shade_row = 0; shade_row < RG_SCREEN_HEIGHT; shade_row++) rg_game_shade_span();
-  rg_game_shade_amount();
-}
-
-/* Framebuffer#light_off=: whether the scene that just ran has the light switched off, set as
- * the frame ends, before it is shown (Reference#advance_frame). */
-static int32_t shade_off;
-void rg_shade_switch(int32_t on) { shade_off = on == 0; }
-
-/* Whether no light is darkening any of the picture. */
-static int32_t every_pixel_lit(void) { return shade_steps == 0 || shade_off; }
-
-/* Framebuffer#lit?: is (x, y) inside its row's span? */
-static int32_t lit(int32_t x, int32_t y) {
-  if (every_pixel_lit()) return 1;
-  int32_t left = shade_spans[y][0], right = shade_spans[y][1];
-  return left <= right ? (x >= left && x < right) : (x >= left || x < right);
-}
-
 /* rg_screen_shown with nothing over the picture: each row is the stored row the window sits over,
  * moved as one piece, and off the edge of the picture the backdrop shows, which is nought here
- * (faded_where with nothing in force). Where the window is moved sideways only the part of the
+ * (a colour no filter changes). Where the window is moved sideways only the part of the
  * row that stays on the picture is copied, and the rest is cleared. */
 static void shown_plain(void) {
   int64_t first = camera_x < 0 ? -(int64_t)camera_x : 0; /* the first screen column on the picture */
@@ -1381,19 +1157,31 @@ static void keep_console_colors(void) {
   }
 }
 
+/* Does the filter's row say it changes the pixel at column +x+? The row is [from, to, inverted]: a
+ * pixel is changed when inverted XOR from <= x < to. */
+static int32_t filter_row_covers(const int32_t *row, int32_t x) { return row[2] ^ (x >= row[0] && x < row[1]); }
+
 /* Framebuffer#shown and #pixel: the page a viewer is looking at, read through the window — off
  * the edge of the picture the backdrop shows — with the fade or tint in force mixed in, read from
  * where a feature says each pixel is read from (rg_hook_shown_columns, rg_hook_shown_row), with the
  * layer a feature shows in front of the picture laid over it (rg_hook_front_layer, asked once a
  * read), and darkened outside a light's span. A switched-off display shows plain white.
  *
- * With the display on and no tint, no fade, no light darkening any of it and no feature reading it
+ * The fade or tint and the light are filters (shown_filter) a feature hands over once a read
+ * (rg_hook_fade_filter, rg_hook_dim_filter), and the loop below only reads the tables they hold.
+ * A pixel is read as the colour stored (or in front, or nought off the picture), then through the
+ * fade's table where that reaches it, then through the light's where that does, and a held display
+ * shows white instead.
+ *
+ * With the display on and no fade, tint or light darkening any of it and no feature reading it
  * its own way (rg_hook_shown_plain), none of that touches a colour, and every row is copied
  * (shown_plain), which is most frames of most games. Anything else is worked out a pixel at a time. */
 const uint16_t *rg_screen_shown(void) {
   rg_screen_paint_owed_rebuild();
   const uint16_t *front = rg_hook_front_layer();
-  if (!held && tint_mode == TINT_NONE && fade_steps == 0 && rg_hook_shown_plain() && every_pixel_lit()) {
+  const shown_filter *fade = rg_hook_fade_filter();
+  const shown_filter *dim = rg_hook_dim_filter();
+  if (!held && !fade && !dim && rg_hook_shown_plain()) {
     shown_plain();
     if (front)
       for (int32_t at = 0; at < CELLS; at++)
@@ -1404,18 +1192,28 @@ const uint16_t *rg_screen_shown(void) {
   const int64_t *columns = rg_hook_shown_columns();
   for (int32_t y = 0; y < RG_SCREEN_HEIGHT; y++) {
     int64_t from_y = rg_hook_shown_row(y) + camera_y;
+    const int32_t *fade_row = fade && !fade->everywhere ? fade->rows[y] : NULL;
+    const int32_t *dim_row = dim && !dim->everywhere ? dim->rows[y] : NULL;
     for (int32_t x = 0; x < RG_SCREEN_WIDTH; x++) {
-      int32_t fade_here = fade_reaches(x, y);
+      int32_t fade_here = fade && (!fade_row || filter_row_covers(fade_row, x));
       uint16_t in_front = front ? front[y * RG_SCREEN_WIDTH + x] : (uint16_t)RG_NOTHING_IN_FRONT;
       uint16_t color;
       if (in_front != RG_NOTHING_IN_FRONT) {
-        color = faded_where(in_front, fade_here); /* Framebuffer#pixel: a sprite over the picture is not in blocks */
+        color = fade_here ? fade->table[in_front] : in_front; /* Framebuffer#pixel: a sprite over the picture is not in blocks */
       } else {
         int64_t from_x = (columns ? columns[x] : x) + camera_x;
         int64_t at = from_y * RG_SCREEN_WIDTH + from_x;
-        color = on_screen(from_x, from_y) ? shown_color(at, viewed[at], fade_here) : faded_where(0, fade_here);
+        if (!on_screen(from_x, from_y)) {
+          color = fade_here ? fade->table[0] : 0;
+        } else if (fade && fade->remix && picture_mixes.is_mixed[at]) {
+          /* Framebuffer#shown_color: a mixed cell is mixed again from its two sides, each through the table */
+          color = mixed_with_under(fade->table[picture_mixes.tops[at]], fade->table[picture_mixes.unders[at]], mixed_cells_by);
+        } else {
+          color = fade_here ? fade->table[viewed[at]] : viewed[at];
+        }
       }
-      shown[y * RG_SCREEN_WIDTH + x] = held ? (uint16_t)0x7FFF : lit(x, y) ? color : darkened_by_display(color, shade_steps);
+      if (dim && (!dim_row || filter_row_covers(dim_row, x))) color = dim->table[color];
+      shown[y * RG_SCREEN_WIDTH + x] = held ? (uint16_t)0x7FFF : color;
     }
   }
   keep_console_colors();

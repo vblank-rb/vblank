@@ -95,3 +95,22 @@ static const int64_t *rg_hook_shown_columns(void) { return NULL; }
 #ifndef RG_HOOK_SHOWN_ROW_TAKEN
 static int64_t rg_hook_shown_row(int64_t y) { return y; }
 #endif
+
+#ifndef RG_HOOK_FADE_FILTER_TAKEN
+static const shown_filter *rg_hook_fade_filter(void) { return NULL; }
+#endif
+
+#ifndef RG_HOOK_DIM_FILTER_TAKEN
+static const shown_filter *rg_hook_dim_filter(void) { return NULL; }
+#endif
+
+#ifndef RG_HOOK_PAINT_FADE_FOR_TAKEN
+static const uint16_t *rg_hook_paint_fade_for(int32_t fade_place) {
+  (void)fade_place;
+  return NULL;
+}
+#endif
+
+#ifndef RG_HOOK_BLEND_HELD_BY_FADE_TAKEN
+static int32_t rg_hook_blend_held_by_fade(void) { return 0; }
+#endif

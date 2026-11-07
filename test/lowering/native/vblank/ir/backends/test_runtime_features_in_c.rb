@@ -73,6 +73,36 @@ class TestRuntimeFeaturesInC < Minitest::Test
     refute_includes features_text(plain), "rg_tiled"
   end
 
+  def test_a_game_that_fades_takes_in_the_fades_feature
+    fades = game_that_fades
+
+    assert_includes Native.new.lower(fades), %(#include "fades/rg_fades.h")
+    assert_includes features_text(fades), %(#include "fades/rg_fades.c")
+    assert_includes features_text(fades), "rg_fades_fade_filter()"
+  end
+
+  def test_a_game_that_never_fades_holds_none_of_the_fades_feature
+    plain = program(screen(:bitmap), clear_screen(:white), halt)
+
+    refute_includes Native.new.lower(plain), "rg_fades"
+    refute_includes features_text(plain), "rg_fades"
+  end
+
+  def test_a_game_with_a_light_takes_in_the_light_feature
+    lit = game_with_a_light
+
+    assert_includes Native.new.lower(lit), %(#include "light/rg_light.h")
+    assert_includes features_text(lit), %(#include "light/rg_light.c")
+    assert_includes features_text(lit), "rg_light_dim_filter()"
+  end
+
+  def test_a_game_with_no_light_holds_none_of_the_light_feature
+    plain = program(screen(:bitmap), clear_screen(:white), halt)
+
+    refute_includes Native.new.lower(plain), "rg_light"
+    refute_includes features_text(plain), "rg_light"
+  end
+
   # The screen's own files name no feature: they call their hooks, and a hook nobody takes does
   # what the screen does alone.
   def test_the_screen_files_name_no_feature
@@ -82,5 +112,7 @@ class TestRuntimeFeaturesInC < Minitest::Test
     refute_match(/pixelat|read_block/, screen)
     refute_match(TILED_NAMES, screen + header)
     refute_match(SPRITES_NAMES, screen + header)
+    refute_match(FADES_NAMES, screen + header)
+    refute_match(LIGHT_NAMES, screen + header)
   end
 end

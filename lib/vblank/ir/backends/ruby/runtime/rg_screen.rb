@@ -1,6 +1,7 @@
 # THE GAME'S PICTURE, drawn in software: the console's screen as an array of colors, and
-# everything the game does to it — drawing, backgrounds, sprites, the window over the picture,
-# fades and tints, a picture in blocks, see-through layers, bends and the light.
+# everything the game does to it — drawing, the window over the picture, see-through layers and
+# bends. What only some games use (backgrounds, sprites, fades and tints, a picture in blocks, the
+# light) is a runtime feature of its own, under runtime_features/.
 #
 # Each method names which of the interpreter's it answers for (in backends/reference.rb and
 # reference/framebuffer.rb), because the interpreter is what this is checked against pixel for
@@ -28,16 +29,9 @@ RG_BITMAP = 0
 RG_TILED = 1
 RG_ROTOZOOM = 2
 
-RG_FADE_WHOLE_SCREEN = 0
-RG_FADE_INSIDE = 1
-RG_FADE_OUTSIDE = 2
-
 RG_NOT_DRAWN = -1      # A sprite picture's pixel where what is behind shows
 RG_SEE_THROUGH = 0xFFFF # A tile's pixel where the layer behind shows
 
-# Backends::FadeSteps: a walk of the colors counts in 256ths, sixteen to a display's step.
-RG_WALK_STEPS = 256
-RG_WALK_PER_DISPLAY = 16
 RG_SOLID = -1          # A thing in no see-through layer
 RG_NO_NAME = -1
 RG_NOT_IN_BLOCKS = -1
@@ -87,7 +81,7 @@ RG_NO_CELL = -1        # A cell of a saved patch that hung off the picture
 RgArea = Struct.new(:in_force, :left, :top, :right, :bottom)
 
 # The two colors each mixed cell was mixed from (Framebuffer @mixed_tops), for a tint that moves
-# the color table, which reaches each side before the mix (see rg_shown_color). +is_mixed+ is
+# the color table, which reaches each side before the mix (see the filter's +remix+). +is_mixed+ is
 # nought for a cell painted solid. Kept for the picture, and for the scenery kept apart to put
 # back behind a sprite, so a cell put back is still a mix.
 class RgMixes
@@ -100,9 +94,13 @@ class RgMixes
   end
 end
 
-# A FADE PLACED IN THE STACK (Reference @fade_placed): whether one is in force, how far forward the
-# layer it sits under is among the layers the game declared, which way it fades, and how far.
-RgPlacedFade = Struct.new(:in_force, :layer_place, :toward_white, :steps)
+# A FILTER for reading the picture back, which a feature hands over once a read (rg_hook_fade_filter,
+# rg_hook_dim_filter) and the loop in rg_screen_shown reads: +table+ is the colour shown for each colour a
+# cell holds, looked up with table[color]; +everywhere+ is whether it applies to every pixel; +rows+, when
+# it does not, is [from, to, inverted] for each screen row, a pixel being changed when +inverted+ differs
+# from from <= x < to; +remix+ is whether a see-through mixed cell is mixed again from its two sides, each
+# through the table.
+RgShownFilter = Struct.new(:table, :everywhere, :rows, :remix)
 
 def rg_screen_setup
   # TWO PAGES, OR ONE (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
@@ -153,16 +151,9 @@ def rg_screen_setup
   @rg_rebuild_skipped = false
   @rg_picture_touched = false
   @rg_scene = -1
-  # What a display does to the finished picture: one effect at a time (Framebuffer#fade_to).
-  @rg_fade_white = 0
-  @rg_fade_steps = 0
-  @rg_tint_mode = :none # :none, :toward or :color
-  @rg_tint_white = 0
-  @rg_tint_color = 0
-  @rg_tint_steps = 0
-  @rg_tint_by_display = false
-  @rg_placed_fade = RgPlacedFade.new(false, RG_NO_LAYER, 0, 0)
-  @rg_fading_what_is_painted = false # Framebuffer @paint_toward
+  # The colour table what is painted goes through (Framebuffer @paint_toward), or nil to paint it as
+  # drawn. Set only while the view is rebuilt, for the things a placed fade reaches.
+  @rg_paint_fade = nil
   # WHAT IS PAINTED FROM HERE ON IS MIXED with what is already in the cell (Framebuffer @through):
   # [sixteenths of what is painted, sixteenths of what is under it].
   @rg_mixing = false
@@ -184,18 +175,10 @@ def rg_screen_setup
   @rg_answered = [0, 0]
   @rg_pending_shares = Array.new(RG_MAX_SEE_THROUGH)
   @rg_told_shares = Array.new(RG_MAX_SEE_THROUGH)
-  @rg_fade_side = RG_FADE_WHOLE_SCREEN
-  @rg_fade_area = [0, 0, 0, 0]
   # WHAT THE GAME HAS PAINTED (Reference @bitmaps, for a run's tiles and pictures): every run's
   # pixels as places in its colors, place 0 see-through; and the images painted from them.
   @rg_painted_places = nil
   @rg_painted_images = nil
-  # A light: each row's lit span, how many sixteenths the rest is darkened by, the row being asked
-  # about, and whether the scene that just ran has it off.
-  @rg_shade_spans = Array.new(RG_SCREEN_HEIGHT) { [0, 0] }
-  @rg_shade_steps = 0
-  @rg_shade_row = 0
-  @rg_shade_off = false
   rg_hook_setup # the state of the game's runtime features (RuntimeFeatures)
 end
 
@@ -264,32 +247,13 @@ def rg_darkened_channel(channel, byte_shift, steps)
   ((placed - ((placed * steps) / 16)) >> byte_shift) >> 3
 end
 
-# Framebuffer#brightened_by_display: each channel widened to eight bits and given +steps+
-# sixteenths of the headroom it has left there, then brought back to five bits.
-def rg_brightened_by_display(color, steps)
-  return color if steps == 0
-
-  rg_brightened_channel(color & 0x1F, steps) | (rg_brightened_channel((color >> 5) & 0x1F, steps) << 5) |
-    (rg_brightened_channel((color >> 10) & 0x1F, steps) << 10)
-end
-
-# One channel of rg_brightened_by_display, five bits in and five out.
-def rg_brightened_channel(channel, steps)
-  have = (channel << 3) | (channel >> 2)
-  (have + (((255 - have) * steps) / 16)) >> 3
-end
-
-# Framebuffer#faded_by_display: the display's own fade toward black or white.
-def rg_faded_by_display(color, white, steps)
-  white != 0 ? rg_brightened_by_display(color, steps) : rg_darkened_by_display(color, steps)
-end
-
-# Framebuffer#apply_placed_fade: a color as it is painted while a placed fade reaches it.
+# Framebuffer#apply_placed_fade: a color as it is painted, through the table a placed fade handed over
+# (@rg_paint_fade) while one reaches the thing painted. The color is held to the sixteen bits a cell
+# holds either way.
 def rg_faded_as_painted(color)
   color &= 0xFFFF
-  return color unless @rg_fading_what_is_painted
-
-  rg_faded_by_display(color, @rg_placed_fade.toward_white, @rg_placed_fade.steps)
+  table = @rg_paint_fade
+  table ? table[color] : color
 end
 
 # The mixed sides kept for +page+: the picture being drawn into, or the scenery kept apart; nil
@@ -366,7 +330,7 @@ end
 #
 # This is the Ruby runtime's own: YJIT compiles each small method of rg_set_pixel's to a call of
 # its own, and a blit makes several of them for every pixel.
-def rg_painting_plain? = !@rg_plain_layer && !@rg_mixing && !@rg_fading_what_is_painted && !rg_keeps_picture_without_sprites?
+def rg_painting_plain? = !@rg_plain_layer && !@rg_mixing && !@rg_paint_fade && !rg_keeps_picture_without_sprites?
 
 # The columns or rows a shape from +start+ to +past+ keeps inside the screen's +side+ and the area's
 # +low+ and +high+ (when it is in force): the first, and the one after the last.
@@ -577,21 +541,11 @@ def rg_forget_kept_shares
   rg_see_through_layers.times { |layer| @rg_pending_shares[layer] = nil }
 end
 
-# Reference#fading?: is a fade in force that takes the display's blend? While such a fade runs a
-# see-through layer is solid. A fade that walks the colors sets no fade amount and is never found
-# here, and the copy of the scenery kept to put back under sprites never has one. A fade placed in
-# the stack is the game's and takes the blend whichever is being painted.
-def rg_fade_holds_blend?
-  return @rg_placed_fade.steps > 0 if @rg_placed_fade.in_force
-
-  !@rg_target.equal?(@rg_scenery) && @rg_fade_steps > 0
-end
-
 # Reference#set_see_through_for, for scenery: mixing on for a thing in a see-through layer, off for
 # anything else. +layer+ is RG_SOLID for a thing in none.
 def rg_mix_as_layer(layer)
   @rg_painting_sprite = false
-  @rg_mixing = layer != RG_SOLID && !rg_fade_holds_blend?
+  @rg_mixing = layer != RG_SOLID && !rg_hook_blend_held_by_fade
   return unless @rg_mixing
 
   @rg_mixed_by = @rg_mixed_cells_by = @rg_pending_shares[layer] || rg_shares_now(layer)
@@ -600,160 +554,6 @@ end
 def rg_mix_nothing
   @rg_mixing = false
   @rg_painting_sprite = false
-end
-
-# --- effects over the finished picture (Framebuffer#faded) ---
-
-# Framebuffer#walked_toward: a fade that walks the colors, in five bits a channel, each channel
-# moved a truncated share of the way to black or white.
-def rg_walked_toward(color, white, steps)
-  return color if steps == 0
-
-  # FadeSteps.dimmed_levels, on a display that dims
-  level = steps >= RG_WALK_STEPS ? 0 : 15 - ((steps * 15) / RG_WALK_STEPS)
-  out = 0
-  3.times do |channel|
-    c = (color >> (5 * channel)) & 0x1F
-    c = if RG_CONSOLE_DIMS && white == 0 then ((2 * c * level) + 15) / 30
-        else white != 0 ? c + (((31 - c) * steps) / RG_WALK_STEPS) : c - ((c * steps) / RG_WALK_STEPS)
-        end
-    out |= c << (5 * channel)
-  end
-  out
-end
-
-# Framebuffer#mixed and #mixed_by_display: the two shares added, and only then the fraction
-# dropped. The display mixes at eight bits a channel; a game writing tinted colors, at five.
-#
-# The channels are written out rather than looped over, as in rg_mixed_with_under.
-def rg_mixed(color, toward, steps, by_display)
-  return color if steps == 0
-
-  keep = RG_WALK_STEPS - steps
-  red = rg_mixed_channel(color & 0x1F, toward & 0x1F, keep, steps, by_display)
-  green = rg_mixed_channel((color >> 5) & 0x1F, (toward >> 5) & 0x1F, keep, steps, by_display)
-  blue = rg_mixed_channel((color >> 10) & 0x1F, (toward >> 10) & 0x1F, keep, steps, by_display)
-  red | (green << 5) | (blue << 10)
-end
-
-# One channel of rg_mixed, five bits in and five out.
-def rg_mixed_channel(have, want, keep, steps, by_display)
-  return ((have * keep) + (want * steps)) / RG_WALK_STEPS unless by_display
-
-  (((((have << 3) | (have >> 2)) * keep) + (((want << 3) | (want >> 2)) * steps)) / RG_WALK_STEPS) >> 3
-end
-
-# Framebuffer#faded. +fade_here+ is false where a fade held to a rectangle does not reach.
-def rg_faded_where(color, fade_here)
-  case @rg_tint_mode
-  when :toward
-    # On the plain bitmap screen the display does a walked fade, in sixteenths.
-    return rg_faded_by_display(color, @rg_tint_white, @rg_tint_steps / RG_WALK_PER_DISPLAY) if @rg_tint_by_display
-
-    return rg_walked_toward(color, @rg_tint_white, @rg_tint_steps)
-  when :color
-    # The display counts in sixteenths, every sixteenth 256th, so the steps between are dropped.
-    steps = @rg_tint_by_display ? @rg_tint_steps - (@rg_tint_steps % RG_WALK_PER_DISPLAY) : @rg_tint_steps
-    return rg_mixed(color, @rg_tint_color, steps, @rg_tint_by_display)
-  end
-  return color unless fade_here
-
-  rg_faded_by_display(color, @rg_fade_white, @rg_fade_steps)
-end
-
-def rg_faded(color) = rg_faded_where(color, true)
-
-# Framebuffer#shown_color: the stored cell at +at+ with the fade or tint in force. A cell a
-# see-through layer was mixed into, under a tint, is mixed again from its two colors tinted: a tint
-# on a screen drawn through a color table moves the colors the display then mixes.
-def rg_shown_color(at, stored, fade_here)
-  if @rg_tint_mode == :none || !@rg_pixels.equal?(@rg_viewed) || @rg_picture_mixes.is_mixed[at] == 0
-    return rg_faded_where(stored, fade_here)
-  end
-
-  rg_mixed_with_under(rg_faded(@rg_picture_mixes.tops[at]), rg_faded(@rg_picture_mixes.unders[at]), @rg_mixed_cells_by)
-end
-
-# Framebuffer#fade_reaches?: does the display's fade reach the screen pixel (x, y)?
-def rg_fade_reaches?(x, y)
-  return true if @rg_fade_side == RG_FADE_WHOLE_SCREEN
-
-  left, top, right, bottom = @rg_fade_area
-  within = x >= left && x < right && y >= top && y < bottom
-  @rg_fade_side == RG_FADE_INSIDE ? within : !within
-end
-
-# Reference#exec_fade, through Framebuffer#fade_steps_to or, for a fade that walks the colors,
-# #tint_steps_to. +placed+ is true for a fade placed in the stack under the layer at +layer_place+.
-#
-# Over the whole screen it is laid over the picture as the screen is read, so nothing drawn
-# changes. Placed in the stack it is painted into the picture, so the picture is built again right
-# here, and again by the fade that takes a placed one's place, which has to take it back out. A
-# fade that takes the display's blend takes it from a see-through layer and hands it back as it
-# lifts, so the picture is built again at each of those two moments as well.
-def rg_fade_to(placed, layer_place, toward_white, steps, walked)
-  took_the_blend = rg_fade_holds_blend?
-  was_placed = @rg_placed_fade.in_force
-  @rg_placed_fade = RgPlacedFade.new(placed, layer_place, toward_white, steps)
-  if walked != 0
-    @rg_tint_mode = :toward
-    @rg_tint_white = toward_white
-    @rg_tint_steps = steps
-    @rg_tint_by_display = rg_tint_mixed_by_display? # Reference#fade_by_tint
-    @rg_fade_steps = 0
-  else
-    @rg_fade_white = toward_white
-    @rg_fade_steps = placed ? 0 : steps
-    @rg_tint_mode = :none
-  end
-  blend_changed_hands = rg_see_through_layers > 0 && rg_fade_holds_blend? != took_the_blend
-  rg_request_repaint if was_placed || placed || blend_changed_hands
-end
-
-def rg_screen_fade(toward_white, steps, walked)
-  @rg_fade_side = RG_FADE_WHOLE_SCREEN
-  rg_fade_to(false, RG_NO_LAYER, toward_white, steps, walked)
-end
-
-def rg_screen_fade_in_area(reaches, left, top, right, bottom, toward_white, steps)
-  @rg_fade_side = reaches
-  @rg_fade_area = [left, top, right, bottom]
-  rg_fade_to(false, RG_NO_LAYER, toward_white, steps, 0)
-end
-
-def rg_screen_fade_under(layer_place, toward_white, steps, walked)
-  @rg_fade_side = RG_FADE_WHOLE_SCREEN
-  rg_fade_to(true, layer_place, toward_white, steps, walked)
-end
-
-# Reference#tint_by_display?: does the display mix a tint in as it draws, which only the plain
-# bitmap screen does, on a console that blends? Every other screen has it mixed into a colour table.
-def rg_tint_mixed_by_display? = rg_painted_screen? && @rg_pixels.equal?(@rg_viewed) && RG_CONSOLE_BLENDS
-
-# Reference#exec_tint, through Framebuffer#tint_steps_to. A tint takes the place of whatever fade
-# was in force, one placed in the stack included, and the picture is built again when a fade that
-# held a see-through layer solid, or was painted into the picture, goes.
-def rg_screen_tint(color, steps)
-  took_the_blend = rg_fade_holds_blend?
-  was_placed = @rg_placed_fade.in_force
-  @rg_placed_fade.in_force = false
-  @rg_tint_mode = :color
-  @rg_tint_color = color
-  @rg_tint_steps = steps
-  @rg_tint_by_display = rg_tint_mixed_by_display?
-  @rg_fade_steps = 0
-  blend_changed_hands = rg_see_through_layers > 0 && rg_fade_holds_blend? != took_the_blend
-  rg_request_repaint if was_placed || blend_changed_hands
-end
-
-# Backends::FadeSteps.steps
-def rg_fade_steps(amount, fraction_bits, walked)
-  levels = walked != 0 ? RG_WALK_STEPS : 16
-  if fraction_bits < 0
-    sixteenths = rg_whole_sixteenths(amount)
-    return walked != 0 ? sixteenths * RG_WALK_PER_DISPLAY : sixteenths
-  end
-  rg_clamp_wide((amount * levels) / (100 << fraction_bits), 0, levels)
 end
 
 def rg_run_field(run, field) = @rg_game_tile_runs[(RG_RUN_FIELDS * run) + field]
@@ -1176,19 +976,17 @@ def rg_screen_drawn_sprite(place) = rg_hook_drawn_sprite(place)
 
 # --- the whole view, rebuilt (Reference#repaint_view) ---
 
-# The fade half of Reference#set_blend_for, for the thing about to be painted: the placed fade in
-# force reaches it unless that fade's layer is no further forward than +fade_place+, the furthest
-# forward such a layer can be and still leave the thing as drawn. RG_NO_LAYER for a thing every
-# placed fade reaches, and for the backdrop. A fade under a layer the game never declared reaches
-# everything.
+# The fade half of Reference#set_blend_for, for the thing about to be painted: what is painted from
+# here on goes through the colour table a placed fade asks for it (rg_hook_paint_fade_for), or as
+# drawn where none does. +fade_place+ is the furthest forward a placed fade's layer can be and still
+# leave the thing as drawn; RG_NO_LAYER for a thing every placed fade reaches, and for the backdrop.
+# Asked once a thing painted, never once a pixel.
 def rg_fade_unless_left_as_drawn(fade_place)
-  under = @rg_placed_fade.layer_place
-  left_as_drawn = under != RG_NO_LAYER && fade_place != RG_NO_LAYER && fade_place >= under
-  @rg_fading_what_is_painted = @rg_placed_fade.in_force && !left_as_drawn
+  @rg_paint_fade = rg_hook_paint_fade_for(fade_place)
 end
 
 def rg_fade_nothing
-  @rg_fading_what_is_painted = false
+  @rg_paint_fade = nil
 end
 
 # Back to front: the backdrop, then each level's scenery (rg_hook_paint_level) and its sprites,
@@ -1271,7 +1069,6 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
   end
   @rg_kind = new_kind
   rg_show_pages(two_pages)
-  @rg_tint_by_display = rg_tint_mixed_by_display? # a tint in force is mixed this screen's way
   rg_hook_screen_set
   return 0 unless crossing
 
@@ -1335,59 +1132,16 @@ def rg_screen_stored
   @rg_viewed
 end
 
-# --- a light (Framebuffer#shade_outside) ---
-
-def rg_shade_line = @rg_shade_row
-
-# Where the row's span starts, and then where it ends: two calls, so the game works the left edge
-# out before the right one, as the interpreter does.
-def rg_shade_left(left)
-  @rg_shade_spans[@rg_shade_row][0] = left
-end
-
-def rg_shade_right(right)
-  @rg_shade_spans[@rg_shade_row][1] = right
-end
-
-# FadeSteps.sixteenths: the amount out of 100, in the display's sixteenths.
-def rg_shade_darkness(amount)
-  @rg_shade_steps = rg_whole_sixteenths(amount)
-end
-
-# Reference#work_out_shade: every row's span from the game's own expressions, top to bottom, then
-# the amount.
-def rg_screen_work_out_shade
-  RG_SCREEN_HEIGHT.times do |row|
-    @rg_shade_row = row
-    rg_game_shade_span
-  end
-  @rg_shade_row = RG_SCREEN_HEIGHT
-  rg_game_shade_amount
-end
-
-# Framebuffer#light_off=: whether the scene that just ran has the light switched off, set as the
-# frame ends, before it is shown.
-def rg_shade_switch(on)
-  @rg_shade_off = on == 0
-end
-
-# Whether the whole screen is lit: no light darkens anything, or it is switched off.
-def rg_all_lit? = @rg_shade_steps == 0 || @rg_shade_off
-
-# Framebuffer#lit?: is (x, y) inside its row's span?
-def rg_lit?(x, y)
-  return true if rg_all_lit?
-
-  left, right = @rg_shade_spans[y]
-  left <= right ? x >= left && x < right : x >= left || x < right
-end
-
 # Framebuffer#shown and #pixel: the page a viewer is looking at, read through the window — off the
-# edge of the picture the backdrop shows — with the fade or tint in force mixed in, read from where a
-# feature says each pixel is read from (rg_hook_shown_columns, rg_hook_shown_row), and darkened
-# outside a light's span. A switched-off display shows plain white.
+# edge of the picture the backdrop shows — read from where a feature says each pixel is read from
+# (rg_hook_shown_columns, rg_hook_shown_row), with the layer a feature shows in front laid over it
+# (rg_hook_front_layer), then through the fade's colour table where that reaches the pixel and the
+# light's where that does. A switched-off display shows plain white.
 #
-# With nothing over the picture — no tint, no fade, no light, no feature reading it its own way
+# The fade and the light are filters (RgShownFilter) a feature hands over once a read
+# (rg_hook_fade_filter, rg_hook_dim_filter), and the loop only reads the tables they hold.
+#
+# With nothing over the picture — no filter, no feature reading it its own way
 # (rg_hook_shown_plain) — every row is the stored row moved by the window, and is copied as one,
 # which is most frames of most games.
 def rg_screen_shown
@@ -1416,51 +1170,70 @@ def rg_screen_shown_in_five_bits
   rg_screen_paint_owed_rebuild
   shown = @rg_shown
   viewed = @rg_viewed
-  held = @rg_screen_held != 0
-  return shown.fill(RG_SWITCHED_OFF) if held
+  return shown.fill(RG_SWITCHED_OFF) if @rg_screen_held != 0
 
-  front = rg_hook_front_layer # asked once a read, never once a pixel
-  if @rg_tint_mode == :none && @rg_fade_steps == 0 && rg_hook_shown_plain && rg_all_lit?
+  # Each asked once a read, never once a pixel.
+  front = rg_hook_front_layer
+  fade = rg_hook_fade_filter
+  dim = rg_hook_dim_filter
+  if !fade && !dim && rg_hook_shown_plain
     rg_screen_shown_plain(shown, viewed)
     front&.each_with_index { |color, at| shown[at] = color if color }
     return shown
   end
 
-  # A fade or a tint does the same to every cell of one color, so each color's answer is worked out
-  # once a picture (two answers: where the fade reaches and where it does not). A cell a
-  # see-through layer was mixed into, under a tint, is mixed again from its own two colors, and is
-  # worked out for itself (rg_shown_color).
-  faded_in = Array.new(0x10000) # a cell holds sixteen bits
-  faded_out = {}
-  remixed = @rg_tint_mode != :none && @rg_pixels.equal?(@rg_viewed)
-  mixed_cells = @rg_picture_mixes.is_mixed
+  # What the loop reads is taken out of the filters first, so a pixel costs table lookups and
+  # comparisons and no call. A table is a Hash that works a colour's answer out the first time it
+  # is asked and keeps it, so a lookup is a plain table[color].
   columns = rg_hook_shown_columns
   camera_x = @rg_camera_x
-  whole_fade = @rg_fade_side == RG_FADE_WHOLE_SCREEN
-  all_lit = rg_all_lit?
+  fade_table = fade&.table
+  fade_all = fade ? fade.everywhere : false
+  fade_rows = fade&.rows
+  remix = fade ? fade.remix : false
+  dim_table = dim&.table
+  dim_all = dim ? dim.everywhere : false
+  dim_rows = dim&.rows
+  mixes = @rg_picture_mixes
+  mixed_cells = mixes.is_mixed
+  tops = mixes.tops
+  unders = mixes.unders
+  mixed_by = @rg_mixed_cells_by
   RG_SCREEN_HEIGHT.times do |y|
     from_y = rg_hook_shown_row(y) + @rg_camera_y
     row = y * RG_SCREEN_WIDTH
+    # Where a filter does not apply everywhere, its row says [from, to, inverted]: a pixel is
+    # changed when inverted differs from from <= x < to.
+    fade_row = fade && !fade_all ? fade_rows[y] : nil
+    fade_from = fade_row ? fade_row[0] : 0
+    fade_to = fade_row ? fade_row[1] : 0
+    fade_inverted = fade_row ? fade_row[2] : false
+    dim_row = dim && !dim_all ? dim_rows[y] : nil
+    dim_from = dim_row ? dim_row[0] : 0
+    dim_to = dim_row ? dim_row[1] : 0
+    dim_inverted = dim_row ? dim_row[2] : false
     x = 0
     while x < RG_SCREEN_WIDTH
-      from_x = (columns ? columns[x] : x) + camera_x
-      fade_here = whole_fade || rg_fade_reaches?(x, y)
+      fade_here = fade_all || (fade_row ? fade_inverted != (x >= fade_from && x < fade_to) : false)
       in_front = front && front[row + x]
       color = if in_front
-                rg_faded_where(in_front, fade_here) # a sprite over the picture is not in blocks
-              elsif from_x >= 0 && from_x < RG_SCREEN_WIDTH && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
-                at = (from_y * RG_SCREEN_WIDTH) + from_x
-                stored = viewed[at]
-                if remixed && mixed_cells[at] != 0
-                  rg_shown_color(at, stored, fade_here)
-                else
-                  answers = fade_here ? faded_in : faded_out
-                  answers[stored] ||= rg_faded_where(stored, fade_here)
-                end
+                fade_here ? fade_table[in_front] : in_front # a sprite over the picture is not in blocks
               else
-                rg_faded_where(0, fade_here)
+                from_x = (columns ? columns[x] : x) + camera_x
+                if from_x >= 0 && from_x < RG_SCREEN_WIDTH && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
+                  at = (from_y * RG_SCREEN_WIDTH) + from_x
+                  if remix && mixed_cells[at] != 0
+                    # Framebuffer#shown_color: a mixed cell is mixed again from its two sides, each through the table
+                    rg_mixed_with_under(fade_table[tops[at]], fade_table[unders[at]], mixed_by)
+                  else
+                    fade_here ? fade_table[viewed[at]] : viewed[at]
+                  end
+                else
+                  fade_here ? fade_table[0] : 0
+                end
               end
-      shown[row + x] = all_lit || rg_lit?(x, y) ? color : rg_darkened_by_display(color, @rg_shade_steps)
+      color = dim_table[color] if dim_table && (dim_all || (dim_row ? dim_inverted != (x >= dim_from && x < dim_to) : false))
+      shown[row + x] = color
       x += 1
     end
   end
@@ -1468,7 +1241,7 @@ def rg_screen_shown_in_five_bits
 end
 
 # rg_screen_shown with nothing over the picture: each row the stored row the window sits over, and
-# off the picture the backdrop, which is nought (rg_faded_where with nothing in force).
+# off the picture the backdrop, which is nought.
 def rg_screen_shown_plain(shown, viewed)
   camera_x = @rg_camera_x
   camera_y = @rg_camera_y

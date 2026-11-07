@@ -589,7 +589,7 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
   # With no fade painted in and no see-through layer being mixed, rg_lay_scenery comes to storing
   # the color, marking the cell as no mix and keeping it in the picture without sprites where
   # that is kept; so that is done here.
-  plain = !@rg_fading_what_is_painted && !@rg_mixing
+  plain = !@rg_paint_fade && !@rg_mixing
   picture = @rg_pixels
   mixed_cells = @rg_picture_mixes.is_mixed
   without_sprites = rg_sprites_seen_through? ? @rg_picture_without_sprites : nil

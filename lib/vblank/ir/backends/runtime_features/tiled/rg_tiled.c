@@ -537,7 +537,7 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
   int64_t set_start = background_field(background, RG_BG_TILES_START) +
                       (int64_t)tile_set_now(background) * background_field(background, RG_BG_TILES) * tile_w * tile_h +
                       ty * tile_w;
-  int32_t plain = !fading_what_is_painted && !mixing;
+  int32_t plain = !paint_fade && !mixing;
   int32_t keeps_picture_without_sprites = sprites_seen_through();
   for (int64_t px = 0; px < RG_SCREEN_WIDTH;) {
     int64_t mx = off_x + px;

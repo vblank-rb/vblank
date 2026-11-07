@@ -97,7 +97,31 @@ module VBlank
           # The stored column each screen column is read from, or null for its own.
           Hook.new(name: :shown_columns, way: :one, default: :null, c_signature: "static const int64_t *rg_hook_shown_columns(void)"),
           # The stored row a screen row is read from.
-          Hook.new(name: :shown_row, way: :one, params: %i[y], default: :y, c_signature: "static int64_t rg_hook_shown_row(int64_t y)")
+          Hook.new(name: :shown_row, way: :one, params: %i[y], default: :y, c_signature: "static int64_t rg_hook_shown_row(int64_t y)"),
+          # The FILTER the finished picture is read through when a fade or tint changes a colour, or
+          # null when none does (Framebuffer#faded). Asked once a read, after any owed rebuild. A
+          # filter is plain data, so the loop that reads the picture asks nothing a pixel:
+          #   table:      the colour shown for each value a cell holds, indexed by its sixteen bits;
+          #   everywhere: whether it applies to every pixel;
+          #   rows:       when not, for each screen row [from, to, inverted]: a pixel is changed
+          #               when inverted XOR from <= x < to;
+          #   remix:      whether a see-through mixed cell is mixed again from its two sides, each
+          #               through the table (Framebuffer#shown_color).
+          Hook.new(name: :fade_filter, way: :one, default: :null,
+                   c_signature: "static const shown_filter *rg_hook_fade_filter(void)"),
+          # The same for a light darkening the rest of each row (Framebuffer#shade_outside), applied
+          # after the fade's. Asked once a read.
+          Hook.new(name: :dim_filter, way: :one, default: :null,
+                   c_signature: "static const shown_filter *rg_hook_dim_filter(void)"),
+          # The colour table a thing is painted through while a fade placed in the stack reaches it
+          # (Reference#set_blend_for), or null where it is left as drawn. +fade_place+ is how far
+          # forward the thing's layer is. Asked once a thing painted, never once a pixel.
+          Hook.new(name: :paint_fade_for, way: :one, params: %i[fade_place], default: :null,
+                   c_signature: "static const uint16_t *rg_hook_paint_fade_for(int32_t fade_place)"),
+          # Whether a fade holds the display's blend, so a see-through layer is solid
+          # (Reference#fading?). Asked once a thing painted.
+          Hook.new(name: :blend_held_by_fade, way: :claim,
+                   c_signature: "static int32_t rg_hook_blend_held_by_fade(void)")
         ])
 
         # +needed_by+ is the kinds of step that need the feature; +after+ the features whose hooks

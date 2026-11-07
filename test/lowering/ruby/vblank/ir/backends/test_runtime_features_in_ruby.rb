@@ -64,11 +64,41 @@ class TestRuntimeFeaturesInRuby < Minitest::Test
     assert_operator text.index("rg_tiled_paint_level(level)"), :<, text.index("rg_sprites_paint_level(level)")
   end
 
+  def test_a_game_that_fades_takes_in_the_fades_feature
+    text = Ruby.new.live_source(game_that_fades)
+
+    assert_includes text, "def rg_fades_fade_filter"
+    assert_includes text, "rg_fades_setup"
+  end
+
+  def test_a_game_that_never_fades_holds_none_of_the_fades_feature
+    text = Ruby.new.live_source(program(screen(:bitmap), clear_screen(:white), halt))
+
+    refute_includes text, "rg_fades"
+    refute_includes text, "def rg_screen_fade("
+  end
+
+  def test_a_game_with_a_light_takes_in_the_light_feature
+    text = Ruby.new.live_source(game_with_a_light)
+
+    assert_includes text, "def rg_light_dim_filter"
+    assert_includes text, "rg_light_setup"
+  end
+
+  def test_a_game_with_no_light_holds_none_of_the_light_feature
+    text = Ruby.new.live_source(program(screen(:bitmap), clear_screen(:white), halt))
+
+    refute_includes text, "rg_light"
+    refute_includes text, "def rg_screen_work_out_shade"
+  end
+
   def test_the_screen_file_names_no_feature
     screen = File.read(File.join(Ruby::RUNTIME_DIR, "rg_screen.rb"))
 
     refute_match(/pixelat|read_block/, screen)
     refute_match(TILED_NAMES, screen)
     refute_match(SPRITES_NAMES, screen)
+    refute_match(FADES_NAMES, screen)
+    refute_match(LIGHT_NAMES, screen)
   end
 end
