@@ -14,7 +14,8 @@ module VBlank
     #   copy.unpack_lz77 at: 0x300, into: pack[:sprites]   # a packed format the copy offers
     #
     # THE PACKED FORMATS the copy offers are those of the platform its original is for
-    # (Packing.formats_for: an Advance original's are LZ77 and RLE), and any the port names in
+    # (Packing.formats_for: an Advance original's are LZ77 and RLE, a Genesis original's Nemesis and
+    # Enigma), and any the port names in
     # `data_pack formats: [...]` (a Packing::Format). Each gives the copy `unpack_<name>`; asking for
     # one the copy does not offer is refused in plain words, naming the ones it does.
     #

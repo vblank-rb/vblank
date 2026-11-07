@@ -32,8 +32,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
     of the platform its original is for, and any the port names in `data_pack ..., formats: [MyFormat]`;
     asking for another is refused, naming the ones it offers. An Advance original's are
     `copy.unpack_lz77` and `copy.unpack_rle`, the BIOS's LZ77 and RLE (4-byte header: the scheme in the
-    first byte's top half, 1 or 3, then the unpacked size; `BiosCompress` is the answer key). A computer
-    original (`:pc`) has none built in.
+    first byte's top half, 1 or 3, then the unpacked size; `BiosCompress` is the answer key). A Genesis
+    original's are `copy.unpack_nemesis` (tiles, 32 bytes each in the Genesis's layout; the block's first
+    word says XOR mode and the tile count) and `copy.unpack_enigma ..., base: 0` (a plane map, each cell a
+    word high byte first with `base:` added, ending at its own end mark; NOT the usual reading: a spelt
+    cell carries only the two flip bits, as the 68000 `EniDec` of retail games reads it). Their answer key
+    is `test/genesis_packing_answers.rb`, written from the 68000 routines. A computer original (`:pc`) has
+    none built in.
   - `pack[:walls][i] = value` writes one byte (the low 8 bits); `pack[:walls][i]` reads one back;
     `pack[:walls].byte_size`. `copy.count_written n` counts what a loop of the routine's own wrote, so the
     progress bar moves and the routine waits for a frame every 256 bytes, as a format does.
@@ -65,7 +70,7 @@ from that copy. The game's code says each piece's shape and size; it never depen
   Where it lives: `copy` is `Original::CopyReader` (`lib/vblank/original/copy_reader.rb`), a format's shape
   and kit are `lib/vblank/original/packing/format.rb`, and each platform's formats are
   `lib/vblank/original/packing/<platform>.rb`, listed by platform in `lib/vblank/original/packing.rb`.
-  Genesis formats are not here yet. Worked examples: `test/copy_reader_tests.rb` for the routine, and
+  Worked examples: `test/copy_reader_tests.rb` for the routine, and
   `test/all/vblank/builder/test_data_packs.rb` for a game reading its pack.
 - **The game holds handles, never bytes.** `pack[:palette]` is a `DSL::PackSlot`: its `shape`, `count`
   and `layout` (name, place and `byte_size`), nothing it holds. The verbs read the slot themselves:

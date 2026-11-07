@@ -3,6 +3,7 @@
 require "test_helper"
 require "digest"
 require "tmpdir"
+require "genesis_packing_answers"
 
 # A PORT READS THE ORIGINAL'S DATA THROUGH A DATA PACK (`data_pack`). The game says which slots
 # the pack holds, each a known shape and size, and where in the player's copy each comes from; the
@@ -83,11 +84,11 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
                                releases: { "Test" => { "sha1" => SHA1, "size" => COPY_SIZE } })
   end
 
-  # A copy that is +bytes+ alone, written into +folder+.
-  private def copy_of(folder, bytes)
+  # A copy that is +bytes+ alone, written into +folder+, of an original for +platform+.
+  private def copy_of(folder, bytes, platform: :gba)
     path = File.join(folder, "packed.bin")
     File.binwrite(path, bytes)
-    VBlank::Original::Copy.new(path: path, sha1: Digest::SHA1.hexdigest(bytes), release: "Test")
+    VBlank::Original::Copy.new(path: path, sha1: Digest::SHA1.hexdigest(bytes), release: "Test", platform: platform)
   end
 
   # The game: the two tiles laid out as a background, and a marker whose place across the screen
@@ -279,6 +280,36 @@ class TestDataPacks < Minitest::Test
                      game_player.run(game_program(unpacked), frames: frames).screen.to_a,
                      "after #{frames} frames the two games show the same picture"
       end
+    end
+  end
+
+  # A plane map unpacked into a Genesis slot of halves keeps each cell high byte first, as the
+  # Genesis does, so a table of the slot reads each cell as the map holds it: here the third,
+  # spelt out and flipped top to bottom.
+  GENESIS_MAP = GenesisPackingAnswers.enigma_block(width: 11, flips: 2, counting: 0x10, repeating: 0) do |ops|
+    ops.counting(2)
+    ops.same([0x155, true], 2)
+  end.freeze
+
+  def test_a_table_of_an_unpacked_genesis_map_reads_its_cells
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, GENESIS_MAP + ([0] * 4).pack("C*"), platform: :genesis)
+      b = Builder.new
+      b.instance_eval do
+        pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :map, count: 4, width: :half, signed: false
+          slots.fill_from_copy { |copy, filled| copy.unpack_enigma at: 0, into: filled[:map], base: 0x2000 }
+        end
+        cells = table :cells, pack[:map]
+        seen = var :seen, 0
+        game_loop do
+          wait_vblank
+          seen.store!(cells[2])
+        end
+      end
+      b.finalize_program
+
+      assert_equal 0x2000 + 0x1000 + 0x155, game_player.run(b.program, frames: 2)[:seen], "base, flip, then the cell"
     end
   end
 

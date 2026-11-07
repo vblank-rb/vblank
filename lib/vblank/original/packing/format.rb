@@ -68,6 +68,7 @@ module VBlank
       #   block.expect_size(size)         # the block unpacks to +size+ bytes: checked against the slot
       #   block.write(value)              # the next byte of the slot, the low 8 bits of +value+
       #   block.written_byte(back)        # a byte written +back+ bytes before the next one
+      #   block.room                      # bytes the slot has left
       #   block.finished                  # true once the size is written, the block ends, or a write failed
       #   block.finish!                   # the block ends here (a format with an end mark)
       #   block.emit_wrong_format_fault   # the bytes at from are not this format
@@ -142,6 +143,10 @@ module VBlank
         end
 
         def written_byte(back) = @pack[routine_variable(:out) - back]
+
+        # How many bytes the slot has left from the next one written: a bound for the loop of a
+        # format whose size is known only at its end mark.
+        def room = routine_variable(:ends) - routine_variable(:out)
 
         def finished = routine_variable(:finished) == 1
 

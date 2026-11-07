@@ -58,6 +58,7 @@ class TestCopyReaderOnInterpreter < Minitest::Test
     assert_match "copy.unpack_nemesis", refused.message
     assert_match "Game Boy Advance", refused.message
     assert_match "lz77, rle", refused.message
+    assert_match "nemesis is a format of Sega Genesis games", refused.message
     assert_match "formats:", refused.message
   end
 
