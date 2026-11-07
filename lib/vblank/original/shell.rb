@@ -21,7 +21,9 @@ module VBlank
     #   one of, by its size and its SHA-1, the pack's header and its check, the folder it is kept in,
     #   and every sentence a file is refused in.
     #
-    # +window_menu+ is whether the game's window has its menu (Cartridge::Game#menu?).
+    # +window_menu+ is whether the game's window has its menu (Cartridge::Game#menu?), and
+    # +original+ the Original::Game the data pack reads, named so a check on this machine can find
+    # the copy a player would pick (Live::ShellCheck). No runtime is handed it.
     #
     # WHAT A RUNTIME DOES WITH IT (Live::Shell is the Ruby one). At start it reads the pack from the
     # game's folder; a pack that passes the check is handed to the game, and the copy is never read.
@@ -34,7 +36,7 @@ module VBlank
     #
     # The pack a shell makes is the same file, byte for byte, as the one an all-in-one build makes
     # from the same copy: the same slots in the same order, the same header.
-    Shell = Data.define(:game, :menu, :unpackings, :facts, :window_menu)
+    Shell = Data.define(:game, :menu, :unpackings, :facts, :window_menu, :original)
 
     class Shell
       # One program of a shell, as a backend writes it out: its +role+ (:game, :menu or :unpacking),
@@ -70,7 +72,8 @@ module VBlank
         releases = refuse_unusable_releases!(data_pack.original)
         new(game: program, menu: menu_program(game.title, program),
             unpackings: releases.readable.map { |release| data_pack.unpacking(copy_size: release.size) },
-            facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?)
+            facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?,
+            original: data_pack.original)
       rescue NotSet => e
         raise BuildError, needs_copy_message(game, e)
       end

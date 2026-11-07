@@ -157,6 +157,14 @@ The web page (`--format web --shell`) and the desktop program (`--format native 
 the same, each made from `Original::ShellFacts`, every sentence they refuse a file in among them. Every
 release reads one slot list. Worked example: `test/lowering/ruby/vblank/live/test_shell.rb`.
 
+**A port's shell check** — `rake shell:check`, from `Original::ShellCheckTasks` in the port's Rakefile
+(`t.game_file`, and `t.console` and `t.tape` if wanted), or `Live::ShellCheck.new(game, tape:).run` — does
+what a player does with nobody at the controls: builds the shell with no copy in reach, starts it with
+the copy this machine names, holds the pack it keeps to the all-in-one build's byte for byte, starts it
+again with that copy out of reach, and plays the tape (300 passes with nothing pressed without one) on
+both starts and the all-in-one build, holding every picture and sound to that build's. A machine that
+names no copy fails with `NotSet`'s words. Worked example: `test/lowering/ruby/vblank/live/test_shell_check.rb`.
+
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a
 length byte and the text) and size (4 bytes), then each slot's bytes. A file that is not a pack, is cut
