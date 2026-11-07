@@ -558,6 +558,9 @@ module VBlank
 
       private def read_program = @rom.source_program
 
+      # A cartridge with no program beside it has no build record, and says so in those words.
+      private def refuse_no_program!(what) = refuse_missing_build_record!(what)
+
       private def list_of_variables
         refuse_missing_build_record!("where its variables are") unless @var_addresses
         @var_addresses.keys

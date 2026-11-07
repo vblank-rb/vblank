@@ -78,6 +78,7 @@ module VBlank
 
       def var(name) = @run.var(name)
       def raw_var(name) = @run.raw_var(name)
+      def sprite(name) = @run.sprite(name)
       def list(name) = @run.list(name)
       def pool(name, field) = @run.pool(name, field)
       def screen_width = @console.screen_width

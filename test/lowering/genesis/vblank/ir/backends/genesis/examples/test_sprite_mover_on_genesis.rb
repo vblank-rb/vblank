@@ -14,6 +14,6 @@ class TestSpriteMoverOnGenesis < Minitest::Test
     run = game_player.input_each_frame { |frame| frame < 100 ? [:left] : [:right] }
     run.run(SpriteMover::GAME.program(console: game_console), frames: 300)
 
-    assert_operator run[:__spr1_x], :>, START[:right_post][0], "the heart went past the right post"
+    assert_operator run.sprite(:heart).x, :>, START[:right_post][0], "the heart went past the right post"
   end
 end

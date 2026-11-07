@@ -64,7 +64,7 @@ class TestSpriteFacing < Minitest::Test
   def test_move_turns_the_sprite_to_face_its_direction
     prog = faceted_program(frames: 8) { |guy| guy.move :left, by: 1 }
     i = game_player.run(prog)
-    assert_operator i[:__spr1_x], :<, 50, "move :left should move it left"
+    assert_operator i.sprite(:guy).x, :<, 50, "move :left should move it left"
     assert_equal POSE * POSE, count_color(i.screen, :red), "moving left should also face left (red)"
     assert_equal 0, count_color(i.screen, :green), "it no longer faces right"
   end

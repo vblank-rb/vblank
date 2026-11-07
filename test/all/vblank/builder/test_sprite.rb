@@ -155,7 +155,7 @@ class TestSprite < Minitest::Test
   def test_steering_with_held_input_moves_the_sprite
     prog = sprite_program(frames: 15) { |hero| hero.x += 2 if held(:right) }
     i = game_player.input_each_frame { |_f| [:right] }.run(prog)
-    assert_operator i[:__spr1_x], :>, START[0], "holding right didn't move the sprite"
+    assert_operator i.sprite(:block).x, :>, START[0], "holding right didn't move the sprite"
     assert_equal BLOCK * BLOCK, count_color(i.screen, :red), "held-move left a trail"
   end
 
@@ -168,8 +168,8 @@ class TestSprite < Minitest::Test
       after(2) { hero.move :up_right, by: 2 }  # x: 97 -> 99, y: 60 -> 58
     end
     i = game_player.run(prog)
-    assert_equal 99, i[:__spr1_x], "left then up_right didn't land x where expected"
-    assert_equal 58, i[:__spr1_y], "up_right didn't move y up"
+    assert_equal 99, i.sprite(:block).x, "left then up_right didn't land x where expected"
+    assert_equal 58, i.sprite(:block).y, "up_right didn't move y up"
     assert_equal BLOCK * BLOCK, count_color(i.screen, :red), "a directional move left a trail"
   end
 
@@ -231,6 +231,96 @@ class TestSprite < Minitest::Test
     after_show = game_player.run(boss_program(show_on: 3, halt_on: 6)).screen
     assert_equal BLOCK * BLOCK, count_color(after_show, :red), "the boss didn't appear after show"
     assert_equal Color.resolve(:red), after_show.pixel(52, 52), "the boss isn't at its declared spot"
+  end
+
+  # ---- reading a sprite back by name ----
+
+  # Two walkers of one picture, told apart by `called:`, and a lone flag read by its picture's name.
+  # The second walker turns right, steps on 3 a pass and is hidden at its third; the first stands.
+  private def walkers_program(kind)
+    builder = Builder.new
+    builder.instance_eval do
+      screen kind
+      image(:left, "#" => :red) { "####\n####\n####\n####" }
+      image(:right, "#" => :green) { "####\n####\n####\n####" }
+      image(:flag, "#" => :white) { "####\n####\n####\n####" }
+      sprite :walker, at: [10, 20], facing: { left: :left, right: :right }, called: :walker1
+      second = sprite :walker, at: [40, 50], facing: { left: :left, right: :right }, called: :walker2
+      sprite :flag, at: [90, 30]
+      steps = var :steps, 0
+      game_loop do
+        if steps < 3
+          steps += 1
+          second.x += 3
+          second.face :right
+          second.hide if steps == 3
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_sprite_is_read_by_the_name_it_was_called_and_a_lone_one_by_its_picture
+    %i[bitmap tiled].each do |kind|
+      played = game_player.run(walkers_program(kind), frames: 10)
+
+      first = played.sprite(:walker1)
+      second = played.sprite(:walker2)
+      assert_equal [10, 20, true, :left], [first.x, first.y, first.shown?, first.pose], "on #{kind}"
+      assert_equal [49, 50, false, :right], [second.x, second.y, second.shown?, second.pose], "on #{kind}"
+      assert_equal [90, 30], [played.sprite(:flag).x, played.sprite(:flag).y], "on #{kind}"
+    end
+  end
+
+  def test_a_name_no_sprite_has_is_refused_naming_the_ones_there_are
+    played = game_player.run(walkers_program(:tiled), frames: 2)
+    error = assert_raises(ArgumentError) { played.sprite(:walker3) }
+
+    assert_match "no sprite :walker3", error.message
+    assert_match ":walker2", error.message
+  end
+
+  def test_a_picture_several_unnamed_sprites_show_says_to_name_them
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:dot, "#" => :white) { "####\n####\n####\n####" }
+      2.times { |n| sprite :dot, at: [10 * n, 10] }
+      game_loop {}
+    end
+    builder.finalize_program
+    error = assert_raises(ArgumentError) { game_player.run(builder.program, frames: 2).sprite(:dot) }
+
+    assert_match "2 sprites show :dot", error.message
+    assert_match "called:", error.message
+  end
+
+  def test_two_sprites_called_one_name_is_refused
+    error = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        screen :tiled
+        image(:dot, "#" => :white) { "####\n####\n####\n####" }
+        sprite :dot, at: [0, 0], called: :spot
+        sprite :dot, at: [8, 0], called: :spot
+      end
+    end
+
+    assert_match "Two sprites are called :spot", error.message
+  end
+
+  def test_a_name_that_is_an_unnamed_sprites_picture_is_refused
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:dot, "#" => :white) { "####\n####\n####\n####" }
+      image(:ring, "#" => :red) { "####\n####\n####\n####" }
+      sprite :ring, at: [0, 0], called: :dot
+      sprite :dot, at: [8, 0]
+    end
+    error = assert_raises(ArgumentError) { builder.finalize_program }
+
+    assert_match "another sprite shows the picture :dot", error.message
   end
 
   # ---- misuse ----

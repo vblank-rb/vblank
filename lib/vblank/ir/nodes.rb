@@ -1296,6 +1296,10 @@ module VBlank
       # the power of +bits+ (DSL::Fraction). No backend needs them to run the game; they are how
       # anything reading a running game gives the game's number back (Reference::ReadingBack).
       #
+      # +sprite_readings+ is where each sprite the game can read by name keeps its place, an
+      # IR::SpriteReading each, with an IR::SharedPicture for a picture several unnamed sprites show,
+      # for the same readers; like the two above, no backend needs it to run.
+      #
       # +players+ is [fewest, most]: how many players the game takes on this build
       # (Cartridge::Players), or nil where it gave nothing. +for_computer+ is true for a build that
       # plays on a computer, whose controllers are not the console's (#described_build).
@@ -1316,7 +1320,7 @@ module VBlank
         kind :program
         category :root
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list,
-                 fraction_vars: :list, fraction_lists: :list, players: :list,
+                 fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, players: :list,
                  for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
                  start_file: :start_file
 
@@ -1355,6 +1359,23 @@ module VBlank
         end
 
         private def in_game_units(stored, bits) = bits ? Rational(stored, 1 << bits) : stored
+
+        # Sprite +name+ as it stands (an IR::SpriteState), read through +stored+, a variable's name
+        # to its stored number; every reader asks this (Reference::ReadingBack, Bots::GameView).
+        def sprite_state(name, stored) = sprite_reading(name).state_from(stored)
+
+        # Where sprite +name+ keeps its state (an IR::SpriteReading), refusing in plain words a
+        # name no sprite has, and a picture several unnamed sprites show.
+        def sprite_reading(name)
+          readings = sprite_readings || []
+          found = readings.find { |reading| reading.name == name }
+          return found if found.is_a?(SpriteReading)
+          raise ArgumentError, found.message if found
+
+          names = readings.map { |reading| ":#{reading.name}" }
+          raise ArgumentError, "This game has no sprite :#{name}. " \
+                               "#{names.empty? ? 'It has none.' : "Its sprites are #{names.join(', ')}."}"
+        end
 
         # What the console this program was built for can do: its screen, buttons, sprites — the
         # screen as the game sees it, so with the game's pixel size (#pixel_size) it is that many

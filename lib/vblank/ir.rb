@@ -26,6 +26,7 @@ require_relative "ir/place_drawing"         # How a place made of flat faces is 
 require_relative "ir/viewer_motion"         # How the viewer moves and turns
 require_relative "ir/reciprocals"           # How far a point on a face is, for a picture in perspective
 require_relative "ir/kept_widths"           # A variable kept a byte or two wide, on every backend
+require_relative "ir/sprite_reading"        # Where a named sprite's state is kept, for reading it back
 require_relative "ir/unchanging"            # Which values change nothing by being worked out
 require_relative "ir/reach"                 # What a run can reach: its routines and variables
 require_relative "ir/parity"

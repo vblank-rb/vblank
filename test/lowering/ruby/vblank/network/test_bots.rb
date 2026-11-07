@@ -8,8 +8,8 @@ require VBlank.root.join("examples/wanderers").to_s
 # A BOT IS A PLAYER WITH NO WINDOW AND NO PERSON (Bots): a script that reads its own copy of the game and
 # chooses its buttons each pass, and that joins a match like any machine. These play it through the
 # stand-in relay, in this process, with the copies taking turns (Network::Scheduler), so a run is the same run
-# every time. Wanderers keeps each walker's place in the variables of its sprite, `__obj1_x` for the first
-# player's walker (the sprites are made in player order), which is what the chaser reads.
+# every time. Wanderers calls each player's walker by its number (`called: :walker1`), which is what the
+# chaser reads.
 class TestBots < Minitest::Test
   Network = VBlank::Network
   Session = VBlank::Live::Session
@@ -23,10 +23,10 @@ class TestBots < Minitest::Test
   # A bot that walks its walker toward the first player's, on a line across and then up or down.
   private def chaser
     VBlank::Bots::Bot.define("chaser") do |game|
-      mine = ->(axis) { game.var(:"__obj#{game.player}_#{axis}") }
-      theirs = ->(axis) { game.var(:"__obj1_#{axis}") }
-      [(:left if mine.call(:x) > theirs.call(:x)), (:right if mine.call(:x) < theirs.call(:x)),
-       (:up if mine.call(:y) > theirs.call(:y)), (:down if mine.call(:y) < theirs.call(:y))]
+      mine = game.sprite(:"walker#{game.player}")
+      theirs = game.sprite(:walker1)
+      [(:left if mine.x > theirs.x), (:right if mine.x < theirs.x),
+       (:up if mine.y > theirs.y), (:down if mine.y < theirs.y)]
     end
   end
 
@@ -56,7 +56,9 @@ class TestBots < Minitest::Test
   end
 
   private def distance(view, from, to)
-    [(view.var(:"__obj#{from}_x") - view.var(:"__obj#{to}_x")).abs, (view.var(:"__obj#{from}_y") - view.var(:"__obj#{to}_y")).abs]
+    walker = view.sprite(:"walker#{from}")
+    chased = view.sprite(:"walker#{to}")
+    [(walker.x - chased.x).abs, (walker.y - chased.y).abs]
   end
 
   def test_a_bot_joins_as_player_two_and_walks_toward_player_one_and_every_pass_agrees

@@ -16,21 +16,19 @@
 #   vblank bot examples/chaser_bot.rb --host
 #   vblank run examples/wanderers.rb --join 127.0.0.1:7777
 #
-# Wanderers keeps each walker's place in the variables of its sprite. The sprites are made in player order,
-# so `__obj1_x` and `__obj1_y` are the first player's walker, `__obj2_x` and `__obj2_y` the second's, and so on. A game that keeps
-# the places in variables of its own names is easier to read; this one keeps them where the sprites do.
+# Wanderers calls each player's walker by its number (`called: :walker1`), so the bot reads a walker's
+# place by that name.
 
 require_relative "../lib/vblank"
 
 VBlank.bot "chaser", plays: "wanderers.rb" do |game|
-  here = ->(axis) { game.var(:"__obj#{game.player}_#{axis}") }
-  chased = game.player == 1 ? 2 : 1
-  there = ->(axis) { game.var(:"__obj#{chased}_#{axis}") }
+  here = game.sprite(:"walker#{game.player}")
+  there = game.sprite(game.player == 1 ? :walker2 : :walker1)
 
   buttons = []
-  buttons << :left if here.call(:x) > there.call(:x)
-  buttons << :right if here.call(:x) < there.call(:x)
-  buttons << :up if here.call(:y) > there.call(:y)
-  buttons << :down if here.call(:y) < there.call(:y)
+  buttons << :left if here.x > there.x
+  buttons << :right if here.x < there.x
+  buttons << :up if here.y > there.y
+  buttons << :down if here.y < there.y
   buttons
 end

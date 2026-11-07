@@ -24,6 +24,13 @@ module VBlank
           def var(name) = var_in_game_units(name, raw_var(name))
           def [](name) = var(name)
 
+          # A sprite by the name the game reads it by (its `called:`, or its picture's): an
+          # IR::SpriteState with its +x+, +y+, whether it is #shown?, and the +pose+ it is showing.
+          def sprite(name)
+            refuse_no_program!("its sprites") unless read_program
+            read_program.sprite_state(name, method(:raw_var))
+          end
+
           # Read a list: everything in it now, oldest first, under the name the game declared.
           # An Array, so a test asks for an item, the length, or the whole thing as it likes.
           def list(name)
@@ -63,6 +70,12 @@ module VBlank
           end
 
           private
+
+          # A run of a tree with no program at its root has no names but its variables' and lists'.
+          def refuse_no_program!(what)
+            raise ArgumentError, "This run played no whole program, so nothing says #{what}. Run a program " \
+                                 "(`VBlank.game`, or `program(...)`) to read #{what} by name."
+          end
 
           # A stored number, and a list's stored items, as the game's; as they are with no program.
           def var_in_game_units(name, stored) = read_program ? read_program.var_in_game_units(name, stored) : stored

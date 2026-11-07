@@ -663,6 +663,7 @@ module VBlank
       swap_save_stores_for_change_flags
       finalize_kept_widths
       finalize_fractions
+      finalize_sprite_readings
       refuse_local_player_outside_views!
     end
 

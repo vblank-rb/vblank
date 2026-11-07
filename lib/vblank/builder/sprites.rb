@@ -97,10 +97,67 @@ module VBlank
       # @param transparent [Boolean] honor the sheet's transparency (for +frames_from:+)
       # @param rate [Integer, nil] frames-per-step for +frames:+/+frames_from:+ (required with them)
       # @param shown [Boolean] draw it now (true, default), or start hidden until `show`
+      # @param called [Symbol, nil] the name a test, a bot or a probe reads this sprite by
+      #   (`player.sprite(:walker2).x`). Left out, the sprite is read by its picture's name, when no
+      #   other sprite shows that picture without a name of its own.
       # @return [Sprite, HardwareSprite] a handle: x / y / move / move_to (and, in bitmap mode, face / hide / show)
-      def sprite(name, at:, facing: nil, frames: nil, frames_from: nil, facing_from: nil,
-                 from_aseprite: nil, dirs: nil, tile: nil, transparent: false, rate: nil, shown: true, hitbox: nil,
-                 colors: nil, over_picture: false)
+      def sprite(name, called: nil, **settings)
+        refuse_sprite_name_taken!(called) if called
+        handle = sprite_handle(name, **settings)
+        declared_sprites << DeclaredSprite.new(called: called, picture: name, handle: handle)
+        handle
+      end
+
+      # One sprite as it was declared: the name it was called (nil for none), its picture's name,
+      # and its handle, for #finalize_sprite_readings.
+      DeclaredSprite = Data.define(:called, :picture, :handle)
+
+      # The sprites declared so far.
+      def declared_sprites = @declared_sprites ||= []
+
+      # A `called:` another sprite was given already.
+      def refuse_sprite_name_taken!(called)
+        return unless declared_sprites.any? { |sprite| sprite.called == called }
+
+        raise ArgumentError, "Two sprites are called :#{called}. A test or a bot reads a sprite by this name, so " \
+                             "each sprite must have its own. To fix this, give one of them another name."
+      end
+
+      # A `called:` that is the picture of a sprite with no name of its own, which is read by it.
+      def refuse_name_is_unnamed_picture!(picture)
+        raise ArgumentError, "A sprite is called :#{picture}, and another sprite shows the picture :#{picture} with no " \
+                             "name of its own, so both would be read by :#{picture}. To fix this, give the other " \
+                             "sprite a `called:` too, or call the first one something else."
+      end
+
+      # Where each sprite keeps its state, under the name it is read by (Program#sprite_readings):
+      # its `called:`, or else its picture's name when it is the only unnamed sprite showing it.
+      def finalize_sprite_readings
+        return if declared_sprites.empty?
+
+        called, unnamed = declared_sprites.partition(&:called)
+        readings = called.map { |sprite| sprite.handle.reading_named(sprite.called) }
+        unnamed.group_by(&:picture).each do |picture, sprites|
+          refuse_name_is_unnamed_picture!(picture) if called.any? { |sprite| sprite.called == picture }
+          readings << picture_reading(picture, sprites)
+        end
+        @program.sprite_readings = readings
+      end
+
+      # How +picture+ is read, shown by +sprites+ with no name of their own: as the one sprite, or,
+      # for several, an IR::SharedPicture, which says when it is asked for how to name them.
+      def picture_reading(picture, sprites)
+        return sprites.first.handle.reading_named(picture) if sprites.one?
+
+        IR::SharedPicture.new(name: picture, count: sprites.size)
+      end
+      private :declared_sprites, :refuse_sprite_name_taken!, :refuse_name_is_unnamed_picture!,
+              :finalize_sprite_readings, :picture_reading
+
+      # The sprite itself, painted on a bitmap screen or the console's own on a tiled one (#sprite).
+      private def sprite_handle(name, at:, facing: nil, frames: nil, frames_from: nil, facing_from: nil,
+                                from_aseprite: nil, dirs: nil, tile: nil, transparent: false, rate: nil, shown: true,
+                                hitbox: nil, colors: nil, over_picture: false)
         colors = imported_colors(name, colors, imports: from_aseprite || facing_from || frames_from)
         refuse_non_boolean_over_picture!(over_picture)
         over = over_painted_picture?(over_picture)

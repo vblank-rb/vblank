@@ -14,6 +14,8 @@ module ProbeByNameTests
       var :lift, -3, width: :byte
       var :drop, -100_000
       var :pace, 2.5
+      image(:dot, "#" => :white) { "####\n####\n####\n####" }
+      sprite :dot, at: [30, 40], called: :spot
       trail = list :trail, capacity: 4
       guards = pool :guards, x: 0, capacity: 3
       step = var :step, 0
@@ -45,6 +47,7 @@ module ProbeByNameTests
       assert_equal(-100_000, probe.var(:drop), "a signed word")
       assert_equal 2.5, probe.var(:pace), "a fraction, as the game wrote it"
       assert_equal 5 << 15, probe.raw_var(:pace), "and as it is kept"
+      assert_equal [30, 40, true], [probe.sprite(:spot).x, probe.sprite(:spot).y, probe.sprite(:spot).shown?]
       assert_equal [7, 9], probe.list(:trail)
       assert_equal 1, probe.pool(:guards, :x).compact.size
       assert_equal interpreter.pool(:guards, :x), probe.pool(:guards, :x), "the slot the interpreter spawned into"
@@ -66,6 +69,7 @@ module ProbeByNameTests
       path = File.join(folder, "byname.#{console}").tap { |file| named_game.write(file) }
       VBlank::Playthroughs::Probe.open(path) do |probe|
         assert_match "not built here", assert_raises(ArgumentError) { probe.var(:hearts) }.message
+        assert_match "not built here", assert_raises(ArgumentError) { probe.sprite(:spot) }.message
       end
     end
   end

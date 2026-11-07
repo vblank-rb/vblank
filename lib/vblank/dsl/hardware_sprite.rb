@@ -83,6 +83,13 @@ module VBlank
       def collision_poses = @poses
       def collision_pose = pose_index_node
 
+      # Where this sprite keeps its state, for reading it back under +name+ (IR::SpriteReading).
+      def reading_named(name)
+        IR::SpriteReading.new(name: name, x: @x_var, y: @y_var, shown: @active, poses: @poses,
+                              facing: @facing_var, frame: @frame_var, frames_per_facing: @frames_per_dir,
+                              clip_start: @clip_off_var)
+      end
+
       # Which pose is showing right now, as a value node — the same composition the object's
       # pose selector uses, so per-pixel collision reads the frame the console is drawing. A
       # plain sprite is pose 0, a facing/frames sprite is its selector, and a directional
