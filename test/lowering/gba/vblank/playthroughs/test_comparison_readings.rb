@@ -328,6 +328,76 @@ class TestComparisonReadings < Minitest::Test
     end
   end
 
+  # --- a sprite or background named ---
+
+  # A hero sprite on a tiled screen that steps right +speed+ pixels a frame while RIGHT is down,
+  # over a sky that scrolls with it, and music that turns to +quiet_to+ once the walk begins.
+  private def hero_game(speed, quiet_to: 50)
+    VBlank.build("HERO", console: :gba, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      enable_sound
+      image(:guy, "#" => :white) { (["#" * 8] * 8).join("\n") }
+      image(:blue_t, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :ground, "B" => :blue_t
+      sky = background :sky, tiles: :ground, map: Array.new(32) { "B" * 32 }
+      hero = sprite :hero, image: :guy, at: [20, 60]
+      game_loop do
+        if held(:right)
+          hero.x += speed
+          sky.scroll_by speed, 0
+          music_volume quiet_to
+        end
+      end
+    end
+  end
+
+  # A SPRITE NAMED IS READ WHOLE: its place, whether it is shown, its picture. The two heroes
+  # here walk at different speeds, so the readings part on the first frame of the walk, and the
+  # drift says each side's sprite as it stood.
+  def test_a_sprite_named_is_compared_whole
+    first = hero_game(2)
+    second = hero_game(3)
+
+    same = walk_right.compare(first, first, readings: { hero: { sprite: :hero } })
+    apart = walk_right.compare(first, second, readings: { hero: { sprite: :hero } }, comparing: [:readings])
+
+    refute same.drift?
+    assert_equal [:hero], apart.drift.differed
+    ours, theirs = apart.drift.readings.fetch(:hero)
+    assert_equal [22, 23, :guy], [ours.x, theirs.x, ours.pose]
+  end
+
+  # A BACKGROUND NAMED is read whole too, its scroll and its map, and the music's loudness is a
+  # block on the question every reader answers, music_volume.
+  def test_a_background_named_and_the_music_volume_are_compared
+    first = hero_game(2)
+
+    sky = walk_right.compare(first, hero_game(3), readings: { sky: { background: :sky } }, comparing: [:readings])
+    loudness = walk_right.compare(first, hero_game(2, quiet_to: 25), readings: { loud: ->(game) { game.music_volume } },
+                                                                      comparing: [:readings])
+
+    assert_equal [:sky], sky.drift.differed
+    assert_equal [2, 3], sky.drift.readings.fetch(:sky).map(&:scroll_x)
+    assert_equal [:loud], loudness.drift.differed
+    assert_equal [50, 25], loudness.drift.readings.fetch(:loud)
+  end
+
+  # A sprite the cartridge has no name for is refused before a frame is played, naming the ones
+  # it has; and on a cartridge that is only its file, nothing names any.
+  def test_a_named_sprite_the_cartridge_does_not_have_is_refused_before_it_is_played
+    err = assert_raises(ArgumentError) { walk_right.compare(hero_game(2), hero_game(2), readings: { hero: { sprite: :villain } }) }
+
+    assert_match(/:villain from the first cartridge/, err.message)
+    assert_match(/:hero/, err.message)
+    Dir.mktmpdir("cartridges") do |folder|
+      as_a_file = File.join(folder, "hero.gba").tap { |path| hero_game(2).write(path) }
+      unbuilt = assert_raises(ArgumentError) { walk_right.compare(hero_game(2), as_a_file, readings: { hero: { sprite: :hero } }) }
+
+      assert_match(/second cartridge/, unbuilt.message)
+      assert_match(/not built here/, unbuilt.message)
+    end
+  end
+
   # --- a cartridge the framework did not build ---
 
   # A VARIABLE'S NAME MEANS NOTHING ON A CARTRIDGE THAT WAS NOT BUILT HERE: which variable is

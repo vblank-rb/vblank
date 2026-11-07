@@ -1366,14 +1366,15 @@ module VBlank
         # to its stored number; every reader asks this (Reference::ReadingBack, Bots::GameView).
         def sprite_state(name, stored) = sprite_reading(name).state_from(stored)
 
-        # Background +name+ as it stands (an IR::BackgroundState), read the same way, refusing in
-        # plain words a name no background has.
-        def background_state(name, stored)
-          readings = background_readings || []
-          found = readings.find { |reading| reading.name == name }
-          return found.state_from(stored) if found
+        # Background +name+ as it stands (an IR::BackgroundState), read the same way.
+        def background_state(name, stored) = background_reading(name).state_from(stored)
 
-          raise ArgumentError, "This game has no background :#{name}. #{names_there_are('backgrounds', readings)}"
+        # Where background +name+ keeps its state (an IR::BackgroundReading), refusing in plain
+        # words a name no background has.
+        def background_reading(name)
+          readings = background_readings || []
+          readings.find { |reading| reading.name == name } or
+            raise ArgumentError, "This game has no background :#{name}. #{names_there_are('backgrounds', readings)}"
         end
 
         # The music's loudness, read through +stored+, as the game's own `music_volume` reads it: 0 to

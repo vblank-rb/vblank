@@ -11,10 +11,11 @@ module VBlank
       # second early. And where the pictures do differ, "the hero is at 61 on one and 60 on
       # the other" shows what went wrong where two screenshots only show that something did.
       #
-      # A READING IS A NAME AND A WAY TO READ IT, and there are three ways to give the way:
+      # A READING IS A NAME AND A WAY TO READ IT, and there are four ways to give the way:
       #
       #   readings: {
       #     paces:  :paces,                                             # a variable, on both
+      #     hero:   { sprite: :hero },                                  # a sprite or a background, whole
       #     where:  ->(game) { [game.var(:x), game.var(:y)] },          # one block, for both
       #     hero_x: [:px, ->(game) { game.mem16(0x0300_1234) }],        # one way for each
       #   }
@@ -28,6 +29,11 @@ module VBlank
       # which variable is where is what the build worked out and is kept beside a cartridge,
       # never in it. On any other cartridge it is refused, before a frame is played.
       #
+      # A SPRITE OR A BACKGROUND, NAMED, is read whole, as the reader gives it (IR::SpriteState,
+      # IR::BackgroundState): two are the same when every part is, and a report shows each part.
+      # Like a variable's name it is looked up before a frame is played. One part of one is a
+      # block: `->(game) { game.sprite(:hero).x }`.
+      #
       # What a block gives back can be anything two of which can be the same: a number, a
       # pair of numbers, a colour's name.
       #
@@ -40,13 +46,28 @@ module VBlank
         end
         private_constant :Variable
 
+        # A way to read that names a sprite or a background, read whole. +kind+ is :sprite or
+        # :background, the question every reader answers by that name.
+        Named = Data.define(:kind, :name) do
+          def call(game) = game.public_send(kind, name)
+
+          # Where +program+ keeps this sprite or background (Program#sprite_reading,
+          # #background_reading), refusing one it has none of.
+          def reading_on(program) = kind == :sprite ? program.sprite_reading(name) : program.background_reading(name)
+        end
+        private_constant :Named
+
+        # The kinds of thing a reading can name.
+        NAMED_KINDS = %i[sprite background].freeze
+        private_constant :NAMED_KINDS
+
         SIDES = %w[first second].freeze
         private_constant :SIDES
 
         def initialize(given)
           refuse_malformed_readings!(given)
           @ways = given.transform_values do |way|
-            (way.is_a?(Array) ? way : [way, way]).map { |one| one.is_a?(Symbol) ? Variable.new(name: one) : one }
+            (way.is_a?(Array) ? way : [way, way]).map { |one| way_from(one) }
           end
         end
 
@@ -60,6 +81,7 @@ module VBlank
           @ways.each do |name, ways|
             ways.zip(cartridges, SIDES).each do |way, cartridge, side|
               refuse_unknown_variable!(name, way.name, cartridge.var_addresses, side) if way.is_a?(Variable)
+              refuse_unknown_named!(name, way, cartridge.source_program, side) if way.is_a?(Named)
             end
           end
         end
@@ -92,8 +114,9 @@ module VBlank
 
         private
 
-        HOW_TO_WRITE_ONE = "A way to read is one of three things. It can be the name of a variable. It can be a block " \
-                           "that is given the running cartridge. It can be a list of two of those, one for each cartridge. " \
+        HOW_TO_WRITE_ONE = "A way to read is one of four things. It can be the name of a variable. It can name a sprite " \
+                           "or a background, like `{ sprite: :hero }`. It can be a block that is given the running " \
+                           "cartridge. It can be a list of two of those, one for each cartridge. " \
                            "Write it like `readings: { hero_x: :px, hero_y: [:py, ->(game) { game.mem16(0x0300_1234) }] }`."
         private_constant :HOW_TO_WRITE_ONE
 
@@ -118,7 +141,35 @@ module VBlank
           end
         end
 
-        def way_to_read?(way) = way.is_a?(Symbol) || way.respond_to?(:call)
+        def way_to_read?(way) = way.is_a?(Symbol) || way.respond_to?(:call) || named_thing?(way)
+
+        # `{ sprite: :hero }`: one kind of thing a reader answers by name, and its name.
+        def named_thing?(way)
+          way.is_a?(Hash) && way.size == 1 && NAMED_KINDS.include?(way.keys.first) && way.values.first.is_a?(Symbol)
+        end
+
+        # A way as it is read: a variable's name, a named thing, or a block as it was given.
+        def way_from(one)
+          return Variable.new(name: one) if one.is_a?(Symbol)
+          return Named.new(kind: one.keys.first, name: one.values.first) if named_thing?(one)
+
+          one
+        end
+
+        # A sprite or background a reading names, looked up on +program+, the cartridge's (nil for
+        # one this framework did not build), before a frame is played.
+        def refuse_unknown_named!(name, way, program, side)
+          reading_words = "The reading #{name.inspect} reads the #{way.kind} #{way.name.inspect} from the #{side} cartridge."
+          unless program
+            raise ArgumentError, "#{reading_words} That cartridge was not built here, so nothing names its #{way.kind}s. " \
+                                 "Give the reading a block for that cartridge, which reads it from memory by its address."
+          end
+          begin
+            way.reading_on(program)
+          rescue ArgumentError => e
+            raise ArgumentError, "#{reading_words} #{e.message}"
+          end
+        end
 
         def refuse_unusable_name!(name)
           unless name.is_a?(Symbol)
