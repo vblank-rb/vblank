@@ -1232,7 +1232,7 @@ module VBlank
       folder = options[:pack_folder] || window.folder_for(shell.folder) or
         raise Thor::Error, "#{game.title} cannot make the folder to keep its data pack in. Give one with --pack-folder."
       say "Playing #{game.title} as a shell. Its data pack is kept in #{folder}."
-      rate = shell.play(window, folder_path: folder, choose_copy: -> { window.choose_file }, open_settings: -> { window.open_menu },
+      rate = shell.play(window, folder_path: folder, choose_copy: shell.copy_chooser(window), open_settings: -> { window.open_menu },
                                 refused: lambda { |words|
                                   warn words
                                   window.notice(words)

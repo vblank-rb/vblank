@@ -89,7 +89,7 @@ module VBlank
         yield slots
         refuse_unfilled_slots!(slots)
         refuse_places_not_matching_releases!(slots, from, copy)
-        bytes = File.binread(copy.path)
+        bytes = copy.read_bytes
         copy_release = copy.release_record
         copy_release_slots = slots_in_release(slots, copy_release.name)
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
@@ -354,7 +354,7 @@ module VBlank
           faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes)
           reader = Original::CopyReader.new(maker, copy: copy, pack: list, faults: faults, formats: reading.formats,
-                                                   platform: reading.platform, before_wait: progress)
+                                                   platform: reading.platform, release: release, before_wait: progress)
           define_unpacking_progress(maker, reader.bytes_done, finished, slots.sum(&:byte_size)) if progress
           places = Original::Unpacking.places_of(slots)
           writers = slots.each_with_index.to_h do |slot, number|

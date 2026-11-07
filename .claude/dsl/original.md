@@ -52,6 +52,22 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `pack[:walls][i] = value` writes one byte (the low 8 bits); `pack[:walls][i]` reads one back;
     `pack[:walls].byte_size`. `copy.count_written n` counts what a loop of the routine's own wrote, so the
     progress bar moves and the routine waits for a frame every 256 bytes, as a format does.
+  - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
+    verbs, each place counted from that file's start. A fixed place outside the file is refused.
+
+  **An original that is several files** (a computer game's folder: Wolfenstein 3D's VSWAP.WL6,
+  GAMEMAPS.WL6 and the rest) lists each release's files instead of a SHA-1 and a size:
+  `releases: { "WL6" => { "files" => { "VSWAP.WL6" => { "sha1" => "…", "size" => 1_544_376 }, … } } }`.
+  The copy is the folder; each named file is found in it without regard to case and checked by its size
+  and SHA-1, and nothing else in it is read (a settings file the original rewrites, saves). The copy the
+  routine reads is the files joined in the order listed, and the pack's header holds the SHA-1 of the
+  list. A shell's LOAD ROM asks for the folder. Worked example: `test/folder_original.rb`, whose
+  folder is `test/fixtures/folder_original/`.
+
+  **Heavy conversion belongs in the unpacking**, as game code of the port's own (a sound chip
+  rendered to samples, a game's own packers as formats of the port's): it runs once, at LOAD ROM or
+  as the all-in-one build is made, and the pack keeps the result. Never redo it each time the game
+  plays. VBlank takes a format in only when many games use it.
 
   **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
   `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines

@@ -67,12 +67,23 @@ module VBlank
         shell = Original::Shell.build(@game, console: console, err: nil)
         copy = shell.original.copy
         live = Shell.from(shell)
-        Dir.mktmpdir("vblank-shell-check") { |folder| compare_starts_with_all_in_one(live, console, copy.path, folder) }
+        Dir.mktmpdir("vblank-shell-check") { |folder| compare_starts_with_all_in_one(live, console, copy, folder) }
       end
 
-      def compare_starts_with_all_in_one(live, console, copy_path, folder)
+      # A copy that is one file is handed as that file. One that is a folder (a release of several
+      # files) is handed as a folder holding the release's own files alone: a player's folder can
+      # hold saves, settings and much else the game never reads.
+      def hand_copy(copy, handed)
+        return FileUtils.cp(copy.path, handed) unless copy.files
+
+        FileUtils.mkdir_p(handed)
+        copy.files.each { |file| FileUtils.cp(file.path, handed) }
+      end
+
+      def compare_starts_with_all_in_one(live, console, copy, folder)
+        copy_path = copy.path
         handed = File.join(folder, File.basename(copy_path))
-        FileUtils.cp(copy_path, handed)
+        hand_copy(copy, handed)
         kept_in = File.join(folder, "kept")
 
         @say.call("First start: unpacking #{copy_path}")
@@ -80,7 +91,7 @@ module VBlank
         @say.call("Comparing the kept pack with the all-in-one build's")
         refuse_different_packs!(File.binread(File.join(kept_in, Original::ShellFacts::PACK_FILE)), all_in_one_pack(console))
 
-        File.delete(handed)
+        FileUtils.rm_rf(handed)
         @say.call("Second start, with the copy out of reach")
         # Every copy is hidden as well, so a second start that reached for the machine's copy stops.
         second = Original.without_copies { play_start(live, kept_in, nil) }

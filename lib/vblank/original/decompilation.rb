@@ -94,7 +94,7 @@ module VBlank
       # the block. What the block gives back is given back. HarvestRefused when any step fails.
       def harvest(copy)
         refuse_off_pin!
-        wanted = File.binread(copy.respond_to?(:path) ? copy.path : copy)
+        wanted = copy.respond_to?(:read_bytes) ? copy.read_bytes : File.binread(copy) # a Copy may be a folder
         Dir.mktmpdir("vblank-harvest") do |folder|
           unpack_pinned_commit(folder)
           copy_extra_files(folder)

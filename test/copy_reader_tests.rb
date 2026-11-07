@@ -2,7 +2,7 @@
 
 require "digest"
 require "tmpdir"
-require "made_up_original"
+require "folder_original"
 
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
@@ -36,7 +36,16 @@ module PairRuns
 end
 
 module CopyReaderTests
-  include MadeUpOriginal
+  include FolderOriginal
+
+  # A copy that is several files: each file read through copy.file, its places counted from that
+  # file's start, the places in DATA.MU1 read out of INDEX.MU1 as the routine runs.
+  def test_a_routine_reads_each_file_of_a_copy_that_is_several_files
+    unpacking = VBlank::Builder.new.data_pack(from: folder_original, version: "1") { |slots| folder_slots(slots) }.unpacking
+    played = game_player.run(unpacking.program, frames: 8)
+
+    assert_equal({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") }, unpacking.slot_bytes_in(played))
+  end
 
   # The port's format, named in `formats:`, gives the copy `unpack_pair_runs`, with its setting.
   def test_a_format_of_the_ports_own_unpacks_and_counts_what_it_writes

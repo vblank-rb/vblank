@@ -31,7 +31,11 @@ module VBlank
       # One release of the original: its +name+, +sha1+ (40 lowercase hex digits), +size+ in bytes
       # (nil where not known), whether the game reads it (+read+), and +unpacking+, the number from 0
       # of the unpacking that reads it (Shell#unpackings), nil for a release the game does not read.
-      Release = Data.define(:name, :sha1, :size, :read, :unpacking)
+      # A release that is several files (Original::Release#files) has +files+, each a Hash of its
+      # "name", "sha1" and "size", in the release's order; nil for a release that is one file.
+      Release = Data.define(:name, :sha1, :size, :read, :unpacking, :files) do
+        def initialize(name:, sha1:, size:, read:, unpacking:, files: nil) = super
+      end
 
       # The variable the menu sets as it halts, and the number for each line chosen.
       Menu = Data.define(:choice_variable, :load_rom, :settings)
@@ -63,7 +67,10 @@ module VBlank
 
       # The Releases a picked file is checked against in Ruby, whose sentences are +release_words+.
       def original_releases
-        list = releases.map { |release| Original::Release.new(name: release.name, sha1: release.sha1, md5: nil, size: release.size, read: release.read) }
+        list = releases.map do |release|
+          files = release.files&.map { |file| ReleaseFile.new(name: file.fetch("name"), sha1: file.fetch("sha1"), size: file.fetch("size")) }
+          Original::Release.new(name: release.name, sha1: release.sha1, md5: nil, size: release.size, read: release.read, files: files)
+        end
         Releases.new(title: releases_title, list: list)
       end
 

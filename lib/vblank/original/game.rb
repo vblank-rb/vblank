@@ -57,11 +57,19 @@ module VBlank
                            "or #{known.last}. Name the console it is for, or :#{COMPUTER} for a computer game."
     end
 
+    # ONE FILE OF A COPY THAT IS A FOLDER: where it is on this machine, and the file of the release
+    # it was accepted as (ReleaseFile).
+    FolderFile = Data.define(:path, :release_file)
+
     # THE PLAYER'S COPY, ACCEPTED: where it is, the name of its release, its SHA-1 (nil for a
     # folder accepted by a probe, which has no one hash), and the platform of the original it is a
-    # copy of (Game#platform).
-    Copy = Data.define(:path, :release, :sha1, :platform) do
-      def initialize(path:, release:, sha1:, platform: DEFAULT_PLATFORM) = super(path:, release:, sha1:, platform: Original.platform_named(platform))
+    # copy of (Game#platform). A copy of a release that is several files (Release#files) is a folder,
+    # and +files+ are its files in the release's order, each a FolderFile; its SHA-1 is the
+    # release's (Release.files_sha1).
+    Copy = Data.define(:path, :release, :sha1, :platform, :files) do
+      def initialize(path:, release:, sha1:, platform: DEFAULT_PLATFORM, files: nil)
+        super(path:, release:, sha1:, platform: Original.platform_named(platform), files:)
+      end
 
       # The one release a copy is, as every original names its releases (Game#release_names).
       def release_names = [release]
@@ -69,8 +77,15 @@ module VBlank
       # The same one release: a copy accepted is always of a release the game reads.
       def readable_release_names = [release]
 
-      # The copy's release as a Release record. Only the name and SHA-1 are known from a copy.
-      def release_record = Release.new(name: release, sha1: sha1, md5: nil, size: nil, read: true)
+      # The copy's release as a Release record. Only the name and SHA-1 are known from a copy of one
+      # file; a folder's knows its files too.
+      def release_record
+        Release.new(name: release, sha1: sha1, md5: nil, size: files&.sum { |file| file.release_file.size }, read: true,
+                    files: files&.map(&:release_file))
+      end
+
+      # The copy's bytes: the file's, or a folder's files joined in the release's order.
+      def read_bytes = files ? files.map { |file| File.binread(file.path) }.join.b : File.binread(path)
     end
 
     # HOW ANOTHER PATH ON THIS MACHINE IS FOUND, the way the copy is: its environment variable, its
@@ -116,6 +131,10 @@ module VBlank
     #               SHA-1, and may have an MD5, a size, and "supported" => false for a release the
     #               game knows and does not read. A copy no release is the length of is refused
     #               unread. A copy of a release the game does not read is refused naming it.
+    #               A release that is several files lists them instead of a SHA-1 and a size:
+    #               {"WL6" => {"files" => {"VSWAP.WL6" => {"sha1" => ..., "size" => 1544376}, ...}}}.
+    #               Its copy is the folder that holds them, each found without regard to case
+    #               and checked by its size and SHA-1, and nothing else in the folder is read.
     #   probe:      by its contents, for a copy that is a folder of files or has no one digest. It is
     #               called with the path and returns the release's name, or nil to refuse the copy.
     #               It may raise WrongCopy itself to say more.
@@ -172,6 +191,7 @@ module VBlank
         raise NotSet, not_set_message if named.nil?
         raise WrongCopy, "#{named.named_in} names #{named.path}. Nothing is there. Correct the path to your copy of #{title}." unless File.exist?(named.path)
         return probed_copy(named.path) if @probe
+        return copy_in_folder(named.path) if File.directory?(named.path) && @releases.list.any?(&:several_files?)
 
         release, sha1 = release_by_digest(named.path)
         Copy.new(path: named.path, release: release, sha1: sha1, platform: platform)
@@ -259,10 +279,27 @@ module VBlank
         Copy.new(path: path, release: release, sha1: File.file?(path) ? Digest::SHA1.file(path).hexdigest : nil, platform: platform)
       end
 
+      # The copy in the folder +path+, for a game whose releases are several files: the first
+      # release whose every file is there, each file checked by its size and SHA-1.
+      def copy_in_folder(path)
+        names = Dir.children(path).select { |name| File.file?(File.join(path, name)) }
+        match = @releases.match_folder(path, names) do |name|
+          FileMeasure.new(size: File.size(File.join(path, name)), sha1: Digest::SHA1.file(File.join(path, name)).hexdigest)
+        end
+        raise WrongCopy, match.refusal if match.refusal
+
+        release = match.release
+        files = release.files.map { |file| FolderFile.new(path: File.join(path, match.spelled.fetch(file.name)), release_file: file) }
+        Copy.new(path: path, release: release.name, sha1: release.sha1, platform: platform, files: files)
+      end
+
       # The release the copy at +path+ is, by its length and then its SHA-1 (Releases has the words
       # for a copy that is none the game reads), and that SHA-1.
       def release_by_digest(path)
         raise WrongCopy, "#{path} is a folder. Name the file of your copy of #{title}." unless File.file?(path)
+
+        refusal = @releases.one_file_refusal(path)
+        raise WrongCopy, refusal if refusal
 
         refusal = @releases.size_refusal(path, File.size(path))
         raise WrongCopy, refusal if refusal

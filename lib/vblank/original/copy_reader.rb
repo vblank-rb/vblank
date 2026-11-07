@@ -12,6 +12,7 @@ module VBlank
     #   copy.copy_bytes at: 0x200, count: 64, into: pack[:walls]
     #   copy.count_written 64                     # what a decoder of the game's own wrote
     #   copy.unpack_lz77 at: 0x300, into: pack[:sprites]   # a packed format the copy offers
+    #   copy.file("MAPHEAD.WL6").word(2)          # one file of a copy that is several (FileReader)
     #
     # THE PACKED FORMATS the copy offers are those of the platform its original is for
     # (Packing.formats_for: an Advance original's are LZ77 and RLE, a Genesis original's Nemesis and
@@ -35,9 +36,11 @@ module VBlank
       PLACE_SETTINGS = %i[at into start].freeze
 
       # +formats+ are the formats the copy offers, in the order a fault numbers them; +platform+ is
-      # the original's, which a refusal names. +before_wait+ is BlockKitInternals'.
-      def initialize(builder, copy:, pack:, faults:, formats:, platform:, before_wait: nil)
+      # the original's, which a refusal names; +release+ (a Release) is the one unpacked, whose files
+      # #file finds. +before_wait+ is BlockKitInternals'.
+      def initialize(builder, copy:, pack:, faults:, formats:, platform:, release: nil, before_wait: nil)
         @builder = builder
+        @release = release
         @internals = Packing::BlockKitInternals.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait)
         @kit = Packing::BlockKit.new(@internals)
         @formats = formats
@@ -83,6 +86,31 @@ module VBlank
         @internals.count_written(count)
         nil
       end
+
+      # ONE FILE OF A COPY THAT IS SEVERAL FILES (Release#files), as a FileReader: the same verbs,
+      # each place counted from the start of that file. +name+ is the file's name in the release, in
+      # any case. The release is known as the routine is built (each release's unpacking is built for
+      # it), so where each file starts is a number in the program.
+      #
+      #   maphead = copy.file("MAPHEAD.#{release}")
+      #   copy.file("GAMEMAPS.#{release}").copy_bytes at: maphead.word(2), count: 42, into: pack[:level]
+      def file(name)
+        unless @release&.several_files?
+          raise ArgumentError, "`copy.file(#{name.inspect})` is for a copy that is a folder of files. " \
+                               "This copy is one file. Read it with `copy.byte` and the rest."
+        end
+
+        start, release_file = @release.file_place(name)
+        unless release_file
+          raise ArgumentError, "The #{@release.name} release holds no file #{name}. It holds " \
+                               "#{@release.files.map(&:name).join(', ')}."
+        end
+
+        FileReader.new(self, start: start, file: release_file)
+      end
+
+      # +at+ moved on by +by+ bytes: a number, or a value worked out as the routine runs.
+      def place_after(at, by) = sum_of(at, by)
 
       # What a person calls each format the copy offers, in the order a fault numbers them.
       def format_words = @formats.map(&:format_words)
@@ -199,6 +227,54 @@ module VBlank
 
         raise ArgumentError, "Slot :#{into.slot.name} holds #{into.byte_size} bytes. A write of #{count} bytes from " \
                              "byte #{start} does not fit in it. Correct start: or count:."
+      end
+    end
+
+    # ONE FILE OF A COPY THAT IS SEVERAL FILES, as an unpacking routine reads it (CopyReader#file):
+    # each verb of the copy's, with its places counted from the start of the file. A place written in
+    # the program that is outside the file is refused; one worked out as the routine runs is held to
+    # the whole copy, as every read is.
+    class FileReader
+      # The ReleaseFile read, and where it starts in the copy.
+      attr_reader :file, :start
+
+      def initialize(reader, start:, file:)
+        @reader = reader
+        @start = start
+        @file = file
+      end
+
+      # How many bytes the file holds.
+      def size = @file.size
+
+      def byte(at) = @reader.byte(place(at))
+
+      def half(at, big_endian: false) = @reader.half(place(at, 2), big_endian: big_endian)
+
+      def word(at, big_endian: false) = @reader.word(place(at, 4), big_endian: big_endian)
+
+      def copy_bytes(at:, count:, into:, start: 0) = @reader.copy_bytes(at: place(at, count.is_a?(Integer) ? count : 1), count: count, into: into, start: start)
+
+      # `unpack_<name>` for each format the copy offers, from a place in this file.
+      def method_missing(name, *given, **settings, &)
+        return super unless name.to_s.start_with?("unpack_") && @reader.respond_to?(name)
+
+        settings[:at] = place(settings[:at]) if settings.key?(:at)
+        @reader.public_send(name, *given, **settings)
+      end
+
+      def respond_to_missing?(name, include_private = false) = (name.to_s.start_with?("unpack_") && @reader.respond_to?(name)) || super
+
+      private
+
+      # Where +at+ in the file is in the copy; a fixed +at+ whose +bytes+ run past the file is refused.
+      def place(at, bytes = 1)
+        if at.is_a?(Integer) && !(at >= 0 && at + bytes <= size)
+          raise ArgumentError, "#{@file.name} holds bytes 0 to #{size - 1}. A read of #{bytes} byte#{'s' if bytes > 1} " \
+                               "from byte #{at} is outside it. Correct the place read."
+        end
+
+        @reader.place_after(at, @start)
       end
     end
 

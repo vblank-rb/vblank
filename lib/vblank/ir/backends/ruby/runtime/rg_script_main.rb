@@ -70,7 +70,7 @@ module VBlankScript
                                     menu: SHELL_MENU, unpackings: SHELL_UNPACKINGS)
     folder = options[:"pack-folder"] || window.folder_for(shell.folder) or
       raise VBlank::Live::SDL::Failed, "#{TITLE} cannot make the folder to keep its data pack in. Give one with --pack-folder."
-    shell.play(window, folder_path: folder, choose_copy: -> { window.choose_file }, open_settings: -> { window.open_menu },
+    shell.play(window, folder_path: folder, choose_copy: shell.copy_chooser(window), open_settings: -> { window.open_menu },
                        refused: lambda { |words|
                          warn words
                          window.notice(words)

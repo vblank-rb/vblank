@@ -13,7 +13,8 @@ module VBlank
     #
     # #play goes: the pack kept in the game's folder, if it passes the check, is handed to the game
     # and the game plays. Otherwise the menu plays until the player picks a line. LOAD ROM asks
-    # +choose_copy+ for a file; one that is not a release the game reads is refused in words handed
+    # +choose_copy+ for a file, or a folder for an original whose releases are several files
+    # (#pack_from_folder); one that is not a release the game reads is refused in words handed
     # to +refused+, and the menu plays again. A release the game reads is unpacked by its unpacking,
     # played as fast as the machine goes, which draws its own progress bar; the pack is written to
     # the folder and handed to the game. SETTINGS calls +open_settings+ (the window opens its menu),
@@ -35,6 +36,12 @@ module VBlank
 
       # The name of the folder the pack is kept in (Original::Shell.folder_name).
       def folder = @facts.folder
+
+      # Whether LOAD ROM asks for a folder: a release the game reads is several files.
+      def copy_is_folder? = @releases.readable.any?(&:several_files?)
+
+      # The +choose_copy+ of #play for a +window+ (an SDL): its picker of a folder or of a file.
+      def copy_chooser(window) = copy_is_folder? ? -> { window.choose_folder } : -> { window.choose_file }
 
       # The Live::Shell for +shell+, an Original::Shell, its programs written as Ruby here.
       def self.from(shell)
@@ -67,10 +74,35 @@ module VBlank
       # Nil when the device stopped the unpacking before its end.
       def pack_from_copy(named, bytes, device)
         bytes = bytes.b
+        refusal = @releases.one_file_refusal(named) and raise Refused, refusal
         refusal = @releases.size_refusal(named, bytes.bytesize) and raise Refused, refusal
         sha1 = Digest::SHA1.hexdigest(bytes)
         refusal = @releases.digest_refusal(named, sha1) and raise Refused, refusal
 
+        unpack(named, sha1, bytes, device)
+      end
+
+      # The same for a copy that is a folder, at +path+, of a release that is several files: each
+      # file the release names is found in it without regard to case and checked, and the files are
+      # joined in the release's order. Nothing else in the folder is read.
+      def pack_from_folder(path, device)
+        names = Dir.children(path).select { |name| File.file?(File.join(path, name)) }
+        contents = {} # the bytes of each file read, by the name the folder spells it with
+        match = @releases.match_folder(path, names) do |name|
+          bytes = contents[name] = read_picked(File.join(path, name))
+          Original::FileMeasure.new(size: bytes.bytesize, sha1: Digest::SHA1.hexdigest(bytes))
+        end
+        raise Refused, match.refusal if match.refusal
+
+        release = match.release
+        unpack(path, release.sha1, release.files.map { |file| contents.fetch(match.spelled.fetch(file.name)) }.join.b, device)
+      end
+
+      private
+
+      # The pack the unpacking of the release whose SHA-1 is +sha1+ makes from +bytes+, a copy
+      # checked already and called +named+; nil when the device stopped it before its end.
+      def unpack(named, sha1, bytes, device)
         unpacking = IR::Backends::Ruby::LiveGame.new(@unpackings.fetch(@facts.release_with_sha1(sha1).unpacking)).hand_file(bytes)
         rate = Session.new(game: unpacking, uncapped: true, keep_last_picture: false).play(device)
         return nil unless rate.stopped_itself?
@@ -84,8 +116,6 @@ module VBlank
 
         @facts.pack_for(sha1, state.lists.fetch(names.bytes).map { |item| item & 0xFF }.pack("C*"))
       end
-
-      private
 
       # The pack kept in +folder_path+ when it passes the check, else nil; a file there that does
       # not is handed to +refused+ (the menu then asks for the copy again).
@@ -115,17 +145,19 @@ module VBlank
       # nothing was picked, the file was refused, or the device stopped the unpacking.
       def load_copy(device, folder_path, choose_copy, refused)
         path = choose_copy.call or return nil
-        bytes = begin
-          File.binread(path)
-        rescue SystemCallError => e
-          raise Refused, Original::ShellFacts.unreadable_message(path, e.message)
-        end
-        pack = pack_from_copy(path, bytes, device) or return nil
+        pack = (File.directory?(path) ? pack_from_folder(path, device) : pack_from_copy(path, read_picked(path), device)) or return nil
         write_pack(folder_path, pack)
         pack
       rescue Refused, SystemCallError => e # SystemCallError: the pack cannot be written
         refused.call(e.message)
         nil
+      end
+
+      # The bytes of the file at +path+, which a player picked; Refused when it cannot be read.
+      def read_picked(path)
+        File.binread(path)
+      rescue SystemCallError => e
+        raise Refused, Original::ShellFacts.unreadable_message(path, e.message)
       end
 
       # Written to a file beside it and then moved into place, so a pack is never left half written.

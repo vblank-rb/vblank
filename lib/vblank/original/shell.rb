@@ -88,7 +88,8 @@ module VBlank
           releases_title: releases.title.to_s,
           releases: releases.list.map do |release|
             ShellFacts::Release.new(name: release.name, sha1: release.sha1, size: release.size, read: release.read,
-                                    unpacking: numbers[release.name])
+                                    unpacking: numbers[release.name],
+                                    files: release.files&.map { |file| ShellFacts.plain_record(file) })
           end,
           release_words: releases.words,
           pack_before_sha1: header.byteslice(0, Pack::SHA1_AT).b, pack_after_sha1: header.byteslice(Pack::BUILD_VERSION_AT..).b,

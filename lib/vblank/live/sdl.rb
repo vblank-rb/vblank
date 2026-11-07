@@ -327,7 +327,13 @@ module VBlank
       # The path of a file the player picks in the operating system's own window for opening one,
       # or nil when they pick none. SDL answers through a routine it calls as it reads the window's
       # events, so the window is read and drawn until it does, and stays as it was meanwhile.
-      def choose_file
+      def choose_file = choose_in_dialog { |caller| @sdl.SDL_ShowOpenFileDialog(caller, nil, @window, nil, 0, nil, false) }
+
+      # The same for a folder, in the operating system's window for picking one.
+      def choose_folder = choose_in_dialog { |caller| @sdl.SDL_ShowOpenFolderDialog(caller, nil, @window, nil, false) }
+
+      # The path the dialog the block opens answers with, handed the routine SDL calls with it.
+      def choose_in_dialog
         answer = nil
         answered = false
         caller = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT]) do |_, list, _|
@@ -335,7 +341,7 @@ module VBlank
           answer = Fiddle::Pointer.new(first).to_s unless first.zero?
           answered = true
         end
-        @sdl.SDL_ShowOpenFileDialog(caller, nil, @window, nil, 0, nil, false)
+        yield caller
         until answered || @closed
           read_event if @sdl.SDL_WaitEventTimeout(@event, 50) != 0
           redraw_window
@@ -478,6 +484,7 @@ module VBlank
           extern "int SDL_GetAudioStreamQueued(void*)"
           extern "void SDL_DestroyAudioStream(void*)"
           extern "void SDL_ShowOpenFileDialog(void*, void*, void*, void*, int, const char*, bool)"
+          extern "void SDL_ShowOpenFolderDialog(void*, void*, void*, const char*, bool)"
         end
       end
 
