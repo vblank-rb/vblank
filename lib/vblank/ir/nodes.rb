@@ -1297,7 +1297,7 @@ module VBlank
       # anything reading a running game gives the game's number back (Reference::ReadingBack).
       #
       # +sprite_readings+ is where each sprite the game can read by name keeps its place, an
-      # IR::SpriteReading each, with an IR::SharedPicture for a picture several unnamed sprites show,
+      # IR::SpriteReading each, with an IR::SharedName for a name several sprites share,
       # for the same readers; like the two above, no backend needs it to run. +background_readings+
       # is the same for each background, an IR::BackgroundReading each.
       #
@@ -1393,7 +1393,7 @@ module VBlank
         end
 
         # Where sprite +name+ keeps its state (an IR::SpriteReading), refusing in plain words a
-        # name no sprite has, and a picture several unnamed sprites show.
+        # name no sprite has, and a name several sprites share.
         def sprite_reading(name)
           readings = sprite_readings || []
           found = readings.find { |reading| reading.name == name }

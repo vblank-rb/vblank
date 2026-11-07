@@ -48,7 +48,7 @@ module VBlank
         program ? program.list_in_game_units(name.to_sym, items) : items
       end
 
-      # A sprite by the name the game reads it by (its `called:`, or its picture's): its +x+, +y+,
+      # A sprite by the name the game gave it (`sprite :walker2, image: :walker`): its +x+, +y+,
       # whether it is #shown?, and the +pose+ it is showing (IR::SpriteState).
       def sprite(name)
         raise ArgumentError, "This game was made from its Ruby alone, so nothing names its sprites." unless program

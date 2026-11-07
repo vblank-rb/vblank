@@ -24,7 +24,7 @@ module VBlank
           def var(name) = var_in_game_units(name, raw_var(name))
           def [](name) = var(name)
 
-          # A sprite by the name the game reads it by (its `called:`, or its picture's): an
+          # A sprite by the name the game gave it (`sprite :walker2, image: :walker`): an
           # IR::SpriteState with its +x+, +y+, whether it is #shown?, and the +pose+ it is showing.
           def sprite(name)
             refuse_no_program!("its sprites") unless read_program

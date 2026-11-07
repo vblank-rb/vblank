@@ -87,8 +87,12 @@ module VBlank
       # Pictures you declared yourself carry their own, so it goes only with +frames_from:+,
       # +facing_from:+ and +from_aseprite:+.
       #
-      # @param name [Symbol] a defined image (its size becomes the sprite's size), or
-      #   just the sprite's identity when the poses come from +facing:+/+frames:+/+frames_from:+
+      # @param name [Symbol] what this sprite is: the name a test, a bot or a probe reads it by
+      #   (`player.sprite(:walker2).x`), and the image it shows unless +image:+ names another
+      # @param image [Symbol, nil] the image it shows (its size becomes the sprite's size), where
+      #   that is not the image of its own name: several sprites showing one picture each have a
+      #   name of their own (`sprite :walker2, image: :walker`). Not with +facing:+, +frames:+ or
+      #   the other settings that give it its pictures.
       # @param at [Array(Integer, Integer)] the sprite's starting [x, y]
       # @param facing [Hash{Symbol=>Symbol}, nil] direction => image, for a sprite that turns
       # @param frames [Array<Symbol>, nil] same-size images to cycle as an animation
@@ -97,62 +101,42 @@ module VBlank
       # @param transparent [Boolean] honor the sheet's transparency (for +frames_from:+)
       # @param rate [Integer, nil] frames-per-step for +frames:+/+frames_from:+ (required with them)
       # @param shown [Boolean] draw it now (true, default), or start hidden until `show`
-      # @param called [Symbol, nil] the name a test, a bot or a probe reads this sprite by
-      #   (`player.sprite(:walker2).x`). Left out, the sprite is read by its picture's name, when no
-      #   other sprite shows that picture without a name of its own.
       # @return [Sprite, HardwareSprite] a handle: x / y / move / move_to (and, in bitmap mode, face / hide / show)
-      def sprite(name, called: nil, **settings)
-        refuse_sprite_name_taken!(called) if called
-        handle = sprite_handle(name, **settings)
-        declared_sprites << DeclaredSprite.new(called: called, picture: name, handle: handle)
+      def sprite(name, image: nil, **settings)
+        refuse_image_beside_poses!(name, settings) if image
+        handle = sprite_handle(image || name, **settings)
+        declared_sprites << DeclaredSprite.new(name: name, handle: handle)
         handle
       end
 
-      # One sprite as it was declared: the name it was called (nil for none), its picture's name,
-      # and its handle, for #finalize_sprite_readings.
-      DeclaredSprite = Data.define(:called, :picture, :handle)
+      # One sprite as it was declared: its name and its handle, for #finalize_sprite_readings.
+      DeclaredSprite = Data.define(:name, :handle)
+
+      # The settings that give a sprite its pictures, which `image:` would contradict.
+      POSE_SETTINGS = %i[facing frames frames_from facing_from from_aseprite].freeze
 
       # The sprites declared so far.
       def declared_sprites = @declared_sprites ||= []
 
-      # A `called:` another sprite was given already.
-      def refuse_sprite_name_taken!(called)
-        return unless declared_sprites.any? { |sprite| sprite.called == called }
+      # `image:` names a sprite's one picture, so it cannot stand beside a setting giving it others.
+      def refuse_image_beside_poses!(name, settings)
+        given = POSE_SETTINGS.find { |setting| settings[setting] } or return
 
-        raise ArgumentError, "Two sprites are called :#{called}. A test or a bot reads a sprite by this name, so " \
-                             "each sprite must have its own. To fix this, give one of them another name."
+        raise ArgumentError, "Sprite :#{name} has both image: and #{given}:. Both say which pictures it shows. " \
+                             "Use only one."
       end
 
-      # A `called:` that is the picture of a sprite with no name of its own, which is read by it.
-      def refuse_name_is_unnamed_picture!(picture)
-        raise ArgumentError, "A sprite is called :#{picture}, and another sprite shows the picture :#{picture} with no " \
-                             "name of its own, so both would be read by :#{picture}. To fix this, give the other " \
-                             "sprite a `called:` too, or call the first one something else."
-      end
-
-      # Where each sprite keeps its state, under the name it is read by (Program#sprite_readings):
-      # its `called:`, or else its picture's name when it is the only unnamed sprite showing it.
+      # Where each sprite keeps its state, under its name (Program#sprite_readings). A name several
+      # sprites share is kept as an IR::SharedName, which says, when it is asked for, how to name
+      # each; a game may share one, as a game made before names were read did, and reads none of them.
       def finalize_sprite_readings
         return if declared_sprites.empty?
 
-        called, unnamed = declared_sprites.partition(&:called)
-        readings = called.map { |sprite| sprite.handle.reading_named(sprite.called) }
-        unnamed.group_by(&:picture).each do |picture, sprites|
-          refuse_name_is_unnamed_picture!(picture) if called.any? { |sprite| sprite.called == picture }
-          readings << picture_reading(picture, sprites)
+        @program.sprite_readings = declared_sprites.group_by(&:name).map do |name, sprites|
+          sprites.one? ? sprites.first.handle.reading_named(name) : IR::SharedName.new(name: name, count: sprites.size)
         end
-        @program.sprite_readings = readings
       end
-
-      # How +picture+ is read, shown by +sprites+ with no name of their own: as the one sprite, or,
-      # for several, an IR::SharedPicture, which says when it is asked for how to name them.
-      def picture_reading(picture, sprites)
-        return sprites.first.handle.reading_named(picture) if sprites.one?
-
-        IR::SharedPicture.new(name: picture, count: sprites.size)
-      end
-      private :declared_sprites, :refuse_sprite_name_taken!, :refuse_name_is_unnamed_picture!,
-              :finalize_sprite_readings, :picture_reading
+      private :declared_sprites, :refuse_image_beside_poses!, :finalize_sprite_readings
 
       # The sprite itself, painted on a bitmap screen or the console's own on a tiled one (#sprite).
       private def sprite_handle(name, at:, facing: nil, frames: nil, frames_from: nil, facing_from: nil,

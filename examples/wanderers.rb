@@ -186,10 +186,10 @@ module Wanderers
     end
 
     # One walker for each seat, hidden until its player joins, and one colour number for each,
-    # holding NOT_PICKED until then. Each walker is called by its player's number, so a bot or a
-    # test reads the first player's as `game.sprite(:walker1)`.
+    # holding NOT_PICKED until then. Each walker is named by its player's number and shows the one
+    # walker image, so a bot or a test reads the first player's as `game.sprite(:walker1)`.
     walkers = (1..seats).map do |player|
-      sprite :walker, at: here.starts[player - 1], shown: false, called: :"walker#{player}"
+      sprite :"walker#{player}", image: :walker, at: here.starts[player - 1], shown: false
     end
     colors_picked = (1..seats).map { |player| var(:"hue#{player}", NOT_PICKED) }
 

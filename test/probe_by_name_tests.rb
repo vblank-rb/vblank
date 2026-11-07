@@ -15,7 +15,7 @@ module ProbeByNameTests
       var :drop, -100_000
       var :pace, 2.5
       image(:dot, "#" => :white) { "####\n####\n####\n####" }
-      sprite :dot, at: [30, 40], called: :spot
+      sprite :spot, image: :dot, at: [30, 40]
       trail = list :trail, capacity: 4
       guards = pool :guards, x: 0, capacity: 3
       step = var :step, 0

@@ -16,8 +16,8 @@
 #   vblank bot examples/chaser_bot.rb --host
 #   vblank run examples/wanderers.rb --join 127.0.0.1:7777
 #
-# Wanderers calls each player's walker by its number (`called: :walker1`), so the bot reads a walker's
-# place by that name.
+# Wanderers names each player's walker by its number (`sprite :walker1, image: :walker`), so the bot
+# reads a walker's place by that name.
 
 require_relative "../lib/vblank"
 

@@ -235,8 +235,8 @@ class TestSprite < Minitest::Test
 
   # ---- reading a sprite back by name ----
 
-  # Two walkers of one picture, told apart by `called:`, and a lone flag read by its picture's name.
-  # The second walker turns right, steps on 3 a pass and is hidden at its third; the first stands.
+  # Two walkers turning between two pictures, each named for itself, and a banner showing the flag
+  # image. The second walker turns right, steps on 3 a pass and is hidden at its third; the first stands.
   private def walkers_program(kind)
     builder = Builder.new
     builder.instance_eval do
@@ -244,9 +244,9 @@ class TestSprite < Minitest::Test
       image(:left, "#" => :red) { "####\n####\n####\n####" }
       image(:right, "#" => :green) { "####\n####\n####\n####" }
       image(:flag, "#" => :white) { "####\n####\n####\n####" }
-      sprite :walker, at: [10, 20], facing: { left: :left, right: :right }, called: :walker1
-      second = sprite :walker, at: [40, 50], facing: { left: :left, right: :right }, called: :walker2
-      sprite :flag, at: [90, 30]
+      sprite :walker1, at: [10, 20], facing: { left: :left, right: :right }
+      second = sprite :walker2, at: [40, 50], facing: { left: :left, right: :right }
+      sprite :banner, image: :flag, at: [90, 30]
       steps = var :steps, 0
       game_loop do
         if steps < 3
@@ -261,15 +261,16 @@ class TestSprite < Minitest::Test
     builder.program
   end
 
-  def test_a_sprite_is_read_by_the_name_it_was_called_and_a_lone_one_by_its_picture
+  def test_a_sprite_is_read_by_its_name_whatever_image_it_shows
     %i[bitmap tiled].each do |kind|
       played = game_player.run(walkers_program(kind), frames: 10)
 
       first = played.sprite(:walker1)
       second = played.sprite(:walker2)
+      banner = played.sprite(:banner)
       assert_equal [10, 20, true, :left], [first.x, first.y, first.shown?, first.pose], "on #{kind}"
       assert_equal [49, 50, false, :right], [second.x, second.y, second.shown?, second.pose], "on #{kind}"
-      assert_equal [90, 30], [played.sprite(:flag).x, played.sprite(:flag).y], "on #{kind}"
+      assert_equal [90, 30, :flag], [banner.x, banner.y, banner.pose], "on #{kind}"
     end
   end
 
@@ -281,7 +282,7 @@ class TestSprite < Minitest::Test
     assert_match ":walker2", error.message
   end
 
-  def test_a_picture_several_unnamed_sprites_show_says_to_name_them
+  def test_a_name_several_sprites_share_says_to_name_each
     builder = Builder.new
     builder.instance_eval do
       screen :tiled
@@ -292,35 +293,20 @@ class TestSprite < Minitest::Test
     builder.finalize_program
     error = assert_raises(ArgumentError) { game_player.run(builder.program, frames: 2).sprite(:dot) }
 
-    assert_match "2 sprites show :dot", error.message
-    assert_match "called:", error.message
+    assert_match "2 sprites are called :dot", error.message
+    assert_match "image: :dot", error.message
   end
 
-  def test_two_sprites_called_one_name_is_refused
+  def test_an_image_beside_facing_is_refused
     error = assert_raises(ArgumentError) do
       Builder.new.instance_eval do
         screen :tiled
         image(:dot, "#" => :white) { "####\n####\n####\n####" }
-        sprite :dot, at: [0, 0], called: :spot
-        sprite :dot, at: [8, 0], called: :spot
+        sprite :spot, image: :dot, facing: { left: :dot, right: :dot }, at: [0, 0]
       end
     end
 
-    assert_match "Two sprites are called :spot", error.message
-  end
-
-  def test_a_name_that_is_an_unnamed_sprites_picture_is_refused
-    builder = Builder.new
-    builder.instance_eval do
-      screen :tiled
-      image(:dot, "#" => :white) { "####\n####\n####\n####" }
-      image(:ring, "#" => :red) { "####\n####\n####\n####" }
-      sprite :ring, at: [0, 0], called: :dot
-      sprite :dot, at: [8, 0]
-    end
-    error = assert_raises(ArgumentError) { builder.finalize_program }
-
-    assert_match "another sprite shows the picture :dot", error.message
+    assert_match "both image: and facing:", error.message
   end
 
   # ---- misuse ----

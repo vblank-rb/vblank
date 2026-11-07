@@ -37,12 +37,12 @@ module VBlank
       end
     end
 
-    # A picture shown by several sprites the game gave no name of their own: none of them can be
-    # read by it, and asking says how to name each.
-    SharedPicture = Data.define(:name, :count) do
+    # A name several sprites were given: none of them can be read by it, and asking says how to
+    # give each a name of its own.
+    SharedName = Data.define(:name, :count) do
       def message
-        "#{count} sprites show :#{name}, so it names none of them. To read one, give each sprite a name of its " \
-          "own: `sprite :#{name}, at: [x, y], called: :#{name}1`."
+        "#{count} sprites are called :#{name}, so a test cannot tell which one you mean. To read one, give each " \
+          "sprite a name of its own and say which image it shows: `sprite :#{name}1, image: :#{name}, at: [x, y]`."
       end
     end
 
