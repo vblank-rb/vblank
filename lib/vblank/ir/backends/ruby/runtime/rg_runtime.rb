@@ -199,7 +199,7 @@ RG_TILE_FORMAT_NUMBERS = 15
 RG_COLOR_FORMAT_NUMBERS = 5
 
 # The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles wide,
-# from +places_at+ on, each tile kept as the numbers of +rules+ from +tile+ on say (rg_runtime.c's
+# from +places_at+ on, each tile kept in the layout set by the numbers of +rules+ from +tile+ on (rg_runtime.c's
 # start_file_place).
 def rg_start_file_place(places_at, rules, tile, across, row, column)
   tile_bytes = rules[tile]
@@ -219,8 +219,8 @@ def rg_start_file_channel(kept, at, bits)
   bits >= 5 ? level : (level << (5 - bits)) | (level >> ((2 * bits) - 5))
 end
 
-# Colour +place+ of the colours from +colors_at+ on, kept as the numbers of +rules+ from +format+ on
-# say (rg_runtime.c's start_file_color).
+# Colour +place+ of the colours from +colors_at+ on, kept in the layout set by the numbers of +rules+ from +format+ on
+# (rg_runtime.c's start_file_color).
 def rg_start_file_color(colors_at, rules, format, place)
   kept = @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1(rules[format] == 1 ? "n" : "v")
   bits = rules[format + 4]

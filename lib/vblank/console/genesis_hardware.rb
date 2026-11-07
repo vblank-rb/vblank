@@ -49,12 +49,11 @@ module VBlank
       # numbers high byte first, as the 68000 keeps every number.
       ORIGINAL_FORMATS = Ractor.make_shareable(
         OriginalFormats.new(
-          tiles: [TileFormat.new(title: "16 colours, two pixels a byte, the left one in the high half",
-                                 plane_bits: [0, 1, 2, 3], row_bits: 32,
+          tiles: [TileFormat.new(plane_bits: [0, 1, 2, 3], row_bits: 32,
                                  column_bits: (0...8).map { |x| ((x / 2) * 8) + (x.even? ? 4 : 0) })],
-          colors: ColorFormat.new(title: "9 bits, 0000 BBB0 GGG0 RRR0, high byte first", high_byte_first: true,
+          colors: ColorFormat.new(high_byte_first: true,
                                   red_at: 1, green_at: 5, blue_at: 9, channel_bits: 3),
-          numbers: NumberFormat.new(title: "high byte first", high_byte_first: true)
+          numbers: NumberFormat.new(high_byte_first: true)
         )
       )
 

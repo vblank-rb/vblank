@@ -33,21 +33,23 @@ module VBlank
       TILE_PIXELS = IR::FormatReading::TILE_PIXELS
       # How many bytes a colour is kept in, in every layout.
       COLOR_BYTES = 2
+      # The layout a slot is read in when it names none.
+      DEFAULT_LAYOUT = Original::DEFAULT_PLATFORM
 
       # +count+ colours, in the colour layout of +layout+ (a console's name).
-      def self.colors(name, count:, at: nil, layout: :gba)
+      def self.colors(name, count:, at: nil, layout: DEFAULT_LAYOUT)
         new(name: name.to_sym, shape: :colors, at: at, count: count, width: nil, signed: nil,
             format: formats_of(name, layout).colors)
       end
 
       # +count+ tiles of 8x8 pixels in +colors+ colours, in the tile layout of +layout+. +colors+ may
       # be left out where the console keeps one kind of tile.
-      def self.tiles(name, count:, at: nil, layout: :gba, colors: nil)
+      def self.tiles(name, count:, at: nil, layout: DEFAULT_LAYOUT, colors: nil)
         new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil,
             format: tile_format_of(name, layout, colors))
       end
 
-      def self.numbers(name, count:, width:, signed:, at: nil, layout: :gba)
+      def self.numbers(name, count:, width:, signed:, at: nil, layout: DEFAULT_LAYOUT)
         unless IR::Build::ELEMENT_BYTES.key?(width)
           raise ArgumentError, "Slot :#{name} was given width: #{width.inspect}. A slot of numbers must be :byte, :half " \
                                "or :word wide."
@@ -75,15 +77,16 @@ module VBlank
       end
 
       def self.tile_format_of(name, layout, colors)
-        kinds = formats_of(name, layout).tiles
+        formats = formats_of(name, layout)
+        kinds = formats.tiles
         return kinds.first if colors.nil? && kinds.one?
 
-        found = kinds.find { |format| format.colors == colors }
+        found = formats.tiles_of(colors)
         return found if found
 
-        said = kinds.map { |format| "colors: #{format.colors}" }.join(" or ")
+        options = kinds.map { |format| "colors: #{format.colors}" }.join(" or ")
         raise ArgumentError, "Slot :#{name} holds tiles in the #{Console.for(layout).title}'s layout, which keeps tiles " \
-                             "of #{kinds.map(&:colors).join(' or ')} colors. Give the slot #{said}."
+                             "of #{kinds.map(&:colors).join(' or ')} colors. Give the slot #{options}."
       end
       private_class_method :formats_of, :tile_format_of
 

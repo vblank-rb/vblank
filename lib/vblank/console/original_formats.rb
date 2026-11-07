@@ -21,7 +21,7 @@ module VBlank
     #   a tile kept in bit planes (the Color's: a row's plane 0 in one byte, then plane 1), the
     #   leftmost pixel in a byte's top bit:
     #     plane_bits [0, 8], row_bits 16, column_bits [7, 6, ... 0]
-    TileFormat = Data.define(:title, :plane_bits, :row_bits, :column_bits) do
+    TileFormat = Data.define(:plane_bits, :row_bits, :column_bits) do
       def colors = 1 << plane_bits.length
       def tile_bytes = plane_bits.length * 8
     end
@@ -29,10 +29,10 @@ module VBlank
     # A COLOUR in two bytes: whether the high byte is first, and the lowest bit of each channel
     # in the two bytes read as one number, each +channel_bits+ wide (3 to 5). A channel narrower than
     # five bits is widened to five as the console shows it (its bits repeated, so the brightest is 31).
-    ColorFormat = Data.define(:title, :high_byte_first, :red_at, :green_at, :blue_at, :channel_bits)
+    ColorFormat = Data.define(:high_byte_first, :red_at, :green_at, :blue_at, :channel_bits)
 
     # A NUMBER of one, two or four bytes: whether the high byte is first.
-    NumberFormat = Data.define(:title, :high_byte_first)
+    NumberFormat = Data.define(:high_byte_first)
 
     # Everything one console keeps in its own layout: the kinds of tile it keeps (a list of
     # TileFormat, one for each number of colours), its colours and its numbers.
@@ -43,15 +43,14 @@ module VBlank
 
     # The two layouts of a tile most consoles share.
     # Two pixels a byte, the left in the low half.
-    LOW_HALF_FIRST_TILES = TileFormat.new(title: "16 colours, two pixels a byte, the left one in the low half",
-                                          plane_bits: [0, 1, 2, 3], row_bits: 32, column_bits: (0...8).map { |x| x * 4 })
+    LOW_HALF_FIRST_TILES = TileFormat.new(plane_bits: [0, 1, 2, 3], row_bits: 32, column_bits: (0...8).map { |x| x * 4 })
     # Two bit planes, a row's plane 0 then plane 1, the left pixel in a byte's top bit.
-    TWO_PLANE_TILES = TileFormat.new(title: "4 colours, two bit planes a row", plane_bits: [0, 8], row_bits: 16,
+    TWO_PLANE_TILES = TileFormat.new(plane_bits: [0, 8], row_bits: 16,
                                      column_bits: (0...8).map { |x| 7 - x })
     # Fifteen bits, five a channel, red lowest, low byte first.
-    FIFTEEN_BIT_COLORS = ColorFormat.new(title: "15 bits, red lowest, low byte first", high_byte_first: false,
+    FIFTEEN_BIT_COLORS = ColorFormat.new(high_byte_first: false,
                                          red_at: 0, green_at: 5, blue_at: 10, channel_bits: 5)
-    LOW_BYTE_FIRST_NUMBERS = NumberFormat.new(title: "low byte first", high_byte_first: false)
+    LOW_BYTE_FIRST_NUMBERS = NumberFormat.new(high_byte_first: false)
     [LOW_HALF_FIRST_TILES, TWO_PLANE_TILES, FIFTEEN_BIT_COLORS, LOW_BYTE_FIRST_NUMBERS].each { |format| Ractor.make_shareable(format) }
   end
 end

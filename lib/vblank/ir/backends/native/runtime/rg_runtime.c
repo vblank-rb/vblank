@@ -416,7 +416,7 @@ void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t 
 }
 
 /* The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles
- * wide, from +places_at+ on, each tile kept as +tile+ says (rg_runtime.h, RG_TILE_FORMAT_NUMBERS):
+ * wide, from +places_at+ on, each tile kept in the layout set at +tile+ (rg_runtime.h, RG_TILE_FORMAT_NUMBERS):
  * bit +plane+ of the pixel is the bit plane_bits[plane] + row * row_bits + column_bits[column] of
  * the tile (IR::FormatReading.place). */
 static int32_t start_file_place(int32_t places_at, const int32_t *tile, int32_t across, int32_t row, int32_t column) {
@@ -437,7 +437,7 @@ static int32_t start_file_channel(uint32_t kept, int32_t at, int32_t bits) {
   return bits >= 5 ? level : (level << (5 - bits)) | (level >> ((2 * bits) - 5));
 }
 
-/* Colour +place+ of the colours from +colors_at+ on, kept as +format+ says (rg_runtime.h,
+/* Colour +place+ of the colours from +colors_at+ on, kept in the layout set at +format+ (rg_runtime.h,
  * RG_COLOR_FORMAT_NUMBERS), as fifteen bits (IR::FormatReading.colors). */
 static uint16_t start_file_color(int32_t colors_at, const int32_t *format, int32_t place) {
   uint32_t kept = start_file_number(colors_at + (place * 2), 2, format[0]);

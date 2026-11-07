@@ -31,8 +31,7 @@ module VBlank
       ORIGINAL_FORMATS = Ractor.make_shareable(
         OriginalFormats.new(
           tiles: [TWO_PLANE_TILES,
-                  TileFormat.new(title: "16 colours, planes 0 and 1 for the eight rows, then planes 2 and 3",
-                                 plane_bits: [0, 8, 128, 136], row_bits: 16, column_bits: (0...8).map { |x| 7 - x })],
+                  TileFormat.new(plane_bits: [0, 8, 128, 136], row_bits: 16, column_bits: (0...8).map { |x| 7 - x })],
           colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS
         )
       )

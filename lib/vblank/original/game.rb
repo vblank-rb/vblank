@@ -44,6 +44,9 @@ module VBlank
     # name (Console::KITS), whose layouts its data is kept in (Slot).
     COMPUTER = :pc
 
+    # The platform an original is for when its game names none.
+    DEFAULT_PLATFORM = :gba
+
     # The platform +platform+ names, as a Symbol: a console's name, or COMPUTER. Any other is refused.
     def self.platform_named(platform)
       named = platform.to_s.to_sym
@@ -58,7 +61,7 @@ module VBlank
     # folder accepted by a probe, which has no one hash), and the platform of the original it is a
     # copy of (Game#platform).
     Copy = Data.define(:path, :release, :sha1, :platform) do
-      def initialize(path:, release:, sha1:, platform: :gba) = super(path:, release:, sha1:, platform: Original.platform_named(platform))
+      def initialize(path:, release:, sha1:, platform: DEFAULT_PLATFORM) = super(path:, release:, sha1:, platform: Original.platform_named(platform))
     end
 
     # HOW ANOTHER PATH ON THIS MACHINE IS FOUND, the way the copy is: its environment variable, its
@@ -127,7 +130,7 @@ module VBlank
       attr_reader :platform
 
       def initialize(title:, setting:, settings_file:, key: "rom", releases: nil, probe: nil, not_set_help: nil, paths: {},
-                     env: ENV, platform: :gba)
+                     env: ENV, platform: DEFAULT_PLATFORM)
         raise ArgumentError, "#{title}: name releases: or probe:, one of the two" unless releases.nil? ^ probe.nil?
 
         @platform = Original.platform_named(platform)

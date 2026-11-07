@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# Must load original_formats first: a Rakefile loads this file without console.rb, and
+# ORIGINAL_FORMATS below is built from it.
 require_relative "original_formats"
 
 module VBlank
