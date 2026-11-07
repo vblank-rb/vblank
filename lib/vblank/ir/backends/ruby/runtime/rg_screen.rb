@@ -134,6 +134,12 @@ def rg_screen_setup
   @rg_scenery_kept = false
   @rg_screen_held = 0 # switched off until the first frame (Framebuffer#held=)
   @rg_frames_begun = false # a frame boundary has been reached (Reference @uses_frames)
+  # Made the first time each is needed; named here so the game's shape never changes in play.
+  @rg_painted_places = nil
+  @rg_painted_images = nil
+  @rg_shading_places = nil
+  @rg_kept_colors = nil
+  @rg_scenery_taken_down = false # the last scene to take over took scenery down
   @rg_placing_at_pass_end = false # the end of a pass is placing the frame's writes (Reference @placing_at_pass_end)
   @rg_kind = -1 # the kind of screen up; none before the first `screen`
   @rg_rebuild_pending = false # a rebuild of the whole view is owed (Reference#request_repaint)
