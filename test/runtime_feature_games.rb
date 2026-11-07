@@ -28,6 +28,13 @@ module RuntimeFeatureGames
   # rg_screen.c alone for these two.)
   FACES_NAMES = /rg_screen_face|face_edge|FaceEdge|face_crossing|face_reciprocals|FACE_RECIPROCALS|face_distance|face_place_in_perspective|face_row|FACE_MOST_CORNERS|shading_place|SHADING_PLACES|shaded_(place|color)/
 
+  # What a shared sound file must not name once the music feature holds it.
+  MUSIC_NAMES = /rg_music_|rg_effect_|rg_game_music|rg_game_effects|rg_game_note_sounds|step_wobbles|step_swells|step_shapes|play_song_frame|part_walk/
+
+  # What a shared sound file must not name once the mix feature holds it. (rg_game_mix_seed is the
+  # game's random seed for a match, not the mixer's.)
+  MIX_NAMES = /rg_mix_|rg_game_mix(?!_seed)|rg_game_recording|mix_voice/
+
   # A tiled screen with one background of one tile, put up as declared and never touched.
   private def game_with_a_background
     builder = VBlank::Builder.new
@@ -117,5 +124,58 @@ module RuntimeFeatureGames
     end
     builder.finalize_program
     builder.program
+  end
+  # A tune and a beep, and no recording.
+  private def game_with_a_tune
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap
+      enable_sound
+      song :tune do
+        tempo 150
+        voice(:lead) { note :C4, :quarter }
+      end
+      play_song :tune
+      halt
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # A recording played by the game itself, and no tune.
+  private def game_with_a_recording
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap
+      enable_sound
+      clip = sample :clip, pcm: [50, -50] * 8, rate: 8000
+      clip.play
+      halt
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # A tune whose part plays a recorded instrument: both features.
+  private def game_with_a_tune_on_a_recording
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap
+      enable_sound
+      instrument :piano, pcm: [60, -60] * 4000, rate: 8000, note: :C4
+      song :tune do
+        tempo 150
+        voice(:lead, plays: :piano) { note :C4, :quarter }
+      end
+      play_song :tune
+      halt
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # Only the game's own beep: the voices and neither feature.
+  private def game_with_only_a_beep
+    program(enable_sound, halt)
   end
 end

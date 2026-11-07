@@ -137,7 +137,7 @@ the whole game taken and put back once, and rewind is the same every frame, so b
 two things.
 
 1. **State is in many places.** Besides the game's variables, lists and pools (generated `static`s in
-   `game.c`), `rg_screen.c`, `rg_sound.c`, `rg_mix.c`, `rg_runtime.c` (timers) and `rg_save.c` each keep
+   `game.c`), `rg_screen.c`, `rg_sound.c` (with the music and mix features joined into it), `rg_runtime.c` (timers) and `rg_save.c` each keep
    their own. Taking them needs one registry each file adds its state to (a pointer and a size), and a
    way to emit the game's own into it; that is also what a save state needs.
 2. **The game is in the middle of a call.** The window is entered from inside `rg_wait_vblank`, called

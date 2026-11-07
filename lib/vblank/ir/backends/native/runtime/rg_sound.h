@@ -1,11 +1,11 @@
 /*
- * THE GAME'S SOUND: the music player, the console's four voices it and the game's own sounds
- * play on, and the log of what was played.
+ * THE GAME'S SOUND: the console's four voices, the game's own sounds, and the log of what was
+ * played.
  *
- * The player follows the interpreter's own (Backends::Reference::Player) step for step, for a
- * song's parts and the sound effects played over it, and says what it did — a song started, a note
- * sounded on a voice, the music turned down, a beep — as the lines a test reads back (the
- * interpreter's `audio`), handed to the driver as they happen.
+ * A game that plays a tune or a sound effect also has the music player, and one that plays a
+ * recording has the mixer: each a runtime feature of its own (rg_music.h, rg_mix.h) joined into
+ * rg_sound.c, so a game without them is built without them. What they do is said as the lines of
+ * the log (the interpreter's `audio`), handed to the driver as they happen.
  *
  * The voices are the console's, made here because a desktop has no sound chip to ask. Two play
  * a square wave, high for part of its length and low for the rest. One loops a waveform of 32
@@ -30,16 +30,13 @@
 #define RG_WAVE_VOICE 3
 #define RG_NOISE_VOICE 4
 
-/* The rules the voices keep, every song the game has, and every sound it makes itself, as
- * numbers (the lowering writes them; see rg_sound.c for the layouts). */
+/* The rules the voices keep and every sound the game makes itself, as numbers (the lowering writes
+ * them; see rg_sound.c for the layouts). */
 extern const int32_t rg_game_sound_rules[];
 extern const int32_t rg_game_waveforms[];
-extern const int32_t rg_game_music[];
 extern const int32_t rg_game_beeps[];
 extern const int32_t rg_game_waves[];
 extern const int32_t rg_game_hits[];
-extern const int32_t rg_game_note_sounds[];
-extern const int32_t rg_game_effects[];
 
 /* `enable_sound`, and beep number +which+ of the game's beeps (numbered by the lowering and by
  * the test reading the log the same way, so the number is all that needs saying). */
@@ -54,32 +51,12 @@ void rg_sound_stop_wave(void);
 /* `noise`: hit number +which+ of the game's hits, on the noise voice. */
 void rg_sound_noise(int32_t which);
 
-/* Song number +song+ is the tune playing now, taken up at the next frame; naming the tune already
- * playing changes nothing. */
-void rg_music_request(int32_t song);
-/* ...or the song number +which+ of a list (`songs`) names, from the +count+ song numbers the list
- * holds. A number naming no song in the list leaves the music as it is. */
-void rg_music_request_one_of(const int32_t *songs, int32_t count, int32_t which);
-/* `this_frame: true`: the tune named starts here and its first frame is played, so the next frame
- * plays its second. After rg_music_request; the list's own does both, for a number naming a song,
- * and nothing otherwise. */
-void rg_music_start_here(void);
-void rg_music_start_here_one_of(const int32_t *songs, int32_t count, int32_t which);
-/* Start the sound effect number +which+ of a list (`sound_effects`) names, from the +count+ effect
- * numbers the list holds, at the next frame and from its first note. A number naming no effect in
- * the list plays nothing. */
-void rg_effect_request_one_of(const int32_t *effects, int32_t count, int32_t which);
-/* ...or asked for `this_frame: true`: started here, its first frame played, so the next frame
- * plays its second — and any effect of a group waiting to be cut off cut off here too. */
-void rg_effect_start_here_one_of(const int32_t *effects, int32_t count, int32_t which);
-/* No tune, and counted: a stop and a play in one frame still start the tune again. */
-void rg_music_stop(void);
-void rg_music_hold(int32_t held);
-/* The variable the game keeps its music volume in (0 to 16), for a game that names one at all. */
-void rg_music_follow_level(const int32_t *level);
+/* The sound features' share of one frame, at the start of each frame (rg_frame_begins): the
+ * mixer's slice, then the tune, then every sounding note's shape, for the features a game has. */
+void rg_sound_frame(void);
 
-/* One frame of the player, at the start of each frame (rg_frame_begins). */
-void rg_music_frame(void);
+/* What the sound features print of their own state for a windowless run (rg_headless.c). */
+void rg_sound_print_moment(void);
 
 /* The sound of the frame that has just been played, the left speaker's written to +left+ and the
  * right's to +right+ (room for RG_SOUND_FRAME_MOST each); gives back how many each. Asked once a

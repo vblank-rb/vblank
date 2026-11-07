@@ -113,6 +113,48 @@ class TestRuntimeFeaturesInRuby < Minitest::Test
     refute_includes Ruby.new.live_source(game_with_a_column), "rg_faces"
   end
 
+  def test_a_game_with_a_tune_takes_in_the_music_feature_alone
+    text = Ruby.new.live_source(game_with_a_tune)
+
+    assert_includes text, "def rg_music_sound_frame"
+    assert_includes text, "rg_music_setup"
+    assert_includes text, "  rg_music_sound_frame()\n"
+    refute_includes text, "rg_mix_sound_frame"
+    refute_includes text, "def rg_mix_voice_into"
+  end
+
+  def test_a_game_with_a_recording_takes_in_the_mix_feature_alone
+    text = Ruby.new.live_source(game_with_a_recording)
+
+    assert_includes text, "def rg_mix_sound_frame"
+    assert_includes text, "rg_mix_setup"
+    assert_includes text, "rg_mix_mixed_slice(samples)"
+    refute_includes text, "rg_music"
+  end
+
+  # The mixer is joined before the player, so the frame's slice is made before the tune plays.
+  def test_a_tune_on_a_recording_takes_in_both_with_the_mix_first
+    text = Ruby.new.live_source(game_with_a_tune_on_a_recording)
+
+    assert_operator text.index("def rg_mix_sound_frame"), :<, text.index("def rg_music_sound_frame")
+    assert_operator text.index("  rg_mix_sound_frame()\n"), :<, text.index("  rg_music_sound_frame()\n")
+  end
+
+  def test_a_game_with_only_a_beep_holds_neither_sound_feature
+    text = Ruby.new.live_source(game_with_only_a_beep)
+
+    refute_match(/rg_music_|rg_effect_|def rg_mix_voice_into/, text)
+  end
+
+  # The sound runtime's own files name no sound feature: they call their hooks, and a hook nobody
+  # takes does what the sound does alone.
+  def test_the_sound_files_name_no_feature
+    shared = %w[rg_sound.rb rg_runtime.rb rg_headless.rb rg_live.rb].map { |name| File.read(File.join(Ruby::RUNTIME_DIR, name)) }.join
+
+    refute_match(MUSIC_NAMES, shared)
+    refute_match(MIX_NAMES, shared)
+  end
+
   def test_the_screen_file_names_no_feature
     screen = File.read(File.join(Ruby::RUNTIME_DIR, "rg_screen.rb"))
 

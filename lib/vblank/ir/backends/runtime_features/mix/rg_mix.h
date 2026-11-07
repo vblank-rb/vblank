@@ -51,34 +51,4 @@ int32_t rg_mix_rescale_music(int32_t lane, int32_t loudness);
  * every voice of the game's for -1. */
 void rg_mix_stop(int32_t recording);
 
-/* Once a frame, in the interpreter's order: the frame's slice made (before the music player's
- * frame), and then every sounding note's shape moved on (after it). */
-void rg_mix_frame(void);
-void rg_mix_step_shapes(void);
-
-/* How many slices the mixer has made, and the newest of them: its samples, -128 to 127, at the
- * mix's own rate. No slice at all for a game that mixes nothing. */
-int32_t rg_mix_slices_made(void);
-int32_t rg_mix_newest_slice(const int32_t **samples);
-
-/* What a sounding voice is playing: the recording, its loudness out of 512, how far its shape has
- * climbed or fallen, and whose it is — +owner+ 0 for the game's own sound, 1 for the song's, 2 for
- * a sound effect's, with the effect's number (-1 for none) and the part's lane. */
-typedef struct {
-  int32_t recording;
-  int32_t loudness;
-  int32_t level;
-  int32_t owner;
-  int32_t effect;
-  int32_t lane;
-} rg_mix_voice_reading;
-
-/* What a test reads back: how many voices there are, and whether voice +voice+ is sounding, with
- * what it is playing; the most that sounded at once; and how many plays found every voice busy,
- * with the most voices the music held at one of those moments. */
-int32_t rg_mix_voice_count(void);
-int32_t rg_mix_voice_sounding(int32_t voice, rg_mix_voice_reading *reading);
-int32_t rg_mix_peak(void);
-int32_t rg_mix_drops(int32_t *music_held);
-
 #endif

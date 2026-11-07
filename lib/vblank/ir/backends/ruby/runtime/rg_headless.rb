@@ -9,7 +9,7 @@
 #
 # At every frame boundary it prints "frame N", every variable as "var name value", every list as
 # "list name" and its items (see rg_driver_dump_list), every sprite the game last drew as "sprite"
-# and four numbers, what the mixer made and is playing (see rg_headless_print_mix), and where the
+# and four numbers, what each sound feature prints of itself (rg_hook_moment_printed), and where the
 # window sits over the picture as "camera X Y", then "buttons?",
 # and only then reads that frame's line. So whoever is feeding it can answer from what the game
 # has done so far — a test that presses a button only once the game has reached somewhere — or
@@ -63,7 +63,6 @@ def rg_headless_main(argv)
   @rg_picture_out = nil
   @rg_save_path = nil # the file save memory is read from and written back to, if any
   @rg_sound_out = nil # where each frame's sound is written, if anywhere
-  @rg_slices_printed = 0
   i = 1
   while i < argv.length
     case argv[i]
@@ -160,25 +159,6 @@ def rg_headless_write_frame_sound
   @rg_sound_out&.flush # a speaker reads it as the game plays
 end
 
-# For a game that mixes recordings: the slice made since the last moment ("mix" and its samples),
-# each sounding voice's recording, loudness out of 512, how far its shape has climbed or fallen,
-# and whose it is — 0 the game's, 1 the song's, 2 a sound effect's, then the effect's number and
-# the part's lane ("mixing", six numbers a voice), the most voices that ever sounded at once
-# ("mix_peak"), and how many plays found every voice busy with the most the music held at one of
-# those moments ("mix_drops").
-def rg_headless_print_mix
-  return if rg_mixes == 0
-
-  if rg_mix_slices_made > @rg_slices_printed
-    $stdout.write("mix#{rg_mix_newest_slice.map { |sample| " #{sample}" }.join}\n")
-    @rg_slices_printed = rg_mix_slices_made
-  end
-  sounding = Array.new(rg_mix_voice_count) { |voice| rg_mix_voice_sounding(voice) }.compact
-  dropped, music_held = rg_mix_drops
-  $stdout.write("mixing#{sounding.flatten.map { |number| " #{number}" }.join}\n" \
-                "mix_peak #{rg_mix_peak}\nmix_drops #{dropped} #{music_held}\n")
-end
-
 def rg_headless_print_moment(heading, with_picture)
   $stdout.write("#{heading}\n")
   rg_game_dump_state
@@ -188,7 +168,7 @@ def rg_headless_print_moment(heading, with_picture)
     name, picture, x, y = rg_screen_drawn_sprite(place)
     $stdout.write("sprite #{name} #{picture} #{x} #{y}\n")
   end
-  rg_headless_print_mix
+  rg_hook_moment_printed
   $stdout.write("camera #{rg_screen_camera_x} #{rg_screen_camera_y}\n")
   $stdout.write("motor #{rg_motor_on}\n")
   shown = rg_screen_shown

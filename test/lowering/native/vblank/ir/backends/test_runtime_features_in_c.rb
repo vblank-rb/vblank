@@ -6,6 +6,7 @@ require "runtime_feature_games"
 # A runtime feature (IR::Backends::RuntimeFeatures) is in a game's C only when its steps need it:
 # game.c includes its header, and the file the C screen includes takes in its code and its hooks.
 class TestRuntimeFeaturesInC < Minitest::Test
+  runs_on_the_main_ractor! # the examples are read in, which declares games
   include VBlank::IR::Build
   include RuntimeFeatureGames
 
@@ -123,6 +124,77 @@ class TestRuntimeFeaturesInC < Minitest::Test
 
     refute_includes features_text(plain), "rg_faces"
     refute_includes features_text(game_with_a_column), "rg_faces"
+  end
+
+  private def sound_features_text(program) = Features.c_text(Native::Lowering.new(program).runtime_features, joins: :sound)
+
+  def test_a_game_with_a_tune_takes_in_the_music_feature_alone
+    tune = game_with_a_tune
+
+    assert_includes Native.new.lower(tune), %(#include "music/rg_music.h")
+    assert_includes sound_features_text(tune), %(#include "music/rg_music.c")
+    assert_includes sound_features_text(tune), "rg_music_sound_frame()"
+    refute_includes sound_features_text(tune), "rg_mix"
+    refute_includes Native.new.lower(tune), "rg_mix"
+    refute_includes features_text(tune), "music"
+  end
+
+  def test_a_game_with_a_recording_takes_in_the_mix_feature_alone
+    recorded = game_with_a_recording
+
+    assert_includes Native.new.lower(recorded), %(#include "mix/rg_mix.h")
+    assert_includes sound_features_text(recorded), %(#include "mix/rg_mix.c")
+    assert_includes sound_features_text(recorded), "rg_mix_mixed_slice(samples)"
+    refute_includes sound_features_text(recorded), "rg_music"
+    refute_includes Native.new.lower(recorded), "rg_music"
+  end
+
+  # The mixer is joined before the player, so the frame's slice is made before the tune plays.
+  def test_a_tune_on_a_recording_takes_in_both_with_the_mix_first
+    text = sound_features_text(game_with_a_tune_on_a_recording)
+
+    assert_operator text.index("mix/rg_mix.c"), :<, text.index("music/rg_music.c")
+    assert_operator text.index("rg_mix_sound_frame();"), :<, text.index("rg_music_sound_frame();")
+    assert_includes text, "#define RG_FEATURE_MIX"
+  end
+
+  def test_a_game_with_only_a_beep_holds_neither_sound_feature
+    beep = game_with_only_a_beep
+
+    refute_match(/music|mix/, sound_features_text(beep))
+    # (The game's own tables are written whatever it plays; its calls and headers are what shows a feature.)
+    refute_match(/rg_music|rg_effect_|rg_mix/, Native.new.lower(beep))
+  end
+
+  # Every example that mixes anything is built with the mix, and every one that plays a tune with the
+  # music: a game whose runtime lacked either would not link, or would play nothing.
+  def test_every_example_that_plays_a_tune_or_mixes_takes_in_what_it_needs
+    Dir[VBlank.root.join("examples/*.rb").to_s].sort.each do |path|
+      next unless File.read(path).match?(/VBlank\.game\b/)
+
+      before = VBlank.registered_games.size
+      require path
+      VBlank.registered_games.drop(before).each do |game|
+        next unless game.consoles.include?(:gba)
+
+        program = game.program(console: :gba)
+        taken = Native::Lowering.new(program).runtime_features.map(&:name)
+
+        assert_includes taken, :mix, "#{File.basename(path)} mixes recordings" if VBlank::IR::Mixing.mixes?(program)
+        assert_includes taken, :music, "#{File.basename(path)} plays a tune" if program.walk.any? { |node| node.kind == :play_song }
+      end
+    end
+  end
+
+  # The sound runtime's own files name no sound feature: they call their hooks, and a hook nobody
+  # takes does what the sound does alone.
+  def test_the_sound_files_name_no_feature
+    shared = %w[rg_sound.c rg_sound.h rg_sound_hook_defaults.h rg_runtime.c rg_runtime.h rg_headless.c].map do |name|
+      File.read(File.join(Native::Zig::RUNTIME_DIR, name))
+    end.join
+
+    refute_match(MUSIC_NAMES, shared)
+    refute_match(MIX_NAMES, shared)
   end
 
   # The screen's own files name no feature: they call their hooks, and a hook nobody takes does

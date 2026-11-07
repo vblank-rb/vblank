@@ -1,15 +1,17 @@
-# THE GAME'S SOUND: the music player, the four voices it and the game's own sounds play on, and the
-# log of what was played. The rules are native/runtime/rg_sound.c's, rule for rule, and that file
-# says every one of them and the layout of every table the lowering writes (@rg_game_music,
-# @rg_game_beeps, ...); this one reads them the same way. Where the C keeps a pointer into one of
-# those tables, this keeps the place in it.
+# THE GAME'S SOUND: the four voices the game's own sounds play on (and a song's notes, when the game
+# has the music feature), and the log of what was played. The rules are native/runtime/rg_sound.c's,
+# rule for rule, and that file says every one of them and the layout of every table the lowering
+# writes (@rg_game_beeps, ...); this one reads them the same way. Where the C keeps a pointer into
+# one of those tables, this keeps the place in it. The music player and the mixer are sound
+# features (runtime_features/music, runtime_features/mix): a game takes them
+# in only when its steps need them, and this file calls them through the sound hooks.
 #
 # THE VOICES ARE A SOUND CHIP'S, not one console's: two square waves, a voice that loops a
 # waveform of 32 steps, and a hiss from a row of bits. The Game Boy Advance and the Game Boy Color
 # carry the same chip, and nothing here knows which of them the game was built for. Every number
 # that belongs to a console comes in the game's own tables: how fast each voice's clock ticks
 # (@rg_game_sound_rules), how long a frame is (RG_CONSOLE_TICKS_A_FRAME), and whether there is a
-# mixer for recordings at all (@rg_game_mix, rg_mix.rb).
+# mixer for recordings at all (the mix feature).
 #
 # The voices are worked out a sample at a time when a driver asks for a frame's sound
 # (rg_sound_render_frame): the windowless one writes it to a file for a test. Nothing else needs
@@ -21,61 +23,22 @@ RG_SQUARE_VOICES = 2
 RG_WAVE_VOICE = 3
 RG_NOISE_VOICE = 4
 
-RG_PARTS_MOST = 20
-RG_NUMBERS_PER_NOTE = 6
 RG_FADE_STEP_BITS = 7 # A note's fade (Audio::NoteFade#bits): the 64ths of a second a step lasts
 RG_FADE_UP = 8        # A note's fade: set when it swells
-RG_HAS_FADE = 16      # A note's flags: set when the note or its part set a fade
-RG_HAS_SLIDE = 32     # A note's flags: set when the note or its part set a slide
-RG_SLIDE_AT = 6       # A slide's seven bits (Audio::PitchSlide#bits), above the flags
-RG_SLIDE_BITS = 0x7F
 RG_SLIDE_DOWN = 8     # A slide's bits: set when it slides down
 RG_SLIDE_SHIFT_BITS = 7 # A slide's bits: the shift
 RG_SLIDE_EVERY_AT = 4 # A slide's bits: the 128ths of a second a step waits, above them
 RG_SLIDE_EVERY_BITS = 7 # A slide's bits: the wait takes three bits
 RG_PITCH_COUNT_TOP = 2048 # The square voices keep a pitch as this less its ticks a wave
-RG_HAS_VIBRATO = 1 << 13 # In a note, set when it or its part set a wobble
-RG_VIBRATO_AT = 14 # A vibrato's sixteen bits (Audio::Vibrato#bits), above the flag
-RG_VIBRATO_BITS = 0xFFFF
-RG_VIBRATO_FOUR_BITS = 0xF # A vibrato's bits: the depth, four bits
-RG_VIBRATO_SPEED_AT = 4 # A vibrato's bits: the speed, above the depth
-RG_VIBRATO_AFTER_AT = 8 # A vibrato's bits: the wait, above the speed
-RG_PAN_AT = 30 # At the top of a note, its speaker (Audio::Pan.bits_of)
-RG_PAN_BITS = 3
 RG_PAN_LEFT = 1 # The left speaker alone
 RG_PAN_RIGHT = 2 # The right speaker alone; nought is both
-RG_HAS_DUTY = 1 << 8 # A note's sixth number: set when it or its part set its shapes
-RG_DUTY_BITS = 0xFF # A note's eight shape bits (Audio::Duty#bits), under the flag
-RG_CARRIES_VIBRATO = 1 << 9 # Above the shapes: set when the vibrato carries its swing on
-RG_GLIDES = 1 << 10 # Set on a recorded note that carries on the one sounding
-RG_VIBRATO_CARRIES_LOGGED = 1 << 16 # The same flag as the log writes it, above the vibrato's bits
 RG_SLIDE_TICK_SAMPLES = RG_SOUND_RATE / 128 # The slide clock ticks 128 times a second
-RG_NUMBERS_PER_NOTE_SOUND = 8
 RG_NUMBERS_PER_BEEP = 4
 RG_NUMBERS_PER_WAVE = 3
 RG_NUMBERS_PER_HIT = 4
 RG_BEEP_VOICE = 2
 RG_WAVE_STEPS = 32
 RG_VOLUMES = 16
-
-RG_PART_SQUARE = 0
-RG_PART_WAVE = 1
-RG_PART_NOISE = 2
-RG_PART_RECORDED = 3
-
-RG_WAVE_QUARTERS = 6 # Where the wave voice's loudness for each volume starts in @rg_game_sound_rules
-RG_SONG_STARTS = 1
-RG_NUMBERS_PER_SONG = 5
-RG_NUMBERS_PER_PART = 6
-RG_EFFECT_ROWS = 2
-RG_NUMBERS_PER_EFFECT = 6
-RG_EFFECT_SONG = 0
-RG_EFFECT_NOTES = 1
-RG_EFFECT_RANK = 2
-RG_EFFECT_GROUP = 3
-RG_EFFECT_PRIORITY = 4
-RG_EFFECT_KEEPS_VOICES = 5
-RG_EFFECTS_MOST = 512
 
 # How much one step of loudness moves the speaker, and one step of the mixer's byte: two voices at
 # their loudest swing through half of what a sample holds, and so does the mixer at its loudest.
@@ -198,16 +161,6 @@ class RgHiss
   end
 end
 
-# One part of a song as the player walks it: where its notes start in @rg_game_music, how many,
-# the next to play, its kind and the voice it plays on, which of its song's parts it is, and the
-# two numbers for what its voice sounds like.
-RgPartWalk = Struct.new(:notes, :count, :next_note, :kind, :voice, :number, :tone, :fade)
-
-# A note the player holds while the game keeps a music volume, so a change of volume sounds it
-# again: the voice (0 for a recorded part, then its lane), its written volume, and what a square
-# note needs to start again, how it fades included.
-RgHeldNote = Struct.new(:voice, :lane, :volume, :wave_ticks, :eighths_high, :fade)
-
 def rg_sound_setup
   @rg_squares = Array.new(RG_SQUARE_VOICES) { RgSquare.new }
   @rg_wave = RgWave.new
@@ -216,47 +169,13 @@ def rg_sound_setup
   @rg_sides = [0] * (RG_NOISE_VOICE + 1) # each voice's speaker: RG_PAN_LEFT, RG_PAN_RIGHT, or 0 for both
   @rg_sample_carry = 0 # the part of a sample left over from the last frame, in console cycles
   @rg_slide_clock = 0  # samples since the slide clock last ticked (rg_sound.c's slide_clock)
-  @rg_wobbles = Array.new(RG_WAVE_VOICE + 1) { RgWobble.new(0, 0, 0, false, 0, 0) } # by voice (rg_sound.c's wobbles)
-  @rg_shapes = Array.new(RG_SQUARE_VOICES + 1) { RgShapeWalk.new(0, 0, false) } # by voice (rg_sound.c's shapes)
-  @rg_swells = Array.new(RG_NOISE_VOICE + 1) { RgSwellWalk.new(false) } # by voice (rg_sound.c's swells)
-  @rg_loaded_waveform = -1
-  # the player
-  @rg_wanted = -1
-  @rg_playing = -1
-  @rg_ended = -1
-  @rg_stops = 0
-  @rg_stops_seen = 0
-  @rg_music_held = false # the game called hold_music: the tune stays where it is
-  @rg_song = 0 # where the playing song's numbers start in @rg_game_music
-  @rg_song_frame = 0
-  @rg_part_count = 0
-  @rg_parts = Array.new(RG_PARTS_MOST)
-  @rg_level_variable = nil # reads the game's music volume, for a game that keeps one
-  @rg_level = -1
-  @rg_holding = []
-  # who holds each console voice, by rank, and the voices in the order they were first claimed
-  @rg_holders = [0, 0, 0, 0, 0]
-  @rg_holder_order = []
-  # the sound effects
-  @rg_effect_asked = Array.new(RG_EFFECTS_MOST, false)
-  @rg_effect_asked_now = Array.new(RG_EFFECTS_MOST, false)
-  @rg_effect_stopping = Array.new(RG_EFFECTS_MOST, false)
-  @rg_effect_running = Array.new(RG_EFFECTS_MOST, false)
-  @rg_effect_frame = Array.new(RG_EFFECTS_MOST, 0)
-  @rg_effect_cursors = Array.new(RG_EFFECTS_MOST)
+  @rg_loaded_waveform = -1 # the waveform a song's part put in the wave voice, or -1 when none did
 end
 
 def rg_square_clock_hz = @rg_game_sound_rules[0]
 def rg_wave_clock_hz = @rg_game_sound_rules[1]
 def rg_noise_clock_hz = @rg_game_sound_rules[2]
 def rg_output_hz = @rg_game_sound_rules[3]
-def rg_full_level = @rg_game_sound_rules[4]
-def rg_level_shift = @rg_game_sound_rules[5]
-def rg_order_mask = @rg_game_sound_rules[RG_WAVE_QUARTERS + RG_VOLUMES]
-def rg_counted_a_frame = @rg_game_sound_rules[RG_WAVE_QUARTERS + RG_VOLUMES + 1]
-def rg_song_count = @rg_game_music[0]
-def rg_effect_count = @rg_game_effects[0]
-def rg_effects_play_wave = @rg_game_effects[1]
 
 # C's division, which drops the fraction toward nought: Ruby's rounds down, which differs for a
 # sample below nought.
@@ -412,9 +331,10 @@ def rg_sound_render_frame
   count = @rg_sample_carry / RG_CONSOLE_TICKS_A_SECOND
   @rg_sample_carry %= RG_CONSOLE_TICKS_A_SECOND
 
-  # The mixer's newest slice is stretched over the frame, and heard only with every voice.
-  mixed = @rg_heard_only == 0 ? rg_mix_newest_slice : nil
-  mixed_count = mixed ? mixed.length : 0
+  # The mixer's newest slice (the mix feature's; 0 when the game has none) is stretched over the
+  # frame, and heard only with every voice. Asked once a frame, never once a sample.
+  mixed = @rg_heard_only == 0 ? rg_hook_mixed_slice(nil) : 0
+  mixed_count = mixed == 0 ? 0 : mixed.length
   squares = @rg_squares
   sounding = []
   squares.each_with_index do |square, at|
@@ -479,8 +399,7 @@ def rg_sound_beep(which)
   rg_fault("there is no beep number #{which}") if which < 0 || which >= @rg_game_beeps[0]
   beep = 1 + (which * RG_NUMBERS_PER_BEEP)
   rg_sound_log("beep #{which}")
-  rg_wobble_stop(RG_BEEP_VOICE)
-  rg_shape_stop(RG_BEEP_VOICE)
+  rg_hook_voice_taken_by_game(RG_BEEP_VOICE)
   @rg_sides[RG_BEEP_VOICE] = 0
   rg_square_start(RG_BEEP_VOICE, @rg_game_beeps[beep], @rg_game_beeps[beep + 1], @rg_game_beeps[beep + 2],
                   @rg_game_beeps[beep + 3], 0)
@@ -490,7 +409,7 @@ def rg_sound_wave(which)
   rg_fault("there is no wave number #{which}") if which < 0 || which >= @rg_game_waves[0]
   said = 1 + (which * RG_NUMBERS_PER_WAVE)
   rg_sound_log("wave #{which}")
-  rg_wobble_stop(RG_WAVE_VOICE)
+  rg_hook_voice_taken_by_game(RG_WAVE_VOICE)
   @rg_sides[RG_WAVE_VOICE] = 0
   rg_wave_load(@rg_game_waves[said])
   rg_wave_start(@rg_game_waves[said + 1], @rg_game_waves[said + 2])
@@ -499,7 +418,7 @@ end
 
 def rg_sound_stop_wave
   rg_sound_log("stop_wave")
-  rg_wobble_stop(RG_WAVE_VOICE)
+  rg_hook_voice_taken_by_game(RG_WAVE_VOICE)
   rg_wave_switch_off
   @rg_loaded_waveform = -1
 end
@@ -510,664 +429,4 @@ def rg_sound_noise(which)
   rg_sound_log("noise #{which}")
   @rg_sides[RG_NOISE_VOICE] = 0
   rg_noise_start(@rg_game_hits[hit], @rg_game_hits[hit + 1], @rg_game_hits[hit + 2], @rg_game_hits[hit + 3])
-end
-
-# --- the player ---
-
-def rg_music_request(number)
-  rg_fault("there is no song number #{number}") if number < 0 || number >= rg_song_count
-  @rg_wanted = number
-end
-
-def rg_music_request_one_of(songs, count, which)
-  rg_music_request(songs[which]) if which >= 0 && which < count
-end
-
-def rg_music_stop
-  @rg_wanted = -1
-  @rg_stops += 1
-end
-
-# The tune stays where it is, or carries on (Reference::Player#hold).
-def rg_music_hold(held)
-  @rg_music_held = held != 0
-end
-
-# Is the note on +voice+ the held tune's? A sound effect on a voice keeps moving.
-def rg_held_still?(voice) = @rg_music_held && (@rg_holders[voice] & rg_order_mask) == 0
-
-def rg_music_follow_level(variable)
-  @rg_level_variable = variable
-end
-
-# Where song number +number+'s numbers start, from its length on.
-def rg_song_numbers(number) = @rg_game_music[RG_SONG_STARTS + number]
-
-# The part of song number +number+ written at +part+ (a place in @rg_game_music), as a walk of its
-# notes, and where the song's next part is written. +squares_met+ counts the square parts so far.
-def rg_read_part(number, part, again, squares_met)
-  music = @rg_game_music
-  kind = music[part]
-  first = music[part + 4]
-  after = music[part + 5]
-  first_notes = part + RG_NUMBERS_PER_PART
-  after_notes = first_notes + (RG_NUMBERS_PER_NOTE * first)
-  voice = case kind
-          when RG_PART_WAVE then RG_WAVE_VOICE
-          when RG_PART_NOISE then RG_NOISE_VOICE
-          when RG_PART_RECORDED then 0
-          else squares_met[0] += 1
-          end
-  if squares_met[0] > RG_SQUARE_VOICES
-    rg_fault("song number #{number} has more parts on the square wave than the #{RG_SQUARE_VOICES} there are")
-  end
-  walk = RgPartWalk.new(again ? after_notes : first_notes, again ? after : first, 0, kind, voice, music[part + 1],
-                        music[part + 2], music[part + 3])
-  [walk, after_notes + (RG_NUMBERS_PER_NOTE * after)]
-end
-
-def rg_start_walks(again)
-  part = @rg_song + RG_NUMBERS_PER_SONG
-  squares_met = [0]
-  @rg_part_count.times do |i|
-    walk, part = rg_read_part(@rg_playing, part, again, squares_met)
-    @rg_parts[i] = walk
-  end
-end
-
-def rg_scaled_volume(volume) = (volume * @rg_level) >> rg_level_shift
-
-def rg_wave_quarters_at(volume) = @rg_game_sound_rules[RG_WAVE_QUARTERS + volume.clamp(0, RG_VOLUMES - 1)]
-
-def rg_log_held_loudness(note)
-  if note.voice == 0
-    rg_sound_log("mixer_loudness #{note.lane} #{rg_scaled_volume(note.volume)}")
-  else
-    rg_sound_log("loudness #{note.voice} #{rg_scaled_volume(note.volume)}")
-  end
-end
-
-def rg_hold_note(note)
-  at = @rg_holding.index { |held| held.voice == note.voice && (note.voice != 0 || held.lane == note.lane) }
-  @rg_holding[at || @rg_holding.length] = note
-  rg_log_held_loudness(note)
-end
-
-def rg_follow_level(now)
-  return if now == @rg_level
-
-  @rg_level = now
-  @rg_holding.each do |note|
-    next if note.volume <= 0
-    next if note.voice == 0 && rg_mix_rescale_music(note.lane, rg_scaled_volume(note.volume)) == 0
-
-    rg_log_held_loudness(note)
-    next if note.voice == 0
-
-    if note.voice == RG_WAVE_VOICE
-      rg_wave_set_loudness(rg_wave_quarters_at(rg_scaled_volume(note.volume)))
-    else
-      rg_square_start(note.voice, note.wave_ticks, note.eighths_high, rg_scaled_volume(note.volume), note.fade, 0)
-    end
-  end
-end
-
-# --- a pitch that wobbles (rg_sound.c's own section says how) ---
-
-RgWobble = Struct.new(:vibrato, :wait, :left, :rising, :steps, :ticks)
-
-def rg_note_vibrato(note)
-  flags = @rg_game_music[note + 4]
-  flags.anybits?(RG_HAS_VIBRATO) ? (flags >> RG_VIBRATO_AT) & RG_VIBRATO_BITS : 0
-end
-
-def rg_wobble_start(voice, note)
-  return if voice > RG_WAVE_VOICE
-
-  vibrato = @rg_game_music[note + 1] == 0 ? 0 : rg_note_vibrato(note)
-  was = @rg_wobbles[voice]
-  if (vibrato & RG_VIBRATO_FOUR_BITS).zero?
-    was.vibrato = 0
-    was.steps = 0
-    return
-  end
-  carries = @rg_game_music[note + 5].anybits?(RG_CARRIES_VIBRATO)
-  @rg_wobbles[voice] = RgWobble.new(vibrato, vibrato >> RG_VIBRATO_AFTER_AT, carries ? was.left : 0, carries ? was.rising : false,
-                                    0, @rg_game_music[note + 3])
-end
-
-def rg_wobble_stop(voice)
-  @rg_wobbles[voice].vibrato = 0 if voice <= RG_WAVE_VOICE
-end
-
-def rg_step_wobbles
-  (1..RG_WAVE_VOICE).each do |voice|
-    moving = @rg_wobbles[voice]
-    depth = moving.vibrato & RG_VIBRATO_FOUR_BITS
-    next if depth == 0 || rg_held_still?(voice)
-    next moving.wait -= 1 if moving.wait > 0
-
-    if moving.left == 0
-      moving.rising = !moving.rising
-      moving.left = ((moving.vibrato >> RG_VIBRATO_SPEED_AT) & RG_VIBRATO_FOUR_BITS) + 1 # kept less one
-      steps = moving.rising ? (depth + 1) / 2 : -(depth / 2)
-      rg_sound_log("wobble #{voice} #{steps}") unless steps == moving.steps
-      moving.steps = steps
-    end
-    moving.left -= 1
-    count = (RG_PITCH_COUNT_TOP - moving.ticks + moving.steps).clamp(0, RG_PITCH_COUNT_TOP - 1)
-    if voice == RG_WAVE_VOICE
-      @rg_wave.wave_ticks = RG_PITCH_COUNT_TOP - count unless @rg_wave.wave_ticks == 0
-    elsif @rg_squares[voice - 1].wave_ticks != 0
-      @rg_squares[voice - 1].slid_ticks = RG_PITCH_COUNT_TOP - count
-    end
-  end
-end
-
-# A SQUARE NOTE'S SHAPES, by its voice: rg_sound.c's shape_walk, and its other shape functions.
-RgShapeWalk = Struct.new(:bits, :frame, :steps)
-RG_EIGHTHS_OF_SHAPE = [1, 2, 4, 6].freeze
-
-def rg_shape_at(bits, frame) = (bits >> (2 * (frame % 4))) & 3
-
-def rg_note_eighths(part, note)
-  flags = @rg_game_music[note + 5]
-  flags.anybits?(RG_HAS_DUTY) ? RG_EIGHTHS_OF_SHAPE[rg_shape_at(flags, 0)] : part.tone
-end
-
-def rg_shape_start(voice, note)
-  rg_swell_stop(voice)
-  return if voice > RG_SQUARE_VOICES
-
-  flags = @rg_game_music[note + 5]
-  bits = @rg_game_music[note + 1] != 0 && flags.anybits?(RG_HAS_DUTY) ? flags & RG_DUTY_BITS : 0
-  @rg_shapes[voice] = RgShapeWalk.new(bits, 0, (1..3).any? { |frame| rg_shape_at(bits, frame) != rg_shape_at(bits, 0) })
-end
-
-def rg_shape_stop(voice)
-  @rg_shapes[voice].steps = false if voice <= RG_SQUARE_VOICES
-  rg_swell_stop(voice)
-end
-
-# A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, by its voice: rg_sound.c's swell_walk, and its
-# other swell functions.
-RgSwellWalk = Struct.new(:active, :step, :volume, :counted, :swelling, :wave_ticks, :eighths_high)
-RG_LOUDEST = RG_VOLUMES - 1
-
-def rg_swell_stop(voice)
-  @rg_swells[voice].active = false
-end
-
-def rg_swell_strike(voice, swell, volume, fade)
-  return rg_noise_start(swell.wave_ticks, swell.eighths_high, volume, fade) if voice == RG_NOISE_VOICE
-
-  rg_square_start(voice, swell.wave_ticks, swell.eighths_high, volume, fade, 0)
-end
-
-def rg_swell_start(voice, note, eighths_high, volume, fade)
-  return if @rg_game_music[note + 1] == 0 || fade.nobits?(RG_FADE_UP) || fade.nobits?(RG_FADE_STEP_BITS)
-
-  @rg_swells[voice] = RgSwellWalk.new(true, fade & RG_FADE_STEP_BITS, volume, 0, true, @rg_game_music[note + 3], eighths_high)
-end
-
-def rg_step_swells
-  ceiling = (RG_LOUDEST * @rg_level) >> rg_level_shift
-  (1..RG_NOISE_VOICE).each do |voice|
-    swell = @rg_swells[voice]
-    next unless swell.active
-
-    if swell.swelling ? swell.volume >= ceiling && ceiling < RG_LOUDEST : swell.volume > ceiling
-      swell.volume = ceiling
-      swell.counted = 0
-      swell.swelling = false
-      rg_sound_log("loudness #{voice} #{ceiling}")
-      rg_swell_strike(voice, swell, ceiling, 0)
-    elsif !swell.swelling && swell.volume < ceiling
-      swell.counted = 0
-      swell.swelling = true
-      rg_sound_log("loudness #{voice} #{swell.volume} #{RG_FADE_UP | swell.step}")
-      rg_swell_strike(voice, swell, swell.volume, RG_FADE_UP | swell.step)
-    end
-    next unless swell.swelling && swell.volume < RG_LOUDEST
-
-    swell.counted += rg_counted_a_frame
-    while swell.counted >= swell.step * 256 && swell.volume < RG_LOUDEST
-      swell.counted -= swell.step * 256
-      swell.volume += 1
-    end
-  end
-end
-
-def rg_step_shapes
-  (1..RG_SQUARE_VOICES).each do |voice|
-    walk = @rg_shapes[voice]
-    next if !walk.steps || rg_held_still?(voice)
-
-    now = rg_shape_at(walk.bits, walk.frame)
-    rg_sound_log("duty #{voice} #{now}") if walk.frame > 0 && now != rg_shape_at(walk.bits, walk.frame - 1)
-    @rg_squares[voice - 1].eighths_high = RG_EIGHTHS_OF_SHAPE[now]
-    walk.frame += 1
-  end
-end
-
-def rg_silence_voice(voice)
-  rg_wobble_stop(voice)
-  rg_shape_stop(voice)
-  case voice
-  when RG_WAVE_VOICE then rg_wave_set_loudness(0)
-  when RG_NOISE_VOICE then rg_noise_start(0, @rg_hiss.bits, 0, 0)
-  else rg_square_start(voice, 0, 0, 0, 0, 0)
-  end
-end
-
-def rg_rest_on(part)
-  rg_silence_voice(part.voice) if part.kind != RG_PART_RECORDED
-end
-
-# --- who holds a console voice ---
-
-def rg_claim_voice(voice, rank, sounds)
-  return false if @rg_holders[voice] > rank
-
-  @rg_holder_order << voice unless @rg_holder_order.include?(voice)
-  @rg_holders[voice] = sounds ? rank : 0
-  true
-end
-
-def rg_note_sounds(kind, pitch, volume, fade)
-  return false if pitch == 0
-  return true if fade.anybits?(RG_FADE_UP) && fade.anybits?(RG_FADE_STEP_BITS) && [RG_PART_SQUARE, RG_PART_NOISE].include?(kind)
-  return false if volume <= 0
-
-  kind != RG_PART_WAVE || rg_wave_quarters_at(volume) != 0
-end
-
-def rg_wave_put_in(which)
-  rg_wave_load(which) unless which == @rg_loaded_waveform
-end
-
-def rg_silence_song
-  rg_sound_log("stop_music")
-  @rg_part_count.times do |i|
-    part = @rg_parts[i]
-    next if part.kind == RG_PART_RECORDED || (@rg_holders[part.voice] & rg_order_mask) != 0
-
-    rg_rest_on(part)
-  end
-  (1..RG_NOISE_VOICE).each { |voice| @rg_holders[voice] = 0 if (@rg_holders[voice] & rg_order_mask) == 0 }
-  @rg_holding = []
-  rg_mix_release_all_music
-end
-
-# Catches up with the tune the game asked for. True when it changed to another, or to none.
-def rg_switch_to_wanted_song
-  if @rg_ended >= 0
-    if @rg_wanted == @rg_ended && @rg_stops == @rg_stops_seen
-      rg_silence_song if @rg_playing >= 0
-      @rg_playing = -1
-      return false
-    end
-    @rg_ended = -1
-  end
-  return false if @rg_wanted == @rg_playing && @rg_stops == @rg_stops_seen
-
-  @rg_stops_seen = @rg_stops
-  @rg_music_held = false
-  rg_silence_song if @rg_playing >= 0
-  @rg_playing = @rg_wanted
-  @rg_song_frame = 0
-  @rg_part_count = 0
-  return true if @rg_playing < 0
-
-  @rg_song = rg_song_numbers(@rg_playing)
-  @rg_part_count = @rg_game_music[@rg_song + 4]
-  if @rg_part_count > RG_PARTS_MOST
-    rg_fault("song number #{@rg_playing} has #{@rg_part_count} parts, and the most is #{RG_PARTS_MOST}")
-  end
-  rg_start_walks(false)
-  return true if rg_effects_play_wave != 0
-
-  wave_part = @rg_parts.first(@rg_part_count).find { |part| part.kind == RG_PART_WAVE }
-  rg_wave_load(wave_part.tone) if wave_part
-  true
-end
-
-def rg_play_recorded_note(part, note)
-  music = @rg_game_music
-  pitch = music[note + 1]
-  loudness = music[note + 2]
-  sound = music[note + 3]
-  if pitch == 0 || loudness <= 0
-    rg_mix_release_music(-1, part.tone)
-  else
-    numbers = 1 + (sound * RG_NUMBERS_PER_NOTE_SOUND)
-    heard = if music[note + 5].anybits?(RG_GLIDES)
-              rg_mix_glide_music_note(-1, part.tone, numbers)
-            else
-              rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers,
-                                      @rg_level_variable ? rg_scaled_volume(loudness) : loudness)
-            end
-    return if heard == 0
-  end
-  rg_sound_log("note #{@rg_playing} #{pitch}")
-  rg_hold_note(RgHeldNote.new(0, part.tone, pitch == 0 ? 0 : loudness, 0, 0, 0)) if @rg_level_variable
-end
-
-# How a note on a square or the noise voice fades or swells (rg_sound.c's note_fade says how).
-def rg_note_fade(part, note)
-  flags = @rg_game_music[note + 4]
-  return flags & (RG_FADE_UP | RG_FADE_STEP_BITS) if flags.anybits?(RG_HAS_FADE)
-
-  part.kind == RG_PART_NOISE ? part.fade : 0
-end
-
-# How a note on the first square voice slides its pitch, or 0 to hold it (rg_sound.c's note_slide).
-def rg_note_slide(note) = (@rg_game_music[note + 4] >> RG_SLIDE_AT) & RG_SLIDE_BITS
-
-# The speaker a note plays from: RG_PAN_LEFT, RG_PAN_RIGHT, or nought for both.
-def rg_note_pan(note) = (@rg_game_music[note + 4] >> RG_PAN_AT) & RG_PAN_BITS
-
-# The log's line for a note setting its voice, with the note's fade when it set one, and its
-# slide, its wobble, its speaker and its shapes after that when it set them — with -1, for none,
-# before one set after it.
-def rg_log_voice_set(voice, who, pitch, volume, note)
-  flags = @rg_game_music[note + 4]
-  told = [flags.anybits?(RG_HAS_FADE) ? flags & (RG_FADE_UP | RG_FADE_STEP_BITS) : -1,
-          flags.anybits?(RG_HAS_SLIDE) ? rg_note_slide(note) : -1,
-          flags.anybits?(RG_HAS_VIBRATO) ? rg_note_vibrato(note) | (@rg_game_music[note + 5].anybits?(RG_CARRIES_VIBRATO) ? RG_VIBRATO_CARRIES_LOGGED : 0) : -1,
-          rg_note_pan(note).positive? ? rg_note_pan(note) : -1,
-          @rg_game_music[note + 5].anybits?(RG_HAS_DUTY) ? @rg_game_music[note + 5] & RG_DUTY_BITS : -1]
-  told.pop while !told.empty? && told.last.negative?
-  rg_sound_log(["voice #{voice} #{who} #{pitch} #{volume}", *told].join(" "))
-end
-
-def rg_play_note(part, note)
-  return rg_play_recorded_note(part, note) if part.kind == RG_PART_RECORDED
-
-  music = @rg_game_music
-  pitch = music[note + 1]
-  volume = music[note + 2]
-  ticks = music[note + 3]
-  return unless rg_claim_voice(part.voice, music[@rg_song + 3], rg_note_sounds(part.kind, pitch, volume, rg_note_fade(part, note)))
-
-  written = pitch == 0 ? 0 : volume
-  sounded = @rg_level_variable ? rg_scaled_volume(written) : written
-  fade = rg_note_fade(part, note)
-  rg_sound_log("note #{@rg_playing} #{pitch}")
-  rg_log_voice_set(part.voice, @rg_playing, pitch, volume, note)
-  rg_wobble_start(part.voice, note)
-  rg_shape_start(part.voice, note)
-  @rg_sides[part.voice] = rg_note_pan(note)
-  case part.kind
-  when RG_PART_WAVE
-    rg_hold_note(RgHeldNote.new(part.voice, 0, written, 0, 0, 0)) if @rg_level_variable
-    if pitch == 0
-      rg_sound_log("stop_wave")
-      rg_rest_on(part)
-    else
-      rg_sound_log("part_wave #{@rg_playing} #{part.number} #{pitch}")
-      rg_wave_put_in(part.tone) if rg_effects_play_wave != 0
-      rg_wave_start(ticks, rg_wave_quarters_at(sounded))
-    end
-  when RG_PART_NOISE
-    rg_sound_log("loudness #{part.voice} #{sounded}") if @rg_level_variable
-    if pitch == 0
-      rg_sound_log("noise_rest")
-      rg_rest_on(part)
-    else
-      rg_sound_log("part_noise #{@rg_playing} #{part.number} #{pitch}")
-      rg_noise_start(ticks, part.tone, sounded, fade)
-      rg_swell_start(part.voice, note, part.tone, sounded, fade) if @rg_level_variable
-    end
-  else
-    # A note that fades, swells or slides by itself is left to it (rg_sound.c's play_note says why).
-    if @rg_level_variable && ((fade & RG_FADE_STEP_BITS) != 0 || rg_note_slide(note) != 0)
-      rg_drop_held_note(part.voice)
-      rg_sound_log("loudness #{part.voice} #{sounded}")
-    elsif @rg_level_variable
-      rg_hold_note(RgHeldNote.new(part.voice, 0, written, ticks, rg_note_eighths(part, note), fade))
-    end
-    rg_square_start(part.voice, ticks, rg_note_eighths(part, note), sounded, fade, rg_note_slide(note))
-    rg_swell_start(part.voice, note, rg_note_eighths(part, note), sounded, fade) if @rg_level_variable && rg_note_slide(note) == 0
-  end
-end
-
-# --- sound effects ---
-
-def rg_effect_field(effect, field) = @rg_game_effects[RG_EFFECT_ROWS + (effect * RG_NUMBERS_PER_EFFECT) + field]
-
-def rg_effect_pending(effect) = @rg_effect_asked[effect] || (@rg_effect_running[effect] && !@rg_effect_stopping[effect])
-
-def rg_refuse_too_many_effects
-  return unless rg_effect_count > RG_EFFECTS_MOST
-
-  rg_fault("the game has #{rg_effect_count} sound effects, and the most is #{RG_EFFECTS_MOST}")
-end
-
-def rg_request_effect(effect)
-  rg_refuse_too_many_effects
-  group = rg_effect_field(effect, RG_EFFECT_GROUP)
-  if group >= 0
-    rg_effect_count.times do |other|
-      next if rg_effect_field(other, RG_EFFECT_GROUP) != group || !rg_effect_pending(other)
-      return if rg_effect_field(effect, RG_EFFECT_PRIORITY) < rg_effect_field(other, RG_EFFECT_PRIORITY)
-
-      @rg_effect_asked[other] = false
-      @rg_effect_stopping[other] = true
-      break
-    end
-  end
-  @rg_effect_asked[effect] = true
-end
-
-def rg_effect_request_one_of(effects, count, which)
-  rg_request_effect(effects[which]) if which >= 0 && which < count
-end
-
-def rg_drop_held_note(voice)
-  @rg_holding = @rg_holding.reject { |note| note.voice == voice }
-end
-
-def rg_finish_effect(effect)
-  number = rg_effect_field(effect, RG_EFFECT_SONG)
-  rank = rg_effect_field(effect, RG_EFFECT_RANK)
-  @rg_effect_running[effect] = false
-  @rg_holder_order.each do |voice|
-    next if @rg_holders[voice] != rank
-
-    @rg_holders[voice] = 0
-    rg_sound_log("note #{number} 0")
-    rg_sound_log("voice #{voice} #{number} 0 0")
-    rg_sound_log("noise_rest") if voice == RG_NOISE_VOICE
-    rg_sound_log("stop_wave") if voice == RG_WAVE_VOICE
-    rg_silence_voice(voice)
-  end
-
-  numbers = rg_song_numbers(rg_effect_field(effect, RG_EFFECT_NOTES))
-  part = numbers + RG_NUMBERS_PER_SONG
-  squares_met = [0]
-  @rg_game_music[numbers + 4].times do
-    walk, part = rg_read_part(number, part, false, squares_met)
-    rg_sound_log("note #{number} 0") if walk.kind == RG_PART_RECORDED && rg_mix_release_music(effect, walk.tone) != 0
-  end
-end
-
-def rg_play_effect_note(effect, part, note)
-  music = @rg_game_music
-  number = rg_effect_field(effect, RG_EFFECT_SONG)
-  rank = rg_effect_field(effect, RG_EFFECT_RANK)
-  pitch = music[note + 1]
-  volume = music[note + 2]
-  sounds = rg_note_sounds(part.kind, pitch, volume, rg_note_fade(part, note))
-
-  if part.kind == RG_PART_RECORDED
-    sound = music[note + 3]
-    numbers = 1 + (sound * RG_NUMBERS_PER_NOTE_SOUND)
-    heard = if !sounds
-              rg_mix_release_music(effect, part.tone)
-            elsif music[note + 5].anybits?(RG_GLIDES)
-              rg_mix_glide_music_note(effect, part.tone, numbers)
-            else
-              rg_mix_start_music_note(effect, part.tone, rank, numbers, volume)
-            end
-    rg_sound_log("note #{number} #{pitch}") if heard != 0
-    return
-  end
-  return unless rg_claim_voice(part.voice, rank, sounds || rg_effect_field(effect, RG_EFFECT_KEEPS_VOICES) == 1)
-
-  ticks = music[note + 3]
-  fade = rg_note_fade(part, note)
-  rg_drop_held_note(part.voice)
-  rg_sound_log("note #{number} #{pitch}")
-  rg_log_voice_set(part.voice, number, pitch, volume, note)
-  rg_wobble_start(part.voice, note)
-  rg_shape_start(part.voice, note)
-  @rg_sides[part.voice] = rg_note_pan(note)
-  case part.kind
-  when RG_PART_WAVE
-    if pitch == 0
-      rg_sound_log("stop_wave")
-      rg_silence_voice(part.voice)
-    else
-      rg_sound_log("part_wave #{number} #{part.number} #{pitch}")
-      rg_wave_put_in(part.tone)
-      rg_wave_start(ticks, rg_wave_quarters_at(volume))
-    end
-  when RG_PART_NOISE
-    if pitch == 0
-      rg_sound_log("noise_rest")
-      rg_silence_voice(part.voice)
-    else
-      rg_sound_log("part_noise #{number} #{part.number} #{pitch}")
-      rg_noise_start(ticks, part.tone, volume, fade)
-    end
-  else
-    rg_square_start(part.voice, ticks, rg_note_eighths(part, note), pitch == 0 ? 0 : volume, fade, rg_note_slide(note))
-  end
-end
-
-def rg_play_effect_frame(effect)
-  number = rg_effect_field(effect, RG_EFFECT_SONG)
-  numbers = rg_song_numbers(rg_effect_field(effect, RG_EFFECT_NOTES))
-  if @rg_effect_stopping[effect]
-    @rg_effect_stopping[effect] = false
-    rg_finish_effect(effect)
-  end
-  if @rg_effect_asked_now[effect]
-    @rg_effect_running[effect] = true
-    @rg_effect_frame[effect] = 0
-    @rg_effect_cursors[effect] = Array.new(RG_PARTS_MOST, 0)
-    rg_sound_log("sound_effect #{effect}")
-  elsif @rg_effect_running[effect] && @rg_effect_frame[effect] >= @rg_game_music[numbers]
-    rg_finish_effect(effect)
-  end
-  return unless @rg_effect_running[effect]
-
-  part_total = @rg_game_music[numbers + 4]
-  rg_fault("a sound effect has #{part_total} parts, and the most is #{RG_PARTS_MOST}") if part_total > RG_PARTS_MOST
-  part = numbers + RG_NUMBERS_PER_SONG
-  squares_met = [0]
-  cursors = @rg_effect_cursors[effect]
-  part_total.times do |i|
-    walk, part = rg_read_part(number, part, false, squares_met)
-    next if cursors[i] >= walk.count
-
-    note = walk.notes + (RG_NUMBERS_PER_NOTE * cursors[i])
-    next if @rg_game_music[note] != @rg_effect_frame[effect]
-
-    cursors[i] += 1
-    rg_play_effect_note(effect, walk, note)
-  end
-  @rg_effect_frame[effect] += 1
-end
-
-# --- the frame ---
-
-def rg_effects_by_rank = RG_EFFECT_ROWS + (rg_effect_count * RG_NUMBERS_PER_EFFECT)
-
-# The player's frame: the tune caught up with, then every effect that outranks the tune, the tune,
-# and the effects below it.
-def rg_music_frame
-  @rg_level = rg_full_level if @rg_level < 0
-  rg_refuse_too_many_effects
-  rg_switch_to_wanted_song
-  rg_effect_count.times do |effect|
-    @rg_effect_asked_now[effect] = @rg_effect_asked[effect]
-    @rg_effect_asked[effect] = false
-  end
-  tune = @rg_playing >= 0 ? @rg_game_music[@rg_song + 3] : -1
-  by_rank = rg_effects_by_rank
-  at = 0
-  while at < rg_effect_count && rg_effect_field(@rg_game_effects[by_rank + at], RG_EFFECT_RANK) > tune
-    rg_play_effect_frame(@rg_game_effects[by_rank + at])
-    at += 1
-  end
-  rg_play_song_frame if @rg_playing >= 0
-  while at < rg_effect_count
-    rg_play_effect_frame(@rg_game_effects[by_rank + at])
-    at += 1
-  end
-  rg_step_swells
-  rg_step_wobbles
-  rg_step_shapes
-end
-
-def rg_music_start_here
-  @rg_level = rg_full_level if @rg_level < 0
-  rg_play_song_frame if rg_switch_to_wanted_song && @rg_playing >= 0
-end
-
-def rg_effect_start_here_one_of(effects, count, which)
-  return if which < 0 || which >= count
-
-  asked = effects[which]
-  rg_request_effect(asked)
-  return unless @rg_effect_asked[asked]
-
-  by_rank = rg_effects_by_rank
-  rg_effect_count.times do |at|
-    effect = @rg_game_effects[by_rank + at]
-    if effect == asked
-      @rg_effect_asked[asked] = false
-      @rg_effect_asked_now[asked] = true
-      rg_play_effect_frame(asked)
-      @rg_effect_asked_now[asked] = false
-    elsif @rg_effect_stopping[effect]
-      @rg_effect_stopping[effect] = false
-      rg_finish_effect(effect)
-    end
-  end
-end
-
-def rg_music_start_here_one_of(songs, count, which)
-  return if which < 0 || which >= count
-
-  rg_music_request(songs[which])
-  rg_music_start_here
-end
-
-def rg_play_song_frame
-  rg_follow_level(@rg_level_variable.call) if @rg_level_variable
-  return if @rg_music_held
-
-  @rg_part_count.times do |i|
-    part = @rg_parts[i]
-    next if part.next_note >= part.count
-
-    note = part.notes + (RG_NUMBERS_PER_NOTE * part.next_note)
-    next if @rg_game_music[note] != @rg_song_frame
-
-    rg_play_note(part, note)
-    part.next_note += 1
-  end
-
-  @rg_song_frame += 1
-  return if @rg_song_frame < @rg_game_music[@rg_song]
-
-  if @rg_game_music[@rg_song + 2] != 0
-    @rg_ended = @rg_playing
-    return
-  end
-  @rg_song_frame = @rg_game_music[@rg_song + 1]
-  rg_start_walks(true)
 end

@@ -93,9 +93,10 @@ module VBlank
         # build/build.zig compiles itself since it is C++ and wants flags of its own: a desktop
         # build always has them, and the builds a test makes of the game do not come through here
         # at all.
-        SHARED_RUNTIME = %w[rg_headless.c rg_mix.c rg_refusal.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c].freeze
+        SHARED_RUNTIME = %w[rg_headless.c rg_refusal.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c].freeze
         HEADLESS_RUNTIME = (["rg_headless_main.c"] + SHARED_RUNTIME).freeze
         FEATURES_FILE = "rg_runtime_features.h" # What rg_screen.c includes for the game's features (RuntimeFeatures#c_text)
+        SOUND_FEATURES_FILE = "rg_sound_features.h" # ...and rg_sound.c, for the game's sound features
         DESKTOP_RUNTIME = (%w[rg_sdl.c rg_window.c rg_window_menu.c rg_menu_font.c rg_bios_boot.c rg_shell.c] + [MenuData::FILE, ShellData::FILE] +
                            SHARED_RUNTIME).freeze
 
@@ -110,8 +111,7 @@ module VBlank
         # its own, with no SDL to fetch or compile, which is what keeps the tests quick.
         def build_headless(program, mode: :checked)
           lowering = Lowering.new(program, title: "VBlank")
-          game = write_source(lowering.source, ConsoleNumbers.header(program.described_console),
-                              RuntimeFeatures.c_text(lowering.runtime_features))
+          game = write_source(lowering.source, ConsoleNumbers.header(program.described_console), lowering.runtime_features)
           Zig.compile_without_sdl([game, *HEADLESS_RUNTIME.map { |file| File.join(Zig::RUNTIME_DIR, file) }],
                                   include: [File.dirname(game), RuntimeFeatures::ROOT], mode: mode)
         end
@@ -209,6 +209,7 @@ module VBlank
             # Each feature's folder beside the runtime, where game.c and rg_screen.c include it from.
             lowering.runtime_features.each { |feature| FileUtils.cp_r(feature.folder, src) }
             File.write(File.join(src, FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features))
+            File.write(File.join(src, SOUND_FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features, joins: :sound))
             File.write(File.join(src, ConsoleNumbers::FILE), ConsoleNumbers.header(program.described_console, start_up: !cartridge.nil?))
             if cartridge && program.described_console.plays_bios_start_up
               File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
@@ -228,13 +229,15 @@ module VBlank
         # so two threads building the same game at once — tests run side by side — each put down a
         # whole file and never read half of the other's. Gives back the path of game.c.
         def write_source(text, numbers, features)
-          dir = File.join(Dir.tmpdir, "vblank-native", "src-#{Digest::SHA256.hexdigest(text + numbers + features)[0, 24]}")
+          screen_text = RuntimeFeatures.c_text(features)
+          sound_text = RuntimeFeatures.c_text(features, joins: :sound)
+          dir = File.join(Dir.tmpdir, "vblank-native", "src-#{Digest::SHA256.hexdigest(text + numbers + screen_text + sound_text)[0, 24]}")
           path = File.join(dir, "game.c")
           return path if File.exist?(path)
 
           FileUtils.mkdir_p(dir)
           # game.c last: a folder holding it is whole.
-          { ConsoleNumbers::FILE => numbers, FEATURES_FILE => features, "game.c" => text }.each do |name, body|
+          { ConsoleNumbers::FILE => numbers, FEATURES_FILE => screen_text, SOUND_FEATURES_FILE => sound_text, "game.c" => text }.each do |name, body|
             writing = File.join(dir, "#{name}.#{Process.pid}.#{rand(1 << 30)}")
             File.write(writing, body)
             File.rename(writing, File.join(dir, name))

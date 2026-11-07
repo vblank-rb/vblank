@@ -1,6 +1,13 @@
 /*
  * The mixer (see rg_mix.h): the interpreter's Reference::Mixer, step for step.
  *
+ * A runtime feature (backends/runtime_features.rb): this file is included at the end of
+ * rg_sound.c, for a game that declares a recording, so it reads the sound runtime's own log. A
+ * game with none builds without it. It takes four of the sound runtime's hooks: sound_frame (the
+ * frame's slice is made before the tune plays), sound_frame_ended (every sounding note's shape
+ * moves on after it), mixed_slice (the newest slice, for the speaker) and moment_printed (what a
+ * windowless run prints of the mix).
+ *
  * ONE FRAME'S SLICE. Each sounding voice reads its recording from where it got to, one sample for
  * each sample of the slice, and adds the sample times its loudness into a running total for that
  * place in the slice. How fast it reads is its STEP: how many samples of the recording go by for
@@ -35,6 +42,7 @@
  *
  * rg_game_recording_samples: every recording's samples, -128 to 127, a byte each.
  */
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "rg_mix.h"
@@ -323,7 +331,7 @@ static int32_t mix_voice_into(mix_voice *voice, int32_t *totals) {
   return 1;
 }
 
-void rg_mix_frame(void) {
+static void rg_mix_sound_frame(void) {
   if (!MIXES) return;
   if (!slice) slice = malloc((size_t)SLICE_SAMPLES * sizeof *slice);
   if (!slice) rg_fault("no memory for a slice of %d samples", (int)SLICE_SAMPLES);
@@ -386,7 +394,7 @@ static void slide_gain(mix_voice *voice, int32_t first) {
   voice->ramp = (((target - voice->gain) >> RAMP_SPLIT) * SLIDE_SHARE) >> RAMP_SPLIT;
 }
 
-void rg_mix_step_shapes(void) {
+static void rg_mix_sound_frame_ended(void) {
   record_peak();
   for (int32_t i = 0; i < VOICES; i++) {
     mix_voice *voice = &voices[i];
@@ -403,18 +411,32 @@ void rg_mix_step_shapes(void) {
   }
 }
 
-/* --- what a test reads back --- */
+/* --- what the speaker and a windowless run read back --- */
 
-int32_t rg_mix_slices_made(void) { return slices_made; }
+static int32_t rg_mix_slices_made(void) { return slices_made; }
 
-int32_t rg_mix_newest_slice(const int32_t **samples) {
+/* The newest slice of the mix (see rg_hook_mixed_slice): how many samples it holds and, in
+ * +samples+, where they are; none for a game that has made no slice. */
+static int32_t rg_mix_mixed_slice(const int32_t **samples) {
   *samples = slice;
   return slices_made > 0 ? SLICE_SAMPLES : 0;
 }
 
-int32_t rg_mix_voice_count(void) { return VOICES; }
+/* What a sounding voice is playing: the recording, its loudness out of 512, how far its shape has
+ * climbed or fallen, and whose it is — +owner+ 0 for the game's own sound, 1 for the song's, 2 for
+ * a sound effect's, with the effect's number (-1 for none) and the part's lane. */
+typedef struct {
+  int32_t recording;
+  int32_t loudness;
+  int32_t level;
+  int32_t owner;
+  int32_t effect;
+  int32_t lane;
+} rg_mix_voice_reading;
 
-int32_t rg_mix_voice_sounding(int32_t voice, rg_mix_voice_reading *reading) {
+static int32_t rg_mix_voice_count(void) { return VOICES; }
+
+static int32_t rg_mix_voice_sounding(int32_t voice, rg_mix_voice_reading *reading) {
   const mix_voice *sounding = &voices[voice];
   if (!sounding->sounding) return 0;
   *reading = (rg_mix_voice_reading){.recording = sounding->recording,
@@ -426,9 +448,41 @@ int32_t rg_mix_voice_sounding(int32_t voice, rg_mix_voice_reading *reading) {
   return 1;
 }
 
-int32_t rg_mix_peak(void) { return peak; }
+static int32_t rg_mix_peak(void) { return peak; }
 
-int32_t rg_mix_drops(int32_t *music_held) {
+static int32_t rg_mix_drops(int32_t *music_held) {
   *music_held = drops_music;
   return drops;
+}
+
+/* For a game that mixes recordings, a windowless run prints (rg_headless.c): the slice made since
+ * the last moment ("mix" and its samples), each sounding voice's recording, loudness out of 512,
+ * how far its shape has climbed or fallen, and whose it is — 0 the game's, 1 the song's, 2 a sound
+ * effect's, then the effect's number and the part's lane ("mixing", six numbers a voice;
+ * rg_mix_voice_reading), the most voices that ever sounded at once ("mix_peak"), and how many
+ * plays found every voice busy with the most the music held at one of those moments
+ * ("mix_drops"). A game that declares a recording and mixes none prints nothing. */
+static int32_t slices_printed;
+
+static void rg_mix_moment_printed(void) {
+  if (!MIXES) return;
+
+  if (rg_mix_slices_made() > slices_printed) {
+    const int32_t *samples;
+    int32_t count = rg_mix_mixed_slice(&samples);
+    printf("mix");
+    for (int32_t i = 0; i < count; i++) printf(" %d", (int)samples[i]);
+    fputc('\n', stdout);
+    slices_printed = rg_mix_slices_made();
+  }
+  printf("mixing");
+  for (int32_t voice = 0; voice < rg_mix_voice_count(); voice++) {
+    rg_mix_voice_reading reading;
+    if (!rg_mix_voice_sounding(voice, &reading)) continue;
+    printf(" %d %d %d %d %d %d", (int)reading.recording, (int)reading.loudness, (int)reading.level, (int)reading.owner,
+           (int)reading.effect, (int)reading.lane);
+  }
+  int32_t music_held;
+  int32_t dropped = rg_mix_drops(&music_held);
+  printf("\nmix_peak %d\nmix_drops %d %d\n", (int)rg_mix_peak(), (int)dropped, (int)music_held);
 }

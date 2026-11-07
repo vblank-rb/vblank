@@ -8,7 +8,7 @@ module VBlank
         # Picture is.
         #
         # What is played is a song's parts — on the console's two square-wave voices, its wave
-        # voice and its noise voice, and on recordings through the mixer (runtime/rg_mix.h) — as
+        # voice and its noise voice, and on recordings through the mixer (runtime_features/mix/rg_mix.h) — as
         # the interpreter's music player walks them, whether the game names the song or picks it
         # from a list by number; the sound effects played over the song; the game's own
         # recordings; and the beeps, `wave`, `stop_wave`, `noise` and `enable_sound` the game asks for
@@ -95,7 +95,7 @@ module VBlank
 
           def effect_list_name(name) = @names.of(:sound_effect_list, name)
 
-          # --- recordings, through the mixer (runtime/rg_mix.h) ---
+          # --- recordings, through the mixer (runtime_features/mix/rg_mix.h) ---
 
           # The game's own `play` of a recording. Everything about it is fixed when the game is
           # built — the pitch it reads at, how loud, how far back it reads at its end — so it is
@@ -122,7 +122,7 @@ module VBlank
           # for the rate the game's recordings ask for, as the interpreter takes it.
           def mix_clock = @mix_clock ||= @program.described_console.sample_clock(Mixing.requested_rate(@program))
 
-          # How the mix runs (see the layout atop runtime/rg_mix.c). Its voices are as many as the
+          # How the mix runs (see the layout atop runtime_features/mix/rg_mix.c). Its voices are as many as the
           # console sounds recordings together (Console::Description#recordings_at_once), as the
           # interpreter's mixer has.
           def mix_table
@@ -193,9 +193,10 @@ module VBlank
           end
 
           # The player reads the music volume the game keeps, when it keeps one: a game that never
-          # names `music_volume` plays every part at its written volume with nothing worked out.
+          # names `music_volume` plays every part at its written volume with nothing worked out. A
+          # game with no music feature has no player to tell.
           def sound_power_on
-            return [] unless variable_names.include?(Tunes::LEVEL)
+            return [] unless variable_names.include?(Tunes::LEVEL) && runtime_features.any? { |feature| feature.name == :music }
 
             [eval_call("rg_music_follow_level", C::AddressOf.new(variable(Tunes::LEVEL)))]
           end

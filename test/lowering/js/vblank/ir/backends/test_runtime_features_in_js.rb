@@ -6,6 +6,7 @@ require "runtime_feature_games"
 # A runtime feature (IR::Backends::RuntimeFeatures) is in a game's JavaScript only when its steps
 # need it.
 class TestRuntimeFeaturesInJS < Minitest::Test
+  runs_on_the_main_ractor! # the examples are read in, which declares games
   include VBlank::IR::Build
   include RuntimeFeatureGames
 
@@ -110,6 +111,69 @@ class TestRuntimeFeaturesInJS < Minitest::Test
   def test_a_game_with_no_face_holds_none_of_the_faces_feature
     refute_includes JS.new.factory(program(screen(:bitmap), clear_screen(:white), halt)), "function rg_screen_face("
     refute_includes JS.new.factory(game_with_a_column), "function rg_screen_face("
+  end
+
+  def test_a_game_with_a_tune_takes_in_the_music_feature_alone
+    text = JS.new.factory(game_with_a_tune)
+
+    assert_includes text, "function rg_music_sound_frame("
+    assert_includes text, "rg_music_sound_frame();"
+    assert_includes text, "rg_music_voice_taken_by_game(voice);"
+    refute_includes text, "function rg_mix_"
+    refute_includes text, "rg_mix_sound_frame"
+  end
+
+  def test_a_game_with_a_recording_takes_in_the_mix_feature_alone
+    text = JS.new.factory(game_with_a_recording)
+
+    assert_includes text, "function rg_mix_sound_frame("
+    assert_includes text, "return rg_mix_mixed_slice(samples);"
+    refute_includes text, "function rg_music_"
+    refute_includes text, "rg_music_sound_frame"
+  end
+
+  # The mixer is joined before the player, so the frame's slice is made before the tune plays.
+  def test_a_tune_on_a_recording_takes_in_both_with_the_mix_first
+    text = JS.new.factory(game_with_a_tune_on_a_recording)
+
+    assert_operator text.index("function rg_mix_sound_frame("), :<, text.index("function rg_music_sound_frame(")
+    assert_operator text.index("rg_mix_sound_frame();"), :<, text.index("rg_music_sound_frame();")
+  end
+
+  def test_a_game_with_only_a_beep_holds_neither_sound_feature
+    text = JS.new.factory(game_with_only_a_beep)
+
+    refute_includes text, "function rg_music_sound_frame("
+    refute_includes text, "function rg_mix_sound_frame("
+    refute_includes text, "rg_music_sound_frame();"
+    refute_includes text, "rg_mix_sound_frame();"
+  end
+
+  def test_every_example_that_plays_a_tune_or_mixes_takes_in_what_it_needs
+    Dir[VBlank.root.join("examples/*.rb").to_s].sort.each do |path|
+      next unless File.read(path).match?(/VBlank\.game\b/)
+
+      before = VBlank.registered_games.size
+      require path
+      VBlank.registered_games.drop(before).each do |game|
+        next unless game.consoles.include?(:gba)
+
+        program = game.program(console: :gba)
+        taken = JS::Lowering.new(program).runtime_features.map(&:name)
+
+        assert_includes taken, :mix, "#{File.basename(path)} mixes recordings" if VBlank::IR::Mixing.mixes?(program)
+        assert_includes taken, :music, "#{File.basename(path)} plays a tune" if program.walk.any? { |node| node.kind == :play_song }
+      end
+    end
+  end
+
+  # The sound runtime's own files and the windowless run call hooks; they name no music or mix
+  # function.
+  def test_the_sound_files_name_no_feature
+    shared = %w[rg_sound.js rg_runtime.js rg_headless.js].map { |name| File.read(File.join(JS::RUNTIME_DIR, name)) }.join
+
+    refute_match(MUSIC_NAMES, shared)
+    refute_match(MIX_NAMES, shared)
   end
 
   def test_the_screen_file_names_no_feature

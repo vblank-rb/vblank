@@ -1,8 +1,14 @@
+# frozen_string_literal: true
+
 # THE MIXER: several recordings sounding at once, added together a frame at a time into one stream
-# of sound, the way a console that mixes in software does it. The arithmetic is native/runtime/
-# rg_mix.c's, kept to the bit, and that file says it and the layout of @rg_game_mix and
-# @rg_game_recordings. A console with no mixer has none of this to do: its game's @rg_game_mix
-# starts with nought, and every frame here then does nothing.
+# of sound, the way a console that mixes in software does it. The arithmetic is runtime_features/
+# mix/rg_mix.c's, kept to the bit, and that file says it and the layout of @rg_game_mix and
+# @rg_game_recordings. Joined into the runtime's class for a game that has a recording. A console
+# with no mixer has none of this to do: its game's @rg_game_mix starts with nought, and every
+# frame here then does nothing.
+#
+# The sound runtime calls it through the sound hooks: rg_mix_sound_frame as a frame begins,
+# rg_mix_sound_frame_ended after the tune has played, and rg_mix_mixed_slice for the render.
 #
 # The interpreter's numbers are Ruby's whole numbers, and so are these, so a product too big for
 # 32 bits is exact here as it is there.
@@ -62,6 +68,7 @@ def rg_mix_setup
   @rg_mix_drop_count = 0 # plays that found every voice busy
   @rg_mix_drops_music = 0 # the most voices the music held at one of those moments
   @rg_mix_tickets = 0
+  @rg_slices_printed = 0 # the slices a windowless run has printed (rg_mix_moment_printed)
 end
 
 def rg_mixes = @rg_game_mix[0]
@@ -277,7 +284,7 @@ def rg_mix_voice_into(voice, totals)
   true
 end
 
-def rg_mix_frame
+def rg_mix_sound_frame
   return if rg_mixes == 0
 
   slice = Array.new(rg_slice_samples, 0)
@@ -321,7 +328,7 @@ def rg_mix_slide_gain(voice, first)
   voice.ramp = (((target - voice.gain) >> rg_ramp_split) * rg_slide_share) >> rg_ramp_split
 end
 
-def rg_mix_step_shapes
+def rg_mix_sound_frame_ended
   rg_mix_record_peak
   @rg_mix_voices.first(rg_mix_voice_count).each do |voice|
     next if !voice.sounding || voice.shaped == 0
@@ -355,3 +362,26 @@ end
 
 def rg_mix_peak = @rg_mix_peak
 def rg_mix_drops = [@rg_mix_drop_count, @rg_mix_drops_music]
+
+# rg_hook_mixed_slice: the newest slice for the render of a frame, or 0 before the first.
+def rg_mix_mixed_slice(_samples) = @rg_mix_slices_made > 0 ? @rg_mix_slice : 0
+
+# For a game that mixes recordings, a windowless run prints (rg_headless.rb): the slice made since
+# the last moment ("mix" and its samples), each sounding voice's recording, loudness out of 512,
+# how far its shape has climbed or fallen, and whose it is — 0 the game's, 1 the song's, 2 a sound
+# effect's, then the effect's number and the part's lane ("mixing", six numbers a voice), the most
+# voices that ever sounded at once ("mix_peak"), and how many plays found every voice busy with the
+# most the music held at one of those moments ("mix_drops"). A game that declares a recording and
+# mixes none prints nothing.
+def rg_mix_moment_printed
+  return if rg_mixes == 0
+
+  if rg_mix_slices_made > @rg_slices_printed
+    $stdout.write("mix#{rg_mix_newest_slice.map { |sample| " #{sample}" }.join}\n")
+    @rg_slices_printed = rg_mix_slices_made
+  end
+  sounding = Array.new(rg_mix_voice_count) { |voice| rg_mix_voice_sounding(voice) }.compact
+  dropped, music_held = rg_mix_drops
+  $stdout.write("mixing#{sounding.flatten.map { |number| " #{number}" }.join}\n" \
+                "mix_peak #{rg_mix_peak}\nmix_drops #{dropped} #{music_held}\n")
+end

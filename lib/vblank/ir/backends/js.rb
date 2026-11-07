@@ -78,7 +78,7 @@ module VBlank
         # The runtime every program carries, in the order it is put together: the game's
         # arithmetic first, then everything that keeps the game's state. A driver follows it:
         # rg_headless.js for node, or rg_page.js inside createGame for a browser.
-        RUNTIME = %w[rg_int32.js rg_refusal.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_mix.js rg_save.js].freeze
+        RUNTIME = %w[rg_int32.js rg_refusal.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_save.js].freeze
 
         # What only a game for several players carries: the session of a match and the relay's room
         # (Program#several_players?), with the fingerprint a match tells it by. A game for one player is

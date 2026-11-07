@@ -204,7 +204,7 @@ module VBlank
             start_file_routines = build_start_file_routines
             [C::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
              C::Include.new("rg_int32.h"), C::Include.new("rg_runtime.h"), C::Include.new("rg_list.h"),
-             C::Include.new("rg_screen.h"), C::Include.new("rg_sound.h"), C::Include.new("rg_mix.h"),
+             C::Include.new("rg_screen.h"), C::Include.new("rg_sound.h"),
              C::Include.new("rg_save.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| C::Include.new(header) },
              *variable_names.map { |name| C::Global.new(name: variable(name)) },
              *list_storage,

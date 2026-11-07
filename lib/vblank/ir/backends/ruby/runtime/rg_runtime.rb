@@ -28,7 +28,6 @@ def initialize
   rg_runtime_setup
   rg_screen_setup
   rg_sound_setup
-  rg_mix_setup
   rg_save_setup
   rg_game_setup
 end
@@ -117,15 +116,14 @@ def rg_wait_vblank
 end
 
 # What every driver does as a frame begins, after deciding to play it, in the interpreter's order
-# (Reference#advance_frame): the picture is switched on, the timers tick, the mix, then the tune,
-# then every sounding note's shape, and then the frame is counted, which moves a clock started at
-# a test's moment.
+# (Reference#advance_frame): the picture is switched on, the timers tick, the sound features (the
+# mix, then the tune, then every sounding note's shape), and then the frame is counted, which moves
+# a clock started at a test's moment.
 def rg_frame_begins
   rg_screen_frame_started
   rg_timers_frame
-  rg_mix_frame
-  rg_music_frame
-  rg_mix_step_shapes
+  rg_hook_sound_frame
+  rg_hook_sound_frame_ended
   rg_motor_frame
   rg_clock_frame
 end

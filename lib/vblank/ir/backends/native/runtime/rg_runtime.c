@@ -9,7 +9,6 @@
 #include "rg_console.h"
 #include "rg_driver.h"
 #include "rg_list.h"
-#include "rg_mix.h"
 #include "rg_pacing.h"
 #include "rg_refusal.h"
 #include "rg_screen.h"
@@ -277,16 +276,14 @@ static void motor_frame(void) {
 int32_t rg_motor_on(void) { return motor_on; }
 
 /* The middle of Reference#advance_frame, in its order: the picture is switched on, the timers
- * tick, and then the music moves on. */
+ * tick, and then the sound moves on. */
 void rg_frame_begins(void) {
   rg_screen_frame_started();
   timers_frame();
   /* The interpreter's order (Reference#advance_frame): the mix, then the tune, then every
-   * sounding note's shape, and then the frame is counted, which moves a clock started at a
-   * test's moment. */
-  rg_mix_frame();
-  rg_music_frame();
-  rg_mix_step_shapes();
+   * sounding note's shape (the sound features', in that order), and then the frame is counted,
+   * which moves a clock started at a test's moment. */
+  rg_sound_frame();
   motor_frame();
   clock_frame();
 }
