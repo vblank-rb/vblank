@@ -3,7 +3,7 @@
 require "digest"
 require "tmpdir"
 require "all/vblank/builder/test_data_packs"
-require "all/vblank/builder/test_data_pack_layouts"
+require "made_up_original_layouts"
 
 # SEARCHING WRITTEN-OUT CODE FOR THE ORIGINAL'S BYTES. A program written as C, JavaScript or Ruby
 # holds an array as its numbers, in order, or (JavaScript's and Ruby's past a few hundred entries)
@@ -43,7 +43,7 @@ module WrittenOutSearch
   end
 end
 
-# AN ORIGINAL FROM ANOTHER CONSOLE, ITS PACK LEFT OUT (MadeUpOriginalLayouts, test_data_pack_layouts.rb):
+# AN ORIGINAL FROM ANOTHER CONSOLE, ITS PACK LEFT OUT (MadeUpOriginalLayouts, made_up_original_layouts.rb):
 # each console's layout read by the runtime from the pack it is handed as it starts, played as the
 # all-in-one build plays, and written out with none of the made-up original's bytes in it.
 module PackAtStartLayoutTests
@@ -86,6 +86,24 @@ module PackAtStartLayoutTests
         ["#{layout.title} layout", whole, left_out, [*layout.tiles.map { |places| layout_tile_pixels(places) }, SPEEDS]]
       end
       ways_holding_needles(programs, &write)
+      assert_layouts_written_without_the_originals_raw_bytes(folder, &write)
+    end
+  end
+
+  # The program built with its pack left out holds none of the original's bytes as the original
+  # keeps them (high byte first for a layout that does): each run of raw bytes, and the runs of
+  # sixteen-bit numbers the same bytes make read in the layout's order. A build that held the pack
+  # whole would hold these, where the decoded pixels and numbers above are what the game draws.
+  private def assert_layouts_written_without_the_originals_raw_bytes(folder, &write)
+    LAYOUTS.each do |layout|
+      _, _, left_out = layout_games(folder, layout)
+      runs = number_runs_in(write.(left_out))
+      order = layout.high_byte_first ? "n*" : "v*"
+      [layout.tile_bytes, layout.raw_color_bytes, layout.raw_speed_bytes, layout.offset_bytes, layout.word_bytes].each do |raw|
+        [raw.bytes, raw.unpack(order)].each do |needle|
+          assert_empty ways_holding(runs, needle), "#{layout.title} layout built with its pack left out holds raw bytes #{needle.first(8)}..."
+        end
+      end
     end
   end
 end
