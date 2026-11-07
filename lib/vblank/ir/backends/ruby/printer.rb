@@ -7,13 +7,20 @@ module VBlank
         # Turns the statement tree the lowering builds into Ruby: the body of the game's class.
         # The only place in the backend that writes Ruby.
         #
-        # The tree has no operators in it — every number a game keeps goes through a runtime
-        # function (runtime/rg_int32.rb) — so nothing here has to know Ruby's precedence. What it
-        # does have to know:
+        # The tree has no operators in it: every number a game keeps goes through a runtime
+        # function (runtime/rg_int32.rb). What the printer has to know:
         #
         # - A CONDITION IS A NUMBER, nought or not. In Ruby only nil and false are false, so a
-        #   condition is written as a comparison with nought: `if rg_lt(a, b) != 0`, never
-        #   `if rg_lt(a, b)`, which would always be taken.
+        #   number taken as a condition is written as a comparison with nought (`while x != 0`),
+        #   never bare, which would always be taken. A comparison taken as one is Ruby's own
+        #   comparison (`if a < b`), which is true or false already.
+        # - THE GAME'S OWN ARITHMETIC IS WRITTEN AS RUBY'S OPERATORS (INLINE_OPERATORS,
+        #   WRAPPED_OPERATORS), each in parentheses, so no precedence is needed. It runs every
+        #   frame, and YJIT compiles an operator on small numbers to a few instructions but a
+        #   runtime method only as a call: a `+` through rg_add was two calls. A sum, difference or
+        #   product that can pass 32 bits keeps its answer in a temporary of its own and calls
+        #   rg_i32 to come round only when it has, which a game's numbers nearly never do. The
+        #   operands are worked out left to right, as the call worked them out.
         # - WHERE A NAME LIVES. Everything the game keeps — its variables, lists, tables, the
         #   arrays of routines it calls by number, the art the runtime reads — is an instance
         #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals.
@@ -25,6 +32,15 @@ module VBlank
 
           # The most numbers a table is written out as; a bigger one is written as base64.
           MOST_WRITTEN_AS_NUMBERS = 256
+
+          # Runtime functions of two numbers written as Ruby's operator: a comparison, 1 or 0 as a
+          # number and true or false as a condition, and the bits, which cannot pass 32 bits.
+          COMPARISONS = Ractor.make_shareable({ "rg_lt" => "<", "rg_le" => "<=", "rg_gt" => ">", "rg_ge" => ">=",
+                                                "rg_eq" => "==", "rg_ne" => "!=" })
+          INLINE_OPERATORS = Ractor.make_shareable({ "rg_and" => "&", "rg_or" => "|", "rg_xor" => "^" })
+          # ...and the ones that can pass 32 bits, and so come round (rg_i32) when they do.
+          WRAPPED_OPERATORS = Ractor.make_shareable({ "rg_add" => "+", "rg_sub" => "-", "rg_mul" => "*" })
+          OPERATORS_OF_TWO = Ractor.make_shareable(Set.new(COMPARISONS.keys + INLINE_OPERATORS.keys + WRAPPED_OPERATORS.keys))
 
           # How each C type a table is kept in packs its numbers into bytes, for a big table
           # written as base64: little-endian, the width the type holds.
@@ -78,6 +94,7 @@ module VBlank
 
           def print_function(item)
             @locals = Set.new
+            @temporaries = 0
             line(0, "def #{item.name.text}")
             statements(1, item.body)
             line(0, "end")
@@ -145,8 +162,14 @@ module VBlank
             line(depth, "end")
           end
 
-          # A number taken as a condition: not nought.
-          def condition(item) = "#{expression(item)} != 0"
+          # A number taken as a condition: not nought; a comparison is one already.
+          def condition(item)
+            operator = item.is_a?(C::Call) && COMPARISONS[item.function.text]
+            return "#{expression(item)} != 0" unless operator
+
+            left, right = item.args
+            "#{expression(left)} #{operator} #{expression(right)}"
+          end
 
           # --- expressions ---
 
@@ -174,9 +197,26 @@ module VBlank
           def call(item)
             function = item.function.text
             return "__send__(#{expression(item.args.first)})" if function == "rg_call_routine"
+            return operator_of_two(item) if item.args.size == 2 && OPERATORS_OF_TWO.include?(function)
 
             @called << function
             "#{function}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
+          end
+
+          # A runtime function of two numbers written as Ruby's operator (see the class's heading).
+          def operator_of_two(item)
+            function = item.function.text
+            left, right = item.args.map { |arg| expression(arg) }
+            if (compared = COMPARISONS[function])
+              "(#{left} #{compared} #{right} ? 1 : 0)"
+            elsif (bits = INLINE_OPERATORS[function])
+              "(#{left} #{bits} #{right})"
+            else
+              @called << "rg_i32"
+              kept = "w_#{@temporaries += 1}"
+              "((#{kept} = #{left} #{WRAPPED_OPERATORS.fetch(function)} #{right}) > #{Int32::MAX} || " \
+                "#{kept} < #{Int32::MIN} ? rg_i32(#{kept}) : #{kept})"
+            end
           end
 
           # Where a global lives, for a runtime function that reads it later. A list is an object,
