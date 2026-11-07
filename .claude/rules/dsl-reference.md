@@ -81,8 +81,8 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Text & numbers — `.claude/dsl/text.md`
 
-- `draw_text "HI", x, y, color`, `draw_number :var, x, y, color, digits:`; `:left`/`:center`/`:right` for a column.
-- `text_width`, `text_height`; `font :name do glyph … end`, or `pictures: {"0" => :zero}`.
+- `draw_text "HI", x, y, color`, `draw_number :var, x, y, color, digits:` (`leading_zeros:`); `:left`/`:center`/`:right`.
+- `text_width`, `text_height`; `font :name do glyph … end`; `pictures:`/`strip:`: no colour.
 
 ## Variables & math — `.claude/dsl/variables.md`
 

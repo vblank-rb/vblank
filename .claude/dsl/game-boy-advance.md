@@ -21,6 +21,7 @@ and a test fails when the two differ.
 - `sprite` — works: a sprite with `over_picture: true` on a painted screen is the console's own sprite. The painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K.
 - `background` — works: `above_row:` is refused: this build does not make it yet. `show_only_inside` uses the display's second window. One background at a time can be held to a box. A game that holds one cannot also have a light, a status bar, a fade held to part of the screen, or a fade under a layer, because these need the same windows. With `held: true`, the cells a pass changes with `set_tile` wait in work memory and go into video memory together in the gap between frames, so they all show on the next frame. Up to 1024 changes wait. A pass that makes more writes the waiting ones at once.
 - `status_bar` — works: the bar takes one of the four background layers. A game with a bar cannot also have a light, a fade held to part of the screen, or a fade under a layer, because these need the same part of the display.
+- `font` — works: a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its picture: a `blit` on a painted screen, a sprite on a tiled one.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `dump_func` — works: it lists the ARM a routine was made into.
@@ -46,12 +47,12 @@ These work as their group files say:
 `camera_follows`, `image`, `color`, `rgb`, `rgb8`, `colors`, `recolor`, `colors_in_use`,
 `color_walk`, `mirror`, `upside_down`, `blit`, `draw_in_order`, `hide_sprites`,
 `picture_groups`, `pool`, `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`,
-`layer`, `draw_text`, `draw_number`, `font`, `text_width`, `text_height`, `menu`, `var`,
-`save_var`, `save_data`, `clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`,
-`add_var`, `sub`, `sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`,
-`negate_abs`, `negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `if_eq`,
-`if_ne`, `if_gt`, `if_lt`, `if_ge`, `if_le`, `if_gte`, `if_lte`, `func`, `call`, `scene`,
-`case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
-`enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`,
-`stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
+`layer`, `draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`,
+`save_data`, `clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`,
+`sub`, `sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
+`negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `if_eq`, `if_ne`, `if_gt`,
+`if_lt`, `if_ge`, `if_le`, `if_gte`, `if_lte`, `func`, `call`, `scene`, `case_var`,
+`most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`, `enable_sound`,
+`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`,
+`hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
 `sound_effects`, `sample`, `instrument`.

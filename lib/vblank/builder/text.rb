@@ -62,25 +62,35 @@ module VBlank
       #   font :numerals, pictures: ("0".."9").to_h { |d| [d, :"numeral_#{d}"] }
       #   draw_number score, 8, 8, digits: 5, font: :numerals   # no colour: the pictures have theirs
       #
+      # Or one picture cut into equal pictures, one for each character, left to right — a row of
+      # numerals as the original keeps them:
+      #
+      #   font :numerals, strip: :numeral_strip, characters: "0123456789 "
+      #
       # A picture font draws each character as its picture (a blit on a bitmap screen, a sprite
       # on a tiled one), so it costs what those pictures cost and nothing new. Its spacing is
-      # 0 unless given, since a picture carries its own margin. See #declare_picture_font.
+      # 0 unless given, since a picture carries its own margin. See PictureFonts.
       #
       # @param name [Symbol] the name it registers under (used as draw_text's font:)
       # @param on [String] the character that marks a lit pixel
-      # @param spacing [Integer, nil] blank pixels between characters (1, or 0 for pictures:)
+      # @param spacing [Integer, nil] blank pixels between characters (1, or 0 for pictures)
       # @param fold [Symbol, nil] :upper to render any case with these glyphs
       # @param glyphs [Hash{String=>Array<Array>}, nil] char → rows of pixel values
       # @param blank [Object] the pixel value that is not drawn
       # @param pictures [Hash{String=>Symbol}, nil] char → a declared picture's name
+      # @param strip [Symbol, nil] a declared picture to cut, one piece per character of +characters+
+      # @param characters [String, nil] the characters of +strip+, left to right
       # @return [Symbol] the font name
-      def font(name, on: "#", spacing: nil, fold: nil, glyphs: nil, blank: 0, pictures: nil, &block)
-        if pictures
+      def font(name, on: "#", spacing: nil, fold: nil, glyphs: nil, blank: 0, pictures: nil, strip: nil,
+               characters: nil, &block)
+        if pictures || strip
           if block || glyphs || fold
-            raise ArgumentError, "font :#{name} takes pictures: alone. Give pictures:, or glyphs: or a block, not both."
+            raise ArgumentError, "font :#{name} is made of pictures, so it takes no glyphs:, fold: or block. " \
+                                 "Give pictures: or strip:, or glyphs: or a block."
           end
 
-          return declare_picture_font(name, pictures, spacing || 0)
+          return declare_picture_font(name, pictures: pictures, strip: strip, characters: characters,
+                                            spacing: spacing || 0)
         end
 
         spacing ||= 1
@@ -159,10 +169,8 @@ module VBlank
         if from || length
           raise ArgumentError, "draw_text takes from: and length: with a list of character codes. These words are a String."
         end
-        if (pictured = @picture_fonts[font])
-          refuse_color_for_picture_font!("draw_text", font, color, showing)
-          refuse_missing_characters!(text, pictured, font)
-          return draw_picture_text(text, column_for(x, pictured.text_width(text), within, "draw_text"), y, pictured)
+        if picture_font?(font)
+          return draw_text_in_pictures(text, x, y, color, font: font, within: within, showing: showing)
         end
 
         refuse_missing_color!("draw_text", color)
@@ -210,15 +218,22 @@ module VBlank
       # @param x [Integer, Symbol] left edge of the field, or :left / :center / :right
       # @param y [Integer] top edge
       # @param color [Symbol, String, Integer, nil] digit color (none in a font of pictures)
+      # `leading_zeros: true` fills the field with noughts instead, as a clock does: 7 in a field
+      # of two reads 07.
+      #
       # @param digits [Integer] how many digit columns to reserve
       # @param within [Range, nil] the columns to place the field in
-      def draw_number(value, x, y, color = nil, digits: DEFAULT_DIGITS, font: :default, within: nil)
+      # @param leading_zeros [Boolean] draw the places the number has not reached as 0
+      def draw_number(value, x, y, color = nil, digits: DEFAULT_DIGITS, font: :default, within: nil, leading_zeros: false)
         unless DSL::Whole.positive?(digits)
           raise ArgumentError, "draw_number needs a positive number of digits. Got #{digits.inspect}."
         end
-        if (pictured = @picture_fonts[font])
-          refuse_color_for_picture_font!("draw_number", font, color, nil)
-          return draw_picture_number(value, x, y, pictured, font, digits, within)
+        unless [true, false].include?(leading_zeros)
+          raise ArgumentError, "draw_number takes leading_zeros: as true or false. Got #{leading_zeros.inspect}."
+        end
+        if picture_font?(font)
+          return draw_number_in_pictures(value, x, y, color, font: font, digits: digits, within: within,
+                                                             leading_zeros: leading_zeros)
         end
 
         refuse_missing_color!("draw_number", color)
@@ -229,12 +244,12 @@ module VBlank
         # left to update itself each frame (see #draw_number_tiled).
         if TILE_HARDWARE_MODES.include?(@screen_mode)
           require_hud_declared_once!("draw_number")
-          return draw_number_tiled(value, x, y, color, digits, font)
+          return draw_number_tiled(value, x, y, color, digits, font, leading_zeros)
         end
 
         case value
-        when Integer        then draw_fixed_number(value, x, y, color, digits, font)
-        when Symbol, DSL::Value  then draw_live_number(value, x, y, color, digits, font)
+        when Integer        then draw_fixed_number(value, x, y, color, digits, font, leading_zeros)
+        when Symbol, DSL::Value  then draw_live_number(value, x, y, color, digits, font, leading_zeros)
         else
           raise ArgumentError,
                 "draw_number draws a number: a value, a variable, or an expression. Got #{value.inspect}."
@@ -270,202 +285,12 @@ module VBlank
       # The font a name means: a font of the game's own pictures, else a font of glyphs.
       def font_named(name) = @picture_fonts[name] || IR::FontTable.of(@program).get(name)
 
-      # A FONT OF THE GAME'S OWN PICTURES. Each character names a picture declared with `image`
-      # (from art, a file or a data pack's slots), and draw_text and draw_number draw that
-      # picture where the character goes. Nothing goes in the tree for the font itself: the
-      # text it draws is blits and sprites of pictures already there, which every console
-      # already draws, so a picture font needs nothing new from any of them.
-      #
-      # The pictures may differ in width, so letters can be proportional, but not in height,
-      # since a line is one height. A number asks more of them (#refuse_unfit_numerals!).
-      def declare_picture_font(name, pictures, spacing)
-        refuse_font_name_taken!(name)
-        unless pictures.is_a?(Hash) && pictures.all? { |char, picture| char.is_a?(String) && char.length == 1 && picture.is_a?(Symbol) }
-          raise ArgumentError,
-                "font :#{name} takes pictures: as each character and the name of its picture, " \
-                "like `pictures: { \"0\" => :zero, \"1\" => :one }`. Got #{pictures.inspect}."
-        end
-        raise ArgumentError, "font :#{name} has no pictures. Give it at least one." if pictures.empty?
-
-        sizes = pictures.to_h do |char, picture|
-          size = @images[picture] or
-            raise ArgumentError,
-                  "font :#{name} names the picture :#{picture} for #{char.inspect}, and no picture has that name. " \
-                  "To fix this, declare it first with `image :#{picture}, ...`."
-          [char, size]
-        end
-        refuse_picture_heights_differ!(name, pictures, sizes)
-        @picture_fonts[name] = Graphics::PictureFont.new(pictures: pictures, sizes: sizes, spacing: spacing)
-        name
-      end
-
-      def refuse_picture_heights_differ!(name, pictures, sizes)
-        first, other = sizes.keys.partition { |char| sizes[char][1] == sizes.values.first[1] }
-        return if other.empty?
-
-        raise ArgumentError,
-              "font :#{name}: the picture :#{pictures[other.first]} is #{sizes[other.first][1]} pixels tall, and " \
-              ":#{pictures[first.first]} is #{sizes[first.first][1]}. All the pictures of a font must be one height. " \
-              "To fix this, make them the same height."
-      end
-
-      # One name is one font, whichever kind: a second `font :hud` is a mistake, and a picture
-      # font named like a built-in one would hide it.
-      def refuse_font_name_taken!(name)
-        return unless @picture_fonts.key?(name) || IR::FontTable.of(@program).declared?(name) ||
-                      Graphics::Fonts.find(name)
-
-        raise ArgumentError,
-              "font :#{name} is declared twice, or is the name of a built-in font. Each font needs its own name. " \
-              "To fix this, rename one of them."
-      end
-
-      # A picture font's pictures have their own colours, so a colour given beside it would be
-      # ignored, and a game that gave one expects to see it.
-      def refuse_color_for_picture_font!(verb, font, color, showing)
-        return if color.nil? && showing.nil?
-
-        raise ArgumentError,
-              "#{verb} with font :#{font} draws the font's own pictures, in their own colours. It takes no colour. " \
-              "To fix this, remove #{color.nil? ? 'showing:' : color.inspect}."
-      end
-
       def refuse_missing_color!(verb, color)
         return unless color.nil?
 
         raise ArgumentError,
               "#{verb} needs a colour after the place, like `#{verb} #{verb == 'draw_text' ? '"HI"' : ':score'}, 8, 8, :white`. " \
               "Only a font made of pictures draws with no colour."
-      end
-
-      def refuse_list_in_picture_font!(font)
-        return unless @picture_fonts.key?(font)
-
-        raise ArgumentError,
-              "draw_text cannot draw a list of character codes in font :#{font}, because its letters are pictures. " \
-              "To fix this, draw the words as a String, or use a font of glyphs."
-      end
-
-      # Words in a picture font, at a column already worked out: each character's picture, at the
-      # pen's place. On a bitmap screen each is a blit; on a tiled one, a sprite declared once and
-      # shown every frame, as any tiled text is.
-      def draw_picture_text(text, x, y, pictured)
-        tiled = TILE_HARDWARE_MODES.include?(@screen_mode)
-        require_hud_declared_once!("draw_text") if tiled
-        pictured.each_glyph_x(text) do |char, dx|
-          picture = pictured.picture(char)
-          if tiled
-            hud_glyph_object(poses: [picture], pose: Build.int(0), x: x + dx, y: y)
-          else
-            blit(picture, x + dx, y)
-          end
-        end
-        nil
-      end
-
-      # A NUMBER IN A PICTURE FONT, in a field of +digits+ columns, each as wide as the widest
-      # digit, placed and right-aligned as any number is. A place the number has not reached is
-      # a leading nought: it shows the font's space where the font has one, which paints over the
-      # digit that was there, and nothing where it has none.
-      #
-      # A live number works each column's digit out as the game runs and shows one of the ten
-      # pictures for it: on a bitmap screen a `blit` of one of a set (blit_pose), on a tiled one a
-      # sprite whose pose is the digit, as a live number in any font is there.
-      def draw_picture_number(value, x, y, pictured, font, digits, within)
-        cell = pictured.cell_w
-        x = column_for(x, (digits * cell) - pictured.spacing, within, "draw_number")
-        fixed = DSL::Value.fixed_number(value)
-        if fixed
-          text = fixed.to_s
-          refuse_missing_characters!(text, pictured, font)
-          pad = [digits - text.length, 0].max
-          return draw_picture_text(text, x + (pad * cell), y, pictured) unless pictured.picture(" ")
-
-          return draw_picture_text((" " * pad) + text, x, y, pictured)
-        end
-
-        numerals = refuse_unfit_numerals!(pictured, font)
-        if TILE_HARDWARE_MODES.include?(@screen_mode)
-          require_hud_declared_once!("draw_number")
-          return draw_picture_number_tiled(value, x, y, pictured, numerals, digits)
-        end
-        unless value.is_a?(Symbol) || value.is_a?(DSL::Value)
-          raise ArgumentError,
-                "draw_number draws a number: a value, a variable, or an expression. Got #{value.inspect}."
-        end
-
-        draw_picture_number_painted(value, x, y, pictured, numerals, digits)
-      end
-
-      # Each column picks one of the pictures by number: the ten digits, then the space if the
-      # font has one. A leading nought's number is the space's, or -1 where there is none, which
-      # a blit of one of a set draws as nothing. The number is worked out once into a variable,
-      # so the test for each picture reads it rather than working it out again.
-      def draw_picture_number_painted(value, x, y, pictured, numerals, digits)
-        source = next_number_var
-        store!(source, value)
-        shown = next_number_var
-        blank = pictured.picture(" ") ? 10 : -1
-        poses = numerals + (pictured.picture(" ") ? [pictured.picture(" ")] : [])
-        digits.times do |i|
-          place = 10**(digits - 1 - i)
-          store!(shown, place == 1 ? digit_at(source, 1) : digit_or_blank(source, place, blank))
-          blit(poses, x + (i * pictured.cell_w), y, showing: shown)
-        end
-        nil
-      end
-
-      # The digit of +source+ at +place+, or +blank+ while the number is smaller than the place:
-      # blank + (source >= place) * (digit - blank), with no test to branch on.
-      def digit_or_blank(source, place, blank)
-        reached = Build.binop(:>=, Build.var_ref(source), Build.int(place))
-        Build.binop(:+, Build.int(blank), Build.binop(:*, reached, Build.binop(:-, digit_at(source, place), Build.int(blank))))
-      end
-
-      # A live number on a tiled screen: a sprite for each column, whose pose is the blank or one
-      # of the ten digits, read from its variable every frame (see #hud_digit_pose).
-      def draw_picture_number_tiled(value, x, y, pictured, numerals, digits)
-        source = hud_number_variable(value)
-        blank = pictured.picture(" ") || clear_picture_image(*@images[numerals.first])
-        digits.times do |i|
-          place = 10**(digits - 1 - i)
-          hud_glyph_object(poses: [blank] + numerals, pose: hud_digit_pose(source, place),
-                           x: x + (i * pictured.cell_w), y: y)
-        end
-        nil
-      end
-
-      # A number can show any digit, and shows each in the same column, so a picture font draws
-      # a live number only when it holds all ten and they are one size (with the space too, if it
-      # has one). Returns the ten pictures, nought first.
-      def refuse_unfit_numerals!(pictured, font)
-        missing = pictured.missing_characters("0123456789")
-        unless missing.empty?
-          raise ArgumentError,
-                "draw_number: font :#{font} has no #{missing.map(&:inspect).join(', ')}. A number that changes can " \
-                "show any digit, so the font needs a picture for each of 0 to 9. To fix this, add the missing pictures."
-        end
-
-        numerals = ("0".."9").map { |digit| pictured.picture(digit) }
-        sizes = (numerals + [pictured.picture(" ")].compact).map { |picture| @images[picture] }.uniq
-        return numerals if sizes.one?
-
-        raise ArgumentError,
-              "draw_number: font :#{font} has pictures of different sizes for its digits. A number draws each digit in " \
-              "the same place, so the pictures of 0 to 9, and of the space, must be one size. To fix this, make them " \
-              "the same size."
-      end
-
-      # A picture of +width+ by +height+ with nothing in it: what a leading nought shows on a
-      # tiled screen in a font with no space. One for each size.
-      def clear_picture_image(width, height)
-        name = :"__picture_font_clear_#{width}x#{height}"
-        return name if @images.key?(name)
-
-        define_pixel_image(name, width: width, height: height,
-                                 data: Array.new(width * height, Images::TRANSPARENT_PIXEL),
-                                 transparent: Images::TRANSPARENT_PIXEL)
-        name
       end
 
       # Words written in the game are known while it is built, so a character the font does not
@@ -483,18 +308,9 @@ module VBlank
       end
 
       # Put a declared font in the tree, the same way a declared picture goes in, so it
-      # belongs to the game that wrote it.
-      #
-      # Declaring one name twice is a friendly error rather than a silent replacement: the
-      # second `font :hud` is a mistake somebody made, and what it draws with is the first
-      # one, which reads as the art being wrong rather than as the mistake it is.
+      # belongs to the game that wrote it. One name is one font (PictureFonts#refuse_font_name_taken!).
       def declare_font(name, font)
-        if IR::FontTable.of(@program).declared?(name) || @picture_fonts.key?(name)
-          raise ArgumentError,
-                "font :#{name} is declared twice. Each font needs its own name. " \
-                "To fix this, rename one of them."
-        end
-
+        refuse_font_name_taken!(name)
         record(Build.font(name, font))
       end
 
@@ -608,8 +424,8 @@ module VBlank
 
       # A number known at build time: right-align its glyphs in the field now. The
       # column step is the chosen font's cell width, so a narrower font packs tighter.
-      def draw_fixed_number(number, x, y, color, digits, font)
-        text = number.to_s
+      def draw_fixed_number(number, x, y, color, digits, font, leading_zeros)
+        text = leading_zeros ? number.to_s.rjust(digits, "0") : number.to_s
         col = [digits - text.length, 0].max * IR::FontTable.of(@program).get(font).cell_w
         record(Build.draw_text(text, x + col, y, color, font: font))
       end
@@ -623,20 +439,21 @@ module VBlank
       #
       # Every column therefore carries all ten digit glyphs (one is drawn), so a
       # column costs about ten glyph blits of ROM — fine for a HUD; a run-time
-      # glyph-by-index draw op would collapse each column to a single blit.
-      def draw_live_number(value, x, y, color, digits, font)
+      # glyph-by-index draw op would collapse each column to a single blit. With
+      # +leading_zeros+ every column draws, as the ones column does.
+      def draw_live_number(value, x, y, color, digits, font, leading_zeros)
         source = next_number_var
         store!(source, value)
         digit = next_number_var
         started = next_number_var
-        store!(started, 0)
+        store!(started, 0) unless leading_zeros
 
         cell = IR::FontTable.of(@program).get(font).cell_w
         digits.times do |i|
           place = 10**(digits - 1 - i)
           store!(digit, digit_at(source, place))
           col_x = x + i * cell
-          if i == digits - 1
+          if i == digits - 1 || leading_zeros
             draw_glyph(digit, col_x, y, color, font) # the ones column always shows
           else
             if_ne(digit, 0) { store!(started, 1) }
@@ -734,11 +551,11 @@ module VBlank
       # digits (like draw_text). A live number gets one sprite per digit column, each
       # showing the matching glyph for its place in the value — recomputed every frame
       # from the variable, with leading zeros left blank so it reads naturally.
-      def draw_number_tiled(value, x, y, color, digits, font)
+      def draw_number_tiled(value, x, y, color, digits, font, leading_zeros)
         cell = IR::FontTable.of(@program).get(font).cell_w
         fixed = DSL::Value.fixed_number(value)
         if fixed
-          text = fixed.to_s
+          text = leading_zeros ? fixed.to_s.rjust(digits, "0") : fixed.to_s
           pad = [digits - text.length, 0].max # right-align in the field
           return draw_text_tiled(text, x + pad * cell, y, [color], font, nil)
         end
@@ -747,7 +564,7 @@ module VBlank
         poses = [blank_glyph_image] + ("0".."9").map { |d| glyph_image(font, d, color) }
         digits.times do |i|
           place = 10**(digits - 1 - i)
-          hud_glyph_object(poses: poses, pose: hud_digit_pose(source, place),
+          hud_glyph_object(poses: poses, pose: hud_digit_pose(source, place, leading_zeros: leading_zeros),
                            x: x + i * cell, y: y)
         end
         nil
@@ -771,17 +588,19 @@ module VBlank
       # Pose 0 is the blank glyph and poses 1..10 are the digits 0..9, so the value to
       # show is (that digit + 1). Every column but the ones column blanks out while the
       # number hasn't reached its place yet — that's what drops the leading zeros —
-      # which is exactly `(source >= place)` (0 or 1) times the digit-plus-one.
-      def hud_digit_pose(source, place)
+      # which is exactly `(source >= place)` (0 or 1) times the digit-plus-one. With
+      # +leading_zeros+ every column shows its digit, as the ones column does.
+      def hud_digit_pose(source, place, leading_zeros: false)
         show = Build.binop(:+, digit_at(source, place), Build.int(1))
-        return show if place == 1
+        return show if place == 1 || leading_zeros
 
         Build.binop(:*, Build.binop(:>=, Build.var_ref(source), Build.int(place)), show)
       end
 
       # Declare one glyph sprite (an object) at a fixed screen spot and remember it so
       # every frame's repaint draws it, on top of the game.
-      def hud_glyph_object(poses:, pose:, x:, y:)
+      # +shown_while+, a value node of 0 or 1, hides it while it is 0.
+      def hud_glyph_object(poses:, pose:, x:, y:, shown_while: Build.int(1))
         name = :"__hud#{@sprite_seq += 1}"
         # A HUD glyph is always shown, so active starts at 1 — and then picks up the two
         # things that can narrow it. gated_by_scene scopes it to when its scene is the live
@@ -789,7 +608,7 @@ module VBlank
         # tests it was written under, so `draw_text ... if blink == 1` blinks
         # instead of standing still. Neither needs anything toggled by hand.
         record(Build.object(name, poses: poses, pose: pose, x: Build.int(x), y: Build.int(y),
-                                  active: gated_by_open_conditions(gated_by_scene(Build.int(1))),
+                                  active: gated_by_open_conditions(gated_by_scene(shown_while)),
                                   scene: declaring_scene))
         @hud_objects << name
         name

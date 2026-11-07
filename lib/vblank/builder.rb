@@ -11,6 +11,7 @@ require_relative "builder/randomness"
 require_relative "builder/sound"
 VBlank.require_game_file "builder/music"
 require_relative "builder/text"
+require_relative "builder/picture_fonts"
 require_relative "builder/images"
 VBlank.require_game_file "builder/color_lists"
 require_relative "builder/picture_groups"
@@ -75,6 +76,7 @@ module VBlank
     include Sound      # enable_sound, define_sound, beep
     include Music      # song, play_song, stop_music
     include Text       # draw_text, draw_number
+    include PictureFonts # font pictures: / strip:, and text drawn in the game's own pictures
     include Images     # image, blit, rgb, rgb8, color
     include ColorLists # recolor (a list of sprite colours that holds other colours as the game runs)
     include PictureGroups # picture_groups (a scene's sprite pictures by room, only some of them up at a time)
@@ -193,6 +195,7 @@ module VBlank
       @hud_objects = []        # tiled-mode text/number glyph sprites, drawn on top after every wait_vblank
       @glyph_images = {}       # [font, char, color] → a cached glyph image name (one 8x8 sprite tile per glyph)
       @picture_fonts = {}      # font name → Graphics::PictureFont, a font of the game's own pictures
+      @pack_picture_options = {} # picture name → the image options of a picture made from a data pack's tiles
       @verb_owns_text = nil    # the verb drawing its own text right now (a menu's rows), rather than the author placing it
       @animations = []         # flipbook sprites, whose pose is advanced on a beat after every wait_vblank
       @pool_animations = []    # ...and posed pools, which step every instance on their own beat

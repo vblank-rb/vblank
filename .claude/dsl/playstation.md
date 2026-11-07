@@ -93,7 +93,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `layer` — works: see `layers`.
 - `draw_text` — works: the same as on the Advance.
 - `draw_number` — works: see `draw_text`.
-- `font` — works: the same as on the Advance.
+- `font` — works: a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its picture: a `blit` on a painted screen, a sprite on a tiled one.
 - `text_width` — works: the same as on the Advance.
 - `text_height` — works: the same as on the Advance.
 - `menu` — works: the same as on the Advance.

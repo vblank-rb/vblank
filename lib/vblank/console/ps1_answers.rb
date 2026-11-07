@@ -142,7 +142,8 @@ module VBlank
         # --- text ---
         draw_text: works,
         draw_number: works("see `draw_text`."),
-        font: works,
+        font: works("a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its " \
+                    "picture: a `blit` on a painted screen, a sprite on a tiled one."),
         text_width: works,
         text_height: works,
         menu: works,

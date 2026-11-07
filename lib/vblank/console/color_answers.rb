@@ -211,7 +211,9 @@ module VBlank
         draw_text: works("painted on a painted screen; on a tiled one each letter is a sprite, so " \
                          "they count towards the forty, ten to a row."),
         draw_number: works("see `draw_text`."),
-        font: works,
+        font: works("a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its " \
+                    "picture: a `blit` on a painted screen, a sprite on a tiled one. So on a tiled screen each " \
+                    "picture holds 3 colours and see-through, as any sprite does."),
         text_width: works,
         text_height: works,
         menu: works("see `draw_text` for what its rows are made of."),

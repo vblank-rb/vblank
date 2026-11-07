@@ -1,21 +1,20 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "digest"
 require "tmpdir"
-require "made_up_original"
 
 # A FONT MADE OF THE GAME'S OWN PICTURES (`font :name, pictures: { "0" => :zero, ... }`): draw_text
 # and draw_number draw each character as its picture, in all the picture's colours, on a bitmap
 # screen and a tiled one, with everything draw_number does in any font — a field of digits:,
-# leading noughts dropped, :left / :center / :right.
+# leading noughts dropped or written out, :left / :center / :right. A font can also be cut from one
+# strip of pictures (`strip:`), and its pictures can come from a data pack's tiles.
 #
 # Each numeral here is 4x3 and says its digit in its own pixels, so a wrong digit, a wrong column
 # or a picture drawn in one colour shows: the top row is the digit in binary, red for a one and
 # blue for a nought, then a row of green, then the binary again the other way round. The space is
 # all green, which no numeral is. Three colours, so a Color sprite holds each one.
 class TestPictureFont < Minitest::Test
-  include MadeUpOriginal
-
   RED = Color.resolve(:red)
   BLUE = Color.resolve(:blue)
   GREEN = Color.resolve(:green)
@@ -40,6 +39,15 @@ class TestPictureFont < Minitest::Test
       [char, name]
     end
     builder.font :numerals, pictures: pictures, spacing: spacing
+  end
+
+  # The same numerals as one strip, 0 to 9 side by side, and a font cut from it.
+  def self.declare_numeral_strip(builder)
+    rows = (0...NUMERAL_H).flat_map do |row|
+      ("0".."9").flat_map { |digit| numeral_pixels(digit)[row * NUMERAL_W, NUMERAL_W] }
+    end
+    builder.image :numeral_strip, width: NUMERAL_W * 10, height: NUMERAL_H, data: rows
+    builder.font :numerals, strip: :numeral_strip, characters: "0123456789"
   end
 
   private def bitmap_game(space: false, spacing: 0, &draw)
@@ -179,42 +187,153 @@ class TestPictureFont < Minitest::Test
 
   # --- pictures made from a data pack's slots ---
 
-  # The two tiles of the made-up original as pictures, a font of them as "0" and "1", and what
-  # +draw+ does with them. Drawn on the 8-pixel grid, so each tile is a square of the Color's
-  # screen of its own, and compared with the same pictures drawn the plain way, so a console that
-  # keeps fewer shades of grey than the original shows the same picture both ways.
-  private def pack_font_game(folder, mode, &draw)
+  # A made-up original holding ten 8x8 numeral tiles, the way a cartridge keeps its own: the colours
+  # at DIGIT_PALETTE_AT, then the tiles, two pixels a byte. Tile d's top row is d in binary, two
+  # pixels a bit, red (place 1) for a one and blue (place 3) for a nought; its last row is the same
+  # the other way round; the rows between are green (place 2). Three places, so a Color sprite
+  # holds each, and every console shows the three colours exactly.
+  DIGIT_PALETTE = [0x0000, Color.resolve(:red), Color.resolve(:green), Color.resolve(:blue), *Array.new(12, 0)].freeze
+  DIGIT_PALETTE_AT = 0x00
+  DIGIT_TILES_AT = 0x20
+
+  def self.digit_tile_places(digit)
+    bits = (0...4).flat_map { |i| [(digit >> (3 - i)) & 1] * 2 }.map { |bit| bit == 1 ? 1 : 3 }
+    bits + Array.new(48, 2) + bits.reverse
+  end
+
+  DIGIT_COPY = begin
+    bytes = ("\0" * 0x200).b
+    bytes[DIGIT_PALETTE_AT, 32] = DIGIT_PALETTE.pack("v*")
+    tiles = (0..9).flat_map { |digit| digit_tile_places(digit) }
+    packed = tiles.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*")
+    bytes[DIGIT_TILES_AT, packed.bytesize] = packed
+    bytes.freeze
+  end
+
+  # A game whose pack holds the ten numeral tiles, built on +mode+'s screen. The block is given
+  # the pack and draws with it.
+  private def digit_pack_game(folder, mode, &draw)
+    path = File.join(folder, "digits.gba")
+    File.binwrite(path, DIGIT_COPY)
+    game = VBlank::Original::Game.new(title: "Made Up Digits", setting: "MADE_UP_DIGITS", env: { "MADE_UP_DIGITS" => path },
+                                      settings_file: File.join(folder, "digits.yml"),
+                                      releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(DIGIT_COPY),
+                                                              "size" => DIGIT_COPY.bytesize } })
     b = Builder.new
     b.screen mode
-    pack = made_up_pack(b, folder)
+    pack = b.data_pack(from: game, version: "1") do |slots|
+      slots.colors :palette, at: DIGIT_PALETTE_AT, count: 16
+      slots.tiles :digits, at: DIGIT_TILES_AT, count: 10
+    end
     b.instance_eval do
       clear_screen :black if mode == :bitmap
-      image :zero, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
-      image :one, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(1)
-      font :binary, pictures: { "0" => :zero, "1" => :one }
-      instance_eval(&draw)
+      instance_exec(pack, &draw)
       game_loop { wait_vblank }
     end
     b.finalize_program
-    game_player.run(b.program, frames: 3).screen.to_a
+    game_player.run(b.program, frames: 3).screen
   end
 
-  def test_words_in_a_font_of_pictures_from_a_data_pack_draw_those_pictures
+  # Every pixel of numeral tile +digit+ at (x, y).
+  private def assert_digit_tile(screen, digit, x, y)
+    want = TestPictureFont.digit_tile_places(digit).map { |place| DIGIT_PALETTE[place] }
+    got = (0...8).flat_map { |dy| (0...8).map { |dx| screen.pixel(x + dx, y + dy) } }
+    assert_equal want, got, "the numeral tile #{digit} at (#{x}, #{y})"
+  end
+
+  def test_a_live_number_in_a_strip_cut_from_a_data_pack_draws_every_digit
     Dir.mktmpdir do |folder|
-      blits = pack_font_game(folder, :bitmap) do
-        blit :one, 24, 32
-        blit :zero, 32, 32
+      s = digit_pack_game(folder, :bitmap) do |pack|
+        image :digit_strip, width: 80, height: 8, colors: pack[:palette], places: pack[:digits].tiles(0, across: 10)
+        font :pack_digits, strip: :digit_strip, characters: "0123456789"
+        draw_number var(:shown, 1_234_567_890), 24, 32, digits: 10, font: :pack_digits
       end
-      assert_equal blits, pack_font_game(folder, :bitmap) { draw_text "10", 24, 32, font: :binary }
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].each_with_index { |digit, at| assert_digit_tile(s, digit, 24 + (at * 8), 32) }
     end
   end
 
-  def test_on_a_tiled_screen_a_font_of_pictures_from_a_data_pack_shows_those_pictures
+  def test_on_a_tiled_screen_a_live_number_in_pack_pictures_shows_every_digit
     Dir.mktmpdir do |folder|
-      # Tile 0 alone: tile 1 counts into the pack's colours past the three a Color sprite keeps.
-      sprites = pack_font_game(folder, :tiled) { sprite :zero, at: [24, 32] }
-      assert_equal sprites, pack_font_game(folder, :tiled) { draw_text "0", 24, 32, font: :binary }
+      s = digit_pack_game(folder, :tiled) do |pack|
+        pictures = ("0".."9").to_h do |digit|
+          image :"pack_#{digit}", width: 8, height: 8, colors: pack[:palette], places: pack[:digits].tile(digit.to_i)
+          [digit, :"pack_#{digit}"]
+        end
+        font :pack_digits, pictures: pictures
+        draw_number var(:shown, 1_234_567_890), 24, 32, digits: 10, font: :pack_digits
+      end
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].each_with_index { |digit, at| assert_digit_tile(s, digit, 24 + (at * 8), 32) }
     end
+  end
+
+  # --- a strip cut into a font, and noughts written out ---
+
+  def test_a_font_cut_from_a_strip_draws_its_pieces
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      clear_screen :black
+      TestPictureFont.declare_numeral_strip(self)
+      draw_number var(:score, 407), 20, 30, digits: 4, font: :numerals
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    s = game_player.run(b.program, frames: 2).screen
+    assert_no_numeral(s, 20, 30, BLACK)
+    assert_numeral(s, "4", 24, 30)
+    assert_numeral(s, "0", 28, 30)
+    assert_numeral(s, "7", 32, 30)
+  end
+
+  def test_a_strip_that_does_not_cut_evenly_is_refused
+    err = refusal do
+      image :odd_strip, width: 9, height: 3, data: Array.new(27, :red)
+      font :odd, strip: :odd_strip, characters: "01"
+    end
+    assert_match(/9 pixels wide/, err.message)
+  end
+
+  def test_leading_zeros_draw_the_nought_picture_in_every_place
+    prog = bitmap_game(space: true) do
+      draw_number var(:minutes, 7), 20, 30, digits: 3, font: :numerals, leading_zeros: true
+      draw_number 5, 20, 40, digits: 2, font: :numerals, leading_zeros: true
+    end
+    s = game_player.run(prog, frames: 2).screen
+    assert_numeral(s, "0", 20, 30)
+    assert_numeral(s, "0", 24, 30)
+    assert_numeral(s, "7", 28, 30)
+    assert_numeral(s, "0", 20, 40)
+    assert_numeral(s, "5", 24, 40)
+  end
+
+  def test_on_a_tiled_screen_leading_zeros_show_the_nought_picture
+    prog = tiled_game { draw_number var(:minutes, 7), 20, 30, digits: 3, font: :numerals, leading_zeros: true }
+    s = game_player.run(prog, frames: 3).screen
+    assert_numeral(s, "0", 20, 30)
+    assert_numeral(s, "0", 24, 30)
+    assert_numeral(s, "7", 28, 30)
+  end
+
+  def test_leading_zeros_in_a_font_of_glyphs_draw_the_glyph_for_nought
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      clear_screen :black
+      draw_number var(:minutes, 7), 40, 20, :white, digits: 3, leading_zeros: true
+      draw_text "007", 40, 40, :white
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    s = game_player.run(b.program, frames: 2).screen
+    width = b.text_width("007")
+    rows = ->(top) { (0...7).map { |dy| (0...width).map { |dx| s.pixel(40 + dx, top + dy) } } }
+    assert_equal rows.call(40), rows.call(20)
+    assert_includes rows.call(20).flatten, Color.resolve(:white)
+  end
+
+  def test_leading_zeros_must_be_true_or_false
+    err = refusal { draw_number var(:score, 1), 20, 30, font: :numerals, leading_zeros: 2 }
+    assert_match(/true or false/, err.message)
   end
 
   # --- friendly errors ---

@@ -76,7 +76,9 @@ module VBlank
                           "these need the same part of the display."),
 
         # --- text ---
-        draw_text: works, draw_number: works, font: works, text_width: works, text_height: works,
+        draw_text: works, draw_number: works, text_width: works, text_height: works,
+        font: works("a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its " \
+                    "picture: a `blit` on a painted screen, a sprite on a tiled one."),
         menu: works,
 
         # --- numbers and logic ---

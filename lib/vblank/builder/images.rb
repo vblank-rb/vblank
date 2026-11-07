@@ -83,6 +83,8 @@ module VBlank
         # A pose drawn from tiles of a set the game loads (see SpriteTiles).
         return define_tile_pose(name, opts) if opts.key?(:tiles_from)
 
+        # Kept so a font can cut the picture by its tiles (PictureFonts#declare_strip_piece).
+        @pack_picture_options[name] = opts if opts[:places].is_a?(DSL::PackSlot) && opts[:places].one_tile?
         # A slot of the game's data pack in colors: or places: is read here (DataPacks), or, in a
         # build that reads its pack as the game starts, read from the pack then.
         if pack_left_out? && !block && [opts[:colors], opts[:places]].any?(DSL::PackSlot)
