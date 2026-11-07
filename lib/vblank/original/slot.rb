@@ -36,6 +36,20 @@ module VBlank
       # The layout a slot is read in when it names none.
       DEFAULT_LAYOUT = Original::DEFAULT_PLATFORM
 
+      # WHAT A SHAPE MEANS, once: how many bytes one item of a slot of that shape is kept in, and
+      # how bytes are read as that shape (each is given the slot). A new shape is one entry here.
+      Shape = Data.define(:item_bytes, :decode)
+      SHAPES = Ractor.make_shareable({
+        colors: Shape.new(item_bytes: ->(_slot) { COLOR_BYTES },
+                          decode: ->(slot, bytes) { IR::FormatReading.colors(bytes, slot.format) }),
+        tiles: Shape.new(item_bytes: ->(slot) { slot.format.tile_bytes },
+                         decode: ->(slot, bytes) { IR::FormatReading.tiles(bytes, slot.format) }),
+        numbers: Shape.new(item_bytes: ->(slot) { IR::Build::ELEMENT_BYTES.fetch(slot.width) },
+                           decode: lambda { |slot, bytes|
+                             IR::FormatReading.numbers(bytes, slot.format, width: slot.width, signed: slot.signed)
+                           })
+      })
+
       # +count+ colours, in the colour layout of +layout+ (a console's name).
       def self.colors(name, count:, at: nil, layout: DEFAULT_LAYOUT)
         new(name: name.to_sym, shape: :colors, at: at, count: count, width: nil, signed: nil,
@@ -136,11 +150,7 @@ module VBlank
 
       # How many bytes one colour, tile or number of the slot is kept in.
       def item_bytes
-        case shape
-        when :colors then COLOR_BYTES
-        when :tiles then format.tile_bytes
-        else IR::Build::ELEMENT_BYTES.fetch(width)
-        end
+        SHAPES.fetch(shape).item_bytes.call(self)
       end
 
       # Whether the game's unpacking routine fills the slot, rather than its bytes being copied
@@ -169,11 +179,7 @@ module VBlank
       # +bytes+ read in the slot's shape: a list of colours, a list of tiles each a list of its 64
       # places, or a list of numbers.
       def decode(bytes)
-        case shape
-        when :colors then IR::FormatReading.colors(bytes, format)
-        when :tiles then IR::FormatReading.tiles(bytes, format)
-        else IR::FormatReading.numbers(bytes, format, width: width, signed: signed)
-        end
+        SHAPES.fetch(shape).decode.call(self, bytes)
       end
     end
   end

@@ -420,11 +420,11 @@ void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t 
  * bit +plane+ of the pixel is the bit plane_bits[plane] + row * row_bits + column_bits[column] of
  * the tile (IR::FormatReading.place). */
 static int32_t start_file_place(int32_t places_at, const int32_t *tile, int32_t across, int32_t row, int32_t column) {
-  int32_t tile_bytes = tile[0], planes = tile[1], row_bits = tile[6];
+  int32_t tile_bytes = tile[RG_TILE_BYTES_AT], planes = tile[RG_TILE_PLANES_AT], row_bits = tile[RG_TILE_ROW_BITS_AT];
   int32_t start = places_at + ((((row / 8) * across) + (column / 8)) * tile_bytes);
   int32_t place = 0;
   for (int32_t plane = 0; plane < planes; plane++) {
-    int32_t bit = tile[2 + plane] + ((row % 8) * row_bits) + tile[7 + (column % 8)];
+    int32_t bit = tile[RG_TILE_PLANE_BITS_AT + plane] + ((row % 8) * row_bits) + tile[RG_TILE_COLUMN_BITS_AT + (column % 8)];
     place |= ((start_file[start + (bit / 8)] >> (bit % 8)) & 1) << plane;
   }
   return place;
@@ -440,17 +440,18 @@ static int32_t start_file_channel(uint32_t kept, int32_t at, int32_t bits) {
 /* Colour +place+ of the colours from +colors_at+ on, kept in the layout set at +format+ (rg_runtime.h,
  * RG_COLOR_FORMAT_NUMBERS), as fifteen bits (IR::FormatReading.colors). */
 static uint16_t start_file_color(int32_t colors_at, const int32_t *format, int32_t place) {
-  uint32_t kept = start_file_number(colors_at + (place * 2), 2, format[0]);
-  int32_t bits = format[4];
-  return (uint16_t)(start_file_channel(kept, format[1], bits) | (start_file_channel(kept, format[2], bits) << 5) |
-                    (start_file_channel(kept, format[3], bits) << 10));
+  uint32_t kept = start_file_number(colors_at + (place * 2), 2, format[RG_COLOR_HIGH_BYTE_FIRST_AT]);
+  int32_t bits = format[RG_COLOR_CHANNEL_BITS_AT];
+  return (uint16_t)(start_file_channel(kept, format[RG_COLOR_RED_AT], bits) |
+                    (start_file_channel(kept, format[RG_COLOR_GREEN_AT], bits) << 5) |
+                    (start_file_channel(kept, format[RG_COLOR_BLUE_AT], bits) << 10));
 }
 
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];
   int32_t colors_count = rules[9], swapped_count = rules[10];
-  const int32_t *tile_format = rules + 11;
+  const int32_t *tile_format = rules + RG_FILL_RULES_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_places = color_format + RG_COLOR_FORMAT_NUMBERS;
   const int32_t *held_colors = held_places + (places_at < 0 ? width * height : 0);

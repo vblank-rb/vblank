@@ -134,9 +134,9 @@ module VBlank
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
     # left out reads each table from a slot this way, and its unpacking reads the copy this way;
     # the game must read such a file (`data_pack` with the pack left out declares it does). Each
-    # entry is kept low byte first unless +high_byte_first+.
-    StartFileEntries = Data.define(:at, :count, :high_byte_first) do
-      def initialize(at:, count:, high_byte_first: false) = super
+    # entry is kept in +format+ (a Console::NumberFormat), low byte first unless it says otherwise.
+    StartFileEntries = Data.define(:at, :count, :format) do
+      def initialize(at:, count:, format: Console::LOW_BYTE_FIRST_NUMBERS) = super
     end
 
     # A HANDLE ON ONE SLOT OF A DATA PACK, or on tiles of a slot of tiles: the slot's layout (an

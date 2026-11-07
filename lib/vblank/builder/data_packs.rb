@@ -197,7 +197,7 @@ module VBlank
         node = Build.table(name, [], width: width, signed: signed)
         node.from_file = entries.at
         node.entries_in_file = entries.count
-        node.file_high_byte_first = true if entries.high_byte_first
+        node.file_number_format = entries.format
         record(node)
         DSL::Table.new(self, name, entries.count, fraction_bits: nil, width: width)
       end
@@ -207,8 +207,7 @@ module VBlank
         refuse_slot_from_elsewhere!(handle, "table :#{name}")
         refuse_slot_read_wrongly!(handle, :numbers, "table :#{name}")
         slot = handle.layout
-        entries = DSL::StartFileEntries.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count,
-                                            high_byte_first: slot.format.high_byte_first)
+        entries = DSL::StartFileEntries.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count, format: slot.format)
         table_from_start_file(name, entries, width: slot.width, signed: slot.signed)
       end
 

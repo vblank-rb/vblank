@@ -18,8 +18,8 @@ module VBlank
     # WHAT IS READ FROM IT, each at a place in the file fixed when the program is built:
     #
     # - a table (Nodes::Table#from_file, where its first entry starts, and #entries_in_file): its
-    #   entries one after another, each as wide as the table sets, low byte first unless
-    #   #file_high_byte_first, below zero only for a signed table (Build.elements_of);
+    #   entries one after another, each as wide as the table sets, in the
+    #   layout of #file_number_format (a Console::NumberFormat), below zero only for a signed table (Build.elements_of);
     # - a picture given as places into a list of colours (Nodes::Bitmap#from_file, a Picture): the
     #   colours, two bytes each, and the places, in tiles of 8x8, each in the layout of the console
     #   the original is for (FormatReading), place 0 see-through. That is what `image colors:, places:` makes
@@ -137,10 +137,10 @@ module VBlank
       def self.fill_table(node, bytes)
         count = node.entries_in_file
         node.values = Build.elements_of(bytes.byteslice(node.from_file, count * Build::ELEMENT_BYTES.fetch(node.width)),
-                                        width: node.width, signed: node.signed, high_byte_first: node.file_high_byte_first)
+                                        width: node.width, signed: node.signed, high_byte_first: node.file_number_format.high_byte_first)
         node.from_file = nil
         node.entries_in_file = nil
-        node.file_high_byte_first = nil
+        node.file_number_format = nil
       end
 
       # A picture's colours and places, read from the place it names or held by the picture, and its

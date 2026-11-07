@@ -138,7 +138,7 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * many tiles wide its places are, where in the file its places are (-1 where the game holds them),
  * where its colours are (-1 where the game holds them), how many colours, and how many colours of
  * another list it is drawn with. Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
- * numbers (Console::TileFormat): a tile's bytes, how many bit planes, where each plane's first bit
+ * numbers (Console::TileFormat; the numbers are written ahead of the runtime, Native::StartFileNumbers): a tile's bytes, how many bit planes, where each plane's first bit
  * is (four, the unused ones 0), the bits from one row to the next, and where each of the eight
  * columns' bits is, a bit counted through the tile's bytes from bit 0 of the first; and the layout its
  * colours are kept in, RG_COLOR_FORMAT_NUMBERS numbers (Console::ColorFormat): 1 for the high byte
@@ -149,7 +149,6 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * and 0 for a place past the colours. */
 enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
-enum { RG_TILE_FORMAT_NUMBERS = 15, RG_COLOR_FORMAT_NUMBERS = 5 };
 int rg_start_file_read(const char *path);
 void rg_start_file_hand(const uint8_t *bytes, int32_t size);
 void rg_start_file_open(const int32_t *rules, const char *missing, const char *wrong_size, const char *wrong_check);

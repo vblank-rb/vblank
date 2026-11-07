@@ -195,19 +195,17 @@ end
 RG_FILL_TILE = 0
 RG_TURN_MIRRORED = 1
 RG_TURN_UPSIDE_DOWN = 2
-RG_TILE_FORMAT_NUMBERS = 15
-RG_COLOR_FORMAT_NUMBERS = 5
 
 # The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles wide,
 # from +places_at+ on, each tile kept in the layout set by the numbers of +rules+ from +tile+ on (rg_runtime.c's
 # start_file_place).
 def rg_start_file_place(places_at, rules, tile, across, row, column)
-  tile_bytes = rules[tile]
-  row_bits = rules[tile + 6]
+  tile_bytes = rules[tile + RG_TILE_BYTES_AT]
+  row_bits = rules[tile + RG_TILE_ROW_BITS_AT]
   start = places_at + ((((row / 8) * across) + (column / 8)) * tile_bytes)
   place = 0
-  rules[tile + 1].times do |plane|
-    bit = rules[tile + 2 + plane] + ((row % 8) * row_bits) + rules[tile + 7 + (column % 8)]
+  rules[tile + RG_TILE_PLANES_AT].times do |plane|
+    bit = rules[tile + RG_TILE_PLANE_BITS_AT + plane] + ((row % 8) * row_bits) + rules[tile + RG_TILE_COLUMN_BITS_AT + (column % 8)]
     place |= ((@rg_start_file.getbyte(start + (bit / 8)) >> (bit % 8)) & 1) << plane
   end
   place
@@ -222,10 +220,11 @@ end
 # Colour +place+ of the colours from +colors_at+ on, kept in the layout set by the numbers of +rules+ from +format+ on
 # (rg_runtime.c's start_file_color).
 def rg_start_file_color(colors_at, rules, format, place)
-  kept = @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1(rules[format] == 1 ? "n" : "v")
-  bits = rules[format + 4]
-  rg_start_file_channel(kept, rules[format + 1], bits) | (rg_start_file_channel(kept, rules[format + 2], bits) << 5) |
-    (rg_start_file_channel(kept, rules[format + 3], bits) << 10)
+  kept = @rg_start_file.byteslice(colors_at + (place * 2), 2).unpack1(rules[format + RG_COLOR_HIGH_BYTE_FIRST_AT] == 1 ? "n" : "v")
+  bits = rules[format + RG_COLOR_CHANNEL_BITS_AT]
+  rg_start_file_channel(kept, rules[format + RG_COLOR_RED_AT], bits) |
+    (rg_start_file_channel(kept, rules[format + RG_COLOR_GREEN_AT], bits) << 5) |
+    (rg_start_file_channel(kept, rules[format + RG_COLOR_BLUE_AT], bits) << 10)
 end
 
 # One picture's pixels (rg_runtime.h, rg_start_file_fill_picture). The game's pixels are frozen, so
@@ -233,7 +232,7 @@ end
 # on. The +total+ in the rules is how many there are, which the C needs.
 def rg_start_file_fill_picture(rules)
   kind, _total, start, width, height, turn, across, places_at, colors_at, colors_count, swapped_count = rules
-  tile_format = 11
+  tile_format = RG_FILL_RULES_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_places = color_format + RG_COLOR_FORMAT_NUMBERS
   held_colors = held_places + (places_at.negative? ? width * height : 0)
