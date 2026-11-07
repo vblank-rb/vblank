@@ -10,46 +10,45 @@ module VBlank
     #   copy.half(0x100)  copy.word(0x100)        # two and four bytes, low byte first...
     #   copy.half(0x100, big_endian: true)        # ...or high byte first, as a Genesis keeps them
     #   copy.copy_bytes at: 0x200, count: 64, into: pack[:walls]
+    #   copy.count_written 64                     # what a decoder of the game's own wrote
+    #   copy.unpack_lz77 at: 0x300, into: pack[:sprites]   # a packed format the copy offers
     #
-    # THE PACKED FORMATS are building blocks of their own, a module for each console whose games
-    # keep their data in them, in packing/ and mixed in here: the Game Boy Advance's
-    # (Packing::GBA), `copy.unpack_lz77` and `copy.unpack_rle`, the BIOS's.
+    # THE PACKED FORMATS the copy offers are those of the platform its original is for
+    # (Packing.formats_for: an Advance original's are LZ77 and RLE), and any the port names in
+    # `data_pack formats: [...]` (a Packing::Format). Each gives the copy `unpack_<name>`; asking for
+    # one the copy does not offer is refused in plain words, naming the ones it does.
     #
-    # The building blocks write into a slot from +start+ (a byte in it, 0 first), and never past its
-    # end: a write that would go past is not made, and the build stops saying so (Unpacking::Fault).
-    # A read past the end of the copy is the same. Each block is a routine written once in the
-    # program however often it is used. It adds what it writes to the count of bytes done as it
-    # goes, waiting for the next frame every PROGRESS_BYTES, so a shell can show how far the
-    # unpacking has got however big one block is.
+    # A one-off layout no format fits, the routine reads and writes itself with `byte` and
+    # `pack[slot][i] =`, and says what it wrote with `count_written`, which counts and waits as the
+    # formats do.
+    #
+    # A format writes into a slot from +start+ (a byte in it, 0 first), and never past its end: a
+    # write that would go past is not made, and the build stops saying so (Unpacking::Fault). A read
+    # past the end of the copy is the same. Each format is a routine written once in the program
+    # however often it is used, with the BlockKit every format shares.
     #
     # This file is read as game code (VBlank.require_game_file), so each `if` on a test the routine
-    # makes is a branch in the routine. Every variable here is written with `store!` and
-    # `increase!`, so what is a variable of the routine's is plain to see.
+    # makes is a branch in the routine.
     class CopyReader
-      include Packing::GBA
+      # The settings every format's verb takes.
+      PLACE_SETTINGS = %i[at into start].freeze
 
-      # How many bytes a building block writes between one wait for the next frame and the next.
-      PROGRESS_BYTES = 256
-
-      # +before_wait+ names a routine called before each wait for the next frame (a shell's
-      # progress bar, Builder::DataPacks#define_unpacking_progress), or is nil for none.
-      def initialize(builder, copy:, pack:, faults:, before_wait: nil)
+      # +formats+ are the formats the copy offers, in the order a fault numbers them; +platform+ is
+      # the original's, which a refusal names. +before_wait+ is BlockKit's.
+      def initialize(builder, copy:, pack:, faults:, formats:, platform:, before_wait: nil)
         @builder = builder
-        @copy = copy
-        @pack = pack
-        @faults = faults
-        @before_wait = before_wait
-        @done = builder.var(Unpacking::BYTES_DONE, 0)
-        @block_variables = {}
+        @kit = Packing::BlockKit.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait)
+        @formats = formats
+        @platform = platform
         @block_routines = {}
       end
 
-      # How many bytes the building blocks have written so far, a variable of the routine's.
-      def bytes_done = @done
+      # How many bytes have been written so far, a variable of the routine's.
+      def bytes_done = @kit.bytes_done
 
       # The byte at +at+ in the copy, 0 to 255. +at+ may be worked out as the game runs. A place
       # outside the copy is a fault the build stops on.
-      def byte(at) = read_byte(at)
+      def byte(at) = @kit.byte(at)
 
       # The two bytes from +at+, low byte first unless +big_endian+.
       def half(at, big_endian: false)
@@ -70,132 +69,119 @@ module VBlank
       def copy_bytes(at:, count:, into:, start: 0)
         refuse_unless_slot!(into, "copy_bytes")
         refuse_outside_slot!(into, start, count)
-        emit_block_call(:copy, at, into, start, count)
+        emit_block_call(:copy, at: at, slot: into, start: start, count: count, format_number: 0) do
+          emit_copy_routine
+        end
+      end
+
+      # For a decoder the game writes itself: +count+ more bytes written. They are added to the
+      # count of bytes done, and every PROGRESS_BYTES counted the routine waits for the next frame,
+      # as the formats do. +count+ may be worked out as the routine runs.
+      def count_written(count)
+        @kit.count_written(count)
+        nil
+      end
+
+      # What a person calls each format the copy offers, in the order a fault numbers them.
+      def format_words = @formats.map(&:format_words)
+
+      # `unpack_<name>` for each format the copy offers.
+      def method_missing(name, *given, **settings, &)
+        asked = format_asked(name)
+        return super unless asked
+
+        format = @formats.find { |offered| offered.format_name == asked }
+        refuse_format_not_offered!(asked) unless format
+        refuse_positional_arguments!(name, given)
+        unpack_with(format, **settings)
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        asked = format_asked(name)
+        (asked && @formats.any? { |offered| offered.format_name == asked }) || super
       end
 
       private
 
-      # A building block for a packed format, which says its own size: checked, then called.
-      def unpack_packed_block(kind, at, into, start)
-        refuse_unless_slot!(into, "unpack_#{kind}")
+      def format_asked(name) = name.to_s.start_with?("unpack_") ? name.to_s.delete_prefix("unpack_").to_sym : nil
+
+      # A block of +format+, given +settings+: checked, its settings stored for its routine, then called.
+      def unpack_with(format, **settings)
+        verb = "unpack_#{format.format_name}"
+        refuse_unknown_settings!(verb, format, settings)
+        refuse_missing_places!(verb, settings)
+        into = settings.fetch(:into)
+        start = settings.fetch(:start, 0)
+        refuse_unless_slot!(into, verb)
         refuse_outside_slot!(into, start, 0)
-        emit_block_call(kind, at, into, start, 0)
-      end
-
-      def made_name(what) = Messages::MadeNames.make(:unpacking_part, part: what)
-
-      # A variable the building blocks share, made the first time it is asked for: what a block's
-      # routine is handed (where to read, where to write, where to stop) and what it works with.
-      def block_variable(what)
-        @block_variables[what] ||= @builder.var(made_name(what), 0)
-      end
-
-      def sum_of(a, b) = a.is_a?(Integer) && b.is_a?(Integer) ? a + b : value_of(a) + b
-
-      def value_of(operand) = operand.is_a?(DSL::Value) ? operand : DSL::Value.new(@builder, DSL::Value.node_for(operand))
-
-      # The copy's byte at +at+, with the check before it: a place outside the copy records a fault
-      # and reads a byte of the copy instead, as any table read does.
-      def read_byte(at)
-        if at.is_a?(Integer)
-          @faults.emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) unless at.between?(0, @copy.length - 1)
-          return @copy[at]
+        format.format_settings.each { |name, default| @kit.setting(name).store!(settings.fetch(name, default)) }
+        emit_block_call(:"unpack_#{format.format_name}", at: settings.fetch(:at), slot: into, start: start, count: 0,
+                                                         format_number: @formats.index(format)) do
+          format.routine(@kit)
         end
-
-        @faults.emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= @copy.length
-        @copy[at]
       end
 
-      # One building block: what it is handed set in the blocks' own variables, its routine
-      # called, and a wait for the next frame.
-      def emit_block_call(kind, at, slot, start, count)
-        block_variable(:from).store!(at)
-        block_variable(:to).store!(slot.place(start))
-        block_variable(:ends).store!(slot.place(slot.byte_size))
-        block_variable(:slot_first).store!(slot.place(0))
-        block_variable(:slot_number).store!(slot.number)
-        block_variable(:count).store!(count)
-        @builder.call(define_block_routine(kind))
-        emit_wait
+      # One block: what it is handed set in the kit's variables, its routine called (made the first
+      # time, from the block given), and a wait for the next frame.
+      def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, &routine)
+        @kit.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number)
+        @builder.call(define_block_routine(routine_name, &routine))
+        @kit.emit_wait
         nil
       end
 
-      # A wait for the next frame, with the routine to call before it.
-      def emit_wait
-        @builder.call(@before_wait) if @before_wait
-        @builder.wait_vblank
-      end
-
-      def define_block_routine(kind)
-        @block_routines[kind] ||= begin
-          name = made_name(kind)
-          reader = self
-          @builder.func(name) { reader.send(:"emit_#{kind}_routine") }
+      def define_block_routine(routine_name, &routine)
+        @block_routines[routine_name] ||= begin
+          name = @kit.made_name(routine_name)
+          kit = @kit
+          @builder.func(name) do
+            kit.emit_block_start
+            routine.call
+            kit.emit_block_end
+          end
           name
         end
       end
 
-      # Every PROGRESS_BYTES written since +mark+, the count of bytes done moves on and the routine
-      # waits for the next frame.
-      def emit_progress_step(out, mark)
-        if out - mark >= PROGRESS_BYTES
-          @done.increase!(out - mark)
-          mark.store!(out)
-          emit_wait
-        end
-      end
-
-      # Whether a write of +size+ bytes from +to+ fits between the slot's first byte and +ends+: a
-      # test the routine makes, new each time it is asked for.
-      def fits_in_slot(to, size, ends) = to >= block_variable(:slot_first) && size <= ends - to
-
-      # The fault for a write of +size+ bytes from +to+ that does not fit: its last byte, in the slot.
-      def emit_outside_slot_fault(to, size)
-        @faults.emit_fault(Unpacking::Fault::WRITE_OUTSIDE_SLOT, to - block_variable(:slot_first) + size - 1,
-                           block_variable(:slot_number))
-      end
-
       def emit_copy_routine
-        from = block_variable(:from)
-        to = block_variable(:to)
-        many = block_variable(:count)
-        out = block_variable(:out)
-        mark = block_variable(:mark)
-        pack = @pack
-        if fits_in_slot(to, many, block_variable(:ends))
-          out.store!(to)
-          mark.store!(to)
-          @builder.repeat(many) do |i|
-            pack[out] = read_byte(from + i)
-            out.increase!(1)
-            emit_progress_step(out, mark)
-          end
-          @done.increase!(out - mark)
-        else
-          emit_outside_slot_fault(to, many)
-        end
+        from = @kit.from
+        @kit.expect_size(@kit.routine_variable(:count))
+        @kit.repeat(@kit.routine_variable(:count), stop_when: @kit.finished) { |i| @kit.write(@kit.byte(from + i)) }
       end
 
-      # A block of a format that says how big it unpacks to, +size+ bytes, before it is unpacked,
-      # its packed bytes from +first+ in the copy: the room in the slot checked, the reading and
-      # writing places set, the format's own loop (the block, handed where it reads and writes and
-      # where it stops), and what is left over counted as done.
-      def emit_sized_block(size, first)
-        to = block_variable(:to)
-        ends = block_variable(:ends)
-        src = block_variable(:src)
-        out = block_variable(:out)
-        mark = block_variable(:mark)
-        if fits_in_slot(to, size, ends)
-          ends.store!(to + size)
-          out.store!(to)
-          mark.store!(to)
-          src.store!(first)
-          yield src, out, ends, mark
-          @done.increase!(out - mark)
-        else
-          emit_outside_slot_fault(to, size)
-        end
+      def sum_of(a, b) = a.is_a?(Integer) && b.is_a?(Integer) ? a + b : @kit.value_of(a) + b
+
+      def refuse_format_not_offered!(asked)
+        offered = @formats.empty? ? "no packed formats" : "the formats #{@formats.map(&:format_name).join(', ')}"
+        home = Packing.platform_with(asked)
+        whose = home ? "#{asked} is a format of #{platform_title(home)} games. " : "No format is called #{asked}. "
+        raise ArgumentError, "`copy.unpack_#{asked}` is not a format this copy offers. The copy is of an original for " \
+                             "the #{platform_title(@platform)}, and it offers #{offered}. #{whose}" \
+                             "To use another format, name its module in `data_pack formats: [...]`."
+      end
+
+      def platform_title(platform) = platform == COMPUTER ? "computer" : Console.for(platform).title
+
+      def refuse_positional_arguments!(name, given)
+        return if given.empty?
+
+        raise ArgumentError, "`copy.#{name}` takes at:, into: and start:, like `copy.#{name} at: 0x400, into: pack[:walls]`."
+      end
+
+      def refuse_missing_places!(verb, settings)
+        missing = %i[at into] - settings.keys
+        return if missing.empty?
+
+        raise ArgumentError, "`copy.#{verb}` needs #{missing.map { |name| "#{name}:" }.join(' and ')}, like " \
+                             "`copy.#{verb} at: 0x400, into: pack[:walls]`."
+      end
+
+      def refuse_unknown_settings!(verb, format, settings)
+        unknown = settings.keys - PLACE_SETTINGS - format.format_settings.keys
+        return if unknown.empty?
+
+        takes = (PLACE_SETTINGS + format.format_settings.keys).map { |name| "#{name}:" }.join(", ")
+        raise ArgumentError, "`copy.#{verb}` was given #{unknown.map { |name| "#{name}:" }.join(', ')}. It takes #{takes}."
       end
 
       def refuse_unless_slot!(into, verb)

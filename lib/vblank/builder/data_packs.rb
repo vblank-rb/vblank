@@ -75,10 +75,13 @@ module VBlank
       # and +version+ names this build of the game in the pack's header, so a pack a player keeps is
       # made again when the game changes. Hands back a DSL::DataPack. A machine with no copy stops
       # here with Original::NotSet, saying what to set, unless the build leaves the pack out.
-      def data_pack(from:, version: nil, &)
+      # +formats+ are packed formats of the port's own (Original::Packing::Format) its unpacking
+      # routine reads, besides those of the original's platform.
+      def data_pack(from:, version: nil, formats: [], &)
         refuse_second_data_pack!
         refuse_missing_pack_version!(version)
-        return declare_pack_read_at_start(from, version, &) if @build_options.pack_at_start
+        reading = copy_reading_for(from.platform, formats)
+        return declare_pack_read_at_start(from, version, reading, &) if @build_options.pack_at_start
 
         copy = from.is_a?(Original::Copy) ? from : from.copy
         refuse_copy_without_hash!(copy)
@@ -88,21 +91,48 @@ module VBlank
         bytes = File.binread(copy.path)
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = slots.list.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
-        unpacking = (unpacking_program(bytes, slots.list, slots.routine) if slots.routine)
+        unpacking = (unpacking_program(bytes, slots.list, slots.routine, reading) if slots.routine)
         slot_bytes = unpacking ? unpack_on_interpreter(unpacking) : copied
         @data_pack_file = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes.freeze
         @data_pack_contents = Original::Pack.from_bytes(@data_pack_file)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
                                        slots: slots.list,
-                                       make_unpacking: ->(_) { unpacking || unpacking_program(bytes, slots.list, nil) })
+                                       make_unpacking: ->(_) { unpacking || unpacking_program(bytes, slots.list, nil, reading) })
       end
 
       private
 
+      # HOW THE COPY IS READ: the original's platform, and the packed formats its copy offers, the
+      # platform's (Original::Packing.formats_for) and then the port's own.
+      CopyReading = Data.define(:platform, :formats)
+
+      def copy_reading_for(platform, formats)
+        refuse_formats_not_formats!(formats)
+        offered = Original::Packing.formats_for(platform) + formats
+        refuse_formats_of_one_name!(offered)
+        CopyReading.new(platform: platform, formats: offered)
+      end
+
+      def refuse_formats_not_formats!(formats)
+        wrong = Array(formats).reject { |format| format.is_a?(Module) && format.singleton_class.include?(Original::Packing::Format) && format.format_name }
+        return if formats.is_a?(Array) && wrong.empty?
+
+        raise ArgumentError, "data_pack was given formats: #{formats.inspect}. formats: takes a list of format modules, " \
+                             "each one that does `extend VBlank::Original::Packing::Format` and `unpacks :name`."
+      end
+
+      def refuse_formats_of_one_name!(offered)
+        twice = offered.group_by(&:format_name).select { |_, formats| formats.size > 1 }.keys
+        return if twice.empty?
+
+        raise ArgumentError, "Two formats the copy offers are called #{twice.map(&:inspect).join(', ')}. Each format " \
+                             "needs a name of its own. Give the port's format another name in `unpacks`."
+      end
+
       # THE PACK LEFT OUT (see the top of this file): the slots named, the copy never read, and the
       # program told the file it is handed as it starts, a pack of these slots for +version+.
-      def declare_pack_read_at_start(from, version)
+      def declare_pack_read_at_start(from, version, reading)
         refuse_pack_left_out_of_cartridge!
         slots = DSL::PackSlots.new(platform: from.platform)
         yield slots
@@ -112,7 +142,9 @@ module VBlank
         @pack_slot_starts = layout.slot_starts
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list, original: from,
-                                       make_unpacking: ->(copy_size) { unpacking_program(nil, slots.list, slots.routine, copy_size: copy_size) })
+                                       make_unpacking: lambda { |copy_size|
+                                         unpacking_program(nil, slots.list, slots.routine, reading, copy_size: copy_size)
+                                       })
       end
 
       public
@@ -300,8 +332,9 @@ module VBlank
       # bytes, the size of the release it unpacks, and reads the copy from the file it is handed as
       # it starts, so it holds none of the copy either. That program is what a shell plays on the
       # player's machine, so it is built for the game's console, and shows how far it has got
-      # (#define_unpacking_progress).
-      def unpacking_program(bytes, slots, routine, copy_size: nil)
+      # (#define_unpacking_progress). +reading+ (a CopyReading) says which packed formats the copy
+      # offers the routine.
+      def unpacking_program(bytes, slots, routine, reading, copy_size: nil)
         copy_size = refuse_unsized_unpacking!(copy_size) unless bytes
         Builder.keeping_builder_in_use do
           maker = bytes ? Builder.new : Builder.new(options: unpacking_options)
@@ -314,7 +347,8 @@ module VBlank
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes)
-          reader = Original::CopyReader.new(maker, copy: copy, pack: list, faults: faults, before_wait: progress)
+          reader = Original::CopyReader.new(maker, copy: copy, pack: list, faults: faults, formats: reading.formats,
+                                                   platform: reading.platform, before_wait: progress)
           define_unpacking_progress(maker, reader.bytes_done, finished, slots.sum(&:byte_size)) if progress
           places = Original::Unpacking.places_of(slots)
           writers = slots.each_with_index.to_h do |slot, number|
@@ -332,7 +366,8 @@ module VBlank
           end
           maker.halt
           maker.finalize_program
-          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes ? bytes.bytesize : copy_size)
+          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes ? bytes.bytesize : copy_size,
+                                  format_words: reader.format_words)
         end
       end
 
@@ -409,7 +444,7 @@ module VBlank
           raise ArgumentError, "The data pack's unpacking routine went wrong as it ran. #{e.message}"
         end
         fault = unpacking.fault_in(ran)
-        raise fault.error(unpacking.slots, unpacking.copy_size) if fault
+        raise fault.error(unpacking.slots, unpacking.copy_size, unpacking.format_words) if fault
         unless unpacking.finished_in?(ran)
           raise ArgumentError, "The data pack's unpacking routine did not get to its end in #{most_frames} frames. " \
                                "A routine must end. Look for a loop in `slots.fill_from_copy` that never stops."

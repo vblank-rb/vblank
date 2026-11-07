@@ -28,15 +28,29 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `copy.byte(at)` (0 to 255), `copy.half(at)`, `copy.word(at)`: low byte first; `big_endian: true` for
     high byte first. `at` may be worked out as the routine runs.
   - `copy.copy_bytes at:, count:, into: pack[:walls], start: 0` — bytes as they are.
-  - `copy.unpack_lz77 at:, into:, start: 0` and `copy.unpack_rle at:, into:, start: 0` — a block packed in
-    the Game Boy Advance BIOS's LZ77 or RLE format (4-byte header: the scheme in the first byte's top half,
-    1 or 3, then the unpacked size), the formats retail cartridges and the GBA lowering use
-    (`BiosCompress` is the answer key).
+  - `copy.unpack_<format> at:, into:, start: 0` — a block in a packed format. The copy offers the formats
+    of the platform its original is for, and any the port names in `data_pack ..., formats: [MyFormat]`;
+    asking for another is refused, naming the ones it offers. An Advance original's are
+    `copy.unpack_lz77` and `copy.unpack_rle`, the BIOS's LZ77 and RLE (4-byte header: the scheme in the
+    first byte's top half, 1 or 3, then the unpacked size; `BiosCompress` is the answer key). A computer
+    original (`:pc`) has none built in.
   - `pack[:walls][i] = value` writes one byte (the low 8 bits); `pack[:walls][i]` reads one back;
-    `pack[:walls].byte_size`.
+    `pack[:walls].byte_size`. `copy.count_written n` counts what a loop of the routine's own wrote, so the
+    progress bar moves and the routine waits for a frame every 256 bytes, as a format does.
+
+  **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
+  `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines
+  `self.routine(block)`: game code, written into the unpacking once. `block` is the `Packing::BlockKit`
+  every format is written with, the library's too: `block.from`, `block.setting(:base)`,
+  `block.byte(at)`, `block.variable(:name)`, `block.list(:name, capacity:, width:)`, `block.repeat`,
+  `block.expect_size(n)`, `block.write(value)`, `block.written_byte(back)`, `block.finished`,
+  `block.finish!` and `block.emit_wrong_format_fault`. Each write is checked against the slot and
+  counted toward the progress bar. Put the module in a file the game loads with
+  `VBlank.require_game_file`, so an `if` in it is a branch of the routine. Worked example: `PairRuns`
+  in `test/copy_reader_tests.rb`; the library's are `lib/vblank/original/packing/<platform>.rb`.
 
   **Nothing goes past its place.** A write outside its slot is not made, and a read outside the copy reads
-  nothing that matters; either, or a block of another scheme, stops the build, naming the first that
+  nothing that matters; either, or a block not in the format asked for, stops the build, naming the first that
   happened: `Original::WrongCopy` with the place in the copy, or an `ArgumentError` with the slot and the
   byte. A place or count written as a number is refused at once. A routine that never ends is stopped
   after as many frames as the copy and the pack have bytes.
@@ -48,9 +62,10 @@ from that copy. The game's code says each piece's shape and size; it never depen
   the interpreter and on each computer runtime, checked against the interpreter. No console runs it, so
   its tests play on those runs only (`test/copy_reader_tests.rb` and `test/packing_<console>_tests.rb`,
   included under `vblank/original/` in `test/interpreter/` and `test/lowering/{native,js,ruby}/`).
-  Where it lives: `copy` is `Original::CopyReader` (`lib/vblank/original/copy_reader.rb`), and each
-  console's packed formats are a module of their own mixed into it, `lib/vblank/original/packing/<console>.rb`.
-  Genesis decompressors are not here yet. Worked examples: `test/copy_reader_tests.rb` for the routine, and
+  Where it lives: `copy` is `Original::CopyReader` (`lib/vblank/original/copy_reader.rb`), a format's shape
+  and kit are `lib/vblank/original/packing/format.rb`, and each platform's formats are
+  `lib/vblank/original/packing/<platform>.rb`, listed by platform in `lib/vblank/original/packing.rb`.
+  Genesis formats are not here yet. Worked examples: `test/copy_reader_tests.rb` for the routine, and
   `test/all/vblank/builder/test_data_packs.rb` for a game reading its pack.
 - **The game holds handles, never bytes.** `pack[:palette]` is a `DSL::PackSlot`: its `shape`, `count`
   and `layout` (name, place and `byte_size`), nothing it holds. The verbs read the slot themselves:

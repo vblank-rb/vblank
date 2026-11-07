@@ -50,6 +50,17 @@ class TestCopyReaderOnInterpreter < Minitest::Test
     assert_match "0 to #{COPY_SIZE - 1}", refused.message
   end
 
+  # The copy of an Advance original offers the Advance's formats, and no other unless the port
+  # names it.
+  def test_an_advance_copy_refuses_unpack_nemesis
+    refused = refusal_of_routine(ArgumentError) { |copy, pack| copy.unpack_nemesis at: 0, into: pack[:walls] }
+
+    assert_match "copy.unpack_nemesis", refused.message
+    assert_match "Game Boy Advance", refused.message
+    assert_match "lz77, rle", refused.message
+    assert_match "formats:", refused.message
+  end
+
   # A routine that never ends is stopped after as many frames as the copy and the pack have bytes,
   # not left to run for hours.
   def test_a_routine_that_never_ends_is_stopped

@@ -29,11 +29,12 @@ module VBlank
     # WHAT IS IN IT. The copy is a table of bytes (COPY). The pack is one list of bytes (BYTES),
     # every slot in it one after another in the pack's order (#places), as the pack file keeps them.
     # The slots copied as they are (`at:`) are copied first, then the routine runs, then FINISHED is
-    # set and the program halts. The building blocks (CopyReader) add what they write to
-    # BYTES_DONE as they go and wait for the next frame every so often, so a shell can show how far
-    # the unpacking has got. The first thing that goes wrong (Fault) is kept in the FAULT_ variables
-    # and nothing after it overwrites it.
-    Unpacking = Data.define(:program, :slots, :copy_size)
+    # set and the program halts. The building blocks (CopyReader, Packing::BlockKit) add what they
+    # write to BYTES_DONE as they go and wait for the next frame every so often, so a shell can show
+    # how far the unpacking has got. The first thing that goes wrong (Fault) is kept in the FAULT_
+    # variables and nothing after it overwrites it. +format_words+ are what a person calls each
+    # format the copy offered, in the order a fault numbers them.
+    Unpacking = Data.define(:program, :slots, :copy_size, :format_words)
 
     class Unpacking
       COPY = Messages::MadeNames.make(:unpacking_part, part: :copy)
@@ -45,27 +46,23 @@ module VBlank
       FAULT_AT = Messages::MadeNames.make(:unpacking_part, part: :fault_at)
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
 
-      # The schemes a packed block can name in the top half of its first byte, the formats of the
-      # Game Boy Advance BIOS, and what each is called. BiosCompress, which packs them, names both.
-      Packer = IR::Backends::GBA::BiosCompress
-      SCHEME_NAMES = { Packer::TYPE_LZ77 => Packer::SCHEME_NAMES.fetch(:lz77),
-                       Packer::TYPE_RLE => Packer::SCHEME_NAMES.fetch(:rle) }.freeze
-
       # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the three
       # below; +at+ is a place in the copy for the first two and a byte of a slot for the third;
-      # +detail+ is the scheme the routine was told, or the slot's number in the pack's order.
+      # +detail+ is the number of the format the routine was told (Unpacking#format_words), or the
+      # slot's number in the pack's order.
       Fault = Data.define(:kind, :at, :detail)
 
       class Fault
-        WRONG_SCHEME = 1
+        WRONG_FORMAT = 1
         READ_PAST_END = 2
         WRITE_OUTSIDE_SLOT = 3
 
-        # The error the build stops with, in words, for a pack of +slots+ from a copy of +copy_size+ bytes.
-        def error(slots, copy_size)
+        # The error the build stops with, in words, for a pack of +slots+ from a copy of +copy_size+
+        # bytes whose formats are called +format_words+.
+        def error(slots, copy_size, format_words)
           case kind
-          when WRONG_SCHEME
-            name = SCHEME_NAMES.fetch(detail)
+          when WRONG_FORMAT
+            name = format_words.fetch(detail)
             WrongCopy.new("The unpacking routine reads a block packed with #{name} at #{at} (0x#{at.to_s(16)}) in the " \
                           "copy. The block there is not packed with #{name}. Correct at: for this release, or use " \
                           "the unpacking that matches the block.")

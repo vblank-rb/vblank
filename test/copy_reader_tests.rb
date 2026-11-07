@@ -11,8 +11,47 @@ require "all/vblank/builder/test_data_packs"
 # native, JavaScript and Ruby runs, each its own build of the routine checked against the
 # interpreter, and never on a console's (test/interpreter/, test/lowering/{native,js,ruby}/, each
 # under vblank/original/, include this module). The made-up original is MadeUpOriginal's.
+
+# A MADE-UP PACKED FORMAT, written as a port writes one of its own (Original::Packing::Format):
+# pairs of a count and a byte, the byte written that many times, each count multiplied by the
+# `times:` setting, until a count of 0.
+module PairRuns
+  extend VBlank::Original::Packing::Format
+  unpacks :pair_runs, times: 1
+
+  # The most pairs a block can hold, a bound on the loop that reads them.
+  MOST_PAIRS = 4096
+
+  def self.routine(block)
+    at = block.variable(:at)
+    many = block.variable(:many)
+    at.store!(block.from)
+    many.store!(block.byte(at))
+    block.repeat(MOST_PAIRS, stop_when: (many == 0) | block.finished) do
+      block.repeat(many * block.setting(:times), stop_when: block.finished) { block.write(block.byte(at + 1)) }
+      at.increase!(2)
+      many.store!(block.byte(at))
+    end
+  end
+end
+
 module CopyReaderTests
   include MadeUpOriginal
+
+  # The port's format, named in `formats:`, gives the copy `unpack_pair_runs`, with its setting.
+  def test_a_format_of_the_ports_own_unpacks_and_counts_what_it_writes
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, [0xEE, 3, 7, 2, 9, 0, 0xEE].pack("C*"))
+      unpacking = VBlank::Builder.new.data_pack(from: from, version: "1", formats: [PairRuns]) do |slots|
+        slots.numbers :runs, count: 10, width: :byte, signed: false
+        slots.fill_from_copy { |copy, pack| copy.unpack_pair_runs at: 1, into: pack[:runs], times: 2 }
+      end.unpacking
+      played = game_player.run(unpacking.program, frames: 4)
+
+      assert_equal({ runs: ([7] * 6 + [9] * 4).pack("C*") }, unpacking.slot_bytes_in(played))
+      assert_equal 10, unpacking.bytes_done_in(played)
+    end
+  end
 
   # A shell shows how far the routine has got: the bytes written so far of the pack's whole size.
   def test_the_routine_says_how_far_it_has_got
@@ -85,6 +124,47 @@ module CopyReaderTests
 
       assert_equal SPEEDS.map { |speed| (speed * 2) & 0xFF }.pack("C*"),
                    unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 4))[:doubled]
+    end
+  end
+
+  # A MADE-UP FORMAT NO BUILDING BLOCK KNOWS, decoded by the game's own code as a port writes it:
+  # pairs of a count and a byte, the byte written that many times, until a count of 0. The
+  # decoder says what it wrote with `count_written`, so the count of bytes done moves on, and the
+  # routine waits for the next frame as the building blocks do.
+  OWN_FORMAT_RUNS = Ractor.make_shareable([[200, 7], [150, 9], [255, 3], [255, 1], [140, 4]])
+  OWN_FORMAT_BYTES = OWN_FORMAT_RUNS.flat_map { |many, byte| [byte] * many }.pack("C*").freeze
+
+  def test_count_written_moves_progress_on_in_a_decoder_of_the_games_own
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, (OWN_FORMAT_RUNS.flatten + [0, 0]).pack("C*"))
+      b = VBlank::Builder.new
+      b.instance_eval do
+        @made_pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :runs, count: OWN_FORMAT_BYTES.bytesize, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = 0
+            out = 0
+            many = copy.byte(at)
+            while many > 0
+              repeat(many) do
+                pack[:runs][out] = copy.byte(at + 1)
+                out += 1
+              end
+              copy.count_written many
+              at += 2
+              many = copy.byte(at)
+            end
+          end
+        end
+      end
+      unpacking = b.instance_variable_get(:@made_pack).unpacking
+
+      early = unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 1))
+      assert_operator early, :>, 0, "a frame in, some of the runs are counted"
+      assert_operator early, :<, OWN_FORMAT_BYTES.bytesize, "...and not all of them, since the routine waits for a frame"
+      played = game_player.run(unpacking.program, frames: 20)
+      assert_equal({ runs: OWN_FORMAT_BYTES }, unpacking.slot_bytes_in(played))
+      assert_equal OWN_FORMAT_BYTES.bytesize, unpacking.bytes_done_in(played)
     end
   end
 end
