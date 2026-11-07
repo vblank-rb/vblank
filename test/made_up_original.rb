@@ -60,6 +60,11 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
   end
   SHA1 = Digest::SHA1.hexdigest(COPY)
 
+  # A second release of the made-up original: the same data, every piece EU_SHIFT bytes later.
+  EU_SHIFT = 0x40
+  COPY_EU = ("\xAA".b * EU_SHIFT + COPY).freeze
+  SHA1_EU = Digest::SHA1.hexdigest(COPY_EU)
+
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
   # a Ractor and these are a module's.
   constants.each { |name| Ractor.make_shareable(const_get(name)) }
@@ -70,6 +75,30 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path },
                                settings_file: File.join(folder, "made_up.yml"),
                                releases: { "Test" => { "sha1" => SHA1, "size" => COPY_SIZE } })
+  end
+
+  # The made-up original with two releases, US (COPY) and EU (COPY_EU), whose copy is the file at
+  # +path+ in +folder+ (nil for a machine with no copy).
+  private def two_release_original(folder, copy: nil)
+    path = copy && File.join(folder, "made_up.gba")
+    File.binwrite(path, copy) if path
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: path ? { "MADE_UP_ROM" => path } : {},
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "US" => { "sha1" => SHA1, "size" => COPY_SIZE },
+                                           "EU" => { "sha1" => SHA1_EU, "size" => COPY_SIZE + EU_SHIFT } })
+  end
+
+  # The slots of ShellTests#port for the two releases: the colours copied from a place for each
+  # release, the tiles and heights unpacked by a routine that picks its places by release name.
+  private def two_release_slots(slots)
+    slots.colors :palette, at: { "US" => PALETTE_AT, "EU" => PALETTE_AT + EU_SHIFT }, count: 16
+    slots.tiles :walls, count: 2
+    slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+    slots.fill_from_copy do |copy, into, release|
+      shift = release == "EU" ? EU_SHIFT : 0
+      copy.unpack_lz77 at: LZ77_AT + shift, into: into[:walls]
+      copy.unpack_rle at: RLE_AT + shift, into: into[:heights]
+    end
   end
 
   # A copy that is +bytes+ alone, written into +folder+, of an original for +platform+.

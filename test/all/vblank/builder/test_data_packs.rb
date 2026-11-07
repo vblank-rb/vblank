@@ -105,6 +105,53 @@ class TestDataPacks < Minitest::Test
     end
   end
 
+  # A RELEASE-BY-RELEASE PLACE. The same data sits at different places in two releases; a slot's at:
+  # names each, and the routine is handed the release's name. Each release's pack holds the same
+  # slots, so the game is built once against it.
+  def two_release_pack_from(copy)
+    Dir.mktmpdir do |folder|
+      builder = Builder.new
+      builder.data_pack(from: two_release_original(folder, copy: copy), version: "1") { |slots| two_release_slots(slots) }
+      VBlank::Original::Pack.from_bytes(builder.made_data_pack_file)
+    end
+  end
+
+  def test_each_release_makes_the_same_pack_from_its_own_places
+    us = two_release_pack_from(COPY)
+    eu = two_release_pack_from(COPY_EU)
+
+    assert_equal SHA1, us.rom_sha1
+    assert_equal SHA1_EU, eu.rom_sha1
+    assert_equal us.slots, eu.slots
+    assert_equal PALETTE.pack("v*"), eu.bytes_of(:palette)
+    assert_equal HEIGHTS.pack("C*"), eu.bytes_of(:heights)
+  end
+
+  def test_a_release_left_out_of_a_slots_places_is_refused_naming_it
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(VBlank::BuildError) do
+        Builder.new.data_pack(from: two_release_original(folder, copy: COPY), version: "1") do |slots|
+          slots.colors :palette, at: { "US" => PALETTE_AT }, count: 16
+        end
+      end
+
+      assert_match "EU", refused.message
+      assert_match ":palette", refused.message
+    end
+  end
+
+  def test_a_name_that_is_no_release_in_a_slots_places_is_refused_naming_it
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(VBlank::BuildError) do
+        Builder.new.data_pack(from: two_release_original(folder, copy: COPY), version: "1") do |slots|
+          slots.colors :palette, at: { "US" => PALETTE_AT, "EU" => PALETTE_AT, "JP" => 0 }, count: 16
+        end
+      end
+
+      assert_match "JP", refused.message
+    end
+  end
+
   def test_a_game_has_one_data_pack
     Dir.mktmpdir do |folder|
       builder = Builder.new

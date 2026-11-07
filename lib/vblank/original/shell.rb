@@ -71,7 +71,7 @@ module VBlank
         refuse_without_data_pack!(game, data_pack)
         releases = refuse_unusable_releases!(data_pack.original)
         new(game: program, menu: menu_program(game.title, program),
-            unpackings: releases.readable.map { |release| data_pack.unpacking(copy_size: release.size) },
+            unpackings: releases.readable.map { |release| data_pack.unpacking(copy_size: release.size, release: release.name) },
             facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?,
             original: data_pack.original)
       rescue NotSet => e

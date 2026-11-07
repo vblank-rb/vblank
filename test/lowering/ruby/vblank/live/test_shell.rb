@@ -83,6 +83,35 @@ class TestShell < Minitest::Test
     end
   end
 
+  # A port whose original has two releases, the data at other places in each: one shell unpacks
+  # either copy, and keeps the pack the all-in-one build from that copy makes.
+  def test_a_shell_unpacks_either_release_of_an_original_with_two_releases
+    [["US", COPY], ["EU", COPY_EU]].each do |name, bytes|
+      Dir.mktmpdir do |folder|
+        shell = VBlank::Live::Shell.from(VBlank::Original::Shell.build(two_release_port(two_release_original(folder)), err: nil))
+        picked = File.join(folder, "picked.gba").tap { |path| File.binwrite(path, bytes) }
+        played = play_shell(shell, folder, picked: picked)
+
+        assert_empty played.refusals, name
+        assert_equal Dir.mktmpdir { |other| two_release_port(two_release_original(other, copy: bytes)).data_pack_file }, kept_pack(folder), name
+      end
+    end
+  end
+
+  private def two_release_port(from)
+    place_slots = method(:two_release_slots)
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") { |slots| place_slots.call(slots) }
+      image :wall_a, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
+      heights = table :heights, pack[:heights]
+      game_loop do
+        draw_rect_at heights[0] * 4, 40, 4, 4, :white
+      end
+    end
+  end
+
   def test_the_next_start_plays_from_the_kept_pack_with_the_copy_gone
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: copy_at(folder))

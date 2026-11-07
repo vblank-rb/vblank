@@ -17,6 +17,16 @@ from that copy. The game's code says each piece's shape and size; it never depen
 
   Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`.
 
+  **Releases that keep the data at different places**: a slot's `at:` may be a Hash by release name,
+  `slots.colors :palette, at: { "US" => 0x10, "EU" => 0x30 }, count: 16`. Every release the game reads
+  must be named, and no name that is no release, or the build stops (`BuildError`) naming them. The slots'
+  shapes, sizes and order stay one list for every release; only where each comes from differs. The
+  unpacking routine's block may take a third argument, `do |copy, pack, release|`: the release's name as a
+  plain String when the game is built, so Ruby picks places per release (`shift = release == "EU" ? 0x40 : 0`).
+  Each readable release gets an unpacking program of its own in a shell (`DSL::DataPack#unpacking(copy_size:,
+  release:)`), and the shell picks it by the picked file's SHA-1. An all-in-one build uses the release of the
+  copy it was given. A port with one release and plain numbers builds as before.
+
   A game has one `data_pack`. A slot with no `at:` is filled by the unpacking routine (below); a slot with
   no `at:` and no routine is refused.
 - **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack. It is **game

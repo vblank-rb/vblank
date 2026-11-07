@@ -49,7 +49,13 @@ module VBlank
       end
 
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
-      # Original::CopyReader) and the pack's slots to write (an Original::UnpackingSlots).
+      # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it
+      # takes a third argument, the name of the release it unpacks, a plain String as the game is
+      # built, so Ruby can choose the places release by release:
+      #
+      #   slots.fill_from_copy do |copy, pack, release|
+      #     copy.unpack_lz77 at: (release == "EU" ? 0x3040 : 0x3000), into: pack[:sprites]
+      #   end
       def fill_from_copy(&block)
         unless block
           raise ArgumentError, "`slots.fill_from_copy` needs a block: `slots.fill_from_copy do |copy, pack| ... end`."
@@ -110,8 +116,9 @@ module VBlank
       # the player's machine to make the pack, and what a test plays on each run. A build that
       # leaves the pack out reads no copy, so its unpacking is built for a copy of +copy_size+
       # bytes, the release's size, which it is handed as it starts; an all-in-one build's holds the
-      # copy it read, and needs no size.
-      def unpacking(copy_size: nil) = @unpackings[copy_size] ||= @make_unpacking.call(copy_size)
+      # copy it read, and needs no size. +release+ is the name of the release the unpacking is for,
+      # where the slots' places or the routine differ by release; each release has a program of its own.
+      def unpacking(copy_size: nil, release: nil) = @unpackings[[copy_size, release]] ||= @make_unpacking.call(copy_size, release)
 
       # The handle of the slot named +name+.
       def [](name)
