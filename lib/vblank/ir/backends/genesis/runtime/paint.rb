@@ -787,10 +787,15 @@ module VBlank
               asm.move(:l, asm.a(4), asm.d(0))
               asm.move(:l, asm.a(6), asm.d(1))
               asm.move(:l, asm.d(0), asm.d(2))
+              # An edge past the largest number a place holds comes round below nought, where it would
+              # pass for one inside the area; such a picture takes the pixel-by-pixel way, which leaves
+              # every one of its pixels out.
               asm.add(:l, asm.d(7), asm.d(2)) # the right edge
+              asm.branch(:vs, "rt_paint_blit_row")
               asm.moveq(1, asm.d(3))
               asm.add(:w, asm.d(5), asm.d(3))
               asm.add(:l, asm.d(1), asm.d(3)) # the bottom edge
+              asm.branch(:vs, "rt_paint_blit_row")
               [[0, AREA_LEFT, :lt], [1, AREA_TOP, :lt], [2, AREA_RIGHT, :gt], [3, AREA_BOTTOM, :gt]].each do |register, place, leaves|
                 asm.move(:w, at.call(AREA, place), asm.d(6))
                 asm.ext(:l, asm.d(6))
