@@ -172,13 +172,16 @@ module VBlank
           def hook_call_text(hook) = "rg_#{name}_#{hook.name}(#{hook.params.join(', ')})"
         end
 
+        # The features declared so far, filled while the feature files load and copied into ALL after.
+        @declared = []
+
         class << self
           # Each feature.rb calls this as it is loaded, before ALL is set.
           def declare(name:, needed_by:, hooks:, after: [], joins: :screen)
-            (@declared ||= []) << Feature.new(name: name, needed_by: needed_by, hooks: hooks, after: after, joins: joins)
+            @declared << Feature.new(name: name, needed_by: needed_by, hooks: hooks, after: after, joins: joins)
           end
 
-          def declared = @declared || []
+          attr_reader :declared
 
           # Every hook a feature names is one the runtimes have, and a :one hook has one taker at most.
           def refuse_wrong_hooks!(features)
