@@ -32,7 +32,8 @@
  *
  * With --start-file FILE the game is handed FILE as it starts (rg_start_file_read): the data pack
  * of a game built with its pack left out, or the copy of the original its unpacking reads. A game
- * that reads such a file and is handed none stops at its first statement, saying so.
+ * that reads such a file and is handed none stops at its first statement, with a sentence naming
+ * the file it lacks.
  *
  * With --clock-at SECONDS TICKS SET the cartridge has a clock, which reads SECONDS from the start
  * of 1970 and TICKS of the console's 2^24 a second more at power-on, and was set when SET is 1

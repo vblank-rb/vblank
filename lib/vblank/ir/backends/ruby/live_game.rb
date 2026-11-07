@@ -26,7 +26,8 @@ module VBlank
           def height = @game.class::RG_SCREEN_HEIGHT
 
           # The file the game reads as it starts (IR::StartFile), +bytes+ a String, handed over before
-          # #play. A game that reads one and is handed none stops at its first statement, saying so.
+          # #play. A game that reads one and is handed none stops at its first statement, in the sentence
+          # rg_start_file_refusal gives.
           def hand_file(bytes)
             @game.rg_start_file_hand(bytes)
             self

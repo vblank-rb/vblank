@@ -1,4 +1,4 @@
-/* The sentences a file is refused in (rg_refusal.h says what they are). */
+/* The sentences a file is refused in (rg_refusal.h has what they are). */
 #include "rg_refusal.h"
 
 #include <stdio.h>

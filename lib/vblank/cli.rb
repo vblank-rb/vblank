@@ -447,7 +447,7 @@ module VBlank
     option :shell, type: :boolean, default: false
     def build(game_file)
       refuse_web_options_out_of_place!
-      refuse_pack_at_start_on_cartridge!
+      refuse_data_pack_options_on_cartridge!
       case options[:format]
       when "game" then build_cartridges(game_file)
       when "ir" then build_ir(game_file)
@@ -1200,9 +1200,9 @@ module VBlank
                          "that does not work in Ruby yet: #{e.part}. Build a cartridge, or use vblank preview."
     end
 
-    # How fast +rate+ (a play of +program+) went, said once the play stops. The game moves on one
+    # How fast +rate+ (a play of +program+) went, printed once the play stops. The game moves on one
     # frame for each picture, so the pictures a second are its speed. A game that stopped itself
-    # before its first picture, or a shell stopped before the game played (nil), has none to say.
+    # before its first picture, or a shell stopped before the game played (nil), has none to print.
     def say_rate(game, program, rate)
       return unless rate
 
@@ -1238,9 +1238,7 @@ module VBlank
                                   window.notice(words)
                                 }, play_game: ->(playing) { live_shell_session(playing).play(window) })
       [built.game, rate]
-    rescue ArgumentError, VBlank::BuildError => e
-      raise Thor::Error, e.message
-    rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
+    rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
       raise Thor::Error, e.message
     ensure
       window&.close
@@ -1861,9 +1859,10 @@ module VBlank
       raise Thor::Error, "--template works only with the page (--js=page). Remove --js, or remove --template."
     end
 
-    # --pack-at-start leaves a game's data pack out, which only a build for a computer can do: a
-    # cartridge holds its own data (Builder::DataPacks).
-    def refuse_pack_at_start_on_cartridge!
+    # --pack-at-start leaves a game's data pack out and --shell builds a game with none of the
+    # original's data, which only a build for a computer can do: a cartridge holds its own data
+    # (Builder::DataPacks). --shell makes a page, never a module or a script.
+    def refuse_data_pack_options_on_cartridge!
       if options[:shell] && !%w[ruby web native].include?(options[:format])
         raise Thor::Error, "--shell works only with --format ruby, web or native. A cartridge holds its own data. " \
                            "Add --format ruby, --format web or --format native."

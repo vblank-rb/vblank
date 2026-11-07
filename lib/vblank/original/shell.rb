@@ -59,7 +59,7 @@ module VBlank
       SETTINGS = 2
 
       # The shell of +game+ (a Cartridge::Game), built for +console+: the game with its pack left out
-      # and the rest as the top of this class says. Built with every copy of every original hidden
+      # and the rest as the top of this class has it. Built with every copy of every original hidden
       # (Original.without_copies), so a port whose code needs the copy to be made stops here, naming
       # the line that asked for it.
       def self.build(game, console: game.consoles.first, settings: {}, err: $stderr, progress: Messages::Progress.silent)
@@ -113,7 +113,7 @@ module VBlank
       MENU_LETTERS = %r{[^A-Z0-9 !.:%,'?/-]}
 
       # THE MENU, a small game of the library's own built for the console +game+ (the game's
-      # program) is built for: the title, a line saying what the game needs, and two lines picked with
+      # program) is built for: the title, a line naming what the game needs, and two lines picked with
       # up and down and chosen with A or Start. Choosing one sets MENU_CHOICE and halts, and the
       # runtime does what was chosen. Game code, so each runtime plays it as it plays any game.
       def self.menu_program(title, game)

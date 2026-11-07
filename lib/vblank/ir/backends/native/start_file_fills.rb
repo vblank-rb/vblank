@@ -88,7 +88,7 @@ module VBlank
             end
           end
 
-          # The numbers rg_start_file_fill_picture reads (rg_runtime.h says what each is).
+          # The numbers rg_start_file_fill_picture reads (rg_runtime.h has what each is).
           def start_file_fill_rules(fill, total)
             where = fill.from
             turn = TURN_BITS.sum { |way, bit| where.turns.count(way).odd? ? bit : 0 }

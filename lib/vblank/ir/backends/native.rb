@@ -146,7 +146,7 @@ module VBlank
         # +game+ built as a SHELL (Original::Shell) for a computer, into the FOLDER +path+: the game, with
         # none of the original's data in it, named for the folder, and under parts/ the menu and one
         # unpacking for each release of the original the game reads, each a whole desktop program of its
-        # own (runtime/rg_shell.h says why). Run the game: with no data pack kept in its folder among the
+        # own (runtime/rg_shell.h has why). Run the game: with no data pack kept in its folder among the
         # computer's files for the program, the menu plays; LOAD ROM opens the system's file dialog, the
         # copy is checked and unpacked, and the pack is kept and the game starts.
         #

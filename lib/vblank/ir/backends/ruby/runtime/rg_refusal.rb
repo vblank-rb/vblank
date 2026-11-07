@@ -1,4 +1,4 @@
-# THE SENTENCES A FILE IS REFUSED IN (the native runtime's rg_refusal.h says what they are, and this
+# THE SENTENCES A FILE IS REFUSED IN (the native runtime's rg_refusal.h has what they are, and this
 # is rg_refusal.c written again, function for function).
 
 # +words+ with each {name} in it that +values+ (a Hash by Symbol) has replaced by its value. A

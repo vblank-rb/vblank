@@ -18,7 +18,7 @@ module VBlank
     # THE RELEASES A GAME KNOWS, AND THE WORDS FOR A COPY THAT IS NONE OF THEM. Game asks these of a
     # copy named on a build machine; a shell (Shell) asks the same of the file a player picks, so a
     # wrong copy is refused in the same words on both. Nothing here reads a file or raises: each
-    # question is answered from a size or a digest, and a refusal is the words to say, or nil.
+    # question is answered from a size or a digest, and a refusal is the sentence a person is shown, or nil.
     #
     # This file needs nothing else of the library, so a game written out as one Ruby file carries it
     # as it is (Backends::Ruby#script).
@@ -39,7 +39,7 @@ module VBlank
 
       # Why a copy +named+ (a path, or what a player picked) of +size+ bytes is refused unread, or nil
       # when a release is that size, or a release's size is not known. Most wrong copies are another
-      # game, or a download cut short, and this says so at once. One the length of a release the game
+      # game, or a download cut short, and this refuses those at once. One the length of a release the game
       # does not read goes on, so that the release can be named.
       def size_refusal(named, size)
         sizes = @list.map(&:size)

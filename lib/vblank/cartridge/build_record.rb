@@ -107,7 +107,7 @@ module VBlank
     # +data_assets+ is each piece of data the build laid down in the cartridge after the code, by
     # name (DataAsset): where it starts in the file, how many bytes it takes there, how it is packed
     # (:lz77, :rle, or :none) and how many bytes it is unpacked. It is what a port of the cartridge
-    # reads its facts from, since the bytes alone do not say where one asset stops and the next starts.
+    # reads its facts from, since the bytes alone do not show where one asset stops and the next starts.
     # +colors_short_at+ is where the console counts each time a sprite drawn with a list of
     # colours that borrows a group found none free, and was drawn in another list's colours
     # (see IR::Backends::GBA::ScreenLayout::LentColors) — a hidden variable, like the dropped
