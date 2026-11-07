@@ -21,9 +21,13 @@
 # from the cartridge build's own record); what each piece is, the port's own knowledge below, is
 # what a decompilation's labels give a real port.
 #
-# Every asset the cartridge packs is unpacked into the pack. NOT DRAWN FROM IT YET: the letters and
-# digits of the score, which the framework draws from its own font; and NOT READ FROM IT: the two
-# sounds, which are written in code. Nothing in the cartridge is a tune.
+# Every asset the cartridge packs is unpacked into the pack, and the picture of every one is drawn
+# from it, the letters and digits of the score included (a picture font of the cartridge's glyph tiles).
+#
+# THE SOUNDS are the one thing not read from it. The cartridge holds no sound settings as data: the
+# Advance's build writes waka and caught as writes to the sound registers in its code, so there is
+# nothing in the file to unpack. A real port reads them from a decompilation's sound tables, so the
+# port keeps them as define_sound lines. Nothing in the cartridge is a tune.
 
 require "yaml"
 require_relative "../../../lib/vblank"
@@ -56,6 +60,11 @@ module PacmanPort
   GHOST_BANK = 0
   PAC_BANK = 1
   PELLET_BANK = 0
+  HUD_BANK = 0
+  # The cartridge draws each glyph 6 pixels on from the last, in an 8-pixel tile.
+  HUD_GLYPH_ADVANCE = 6
+  # Where the cartridge's digits start after SCORE: its five letters 6 apiece, the last 5 pixels across.
+  SCORE_LABEL_WIDTH = 29
 
   # Pac's pictures in the cartridge, each four tiles (16x16): his mouth open to the right, shut, open
   # to the left, up and down.
@@ -81,10 +90,10 @@ module PacmanPort
     )
   end
 
-  # The slots of the cartridge's assets the port unpacks and does not draw yet, by the asset's build
-  # name: the letters of SCORE and the digits, which the framework draws from its own font for now.
-  # Every asset the cartridge packs is unpacked, so the routine is tried on each of them.
-  UNDRAWN_SLOTS = Ractor.make_shareable(
+# The slots of the score's letters and digits, by the asset's build name. The cartridge drew them
+# as sprites from bank HUD_BANK of its sprite palette; digit_tiles holds a blank, then 0 to 9.
+# Every asset the cartridge packs is unpacked, so the routine is tried on each of them.
+UNDRAWN_SLOTS = Ractor.make_shareable(
     { score_s_tile: "__obj_tiles___hud8", score_c_tile: "__obj_tiles___hud9", score_o_tile: "__obj_tiles___hud10",
       score_r_tile: "__obj_tiles___hud11", score_e_tile: "__obj_tiles___hud12", digit_tiles: "__obj_tiles___hud13" }
   )
@@ -167,10 +176,25 @@ module PacmanPort
       ghost = layer(:actors) { sprite :ghost, at: GHOST_START }
       caught = 0
 
-      layer :ui do
-        draw_text "SCORE", HUD_X, 4, :white
-        draw_number :eaten, HUD_X + text_width("SCORE") + HUD_GAP, 4, :white, digits: 3
-      end
+# --- the score: the letters and digits are the cartridge's own glyph tiles ---
+hud_colors = pack[:sprite_palette].bank(HUD_BANK)
+score_letters = { "S" => :score_s_tile, "C" => :score_c_tile, "O" => :score_o_tile,
+                  "R" => :score_r_tile, "E" => :score_e_tile }
+score_letters.each do |letter, slot|
+  image :"hud_#{letter}", width: 8, height: 8, colors: hud_colors, places: pack[slot].tile(0)
+end
+image :hud_blank, width: 8, height: 8, colors: hud_colors, places: pack[:digit_tiles].tile(0)
+("0".."9").each do |digit|
+  image :"hud_#{digit}", width: 8, height: 8, colors: hud_colors, places: pack[:digit_tiles].tile(digit.to_i + 1)
+end
+font :score_font, spacing: HUD_GLYPH_ADVANCE - 8,
+                  pictures: (score_letters.keys + ("0".."9").to_a).to_h { |c| [c, :"hud_#{c}"] }.merge(" " => :hud_blank)
+score_label_width = ("SCORE".length * HUD_GLYPH_ADVANCE) - (HUD_GLYPH_ADVANCE - 8)
+
+layer :ui do
+  draw_text "SCORE", HUD_X, 4, font: :score_font
+  draw_number :eaten, HUD_X + SCORE_LABEL_WIDTH + HUD_GAP, 4, digits: 3, font: :score_font
+end
 
       game_loop do
         pac.move :left,  by: SPEED if held(:left)
