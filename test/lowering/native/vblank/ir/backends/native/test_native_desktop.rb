@@ -694,10 +694,14 @@ class TestNativeDesktop < Minitest::Test
 
   private
 
+  # +held+ buttons as one line of the program's input: the first player's alone, since these runs
+  # press no other player's (IR::Buttons::PassButtons#headless_input_line writes the same then).
+  def buttons_line(held) = VBlank::IR::Buttons.mask(held)
+
   # What a run of the game with its window (on SDL's stand-in display) printed at its end, with
   # keys pressed from +presses+.
   def variables_after(exe, frames, presses, *options, env: {})
-    input = (1..frames).map { |frame| "#{Native::HeadlessRun.button_mask(presses.fetch(frame, []))}\n" }.join
+    input = (1..frames).map { |frame| "#{buttons_line(presses.fetch(frame, []))}\n" }.join
     printed = Native::Zig.run_program(exe, args: ["--scripted-keys", frames, *options], input: input,
                                            env: NO_SCREEN_OR_SPEAKER.merge(env))
     Native::HeadlessRun.variables_in(printed.lines.map(&:chomp))
@@ -721,7 +725,7 @@ class TestNativeDesktop < Minitest::Test
   # the 5 a new cartridge is given as the game starts, so it is the count that is waited for.)
   def assert_writes_its_save_while_it_is_still_running(exe, path)
     keys = "#{path}.keys"
-    File.write(keys, "0\n0\n#{Native::HeadlessRun.button_mask(%i[a])}\n")
+    File.write(keys, "0\n0\n#{buttons_line(%i[a])}\n")
     pid = Process.spawn(NO_SCREEN_OR_SPEAKER, exe, "--scripted-keys", "1000000", "--save-file", path,
                         in: keys, out: File::NULL, err: File::NULL)
     count = -> { File.exist?(path) && SaveImage.read_sav(path).word(VBlank::IR::SaveLayout.save_var_at(0)) }
@@ -763,7 +767,7 @@ class TestNativeDesktop < Minitest::Test
   # Started with --headless it plays a recorded run with no window, and shows the interpreter's
   # picture pixel for pixel.
   def assert_runs_headless_like_the_interpreter(exe)
-    input = (1..FRAMES).map { |frame| "#{Native::HeadlessRun.button_mask(RUN.fetch(frame, []))}\n" }.join
+    input = (1..FRAMES).map { |frame| "#{buttons_line(RUN.fetch(frame, []))}\n" }.join
     program = Native.new.checked_program(PongGame::GAME, err: nil)
     actual = parse_snapshots(Native::Zig.run_program(exe, args: ["--headless", FRAMES, "--every-picture"], input: input), program)
     expected = reference_snapshots(program, frames: FRAMES, buttons: RUN)
@@ -778,7 +782,7 @@ class TestNativeDesktop < Minitest::Test
   # count once, so the music ends up off, the difficulty screen is opened and left, and the cpu
   # paddle is at NORMAL's speed — where the interpreter ends given the same buttons.
   def assert_keys_work_the_menus_through_the_window(exe)
-    input = (1..MENU_FRAMES).map { |frame| "#{Native::HeadlessRun.button_mask(MENU_RUN.fetch(frame, []))}\n" }.join
+    input = (1..MENU_FRAMES).map { |frame| "#{buttons_line(MENU_RUN.fetch(frame, []))}\n" }.join
     printed = Native::Zig.run_program(exe, args: ["--scripted-keys", MENU_FRAMES], input: input, env: NO_SCREEN_OR_SPEAKER)
     program = Native.new.checked_program(PongGame::GAME, err: nil)
     expected = reference_snapshots(program, frames: MENU_FRAMES, buttons: MENU_RUN).last.variables
