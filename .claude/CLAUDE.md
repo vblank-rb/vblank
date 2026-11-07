@@ -33,26 +33,6 @@ they never *have* to. When adding a feature, this ranks above cleverness or byte
   ask whether the game can do this with what exists, and what the smallest general piece is if
   it cannot. A verb grown to fit one field is the wrong fix even when it works.
 
-## Shell commands — one operation per call
-
-Run **one logical command per Bash call.** Do not chain distinct operations with `&&`, `;`,
-or newlines in a single invocation, and do not bundle a file-writing heredoc
-(`cat > f <<EOF …`) with the command that consumes it.
-
-Why this is non-negotiable here: the operator reads each command before allowing it, and the
-permission allow/denylist matches on recognizable prefixes (`git commit`, `rake test`).
-A blob like `cat > msg <<EOF … EOF; git add .; git commit -F msg; git show` is unreadable,
-can't be allowlisted, and can't be denied granularly.
-
-- `git add`, then `git commit`, then `git show` are **three separate Bash calls**, not one.
-  Need several commands at once? Issue several Bash calls (they can run in parallel) — each
-  stays individually matchable.
-- Write files — commit messages, scripts, long bodies of text — with the **Write/Edit tools**,
-  never `cat >`/heredocs. Then a single command reads the file (`git commit -F <file>`).
-- No `python3 -c '…'` / `ruby -e '…'` logic one-liners. Put logic in a file so it's
-  inspectable and re-runnable.
-- Prefer one clear command over a clever pipeline, even for read-only inspection.
-
 ## Worktrees — two items in flight, at most
 
 Non-trivial work goes in a worktree of its own, `.claude/worktrees/<item>` on a branch named for
@@ -235,7 +215,7 @@ DSL belongs to the builder file that defines the verb it is about. The shared he
 
 The framework's largest consumer, a Wolfenstein 3D port, lives in its own repository —
 usually a checkout beside this one, `../ruby-wolf3d` (anywhere else, say where in
-`CLAUDE.local.md`) — and depends on this one as a gem. It has a suite of its own which
+`.claude/rules/local.md`) — and depends on this one as a gem. It has a suite of its own which
 this one does not run and must not learn about: a library that names the games built on it is
 coupled to them. Its whole purpose is to find gaps here, and a gap it finds is tracked against
 this framework rather than worked around there. To work on both at once, point its bundler at
@@ -425,9 +405,8 @@ Keep the IR **target-agnostic**: `IR::Node` describes *what the program does*, n
 
 ### Naming methods — the name says what it does, not a story about it
 
-**A method's name tells a reader what calling it does or returns, without opening the body.**
-This codebase's comments are deliberately narrative; method names are not, and carrying that voice
-into a name is the mistake this section exists for. 535 names had to be renamed for it at once.
+The rules are "Naming things" in `.claude/rules/shared/all-projects.md`; this is how they apply
+here.
 
 ```
 BAD   check_one_start          check what? one start of what? (it raises on a conflicting `var`)
@@ -441,8 +420,7 @@ BAD   emit_pending_functions   sounds narrow; it is the whole end-of-build pass
 GOOD  finalize_program
 ```
 
-- **Say the effect and its object.** A verb with no real object (`check_`, `handle_`, `process_`,
-  `settle_`, `take_`, `do_`) hides what happens. Say what is raised, emitted, allocated or returned.
+- **Say what is raised, emitted, allocated or returned.**
 - **Suffixes are promises.** `?` returns true or false and does nothing else. `!` raises a friendly
   error or mutates in a way a caller must know about; this repo's raising guard is `refuse_x!`. A
   method that builds an error message is `x_message`, not a phrase that reads like a predicate.
@@ -454,9 +432,8 @@ GOOD  finalize_program
   `emit_x_now`, must say in the name what differs.
 - **Check before you rename.** Builder and `IR::Backends::GBA` are many modules mixed into one class,
   so a name that already exists in any of them silently overrides it: grep `def new_name` first.
-- **Matching the code around it does not excuse a bad name.** Where the surrounding names break
-  this, name the new thing properly and rename the old ones the change touches. A one-word name
-  that reads only at its call site (`Events.of(part)`) names nothing where it is defined.
+- A one-word name that reads only at its call site (`Events.of(part)`) names nothing where it is
+  defined.
 
 `test/all/vblank/test_method_names.rb` fails the build on the mechanical half of this — articles,
 vague-verb prefixes, two-letter abbreviations, and names of seven words or more. It cannot judge the rest, so a
@@ -464,49 +441,9 @@ name that passes it is not thereby a good name.
 
 ### Writing code comments
 
-- Comments are for humans and should read as if a human wrote them.
-- Be concise for ordinary code, but **explain the hardware generously**. The reader isn't
-  assumed to know what VRAM, DMA, a page flip, or a palette is, so a few plain-language lines
-  on *what the hardware is doing and why* are welcome — that teaching is the point.
-- Do not name the issue tracker, or an issue id, in a code comment.
-- **No measured decimals in a comment.** A scanline figure (`0.01928`, `0.0032`) or an
-  accuracy ratio (`reads 1.12`) is specific to one emulator build and one moment, so it is
-  stale as soon as anybody re-measures. Write what survives instead: **instruction counts and
-  relationships**, which come from the emitted code, not from a timing run — "one instruction,
-  not six", "clamping is twice wrapping", "a little over at an even column and a little under
-  at an odd one". Those explain the code AND stay true. A measured number belongs somewhere
-  dated by construction — a commit message, or the issue it came from.
-
-### Writing commit messages
-
-**The subject line names what changed.** A file, a class, a constant, a directory — the
-identifier you would type into `grep`. It is the only line most readers ever see, and its one
-job is to let somebody scanning `git log --oneline` decide whether this is the commit they are
-hunting for. A subject that names nothing fails at that however well it reads:
-
-```
-GOOD  Move ASM from Cartridge to IR::Backends::GBA
-GOOD  Split PlainWords, Progress, BuildOutput, AuthorSource into Messages
-GOOD  Narrow the pool's live column to a byte
-BAD   Name the ARM encoder after the backend that emits ARM   (which encoder? which file?)
-BAD   Share what a sound voice can do; keep how it is written private   (names nothing at all)
-BAD   Give every lib directory a front door   (true, and unsearchable)
-```
-
-Start it with a verb in the imperative — Move, Add, Split, Narrow, Fix, Remove — and keep it
-under about 70 characters. **Why** belongs in the body, never the subject.
-
-- The body is for what the subject cannot hold: why the change was needed, what was surprising,
-  what a reader would otherwise get wrong. Two or three sentences. If there is nothing to say,
-  leave it out — a subject alone is a fine commit message.
-- **This is the one place the house voice does NOT apply.** Code comments here are deliberately
-  narrative and teach the hardware generously (see "Writing code comments"). A commit subject is
-  the opposite: an index entry. Do not carry the comment voice into it.
-- Do not name the issue tracker, or an issue id, in a commit message. A `commit-msg` hook
-  rejects one as a backstop; don't lean on it instead of just not writing it.
-- Do not add a `Co-Authored-By` trailer. Do not say how many tests were added.
-- No fluff that sounds pleased with itself, and no narrating the process ("first moved, then
-  renamed"). State what the tree looks like now.
+The rules are in `.claude/rules/shared/all-projects.md`. Here, the reader isn't assumed to know
+what VRAM, DMA, a page flip, or a palette is, so a few plain-language lines on *what the hardware
+is doing and why* are welcome — that teaching is the point.
 
 ### Writing user-facing errors and warnings — use the `simple-english` skill
 
@@ -548,4 +485,4 @@ features land rather than spawning one-feature-per-example demos:
 - `examples/pacman.rb` — tiled-mode flagship: maze background, hardware sprites, collision, sound, scenes
 
 ## Finishing a piece of work
-- Commit it, and keep the message for humans — see "Writing commit messages" above.
+- Commit it, and keep the message for humans: a subject naming what changed, the why in the body.

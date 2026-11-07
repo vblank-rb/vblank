@@ -20,29 +20,14 @@ you need before writing a test that uses it:
 | `runs.md` | rake commands, which run a change needs, the machine-wide lock, worktrees, the native run's processes |
 | `costs.md` | asserting what something costs: bytes emitted, or the profiler's idle share and fps |
 
-## Which skill a piece of work wants
+## Skills here
 
-Choose by what the work is, and say nothing about the choice unless it matters. A skill earns its cost
-when the work can go wrong in a way it catches. These are the usual fits, and judgement decides:
-
-- **`mattpocock-skills:tdd`, for a feature or a bug fix.** The test goes red first, at the altitude
-  `.claude/CLAUDE.md` sets and in the folder the table below says, so a fix is shown to fix the thing.
-  The skill says to agree where tests go with the user first; here those two rules are that agreement.
-- **`mattpocock-skills:diagnosing-bugs`, for a bug whose cause reading the code does not give up**: one
-  lowering disagreeing with the interpreter, a wrong picture, a slow frame. Its loop here is a failing
-  test or a small measuring script, and its ranked guesses go on with the work, unconfirmed.
-- **`mattpocock-skills:code-review`, when finishing work that changes shared code or a lowering's
-  logic.** It reads commits, so its place is after the local commit and before calling the work done:
-  the fixed point is the commit before yours, and a fix it asks for is a further commit. It starts two
-  agents, so it wants a change with something to get wrong.
-- **`mattpocock-skills:codebase-design`, when a change adds a module or moves where something lives.**
-- **`mattpocock-skills:writing-for-agents`, when editing these notes.**
-
-The work needs no skill when there is nothing for one to catch: a one-line fix with an obvious test, a
-rename, a comment, a re-recorded baseline.
+Which skill fits is "Skills" in `.claude/rules/shared/all-projects.md`. Here `tdd`'s red test goes at
+the altitude `.claude/CLAUDE.md` sets and in the folder the table below says; `code-review` is due for
+a change to shared code or a lowering's logic; `writing-for-agents` when editing these notes.
 
 The order around them: red test, fix, the touched test files, `rake test:golden`, `rake emitted:check`
-if a cartridge's contents changed, commit, review.
+if a cartridge's contents changed, commit, review, its fixes folded into the commit.
 
 ## Where a test file goes: the folder says which runs play it
 
