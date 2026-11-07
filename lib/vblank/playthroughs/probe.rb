@@ -22,6 +22,12 @@ module VBlank
     # that never answers yes within its frames raises NeverHappened, naming what was waited for, the
     # frame it stopped on, and the values of the labels it was told to watch.
     #
+    # A CARTRIDGE VBLANK BUILT needs no labels: opened as the built cartridge (not its file), its
+    # variables, lists and pools are read by the names the game gave them, as every other reader
+    # reads them, from the build's record of where each is and how wide.
+    #
+    #   Probe.open(game.build_rom(console: :gba)) { |probe| probe.var(:hearts) }
+    #
     # WHAT THE GAME SUPPLIES: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
     # its labels, as its decompilation's RAM map has them: a name to an address on the console's bus,
     # or to an address and how it is read (WIDTHS), one byte unsigned unless set. A read or a write
@@ -146,6 +152,13 @@ module VBlank
                 end
         width.signed && value >= (1 << ((width.bytes * 8) - 1)) ? value - (1 << (width.bytes * 8)) : value
       end
+
+      # A cartridge VBlank built, read by the game's own names (Diagnostics::Verifier#var, #list,
+      # #pool): a variable's number, a list's items oldest first, a pool field's value per slot.
+      # A cartridge that is only its file has no build record, and is refused saying so.
+      def var(name) = @reader.var(name)
+      def list(name) = @reader.list(name)
+      def pool(name, field) = @reader.pool(name, field)
 
       # +count+ bytes from +place+ (a label or an address), as a binary string.
       def read_bytes(place, count)

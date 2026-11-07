@@ -3,6 +3,7 @@
 require "test_helper"
 require "tmpdir"
 require "comparison_games"
+require "probe_by_name_tests"
 
 # A PORT DRIVES ITS ORIGINAL with a Probe: any cartridge file, played a frame at a time until the
 # game says it has got somewhere, and read by the labels its decompilation gave its memory. The
@@ -10,6 +11,9 @@ require "comparison_games"
 # the build recorded: a white box that walks two pixels a frame from column 20 while RIGHT is down.
 class TestProbe < Minitest::Test
   include ComparisonGames
+  include ProbeByNameTests
+
+  private def console = :gba
 
   private def with_walker_file
     Dir.mktmpdir("cartridges") do |folder|

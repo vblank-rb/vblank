@@ -87,7 +87,8 @@ module VBlank
       #   the frame number returning one. nil means no buttons held.
       # @param vars [Hash{Symbol=>Integer}, nil] variable name → IWRAM address, from the
       #   backend that lowered the ROM (backend.var_addresses) — lets {#var} read a
-      #   variable's value back from memory after the run.
+      #   variable's value back from memory after the run. Left out, it is where the
+      #   cartridge's build record put them, so a cartridge built here is read by name as it is.
       # @param count_passes [Boolean] count how many times round the game loop the console
       #   got, readable afterwards as {#passes}. Off by default because it is not free.
       # @param save [IR::SaveImage, nil] what the cartridge's save memory holds when the console
@@ -115,7 +116,7 @@ module VBlank
         @clock_set = clock_set
         @frames = frames
         @keys = keys
-        @var_addresses = vars
+        @var_addresses = vars || rom.var_addresses
         @count_passes = count_passes
         # What only this cartridge's console answers, read its own way (see "what each console's
         # cartridge is asked its own way" below).
@@ -495,10 +496,10 @@ module VBlank
         bytes unless bytes.nil? || bytes.empty?
       end
 
-      # Read a program variable's value from IWRAM, by name. Needs the variable-address
-      # map from the backend that lowered the ROM — construct the Verifier with
-      # `vars: backend.var_addresses`. This is how a test asserts what a program
-      # actually computed on real hardware.
+      # Read a program variable's value from IWRAM, by name. Needs where the build put each
+      # variable: the cartridge's build record, or `vars: backend.var_addresses`. This is how a
+      # test asserts what a program actually computed on real hardware. A name the build does
+      # not have is refused, naming the game's own variables (the framework's are left out).
       #
       # IT IS THE NUMBER THE PROGRAM COUNTED TO, which means a count taken below nothing comes
       # back below nothing. A variable here is a signed whole number by definition (see
@@ -516,12 +517,19 @@ module VBlank
         unless @var_addresses
           refuse_missing_build_record!("where its variables are", or_else: "or hand the Verifier where they are: " \
                                                                          "`vars: backend.var_addresses`")
-          raise ArgumentError,
-                "no variable map given — build the Verifier with `vars: backend.var_addresses` to read a variable"
+          raise ArgumentError, "This cartridge's build record does not say where its variables are. To read one, " \
+                               "hand the Verifier where they are: `vars: backend.var_addresses`."
         end
-        address = @var_addresses[name] ||
-                  raise(ArgumentError, "unknown variable #{name.inspect} — known: #{@var_addresses.keys.join(', ')}")
+        address = @var_addresses[name] || raise(ArgumentError, no_such_message("variable", name, game_variable_names))
         variable_kept_at(name, address)
+      end
+
+      # The variables the game named, to offer in place of one it did not. The lowering keeps
+      # variables of its own beside them (a list's length, a scratch word), which the program
+      # never names, so with the program to hand only the names in it are offered.
+      private def game_variable_names
+        named = @rom.source_program ? @var_addresses.keys & IR::Reach.variables(@rom.source_program) : @var_addresses.keys
+        named.reject { |known| framework_own?(known) }
       end
 
       # What is kept for +name+ at +address+. A console that keeps some variables narrow says it

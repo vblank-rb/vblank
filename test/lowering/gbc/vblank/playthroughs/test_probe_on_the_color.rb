@@ -2,14 +2,19 @@
 
 require "test_helper"
 require "tmpdir"
+require "probe_by_name_tests"
 
 # THE COLOR'S PROCESSOR READS A WORD AT ANY ADDRESS, a byte at a time and low byte first, so a game
 # for it keeps words at odd addresses and a port's probe reads and writes them there.
 #
 # The cartridge is a small game built here, written to a file: a list of five bytes, 0x11 to 0x55,
-# where the build put it.
+# where the build put it. ProbeByNameTests also reads a variable the Color keeps in one byte.
 class TestProbeOnTheColor < Minitest::Test
+  include ProbeByNameTests
+
   BYTES = [0x11, 0x22, 0x33, 0x44, 0x55].freeze
+
+  private def console = :gbc
 
   private def bytes_game
     VBlank.build("BYTES", console: :gbc, out: StringIO.new, err: StringIO.new) do
