@@ -67,7 +67,7 @@ module RubySpeed
     return "not #{jit.label}" unless said.include?("with #{jit.label}.")
     return "halts" if said.include?("stopped itself after 0 frames") # a still picture: nothing to measure
 
-    said[/, ([\d.]+) a second\./, 1] || "failed"
+    said[/\(([\d.]+) fps[;)]/, 1] || "failed" # vblank run's last line: "300 frames in 0.4 s (702.8 fps; ...)"
   end
 
   # A Ruby built without ZJIT says "no", and one older than ZJIT says nothing.
