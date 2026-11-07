@@ -22,6 +22,11 @@ module VBlank
       # A hook none of a game's features take does what the screen does with no feature at all,
       # which is written in each language once: rg_screen_hook_defaults.h for C, and here for the two
       # whose dispatchers this writes whole.
+      #
+      # Must not be called once a pixel. A hook in JavaScript and Ruby is a real call, and a screen
+      # does tens of thousands of pixels a frame. Where a feature changes what happens to each pixel,
+      # the screen asks it once (a layer to paint into, a layer shown in front) and its loop reads
+      # what it was handed (paint_onto_plain_layer, front_layer).
       module RuntimeFeatures
         ROOT = Ractor.make_shareable(File.expand_path("runtime_features", __dir__))
         LANGUAGES = Ractor.make_shareable(%i[c js ruby])
@@ -59,7 +64,7 @@ module VBlank
           # The rebuild has painted every level.
           Hook.new(name: :repaint_ending, way: :each, c_signature: "static void rg_hook_repaint_ending(void)"),
           # The scenery up, stamped onto the copy kept to put back under sprites (Reference#scene_framebuffer).
-          Hook.new(name: :stamp_scenery, way: :each, c_signature: "static void rg_hook_stamp_scenery(void)"),
+          Hook.new(name: :stamp_scenery, way: :each, c_signature: "static inline void rg_hook_stamp_scenery(void)"),
           # Whether any scenery is up, so a new backdrop has the picture built again rather than cleared.
           Hook.new(name: :scenery_up, way: :claim, c_signature: "static int32_t rg_hook_scenery_up(void)"),
           # Whether scenery showing now is in a see-through layer (Reference#layer_has_anything?).
@@ -68,15 +73,24 @@ module VBlank
           # A scene takes over; a taker that takes scenery down answers true (Reference#take_down_scenery).
           Hook.new(name: :scene_take_down, way: :claim, params: %i[brings_scenery],
                    c_signature: "static int32_t rg_hook_scene_take_down(int32_t brings_scenery)"),
-          # The size of the blocks scenery is painted in, in pixels each way: 1 for no blocks. Scenery
-          # the game left as drawn ignores it.
-          # Must be inline in C: only the tiled feature asks it, and the compiler counts an unasked
-          # inline function as no fault.
-          Hook.new(name: :scenery_block_size, way: :one, default: 1,
-                   c_signature: "static inline int32_t rg_hook_scenery_block_size(void)"),
-          # A sprite kept for a rebuild is about to be drawn; a taker that draws it answers true.
-          Hook.new(name: :paint_kept_sprite, way: :claim, params: %i[placed],
-                   c_signature: "static int32_t rg_hook_paint_kept_sprite(const placed_object *placed)"),
+          # The size of the blocks scenery and sprites are painted in, in pixels each way: 1 for no
+          # blocks. Scenery or a sprite the game left as drawn ignores it.
+          # Must be inline in C: only the tiled and sprites features ask it, and the compiler counts an
+          # unasked inline function as no fault.
+          Hook.new(name: :block_size, way: :one, default: 1,
+                   c_signature: "static inline int32_t rg_hook_block_size(void)"),
+          # How many sprites the game last put on screen, and the one at a place among them
+          # (Reference#sprites): what the headless runners read, with or without sprites.
+          Hook.new(name: :drawn_count, way: :one, default: 0, c_signature: "static int32_t rg_hook_drawn_count(void)"),
+          Hook.new(name: :drawn_sprite, way: :one, params: %i[place], default: :null,
+                   c_signature: "static rg_drawn_sprite rg_hook_drawn_sprite(int32_t place)"),
+          # Whether any sprite is kept for the next rebuild (Reference#redraw_sprites_over_arrived_scenery).
+          Hook.new(name: :any_sprite_kept, way: :claim, c_signature: "static int32_t rg_hook_any_sprite_kept(void)"),
+          # The layer shown in front of the picture as it is read (sprites over a painted screen), a
+          # screen's worth of cells holding RG_NOTHING_IN_FRONT where nothing is (nil in Ruby), or
+          # null for no layer. Asked once a read.
+          Hook.new(name: :front_layer, way: :one, default: :null,
+                   c_signature: "static const uint16_t *rg_hook_front_layer(void)"),
           # Whether a painted screen can be read as it is stored, row for row. JavaScript reads it a
           # pixel at a time always, so has no such shortcut.
           Hook.new(name: :shown_plain, way: :all, languages: %i[c ruby], c_signature: "static int32_t rg_hook_shown_plain(void)"),

@@ -740,7 +740,7 @@ def rg_paint_background(background)
 end
 
 # Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS of +block+ pixels each way, by the
-# display's own rule, while the picture is shown in them (rg_hook_scenery_block_size).
+# display's own rule, while the picture is shown in them (rg_hook_block_size).
 #
 # The blocks are fixed to the screen, and each shows the color the background has at the block's
 # top left corner, so a background that scrolls slides under a grid that stays where it is. A
@@ -797,7 +797,7 @@ def rg_paint_scenery(background)
   box = @rg_boxes[rg_keeper_of(background)]
   return if box && (box[2] <= box[0] || box[3] <= box[1])
 
-  block = rg_hook_scenery_block_size
+  block = rg_hook_block_size
   if block > 1 && rg_background_field(background, RG_BG_IN_BLOCKS) != 0
     rg_paint_scenery_in_blocks(background, block, box)
   elsif box

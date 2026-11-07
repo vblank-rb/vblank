@@ -13,7 +13,7 @@ class TestRuntimeFeaturesInRuby < Minitest::Test
   def test_a_game_that_pixelates_takes_in_pixelation
     text = Ruby.new.live_source(program(screen(:bitmap), pixelate(size: int(4)), halt))
 
-    assert_includes text, "def rg_pixelation_scenery_block_size"
+    assert_includes text, "def rg_pixelation_block_size"
     assert_includes text, "rg_pixelation_setup"
   end
 
@@ -43,10 +43,32 @@ class TestRuntimeFeaturesInRuby < Minitest::Test
     refute_includes text, "def rg_background_stamp("
   end
 
+  def test_a_game_with_a_sprite_takes_in_the_sprites_feature
+    text = Ruby.new.live_source(game_with_a_sprite)
+
+    assert_includes text, "def rg_sprites_paint_level("
+    assert_includes text, "rg_sprites_setup"
+  end
+
+  def test_a_game_with_no_sprite_holds_none_of_the_sprites_feature
+    text = Ruby.new.live_source(program(screen(:bitmap), clear_screen(:white), halt))
+
+    refute_includes text, "rg_sprites_setup"
+    refute_includes text, "def rg_objects_end"
+  end
+
+  # Sprites are painted after the scenery of their level, so the feature is taken after tiled.
+  def test_the_sprites_feature_comes_after_the_tiled_one
+    text = Ruby.new.live_source(game_with_a_background_and_a_sprite)
+
+    assert_operator text.index("rg_tiled_paint_level(level)"), :<, text.index("rg_sprites_paint_level(level)")
+  end
+
   def test_the_screen_file_names_no_feature
     screen = File.read(File.join(Ruby::RUNTIME_DIR, "rg_screen.rb"))
 
     refute_match(/pixelat|read_block/, screen)
     refute_match(TILED_NAMES, screen)
+    refute_match(SPRITES_NAMES, screen)
   end
 end

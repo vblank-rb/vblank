@@ -82,9 +82,6 @@ RG_SIZE_SPRITES_OVER_PICTURE = 10
 
 RG_NOBODY_ASKED = -1
 RG_NO_CELL = -1        # A cell of a saved patch that hung off the picture
-RG_NO_PLACE = -1
-# The display counts the rows of a turned sprite's box in this many lines that come round.
-RG_TURNED_BOX_LINES = 256
 
 # The part of the screen drawing is held inside (Framebuffer#draw_inside), when it is held.
 RgArea = Struct.new(:in_force, :left, :top, :right, :bottom)
@@ -102,11 +99,6 @@ class RgMixes
     @unders = Array.new(RG_SCREEN_CELLS, 0)
   end
 end
-
-# One sprite on screen this frame. One that turns or resizes carries its angle and its size for
-# this frame, and whether its size ever changes. One that loses slices to a crowded line keeps them
-# as +cuts+, [line, piece] each (#rg_mark_slices_left_out).
-RgPlaced = Struct.new(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes, :cuts)
 
 # A FADE PLACED IN THE STACK (Reference @fade_placed): whether one is in force, how far forward the
 # layer it sits under is among the layers the game declared, which way it fades, and how far.
@@ -177,11 +169,9 @@ def rg_screen_setup
   @rg_picture_without_sprites = Array.new(RG_SCREEN_CELLS, 0)
   @rg_painting_sprite = false
   @rg_seen_through_answer = nil
-  # The sprites on screen this frame: being set, and as the last rebuild draws them.
-  @rg_drawing = []
-  @rg_sprite_layer = []
-  # Where each sprite was last drawn straight onto the picture, by its number (Reference @obj_prev).
-  @rg_last_drawn = Array.new(RG_MAX_SPRITES)
+  # A layer a feature paints into as it is (rg_paint_onto_plain_layer), or nil while drawing goes to
+  # the picture, so a pixel painted then costs one test and no method call.
+  @rg_plain_layer = nil
   # See-through layers: the one being asked about and its answer, and its shares as kept when a
   # rebuild was asked for (Reference @owed_weights) and as last told (@see_through_shown).
   @rg_asked_layer = RG_NOBODY_ASKED
@@ -338,11 +328,10 @@ def rg_keeps_picture_without_sprites? = !@rg_target.equal?(@rg_scenery) && rg_sp
 # picture as it is with no sprite on it, where that is kept, and anything else with what is
 # already in the cell.
 #
-# While the sprites over a painted picture are drawn (@rg_over_picture, rg_screen.c's over_picture),
-# what is painted lands in their layer in front of the picture, and nowhere else.
+# While a feature has handed over a plain layer, the pixel is stored whole there and nowhere else.
 def rg_set_pixel(x, y, color)
-  if @rg_over_picture_painting
-    @rg_over_picture[(y * RG_SCREEN_WIDTH) + x] = color if rg_on_screen?(x, y)
+  if (layer = @rg_plain_layer)
+    layer[(y * RG_SCREEN_WIDTH) + x] = color if rg_on_screen?(x, y)
     return
   end
   return unless rg_paintable?(x, y)
@@ -354,6 +343,12 @@ def rg_set_pixel(x, y, color)
   painted = rg_into_cell(color, under[at], @rg_target, at)
   @rg_target[at] = painted
   @rg_picture_without_sprites[at] = painted if kept && !@rg_painting_sprite
+end
+
+# A layer a feature paints into as it is, a colour or nil for each of the screen's cells, until it
+# hands it back with nil: each painted pixel is stored whole there, with no area, mix or fade.
+def rg_paint_onto_plain_layer(layer)
+  @rg_plain_layer = layer
 end
 
 # Framebuffer#fill_rect: every cell of the rectangle, each through rg_set_pixel. Walking only the
@@ -548,13 +543,6 @@ def rg_mix_as_layer(layer)
   return unless @rg_mixing
 
   @rg_mixed_by = @rg_mixed_cells_by = @rg_pending_shares[layer] || rg_shares_now(layer)
-end
-
-# Reference#set_see_through_for, for a sprite: the same, and what is painted is a sprite's, so it
-# is mixed with the picture as it is with no sprite on it and stays off that picture.
-def rg_mix_as_sprite(sprite)
-  rg_mix_as_layer(@rg_game_sprite_see_through[sprite])
-  @rg_painting_sprite = true
 end
 
 def rg_mix_nothing
@@ -884,158 +872,7 @@ def rg_blit_image(image, x, y)
   end
 end
 
-# The screen row the box row +row+ of a turned sprite lands on when the box's first row is at
-# +top+, or -1 for a line below the screen, where the box stands unseen (Reference::TurnedBox): the
-# display counts the rows of a sprite's box in lines that come round, and the screen is fewer.
-def rg_turned_box_line(top, row)
-  line = (top + row) % RG_TURNED_BOX_LINES
-  line < RG_SCREEN_HEIGHT ? line : -1
-end
-
-# TurnedBox.rows_shown's first test, with Affine.rows_reached: a sprite is drawn at all only while
-# some of the rows its picture can reach are on the screen. A picture that +resizes+ can fill its
-# whole box; one that only turns stays within a square as wide as its diagonal, and a pixel each
-# side, about the middle.
-def rg_turned_box_on_screen?(top, width, height, resizes)
-  first = 0
-  past = height * 2
-  if resizes == 0
-    reach = Integer.sqrt((width * width) + (height * height)) + 2
-    first = height - (reach / 2)
-    past = first + reach
-  end
-  top + past > 0 && top + first < RG_SCREEN_HEIGHT
-end
-
-# Reference#blit_image_transformed: a picture turned +angle+ degrees clockwise and drawn at +size+,
-# about its own middle, its top left as drawn at (x, y). The console walks the patch of screen the
-# sprite can cover — twice the picture each way, centered on it — and for each pixel works BACK
-# through the turn to the pixel of the picture that lands there; one that falls outside the picture
-# is not drawn. A screen pixel is taken at its whole coordinate and the answer rounded down.
-def rg_blit_image_turned(image, x, y, angle, size, resizes)
-  art, start, width, height = rg_picture_of(image)
-  one_th = @rg_game_turn_rules[1]
-  turn_cos, turn_sin = rg_affine_matrix(angle % 360, size)
-  left = x - (width / 2)
-  top = y - (height / 2)
-  return unless rg_turned_box_on_screen?(top, width, height, resizes)
-
-  (height * 2).times do |iy|
-    line = rg_turned_box_line(top, iy)
-    next if line < 0
-
-    dy = iy - height
-    (width * 2).times do |ix|
-      dx = ix - width
-      from_x = (((turn_cos * dx) + (turn_sin * dy)) / one_th) + (width / 2)
-      from_y = (((-turn_sin * dx) + (turn_cos * dy)) / one_th) + (height / 2)
-      next if from_x < 0 || from_x >= width || from_y < 0 || from_y >= height
-
-      color = art[start + (from_y * width) + from_x]
-      rg_set_pixel(left + ix, line, color) if color != RG_NOT_DRAWN
-    end
-  end
-end
-
-# --- how many sprites a line of the screen shows (rg_screen.c's, Backends::SpriteLines) ---
-#
-# @rg_game_image_pieces: how tall a piece is, then where each image's pieces start, and there how
-# many, then each one's across and down. RG_SPRITE_PIECES_A_LINE is 0 where every piece is drawn.
-RG_PIECE_WIDTH = 8
-
-# Reference#mark_slices_left_out: each sprite that loses slices to a crowded line keeps them as its
-# +cuts+. The table lists them front-most first: the deepest level last, and inside a level the one
-# drawn last first.
-def rg_mark_slices_left_out(placed)
-  placed.each { |sprite| sprite.cuts = nil }
-  return if RG_SPRITE_PIECES_A_LINE == 0 || placed.empty?
-
-  pieces = @rg_game_image_pieces
-  tall = pieces[0]
-  taken = Array.new(RG_SCREEN_HEIGHT, 0)
-  placed.each_index.sort_by { |at| [placed[at].level, at] }.reverse_each do |at|
-    sprite = placed[at]
-    start = pieces[1 + sprite.image]
-    cuts = []
-    pieces[start].times do |piece|
-      left = sprite.x + pieces[start + 1 + (2 * piece)]
-      top = sprite.y + pieces[start + 2 + (2 * piece)]
-      next if left <= -RG_PIECE_WIDTH || left >= RG_SCREEN_WIDTH
-
-      ([top, 0].max...[top + tall, RG_SCREEN_HEIGHT].min).each do |line|
-        cuts << [line, piece] if taken[line] >= RG_SPRITE_PIECES_A_LINE
-        taken[line] += 1
-      end
-    end
-    sprite.cuts = cuts unless cuts.empty?
-  end
-end
-
-# SpriteLines.left_out_at?: left out where a piece left out of the line covers it and no piece
-# drawn there does.
-def rg_left_out_at?(placed, col, row, line)
-  pieces = @rg_game_image_pieces
-  start = pieces[1 + placed.image]
-  tall = pieces[0]
-  covered = false
-  pieces[start].times do |piece|
-    across = pieces[start + 1 + (2 * piece)]
-    down = pieces[start + 2 + (2 * piece)]
-    next if col < across || col >= across + RG_PIECE_WIDTH || row < down || row >= down + tall
-    return false unless placed.cuts.include?([line, piece])
-
-    covered = true
-  end
-  covered
-end
-
-# Reference#blit_image with a sprite's slices left out.
-def rg_blit_with_slices_left_out(placed)
-  art, start, width, height = rg_picture_of(placed.image)
-  height.times do |row|
-    line = placed.y + row
-    width.times do |col|
-      color = art[start + (row * width) + col]
-      rg_set_pixel(placed.x + col, line, color) if color != RG_NOT_DRAWN && !rg_left_out_at?(placed, col, row, line)
-    end
-  end
-end
-
-# Reference#draw_object and #paint_snapshot_object
-def rg_draw_placed(placed)
-  if placed.turned
-    rg_blit_image_turned(placed.image, placed.x, placed.y, placed.angle, placed.size, placed.resizes)
-  elsif placed.cuts
-    rg_blit_with_slices_left_out(placed)
-  else
-    rg_blit_image(placed.image, placed.x, placed.y)
-  end
-end
-
-# Reference#paint_snapshot_object: one of the sprites kept for a rebuild, as drawn unless a feature
-# draws it its own way (rg_hook_paint_kept_sprite).
-def rg_paint_kept_sprite(placed)
-  rg_draw_placed(placed) unless rg_hook_paint_kept_sprite(placed)
-end
-
 def rg_rebuilt_whole? = @rg_game_picture_sizes[RG_SIZE_REBUILT_WHOLE] != 0
-
-# Reference#scene_framebuffer: the backdrop, and every background showing stamped over it
-# (rg_hook_stamp_scenery). It is a picture of its own, so an area the game's drawing is held to
-# does not hold this.
-def rg_keep_scenery
-  return if @rg_scenery_kept
-
-  outer = @rg_area
-  @rg_area = RgArea.new(false, 0, 0, 0, 0)
-  @rg_target = @rg_scenery
-  rg_clear_to(@rg_backdrop)
-  rg_hook_stamp_scenery
-  @rg_target = @rg_pixels
-  @rg_area = outer
-  @rg_scenery_kept = true
-end
-
 # Reference#exec_blit
 def rg_screen_blit(image, x, y) = rg_blit_image(image, x, y)
 
@@ -1246,188 +1083,12 @@ def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, 
   end
 end
 
-# The start of Reference#exec_present_objects. A game that draws its sprites straight onto the
-# picture has the scenery under them kept from here, as the interpreter does.
-def rg_objects_begin
-  @rg_drawing = []
-  rg_keep_scenery unless rg_rebuilt_whole?
-end
+# Reference#sprites: what the game last put on screen, how many and each by its place among them as
+# [whose it is, which picture it shows, x, y]. What the headless runner reads of every game, so the
+# screen answers through hooks, and a game with no sprites answers none.
+def rg_screen_drawn_count = rg_hook_drawn_count
 
-def rg_fault_unless_sprite(sprite)
-  return if sprite >= 0 && sprite < RG_MAX_SPRITES
-
-  rg_fault("sprite number #{sprite} is not one of the #{RG_MAX_SPRITES} there is room for")
-end
-
-# Framebuffer#put_back_cell: the scenery's cell at (x, y) put back on the picture, a mix kept as one
-# so that a tint still reaches both its sides.
-def rg_put_back_cell(x, y)
-  at = (y * RG_SCREEN_WIDTH) + x
-  rg_set_pixel(x, y, @rg_scenery[at])
-  kept = rg_mixes_of(@rg_target)
-  return if !kept || !rg_paintable?(x, y) || @rg_scenery_mixes.is_mixed[at] == 0
-
-  kept.is_mixed[at] = 1
-  kept.tops[at] = @rg_scenery_mixes.tops[at]
-  kept.unders[at] = @rg_scenery_mixes.unders[at]
-end
-
-# Reference#restore_patch: the scenery put back over a patch of the picture.
-def rg_restore_patch(left, top, width, height)
-  height.times do |row|
-    width.times do |col|
-      x = left + col
-      y = top + row
-      rg_put_back_cell(x, y) if rg_on_screen?(x, y)
-    end
-  end
-end
-
-# The same over a turned sprite's patch, each row on the screen row the display counts it at.
-def rg_restore_turned_patch(left, top, width, height)
-  height.times do |row|
-    line = rg_turned_box_line(top, row)
-    rg_restore_patch(left, line, width, 1) if line >= 0
-  end
-end
-
-# Forgets where a sprite was last drawn straight onto the picture, and hands that place over for
-# the scenery to be put back there; nil when it is not on the picture.
-def rg_forget_drawn_place(sprite)
-  rg_fault_unless_sprite(sprite)
-  place = @rg_last_drawn[sprite]
-  @rg_last_drawn[sprite] = nil
-  place
-end
-
-# Reference#restore_scene_rect: the scenery put back where this sprite was last drawn, over the
-# box every one of its pictures fits in, +width+ by +height+ (SpriteCut.canvas_of).
-def rg_object_take_off(sprite, width, height)
-  place = rg_forget_drawn_place(sprite)
-  return unless place
-
-  x, y = place
-  rg_restore_patch(x, y, width, height)
-end
-
-# Reference#restore_scene_rect and #transformed_footprint, for a sprite that turns or resizes. The
-# patch has to hold the picture at whatever angle and size it was last drawn. One that only turns
-# reaches no further from its middle than half its own diagonal, so a square that wide does; one
-# that +resizes+ has no bound short of the whole box the display gives it, twice the picture each
-# way. Each row is put back on the screen row it was drawn on.
-def rg_object_take_off_turned(sprite, image, resizes)
-  place = rg_forget_drawn_place(sprite)
-  return unless place
-
-  x, y = place
-  _, _, width, height = rg_picture_of(image)
-  middle_x = x + (width / 2)
-  middle_y = y + (height / 2)
-  return rg_restore_turned_patch(middle_x - width, middle_y - height, width * 2, height * 2) if resizes != 0
-
-  side = Integer.sqrt((width * width) + (height * height)) + 2
-  rg_restore_turned_patch(middle_x - (side / 2), middle_y - (side / 2), side, side)
-end
-
-# One more sprite on screen this frame.
-def rg_add_placed(placed)
-  rg_fault_unless_sprite(placed.sprite)
-  rg_fault("more than #{RG_MAX_SPRITES} sprites on screen at once") if @rg_drawing.length >= RG_MAX_SPRITES
-  @rg_drawing << placed
-end
-
-def rg_objects_add(sprite, image, x, y, level)
-  rg_add_placed(RgPlaced.new(sprite, image, x, y, level, false, 0, 0, 0))
-end
-
-def rg_objects_add_turned(sprite, image, x, y, level, angle, size, resizes)
-  rg_add_placed(RgPlaced.new(sprite, image, x, y, level, true, angle, size, resizes))
-end
-
-# The rest of Reference#exec_present_objects. On a picture that is rebuilt whole, the sprites on
-# screen now are kept (#snapshot_object_layer) and the rebuild is owed, unless they are the sprites,
-# in the same places, that the last rebuild painted: the interpreter builds it every time, and this
-# only when something moved. On one that is not rebuilt whole, each is drawn where it is now, and
-# where that was is remembered for taking it off again. Kept whichever way the picture is made: a
-# scene taking over later in this pass builds the picture again from it.
-def rg_objects_end
-  rg_mark_slices_left_out(@rg_drawing)
-  kept = @rg_sprite_layer
-  @rg_sprite_layer = @rg_drawing.dup
-  # Reference#show_objects_over_picture: in the layer in front of a painted picture, never into it.
-  if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SPRITES_OVER_PICTURE] != 0
-    @rg_over_picture = Array.new(RG_SCREEN_CELLS)
-    @rg_over_picture_painting = true
-    @rg_drawing.each { |placed| rg_draw_placed(placed) }
-    @rg_over_picture_painting = false
-    @rg_over_picture = nil if @rg_drawing.empty?
-    return
-  end
-  if rg_rebuilt_whole?
-    return rg_skip_repaint if @rg_drawing == kept
-
-    return rg_request_repaint
-  end
-  # The sprite layer is off while a painted screen is up in a game with screens drawn from tiles.
-  return if @rg_kind == RG_BITMAP && @rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0
-
-  @rg_drawing.each do |placed|
-    rg_mix_as_sprite(placed.sprite)
-    rg_draw_placed(placed)
-    rg_mix_nothing
-    @rg_last_drawn[placed.sprite] = [placed.x, placed.y]
-  end
-end
-
-# Reference#sprites: what the game last put on screen, which stays as it was put from
-# rg_objects_end until the next rg_objects_begin: how many, and each by its place among them as
-# [whose it is, which picture it shows, x, y].
-def rg_screen_drawn_count = @rg_drawing.length
-
-def rg_screen_drawn_sprite(place)
-  placed = @rg_drawing[place]
-  [@rg_game_sprite_names[placed.sprite], @rg_game_image_pictures[placed.image], placed.x, placed.y]
-end
-
-# Which of a row of +count+ things the number +said+ names, read the way the interpreter reads a
-# Ruby array: a number below nought counts back from the last. RG_NO_PLACE when it still names
-# none, which is where the interpreter stops with an error.
-def rg_place_named(said, count)
-  place = said < 0 ? said + count : said
-  place >= 0 && place < count ? place : RG_NO_PLACE
-end
-
-# Reference#names_in_draw_order: the sprite of a run that the order list names next.
-def rg_place_in_ordered_run(said, count)
-  place = rg_place_named(said, count)
-  rg_fault("a draw order names sprite #{said} of the #{count} it puts in order") if place == RG_NO_PLACE
-  place
-end
-
-# Reference#collision_sprite: the picture a sprite is showing.
-def rg_pose_image(poses, count, pose)
-  place = rg_place_named(pose, count)
-  rg_fault("a sprite is showing picture #{pose} of its #{count}") if place == RG_NO_PLACE
-  poses[place]
-end
-
-# Reference#pixels_overlap?: do two sprites' drawn pixels touch? Only the rectangle where the two
-# boxes overlap is walked.
-def rg_pixels_overlap(a_image, a_x, a_y, b_image, b_x, b_y)
-  a_art, a_start, a_width, a_height = rg_picture_of(a_image)
-  b_art, b_start, b_width, b_height = rg_picture_of(b_image)
-  left = a_x > b_x ? a_x : b_x
-  top = a_y > b_y ? a_y : b_y
-  right = [a_x + a_width, b_x + b_width].min
-  bottom = [a_y + a_height, b_y + b_height].min
-  (top...bottom).each do |y|
-    (left...right).each do |x|
-      next if a_art[a_start + ((y - a_y) * a_width) + (x - a_x)] == RG_NOT_DRAWN
-      return 1 if b_art[b_start + ((y - b_y) * b_width) + (x - b_x)] != RG_NOT_DRAWN
-    end
-  end
-  0
-end
+def rg_screen_drawn_sprite(place) = rg_hook_drawn_sprite(place)
 
 # --- the whole view, rebuilt (Reference#repaint_view) ---
 
@@ -1456,13 +1117,6 @@ def rg_repaint_view
   rg_hook_repaint_began
   @rg_game_picture_sizes[RG_SIZE_DEPTHS].times do |level|
     rg_hook_paint_level(level)
-    @rg_sprite_layer.each do |placed|
-      next if placed.level != level
-
-      rg_mix_as_sprite(placed.sprite)
-      rg_fade_unless_left_as_drawn(@rg_game_sprite_fade_places[placed.sprite])
-      rg_paint_kept_sprite(placed)
-    end
   end
   rg_hook_repaint_ending
   rg_mix_nothing
@@ -1528,10 +1182,6 @@ def rg_screen_set(new_kind, two_pages, new_backdrop)
     @rg_backdrop = new_backdrop unless new_backdrop.negative?
     rg_clear_to(@rg_backdrop)
     @rg_scenery_kept = false
-    # What was under each sprite went with the old screen, so nothing is put back over the new
-    # one. A console that places its sprites at the end of a pass takes them off after this.
-    @rg_last_drawn.fill(nil)
-    @rg_over_picture = nil
   else
     rg_show_backdrop(new_backdrop)
   end
@@ -1583,7 +1233,7 @@ end
 # that brings none but took the last one's down, which wiped those sprites too.
 def rg_scene_redraw_sprites(brings_scenery)
   return if brings_scenery == 0 && !@rg_scenery_taken_down
-  return if rg_painted_screen? || @rg_sprite_layer.empty?
+  return if rg_painted_screen? || !rg_hook_any_sprite_kept
 
   rg_request_repaint
 end
@@ -1684,10 +1334,11 @@ def rg_screen_shown_in_five_bits
   viewed = @rg_viewed
   held = @rg_screen_held != 0
   return shown.fill(RG_SWITCHED_OFF) if held
-  over = @rg_over_picture
+
+  front = rg_hook_front_layer # asked once a read, never once a pixel
   if @rg_tint_mode == :none && @rg_fade_steps == 0 && rg_hook_shown_plain && rg_all_lit?
     rg_screen_shown_plain(shown, viewed)
-    over&.each_with_index { |color, at| shown[at] = color if color }
+    front&.each_with_index { |color, at| shown[at] = color if color }
     return shown
   end
 
@@ -1710,9 +1361,9 @@ def rg_screen_shown_in_five_bits
     while x < RG_SCREEN_WIDTH
       from_x = (columns ? columns[x] : x) + camera_x
       fade_here = whole_fade || rg_fade_reaches?(x, y)
-      on_top = over && over[row + x]
-      color = if on_top
-                rg_faded_where(on_top, fade_here) # a sprite over the picture is not in blocks
+      in_front = front && front[row + x]
+      color = if in_front
+                rg_faded_where(in_front, fade_here) # a sprite over the picture is not in blocks
               elsif from_x >= 0 && from_x < RG_SCREEN_WIDTH && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
                 at = (from_y * RG_SCREEN_WIDTH) + from_x
                 stored = viewed[at]

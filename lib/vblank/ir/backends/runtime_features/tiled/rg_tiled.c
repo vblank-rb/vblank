@@ -703,7 +703,7 @@ static void paint_status_bar(int32_t bar) {
 }
 
 /* Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS of +block+ pixels each way, by the
- * display's own rule, while the picture is shown in them (rg_hook_scenery_block_size).
+ * display's own rule, while the picture is shown in them (rg_hook_block_size).
  *
  * The blocks are fixed to the screen, and each shows the color the background has at the block's
  * top left corner, so a background that scrolls slides under a grid that stays where it is. A
@@ -755,7 +755,7 @@ static void paint_scenery_in_box(int32_t background, const background_box *box) 
 static void paint_scenery(int32_t background) {
   const background_box *box = boxes[keeper_of(background)].held ? &boxes[keeper_of(background)] : NULL;
   if (box && (box->right <= box->left || box->bottom <= box->top)) return;
-  int32_t block = rg_hook_scenery_block_size();
+  int32_t block = rg_hook_block_size();
   if (block > 1 && background_field(background, RG_BG_IN_BLOCKS)) paint_scenery_in_blocks(background, block, box);
   else if (box) paint_scenery_in_box(background, box);
   else paint_background(background);

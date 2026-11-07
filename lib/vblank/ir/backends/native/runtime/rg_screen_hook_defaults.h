@@ -37,7 +37,7 @@ static void rg_hook_repaint_ending(void) {}
 #endif
 
 #ifndef RG_HOOK_STAMP_SCENERY_TAKEN
-static void rg_hook_stamp_scenery(void) {}
+static inline void rg_hook_stamp_scenery(void) {}
 #endif
 
 #ifndef RG_HOOK_SCENERY_UP_TAKEN
@@ -58,17 +58,30 @@ static int32_t rg_hook_scene_take_down(int32_t brings_scenery) {
 }
 #endif
 
-/* Must be inline: only the tiled feature asks it, and the compiler counts an unasked inline
- * function as no fault. */
-#ifndef RG_HOOK_SCENERY_BLOCK_SIZE_TAKEN
-static inline int32_t rg_hook_scenery_block_size(void) { return 1; }
+/* Must be inline: only the tiled and sprites features ask it, and the compiler counts an unasked
+ * inline function as no fault. */
+#ifndef RG_HOOK_BLOCK_SIZE_TAKEN
+static inline int32_t rg_hook_block_size(void) { return 1; }
 #endif
 
-#ifndef RG_HOOK_PAINT_KEPT_SPRITE_TAKEN
-static int32_t rg_hook_paint_kept_sprite(const placed_object *placed) {
-  (void)placed;
-  return 0;
+#ifndef RG_HOOK_DRAWN_COUNT_TAKEN
+static int32_t rg_hook_drawn_count(void) { return 0; }
+#endif
+
+/* Never called while the count is 0, which is all a game with no sprites answers. */
+#ifndef RG_HOOK_DRAWN_SPRITE_TAKEN
+static rg_drawn_sprite rg_hook_drawn_sprite(int32_t place) {
+  (void)place;
+  return (rg_drawn_sprite){0, 0, 0, 0};
 }
+#endif
+
+#ifndef RG_HOOK_ANY_SPRITE_KEPT_TAKEN
+static int32_t rg_hook_any_sprite_kept(void) { return 0; }
+#endif
+
+#ifndef RG_HOOK_FRONT_LAYER_TAKEN
+static const uint16_t *rg_hook_front_layer(void) { return NULL; }
 #endif
 
 #ifndef RG_HOOK_SHOWN_PLAIN_TAKEN

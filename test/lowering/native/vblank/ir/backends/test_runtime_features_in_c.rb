@@ -20,12 +20,35 @@ class TestRuntimeFeaturesInC < Minitest::Test
                     %(#include "tiled/rg_tiled.c")
   end
 
+  def test_a_game_with_a_sprite_takes_in_the_sprites_feature
+    sprites = game_with_a_sprite
+
+    assert_includes Native.new.lower(sprites), %(#include "sprites/rg_sprites.h")
+    assert_includes features_text(sprites), %(#include "sprites/rg_sprites.c")
+    assert_includes features_text(sprites), "rg_sprites_paint_level(level)"
+  end
+
+  def test_a_game_with_no_sprite_holds_none_of_the_sprites_feature
+    plain = program(screen(:bitmap), clear_screen(:white), halt)
+
+    refute_includes Native.new.lower(plain), "rg_sprites"
+    refute_includes features_text(plain), "rg_sprites"
+  end
+
+  # Sprites are painted after the scenery of their level, so the feature is taken after tiled.
+  def test_the_sprites_feature_comes_after_the_tiled_one
+    text = features_text(game_with_a_background_and_a_sprite)
+
+    assert_operator text.index("tiled/rg_tiled.c"), :<, text.index("sprites/rg_sprites.c")
+    assert_operator text.index("rg_tiled_paint_level(level);"), :<, text.index("rg_sprites_paint_level(level);")
+  end
+
   def test_a_game_that_pixelates_takes_in_pixelation
     pixelates = program(screen(:bitmap), pixelate(size: int(4)), halt)
 
     assert_includes Native.new.lower(pixelates), %(#include "pixelation/rg_pixelation.h")
     assert_includes features_text(pixelates), %(#include "pixelation/rg_pixelation.c")
-    assert_includes features_text(pixelates), "rg_pixelation_scenery_block_size()"
+    assert_includes features_text(pixelates), "rg_pixelation_block_size()"
   end
 
   def test_a_game_that_never_pixelates_holds_none_of_it
@@ -58,5 +81,6 @@ class TestRuntimeFeaturesInC < Minitest::Test
 
     refute_match(/pixelat|read_block/, screen)
     refute_match(TILED_NAMES, screen + header)
+    refute_match(SPRITES_NAMES, screen + header)
   end
 end
