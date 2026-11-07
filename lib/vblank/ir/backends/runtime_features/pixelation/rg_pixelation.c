@@ -27,50 +27,10 @@ void rg_screen_pixelate(int32_t size) {
  * from tiles is read as it is, being put into blocks a thing at a time instead. */
 static void rg_pixelation_screen_set(void) { read_block = painted_screen() ? block : 1; }
 
-/* --- a background in blocks --- */
-
-/* Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS, by the display's own rule.
- *
- * The blocks are fixed to the screen, and each shows the color the background has at the block's
- * top left corner, so a background that scrolls slides under a grid that stays where it is. A
- * corner that is see-through leaves the whole block see-through.
- *
- * Down and across are done apart, because a display draws a row at a time. Down: every row of a
- * block is drawn from the map row its top row shows, and still placed by its OWN bend, so a
- * background bent row by row keeps each row's bend and a block of it is a sheared one. Across:
- * each pixel of a row then takes the one at the start of its block in that same row. So the
- * background goes onto the sheet rows first, and is laid on the picture through the blocks, with
- * whatever mix or fade is in force for it applied as it is laid. A background held to a box keeps
- * to the box as it is laid (laying_box).
- *
- * Reference#block_width_across: a background that can turn is left one pixel wide at a size of
- * two, so its rows double and its columns do not. That is the emulator's, kept because the
- * console's picture is checked against it. */
-static void paint_scenery_in_blocks(int32_t background) {
-  for (int32_t i = 0; i < CELLS; i++) sheet[i] = NOTHING_ON_SHEET;
-  onto_sheet = 1;
-  rows_tall = block;
-  paint_background(background);
-  onto_sheet = 0;
-  rows_tall = 1;
-  int32_t wide = background_field(background, RG_BG_CAN_TURN) && block == 2 ? 1 : block;
-  for (int64_t py = 0, rows = scenery_rows(); py < rows; py++)
-    for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) {
-      if (laying_box && (px < laying_box->left || px >= laying_box->right || py < laying_box->top ||
-                         py >= laying_box->bottom))
-        continue;
-      int32_t color = sheet[py * RG_SCREEN_WIDTH + px - px % wide];
-      if (color != NOTHING_ON_SHEET) lay_scenery(px, py, (uint16_t)color);
-    }
-}
-
-/* Reference#paint_scenery: a background the game has not left as drawn is painted in blocks while
- * the blocks are bigger than a pixel. Answers whether it was. */
-static int32_t rg_pixelation_paint_scenery(int32_t background) {
-  if (block == 1 || !background_field(background, RG_BG_IN_BLOCKS)) return 0;
-  paint_scenery_in_blocks(background);
-  return 1;
-}
+/* The size of the blocks scenery is painted in (Reference @block): the scenery puts itself into
+ * blocks of it (rg_tiled.c's paint_scenery_in_blocks, Reference#paint_scenery_in_blocks).
+ * Must be inline, as its hook is: a game that pixelates a painted screen has no scenery to ask. */
+static inline int32_t rg_pixelation_scenery_block_size(void) { return block; }
 
 /* --- a sprite in blocks (Reference::SpriteBlocks, which holds the rule and says why) ---
  *

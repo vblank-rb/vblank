@@ -175,8 +175,11 @@ module VBlank
           # as the lowering about a step in a routine nothing calls asks for this.
           def reachable_steps = @reachable
 
-          # The runtime features (RuntimeFeatures) the steps a run can reach need.
-          def runtime_features = @runtime_features ||= RuntimeFeatures.used_by(@reachable)
+          # The runtime features (RuntimeFeatures) the program's steps need: all of them, not only
+          # the ones a run can reach, because the picture's tables are made from the whole program
+          # (Picture#prepare_picture). A background declared in a routine nothing calls is still
+          # in them, and a reachable scroll of it still calls the feature's code.
+          def runtime_features = @runtime_features ||= RuntimeFeatures.used_by(@program.walk)
 
           private
 

@@ -111,15 +111,6 @@ static int32_t fade_white, fade_steps;
 static enum { TINT_NONE, TINT_TOWARD, TINT_COLOR } tint_mode;
 static int32_t tint_white, tint_color, tint_steps, tint_by_display;
 
-/* A background is painted onto a sheet of its own first when it is laid on the picture a part at a
- * time: inside a box it is held to, or in blocks (Reference#paint_scenery_in_blocks). While
- * +onto_sheet+ is set the background painters land there, as stored and with no blend, and every
- * row shows the map row +rows_tall+ rows above it at most, the top of its block. */
-enum { NOTHING_ON_SHEET = -1 };
-static int32_t sheet[CELLS];
-static int32_t onto_sheet;
-static int32_t rows_tall = 1;
-
 /* A FADE PLACED IN THE STACK, while one is in force (Reference @fade_placed): how far forward the
  * layer it sits under is among the layers the game declared, which way it fades, and how far. It
  * cannot be laid over the finished picture as the screen is read, since what is in front of its
@@ -160,56 +151,6 @@ static shares mixed_cells_by;
 static uint16_t picture_without_sprites[CELLS];
 static int32_t painting_sprite; /* what is painted from here on is a sprite's (Framebuffer @painting_sprite) */
 
-/* Scenery up, in the order it went up (Reference @bg_shown): one entry for every time a
- * background is put up, even one already up, exactly as the interpreter keeps it. The repeats
- * matter once layers are named. The order the stack asks for is worked out among the places the
- * entries hold in this list, so a background put up twice holds two of them, and leaving the
- * first out moves every background between the two. */
-static int32_t *shown_backgrounds;
-static int32_t shown_count, shown_room;
-
-/* The four arrays below are what the game does to a background, and the interpreter keeps each by
- * the background's NAME. Two scenes can declare a background by one name, so each is read and
- * written at the entry that keeps it for the name (keeper_of, RG_BG_KEPT_BY), and the slots of
- * the other entries are never used.
- *
- * WHAT A BACKGROUND'S CELLS HOLD NOW (Reference @bg_maps): which map, of which entry's maps, and
- * the run's own copy of that map's cells, made the first time one of them is changed or another
- * map is handed over. The entry is the declaration that was up then (declaration_up), since two
- * scenes' declarations of one name can each have maps of their own. Until then each background
- * of the name shows its own first map, read where the game declared it. */
-typedef struct { int32_t which, of; int16_t *cells; } background_cells;
-static background_cells cells_now[RG_MAX_BACKGROUNDS];
-
-/* Where a background's window sits over its map, in pixels (Reference @bg_scroll): the screen's
- * top left shows the map's (x, y). Nought until the game scrolls it. */
-typedef struct { int32_t x, y; } background_scroll;
-static background_scroll scrolls[RG_MAX_BACKGROUNDS];
-
-/* The box a background is held to (Reference @bg_box), by the entry that keeps its name: whether
- * it is held to one, and its left, top, and the column and row just past it, kept to the screen
- * (Reference#screen_box). Held to none until the game sets one. */
-typedef struct { int32_t held, left, top, right, bottom; } background_box;
-static background_box boxes[RG_MAX_BACKGROUNDS];
-/* The box the background being laid on the picture keeps to, or nothing (paint_scenery_in_box). */
-static const background_box *laying_box;
-
-/* The backgrounds put up this pass, shown from their top-left corner whatever their scroll
- * (Reference @bg_from_corner), whether there are any, and whether their pass has ended
- * (Reference @bg_corners_expired). */
-static uint8_t from_corner[RG_MAX_BACKGROUNDS];
-static int32_t any_from_corner, corners_expired;
-
-/* The step of colors the game last named for a background's name, one more than it (Reference
- * @bg_colors): nought until the game names one. Which set of its tiles that draws each entry from
- * is worked out for the entry (tile_set_now), since two scenes' declarations of one name can have
- * different steps, or none. */
-static int64_t colors_told[RG_MAX_BACKGROUNDS];
-
-/* How a background is turned, once it has been turned or resized at all (Reference @bg_affine). */
-typedef struct { int32_t turned, angle, size, pivot_x, pivot_y; } background_turn;
-static background_turn turns[RG_MAX_BACKGROUNDS];
-
 /* The sprites on screen this frame: being set (drawing), and as the last rebuild draws them.
  * One that turns or resizes carries its angle and its size for this frame, and whether its size
  * ever changes. One that loses slices to a crowded line has them listed in left_out, +cut_count+
@@ -231,7 +172,18 @@ static drawn_place last_drawn[RG_MAX_SPRITES];
  * these, which the same included file defines (RuntimeFeatures::HOOKS says what each is for). A
  * hook no feature takes does what the screen does without one. */
 static void rg_hook_screen_set(void);                                /* a screen of a new kind is up */
-static int32_t rg_hook_paint_scenery(int32_t background);            /* 1: the feature painted it */
+static void rg_hook_screen_crossed(int32_t new_kind);                /* that screen took the old one's place */
+static void rg_hook_frame_ended(void);                               /* a frame boundary is reached */
+static void rg_hook_repaint_requested(void);                         /* a rebuild of the whole view is asked for */
+static void rg_hook_rebuild_checked(void);                           /* an owed rebuild was painted, or none was owed */
+static void rg_hook_repaint_began(void);                             /* the rebuild has cleared to the backdrop */
+static void rg_hook_paint_level(int32_t level);                      /* the rebuild is at a level, before its sprites */
+static void rg_hook_repaint_ending(void);                            /* the rebuild has painted every level */
+static void rg_hook_stamp_scenery(void);                             /* the scenery up, onto the kept scenery */
+static int32_t rg_hook_scenery_up(void);                             /* 1: some scenery is up */
+static int32_t rg_hook_layer_holds_scenery(int32_t layer);           /* 1: scenery showing now is in that layer */
+static int32_t rg_hook_scene_take_down(int32_t brings_scenery);      /* 1: scenery came down */
+static inline int32_t rg_hook_scenery_block_size(void);                   /* the block scenery is painted in, 1 for none */
 static int32_t rg_hook_paint_kept_sprite(const placed_object *placed); /* 1: the feature drew it */
 static int32_t rg_hook_shown_plain(void);                            /* 0: a feature reads the picture its own way */
 static const int64_t *rg_hook_shown_columns(void);                   /* the column each shows, or NULL for its own */
@@ -244,10 +196,6 @@ static int64_t floor_div(int64_t a, int64_t b) { return a / b - ((a % b != 0) &&
 static int64_t floor_mod(int64_t a, int64_t b) { return a - floor_div(a, b) * b; }
 static int32_t clamp32(int64_t value, int32_t low, int32_t high) {
   return (int32_t)(value < low ? low : (value > high ? high : value));
-}
-
-static int32_t background_field(int32_t background, int32_t field) {
-  return rg_game_backgrounds[background * RG_BG_FIELDS + field];
 }
 
 /* --- the picture itself (Framebuffer) --- */
@@ -504,8 +452,6 @@ void rg_screen_digit(int32_t value, int32_t x, int32_t y, int32_t color, const i
 
 /* --- see-through layers --- */
 
-static int32_t showing(int32_t background);
-static int32_t bar_showing(void);
 static void request_repaint(void);
 static void skip_repaint(void);
 static void repaint_view(void);
@@ -555,13 +501,10 @@ static shares shares_now(int32_t layer) {
 typedef struct { int32_t kept; shares at; } kept_shares;
 static kept_shares owed_shares[RG_MAX_SEE_THROUGH], told_shares[RG_MAX_SEE_THROUGH];
 
-/* Reference#layer_has_anything?: a background showing now, or a sprite anywhere, since whether
- * a sprite is shown is a variable too. */
+/* Reference#layer_has_anything?: scenery showing now (rg_hook_layer_holds_scenery), or a sprite
+ * anywhere, since whether a sprite is shown is a variable too. */
 static int32_t layer_holds_anything(int32_t layer) {
-  if (see_through_field(layer, RG_ST_HOLDS_A_SPRITE)) return 1;
-  for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
-    if (showing(bg) && background_field(bg, RG_BG_SEE_THROUGH) == layer) return 1;
-  return 0;
+  return see_through_field(layer, RG_ST_HOLDS_A_SPRITE) || rg_hook_layer_holds_scenery(layer);
 }
 
 /* Reference#capture_see_through_weights. A rebuild is painted later than it is asked for, and
@@ -770,108 +713,6 @@ int32_t rg_fade_steps(int32_t amount, int32_t fraction_bits, int32_t walked) {
   return clamp32(floor_div((int64_t)amount * levels, (int64_t)100 << fraction_bits), 0, levels);
 }
 
-/* --- scenery --- */
-
-/* The entry that keeps what the game does to this background's name (RG_BG_KEPT_BY): itself,
- * unless another scene declared a background by the same name after it. */
-static int32_t keeper_of(int32_t background) { return background_field(background, RG_BG_KEPT_BY); }
-
-/* Reference#background_up: the declaration of this background's name a line naming it means: the
- * one on the screen up now, where two scenes each declare one by the name, or the keeping entry
- * where none of them is up. */
-static int32_t declaration_up(int32_t background) {
-  int32_t keeper = keeper_of(background);
-  for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
-    if (keeper_of(bg) == keeper && showing(bg)) return bg;
-  return keeper;
-}
-
-/* Reference#background_swap: which set of its tiles this entry is drawn from now. 0 for the
- * colors they were drawn in, which is also what a number naming none of its steps means, or one
- * more than the step the game last named. */
-static int32_t tile_set_now(int32_t background) {
-  int64_t step = colors_told[keeper_of(background)] - 1;
-  return step >= 0 && step < background_field(background, RG_BG_COLOR_STEPS) ? (int32_t)step + 1 : 0;
-}
-
-/* Reference#scroll_shown: where a background's window sits on the display now. */
-static background_scroll scroll_shown(int32_t background) {
-  int32_t keeper = keeper_of(background);
-  return from_corner[keeper] ? (background_scroll){0, 0} : scrolls[keeper];
-}
-
-/* Reference#forget_expired_corners. The interpreter builds a picture that is rebuilt whole every
- * frame, so a background that stops being shown from its corner is drawn from its scroll on the
- * next one without anything asking. Here a frame that moved nothing builds nothing, so the
- * corners going is itself a change to the picture, and asks for it. */
-static void forget_expired_corners(void) {
-  if (!corners_expired) return;
-  int32_t were_shown_from_corners = any_from_corner;
-  corners_expired = 0;
-  memset(from_corner, 0, sizeof from_corner);
-  any_from_corner = 0;
-  if (were_shown_from_corners && rebuilt_whole()) request_repaint();
-}
-
-/* Reference#mark_from_corner */
-static void mark_from_corner(int32_t background) {
-  forget_expired_corners();
-  from_corner[keeper_of(background)] = 1;
-  any_from_corner = 1;
-}
-
-/* Map number +which+ of a background's own maps, as its entry of rg_game_maps. */
-static const int32_t *map_entry(int32_t background, int32_t which) {
-  return rg_game_maps + RG_MAP_FIELDS * (background_field(background, RG_BG_FIRST_MAP) + which);
-}
-
-/* Reference#map_of: the map a background's cells hold now. That is the run's own copy for the
- * name where there is one, which is a copy of one of the maps of the entry it was made from; and
- * the first of this background's own maps where there is none. */
-static const int32_t *map_now(int32_t background) {
-  const background_cells *now = &cells_now[keeper_of(background)];
-  return now->cells ? map_entry(now->of, now->which) : map_entry(background, 0);
-}
-
-static int32_t map_cols(int32_t background) { return map_now(background)[RG_MAP_COLS]; }
-static int32_t map_rows(int32_t background) { return map_now(background)[RG_MAP_ROWS]; }
-
-static int32_t in_map(int32_t background, int64_t row, int64_t col) {
-  return row >= 0 && row < map_rows(background) && col >= 0 && col < map_cols(background);
-}
-
-/* Where a cell of the map is among its cells, which are kept row after row. */
-static int64_t cell_place(int32_t background, int64_t row, int64_t col) { return row * map_cols(background) + col; }
-
-/* Reference#map_of: what a cell holds NOW, in the run's own copy where there is one. Below nought
- * where it holds no tile. */
-static int32_t map_cell(int32_t background, int64_t row, int64_t col) {
-  if (!in_map(background, row, col)) return RG_CELL_EMPTY;
-  const int16_t *own = cells_now[keeper_of(background)].cells;
-  const int16_t *cells = own ? own : rg_game_map_cells + map_now(background)[RG_MAP_CELLS];
-  return cells[cell_place(background, row, col)];
-}
-
-/* The name's cells become the run's own copy of map number +which+ of the maps of the declaration
- * up now, as that map was declared (Reference#mutable_map, and the copy in #exec_show_map). */
-static void copy_map(int32_t background, int32_t which) {
-  int32_t keeper = keeper_of(background), up = declaration_up(background);
-  const int32_t *map = map_entry(up, which);
-  size_t count = (size_t)map[RG_MAP_COLS] * (size_t)map[RG_MAP_ROWS];
-  int16_t *copy = malloc((count ? count : 1) * sizeof *copy);
-  if (!copy) rg_fault("no memory left for a background's own copy of its map");
-  memcpy(copy, rg_game_map_cells + map[RG_MAP_CELLS], count * sizeof *copy);
-  free(cells_now[keeper].cells);
-  cells_now[keeper] = (background_cells){which, up, copy};
-}
-
-/* Each background with the name is drawn from its own first map again, as declared
- * (Reference's @bg_maps.delete). */
-static void forget_own_cells(int32_t background) {
-  free(cells_now[keeper_of(background)].cells);
-  cells_now[keeper_of(background)] = (background_cells){0, 0, NULL};
-}
-
 /* WHAT THE GAME HAS PAINTED (Reference @bitmaps, for the tiles and pictures of a run): every
  * run's pixels as places in its colors, one after another, place 0 being see-through. All nought
  * until a run's first copy, which is a run that shows nothing. Made the first time it is asked
@@ -889,79 +730,9 @@ static uint8_t *places_of(int32_t run) {
   return painted_places + run_fields(run)[RG_RUN_PLACES];
 }
 
-/* One pixel of a cell's tile, or RG_SEE_THROUGH (Reference#background_pixel), in the colors the
- * background is drawn with now (Reference#tile_colors): its tiles as drawn with each step come
- * one whole set after another. A tile the game paints is read from what it last copied in, and
- * shown in its run's colors as the background is drawn with them now. */
-static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t ty) {
-  int32_t painted = background_field(background, RG_BG_PAINTED);
-  if (painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED) {
-    int32_t run = rg_game_painted_tiles[painted + 2 * cell], which = rg_game_painted_tiles[painted + 2 * cell + 1];
-    /* A big tile is kept as four squares, left to right and then down. */
-    if (background_field(background, RG_BG_TILE_W) == 2 * RUN_TILE_SIDE) {
-      which = which * 4 + (int32_t)(ty / RUN_TILE_SIDE) * 2 + (int32_t)(tx / RUN_TILE_SIDE);
-      tx %= RUN_TILE_SIDE;
-      ty %= RUN_TILE_SIDE;
-    }
-    int32_t place = places_of(run)[which * RUN_TILE_PIXELS + ty * RUN_TILE_SIDE + tx];
-    int64_t set = (int64_t)tile_set_now(background) * rg_game_picture_sizes[RG_SIZE_RUNS] + run;
-    return rg_game_run_colors[background_field(background, RG_BG_RUN_COLORS) + set * PLACES_IN_RUN_COLORS + place];
-  }
-  int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
-  int64_t tile = (int64_t)tile_set_now(background) * background_field(background, RG_BG_TILES) + cell;
-  int64_t at = background_field(background, RG_BG_TILES_START) + tile * tile_w * tile_h + ty * tile_w + tx;
-  return tile_pixels_drawn[at];
-}
-
-/* Reference#grid_repeats: how many times the grid is seen along one side of the screen. A grid of
- * 8-by-8 tiles comes round, so where the screen is wider or taller than the grid (a Genesis's 320
- * across is wider than 32 cells of 8 pixels) the map is seen again past the grid's edge. */
-static int32_t grid_repeats(int32_t background, int32_t grid_cells, int32_t screen_side) {
-  if (background_field(background, RG_BG_NEVER_WRAPS) || background_field(background, RG_BG_TILE_W) != 8 ||
-      background_field(background, RG_BG_TILE_H) != 8)
-    return 1;
-  int32_t grid_side = grid_cells * 8;
-  return (screen_side + grid_side - 1) / grid_side;
-}
-
-/* The map onto the picture with its corner at (left, top), cell by cell. */
-static void stamp_map_at(int32_t background, int64_t left, int64_t top) {
-  int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
-  for (int32_t row = 0; row < map_rows(background); row++) {
-    for (int32_t col = 0; col < map_cols(background); col++) {
-      int32_t cell = map_cell(background, row, col);
-      if (cell < 0) continue;
-      for (int32_t ty = 0; ty < tile_h; ty++)
-        for (int32_t tx = 0; tx < tile_w; tx++) {
-          uint16_t color = tile_pixel(background, cell, tx, ty);
-          if (color != RG_SEE_THROUGH) set_pixel(left + (int64_t)col * tile_w + tx, top + (int64_t)row * tile_h + ty, color);
-        }
-    }
-  }
-}
-
-/* Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it. */
-void rg_background_stamp(int32_t background) {
-  /* Reference#stamp_background: a status bar is painted from its own top as the view is built, and
-   * a background held above a row stops at it. */
-  if (background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
-      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || boxes[keeper_of(background)].held) {
-    request_repaint();
-    return;
-  }
-  mix_as_layer(background_field(background, RG_BG_SEE_THROUGH));
-  int32_t grid_cols = map_now(background)[RG_MAP_GRID_COLS], grid_rows = map_now(background)[RG_MAP_GRID_ROWS];
-  int32_t across = grid_repeats(background, grid_cols, RG_SCREEN_WIDTH);
-  int32_t down = grid_repeats(background, grid_rows, RG_SCREEN_HEIGHT);
-  for (int32_t round_down = 0; round_down < down; round_down++)
-    for (int32_t round_across = 0; round_across < across; round_across++)
-      stamp_map_at(background, (int64_t)round_across * grid_cols * 8, (int64_t)round_down * grid_rows * 8);
-  mix_nothing();
-}
-
 /* Reference#request_repaint: a rebuild of the whole view is owed, and painted when something
- * needs the picture. A bent background's lines are worked out once a pass and kept
- * (rg_bend_work_out), so painting one reads no variable of the game's and can wait like any other.
+ * needs the picture. Painting reads no variable of the game's, so it can wait: what a feature
+ * works out from them (a bent background's lines) it works out once a pass and keeps.
  *
  * A painted screen is never built again, in a game that also has screens drawn from tiles. Its
  * picture is whatever the game painted there, and building the view from scenery would wipe it.
@@ -969,7 +740,7 @@ void rg_background_stamp(int32_t background) {
  * whichever is showing. */
 static void request_repaint(void) {
   if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE]) return;
-  forget_expired_corners();
+  rg_hook_repaint_requested();
   owed = 1;
   keep_shares_for_owed_rebuild();
 }
@@ -1003,427 +774,6 @@ void rg_see_through_told(int32_t layer) {
   request_repaint();
 }
 
-static int32_t stack_place(int32_t background) { return background_field(background, RG_BG_STACK_PLACE); }
-
-/* Reference#behind?: only when both named a layer. */
-static int32_t behind(int32_t a, int32_t b) {
-  return stack_place(a) != RG_NO_LAYER && stack_place(b) != RG_NO_LAYER && stack_place(a) < stack_place(b);
-}
-
-/* One more entry on the list of scenery up. */
-static void remember_put_up(int32_t background) {
-  if (shown_count == shown_room) {
-    if (shown_room >= (1 << 28)) rg_fault("scenery has been put up too many times to remember");
-    shown_room = shown_room ? shown_room * 2 : RG_MAX_BACKGROUNDS;
-    shown_backgrounds = realloc(shown_backgrounds, (size_t)shown_room * sizeof *shown_backgrounds);
-    if (!shown_backgrounds) rg_fault("no memory left to remember the scenery that is up");
-  }
-  shown_backgrounds[shown_count++] = background;
-}
-
-/* Whether an entry of the list is among those being put in order: every one, or (+over+ a
- * background) only the ones a named layer puts in front of it. */
-static int32_t in_order_asked(int32_t entry, int32_t over) { return over < 0 || behind(over, entry); }
-
-/* Where the LAST entry for +background+ lands once the entries asked for are put in the order the
- * stack asks for (IR::Stacking.order_by_stack), counting from 0 among them, or -1 when it has no
- * entry. An entry that named no layer stays where it is. The ones that did are sorted by how far
- * forward their layers are — two in one layer keeping the order they came in — and handed, in that
- * order, the places the named entries held. */
-static int64_t last_place_in_stack_order(int32_t background, int32_t over) {
-  int32_t place = stack_place(background);
-  int64_t at = -1, last = -1, further_back = 0, in_its_layer = 0, in_its_layer_by_last = 0;
-  for (int32_t i = 0; i < shown_count; i++) {
-    int32_t entry = shown_backgrounds[i];
-    if (!in_order_asked(entry, over)) continue;
-    at++;
-    if (stack_place(entry) != RG_NO_LAYER && stack_place(entry) < place) further_back++;
-    if (stack_place(entry) != RG_NO_LAYER && stack_place(entry) == place) in_its_layer++;
-    if (entry == background) {
-      last = at;
-      in_its_layer_by_last = in_its_layer;
-    }
-  }
-  if (last < 0 || place == RG_NO_LAYER) return last;
-
-  /* It is the named entry number +nth+ in sorted order, so it takes the place of the named entry
-   * number +nth+ in the order they went up. */
-  int64_t nth = further_back + in_its_layer_by_last - 1, named = -1;
-  at = -1;
-  for (int32_t i = 0; i < shown_count; i++) {
-    int32_t entry = shown_backgrounds[i];
-    if (!in_order_asked(entry, over)) continue;
-    at++;
-    if (stack_place(entry) != RG_NO_LAYER && ++named == nth) return at;
-  }
-  return -1;
-}
-
-/* Reference#in_stack_order over the scenery that is up — all of it, or the part a named layer
- * puts in front of +over+ — with each one stamped in that order.
- *
- * The list can hold a background many times, and stamping one again paints over every stamp of
- * it before. So only where the last entry for each background lands decides the picture, and
- * each is stamped once, in the order of those places. */
-static void stamp_in_stack_order(int32_t over) {
-  if (over >= 0 && stack_place(over) == RG_NO_LAYER) return;
-  int32_t backgrounds = rg_game_picture_sizes[RG_SIZE_BACKGROUNDS];
-  int64_t lands[RG_MAX_BACKGROUNDS];
-  for (int32_t bg = 0; bg < backgrounds; bg++) lands[bg] = last_place_in_stack_order(bg, over);
-  for (;;) {
-    int32_t next = -1;
-    for (int32_t bg = 0; bg < backgrounds; bg++)
-      if (lands[bg] >= 0 && (next < 0 || lands[bg] < lands[next])) next = bg;
-    if (next < 0) return;
-    rg_background_stamp(next);
-    lands[next] = -1;
-  }
-}
-
-/* The start of Reference#take_over (see rg_screen.h). */
-void rg_background_forget_cells(int32_t background) { forget_own_cells(background); }
-
-/* The cell changes of backgrounds declared `held: true`, waiting for rg_show_held_tiles
- * (Reference's @held_tiles), in the order the game made them. */
-typedef struct {
-  int32_t background, col, row, tile;
-} held_tile;
-static held_tile held_tiles[RG_HELD_TILES_ROOM];
-static int32_t held_tile_count = 0;
-
-/* Reference#put_up_background: a change still waiting to +background+'s name was made to cells put
- * up again now. The changes to every other background are kept, in the order made. */
-static void forget_held_tiles(int32_t background) {
-  int32_t keeper = keeper_of(background), kept = 0;
-  for (int32_t i = 0; i < held_tile_count; i++)
-    if (keeper_of(held_tiles[i].background) != keeper) held_tiles[kept++] = held_tiles[i];
-  held_tile_count = kept;
-}
-
-/* Reference#put_up_background. A stamp only covers where it has solid pixels, so a background a
- * named layer puts BEHIND one already up would land in front of it; the ones it belongs behind
- * are stamped again over it. A turned background is painted through its turn at the next rebuild,
- * and a status bar from its own top,
- * rather than stamped as drawn. */
-void rg_background_put_up(int32_t background) {
-  forget_held_tiles(background);
-  if (background_field(background, RG_BG_ON_ARRIVAL)) {
-    forget_own_cells(background);
-    boxes[keeper_of(background)].held = 0; /* its scene puts it up showing everywhere */
-  }
-  remember_put_up(background);
-  mark_from_corner(background);
-  scenery_kept = 0;
-  if (turns[keeper_of(background)].turned || background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
-      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || bar_showing() >= 0 ||
-      boxes[keeper_of(background)].held) {
-    request_repaint();
-    return;
-  }
-  rg_background_stamp(background);
-  stamp_in_stack_order(background);
-}
-
-/* Reference#exec_affine_background: the angle wraps into 0..359 as Ruby's % does. */
-void rg_background_turn(int32_t background, int32_t angle, int32_t size, int32_t pivot_x, int32_t pivot_y) {
-  turns[keeper_of(background)] = (background_turn){1, (int32_t)floor_mod(angle, 360), size, pivot_x, pivot_y};
-  request_repaint();
-}
-
-/* Reference#showing_scenery: scenery every screen shows, and the running scene's own. */
-static int32_t showing(int32_t background) {
-  int32_t scene = background_field(background, RG_BG_SCENE);
-  return scene == RG_EVERY_SCENE || scene == current_scene;
-}
-
-/* Whether the end of a pass is placing the frame's writes (Reference @placing_at_pass_end). */
-static int32_t placing_at_pass_end;
-
-void rg_screen_placing_at_pass_end(int32_t on) { placing_at_pass_end = on; }
-
-/* Reference#exec_scroll_background. The interpreter builds the view again every time; this builds
- * it again only when the scroll the picture shows is not the one it was built with, so a frame
- * that sets the same scroll again costs nothing. What the picture shows is what scroll_shown
- * answers, which for a background put up this pass is its corner, so a scroll set over a corner
- * is a change even where the number written is the one already stored. */
-void rg_background_scroll(int32_t background, int32_t x, int32_t y) {
-  background_scroll before = scroll_shown(background);
-  scrolls[keeper_of(background)] = (background_scroll){x, y};
-  if (!placing_at_pass_end) from_corner[keeper_of(background)] = 0;
-  background_scroll after = scroll_shown(background);
-  if (after.x != before.x || after.y != before.y) request_repaint();
-  else skip_repaint();
-}
-
-/* Where each status bar was last placed, by the entry that keeps its name, and whether it has
- * been (Reference @bar_top). */
-static int32_t bar_tops[RG_MAX_BACKGROUNDS];
-static uint8_t bar_placed[RG_MAX_BACKGROUNDS];
-
-/* Reference#exec_place_bar */
-void rg_place_bar(int32_t background, int32_t top) {
-  bar_tops[keeper_of(background)] = clamp32(top, 0, RG_SCREEN_HEIGHT);
-  bar_placed[keeper_of(background)] = 1;
-  if (!placing_at_pass_end) from_corner[keeper_of(background)] = 0;
-  request_repaint();
-}
-
-/* Reference#exec_box_background and #screen_box: a box with nothing on the screen is an empty one
- * at the corner. */
-void rg_background_box(int32_t background, int32_t x, int32_t y, int32_t width, int32_t height, int32_t held) {
-  background_box *box = &boxes[keeper_of(background)];
-  if (held == 0) {
-    box->held = 0;
-  } else {
-    *box = (background_box){1, 0, 0, 0, 0};
-    if (width > 0 && height > 0) {
-      int32_t left = clamp32(x, 0, RG_SCREEN_WIDTH), right = clamp32((int64_t)x + width, 0, RG_SCREEN_WIDTH);
-      int32_t top = clamp32(y, 0, RG_SCREEN_HEIGHT), bottom = clamp32((int64_t)y + height, 0, RG_SCREEN_HEIGHT);
-      if (right > left && bottom > top) *box = (background_box){1, left, top, right, bottom};
-    }
-  }
-  request_repaint();
-}
-
-/* Which status bars hide the sprites from their top down, by the same entry (Reference @bar_covers). */
-static uint8_t bar_covers[RG_MAX_BACKGROUNDS];
-
-void rg_bar_covers(int32_t background, int32_t covers) {
-  bar_covers[keeper_of(background)] = covers != 0;
-  request_repaint();
-}
-
-/* Reference#bar_top_shown */
-static int32_t bar_top_shown(int32_t bar) {
-  int32_t declared = clamp32(background_field(bar, RG_BG_BAR_TOP), 0, RG_SCREEN_HEIGHT);
-  int32_t keeper = keeper_of(bar);
-  return from_corner[keeper] || !bar_placed[keeper] ? declared : bar_tops[keeper];
-}
-
-/* Reference#bar_showing: the status bar on screen, or -1. */
-static int32_t bar_showing(void) {
-  for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
-    if (showing(bg) && background_field(bg, RG_BG_BAR_TOP) != RG_NOT_A_BAR) return bg;
-  return -1;
-}
-
-/* Reference#scenery_rows */
-static int64_t scenery_rows(void) {
-  int32_t bar = bar_showing();
-  return bar < 0 ? RG_SCREEN_HEIGHT : bar_top_shown(bar);
-}
-
-/* Reference#rows_shown_of */
-static int64_t rows_shown_of(int32_t background) {
-  int32_t above = background_field(background, RG_BG_ABOVE_ROW);
-  int64_t rows = scenery_rows();
-  return above != RG_NOT_A_BAR && above < rows ? above : rows;
-}
-
-/* Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. */
-void rg_background_set_tile(int32_t background, int32_t col, int32_t row, int32_t tile) {
-  /* A tile only another scene's declaration of the name has changes nothing here. */
-  if (tile >= background_field(declaration_up(background), RG_BG_TILES)) return;
-  if (!cells_now[keeper_of(background)].cells) copy_map(background, 0);
-  if (!in_map(background, row, col)) return;
-  int16_t *cell = &cells_now[keeper_of(background)].cells[cell_place(background, row, col)];
-  if (*cell == tile) return;
-  *cell = (int16_t)tile;
-  request_repaint();
-}
-
-/* Reference#exec_set_tile, for a background declared `held: true`: the change waits, its cell
- * worked out now, for rg_show_held_tiles. With +most+ waiting, everything waiting goes in first. */
-void rg_background_hold_tile(int32_t background, int32_t col, int32_t row, int32_t tile, int32_t most) {
-  if (tile >= background_field(declaration_up(background), RG_BG_TILES)) return;
-  if (held_tile_count >= most || held_tile_count >= RG_HELD_TILES_ROOM) rg_show_held_tiles();
-  held_tiles[held_tile_count++] = (held_tile){background, col, row, tile};
-}
-
-/* Reference#exec_show_held_tiles: every change waiting, in the order the game made them. */
-void rg_show_held_tiles(void) {
-  int32_t waiting = held_tile_count;
-  held_tile_count = 0;
-  for (int32_t i = 0; i < waiting; i++) {
-    held_tile change = held_tiles[i];
-    rg_background_set_tile(change.background, change.col, change.row, change.tile);
-  }
-}
-
-/* Reference#exec_show_map: of the maps of the declaration up now. */
-void rg_background_show_map(int32_t background, int32_t which) {
-  if (which < 0 || which >= background_field(declaration_up(background), RG_BG_SHOWABLE_MAPS)) return;
-  copy_map(background, which);
-  request_repaint();
-}
-
-/* Reference#exec_background_colors: nothing about the map or the pictures changes, and the next
- * rebuild reads the tiles in the colors named. The number is kept for the name, as the interpreter
- * keeps it, and what it names is worked out for each entry as it is drawn (tile_set_now). A
- * number below nought names no step, and is kept as nought, the same as none named. */
-void rg_background_draw_with(int32_t background, int32_t which) {
-  colors_told[keeper_of(background)] = which < 0 ? 0 : (int64_t)which + 1;
-  request_repaint();
-}
-
-/* Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
- * which is on the screen, mixed and faded as whatever is in force sets. */
-static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
-  uint16_t *into = &pixels[py * RG_SCREEN_WIDTH + px];
-  *into = into_cell(color, *into, pixels, py * RG_SCREEN_WIDTH + px);
-  if (sprites_seen_through()) picture_without_sprites[py * RG_SCREEN_WIDTH + px] = *into;
-}
-
-/* ONE ROW OF THE SCREEN FROM ONE ROW OF A BACKGROUND'S MAP: the screen's pixel px shows map column
- * off_x + px, taken round at +wrap_w+ where the map wraps, or not at all (0) where it does not.
- * +my+ is not below nought. Where the map has no cell or no tile, or the tile is see-through,
- * what is behind stays.
- *
- * A tile is the same for every pixel of its row, so the cell is looked up once for each tile the
- * row crosses, not once for each pixel, and the pixels are read from the tile's row in turn. Where
- * the map wraps it wraps at a whole number of tiles, so a tile is never cut by the wrap. A painted
- * tile (one whose pixels the game paints while it runs) is read the slow way, since where its
- * pixels are depends on the cell.
- *
- * With no fade painted in and no see-through layer being mixed, lay_scenery comes to storing the
- * colour, marking the cell as no mix, and keeping it in the picture without sprites where that is
- * kept; so that is done here, and anything else goes through lay_scenery. */
-static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t wrap_w, int64_t py) {
-  int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
-  const int32_t *map = map_now(background);
-  int32_t cols = map[RG_MAP_COLS];
-  int64_t row = my / tile_h;
-  if (row >= map[RG_MAP_ROWS]) return;
-  const int16_t *own = cells_now[keeper_of(background)].cells;
-  const int16_t *row_cells = (own ? own : rg_game_map_cells + map[RG_MAP_CELLS]) + row * cols;
-  int64_t ty = my % tile_h;
-  int32_t painted = background_field(background, RG_BG_PAINTED);
-  int64_t set_start = background_field(background, RG_BG_TILES_START) +
-                      (int64_t)tile_set_now(background) * background_field(background, RG_BG_TILES) * tile_w * tile_h +
-                      ty * tile_w;
-  int32_t plain = !fading_what_is_painted && !mixing;
-  int32_t keeps_picture_without_sprites = sprites_seen_through();
-  for (int64_t px = 0; px < RG_SCREEN_WIDTH;) {
-    int64_t mx = off_x + px;
-    if (wrap_w) mx %= wrap_w;
-    if (mx < 0) { /* only where the map does not wrap: nothing until the map's left edge */
-      px -= mx;
-      continue;
-    }
-    int64_t col = mx / tile_w, tx = mx - col * tile_w, run = tile_w - tx;
-    if (run > RG_SCREEN_WIDTH - px) run = RG_SCREEN_WIDTH - px;
-    int32_t cell = col < cols ? row_cells[col] : RG_CELL_EMPTY;
-    if (cell >= 0) {
-      int32_t slow = painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
-      int64_t from = set_start + (int64_t)cell * tile_w * tile_h + tx;
-      for (int64_t i = 0; i < run; i++) {
-        uint16_t color = slow ? tile_pixel(background, cell, tx + i, ty) : tile_pixels_drawn[from + i];
-        if (color == RG_SEE_THROUGH) continue;
-        int64_t at = py * RG_SCREEN_WIDTH + px + i;
-        if (onto_sheet) {
-          sheet[at] = color;
-        } else if (plain) {
-          pixels[at] = color;
-          picture_mixes.is_mixed[at] = 0;
-          if (keeps_picture_without_sprites) picture_without_sprites[at] = color;
-        } else {
-          lay_scenery(px + i, py, color);
-        }
-      }
-    }
-    px += run;
-  }
-}
-
-/* The row of the picture that screen row +py+ is drawn from: its own, or the row at the top of
- * its block while a background is being painted for blocks. */
-static int64_t row_drawn_from(int64_t py) { return py - py % rows_tall; }
-
-/* The background and the line of the screen the game is being asked about, when it is being
- * asked, and how far across it answered. */
-static struct { int32_t background, py, offset; } asked_bend = {NOBODY_ASKED, 0, 0};
-
-int32_t rg_bend_asked(int32_t background) { return background == asked_bend.background; }
-int32_t rg_bend_line(void) { return asked_bend.py; }
-void rg_bend_answer(int32_t offset) { asked_bend.offset = offset; }
-
-/* Every line of every bent background, as the gap between frames last worked it out
- * (Reference#work_out_bends), by the background that keeps the name, and whether it has been. */
-static int32_t bend_lines[RG_MAX_BACKGROUNDS][RG_SCREEN_HEIGHT];
-static int32_t bend_lines_kept[RG_MAX_BACKGROUNDS];
-
-/* Reference#run_bend_for_row: the game asked how far across line +py+ of the background that
- * keeps the name sits, after running whatever is in its block. */
-static int32_t run_bend_for_line(int32_t keeper, int32_t py) {
-  asked_bend.background = keeper;
-  asked_bend.py = py;
-  rg_game_bend_offsets();
-  asked_bend.background = NOBODY_ASKED;
-  return asked_bend.offset;
-}
-
-/* Lines +first_line+ up to +past_line+ of one background, worked out in turn and kept. */
-void rg_bend_work_out(int32_t background, int32_t first_line, int32_t past_line) {
-  int32_t keeper = keeper_of(background); /* the game answers for the name */
-  for (int32_t py = first_line; py < past_line; py++) bend_lines[keeper][py] = run_bend_for_line(keeper, py);
-  bend_lines_kept[keeper] = 1;
-}
-
-/* Reference#work_out_bends, last in every frame boundary of a game that bends a background it
- * has: every bend's lines are worked out, and the picture is owed again, since the lines are
- * worked out from whatever the blocks read. */
-void rg_screen_work_out_bends(void) {
-  rg_game_work_out_bends();
-  if (frames_begun) request_repaint();
-}
-
-/* Reference#bend_offset_at: how far across line +py+ of the screen a background sits, on top of
- * its scroll, as the gap between frames last worked it out. Before the first gap: flat for a game
- * that waits for the screen, whose table on the console is nought until then, and worked out as
- * the line is painted for one that never waits, as the console works each line out as it draws.
- * Nought for a background the game does not bend. */
-static int64_t bend_at(int32_t background, int64_t py) {
-  if (!background_field(background, RG_BG_BENT)) return 0;
-  int32_t keeper = keeper_of(background);
-  if (bend_lines_kept[keeper]) return bend_lines[keeper][py];
-  return frames_begun ? 0 : run_bend_for_line(keeper, (int32_t)py);
-}
-
-/* Reference#paint_streamed_background_window: a background with a map too big for any grid, or
- * with maps of different sizes, does not come round again. Past any edge of the map it is
- * showing there are no cells: left of it, above it and below it by the tests here, right of it
- * because the map has no such cell to read. A bent one in a game that never waits for the screen,
- * whose lines are worked out as they are painted, is asked only about the rows its map reaches. */
-static void paint_window_without_wrapping(int32_t background) {
-  int64_t map_h = (int64_t)map_rows(background) * background_field(background, RG_BG_TILE_H);
-  background_scroll scroll = scroll_shown(background);
-  for (int64_t py = 0, rows = rows_shown_of(background); py < rows; py++) {
-    int64_t my = (int64_t)scroll.y + row_drawn_from(py);
-    if (my < 0 || my >= map_h) continue;
-    int64_t off_x = (int64_t)scroll.x + bend_at(background, py);
-    paint_map_row(background, my, off_x, 0, py);
-  }
-}
-
-/* Reference#paint_background_window, for a background never turned: the window sits where the
- * background is scrolled to, the map wraps over the console's whole grid, and a row or cell past
- * the map shows what is behind. */
-static void paint_window(int32_t background) {
-  if (background_field(background, RG_BG_NEVER_WRAPS)) {
-    paint_window_without_wrapping(background);
-    return;
-  }
-  int64_t map_w = (int64_t)map_now(background)[RG_MAP_GRID_COLS] * background_field(background, RG_BG_TILE_W);
-  int64_t map_h = (int64_t)map_now(background)[RG_MAP_GRID_ROWS] * background_field(background, RG_BG_TILE_H);
-  if (map_w == 0 || map_h == 0) return;
-  background_scroll scroll = scroll_shown(background);
-  int64_t off_y = floor_mod(scroll.y, map_h);
-  for (int64_t py = 0, rows = rows_shown_of(background); py < rows; py++) {
-    int64_t off_x = floor_mod((int64_t)scroll.x + bend_at(background, py), map_w);
-    paint_map_row(background, (off_y + row_drawn_from(py)) % map_h, off_x, map_w, py);
-  }
-}
-
 /* IR::Affine.matrix: one over the size, held at the largest number the matrix holds; then the
  * sine table, cos d being sin(d + 90). The numbers come from rg_game_turn_rules, which the build
  * writes from Ruby's own, so the two cannot drift. */
@@ -1435,75 +785,6 @@ static void affine_matrix(int32_t angle, int32_t size, int64_t *turn_cos, int64_
   if (recip > most) recip = most;
   *turn_cos = floor_div(rg_game_sines[angle + 90] * recip, one_th);
   *turn_sin = floor_div(rg_game_sines[angle] * recip, one_th);
-}
-
-/* Reference#paint_affine_background_window: for each screen pixel, work back through the turn
- * to the map pixel that lands there, from wherever the background is scrolled to. */
-static void paint_turned_window(int32_t background) {
-  int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
-  int64_t map_w = (int64_t)map_now(background)[RG_MAP_GRID_COLS] * tile_w;
-  int64_t map_h = (int64_t)map_now(background)[RG_MAP_GRID_ROWS] * tile_h;
-  if (map_w == 0 || map_h == 0) return;
-  const background_turn *turn = &turns[keeper_of(background)];
-  int64_t pivot_x = turn->pivot_x, pivot_y = turn->pivot_y, one_th = rg_game_turn_rules[1];
-  int64_t turn_cos, turn_sin;
-  affine_matrix(turn->angle, turn->size, &turn_cos, &turn_sin);
-  /* A turned layer is placed by its turn, which putting it up leaves as it is. */
-  background_scroll scroll = scrolls[keeper_of(background)];
-  for (int64_t py = 0, rows = scenery_rows(); py < rows; py++) {
-    int64_t dy = row_drawn_from(py) - pivot_y;
-    for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) {
-      int64_t dx = px - pivot_x;
-      int64_t mx = floor_mod(scroll.x + pivot_x + floor_div(turn_cos * dx + turn_sin * dy, one_th), map_w);
-      int64_t my = floor_mod(scroll.y + pivot_y + floor_div(-turn_sin * dx + turn_cos * dy, one_th), map_h);
-      int32_t cell = map_cell(background, my / tile_h, mx / tile_w);
-      if (cell < 0) continue;
-      uint16_t color = tile_pixel(background, cell, mx % tile_w, my % tile_h);
-      if (color == RG_SEE_THROUGH) continue;
-      if (onto_sheet) sheet[py * RG_SCREEN_WIDTH + px] = color;
-      else set_pixel(px, py, color);
-    }
-  }
-}
-
-/* Reference#paint_background_window: one background painted where it sits in the view. */
-static void paint_background(int32_t background) {
-  if (turns[keeper_of(background)].turned) paint_turned_window(background);
-  else paint_window(background);
-}
-
-/* Reference#paint_status_bar: from its top row to the bottom of the screen, its map from its own
- * corner, never scrolled; past the end of its map the backdrop stays. */
-static void paint_status_bar(int32_t bar) {
-  int64_t top = bar_top_shown(bar);
-  for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++) paint_map_row(bar, py - top, 0, 0, py);
-}
-
-/* Reference#paint_scenery_in_box: a background held to a box goes onto the sheet as it would onto
- * the picture, and only its pixels inside the box are laid on the picture. A feature that paints
- * the background itself (rg_hook_paint_scenery) keeps to the box as it lays it (laying_box). */
-static void paint_scenery_in_box(int32_t background, const background_box *box) {
-  if (box->right <= box->left || box->bottom <= box->top) return;
-  laying_box = box;
-  if (!rg_hook_paint_scenery(background)) {
-    for (int32_t i = 0; i < CELLS; i++) sheet[i] = NOTHING_ON_SHEET;
-    onto_sheet = 1;
-    paint_background(background);
-    onto_sheet = 0;
-    for (int64_t py = box->top; py < box->bottom; py++)
-      for (int64_t px = box->left; px < box->right; px++) {
-        int32_t color = sheet[py * RG_SCREEN_WIDTH + px];
-        if (color != NOTHING_ON_SHEET) lay_scenery(px, py, (uint16_t)color);
-      }
-  }
-  laying_box = NULL;
-}
-
-/* Reference#paint_scenery */
-static void paint_scenery(int32_t background) {
-  const background_box *box = &boxes[keeper_of(background)];
-  if (box->held) paint_scenery_in_box(background, box);
-  else if (!rg_hook_paint_scenery(background)) paint_background(background);
 }
 
 /* --- sprites --- */
@@ -1782,16 +1063,16 @@ static void paint_kept_sprite(const placed_object *placed) {
 
 static int32_t rebuilt_whole(void) { return rg_game_picture_sizes[RG_SIZE_REBUILT_WHOLE]; }
 
-/* Reference#scene_framebuffer: the backdrop, and every background showing stamped over it. It is
- * a picture of its own, so an area the game's drawing is held to does not hold this. */
+/* Reference#scene_framebuffer: the backdrop, and every background showing stamped over it
+ * (rg_hook_stamp_scenery). It is a picture of its own, so an area the game's drawing is held to
+ * does not hold this. */
 static void keep_scenery(void) {
   if (scenery_kept) return;
   drawing_area outer = area;
   area.in_force = 0;
   target = scenery;
   clear_to(backdrop);
-  for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
-    if (showing(bg)) rg_background_stamp(bg);
+  rg_hook_stamp_scenery();
   target = pixels;
   area = outer;
   scenery_kept = 1;
@@ -2243,27 +1524,16 @@ static void fade_unless_left_as_drawn(int32_t fade_place) {
 
 static void fade_nothing(void) { fading_what_is_painted = 0; }
 
+/* Back to front: the backdrop, then each level's scenery (rg_hook_paint_level) and its sprites,
+ * with what a feature paints first and last (rg_hook_repaint_began, rg_hook_repaint_ending). */
 static void repaint_view(void) {
   repaints_painted++;
   mix_nothing();
   fade_unless_left_as_drawn(RG_NO_LAYER);
   clear_to(backdrop);
-  /* A status bar first: no background is painted under it, so it is in front of all of them and
-   * every sprite is painted over it. */
-  int32_t bar = bar_showing();
-  if (bar >= 0) {
-    mix_as_layer(background_field(bar, RG_BG_SEE_THROUGH));
-    fade_unless_left_as_drawn(background_field(bar, RG_BG_FADE_PLACE));
-    paint_status_bar(bar);
-  }
-  int32_t backgrounds = rg_game_picture_sizes[RG_SIZE_BACKGROUNDS], levels = rg_game_picture_sizes[RG_SIZE_DEPTHS];
-  for (int32_t level = 0; level < levels; level++) {
-    for (int32_t bg = 0; bg < backgrounds; bg++) {
-      if (!showing(bg) || background_field(bg, RG_BG_LEVEL) != level) continue;
-      mix_as_layer(background_field(bg, RG_BG_SEE_THROUGH));
-      fade_unless_left_as_drawn(background_field(bg, RG_BG_FADE_PLACE));
-      paint_scenery(bg);
-    }
+  rg_hook_repaint_began();
+  for (int32_t level = 0, levels = rg_game_picture_sizes[RG_SIZE_DEPTHS]; level < levels; level++) {
+    rg_hook_paint_level(level);
     for (int32_t i = 0; i < sprite_layer_count; i++) {
       if (sprite_layer[i].level != level) continue;
       mix_as_sprite(sprite_layer[i].sprite);
@@ -2271,16 +1541,7 @@ static void repaint_view(void) {
       paint_kept_sprite(&sprite_layer[i]);
     }
   }
-  /* Reference#paint_bar_over_sprites */
-  if (bar >= 0 && bar_covers[keeper_of(bar)]) {
-    int32_t top = bar_top_shown(bar);
-    mix_nothing();
-    fade_unless_left_as_drawn(RG_NO_LAYER);
-    fill_cells(0, top, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT - top, backdrop);
-    mix_as_layer(background_field(bar, RG_BG_SEE_THROUGH));
-    fade_unless_left_as_drawn(background_field(bar, RG_BG_FADE_PLACE));
-    paint_status_bar(bar);
-  }
+  rg_hook_repaint_ending();
   mix_nothing();
   fade_nothing();
   picture_touched = 0;
@@ -2290,31 +1551,35 @@ static void repaint_view(void) {
 void rg_screen_paint_owed_rebuild(void) {
   int32_t skipped_and_touched = rebuild_skipped && picture_touched;
   rebuild_skipped = 0;
-  if (!owed && !skipped_and_touched) {
-    forget_expired_corners();
-    return;
+  if (owed || skipped_and_touched) {
+    owed = 0;
+    repaint_view();
+    forget_kept_shares();
   }
-  owed = 0;
-  repaint_view();
-  forget_kept_shares();
-  forget_expired_corners();
+  rg_hook_rebuild_checked();
 }
 
 /* --- screens and scenes --- */
 
 void rg_screen_hold(int32_t value) { held = value; }
+
+/* Whether the end of a pass is placing the frame's writes (Reference @placing_at_pass_end): set by
+ * every game on a console that places them there, read by what a write placed then leaves alone
+ * (a background that pass put up still shows from its corner). */
+static int32_t placing_at_pass_end;
+
+void rg_screen_placing_at_pass_end(int32_t on) { placing_at_pass_end = on; }
 void rg_screen_frame_started(void) {
   held = 0;
   frames_begun = 1;
 }
 
-/* The top of Reference#advance_frame: the corners of the backgrounds this pass put up go once its
- * picture is painted (Reference#forget_expired_corners). And a frame boundary is the one safe
- * moment to trade the two pages of a tear-free screen, so the page just drawn is shown and the
- * game is handed the other — before anything can stop the run there, so a run that stops on a
- * boundary stops with the frame it finished on screen. */
+/* The top of Reference#advance_frame. A frame boundary is the one safe moment to trade the two
+ * pages of a tear-free screen, so the page just drawn is shown and the game is handed the other —
+ * before anything can stop the run there, so a run that stops on a boundary stops with the frame
+ * it finished on screen. */
 void rg_screen_frame_ended(void) {
-  if (any_from_corner) corners_expired = 1;
+  rg_hook_frame_ended();
   if (pixels == viewed) return;
   rg_screen_paint_owed_rebuild();
   uint16_t *finished = pixels;
@@ -2333,21 +1598,21 @@ static void show_backdrop(int32_t color) {
   if (color < 0 || color == backdrop) return;
   backdrop = color;
   scenery_kept = 0;
-  if (shown_count == 0) clear_to(backdrop);
-  else request_repaint();
+  if (rg_hook_scenery_up()) request_repaint();
+  else clear_to(backdrop);
 }
 
 /* Reference#exec_screen. Every kind of screen is a display of its own, so any change of kind
- * wipes the picture and takes the scenery down; arriving on a screen drawn from tiles puts up
- * again what every such screen shows, as declared (#put_up_always_up), and returns 1 when it does. A change
- * between one page and two keeps the same picture and wipes nothing. +new_backdrop+ is the colour
- * shown wherever nothing is drawn from here (IR::SceneHandover#backdrop_of). */
+ * wipes the picture and takes the scenery down (rg_hook_screen_crossed, which puts up again what
+ * every screen drawn from tiles shows, as declared: #put_up_always_up), and returns 1 when it
+ * arrives on a screen drawn from tiles. A change between one page and two keeps the same picture
+ * and wipes nothing. +new_backdrop+ is the colour shown wherever nothing is drawn from here
+ * (IR::SceneHandover#backdrop_of). */
 int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop) {
   int32_t crossing = kind >= 0 && kind != new_kind;
   if (crossing) {
     if (new_backdrop >= 0) backdrop = new_backdrop;
     clear_to(backdrop);
-    shown_count = 0;
     scenery_kept = 0;
     /* What was under each sprite went with the old screen, so nothing is put back over the new
      * one. A console that places its sprites at the end of a pass takes them off after this. */
@@ -2360,12 +1625,9 @@ int32_t rg_screen_set(int32_t new_kind, int32_t two_pages, int32_t new_backdrop)
   show_pages(two_pages);
   tint_by_display = tint_mixed_by_display(); /* a tint in force is mixed this screen's way */
   rg_hook_screen_set();
-  if (!crossing || new_kind == RG_BITMAP) return 0;
-  for (int32_t i = 0; i < rg_game_picture_sizes[RG_SIZE_ALWAYS_UP]; i++) {
-    forget_own_cells(rg_game_always_up[i]);
-    rg_background_put_up(rg_game_always_up[i]);
-  }
-  return 1;
+  if (!crossing) return 0;
+  rg_hook_screen_crossed(new_kind);
+  return new_kind != RG_BITMAP;
 }
 
 /* Reference#cross_to_scene_screen */
@@ -2386,26 +1648,8 @@ void rg_scene_enter(int32_t scene) { current_scene = scene; }
 static int32_t scenery_taken_down;
 
 /* The middle of Reference#take_over, and #take_down_scenery: the last scene's own scenery comes
- * down, and the picture goes back to the scenery every screen shows. */
-void rg_scene_take_down(int32_t brings_scenery) {
-  scenery_taken_down = 0;
-  int32_t any_scene_owned = 0;
-  for (int32_t i = 0; i < shown_count; i++)
-    if (background_field(shown_backgrounds[i], RG_BG_SCENE) != RG_EVERY_SCENE) any_scene_owned = 1;
-  if (!any_scene_owned && !brings_scenery) return;
-
-  rg_screen_paint_owed_rebuild();
-  int32_t kept = 0;
-  for (int32_t i = 0; i < shown_count; i++)
-    if (!background_field(shown_backgrounds[i], RG_BG_ON_ARRIVAL)) shown_backgrounds[kept++] = shown_backgrounds[i];
-  if (kept == shown_count) return;
-
-  shown_count = kept;
-  scenery_kept = 0;
-  clear_to(backdrop);
-  stamp_in_stack_order(-1);
-  scenery_taken_down = 1;
-}
+ * down (rg_hook_scene_take_down). */
+void rg_scene_take_down(int32_t brings_scenery) { scenery_taken_down = rg_hook_scene_take_down(brings_scenery); }
 
 /* Reference#redraw_sprites_over_arrived_scenery: the sprites of this frame were drawn as it began,
  * the leaving scene's among them, and the scenery a scene put up after them covered them. The

@@ -29,7 +29,7 @@ module VBlank
         RUBY_MAGIC_COMMENT = "# frozen_string_literal: true\n" # The first line of a feature's Ruby, left out where it is joined
 
         # +params+ are the hook's arguments by name; +default+, for a :one hook, is the answer with no
-        # taker: one of the params, or :null. +languages+ are the runtimes that have the hook, and
+        # taker: one of the params, a number, or :null. +languages+ are the runtimes that have the hook, and
         # +c_signature+ is the C one as rg_screen.c declares it (the compiler holds the two alike).
         Hook = Data.define(:name, :way, :params, :default, :languages, :c_signature) do
           def initialize(name:, way:, params: [], default: nil, languages: LANGUAGES, c_signature: nil)
@@ -42,9 +42,38 @@ module VBlank
           Hook.new(name: :setup, way: :each, languages: %i[ruby]),
           # A screen of a new kind is up (Reference#exec_screen).
           Hook.new(name: :screen_set, way: :each, c_signature: "static void rg_hook_screen_set(void)"),
-          # A background is about to be painted where it sits; a taker that paints it answers true.
-          Hook.new(name: :paint_scenery, way: :claim, params: %i[background],
-                   c_signature: "static int32_t rg_hook_paint_scenery(int32_t background)"),
+          # That screen took the place of one of another kind, which went with what was up on it.
+          Hook.new(name: :screen_crossed, way: :each, params: %i[new_kind],
+                   c_signature: "static void rg_hook_screen_crossed(int32_t new_kind)"),
+          # A frame boundary is reached, before the pages trade places (Reference#advance_frame).
+          Hook.new(name: :frame_ended, way: :each, c_signature: "static void rg_hook_frame_ended(void)"),
+          # A rebuild of the whole view is asked for (Reference#request_repaint).
+          Hook.new(name: :repaint_requested, way: :each, c_signature: "static void rg_hook_repaint_requested(void)"),
+          # An owed rebuild was painted, or none was owed (Reference#paint_owed_repaint).
+          Hook.new(name: :rebuild_checked, way: :each, c_signature: "static void rg_hook_rebuild_checked(void)"),
+          # The rebuild has cleared the picture to the backdrop, and paints nothing else yet.
+          Hook.new(name: :repaint_began, way: :each, c_signature: "static void rg_hook_repaint_began(void)"),
+          # The rebuild is at one level of the stack, before that level's sprites.
+          Hook.new(name: :paint_level, way: :each, params: %i[level],
+                   c_signature: "static void rg_hook_paint_level(int32_t level)"),
+          # The rebuild has painted every level.
+          Hook.new(name: :repaint_ending, way: :each, c_signature: "static void rg_hook_repaint_ending(void)"),
+          # The scenery up, stamped onto the copy kept to put back under sprites (Reference#scene_framebuffer).
+          Hook.new(name: :stamp_scenery, way: :each, c_signature: "static void rg_hook_stamp_scenery(void)"),
+          # Whether any scenery is up, so a new backdrop has the picture built again rather than cleared.
+          Hook.new(name: :scenery_up, way: :claim, c_signature: "static int32_t rg_hook_scenery_up(void)"),
+          # Whether scenery showing now is in a see-through layer (Reference#layer_has_anything?).
+          Hook.new(name: :layer_holds_scenery, way: :claim, params: %i[layer],
+                   c_signature: "static int32_t rg_hook_layer_holds_scenery(int32_t layer)"),
+          # A scene takes over; a taker that takes scenery down answers true (Reference#take_down_scenery).
+          Hook.new(name: :scene_take_down, way: :claim, params: %i[brings_scenery],
+                   c_signature: "static int32_t rg_hook_scene_take_down(int32_t brings_scenery)"),
+          # The size of the blocks scenery is painted in, in pixels each way: 1 for no blocks. Scenery
+          # the game left as drawn ignores it.
+          # Must be inline in C: only the tiled feature asks it, and the compiler counts an unasked
+          # inline function as no fault.
+          Hook.new(name: :scenery_block_size, way: :one, default: 1,
+                   c_signature: "static inline int32_t rg_hook_scenery_block_size(void)"),
           # A sprite kept for a rebuild is about to be drawn; a taker that draws it answers true.
           Hook.new(name: :paint_kept_sprite, way: :claim, params: %i[placed],
                    c_signature: "static int32_t rg_hook_paint_kept_sprite(const placed_object *placed)"),
@@ -92,7 +121,7 @@ module VBlank
             end
           end
 
-          # The features of +among+ that +steps+ (every step a run can reach) need, each after those it
+          # The features of +among+ that +steps+ (every step of the program) need, each after those it
           # names.
           def used_by(steps, among: ALL)
             kinds = steps.to_set(&:kind)

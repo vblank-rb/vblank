@@ -31,42 +31,9 @@ def rg_pixelation_screen_set
   @rg_read_block = rg_painted_screen? ? @rg_block : 1
 end
 
-# Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS, by the display's own rule. The
-# blocks are fixed to the screen, and each shows the color the background has at the block's top
-# left corner. Down and across are done apart, because a display draws a row at a time: the
-# background goes onto the sheet rows first, every row of a block drawn from the map row its top
-# row shows and still placed by its own bend, and is laid on the picture through the blocks across.
-# A background that can turn is left one pixel wide at a size of two, so its rows double and its
-# columns do not: the emulator's rule, kept because the console's picture is checked against it.
-def rg_paint_scenery_in_blocks(background)
-  @rg_sheet.fill(RG_NOTHING_ON_SHEET)
-  @rg_onto_sheet = true
-  @rg_rows_tall = @rg_block
-  rg_paint_background(background)
-  @rg_onto_sheet = false
-  @rg_rows_tall = 1
-  wide = rg_background_field(background, RG_BG_CAN_TURN) != 0 && @rg_block == 2 ? 1 : @rg_block
-  rg_scenery_rows.times do |py|
-    RG_SCREEN_WIDTH.times do |px|
-      next if @rg_laying_box && !rg_inside_box?(@rg_laying_box, px, py)
-
-      color = @rg_sheet[(py * RG_SCREEN_WIDTH) + px - (px % wide)]
-      rg_lay_scenery(px, py, color) if color != RG_NOTHING_ON_SHEET
-    end
-  end
-end
-
-# Whether (px, py) is inside +box+, [left, top, right, bottom].
-def rg_inside_box?(box, px, py) = px >= box[0] && px < box[2] && py >= box[1] && py < box[3]
-
-# Reference#paint_scenery: a background the game has not left as drawn is painted in blocks while
-# they are bigger than a pixel. Whether it was.
-def rg_pixelation_paint_scenery(background)
-  return false if @rg_block == 1 || rg_background_field(background, RG_BG_IN_BLOCKS) == 0
-
-  rg_paint_scenery_in_blocks(background)
-  true
-end
+# The size of the blocks scenery is painted in (Reference @block): the scenery puts itself into
+# blocks of it (rg_tiled.rb's rg_paint_scenery_in_blocks, Reference#paint_scenery_in_blocks).
+def rg_pixelation_scenery_block_size = @rg_block
 
 # --- a sprite in blocks (Reference::SpriteBlocks, which holds the rule and says why) ---
 #
