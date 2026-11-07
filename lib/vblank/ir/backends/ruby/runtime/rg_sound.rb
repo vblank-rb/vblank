@@ -390,11 +390,23 @@ def rg_sound_hear_only(voice)
   @rg_heard_only = voice
 end
 
-def rg_sound_heard(voice, sample) = @rg_heard_only == 0 || @rg_heard_only == voice ? sample : 0
+# Whether a voice is heard from the left speaker and from the right this frame: every voice is
+# heard unless the game hears only one (rg_sound_hear_only), from the sides its pan sets.
+def rg_speakers_of(voice)
+  heard = @rg_heard_only == 0 || @rg_heard_only == voice
+  [heard && @rg_sides[voice] != RG_PAN_RIGHT, heard && @rg_sides[voice] != RG_PAN_LEFT]
+end
 
 # The sound of the frame that has just been played, as two Arrays of samples, the left speaker's
 # and the right's: that frame's share of a second's, by the console's own clock, with the part of a
 # sample left over carried to the next frame so no time is lost or made up.
+#
+# WHAT IS THE SAME FOR THE WHOLE FRAME is worked out once, before its samples: which speakers each
+# voice is heard from (the voices heard and the pan are the game's to set, between frames), and
+# which voices can sound at all. A voice silent as the frame starts stays silent through it, since
+# only the game starts a note, and a pitch slide can stop a voice but never start one; so a silent
+# voice is not asked for a sample, which would answer nought and change nothing. A sounding one is
+# asked for every sample, heard or not (every voice moves on), and may fall silent on the way.
 def rg_sound_render_frame
   @rg_sample_carry += RG_SOUND_RATE * RG_CONSOLE_TICKS_A_FRAME
   count = @rg_sample_carry / RG_CONSOLE_TICKS_A_SECOND
@@ -403,32 +415,53 @@ def rg_sound_render_frame
   # The mixer's newest slice is stretched over the frame, and heard only with every voice.
   mixed = @rg_heard_only == 0 ? rg_mix_newest_slice : nil
   mixed_count = mixed ? mixed.length : 0
+  squares = @rg_squares
+  sounding = []
+  squares.each_with_index do |square, at|
+    sounding << [square, *rg_speakers_of(at + 1)] unless square.wave_ticks == 0 || square.loudness.stays_silent?
+  end
+  wave_sounds = @rg_wave.wave_ticks != 0
+  wave_to_left, wave_to_right = rg_speakers_of(RG_WAVE_VOICE)
+  hiss = @rg_hiss
+  noise_sounds = hiss.step_ticks != 0 && !hiss.loudness.stays_silent?
+  noise_to_left, noise_to_right = rg_speakers_of(RG_NOISE_VOICE)
   left = Array.new(count)
   right = Array.new(count)
-  count.times do |i|
+  i = 0
+  while i < count
     if (@rg_slide_clock += 1) == RG_SLIDE_TICK_SAMPLES
       @rg_slide_clock = 0
-      @rg_squares.each(&:slide_one_tick)
+      squares.each(&:slide_one_tick)
     end
-    @rg_on_left = @rg_on_right = 0 # every voice moves on, heard or not
-    @rg_squares.each_with_index { |square, at| rg_add_to_sides(at + 1, rg_sound_heard(at + 1, rg_square_sample(square))) }
-    rg_add_to_sides(RG_WAVE_VOICE, rg_sound_heard(RG_WAVE_VOICE, rg_wave_sample))
-    rg_add_to_sides(RG_NOISE_VOICE, rg_sound_heard(RG_NOISE_VOICE, rg_noise_sample))
+    on_left = on_right = 0
+    s = 0
+    while s < sounding.length
+      square, to_left, to_right = sounding[s]
+      sample = rg_square_sample(square)
+      on_left += sample if to_left
+      on_right += sample if to_right
+      s += 1
+    end
+    if wave_sounds
+      sample = rg_wave_sample
+      on_left += sample if wave_to_left
+      on_right += sample if wave_to_right
+    end
+    if noise_sounds
+      sample = rg_noise_sample
+      on_left += sample if noise_to_left
+      on_right += sample if noise_to_right
+    end
     if mixed_count > 0 # the recordings play from both
       sample = mixed[i * mixed_count / count] * RG_MIX_STEP
-      @rg_on_left += sample
-      @rg_on_right += sample
+      on_left += sample
+      on_right += sample
     end
-    left[i] = @rg_on_left.clamp(-32768, 32767)
-    right[i] = @rg_on_right.clamp(-32768, 32767)
+    left[i] = on_left < -32768 ? -32768 : (on_left > 32767 ? 32767 : on_left)
+    right[i] = on_right < -32768 ? -32768 : (on_right > 32767 ? 32767 : on_right)
+    i += 1
   end
   [left, right]
-end
-
-# A sample of a voice, added to the speakers it plays from.
-def rg_add_to_sides(voice, sample)
-  @rg_on_left += sample unless @rg_sides[voice] == RG_PAN_RIGHT
-  @rg_on_right += sample unless @rg_sides[voice] == RG_PAN_LEFT
 end
 
 # --- the log ---

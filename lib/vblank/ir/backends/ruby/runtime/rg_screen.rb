@@ -351,9 +351,34 @@ def rg_paint_onto_plain_layer(layer)
   @rg_plain_layer = layer
 end
 
+# PAINTING PLAIN. What rg_set_pixel asks of every pixel — a plain layer handed over, a see-through
+# mix, a placed fade, the picture without sprites kept beside — is the same for every pixel of one
+# blit or fill, and for nearly every one of them the answer is "none". When it is, the whole shape
+# is painted here a row at a time: the part of it inside the screen and the area worked out once,
+# and each pixel only stored, its cell marked as no mix where the picture keeps mixes. It paints
+# exactly the cells rg_set_pixel would, the same colours. Anything else goes through rg_set_pixel.
+#
+# This is the Ruby runtime's own: YJIT compiles each small method of rg_set_pixel's to a call of
+# its own, and a blit makes several of them for every pixel.
+def rg_painting_plain? = !@rg_plain_layer && !@rg_mixing && !@rg_fading_what_is_painted && !rg_keeps_picture_without_sprites?
+
+# The columns or rows a shape from +start+ to +past+ keeps inside the screen's +side+ and the area's
+# +low+ and +high+ (when it is in force): the first, and the one after the last.
+def rg_kept_span(start, past, side, low, high, in_force)
+  first = start < 0 ? 0 : start
+  last = past > side ? side : past
+  if in_force
+    first = low if first < low
+    last = high if last > high
+  end
+  [first, last]
+end
+
 # Framebuffer#fill_rect: every cell of the rectangle, each through rg_set_pixel. Walking only the
 # part on the screen paints the same cells.
 def rg_fill_cells(x, y, width, height, color)
+  return rg_fill_cells_plain(x, y, width, height, color & 0xFFFF) if rg_painting_plain?
+
   left = x < 0 ? 0 : x
   top = y < 0 ? 0 : y
   right = x + width
@@ -367,6 +392,27 @@ def rg_fill_cells(x, y, width, height, color)
       rg_set_pixel(px, py, color)
       px += 1
     end
+    py += 1
+  end
+end
+
+# rg_fill_cells when painting plain (rg_painting_plain?): +color+ already the sixteen bits a cell holds.
+def rg_fill_cells_plain(x, y, width, height, color)
+  area = @rg_area
+  left, right = rg_kept_span(x, x + width, RG_SCREEN_WIDTH, area.left, area.right, area.in_force)
+  top, bottom = rg_kept_span(y, y + height, RG_SCREEN_HEIGHT, area.top, area.bottom, area.in_force)
+  return if left >= right || top >= bottom
+
+  @rg_picture_touched = true
+  target = @rg_target
+  mixes = rg_mixes_of(target)
+  is_mixed = mixes&.is_mixed
+  count = right - left
+  py = top
+  while py < bottom
+    at = (py * RG_SCREEN_WIDTH) + left
+    target.fill(color, at, count)
+    is_mixed&.fill(0, at, count)
     py += 1
   end
 end
@@ -864,12 +910,44 @@ end
 # Reference#blit_image: a see-through pixel is skipped, and each other one goes on as stored.
 def rg_blit_image(image, x, y)
   art, start, width, height = rg_picture_of(image)
+  return rg_blit_plain(art, start, width, height, x, y) if rg_painting_plain?
+
   height.times do |row|
     width.times do |col|
       color = art[start + (row * width) + col]
       rg_set_pixel(x + col, y + row, color) if color != RG_NOT_DRAWN
     end
   end
+end
+
+# rg_blit_image when painting plain (rg_painting_plain?): the picture's +width+ by +height+ pixels
+# from +start+ in +art+, its corner at (x, y).
+def rg_blit_plain(art, start, width, height, x, y)
+  area = @rg_area
+  left, right = rg_kept_span(x, x + width, RG_SCREEN_WIDTH, area.left, area.right, area.in_force)
+  top, bottom = rg_kept_span(y, y + height, RG_SCREEN_HEIGHT, area.top, area.bottom, area.in_force)
+  return if left >= right || top >= bottom
+
+  target = @rg_target
+  is_mixed = rg_mixes_of(target)&.is_mixed
+  touched = false
+  py = top
+  while py < bottom
+    from = start + ((py - y) * width) - x
+    at = py * RG_SCREEN_WIDTH
+    px = left
+    while px < right
+      color = art[from + px]
+      if color != RG_NOT_DRAWN
+        target[at + px] = color & 0xFFFF
+        is_mixed[at + px] = 0 if is_mixed
+        touched = true
+      end
+      px += 1
+    end
+    py += 1
+  end
+  @rg_picture_touched = true if touched
 end
 
 def rg_rebuilt_whole? = @rg_game_picture_sizes[RG_SIZE_REBUILT_WHOLE] != 0
