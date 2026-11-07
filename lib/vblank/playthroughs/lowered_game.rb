@@ -76,7 +76,8 @@ module VBlank
       # does not report it (the interpreter runs in this Ruby, C needs no compiler, node's is always on).
       def running_jit = (@run.running_jit if @run.respond_to?(:running_jit))
 
-      def var(name) = @run[name]
+      def var(name) = @run.var(name)
+      def raw_var(name) = @run.raw_var(name)
       def list(name) = @run.list(name)
       def pool(name, field) = @run.pool(name, field)
       def screen_width = @console.screen_width

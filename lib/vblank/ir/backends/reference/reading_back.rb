@@ -9,14 +9,26 @@ module VBlank
         # (Native::HeadlessRun), from the same code — so the two answer the same question the
         # same way, in the same words when the name is wrong.
         #
-        # Whoever includes this defines what it holds: #list_items, a list's items oldest first by
-        # its name (nil for a list it has none of); #list_names, every list's name, the
-        # framework's own among them; and #variables_now, every variable by name.
+        # Whoever includes this defines what it holds: #raw_var, a variable's stored number by its
+        # name; #list_items, a list's items oldest first by its name (nil for a list it has none
+        # of); #list_names, every list's name, the framework's own among them; #variables_now,
+        # every variable's stored number by name; and #read_program, the program it plays (nil for
+        # a tree with no program at its root, or a cartridge with no build record).
+        #
+        # EVERY NUMBER COMES BACK IN THE GAME'S UNITS. A variable or list the game keeps fractions
+        # in holds the number multiplied up (DSL::Fraction), and the program says by how much
+        # (Program#var_in_game_units), so 12.5 reads as 12.5 and not as what the console stores.
+        # #raw_var is the stored number, for a test about how it is kept.
         module ReadingBack
+          # A variable's number now, by the name the game gave it (0 if it was never written).
+          def var(name) = var_in_game_units(name, raw_var(name))
+          def [](name) = var(name)
+
           # Read a list: everything in it now, oldest first, under the name the game declared.
           # An Array, so a test asks for an item, the length, or the whole thing as it likes.
           def list(name)
-            list_items(name) or raise ArgumentError, no_such_message("list", name, declared_lists)
+            items = list_items(name) or raise ArgumentError, no_such_message("list", name, declared_lists)
+            list_in_game_units(name, items)
           end
 
           # Read one field of a pool: an entry per slot, the value where an instance is live and
@@ -27,10 +39,11 @@ module VBlank
           # how — so this is asked by pool and field, the two names the game used.
           def pool(name, field)
             live = list_items(pool_live_list(name)) or raise ArgumentError, no_such_message("pool", name, pools)
-            values = list_items(Messages::MadeNames.make(:pool_field, pool: name, field: field))
+            field_list = Messages::MadeNames.make(:pool_field, pool: name, field: field)
+            values = list_items(field_list)
             raise ArgumentError, no_such_message("field", field, pool_fields(name), of: " in pool :#{name}") if values.nil?
 
-            values.zip(live).map { |value, up| value if up.to_i.nonzero? }
+            list_in_game_units(field_list, values).zip(live).map { |value, up| value if up.to_i.nonzero? }
           end
 
           # Everything the game declared, as it stands now: each variable's value, each list
@@ -43,12 +56,17 @@ module VBlank
           # What the framework keeps for itself is named with two underscores and left out: it
           # is how the game is run, not what the game is.
           def game_state
-            { vars: variables_now.reject { |name, _| framework_own?(name) },
+            { vars: variables_now.reject { |name, _| framework_own?(name) }
+                                 .to_h { |name, raw| [name, var_in_game_units(name, raw)] },
               lists: declared_lists.to_h { |name| [name, list(name)] },
               pools: pools.to_h { |name| [name, pool_fields(name).to_h { |field| [field, pool(name, field)] }] } }
           end
 
           private
+
+          # A stored number, and a list's stored items, as the game's; as they are with no program.
+          def var_in_game_units(name, stored) = read_program ? read_program.var_in_game_units(name, stored) : stored
+          def list_in_game_units(name, items) = read_program ? read_program.list_in_game_units(name, items) : items
 
           # A pool's field is a list, and so is what the pool keeps for itself beside its fields:
           # which slots are live, which are free, the order they were spawned in. The two are

@@ -27,22 +27,25 @@ module VBlank
         self
       end
 
-      # The number a game variable holds, by the name the game gave it (a Symbol). The names a game has are
-      # in #variable_names; a name the game does not have is a friendly error that lists them.
+      # The number a game variable holds, by the name the game gave it (a Symbol), a fraction as the
+      # fraction (Program#var_in_game_units). The names a game has are in #variable_names; a name the game
+      # does not have is a friendly error that lists them.
       def var(name)
         vars = state.vars
-        vars.fetch(name.to_s) do
+        stored = vars.fetch(name.to_s) do
           raise ArgumentError, "The game has no variable named #{name.inspect}. It has: #{vars.keys.first(30).join(', ')}" \
                                "#{' and more' if vars.size > 30}."
         end
+        program ? program.var_in_game_units(name.to_sym, stored) : stored
       end
 
       # A list the game keeps, oldest first, by its name.
       def list(name)
         lists = state.lists
-        lists.fetch(name.to_s) do
+        items = lists.fetch(name.to_s) do
           raise ArgumentError, "The game has no list named #{name.inspect}. It has: #{lists.keys.join(', ')}."
         end
+        program ? program.list_in_game_units(name.to_sym, items) : items
       end
 
       def variable_names = state.vars.keys.map(&:to_sym)
@@ -50,6 +53,9 @@ module VBlank
       private
 
       def state = @state ||= @game.state
+
+      # The program the game was written from, or nil for a game made from its Ruby alone.
+      def program = @game.program
     end
   end
 end

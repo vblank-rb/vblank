@@ -29,6 +29,6 @@ class TestPongOnGBC < Minitest::Test
     run.run(PongGBC::GAME.program, frames: 110)
 
     assert_equal 0, run[:state], "back on the title"
-    assert_equal (PongGBC::CPU_NORMAL * 65_536).to_i, run[:cpu_speed], "with NORMAL picked"
+    assert_equal PongGBC::CPU_NORMAL, run[:cpu_speed], "with NORMAL picked"
   end
 end

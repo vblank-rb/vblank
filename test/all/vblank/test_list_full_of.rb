@@ -39,7 +39,7 @@ class TestListFullOf < Minitest::Test
       game_loop { doubled = speeds[2] * 2 }
     end
 
-    assert_in_delta 3.0, result[:doubled].to_f / (1 << VBlank::DSL::Fraction::DEFAULT_BITS), 0.001
+    assert_equal 3.0, result[:doubled]
   end
 
   def test_a_fraction_in_a_list_of_whole_numbers_is_refused

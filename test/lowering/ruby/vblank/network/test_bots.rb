@@ -100,6 +100,20 @@ class TestBots < Minitest::Test
     assert_match(/hue1/, error.message)
   end
 
+  # The game's state as its runtime keeps it, 1.5 stored as 1.5 * 65536, read back as the game wrote it.
+  def test_a_bot_reads_a_fraction_as_the_games_number
+    program = VBlank.game("FRACBOT", consoles: %i[gba]) do
+      var :speed, 1.5
+      list :trail, capacity: 2, holds: 0.0
+      game_loop {}
+    end.program
+    state = Struct.new(:vars, :lists).new({ "speed" => 3 << 15 }, { "trail" => [1 << 15] })
+    view = VBlank::Bots::GameView.new(Struct.new(:state, :program).new(state, program), player: 1, players: 1, input_delay: 0)
+
+    assert_equal 1.5, view.var(:speed)
+    assert_equal [0.5], view.list(:trail)
+  end
+
   def test_bots_that_play_a_tape_give_the_match_the_tape_was_made_of
     pictures = lambda do |devices|
       devices.map { |device| Zlib.crc32(device.last_picture.pixels.pack("v*")) }.uniq

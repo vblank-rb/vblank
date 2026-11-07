@@ -286,7 +286,7 @@ class TestPongTitle < Minitest::Test
     keys[19] = [:up]                                 # ...to START
     keys[22] = [:a]                                  # ...and begin
     i = title(RALLY) { |f| keys.fetch(f, []) }
-    [(i[:cpu_y] / 65_536.0) + (PADDLE_H / 2) - i[:ball_y], i[:ball_y]]
+    [i[:cpu_y] + (PADDLE_H / 2) - i[:ball_y], i[:ball_y]]
   end
 
   PADDLE_H = 24

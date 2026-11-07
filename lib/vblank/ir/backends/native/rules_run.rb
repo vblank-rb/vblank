@@ -30,7 +30,7 @@ module VBlank
                                      height: @console.screen_height, camera_x: 0, camera_y: 0)
           end
 
-          def [](name) = @asking ? self.class.variables_in(rows_asked("? #{name}")).fetch(name, 0) : super
+          def raw_var(name) = @asking ? self.class.variables_in(rows_asked("? #{name}")).fetch(name, 0) : super
 
           # Every variable, at the frame it is asked at.
           def vars

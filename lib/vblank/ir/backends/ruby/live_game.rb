@@ -17,8 +17,13 @@ module VBlank
         #                          that starts, a number for each connected player
         #                          (IR::Buttons.masks), or nil to stop the play
         class LiveGame
-          def initialize(source)
+          # The program the game was written from, for reading its numbers back in its own units
+          # (Program#fraction_vars); nil for a game made from its Ruby alone.
+          attr_reader :program
+
+          def initialize(source, program: nil)
             @game = Class.new { class_eval(source, "(the game, as Ruby)") }.new
+            @program = program
           end
 
           # The size of the picture it shows.

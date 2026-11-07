@@ -253,6 +253,7 @@ module VBlank
             raise RunComparison::AsksTheInterpreter, "a step budget (`max_steps:`)" if max_steps
 
             @save.use_memory!(SaveLayout.memory_of(program))
+            @read_program = program
             @console = program.described_console
             @keeps_save = Saving.named_by?(program)
             @vars = {}
@@ -274,12 +275,16 @@ module VBlank
             @save.restore_power # a cut is for one run, as it is for the interpreter
           end
 
-          # A variable's value now — at the end of the run, or, from inside an input script or a
-          # watching block, at the frame boundary it is asked at — and 0 for one the program
-          # never names.
-          def [](name)
+          # A variable's stored number now — at the end of the run, or, from inside an input script
+          # or a watching block, at the frame boundary it is asked at — and 0 for one the program
+          # never names. #var and #[] give the game's number (Reference::ReadingBack).
+          def raw_var(name)
             @vars.fetch(name, 0)
           end
+
+          # The program the last #run played.
+          attr_reader :read_program
+          private :read_program
 
           # WHAT THE MIXER MADE AND IS PLAYING, as the interpreter answers it — at the end of the
           # run, or at the frame boundary a watching block or an input script asks at. Every

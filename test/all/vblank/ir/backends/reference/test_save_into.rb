@@ -161,7 +161,7 @@ class TestSaveInto < Minitest::Test
     Reference.save_into(image, program, :file, 0, hearts: 9)
     run = boot(program, image)
 
-    assert_equal [9, 0.25 * (1 << 16)], [run[:hearts], run[:volume]]
+    assert_equal [9, 0.25], [run[:hearts], run[:volume]]
   end
 
   # The random numbers a record keeps are written like a variable, and loaded back.

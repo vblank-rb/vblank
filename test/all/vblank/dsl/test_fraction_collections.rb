@@ -13,9 +13,6 @@ require "test_helper"
 # The Advance's cartridge is held to the interpreter's picture in the emulator in
 # test/lowering/gba/vblank/dsl/test_fraction_collections_cartridge.rb.
 class TestFractionCollections < Minitest::Test
-
-  ONE = 1 << VBlank::DSL::Fraction::DEFAULT_BITS
-
   private def run_program(&block)
     prog = VBlank.game("FRAC", consoles: %i[gba], code: "ZFRC", maker: "01") do
       screen :bitmap
@@ -23,8 +20,6 @@ class TestFractionCollections < Minitest::Test
     end.program
     game_player.run(prog, frames: 2)
   end
-
-  private def as_number(raw) = raw / ONE.to_f
 
   # --- a list ---
 
@@ -40,7 +35,7 @@ class TestFractionCollections < Minitest::Test
       end
     end
 
-    assert_in_delta 1.75, as_number(run[:total]), 0.001
+    assert_equal 1.75, run[:total]
   end
 
   # The scale is declared once, on the list, and arithmetic carries it from there — so a value
@@ -56,7 +51,7 @@ class TestFractionCollections < Minitest::Test
       end
     end
 
-    assert_in_delta 10.5, as_number(run[:here]), 0.001
+    assert_equal 10.5, run[:here]
   end
 
   # How MANY items is a count, whatever the items are. Half an item is not a thing.
@@ -126,7 +121,7 @@ class TestFractionCollections < Minitest::Test
       end
     end
 
-    assert_in_delta 10.5, as_number(run[:seen]), 0.001
+    assert_equal 10.5, run[:seen]
   end
 
   # A pool keeps whole numbers and fractions side by side, and each field follows its own
@@ -149,7 +144,7 @@ class TestFractionCollections < Minitest::Test
     end
 
     assert_equal 2, run[:left]
-    assert_in_delta 4.5, as_number(run[:where]), 0.001
+    assert_equal 4.5, run[:where]
   end
 
   def test_a_whole_pool_field_refuses_a_fraction_and_names_the_field
@@ -181,6 +176,6 @@ class TestFractionCollections < Minitest::Test
       end
     end
 
-    assert_in_delta 9.25, as_number(run[:seen]), 0.001
+    assert_equal 9.25, run[:seen]
   end
 end

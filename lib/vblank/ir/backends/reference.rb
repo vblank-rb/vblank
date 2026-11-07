@@ -288,6 +288,7 @@ module VBlank
         # if the program has frames), and #stopped_at_budget? then returns true.
         def run(node, max_steps: nil, frames: nil)
           node = StartFile.filled(node, @handed_file) if node.kind == :program
+          @read_program = (node if node.kind == :program)
           frames = DEFAULT_FRAMES if frames.nil? && max_steps.nil?
           @frames_limit = frames
           @max_steps = max_steps || DEFAULT_MAX_STEPS
@@ -386,13 +387,18 @@ module VBlank
           @screen
         end
 
-        # Read a variable's current value (0 if it was never written).
-        def [](name)
+        # A variable's stored number now (0 if it was never written); #var and #[] give the game's.
+        def raw_var(name)
           @vars[name]
         end
 
-        # #list, #pool and #game_state: a game's own state read back by the names it gave it.
+        # #var, #[], #list, #pool and #game_state: a game's own state read back by the names it
+        # gave it, in its own units.
         include ReadingBack
+
+        # The program the last #run played, or nil for a tree with no program at its root.
+        attr_reader :read_program
+        private :read_program
 
         # True if run() stopped because it hit the step budget rather than a
         # `halt` or the natural end — i.e. it was still looping when we cut it off.
@@ -3146,7 +3152,7 @@ module VBlank
         def object_level(obj)
           return @picture.depths[obj.name] if obj.layers.nil? || obj.layers.empty?
 
-          pick = self[obj.layer_pick]
+          pick = raw_var(obj.layer_pick)
           return @picture.depths[obj.name] unless pick.between?(0, obj.layers.length - 1)
 
           @picture.depths[IR::Stacking.choice_name(obj, obj.layers[pick])]

@@ -5,23 +5,21 @@ require "tmpdir"
 # A PROBE ON A CARTRIDGE VBLANK BUILT reads the game's variables, lists and pools by the names the
 # game gave them, from the build's record, the way every other reader does: no address looked up,
 # no width or sign put back by hand. Played by each console whose cartridge a probe opens. The game
-# sets its numbers on its first pass and then idles, so the frame the probe stops on does not
+# fills its list and pool on its first pass and then idles, so the frame the probe stops on does not
 # matter. Each including test says +console+.
 module ProbeByNameTests
   private def named_game
     VBlank.build("BYNAME", console: console, out: nil, err: nil) do
-      hearts = var :hearts, 0
-      lift = var :lift, 0, width: :byte
-      drop = var :drop, 0
+      var :hearts, 3
+      var :lift, -3, width: :byte
+      var :drop, -100_000
+      var :pace, 2.5
       trail = list :trail, capacity: 4
       guards = pool :guards, x: 0, capacity: 3
       step = var :step, 0
       game_loop do
         step += 1
         if step == 1
-          hearts = 3
-          lift = -3
-          drop = -100_000
           trail.push 7
           trail.push 9
           guards.spawn(x: 5)
@@ -45,6 +43,8 @@ module ProbeByNameTests
       assert_equal 3, probe.var(:hearts)
       assert_equal(-3, probe.var(:lift), "a byte-wide variable, its sign put back")
       assert_equal(-100_000, probe.var(:drop), "a signed word")
+      assert_equal 2.5, probe.var(:pace), "a fraction, as the game wrote it"
+      assert_equal 5 << 15, probe.raw_var(:pace), "and as it is kept"
       assert_equal [7, 9], probe.list(:trail)
       assert_equal 1, probe.pool(:guards, :x).compact.size
       assert_equal interpreter.pool(:guards, :x), probe.pool(:guards, :x), "the slot the interpreter spawned into"

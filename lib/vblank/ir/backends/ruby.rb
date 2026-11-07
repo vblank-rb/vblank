@@ -90,7 +90,7 @@ module VBlank
 
         # THE GAME AS AN OBJECT IN THIS PROCESS, to be played live (LiveGame). Anything its runtime
         # lacks is refused, as a test would skip.
-        def live_game(program) = LiveGame.new(live_source(program))
+        def live_game(program) = LiveGame.new(live_source(program), program: program)
 
         # THE GAME WRITTEN OUT AS ONE RUBY FILE that plays in a window with Ruby alone — Ruby,
         # fiddle and SDL3, and no vblank gem, no game source, no art: the game as Ruby, and the

@@ -8,7 +8,9 @@ is checked against. A test of what a GAME does makes it with `game_player` (see
 i = Reference.new.run(program)               # returns self; 20 frames of a game loop by default
 i = Reference.new.run(program, frames: 400)  # play this far in — every frame, however heavy
 i.screen.pixel(x, y)               # colour at (x, y); nil if off-screen; 0 = unwritten (black)
-i[:varname]                        # a variable's final value (0 if never written)
+i[:varname]                        # a variable's final value (0 if never written); i.var(:varname) too
+                                   # a fraction comes back as the game's number, exactly (a Rational: 25/2 == 12.5)
+i.raw_var(:speed)                  # the stored number instead: 12.5 kept as 12.5 * 65536
 i.list(:trail)                     # a list's items now, oldest first, as an Array
 i.pool(:guard, :x)                 # a pool field, one entry per slot: the value, or nil where the slot is free
 i.game_state                       # { vars:, lists:, pools: } — all of the game's own state; compare two with ==

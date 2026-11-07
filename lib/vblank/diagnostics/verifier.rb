@@ -496,7 +496,8 @@ module VBlank
         bytes unless bytes.nil? || bytes.empty?
       end
 
-      # Read a program variable's value from IWRAM, by name. Needs where the build put each
+      # Read a program variable's stored number from IWRAM, by name; #var and #[] give the game's
+      # number, a fraction as the fraction (Reference::ReadingBack). Needs where the build put each
       # variable: the cartridge's build record, or `vars: backend.var_addresses`. This is how a
       # test asserts what a program actually computed on real hardware. A name the build does
       # not have is refused, naming the game's own variables (the framework's are left out).
@@ -513,7 +514,7 @@ module VBlank
       #
       # {#mem32} is the other half and stays the raw word: an address is whatever is at it, and
       # a hardware register is not a whole number in a program.
-      def var(name)
+      def raw_var(name)
         unless @var_addresses
           refuse_missing_build_record!("where its variables are", or_else: "or hand the Verifier where they are: " \
                                                                          "`vars: backend.var_addresses`")
@@ -553,7 +554,9 @@ module VBlank
         kept_list_items(place) if place
       end
 
-      private def variables_now = list_of_variables.to_h { |name| [name, var(name)] }
+      private def variables_now = list_of_variables.to_h { |name| [name, raw_var(name)] }
+
+      private def read_program = @rom.source_program
 
       private def list_of_variables
         refuse_missing_build_record!("where its variables are") unless @var_addresses

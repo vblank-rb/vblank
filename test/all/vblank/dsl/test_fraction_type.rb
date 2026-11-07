@@ -35,6 +35,35 @@ class TestFractionType < Minitest::Test
     (0...240).find { |x| screen.pixel(x, 40) == Color.resolve(:red) }
   end
 
+  # --- reading back ---
+
+  # A running game read back gives the game's number, on every run: 12.5 where the console keeps
+  # 12.5 * 65536, in a variable, a list and a pool's field alike, and a whole number stays whole.
+  def test_a_fraction_reads_back_as_the_games_number
+    program = build do
+      screen :bitmap
+      speed = var :speed, 0.0
+      count = var :count, 0
+      trail = list :trail, capacity: 3, holds: 0.0
+      movers = pool :movers, at: 0.0, capacity: 2
+      speed = 12.5
+      speed -= 0.25
+      count = 3
+      trail.push 1.5
+      trail.push(-0.75)
+      movers.spawn(at: 2.25)
+      halt
+    end
+    played = game_player.run(program)
+
+    assert_equal 12.25, played[:speed]
+    assert_equal 12.25, played.var(:speed)
+    assert_equal 3, played[:count]
+    assert_equal [1.5, -0.75], played.list(:trail)
+    assert_equal [2.25], played.pool(:movers, :at).compact
+    assert_equal 12.25 * ONE, played.raw_var(:speed), "the stored number, asked for by name"
+  end
+
   # --- declaring ---
 
   def test_a_float_declares_a_variable_that_holds_a_fraction

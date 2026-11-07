@@ -95,7 +95,21 @@ module VBlank
         @program.kept_widths = @kept_widths.to_a
         IR::KeptWidths.add_wraps(@program, @kept_widths) { |name, width, number| refuse_number_too_wide!(name, width, number) }
       end
-      private :keep_narrow, :refuse_number_too_wide!, :finalize_kept_widths
+      # The variables and lists that hold fractions, written on the program for whatever reads the
+      # running game back (Program#fraction_vars). A pool's field holds fractions when its default
+      # is one, and is a list of the pool's.
+      def finalize_fractions
+        fields = declared_pools.flat_map do |pool|
+          pool.field_names.filter_map do |field|
+            bits = pool.field_bits(field)
+            [pool.field_list(field), bits] if bits
+          end
+        end
+        @program.fraction_vars = @fraction_vars.to_a unless @fraction_vars.empty?
+        lists = @fraction_lists.to_a + fields
+        @program.fraction_lists = lists unless lists.empty?
+      end
+      private :keep_narrow, :refuse_number_too_wide!, :finalize_kept_widths, :finalize_fractions
 
       # A variable started with `true` or `false` holds a yes or no, kept as 1 or 0. It is the one
       # kind a game can test on its own, `if alive`, as a Ruby value can be.

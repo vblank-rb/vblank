@@ -662,6 +662,7 @@ module VBlank
       resolve_save_data_peeks
       swap_save_stores_for_change_flags
       finalize_kept_widths
+      finalize_fractions
       refuse_local_player_outside_views!
     end
 

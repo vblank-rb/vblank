@@ -1291,6 +1291,11 @@ module VBlank
       # write to one is followed by the wrap to that width (IR::KeptWidths), so what it holds
       # needs nothing more from any backend; a console may keep it in fewer bytes.
       #
+      # +fraction_vars+ and +fraction_lists+ are each variable and each list (a pool's field among them)
+      # the game keeps fractions in, as [name, bits] pairs: the number is kept multiplied by two to
+      # the power of +bits+ (DSL::Fraction). No backend needs them to run the game; they are how
+      # anything reading a running game gives the game's number back (Reference::ReadingBack).
+      #
       # +players+ is [fewest, most]: how many players the game takes on this build
       # (Cartridge::Players), or nil where it gave nothing. +for_computer+ is true for a build that
       # plays on a computer, whose controllers are not the console's (#described_build).
@@ -1310,7 +1315,8 @@ module VBlank
         include Node
         kind :program
         category :root
-        operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list, players: :list,
+        operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list,
+                 fraction_vars: :list, fraction_lists: :list, players: :list,
                  for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
                  start_file: :start_file
 
@@ -1334,6 +1340,21 @@ module VBlank
 
         # The width variable +name+ is kept at, or nil for the whole number.
         def kept_width_of(name) = (kept_widths || []).to_h[name]
+
+        # What variable +name+ holds, given the number +stored+ for it, in the game's units; and the
+        # same for the items of list +name+. A fraction is kept multiplied by two to the power of its
+        # bits, and comes back a Rational: a whole number over a power of two is always exactly one,
+        # so two readings compare exactly, and it equals the Float the game wrote (25/2 == 12.5). A
+        # whole number comes back as it is. Every reader of a running game asks these, so all of
+        # them answer alike (Reference::ReadingBack, Bots::GameView).
+        def var_in_game_units(name, stored) = in_game_units(stored, (fraction_vars || []).to_h[name])
+
+        def list_in_game_units(name, items)
+          bits = (fraction_lists || []).to_h[name] or return items
+          items.map { |item| in_game_units(item, bits) }
+        end
+
+        private def in_game_units(stored, bits) = bits ? Rational(stored, 1 << bits) : stored
 
         # What the console this program was built for can do: its screen, buttons, sprites — the
         # screen as the game sees it, so with the game's pixel size (#pixel_size) it is that many

@@ -132,7 +132,11 @@ module VBlank
           self
         end
 
-        def [](name) = @vars.fetch(name, 0)
+        # A variable's stored number; #var and #[] give the game's (Reference::ReadingBack).
+        def raw_var(name) = @vars.fetch(name, 0)
+
+        # The program the last #run played.
+        private def read_program = @built_for
 
         def stopped_at_budget? = false
 
