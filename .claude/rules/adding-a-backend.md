@@ -7,9 +7,7 @@ paths:
 # Adding a backend
 
 How to add the next lowering (a terminal one is the likely one): what every backend has to do,
-where it plugs in, what it is checked against, and the traps. Written from what the native
-lowering (`Backends::Native`, the game as C) actually took, and checked against what the
-JavaScript one (`Backends::JS`) took after it. C-only decisions are in the comment atop
+where it plugs in, what it is checked against, and the traps. C-only decisions are in the comment atop
 `Backends::Native`, JavaScript-only ones atop `Backends::JS`, not here.
 
 ## What a backend is
@@ -19,7 +17,7 @@ guardrails) and either runs it or writes it out as something else that runs. It 
 IR does not say: the IR is target-neutral, and a backend never reaches back into the DSL or the
 builder.
 
-There are nine today:
+The backends:
 
 - `Backends::Reference` runs the tree in Ruby. **It is the answer key**: what a program means is
   what Reference does with it. It is named for that role, not for its language, and it is never
@@ -39,8 +37,7 @@ There are nine today:
 
 ## A second console
 
-The Game Boy Color is the first backend for a console other than the Advance, and it showed what
-a console of its own needs beyond a lowering:
+A console of its own needs, beyond a lowering:
 
 - **A description** (`Console::Description`, `Console.described(:gbc)`): its screen size, what it
   can blend, how long a frame is, the rates its mix of recordings can run at
@@ -101,8 +98,7 @@ SM83 the same way. The comment atop `Backends::GBC` says the rest.
 **What the cartridge lowerings share, and what they do not.** The Color's and the Super Nintendo's
 lowerings each write machine code for a processor of their own, and that code, the runtime it
 calls and where the console keeps things are each lowering's alone. Everything they decide before
-writing an instruction is shared, because two copies of a decision drift apart (they did: one
-lowering made the routines a bend calls and the other did not):
+writing an instruction is shared, because two copies of a decision drift apart:
 
 - `Backends::LoweringPlan` — what a run reaches, the numbers timers and scenes are known by, how
   each table is kept, constant folding, the game loop in the console's order, and the refusals
@@ -172,16 +168,14 @@ A new lowering for a computer that can run a runtime of that shape should start 
 only write a lowering of its own when the tree cannot say what its machine needs.
 
 **A new console's lowering is written fresh, its own code generator in Ruby.** This is the
-operator's standing rule (2026-11-04, decided for the PlayStation; the Nintendo 64 will be the
-same). Never retarget the native C lowering at a console through a cross-compiler, and never bend
+operator's standing rule. Never retarget the native C lowering at a console through a cross-compiler, and never bend
 one lowering to serve two consoles: a build for a console needs nothing outside Ruby, and every
 routine it emits is ours to profile and change. Code two lowerings share is found and factored out
 afterwards, from lowerings that exist, the way `LoweringPlan`, `BuildCache` and `RoutineCuts` were.
 A design pass for a console does not offer the C route as an option.
 
 **A console's lowering draws the way that console's hardware draws, and is not bent toward the
-other consoles' picture.** The operator's standing rule (2026-11-05, decided for the PlayStation's
-3D faces and lighting). What a game does — its numbers, where things are, which face is in front,
+other consoles' picture.** The operator's standing rule. What a game does — its numbers, where things are, which face is in front,
 `screen_spot` — stays exact against the interpreter. The picture is checked exactly against a model
 of that console's own drawing (for the PlayStation, `PS1::PolygonFill`, Beetle's fill in Ruby), and
 where drawing the console's way puts a pixel somewhere other than the interpreter's picture, that
@@ -190,8 +184,7 @@ the operator as a choice. Pick the way the console's own games drew, and make it
 
 **A lowering replaces a shared piece only with a measured reason, written down where the
 override is, and every override is listed in one place a test checks.** The operator's standing
-rule (2026-11-05, after the off-window face skip moved into `IR::PlaceDrawing` and cost the Advance
-time and code it got back by keeping its own). Work shared in the IR or a shared module is the
+rule. Work shared in the IR or a shared module is the
 default for every lowering. A lowering that does the same job its own way says so beside its code,
 with the measurement that makes its way cheaper on its console, and names itself in the list, so
 "which consoles do this their own way, and why" is answered in one place. An override changes only

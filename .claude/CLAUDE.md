@@ -337,8 +337,8 @@ same name — the GBA backend has an `Audio` class of its own — write the whol
 
 ### Core Files
 
-- `lib/vblank/builder.rb` — The DSL entry point (`Builder`). Thin now: it `require`s and
-  `include`s one concern module per area from `lib/vblank/builder/` (19 files), each
+- `lib/vblank/builder.rb` — The DSL entry point (`Builder`). It `require`s and
+  `include`s one concern module per area from `lib/vblank/builder/`, each
   owning a slice of the flat verb surface — `randomness`, `sound`, `music`, `text`,
   `images`, `sprites`, `sprite_import`, `input`, `drawing`, `variables`, `control_flow`,
   `scenes`, `collision`, `tiled`, `composition`, `timers`, `sampled_audio`, `layers`. Every
@@ -477,7 +477,7 @@ explanation, and leads with what went wrong and where.
 
 ## Examples
 
-`examples/` (27 programs). Most are cited inline in the DSL reference's group files
+`examples/`. Most are cited inline in the DSL reference's group files
 (`.claude/dsl/`, indexed by `.claude/rules/dsl-reference.md`) next to the verb they demonstrate. Two are flagship "putting it all together" showcases, grown as
 features land rather than spawning one-feature-per-example demos:
 

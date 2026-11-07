@@ -27,8 +27,7 @@ bundle exec ruby -Itest test/all/vblank/dsl/test_thing.rb           # one file, 
 
 Every run checks its output against the interpreter, so a change inside one lowering can break
 only that run. The interpreter is the answer key for all of them, so a change to it is never
-narrow. Measured on 2026-10-18, a whole `rake test:all` took about fifteen minutes: 177 seconds for
-the GBA run, 531 for the native and 199 for the JavaScript.
+narrow.
 
 ## One whole run on the machine at a time
 
