@@ -55,14 +55,35 @@ module VBlank
       # Each glyph keeps its own width, so an alphabet that was drawn proportionally
       # stays proportional. Give a block or +glyphs:+, not both.
       #
+      # OR A FONT OF THE GAME'S OWN PICTURES, in all their colours: a score in the game's
+      # numerals, words in letters lifted off a cartridge. `pictures:` maps each character to a
+      # picture declared with `image` — from art, a file, or a data pack's slots:
+      #
+      #   font :numerals, pictures: ("0".."9").to_h { |d| [d, :"numeral_#{d}"] }
+      #   draw_number score, 8, 8, digits: 5, font: :numerals   # no colour: the pictures have theirs
+      #
+      # A picture font draws each character as its picture (a blit on a bitmap screen, a sprite
+      # on a tiled one), so it costs what those pictures cost and nothing new. Its spacing is
+      # 0 unless given, since a picture carries its own margin. See #declare_picture_font.
+      #
       # @param name [Symbol] the name it registers under (used as draw_text's font:)
       # @param on [String] the character that marks a lit pixel
-      # @param spacing [Integer] blank pixels between characters
+      # @param spacing [Integer, nil] blank pixels between characters (1, or 0 for pictures:)
       # @param fold [Symbol, nil] :upper to render any case with these glyphs
       # @param glyphs [Hash{String=>Array<Array>}, nil] char → rows of pixel values
       # @param blank [Object] the pixel value that is not drawn
+      # @param pictures [Hash{String=>Symbol}, nil] char → a declared picture's name
       # @return [Symbol] the font name
-      def font(name, on: "#", spacing: 1, fold: nil, glyphs: nil, blank: 0, &block)
+      def font(name, on: "#", spacing: nil, fold: nil, glyphs: nil, blank: 0, pictures: nil, &block)
+        if pictures
+          if block || glyphs || fold
+            raise ArgumentError, "font :#{name} takes pictures: alone. Give pictures:, or glyphs: or a block, not both."
+          end
+
+          return declare_picture_font(name, pictures, spacing || 0)
+        end
+
+        spacing ||= 1
         definition = Graphics::Font::Definition.new(name, on: on)
         if glyphs
           raise ArgumentError, "font :#{name} takes a block or glyphs:, not both. Give one of them." if block
@@ -124,8 +145,11 @@ module VBlank
       # @param font [Symbol] a font registered in {Fonts} (defaults to :default)
       # @param within [Range, nil] the columns to place it in (defaults to the screen)
       # @param showing [Condition, Value, Symbol, nil] which of a pair of colors is showing
-      def draw_text(text, x, y, color, font: :default, within: nil, showing: nil, from: nil, length: nil)
-        return draw_list_text(text, x, y, color, font: font, from: from, length: length, placed: within || showing) if text.is_a?(DSL::List)
+      def draw_text(text, x, y, color = nil, font: :default, within: nil, showing: nil, from: nil, length: nil)
+        if text.is_a?(DSL::List)
+          refuse_list_in_picture_font!(font)
+          return draw_list_text(text, x, y, color, font: font, from: from, length: length, placed: within || showing)
+        end
 
         unless text.is_a?(String)
           raise ArgumentError,
@@ -135,6 +159,13 @@ module VBlank
         if from || length
           raise ArgumentError, "draw_text takes from: and length: with a list of character codes. These words are a String."
         end
+        if (pictured = @picture_fonts[font])
+          refuse_color_for_picture_font!("draw_text", font, color, showing)
+          refuse_missing_characters!(text, pictured, font)
+          return draw_picture_text(text, column_for(x, pictured.text_width(text), within, "draw_text"), y, pictured)
+        end
+
+        refuse_missing_color!("draw_text", color)
         colors = text_colors!(color, showing)
         chosen = IR::FontTable.of(@program).get(font) # fail early with a friendly error on an unknown font name
         refuse_missing_characters!(text, chosen, font)
@@ -178,14 +209,19 @@ module VBlank
       # @param value [Integer, Symbol, Value] the number to draw
       # @param x [Integer, Symbol] left edge of the field, or :left / :center / :right
       # @param y [Integer] top edge
-      # @param color [Symbol, String, Integer] digit color
+      # @param color [Symbol, String, Integer, nil] digit color (none in a font of pictures)
       # @param digits [Integer] how many digit columns to reserve
       # @param within [Range, nil] the columns to place the field in
-      def draw_number(value, x, y, color, digits: DEFAULT_DIGITS, font: :default, within: nil)
+      def draw_number(value, x, y, color = nil, digits: DEFAULT_DIGITS, font: :default, within: nil)
         unless DSL::Whole.positive?(digits)
           raise ArgumentError, "draw_number needs a positive number of digits. Got #{digits.inspect}."
         end
+        if (pictured = @picture_fonts[font])
+          refuse_color_for_picture_font!("draw_number", font, color, nil)
+          return draw_picture_number(value, x, y, pictured, font, digits, within)
+        end
 
+        refuse_missing_color!("draw_number", color)
         chosen = IR::FontTable.of(@program).get(font)
         x = column_for(x, (digits * chosen.cell_w) - chosen.spacing, within, "draw_number")
 
@@ -220,16 +256,217 @@ module VBlank
           raise ArgumentError, "text_width measures words (a String). Got #{text.inspect}."
         end
 
-        IR::FontTable.of(@program).get(font).text_width(text)
+        font_named(font).text_width(text)
       end
 
       # How tall one line of text is, in pixels — the other side of a box round it.
       #
       # @param font [Symbol] a font registered in {Fonts}
       # @return [Integer] pixels down
-      def text_height(font: :default) = IR::FontTable.of(@program).get(font).height
+      def text_height(font: :default) = font_named(font).height
 
       private
+
+      # The font a name means: a font of the game's own pictures, else a font of glyphs.
+      def font_named(name) = @picture_fonts[name] || IR::FontTable.of(@program).get(name)
+
+      # A FONT OF THE GAME'S OWN PICTURES. Each character names a picture declared with `image`
+      # (from art, a file or a data pack's slots), and draw_text and draw_number draw that
+      # picture where the character goes. Nothing goes in the tree for the font itself: the
+      # text it draws is blits and sprites of pictures already there, which every console
+      # already draws, so a picture font needs nothing new from any of them.
+      #
+      # The pictures may differ in width, so letters can be proportional, but not in height,
+      # since a line is one height. A number asks more of them (#refuse_unfit_numerals!).
+      def declare_picture_font(name, pictures, spacing)
+        refuse_font_name_taken!(name)
+        unless pictures.is_a?(Hash) && pictures.all? { |char, picture| char.is_a?(String) && char.length == 1 && picture.is_a?(Symbol) }
+          raise ArgumentError,
+                "font :#{name} takes pictures: as each character and the name of its picture, " \
+                "like `pictures: { \"0\" => :zero, \"1\" => :one }`. Got #{pictures.inspect}."
+        end
+        raise ArgumentError, "font :#{name} has no pictures. Give it at least one." if pictures.empty?
+
+        sizes = pictures.to_h do |char, picture|
+          size = @images[picture] or
+            raise ArgumentError,
+                  "font :#{name} names the picture :#{picture} for #{char.inspect}, and no picture has that name. " \
+                  "To fix this, declare it first with `image :#{picture}, ...`."
+          [char, size]
+        end
+        refuse_picture_heights_differ!(name, pictures, sizes)
+        @picture_fonts[name] = Graphics::PictureFont.new(pictures: pictures, sizes: sizes, spacing: spacing)
+        name
+      end
+
+      def refuse_picture_heights_differ!(name, pictures, sizes)
+        first, other = sizes.keys.partition { |char| sizes[char][1] == sizes.values.first[1] }
+        return if other.empty?
+
+        raise ArgumentError,
+              "font :#{name}: the picture :#{pictures[other.first]} is #{sizes[other.first][1]} pixels tall, and " \
+              ":#{pictures[first.first]} is #{sizes[first.first][1]}. All the pictures of a font must be one height. " \
+              "To fix this, make them the same height."
+      end
+
+      # One name is one font, whichever kind: a second `font :hud` is a mistake, and a picture
+      # font named like a built-in one would hide it.
+      def refuse_font_name_taken!(name)
+        return unless @picture_fonts.key?(name) || IR::FontTable.of(@program).declared?(name) ||
+                      Graphics::Fonts.find(name)
+
+        raise ArgumentError,
+              "font :#{name} is declared twice, or is the name of a built-in font. Each font needs its own name. " \
+              "To fix this, rename one of them."
+      end
+
+      # A picture font's pictures have their own colours, so a colour given beside it would be
+      # ignored, and a game that gave one expects to see it.
+      def refuse_color_for_picture_font!(verb, font, color, showing)
+        return if color.nil? && showing.nil?
+
+        raise ArgumentError,
+              "#{verb} with font :#{font} draws the font's own pictures, in their own colours. It takes no colour. " \
+              "To fix this, remove #{color.nil? ? 'showing:' : color.inspect}."
+      end
+
+      def refuse_missing_color!(verb, color)
+        return unless color.nil?
+
+        raise ArgumentError,
+              "#{verb} needs a colour after the place, like `#{verb} #{verb == 'draw_text' ? '"HI"' : ':score'}, 8, 8, :white`. " \
+              "Only a font made of pictures draws with no colour."
+      end
+
+      def refuse_list_in_picture_font!(font)
+        return unless @picture_fonts.key?(font)
+
+        raise ArgumentError,
+              "draw_text cannot draw a list of character codes in font :#{font}, because its letters are pictures. " \
+              "To fix this, draw the words as a String, or use a font of glyphs."
+      end
+
+      # Words in a picture font, at a column already worked out: each character's picture, at the
+      # pen's place. On a bitmap screen each is a blit; on a tiled one, a sprite declared once and
+      # shown every frame, as any tiled text is.
+      def draw_picture_text(text, x, y, pictured)
+        tiled = TILE_HARDWARE_MODES.include?(@screen_mode)
+        require_hud_declared_once!("draw_text") if tiled
+        pictured.each_glyph_x(text) do |char, dx|
+          picture = pictured.picture(char)
+          if tiled
+            hud_glyph_object(poses: [picture], pose: Build.int(0), x: x + dx, y: y)
+          else
+            blit(picture, x + dx, y)
+          end
+        end
+        nil
+      end
+
+      # A NUMBER IN A PICTURE FONT, in a field of +digits+ columns, each as wide as the widest
+      # digit, placed and right-aligned as any number is. A place the number has not reached is
+      # a leading nought: it shows the font's space where the font has one, which paints over the
+      # digit that was there, and nothing where it has none.
+      #
+      # A live number works each column's digit out as the game runs and shows one of the ten
+      # pictures for it: on a bitmap screen a `blit` of one of a set (blit_pose), on a tiled one a
+      # sprite whose pose is the digit, as a live number in any font is there.
+      def draw_picture_number(value, x, y, pictured, font, digits, within)
+        cell = pictured.cell_w
+        x = column_for(x, (digits * cell) - pictured.spacing, within, "draw_number")
+        fixed = DSL::Value.fixed_number(value)
+        if fixed
+          text = fixed.to_s
+          refuse_missing_characters!(text, pictured, font)
+          pad = [digits - text.length, 0].max
+          return draw_picture_text(text, x + (pad * cell), y, pictured) unless pictured.picture(" ")
+
+          return draw_picture_text((" " * pad) + text, x, y, pictured)
+        end
+
+        numerals = refuse_unfit_numerals!(pictured, font)
+        if TILE_HARDWARE_MODES.include?(@screen_mode)
+          require_hud_declared_once!("draw_number")
+          return draw_picture_number_tiled(value, x, y, pictured, numerals, digits)
+        end
+        unless value.is_a?(Symbol) || value.is_a?(DSL::Value)
+          raise ArgumentError,
+                "draw_number draws a number: a value, a variable, or an expression. Got #{value.inspect}."
+        end
+
+        draw_picture_number_painted(value, x, y, pictured, numerals, digits)
+      end
+
+      # Each column picks one of the pictures by number: the ten digits, then the space if the
+      # font has one. A leading nought's number is the space's, or -1 where there is none, which
+      # a blit of one of a set draws as nothing. The number is worked out once into a variable,
+      # so the test for each picture reads it rather than working it out again.
+      def draw_picture_number_painted(value, x, y, pictured, numerals, digits)
+        source = next_number_var
+        store!(source, value)
+        shown = next_number_var
+        blank = pictured.picture(" ") ? 10 : -1
+        poses = numerals + (pictured.picture(" ") ? [pictured.picture(" ")] : [])
+        digits.times do |i|
+          place = 10**(digits - 1 - i)
+          store!(shown, place == 1 ? digit_at(source, 1) : digit_or_blank(source, place, blank))
+          blit(poses, x + (i * pictured.cell_w), y, showing: shown)
+        end
+        nil
+      end
+
+      # The digit of +source+ at +place+, or +blank+ while the number is smaller than the place:
+      # blank + (source >= place) * (digit - blank), with no test to branch on.
+      def digit_or_blank(source, place, blank)
+        reached = Build.binop(:>=, Build.var_ref(source), Build.int(place))
+        Build.binop(:+, Build.int(blank), Build.binop(:*, reached, Build.binop(:-, digit_at(source, place), Build.int(blank))))
+      end
+
+      # A live number on a tiled screen: a sprite for each column, whose pose is the blank or one
+      # of the ten digits, read from its variable every frame (see #hud_digit_pose).
+      def draw_picture_number_tiled(value, x, y, pictured, numerals, digits)
+        source = hud_number_variable(value)
+        blank = pictured.picture(" ") || clear_picture_image(*@images[numerals.first])
+        digits.times do |i|
+          place = 10**(digits - 1 - i)
+          hud_glyph_object(poses: [blank] + numerals, pose: hud_digit_pose(source, place),
+                           x: x + (i * pictured.cell_w), y: y)
+        end
+        nil
+      end
+
+      # A number can show any digit, and shows each in the same column, so a picture font draws
+      # a live number only when it holds all ten and they are one size (with the space too, if it
+      # has one). Returns the ten pictures, nought first.
+      def refuse_unfit_numerals!(pictured, font)
+        missing = pictured.missing_characters("0123456789")
+        unless missing.empty?
+          raise ArgumentError,
+                "draw_number: font :#{font} has no #{missing.map(&:inspect).join(', ')}. A number that changes can " \
+                "show any digit, so the font needs a picture for each of 0 to 9. To fix this, add the missing pictures."
+        end
+
+        numerals = ("0".."9").map { |digit| pictured.picture(digit) }
+        sizes = (numerals + [pictured.picture(" ")].compact).map { |picture| @images[picture] }.uniq
+        return numerals if sizes.one?
+
+        raise ArgumentError,
+              "draw_number: font :#{font} has pictures of different sizes for its digits. A number draws each digit in " \
+              "the same place, so the pictures of 0 to 9, and of the space, must be one size. To fix this, make them " \
+              "the same size."
+      end
+
+      # A picture of +width+ by +height+ with nothing in it: what a leading nought shows on a
+      # tiled screen in a font with no space. One for each size.
+      def clear_picture_image(width, height)
+        name = :"__picture_font_clear_#{width}x#{height}"
+        return name if @images.key?(name)
+
+        define_pixel_image(name, width: width, height: height,
+                                 data: Array.new(width * height, Images::TRANSPARENT_PIXEL),
+                                 transparent: Images::TRANSPARENT_PIXEL)
+        name
+      end
 
       # Words written in the game are known while it is built, so a character the font does not
       # have is said here. Left alone it is a gap in the line that only a look at the picture finds.
@@ -252,7 +489,7 @@ module VBlank
       # second `font :hud` is a mistake somebody made, and what it draws with is the first
       # one, which reads as the art being wrong rather than as the mistake it is.
       def declare_font(name, font)
-        if IR::FontTable.of(@program).declared?(name)
+        if IR::FontTable.of(@program).declared?(name) || @picture_fonts.key?(name)
           raise ArgumentError,
                 "font :#{name} is declared twice. Each font needs its own name. " \
                 "To fix this, rename one of them."

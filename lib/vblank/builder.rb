@@ -192,6 +192,7 @@ module VBlank
       @sprite_objects = []     # every sprite and pool slot object, in the order the game declared them
       @hud_objects = []        # tiled-mode text/number glyph sprites, drawn on top after every wait_vblank
       @glyph_images = {}       # [font, char, color] → a cached glyph image name (one 8x8 sprite tile per glyph)
+      @picture_fonts = {}      # font name → Graphics::PictureFont, a font of the game's own pictures
       @verb_owns_text = nil    # the verb drawing its own text right now (a menu's rows), rather than the author placing it
       @animations = []         # flipbook sprites, whose pose is advanced on a beat after every wait_vblank
       @pool_animations = []    # ...and posed pools, which step every instance on their own beat
