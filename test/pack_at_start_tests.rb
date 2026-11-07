@@ -217,6 +217,9 @@ module PackAtStartTests
                                                                                          build_version: build_version).to_bytes
   end
 
+  # The made-up original's one release, as the unpacking of a build with no copy is handed it.
+  private def made_up_release = VBlank::Original::Release.from("Test", { "sha1" => SHA1, "size" => COPY_SIZE })
+
   # The made-up original on a machine where no copy of it is set.
   private def original_nowhere(folder)
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: {}, settings_file: File.join(folder, "made_up.yml"),
@@ -313,7 +316,7 @@ module PackAtStartTests
      ["the game of unpacked slots", game_program(reads_heights), game_program(reads_heights, options: PACK_AT_START),
       [tile.call(0), tile.call(1), HEIGHTS]],
      ["the unpacking", heights.call(VBlank::Builder.new).unpacking.program,
-      heights.call(VBlank::Builder.new(options: PACK_AT_START)).unpacking(copy_size: COPY_SIZE).program,
+      heights.call(VBlank::Builder.new(options: PACK_AT_START)).unpacking(release: made_up_release).program,
       COPY.bytes.each_slice(64).to_a]]
   end
 
@@ -469,7 +472,7 @@ module PackAtStartTests
   # left out, that program holds none of the copy either: it is built for a copy of a known size
   # (the release's), and reads the copy from the file it is handed.
   private def unpacking_without_copy(folder)
-    unpacked_pack(VBlank::Builder.new(options: PACK_AT_START), folder).unpacking(copy_size: COPY_SIZE)
+    unpacked_pack(VBlank::Builder.new(options: PACK_AT_START), folder).unpacking(release: made_up_release)
   end
 
   def test_the_unpacking_built_with_no_copy_unpacks_the_copy_it_is_handed

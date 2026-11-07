@@ -91,12 +91,12 @@ module VBlank
       private_class_method :formats_of, :tile_format_of
 
       def initialize(name:, shape:, at:, count:, width:, signed:, format:)
-        at = at.to_h { |release, place| [release.to_s, place] } if at.is_a?(Hash)
         unless (at.nil? || place?(at) || release_places?(at)) && count.is_a?(Integer) && count.positive?
-          raise ArgumentError, "Slot :#{name} was given at: #{at.inspect} and count: #{count.inspect}. at: must be a " \
-                               "place in the copy, 0 or more, a place for each release by its name " \
-                               "(`at: { \"US\" => 0x10, \"EU\" => 0x30 }`), or left out for a slot the unpacking " \
-                               "routine fills. count: must be 1 or more."
+          raise ArgumentError, "Slot :#{name} was given at: #{at.inspect} and count: #{count.inspect}. " \
+                               "at: must be a place in the copy, 0 or more. " \
+                               "It can also be a Hash of places by release name, like `at: { \"US\" => 0x10, \"EU\" => 0x30 }`. " \
+                               "Leave at: out for a slot the unpacking routine fills. " \
+                               "count: must be 1 or more."
         end
 
         super
@@ -105,7 +105,8 @@ module VBlank
       # Whether the place is given release by release.
       def places_by_release? = at.is_a?(Hash)
 
-      # The names of the releases the slot gives a place for (none for a slot with one place).
+      # The names of the releases the slot gives a place for, as the original lists them (none for a
+      # slot with one place).
       def release_names = places_by_release? ? at.keys : []
 
       # The slot as it is in the release called +release+: the same name, shape and size, with the
@@ -113,12 +114,22 @@ module VBlank
       def in_release(release)
         return self unless places_by_release?
 
-        with(at: at.fetch(release.to_s) { raise ArgumentError, "Slot :#{name} has no place for the #{release} release." })
+        with(at: at.fetch(release) { raise ArgumentError, "Slot :#{name} has no place for the #{release} release." })
       end
 
       private def place?(value) = value.is_a?(Integer) && !value.negative?
 
-      private def release_places?(value) = value.is_a?(Hash) && !value.empty? && value.values.all? { |place| place?(place) }
+      private def release_places?(value)
+        value.is_a?(Hash) && !value.empty? && value.all? { |release, place| release.is_a?(String) && place?(place) }
+      end
+
+      # A slot with a place for each release has no one place to read until a release is chosen.
+      private def refuse_places_by_release!
+        return unless places_by_release?
+
+        raise ArgumentError, "Slot :#{name} has a place for each release. Ask for the slot in one release first, " \
+                             "with `in_release`."
+      end
 
       # How many bytes the slot holds.
       def byte_size = count * item_bytes
@@ -147,6 +158,8 @@ module VBlank
       # with no place in the copy.
       def refuse_past_end!(copy_size)
         raise ArgumentError, "Slot :#{name} has no place in the copy. Its routine fills it." if filled_by_routine?
+
+        refuse_places_by_release!
         return if at + byte_size <= copy_size
 
         raise WrongCopy, "Slot :#{name} is #{byte_size} bytes from #{at}, and the copy is #{copy_size} bytes. The slot " \

@@ -26,4 +26,20 @@ class TestOriginalShell < Minitest::Test
       assert_match "test_shell.rb:", refused.message
     end
   end
+
+  # A shell has no copy, so it must know every release the game reads: a slot's places by release
+  # that leave one out are refused when the shell is built, naming it.
+  def test_a_slot_with_no_place_for_a_readable_release_is_refused_as_a_shell
+    Dir.mktmpdir do |folder|
+      from = two_release_original(folder)
+      game = VBlank.game("LEAVES OUT EU", consoles: %i[gba]) do
+        data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: { "US" => PALETTE_AT }, count: 16 }
+        game_loop { wait_vblank }
+      end
+      refused = assert_raises(VBlank::BuildError) { VBlank::Original::Shell.build(game, err: nil) }
+
+      assert_match "EU", refused.message
+      assert_match ":palette", refused.message
+    end
+  end
 end

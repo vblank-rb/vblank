@@ -114,11 +114,11 @@ module VBlank
 
       # The pack's unpacking as a program of its own (an Original::Unpacking): what a shell runs on
       # the player's machine to make the pack, and what a test plays on each run. A build that
-      # leaves the pack out reads no copy, so its unpacking is built for a copy of +copy_size+
-      # bytes, the release's size, which it is handed as it starts; an all-in-one build's holds the
-      # copy it read, and needs no size. +release+ is the name of the release the unpacking is for,
-      # where the slots' places or the routine differ by release; each release has a program of its own.
-      def unpacking(copy_size: nil, release: nil) = @unpackings[[copy_size, release]] ||= @make_unpacking.call(copy_size, release)
+      # leaves the pack out reads no copy, so its unpacking is built for a copy of the size of
+      # +release+ (an Original::Release), which it is handed as it starts; an all-in-one build's
+      # holds the copy it read, and needs no release. Each release has a program of its own, since
+      # the slots' places or the routine can differ by release.
+      def unpacking(release: nil) = @unpackings[release] ||= @make_unpacking.call(release)
 
       # The handle of the slot named +name+.
       def [](name)

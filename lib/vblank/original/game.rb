@@ -62,6 +62,15 @@ module VBlank
     # copy of (Game#platform).
     Copy = Data.define(:path, :release, :sha1, :platform) do
       def initialize(path:, release:, sha1:, platform: DEFAULT_PLATFORM) = super(path:, release:, sha1:, platform: Original.platform_named(platform))
+
+      # The one release a copy is, as every original names its releases (Game#release_names).
+      def release_names = [release]
+
+      # The same one release: a copy accepted is always of a release the game reads.
+      def readable_release_names = [release]
+
+      # The copy's release as a Release record. Only the name and SHA-1 are known from a copy.
+      def release_record = Release.new(name: release, sha1: sha1, md5: nil, size: nil, read: true)
     end
 
     # HOW ANOTHER PATH ON THIS MACHINE IS FOUND, the way the copy is: its environment variable, its
@@ -147,6 +156,12 @@ module VBlank
 
       # The releases the game knows (Releases), or nil for a game that accepts its copy by a probe.
       attr_reader :releases
+
+      # The names of the releases the game knows, and of those it reads. A game that accepts its
+      # copy by a probe lists none: it knows a release only once it has a copy.
+      def release_names = @releases ? @releases.list.map(&:name) : []
+
+      def readable_release_names = @releases ? @releases.readable.map(&:name) : []
 
       # The accepted copy. NotSet when nothing names where one is, WrongCopy when the one named
       # cannot be used. Inside Original.without_copies it is NotSet whatever is set (a shell build).

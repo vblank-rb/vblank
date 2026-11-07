@@ -90,18 +90,20 @@ module VBlank
         refuse_unfilled_slots!(slots)
         refuse_places_not_matching_releases!(slots, from, copy)
         bytes = File.binread(copy.path)
-        # The slots as they are in the copy's release: one place each.
-        here = slots.list.map { |slot| slot.in_release(copy.release) }
+        copy_release = copy.release_record
+        copy_release_slots = slots_in_release(slots, copy_release.name)
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
-        copied = here.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
-        unpacking = (unpacking_program(bytes, here, slots.routine, reading, release: copy.release) if slots.routine)
+        copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
+        unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
         slot_bytes = unpacking ? unpack_on_interpreter(unpacking) : copied
         @data_pack_file = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes.freeze
         @data_pack_contents = Original::Pack.from_bytes(@data_pack_file)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
                                        slots: slots.list,
-                                       make_unpacking: ->(_size, _release) { unpacking || unpacking_program(bytes, here, nil, reading) })
+                                       make_unpacking: lambda { |_release|
+                                         unpacking || unpacking_program(bytes, copy_release_slots, nil, reading, release: copy_release)
+                                       })
       end
 
       private
@@ -146,9 +148,10 @@ module VBlank
         @pack_slot_starts = layout.slot_starts
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list, original: from,
-                                       make_unpacking: lambda { |copy_size, release|
-                                         here = slots.list.map { |slot| slot.in_release(release) }
-                                         unpacking_program(nil, here, slots.routine, reading, copy_size: copy_size, release: release)
+                                       make_unpacking: lambda { |release|
+                                         release = refuse_unsized_unpacking!(release)
+                                         unpacking_program(nil, slots_in_release(slots, release.name), slots.routine, reading,
+                                                           release: release)
                                        })
       end
 
@@ -333,20 +336,19 @@ module VBlank
       # by +routine+, the game's `slots.fill_from_copy` block, run as game code on a builder of its
       # own. A pack with no routine has one too, which only copies: it is what a shell runs for any pack.
       #
-      # With the pack left out there are no +bytes+: the program is built for a copy of +copy_size+
-      # bytes, the size of the release it unpacks, and reads the copy from the file it is handed as
+      # With the pack left out there are no +bytes+: the program is built for a copy of the size
+      # of +release+ (an Original::Release), the one it unpacks, and reads the copy from the file it is handed as
       # it starts, so it holds none of the copy either. That program is what a shell plays on the
       # player's machine, so it is built for the game's console, and shows how far it has got
       # (#define_unpacking_progress). +reading+ (a CopyReading) says which packed formats the copy
       # offers the routine.
-      def unpacking_program(bytes, slots, routine, reading, copy_size: nil, release: nil)
-        copy_size = refuse_unsized_unpacking!(copy_size) unless bytes
+      def unpacking_program(bytes, slots, routine, reading, release:)
         Builder.keeping_builder_in_use do
           maker = bytes ? Builder.new : Builder.new(options: unpacking_options)
           copy = if bytes
                    maker.table(Original::Unpacking::COPY, bytes.bytes, width: :byte, signed: false)
                  else
-                   declare_copy_table_from_start_file(maker, slots, copy_size)
+                   declare_copy_table_from_start_file(maker, slots, release.size)
                  end
           list = maker.list(Original::Unpacking::BYTES, capacity: slots.sum(&:byte_size), width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
@@ -363,7 +365,7 @@ module VBlank
           slots.reject(&:filled_by_routine?).each do |slot|
             reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
           end
-          maker.instance_exec(reader, pack, release, &routine) if routine
+          maker.instance_exec(reader, pack, release.name, &routine) if routine
           finished.store!(1)
           if progress
             maker.call(progress)
@@ -371,7 +373,7 @@ module VBlank
           end
           maker.halt
           maker.finalize_program
-          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes ? bytes.bytesize : copy_size,
+          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes ? bytes.bytesize : release.size,
                                   format_words: reader.format_words)
         end
       end
@@ -414,12 +416,12 @@ module VBlank
         maker.table(Original::Unpacking::COPY, DSL::StartFileEntries.new(at: 0, count: copy_size), width: :byte, signed: false)
       end
 
-      def refuse_unsized_unpacking!(copy_size)
-        return copy_size if copy_size.is_a?(Integer) && copy_size.positive?
+      def refuse_unsized_unpacking!(release)
+        return release if release.is_a?(Original::Release) && release.size.is_a?(Integer) && release.size.positive?
 
         raise ArgumentError, "This build reads its data pack as the game starts, so its unpacking reads no copy as it " \
-                             "is built. It is built for a copy of one size. Say the size of the release it unpacks: " \
-                             "`pack.unpacking(copy_size: 1_048_576)`."
+                             "is built. It is built for a copy of one size. Name the release it unpacks, with its size: " \
+                             "`pack.unpacking(release: release)`."
       end
 
       # How far a routine may go on the interpreter before it is taken to be stuck. A routine reads
@@ -464,9 +466,10 @@ module VBlank
         by_release = slots.list.select(&:places_by_release?)
         return if by_release.empty?
 
-        releases = from.is_a?(Original::Game) ? from.releases : nil
-        known = releases ? releases.list.map(&:name) : [copy&.release || from.release].compact
-        needed = releases ? releases.readable.map(&:name) : known
+        known = from.release_names
+        needed = from.readable_release_names
+        # A game that accepts its copy by a probe lists no releases, so the copy's own is the only one.
+        known = needed = [copy.release] if known.empty? && copy
         by_release.each do |slot|
           missing = needed - slot.release_names
           unknown = slot.release_names - known
@@ -475,10 +478,14 @@ module VBlank
           problems = []
           problems << "It names no place for the #{missing.join(', ')} release#{'s' if missing.size > 1}." unless missing.empty?
           problems << "#{unknown.join(', ')} #{unknown.size > 1 ? 'are' : 'is'} no release of the original." unless unknown.empty?
-          raise BuildError, "Slot :#{slot.name} gives its place release by release. #{problems.join(' ')} The releases are " \
-                            "#{known.join(', ')}. Give at: a place for each release the game reads, and no other name."
+          raise BuildError, "Slot :#{slot.name} has an at: with a place for each release. #{problems.join(' ')} " \
+                            "The releases are #{known.join(', ')}. Give at: a place for each release the game reads. " \
+                            "Do not give any other name."
         end
       end
+
+      # The slots as they are in the release called +release_name+: one place each.
+      def slots_in_release(slots, release_name) = slots.list.map { |slot| slot.in_release(release_name) }
 
       def refuse_unfilled_slots!(slots)
         return if slots.routine

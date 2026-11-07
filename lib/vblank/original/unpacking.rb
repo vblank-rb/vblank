@@ -20,7 +20,7 @@ module VBlank
     # BUILT WITH THE PACK LEFT OUT. Built all-in-one, the copy is a table of constants made from
     # the copy's file as the game is built. A build that leaves the pack out (`pack_at_start:`,
     # Builder::DataPacks) has no copy and must not hold the original's bytes, so its program is
-    # built for a copy of a known size (`pack.unpacking(copy_size:)`, the release's size) and COPY
+    # built for a copy of a known size (`pack.unpacking(release:)`, which holds the release's size) and COPY
     # is read from the file it is handed as it starts (IR::StartFile): the player's copy. Played to
     # its `halt` on any computer's runtime handed that file, BYTES read back after it is the pack.
     # The routine itself does not change for any of that. What a shell must still add is playing it
