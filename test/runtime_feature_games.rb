@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "place_games"
+
 # Small games for the tests that a runtime feature (IR::Backends::RuntimeFeatures) is in a game's
 # C, JavaScript or Ruby only when the game uses it.
 module RuntimeFeatureGames
@@ -17,6 +19,14 @@ module RuntimeFeatureGames
   # What a shared screen file must not name once the light feature holds it. (The game's own
   # rg_game_shade_span and rg_game_shade_amount are not: the lowering always writes them.)
   LIGHT_NAMES = /rg_shade_|rg_screen_work_out_shade|shade_spans|shade_steps|shade_off/
+
+  # What a shared screen file must not name once the columns feature holds it.
+  COLUMNS_NAMES = /rg_screen_column/
+
+  # What a shared screen file must not name once the faces feature holds it. (C's screen header still
+  # declares rg_screen_face and rg_screen_column, which the lowering always calls, so the C test reads
+  # rg_screen.c alone for these two.)
+  FACES_NAMES = /rg_screen_face|face_edge|FaceEdge|face_crossing|face_reciprocals|FACE_RECIPROCALS|face_distance|face_place_in_perspective|face_row|FACE_MOST_CORNERS|shading_place|SHADING_PLACES|shaded_(place|color)/
 
   # A tiled screen with one background of one tile, put up as declared and never touched.
   private def game_with_a_background
@@ -79,6 +89,20 @@ module RuntimeFeatureGames
   private def game_that_fades
     program(screen(:bitmap), fade(toward: :black, amount: int(50)), tint(color: :red, amount: int(50)), halt)
   end
+
+  # A bitmap screen with one stretched column and no place.
+  private def game_with_a_column
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      image :bars, width: 2, height: 4, data: [0x001F, 0x03E0, 0x7C00, 0x7FFF, 0x001F, 0x03E0, 0x7C00, 0x7FFF]
+      game_loop { draw_column_at :bars, slice: 0, x: 10, top: 0, height: 8 }
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # A bitmap screen with one face of a place and no stretched column.
+  private def game_with_a_face = PlaceGames.square
 
   # A tiled room lit by a spotlight, and nothing else that fades.
   private def game_with_a_light

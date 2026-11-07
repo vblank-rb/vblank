@@ -94,6 +94,24 @@ class TestRuntimeFeaturesInJS < Minitest::Test
     refute_includes text, "function rg_screen_work_out_shade("
   end
 
+  def test_a_game_with_a_column_takes_in_the_columns_feature
+    assert_includes JS.new.factory(game_with_a_column), "function rg_screen_column("
+  end
+
+  def test_a_game_with_no_column_holds_none_of_the_columns_feature
+    refute_includes JS.new.factory(program(screen(:bitmap), clear_screen(:white), halt)), "function rg_screen_column("
+    refute_includes JS.new.factory(game_with_a_face), "function rg_screen_column("
+  end
+
+  def test_a_game_with_a_face_takes_in_the_faces_feature
+    assert_includes JS.new.factory(game_with_a_face), "function rg_screen_face("
+  end
+
+  def test_a_game_with_no_face_holds_none_of_the_faces_feature
+    refute_includes JS.new.factory(program(screen(:bitmap), clear_screen(:white), halt)), "function rg_screen_face("
+    refute_includes JS.new.factory(game_with_a_column), "function rg_screen_face("
+  end
+
   def test_the_screen_file_names_no_feature
     screen = File.read(File.join(JS::RUNTIME_DIR, "rg_screen.js"))
 
@@ -102,5 +120,7 @@ class TestRuntimeFeaturesInJS < Minitest::Test
     refute_match(SPRITES_NAMES, screen)
     refute_match(FADES_NAMES, screen)
     refute_match(LIGHT_NAMES, screen)
+    refute_match(COLUMNS_NAMES, screen)
+    refute_match(FACES_NAMES, screen)
   end
 end

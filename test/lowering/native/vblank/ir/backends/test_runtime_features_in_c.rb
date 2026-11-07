@@ -103,6 +103,28 @@ class TestRuntimeFeaturesInC < Minitest::Test
     refute_includes features_text(plain), "rg_light"
   end
 
+  def test_a_game_with_a_column_takes_in_the_columns_feature
+    assert_includes features_text(game_with_a_column), %(#include "columns/rg_columns.c")
+  end
+
+  def test_a_game_with_no_column_holds_none_of_the_columns_feature
+    plain = program(screen(:bitmap), clear_screen(:white), halt)
+
+    refute_includes features_text(plain), "rg_columns"
+    refute_includes features_text(game_with_a_face), "rg_columns"
+  end
+
+  def test_a_game_with_a_face_takes_in_the_faces_feature
+    assert_includes features_text(game_with_a_face), %(#include "faces/rg_faces.c")
+  end
+
+  def test_a_game_with_no_face_holds_none_of_the_faces_feature
+    plain = program(screen(:bitmap), clear_screen(:white), halt)
+
+    refute_includes features_text(plain), "rg_faces"
+    refute_includes features_text(game_with_a_column), "rg_faces"
+  end
+
   # The screen's own files name no feature: they call their hooks, and a hook nobody takes does
   # what the screen does alone.
   def test_the_screen_files_name_no_feature
@@ -114,5 +136,7 @@ class TestRuntimeFeaturesInC < Minitest::Test
     refute_match(SPRITES_NAMES, screen + header)
     refute_match(FADES_NAMES, screen + header)
     refute_match(LIGHT_NAMES, screen + header)
+    refute_match(COLUMNS_NAMES, screen + header)
+    refute_match(FACES_NAMES, screen + header)
   end
 end

@@ -92,6 +92,27 @@ class TestRuntimeFeaturesInRuby < Minitest::Test
     refute_includes text, "def rg_screen_work_out_shade"
   end
 
+  def test_a_game_with_a_column_takes_in_the_columns_feature
+    assert_includes Ruby.new.live_source(game_with_a_column), "def rg_screen_column("
+  end
+
+  def test_a_game_with_no_column_holds_none_of_the_columns_feature
+    refute_includes Ruby.new.live_source(program(screen(:bitmap), clear_screen(:white), halt)), "def rg_screen_column("
+    refute_includes Ruby.new.live_source(game_with_a_face), "def rg_screen_column("
+  end
+
+  def test_a_game_with_a_face_takes_in_the_faces_feature
+    text = Ruby.new.live_source(game_with_a_face)
+
+    assert_includes text, "def rg_screen_face("
+    assert_includes text, "rg_faces_setup"
+  end
+
+  def test_a_game_with_no_face_holds_none_of_the_faces_feature
+    refute_includes Ruby.new.live_source(program(screen(:bitmap), clear_screen(:white), halt)), "rg_screen_face"
+    refute_includes Ruby.new.live_source(game_with_a_column), "rg_faces"
+  end
+
   def test_the_screen_file_names_no_feature
     screen = File.read(File.join(Ruby::RUNTIME_DIR, "rg_screen.rb"))
 
@@ -100,5 +121,7 @@ class TestRuntimeFeaturesInRuby < Minitest::Test
     refute_match(SPRITES_NAMES, screen)
     refute_match(FADES_NAMES, screen)
     refute_match(LIGHT_NAMES, screen)
+    refute_match(COLUMNS_NAMES, screen)
+    refute_match(FACES_NAMES, screen)
   end
 end
