@@ -132,6 +132,14 @@ module VBlank
         [program, EvaluatedGame.new(@block, options: options, settings: settings).declared_data_pack]
       end
 
+      # THE DATA PACK FILE THE ALL-IN-ONE BUILD MAKES from the copy of the original the game reads,
+      # its bytes: the file a build for a computer that leaves its pack out is handed as it starts,
+      # and the one a shell makes on the player's machine. Nil for a game with no data_pack.
+      def data_pack_file(settings: {}, console: @consoles.first)
+        options = @options.with(console: console, variant: variant_for(console), consoles: @consoles, for_computer: true)
+        EvaluatedGame.new(@block, options: options, settings: settings).made_data_pack_file
+      end
+
       # The variant the game names for +console+ in `variants:`, or nil.
       def variant_for(console) = @variants[console.to_sym]
 

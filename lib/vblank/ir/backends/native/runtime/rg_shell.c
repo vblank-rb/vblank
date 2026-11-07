@@ -239,8 +239,9 @@ static const char *file_name_of(const char *path) {
   return name;
 }
 
-/* Whether the pack kept at +path+ passes the check: 1, or 0, the player told why when a file is there. */
-static int kept_pack_passes(const char *path) {
+/* Whether the pack kept at +path+ passes the check: 1, or 0, the player told why when a file is there
+ * (in a box unless +quiet+). */
+static int kept_pack_passes(const char *path, int quiet) {
   const rg_shell_description *shell = rg_shell_facts;
   size_t size = 0;
   uint8_t *bytes = SDL_LoadFile(path, &size);
@@ -253,7 +254,7 @@ static int kept_pack_passes(const char *path) {
   const char *names[] = {"path", "refusal"};
   const char *values[] = {path, refusal};
   rg_words_fill(words, sizeof words, shell->kept_pack_refused_words, 2, names, values);
-  tell(words, 0);
+  tell(words, quiet);
   return 0;
 }
 
@@ -339,7 +340,7 @@ char *rg_shell_pack_path(const rg_shell_asked *asked) {
   }
 
   int quiet = asked->copy != NULL;
-  if (kept_pack_passes(pack_path)) {
+  if (kept_pack_passes(pack_path, quiet)) {
     SDL_free(result);
     return pack_path;
   }

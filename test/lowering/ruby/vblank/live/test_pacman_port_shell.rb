@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "stringio"
 require "tmpdir"
 require "vblank/live"
-require VBlank.root.join("examples/pacman").to_s
-require VBlank.root.join("test/fixtures/pacman_port/pacman_fixture").to_s
-require VBlank.root.join("test/fixtures/pacman_port/pacman_port").to_s
+require "shell_tests"
 
 # THE PAC-MAN PORT BUILT AS A SHELL, PLAYED AS RUBY. The port (test/fixtures/pacman_port/pacman_port.rb)
 # holds none of the data of pacman.gba, the cartridge examples/pacman.rb builds, which stands in for
 # a retail original. The shell takes pacman.gba at Load ROM, unpacks it with the port's own routine
 # (LZ77 and run-length, as the cartridge packs it), keeps the pack, and plays Pac-Man.
 #
-# The answer keys: the pack the shell keeps is the cartridge's assets unpacked by a decoder written
-# apart from the port's routine (PacmanFixture.unpack_block), slot by slot; and the game it plays is
-# examples/pacman, pixel for pixel, over a tape of presses.
+# The answer keys: the pack the shell keeps is the one the port's all-in-one build makes, byte for
+# byte; and the game it plays is examples/pacman, pixel for pixel, over a tape of presses.
 class TestPacmanPortShell < Minitest::Test
+  include PacmanShellTests
+
   Headless = VBlank::Live::Headless
   Session = VBlank::Live::Session
   Shell = VBlank::Live::Shell
@@ -23,18 +23,7 @@ class TestPacmanPortShell < Minitest::Test
 
   CHOOSE_LOAD_ROM = { 2 => [:a] }.freeze
 
-  # How many passes of the game are watched, and the presses: left for a while, then up, long enough
-  # for Pac to eat a pellet, be caught, and blink.
-  GAME_PASSES = 200
-  TAPE = ((10..40).to_h { |pass| [pass, [:left]] }.merge((41..90).to_h { |pass| [pass, [:up]] }).merge((91..110).to_h { |pass| [pass, %i[right down]] })).freeze
-
-  # The port on a machine with no copy of the cartridge: what a shell is built from.
-  private def port_without_copy(folder) = PacmanPort.game(PacmanPort.original(env: {}))
-
-  # The port with the cartridge in reach, built all-in-one.
-  private def port_with_copy = PacmanPort.game(PacmanPort.original(env: { "PACMAN_ROM" => PacmanFixture::ROM_PATH }))
-
-  private def shell(folder) = Shell.from(VBlank::Original::Shell.build(port_without_copy(folder), err: nil))
+  private def shell(version: "1") = Shell.from(VBlank::Original::Shell.build(port_without_copy(version: version), err: nil))
 
   private def pictures_of(program)
     device = Headless.new(frames: GAME_PASSES, buttons: TAPE)
@@ -72,38 +61,53 @@ class TestPacmanPortShell < Minitest::Test
     Played.new(pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked)
   end
 
+  private def kept_pack(folder) = File.binread(File.join(folder, "kept", PACK_FILE))
+
+  private def example_pictures = pictures_of(Pacman::GAME.checked_program(err: nil, console: :gba))
+
   def test_the_first_start_plays_pacman_as_the_example_does_pixel_for_pixel
     Dir.mktmpdir do |folder|
-      played = play_shell(shell(folder), folder, picked: PacmanFixture::ROM_PATH)
+      played = play_shell(shell, folder, picked: copy_of_the_cartridge(folder))
 
       assert_equal 1, played.times_asked
       assert_empty played.refusals
-      assert_equal GAME_PASSES, played.pictures.size
-      assert_same_pictures pictures_of(Pacman::GAME.checked_program(err: nil, console: :gba)), played.pictures, "the shell"
+      assert_same_pictures example_pictures, played.pictures, "the shell"
     end
   end
 
-  def test_the_pack_the_shell_keeps_is_the_cartridges_assets_unpacked_byte_for_byte
+  def test_the_pack_the_shell_keeps_is_the_all_in_one_builds_byte_for_byte
     Dir.mktmpdir do |folder|
-      play_shell(shell(folder), folder, picked: PacmanFixture::ROM_PATH)
+      play_shell(shell, folder, picked: copy_of_the_cartridge(folder))
 
-      assert_equal PacmanFixture.expected_pack, File.binread(File.join(folder, "kept", PACK_FILE))
+      assert_equal all_in_one_pack, kept_pack(folder)
     end
   end
 
   def test_the_port_built_all_in_one_plays_pacman_as_the_example_does
-    assert_same_pictures pictures_of(Pacman::GAME.checked_program(err: nil, console: :gba)),
-                         pictures_of(port_with_copy.checked_program(err: nil, console: :gba)), "the port built all-in-one"
+    assert_same_pictures example_pictures, pictures_of(port_with_copy.checked_program(err: nil, console: :gba)), "the port built all-in-one"
   end
 
   def test_the_next_start_plays_from_the_kept_pack_with_the_cartridge_out_of_reach
     Dir.mktmpdir do |folder|
-      first = play_shell(shell(folder), folder, picked: PacmanFixture::ROM_PATH)
-      second = play_shell(shell(folder), folder, picked: nil)
+      copy = copy_of_the_cartridge(folder)
+      play_shell(shell, folder, picked: copy)
+      File.delete(copy)
+      second = play_shell(shell, folder, picked: nil)
 
       assert_equal 0, second.times_asked
       assert_empty second.refusals
-      assert_same_pictures first.pictures, second.pictures, "the second start"
+      assert_same_pictures example_pictures, second.pictures, "the second start"
+    end
+  end
+
+  def test_a_new_build_of_the_port_asks_for_the_cartridge_again
+    Dir.mktmpdir do |folder|
+      play_shell(shell, folder, picked: copy_of_the_cartridge(folder))
+      second = play_shell(shell(version: "2"), folder, picked: copy_of_the_cartridge(folder))
+
+      assert_equal 1, second.times_asked
+      assert_match "not the data pack this build reads", second.refusals.first
+      assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end
   end
 
@@ -111,10 +115,19 @@ class TestPacmanPortShell < Minitest::Test
     Dir.mktmpdir do |folder|
       wrong = File.join(folder, "wrong.gba")
       File.binwrite(wrong, File.binread(PacmanFixture::ROM_PATH).reverse)
-      played = play_shell(shell(folder), folder, picked: wrong, menu_frames: 40)
+      played = play_shell(shell, folder, picked: wrong, menu_frames: 40)
 
       assert_match "not a release of Pac-Man that this game knows", played.refusals.first
       refute File.exist?(File.join(folder, "kept", PACK_FILE))
+    end
+  end
+
+  def test_the_shell_written_as_one_ruby_file_holds_none_of_the_cartridge
+    Dir.mktmpdir do |folder|
+      path = VBlank::IR::Backends::Ruby.new.build_script(port_without_copy, File.join(folder, "pacman-ruby.rb"), console: :gba,
+                                                                                                               err: StringIO.new, shell: true)
+
+      assert_holds_none_of original_pieces, File.binread(path), "the Ruby script"
     end
   end
 end

@@ -191,7 +191,12 @@ module VBlank
           # that is busy, since Ruby runs one thread at a time. Beside a few busy threads a
           # program that ends in a second took minutes that way, and +seconds+ ran out on a
           # program that was only waiting to be read. Through files its run is its own.
-          def run_program(exe, args: [], input: "", env: {}, seconds: 60)
+          #
+          # With +complaints+ true it gives back what it printed and what it wrote to its error
+          # stream, as Run.
+          Run = Data.define(:printed, :complaints)
+
+          def run_program(exe, args: [], input: "", env: {}, seconds: 60, complaints: false)
             Dir.mktmpdir("vblank-run") do |dir|
               fed, printed, complained = %w[fed printed complained].map { |name| File.join(dir, name) }
               File.binwrite(fed, input)
@@ -209,7 +214,7 @@ module VBlank
               raise Error, "#{File.basename(exe)} was still running after #{seconds} seconds, and was stopped" unless finished
 
               refuse_stopped_program!(exe, status, File.read(complained))
-              File.read(printed)
+              complaints ? Run.new(printed: File.read(printed), complaints: File.read(complained)) : File.read(printed)
             end
           end
 

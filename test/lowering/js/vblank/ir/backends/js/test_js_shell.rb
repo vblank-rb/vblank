@@ -32,7 +32,7 @@ class TestJSShell < Minitest::Test
 
   private def shell_page_html(folder, version: "1")
     path = File.join(folder, "shell.html")
-    JS.new.build_shell_page(port(original(folder), version: version), path, console: :gba, err: nil)
+    JS.new.build_shell_page(port_without_copy(folder, version: version), path, console: :gba, err: nil)
     File.read(path, encoding: Encoding::UTF_8)
   end
 
@@ -41,10 +41,14 @@ class TestJSShell < Minitest::Test
     played_page(steps, html: shell_page_html(folder, version: version), browser: ["idb:#{File.join(folder, 'idb.json')}"])
   end
 
-  private def all_in_one_picture(folder)
-    path = File.join(folder, "all_in_one.html")
-    JS.new.build_page(port(original(folder)), path, console: :gba, err: nil)
-    pictures_in(played_page(["settle", "play #{GAME_FRAMES}", "picture"], html: File.read(path, encoding: Encoding::UTF_8))).last
+  # The picture the all-in-one build's page shows, built in a folder of its own so the copy it
+  # writes is never the one a test takes out of reach.
+  private def all_in_one_picture
+    Dir.mktmpdir do |folder|
+      path = File.join(folder, "all_in_one.html")
+      JS.new.build_page(port(original(folder)), path, console: :gba, err: nil)
+      pictures_in(played_page(["settle", "play #{GAME_FRAMES}", "picture"], html: File.read(path, encoding: Encoding::UTF_8))).last
+    end
   end
 
   # The pack the page kept, or nil.
@@ -64,7 +68,7 @@ class TestJSShell < Minitest::Test
 
       assert_includes out, "picker 1"
       assert_nil said(out)
-      assert_same_picture all_in_one_picture(folder), pictures_in(out).last, "after the unpacking"
+      assert_same_picture all_in_one_picture, pictures_in(out).last, "after the unpacking"
     end
   end
 
@@ -72,7 +76,7 @@ class TestJSShell < Minitest::Test
     Dir.mktmpdir do |folder|
       open_shell(folder, [*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play])
 
-      assert_equal ALL_IN_ONE_PACK, kept_pack(folder)
+      assert_equal all_in_one_pack, kept_pack(folder)
     end
   end
 
@@ -82,12 +86,14 @@ class TestJSShell < Minitest::Test
       File.delete(File.join(folder, "made_up.gba"))
       out = open_shell(folder, ["settle", "play #{GAME_FRAMES}", "picture", "picker"])
 
+      refute File.exist?(File.join(folder, "made_up.gba"))
       assert_includes out, "picker 0"
-      assert_same_picture all_in_one_picture(folder), pictures_in(out).last, "from the kept pack"
+      assert_same_picture all_in_one_picture, pictures_in(out).last, "from the kept pack"
     end
   end
 
-  # A pack names the build of the game it was made for, so a new build asks for the copy again.
+  # A pack names the build of the game it was made for: a new build refuses the pack an older one
+  # kept, asks for the copy again, and keeps a pack of its own.
   def test_a_new_build_of_the_port_asks_for_the_copy_again
     Dir.mktmpdir do |folder|
       open_shell(folder, [*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play])
@@ -99,7 +105,7 @@ class TestJSShell < Minitest::Test
       again = open_shell(folder, [*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play], version: "2")
 
       assert_nil said(again)
-      assert_equal "2", VBlank::Original::Pack.from_bytes(kept_pack(folder)).build_version
+      assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end
   end
 
@@ -132,10 +138,7 @@ class TestJSShell < Minitest::Test
 
   def test_the_page_holds_none_of_the_originals_bytes
     Dir.mktmpdir do |folder|
-      html = shell_page_html(folder)
-
-      refute_includes html, [TILE_BYTES].pack("m0")
-      refute_includes html.b, TILE_BYTES.byteslice(0, 16), "no raw tile bytes"
+      assert_holds_none_of original_pieces, shell_page_html(folder), "the web page"
     end
   end
 end

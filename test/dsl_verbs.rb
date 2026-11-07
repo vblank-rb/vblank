@@ -56,7 +56,8 @@ module DslVerbs
   # record_walls_brought_up are the hooks behind `set_tile` changing a cell's wall, which a
   # Background asks of the build; the reference documents `set_tile` and `solid:` on `tiles`.
   # store!, increase!, decrease! and copy_variable! are what a variable's own handle calls.
-  # declared_data_pack is what a shell build asks of the game (Original::Shell), documented on `data_pack`.
+  # declared_data_pack is what a shell build asks of the game (Original::Shell), and made_data_pack_file
+  # what Cartridge::Game#data_pack_file does, both documented on `data_pack`.
   SKIP = %i[variables debug_halted? make_object_rotatable make_object_scalable with_test set_shown_tile_picture
             store! increase! decrease! copy_variable!
             keep_walls_changeable kept_walls_of every_kept_walls record_wall_change record_walls_brought_up
@@ -69,7 +70,8 @@ module DslVerbs
             make_object_layer_choosable refuse_unknown_layers! put_objects_in_layer write_picked_choice
             lists_drawn_from list_drawn_from colors_drawn_from declared_colors name_of_colors pool_refill_nodes
             request_tile_copy emit_tile_copy_in_place load_sprite_tiles canvas_font canvas_font_tables image_size image_pixels write_picked_pose
-            record_light_shape light_circle show_light_now game_pack_checks record_clock_set declared_data_pack].freeze
+            record_light_shape light_circle show_light_now game_pack_checks record_clock_set declared_data_pack
+            made_data_pack_file].freeze
 
   # …plus the verbs the loaded effect packs contribute. A pack's verb is an ordinary
   # DSL verb at the call site, so it has to be looked up in the same place.

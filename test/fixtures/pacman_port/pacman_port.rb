@@ -21,8 +21,9 @@
 # from the cartridge build's own record); what each piece is, the port's own knowledge below, is
 # what a decompilation's labels give a real port.
 #
-# NOT READ FROM THE CARTRIDGE: the letters of the score, which the framework draws from its own font,
-# and the two sounds, which are written in code. Nothing in the cartridge is a tune.
+# Every asset the cartridge packs is unpacked into the pack. NOT DRAWN FROM IT YET: the letters and
+# digits of the score, which the framework draws from its own font; and NOT READ FROM IT: the two
+# sounds, which are written in code. Nothing in the cartridge is a tune.
 
 require "yaml"
 require_relative "../../../lib/vblank"
@@ -80,7 +81,23 @@ module PacmanPort
     )
   end
 
-  def self.game(from = original)
+  # The slots of the cartridge's assets the port unpacks and does not draw yet, by the asset's build
+  # name: the letters of SCORE and the digits, which the framework draws from its own font for now.
+  # Every asset the cartridge packs is unpacked, so the routine is tried on each of them.
+  UNDRAWN_SLOTS = Ractor.make_shareable(
+    { score_s_tile: "__obj_tiles___hud8", score_c_tile: "__obj_tiles___hud9", score_o_tile: "__obj_tiles___hud10",
+      score_r_tile: "__obj_tiles___hud11", score_e_tile: "__obj_tiles___hud12", digit_tiles: "__obj_tiles___hud13" }
+  )
+
+  # Each slot of the pack and the asset of the cartridge it is unpacked from, by the asset's build name.
+  SLOT_ASSETS = Ractor.make_shareable(
+    { room_palette: "__bg_shared_pal", room_tiles: "__bg_shared_char", room_map: "__bg_map_room",
+      sprite_palette: "__obj_palette", pac_tiles: "__obj_tiles___obj1", pellet_tiles: "__obj_tiles___obj2",
+      ghost_tiles: "__obj_tiles___obj7", **UNDRAWN_SLOTS }
+  )
+
+  # Pac-Man as a port of +from+; +version+ names the build in its data pack.
+  def self.game(from = original, version: "1")
     VBlank.game("PACMAN", consoles: %i[gba]) do
       screen :tiled
       here = Layout.new(width: screen_width, height: screen_height)
@@ -93,7 +110,7 @@ module PacmanPort
       seed 1
 
       # The pack: each slot is a piece of the cartridge unpacked. The sizes are the unpacked sizes.
-      pack = data_pack(from: from, version: "1") do |slots|
+      pack = data_pack(from: from, version: version) do |slots|
         slots.colors  :room_palette, count: 32
         slots.tiles   :room_tiles, count: 4
         slots.numbers :room_map, count: 1024, width: :half, signed: false
@@ -101,14 +118,14 @@ module PacmanPort
         slots.tiles   :pac_tiles, count: 20
         slots.tiles   :pellet_tiles, count: 1
         slots.tiles   :ghost_tiles, count: 4
+        UNDRAWN_SLOTS.each do |name, asset|
+          slots.tiles name, count: ASSETS.fetch(asset).fetch("unpacked_size") / (VBlank::Original::Slot::Tiles::PIXELS / 2)
+        end
         slots.fill_from_copy do |copy, into|
-          copy.unpack_rle  at: ASSETS.fetch("__bg_shared_pal").fetch("at"), into: into[:room_palette]
-          copy.unpack_lz77 at: ASSETS.fetch("__bg_shared_char").fetch("at"), into: into[:room_tiles]
-          copy.unpack_lz77 at: ASSETS.fetch("__bg_map_room").fetch("at"), into: into[:room_map]
-          copy.unpack_rle  at: ASSETS.fetch("__obj_palette").fetch("at"), into: into[:sprite_palette]
-          copy.unpack_lz77 at: ASSETS.fetch("__obj_tiles___obj1").fetch("at"), into: into[:pac_tiles]
-          copy.unpack_lz77 at: ASSETS.fetch("__obj_tiles___obj2").fetch("at"), into: into[:pellet_tiles]
-          copy.unpack_lz77 at: ASSETS.fetch("__obj_tiles___obj7").fetch("at"), into: into[:ghost_tiles]
+          SLOT_ASSETS.each do |name, asset|
+            fact = ASSETS.fetch(asset)
+            copy.public_send(:"unpack_#{fact.fetch('codec')}", at: fact.fetch("at"), into: into[name])
+          end
         end
       end
 

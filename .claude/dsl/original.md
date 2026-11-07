@@ -109,6 +109,9 @@ cannot be built this way yet. What reads a slot that way:
   release's size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
   after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.
   Built so, it draws a progress bar as it goes (game code, so every runtime shows it).
+- `game.data_pack_file` (a `Cartridge::Game`, `settings:`, `console:`) — the pack file the all-in-one
+  build makes from the copy, its bytes: what a build with its pack left out is handed, and what a
+  shell must make, byte for byte.
 
 A cartridge build told `pack_at_start:` is refused at `data_pack`, and `vblank build --pack-at-start`
 for a cartridge before anything is built; every cartridge lowering refuses a program that reads a start
@@ -118,8 +121,10 @@ the copy's SHA-1 is the shell's. Worked example: `test/pack_at_start_tests.rb`.
 **A whole port, end to end** — `test/fixtures/pacman_port/`: `pacman.gba` (the cartridge `examples/pacman.rb` builds,
 checked in with its SHA-1 as a stand-in original; `ruby tools/make_pacman_fixture.rb` makes it again and refuses a
 cartridge that packs nothing or with one scheme only), `pacman_facts.yml` (where each asset is, from
-`BuildRecord#data_assets`), and `pacman_port.rb`, whose routine undoes both LZ77 and RLE. Its shell test is
-`test/lowering/ruby/vblank/live/test_pacman_port_shell.rb`.
+`BuildRecord#data_assets`), and `pacman_port.rb`, whose routine unpacks all thirteen packed assets, LZ77 and
+RLE (`test/all/vblank/original/test_pacman_fixture.rb` packs each again and gets the cartridge's bytes). Its
+shell tests, one for each runtime, are `test_pacman_port_shell.rb`, `test_js_pacman_port_shell.rb` and
+`test_native_pacman_port_shell.rb`.
 
 **The shell** — `vblank run game.rb --shell` (`--pack-folder DIR`), `vblank build game.rb --format ruby
 --shell`, `Original::Shell.build(game)` — is the port as a player gets it: no copy is read (every
@@ -132,8 +137,9 @@ passes the game's start-file check. Otherwise LOAD ROM asks for a file, refuses 
 the game reads (`Original::Releases`, the words a build machine uses too), unpacks it with its
 release's unpacking, writes the pack — byte for byte the all-in-one build's — and plays the game. A
 pack for another `version:` fails the check, so the menu asks again. SETTINGS opens the window's menu.
-The desktop program and the web page are not shells yet, and every release reads one slot list.
-Worked example: `test/lowering/ruby/vblank/live/test_shell.rb`.
+The web page (`--format web --shell`) and the desktop program (`--format native --shell`, a folder) do
+the same, each made from `Original::ShellFacts`, every sentence they refuse a file in among them. Every
+release reads one slot list. Worked example: `test/lowering/ruby/vblank/live/test_shell.rb`.
 
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a

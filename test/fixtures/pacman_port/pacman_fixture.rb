@@ -57,17 +57,6 @@ module PacmanFixture
     Built.new(bytes: rom.buffer.dup.b, assets: assets)
   end
 
-  # The pack the all-in-one build makes from the cartridge: every slot as the cartridge's assets
-  # unpack, in the order the port names its slots.
-  def expected_pack
-    rom = File.binread(ROM_PATH)
-    assets = { room_palette: "__bg_shared_pal", room_tiles: "__bg_shared_char", room_map: "__bg_map_room",
-               sprite_palette: "__obj_palette", pac_tiles: "__obj_tiles___obj1", pellet_tiles: "__obj_tiles___obj2",
-               ghost_tiles: "__obj_tiles___obj7" }
-    VBlank::Original::Pack.holding(assets.transform_values { |name| unpacked_asset(rom, name) },
-                                   sha1: facts.fetch("rom").fetch("sha1"), build_version: "1").to_bytes
-  end
-
   # The facts as a hash, written as the facts file's values.
   def facts_of(built)
     { "rom" => { "sha1" => Digest::SHA1.hexdigest(built.bytes), "size" => built.bytes.bytesize },
@@ -95,51 +84,10 @@ module PacmanFixture
                          "the Advance lowering stopped it packing, or this example no longer has an asset that needs it."
   end
 
-  # A block packed with the BIOS's LZ77 or run-length scheme, unpacked: the answer key for the port's
-  # unpacking, written apart from it. The first four bytes are the scheme (top half of the first)
-  # and the size unpacked (the next three, low byte first).
-  def unpack_block(block)
-    scheme = block.getbyte(0) >> 4
-    size = block.getbyte(1) | (block.getbyte(2) << 8) | (block.getbyte(3) << 16)
-    out = []
-    at = 4
-    until out.size >= size
-      if scheme == 3
-        flag = block.getbyte(at)
-        at += 1
-        if flag.anybits?(0x80)
-          out.concat([block.getbyte(at)] * ((flag & 0x7F) + 3))
-          at += 1
-        else
-          out.concat(block.bytes[at, (flag & 0x7F) + 1])
-          at += (flag & 0x7F) + 1
-        end
-      else
-        flag = block.getbyte(at)
-        at += 1
-        8.times do |item|
-          break if out.size >= size
-
-          if flag.anybits?(0x80 >> item)
-            high = block.getbyte(at)
-            distance = (((high & 0xF) << 8) | block.getbyte(at + 1)) + 1
-            at += 2
-            ((high >> 4) + 3).times { out << out[-distance] }
-          else
-            out << block.getbyte(at)
-            at += 1
-          end
-        end
-      end
-    end
-    out.first(size).pack("C*")
-  end
-
-  # The bytes of the asset +name+ in +rom+, unpacked.
-  def unpacked_asset(rom, name)
+  # The bytes the asset +name+ takes in +rom+, packed as the cartridge keeps it.
+  def block_of(rom, name)
     fact = asset(name)
-    block = rom.byteslice(fact.fetch("at"), fact.fetch("size"))
-    fact.fetch("codec") == "none" ? block : unpack_block(block)
+    rom.byteslice(fact.fetch("at"), fact.fetch("size"))
   end
 
   # The facts, as the port reads them.

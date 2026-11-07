@@ -90,8 +90,8 @@ module VBlank
         copied = slots.list.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         unpacking = (unpacking_program(bytes, slots.list, slots.routine) if slots.routine)
         slot_bytes = unpacking ? unpack_on_interpreter(unpacking) : copied
-        made = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version)
-        @data_pack_contents = Original::Pack.from_bytes(made.to_bytes)
+        @data_pack_file = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes.freeze
+        @data_pack_contents = Original::Pack.from_bytes(@data_pack_file)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
                                        slots: slots.list,
@@ -120,6 +120,10 @@ module VBlank
       # The game's data pack (DSL::DataPack), or nil for a game with none: what a shell is built
       # around (Original::Shell).
       def declared_data_pack = @data_pack
+
+      # The data pack file this build made from the copy, its bytes, or nil for a build that made
+      # none (a game with no data pack, or a build that leaves its pack out).
+      def made_data_pack_file = @data_pack_file
 
       private
 

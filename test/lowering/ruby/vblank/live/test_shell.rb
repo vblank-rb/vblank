@@ -14,7 +14,7 @@ require "shell_tests"
 # the game from the kept pack and never reads the copy.
 #
 # The answer key is the same game built all-in-one from the same copy, played live the same way,
-# and the pack the all-in-one build makes, which the shell's must be byte for byte.
+# and the pack that build makes, which the shell's must be byte for byte.
 #
 # The device is headless, and its buttons are set by pass: each play the shell starts (the menu,
 # the unpacking, the game) counts its passes from the first again, so A held on pass 2 chooses the
@@ -32,15 +32,17 @@ class TestShell < Minitest::Test
   CHOOSE_LOAD_ROM = { 2 => [:a] }.freeze
 
   # The pictures the all-in-one build of the port shows over GAME_PASSES passes.
-  private def all_in_one_pictures(folder)
-    device = Headless.new(frames: GAME_PASSES)
-    Session.new(port(original(folder)).checked_program(err: nil, for_computer: true)).play(device)
-    device.pictures.map(&:pixels)
+  private def all_in_one_pictures
+    Dir.mktmpdir do |folder|
+      device = Headless.new(frames: GAME_PASSES)
+      Session.new(port(original(folder)).checked_program(err: nil, for_computer: true)).play(device)
+      device.pictures.map(&:pixels)
+    end
   end
 
   # The shell of the port, as Ruby, built on a machine with no copy.
   private def shell(folder, version: "1")
-    VBlank::Live::Shell.from(VBlank::Original::Shell.build(port(original(folder), version: version), err: nil))
+    VBlank::Live::Shell.from(VBlank::Original::Shell.build(port_without_copy(folder, version: version), err: nil))
   end
 
   # The shell played once: the menu with +buttons+ held, LOAD ROM picking +picked+ (a path, or nil
@@ -60,6 +62,8 @@ class TestShell < Minitest::Test
     Played.new(game_pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked)
   end
 
+  private def kept_pack(folder) = File.binread(File.join(folder, "kept", PACK_FILE))
+
   def test_the_first_start_unpacks_the_copy_keeps_the_pack_and_plays_the_game
     Dir.mktmpdir do |folder|
       played = play_shell(shell(folder), folder, picked: copy_at(folder))
@@ -67,7 +71,7 @@ class TestShell < Minitest::Test
       assert_equal 1, played.times_asked
       assert_empty played.refusals
       assert_equal GAME_PASSES, played.game_pictures.size
-      assert_equal all_in_one_pictures(folder), played.game_pictures
+      assert_equal all_in_one_pictures, played.game_pictures
     end
   end
 
@@ -75,7 +79,7 @@ class TestShell < Minitest::Test
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: copy_at(folder))
 
-      assert_equal ALL_IN_ONE_PACK, File.binread(File.join(folder, "kept", PACK_FILE))
+      assert_equal all_in_one_pack, kept_pack(folder)
     end
   end
 
@@ -85,12 +89,14 @@ class TestShell < Minitest::Test
       File.delete(File.join(folder, "made_up.gba"))
       played = play_shell(shell(folder), folder, picked: nil)
 
+      refute File.exist?(File.join(folder, "made_up.gba"))
       assert_equal 0, played.times_asked
-      assert_equal all_in_one_pictures(folder), played.game_pictures
+      assert_equal all_in_one_pictures, played.game_pictures
     end
   end
 
-  # A pack names the build of the game it was made for, so a new build asks for the copy again.
+  # A pack names the build of the game it was made for, so a new build refuses the pack an older
+  # one kept, asks for the copy again, and keeps the new build's pack.
   def test_a_new_build_of_the_port_asks_for_the_copy_again
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: copy_at(folder))
@@ -98,7 +104,7 @@ class TestShell < Minitest::Test
 
       assert_equal 1, played.times_asked
       assert_match "not the data pack this build reads", played.refusals.first
-      assert_equal VBlank::Original::Pack.read(File.join(folder, "kept", PACK_FILE)).build_version, "2"
+      assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end
   end
 
@@ -157,45 +163,22 @@ class TestShell < Minitest::Test
             "BUNDLE_GEMFILE" => nil, "BUNDLER_SETUP" => nil, "BUNDLER_VERSION" => nil, "RUBY_YJIT_ENABLE" => nil }.freeze
 
   # The shell written out as one Ruby file carries its menu, its unpacking and the pack's checks,
-  # and plays the game from the pack kept in its folder; a pack for another build it does not play.
+  # and plays the game from the pack kept in its folder; it holds none of the original's bytes.
   def test_a_shell_written_as_one_ruby_file_plays_from_the_kept_pack
     flunk "SDL3 is not installed: #{VBlank::Live::SDL::INSTALL_LINE}" unless VBlank::Live::SDL.available?
 
     Dir.mktmpdir do |folder|
-      path = VBlank::IR::Backends::Ruby.new.build_script(port(original_nowhere(folder)), File.join(folder, "port-ruby.rb"),
+      path = VBlank::IR::Backends::Ruby.new.build_script(port_without_copy(folder), File.join(folder, "port-ruby.rb"),
                                                           console: :gba, err: StringIO.new, shell: true)
       kept = File.join(folder, "kept")
       FileUtils.mkdir_p(kept)
-      File.binwrite(File.join(kept, PACK_FILE), ALL_IN_ONE_PACK)
+      File.binwrite(File.join(kept, PACK_FILE), all_in_one_pack)
       played, status = Open3.capture2e(ALONE, RbConfig.ruby, path, "--pictures", "3", "--pack-folder", kept,
                                        "--settings-file", File.join(folder, "settings.txt"), chdir: folder)
 
       assert status.success?, played
       assert_match(/3 frames in/, played)
-      refute_includes File.binread(path), TILE_BYTES.byteslice(0, 16), "the file holds none of the copy's tiles"
-    end
-  end
-
-  # The made-up original on a machine where no copy of it is set.
-  private def original_nowhere(folder)
-    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: {}, settings_file: File.join(folder, "made_up.yml"),
-                               releases: { "Test" => { "sha1" => SHA1, "size" => COPY_SIZE } })
-  end
-
-  # A port whose code depends on what the copy holds cannot be a shell: the build stops, naming
-  # the line that read the copy.
-  def test_a_port_that_reads_the_copy_as_it_is_built_is_refused_as_a_shell
-    Dir.mktmpdir do |folder|
-      from = original(folder)
-      game = VBlank.game("READS COPY", consoles: %i[gba]) do
-        data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: PALETTE_AT, count: 16 }
-        from.copy
-        game_loop { wait_vblank }
-      end
-      refused = assert_raises(VBlank::BuildError) { VBlank::Original::Shell.build(game, err: nil) }
-
-      assert_match "cannot be built as a shell", refused.message
-      assert_match "test_shell.rb:", refused.message
+      assert_holds_none_of original_pieces, File.binread(path), "the Ruby script"
     end
   end
 end

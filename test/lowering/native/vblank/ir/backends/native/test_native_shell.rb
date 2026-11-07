@@ -40,21 +40,25 @@ class TestNativeShell < Minitest::Test
     MARKER_ROWS.map { |from_top| bmp.byteslice(BMP_HEADER_BYTES + ((BMP_ROWS - 1 - from_top) * BMP_ROW_BYTES), BMP_ROW_BYTES) }
   end
 
-  # What one run of the program printed (its variables at the end of the script) and the window as it ended.
-  Played = Data.define(:variables, :picture)
+  # What one run of the program printed (its variables at the end of the script), the window as it
+  # ended, and what it wrote to its error stream (a refusal, for one).
+  Played = Data.define(:variables, :picture, :complaints)
 
   def test_the_shell_a_player_runs
     Dir.mktmpdir do |dir|
-      shell = Native.new.build_desktop_shell(port(original(dir)), File.join(dir, "made-up-shell"), console: :gba, err: nil)
-      all_in_one = Native.new.build_desktop(port(original(dir)), File.join(dir, "all-in-one"), console: :gba, err: nil)
+      shell = Native.new.build_desktop_shell(port_without_copy(dir), File.join(dir, "made-up-shell"), console: :gba, err: nil)
+      all_in_one = Dir.mktmpdir do |elsewhere|
+        Native.new.build_desktop(port(original(elsewhere)), File.join(dir, "all-in-one"), console: :gba, err: nil)
+      end
       answer = play(all_in_one, dir, "answer")
 
       assert_includes marker_rows_of(answer.picture).join, "\xFF\xFF\xFF".b, "the marker is on the picture"
 
       assert_equal %w[made-up-shell parts], Dir.children(shell).sort
+      assert_holds_none_of original_pieces, folder_bytes(shell), "the desktop shell's folder"
       assert_unpacks_keeps_the_pack_and_plays_the_game(shell, dir, answer)
       assert_plays_from_the_kept_pack_with_the_copy_gone(shell, dir, answer)
-      assert_asks_again_for_a_pack_made_for_another_build(shell, dir)
+      assert_asks_again_when_a_new_build_finds_an_older_pack(dir)
       assert_refuses_files_that_are_no_release(shell, dir)
       assert_settings_opens_the_window_menu(shell, dir)
     end
@@ -75,16 +79,17 @@ class TestNativeShell < Minitest::Test
     play(shell_exe(shell), dir, "settings", options: ["--pack-folder", File.join(dir, "kept"), "--shell-menu-keys", choose_settings,
                                                       "--shell-settings-keys", close_and_load, "--shell-copy", copy_at(dir)])
 
-    assert_equal ALL_IN_ONE_PACK, kept_pack(dir), "LOAD ROM was chosen after SETTINGS"
+    assert_equal all_in_one_pack, kept_pack(dir), "LOAD ROM was chosen after SETTINGS"
   end
 
   # The game as the window plays it for GAME_FRAMES frames with nothing held.
   private def play(exe, dir, name, options: [])
     picture = File.join(dir, "#{name}.bmp")
-    printed = Native::Zig.run_program(exe, args: ["--scripted-keys", GAME_FRAMES, "--settings-file", File.join(dir, "none-#{name}.txt"),
-                                                  "--window-picture", picture, *options],
-                                           input: "0\n" * GAME_FRAMES, env: NO_SCREEN_OR_SPEAKER, seconds: 240)
-    Played.new(variables: Native::HeadlessRun.variables_in(printed.lines.map(&:chomp)), picture: File.binread(picture))
+    run = Native::Zig.run_program(exe, args: ["--scripted-keys", GAME_FRAMES, "--settings-file", File.join(dir, "none-#{name}.txt"),
+                                              "--window-picture", picture, *options],
+                                       input: "0\n" * GAME_FRAMES, env: NO_SCREEN_OR_SPEAKER, seconds: 240, complaints: true)
+    Played.new(variables: Native::HeadlessRun.variables_in(run.printed.lines.map(&:chomp)), picture: File.binread(picture),
+               complaints: run.complaints)
   end
 
   private def shell_options(dir, copy: nil)
@@ -102,7 +107,7 @@ class TestNativeShell < Minitest::Test
 
     assert_equal answer.variables, played.variables
     assert_equal marker_rows_of(answer.picture), marker_rows_of(played.picture)
-    assert_equal ALL_IN_ONE_PACK, kept_pack(dir), "the pack is the all-in-one build's, byte for byte"
+    assert_equal all_in_one_pack, kept_pack(dir), "the pack is the all-in-one build's, byte for byte"
   end
 
   private def assert_plays_from_the_kept_pack_with_the_copy_gone(shell, dir, answer)
@@ -113,16 +118,15 @@ class TestNativeShell < Minitest::Test
     assert_equal marker_rows_of(answer.picture), marker_rows_of(played.picture)
   end
 
-  # A pack names the build of the game it was made for: one made for another build is refused, and
-  # the copy is asked for again.
-  private def assert_asks_again_for_a_pack_made_for_another_build(shell, dir)
-    older = VBlank::Original::Pack.holding({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") },
-                                           sha1: SHA1, build_version: "2").to_bytes
-    File.binwrite(File.join(dir, "kept", "data.pack"), older)
-    played = play(shell_exe(shell), dir, "third", options: shell_options(dir, copy: copy_at(dir)))
+  # A pack names the build of the game it was made for: a new build refuses the pack the first one
+  # kept, asks for the copy again, and keeps a pack of its own.
+  private def assert_asks_again_when_a_new_build_finds_an_older_pack(dir)
+    newer = Native.new.build_desktop_shell(port_without_copy(dir, version: "2"), File.join(dir, "made-up-shell-2"), console: :gba, err: nil)
+    played = play(shell_exe(newer), dir, "newer", options: shell_options(dir, copy: copy_at(dir)))
 
+    assert_includes played.complaints, "not the data pack this build reads"
     refute_empty played.variables
-    assert_equal ALL_IN_ONE_PACK, kept_pack(dir)
+    assert_equal all_in_one_pack(version: "2"), kept_pack(dir)
   end
 
   private def assert_refuses_files_that_are_no_release(shell, dir)
