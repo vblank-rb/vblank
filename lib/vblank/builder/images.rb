@@ -89,6 +89,7 @@ module VBlank
           return define_picture_from_start_file(name, opts)
         end
 
+        places_from_pack = opts[:places].is_a?(DSL::PackSlot)
         opts = opts_with_pack_slots_read(name, opts)
         one_source_of_pixels!(name, opts, block)
         # A list given by name keeps its name with the picture (IR::Assets::Image#colors_name).
@@ -103,7 +104,7 @@ module VBlank
                                     shading: opts[:shading], colors: opts[:colors])
         elsif opts[:places]
           define_placed_image(name, places: opts[:places], width: opts[:width], height: opts[:height],
-                                    colors: opts[:colors], colors_name: colors_name)
+                                    colors: opts[:colors], colors_name: colors_name, places_from_pack: places_from_pack)
         elsif opts[:from]
           bmp = Graphics::Image.load(resolve_asset_path(opts[:from]), width: opts[:width], height: opts[:height],
                                                             transparent: opts.fetch(:transparent, false))
@@ -587,7 +588,7 @@ module VBlank
       # The picture still keeps colors for everything that draws it; the places ride along
       # beside them, and only the two things that read a pixel as a NUMBER — the console's
       # sprite and tile storage, and swapping in another list of colors — look at them.
-      def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil)
+      def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil, places_from_pack: false)
         positive_dims!(name, width, height)
         table = color_table(name, colors || [])
         refuse_bad_places!(name, places: places, width: width, height: height, table: table)
@@ -596,7 +597,8 @@ module VBlank
         drawn = pixels.unpack("v*")
         record_picture(Build.bitmap(name, width: width, height: height, pixels: pixels,
                                             transparent: marker, colors: table.map { |value| value || 0x0000 },
-                                            places: places.pack("C*"), colors_name: colors_name, pieces: pieces))
+                                            places: places.pack("C*"), colors_name: colors_name, pieces: pieces,
+                                            places_from_pack: places_from_pack))
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)
       end
 

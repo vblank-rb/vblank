@@ -727,7 +727,7 @@ module VBlank
               drawing = TileDrawing.new(room: room, recolor_steps: recolor_steps, any_first: !empty_cells_shown && !recolor_steps.nil?)
               order = list_order(image)
               placed = recolor_steps && !order && drawn_places(image)
-              if kept_places?(image) then kept_tile(image, drawing)
+              if pack_places_kept?(image) then kept_tile(image, drawing)
               elsif order then listed_tile(image, order, drawing)
               elsif placed then placed_tile(image, placed, drawing)
               else drawn_tile(name, image, drawing)
@@ -803,22 +803,22 @@ module VBlank
             [tile_number_in(drawing.room, encode(places)), drawn_palette_number(colors, drawing, keeps_backdrop: see_through)]
           end
 
-          # A TILE DRAWN BY PLACE FROM A LIST OF FOUR COLOURS OR FEWER, kept as the Color keeps one:
+          # A TILE FROM A DATA PACK SLOT, drawn by place from a list of four colours or fewer, kept as the Color keeps one:
           # each pixel's place is its number in the tile, and the palette is the backdrop and then
           # the list's colours after its first, in the list's order. So a tile read from a data pack
           # in the Color's own layout (Console::GBCHardware::ORIGINAL_FORMATS) goes into the
           # cartridge as the original's bytes. Place 0 is see-through and shows the backdrop, the
-          # palette's first colour. False for a tile not given by places, from a longer list, or
+          # palette's first colour. False for a tile not from a data pack slot, from a longer list, or
           # with a place past its list; #list_order and #drawn_tile take those.
-          def kept_places?(image)
-            return false unless image.places && image.colors && image.colors.length <= PLACES
+          def pack_places_kept?(image)
+            return false unless image.places_from_pack? && image.colors && image.colors.length <= PLACES
 
-            tile_fact(:kept_places, image) do
-              (0...64).all? { |i| image.tile_see_through_at?(i) || image.place_at(i) < image.colors.length }
+            tile_fact(:pack_places_kept, image) do
+              (0...IR::FormatReading::TILE_PIXELS).all? { |i| image.tile_see_through_at?(i) || image.place_at(i) < image.colors.length }
             end
           end
 
-          # The four colours of a tile whose places are kept (#kept_places?) when each place shows
+          # The four colours of a tile whose places are kept (#pack_places_kept?) when each place shows
           # the colour the block gives it.
           def kept_colors(image) = padded([@backdrop, *(1...image.colors.length).map { |place| yield(place) & 0x7FFF }])
 

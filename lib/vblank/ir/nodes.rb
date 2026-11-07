@@ -436,8 +436,11 @@ module VBlank
         category :data
         operands name: :name, width: :int, height: :int, pixels: :text, transparent: :int,
                  colors: :list, places: :text, colors_name: :name, pieces: :list,
-                 shading: :name, shading_places: :text, from_file: :file_picture
+                 shading: :name, shading_places: :text, from_file: :file_picture, places_from_pack: :flag
 
+        # +places_from_pack+ is true for a picture whose places are a data pack slot's tiles, kept as the
+        # original keeps them (Assets::Image#places_from_pack).
+        #
         # +from_file+ is where in the file the program is handed as it starts (StartFile) this
         # picture's colours and places are, for a picture read from there; it holds zeros until
         # then. Absent on every other picture.

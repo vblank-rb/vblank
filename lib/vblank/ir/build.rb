@@ -595,10 +595,11 @@ module VBlank
       # (see Assets::Image#colors_name).
       # +pieces+ is a picture made of 8x8 pieces, front-most first (Assets::Image#pieces), or nil.
       def bitmap(name, width:, height:, pixels:, transparent: nil, colors: nil, places: nil, colors_name: nil, pieces: nil,
-                 shading: nil, shading_places: nil)
+                 shading: nil, shading_places: nil, places_from_pack: false)
         Nodes.build(:bitmap, name: name, width: width, height: height,
                           pixels: pixels, transparent: transparent, colors: colors, places: places, colors_name: colors_name,
-                          pieces: pieces, shading: shading, shading_places: shading_places)
+                          pieces: pieces, shading: shading, shading_places: shading_places,
+                          places_from_pack: places_from_pack)
       end
 
       # Draw a defined bitmap with its top-left at (x, y). x/y may be constants or
@@ -1321,9 +1322,8 @@ module VBlank
       # +signed+, low byte first unless +high_byte_first+.
       ELEMENT_READS = Ractor.make_shareable({ [:byte, false] => "C*", [:byte, true] => "c*", [:half, false] => "v*",
                                               [:half, true] => "s<*", [:word, false] => "V*", [:word, true] => "l<*" })
-      HIGH_BYTE_FIRST_ELEMENT_READS = Ractor.make_shareable({ [:byte, false] => "C*", [:byte, true] => "c*",
-                                                              [:half, false] => "n*", [:half, true] => "s>*",
-                                                              [:word, false] => "N*", [:word, true] => "l>*" })
+      # The same reads with the high byte first: the sixteen and thirty-two bit ones change direction.
+      HIGH_BYTE_FIRST_ELEMENT_READS = Ractor.make_shareable(ELEMENT_READS.transform_values { |read| read.tr("vV<", "nN>") })
 
       def elements_of(bytes, width:, signed:, high_byte_first: false)
         reads = high_byte_first ? HIGH_BYTE_FIRST_ELEMENT_READS : ELEMENT_READS

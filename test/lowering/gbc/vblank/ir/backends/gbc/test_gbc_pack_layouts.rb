@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "all/vblank/builder/test_data_pack_layouts"
+require "made_up_original_layouts"
 
 # A COLOR GAME'S TILES, READ FROM ITS DATA PACK, GO INTO THE COLOR'S CARTRIDGE AS THE ORIGINAL KEEPS
 # THEM. A tile drawn by place from a list of four colours is kept place for place
-# (GBC::Art#kept_places?), so the made-up Color original's tile bytes (MadeUpOriginalLayouts) are in
+# (GBC::Art#pack_places_kept?), so the made-up Color original's tile bytes (MadeUpOriginalLayouts) are in
 # the cartridge unchanged.
 class TestGBCPackLayouts < Minitest::Test
   include MadeUpOriginalLayouts

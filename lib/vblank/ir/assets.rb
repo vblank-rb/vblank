@@ -76,17 +76,24 @@ module VBlank
         end
       end
 
-      Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces) do
-        def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil) = super
+      Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces,
+                         :places_from_pack) do
+        def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil,
+                       places_from_pack: false) = super
 
         def self.of(node)
           new(width: node.width, height: node.height, transparent: node.transparent,
               pixels: node.pixels, colors: node.colors, places: node.places, colors_name: node.colors_name,
-              pieces: (node.pieces if node.respond_to?(:pieces)))
+              pieces: (node.pieces if node.respond_to?(:pieces)),
+              places_from_pack: node.respond_to?(:places_from_pack) && node.places_from_pack == true)
         end
 
         # The list this picture was drawn from, as a background's recolouring keeps them apart.
         def list_drawn_from = [colors_name, colors]
+
+        # Whether the places are a data pack slot's tiles, in the layout of the console the original is
+        # for, so a lowering that keeps places as they are keeps these.
+        def places_from_pack? = places_from_pack
 
         # Which place in the picture's own list this pixel was drawn at, or nil for a
         # picture whose art was given as colors and never recorded one.
