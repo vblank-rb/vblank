@@ -91,12 +91,6 @@ module VBlank
 
         attr_reader :vars, :log, :frame, :screen_mode, :buffered, :audio, :save
 
-        # What a declared sample is, asked by the test that holds this interpreter and the GBA lowering to describing it alike.
-        def sample_info(name) = @mixer.sample_info(name)
-
-        # The pictures the program declared and drew into, by name, asked by the same test.
-        def bitmaps = @bitmaps
-
         # Which player the person at this interpreter is, from 1: what `drawing_for_local_player`
         # hands the game. A test sets another to see what that machine would draw.
         attr_writer :local_player

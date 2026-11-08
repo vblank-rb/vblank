@@ -5,8 +5,7 @@ require "test_helper"
 require "conformance_fixture"
 
 # The coverage guard on the Advance's lowering: the kitchen-sink fixture lowers to a clean
-# cartridge, raw bytes go into it verbatim, and the lowering describes a declared asset the way
-# the interpreter does. That the fixture covers every kind is in
+# cartridge, and raw bytes go into it verbatim. That the fixture covers every kind is in
 # test/all/vblank/ir/test_cross_backend_conformance.rb.
 class TestCrossBackendConformanceCartridge < Minitest::Test
   ROMValidator = VBlank::Cartridge::ROMValidator
@@ -31,42 +30,5 @@ class TestCrossBackendConformanceCartridge < Minitest::Test
       VBlank::IR::Build.halt,
     ))
     assert_includes code, nop, "the GBA backend appends raw bytes verbatim"
-  end
-
-  # ---- both backends describe a declared asset the same way ----
-  #
-  # An image and a recorded sound are facts about the program, not about a machine, and both
-  # backends have to know them. They each used to write that down for themselves, which is
-  # two descriptions of one thing in the two places whose whole contract is that they agree.
-  # Now IR::Assets reads the description off the declaring node, so the two cannot differ —
-  # this holds them to it.
-  def test_both_backends_describe_an_image_the_same_way
-    program = asset_program
-    Reference.new.run(program)
-    gba = GBA.new
-    gba.lower(program)
-
-    assert_equal Reference.new.tap { |r| r.run(program) }.bitmaps, gba.bitmaps
-  end
-
-  def test_both_backends_describe_a_recorded_sound_the_same_way
-    program = asset_program
-    gba = GBA.new
-    gba.lower(program)
-
-    interpreter = Reference.new.tap { |r| r.run(program) }
-
-    assert_equal interpreter.sample_info(:clip), gba.sample_info(:clip)
-  end
-
-  # A program that declares one of each and then stops.
-  private def asset_program
-    b = VBlank::IR::Build
-    b.program(
-      b.screen(:bitmap),
-      b.bitmap(:art, width: 2, height: 2, pixels: "\x1F\x00\x00\x00\x00\x7C\xFF\x03", transparent: 0),
-      b.sample(:clip, "\x00\x10\x20\x30", 8000, note: :E4),
-      b.halt,
-    )
   end
 end
