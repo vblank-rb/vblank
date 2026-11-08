@@ -1,6 +1,14 @@
 # DSL reference: Layers (a named place in the stack)
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `layers :sky, :world, :ui` — the stack, back to front (`[:a, :b]` inside it: two layers sharing one level); `layer :name do … end` puts what it declares at that depth.
+- `hero.put_in_layer`, `guards.put_in_layer` (a pool); `draw_in_order hero, guards` — sprites re-ordered each frame, lower on screen in front; `take_turns: true` (or `:last`) — the named order and its reverse, a frame each.
+
+## In full
 
 A game is drawn in layers — the scenery, the characters, the score on top — and without a name for them the only way to say what sits in front of what is the order the declarations happen to run in. That order is invisible, it lives in prose comments, and in a game split across files it depends on which file was required first.
 

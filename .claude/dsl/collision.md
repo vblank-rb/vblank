@@ -1,6 +1,13 @@
 # DSL reference: Collision
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `box x, y, w, h`; `off_screen?` and edge tests; `a.overlaps?(b)` (per pixel unless `hitbox:`); `blocked_by(background)`.
+
+## In full
 
 - `box x, y, w, h` → a `Box` (a rectangle to test; draws nothing). Coords may be `:var`/`Value`/`Integer`.
 - **Screen-edge tests** (on anything with bounds — a `Sprite` or a `Box`): `off_screen?` (fully past any edge), and edge-specific `off_left?` / `off_right?` / `above_top?` / `below_bottom?` for when behavior depends on *which* edge (a bullet dies off the top, an enemy respawns off the bottom) — each returns a `Condition` for an `if`, read from the thing's own bounds and the 240×160 screen, so no coordinate literals. Pair with `sprite.clamp_to_screen` (keep it fully on screen using its own size). "Fully past" means nothing of it still shows.

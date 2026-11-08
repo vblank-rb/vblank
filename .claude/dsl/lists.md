@@ -1,6 +1,13 @@
 # DSL reference: Lists (runtime-sized collection)
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `list :name, capacity: N` → `List`, an array the game changes (`holds:`, `width:`, `full_of:`).
+
+## In full
 
 - `list :name, capacity: N` → a `List`: `push`/`<<`, `pop`, `shift`, `[]`, `[]=`, `first`, `last`, `length`, `each { |v| }`.
   - **Start it full:** `list :lettering, capacity: 3328, width: :byte, full_of: 0` — a list starts empty unless it says this, and then it starts holding `capacity` items, every one the value given, so every item is there to read and write by its place from the first frame: a box the game letters text into, a row of flags, a board. Each time the declaration runs it is made full again, the way an empty list is emptied again. What it is for is speed: the loop it replaces, `repeat(3328) { lettering.push 0 }`, finds the place for each item and stores the length again for each, about twenty instructions an item on the console, where this sets the length once and fills the whole words of the list with the console's copying engine. In setup that loop is work the first pass pays before the game shows anything — the 3,328 bytes above were most of a large game's first frame. A Float (`full_of: 1.5`) also says the list holds fractions, as `holds: 0.0` does. A number that is too big for a narrow slot keeps the low bits, as a push of it would. A fraction for a list `holds:` says is whole, and anything but a number, are friendly errors. **A build names the loops this replaces**: a `repeat` whose count is a list's capacity and whose body is one push of a number gets a warning naming the list and the line. On the Game Boy Color, which has no copying engine for its work memory, a list of bytes is filled with a store and a count for each byte, so a few hundred bytes cost a small part of a frame; a list of wider slots is filled a slot at a time and costs far more. The framework's own collections start full this way too — a pool's slots, a canvas's bytes, a save record's buffer — so a pool one slot bigger costs one push at power-on, not one for every field.

@@ -1,6 +1,19 @@
 # DSL reference: Variables & math
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `hp = 10` — a game variable, if game code changes it; `mode = :title` holds a name, and `call mode` runs it. `var :flag, 0, width: :byte` (or `:half`) keeps one narrow.
+- `save_var :name, default`; `save_data :file do keep … end` → save records; `saves_keep_everything except:`.
+- `part :play` (from here on, or a block) + `start_over :play` — a new game: that part's variables, lists and pools back as declared, on one pass; a scene's name works too.
+- `x = 5`, `x += 1`, `x -= 1`, `flags |= 4`, `x = y` — change a variable.
+- `negate!`/`flip!`, `abs!`, `negate_abs!`, `clamp!`, `approach!` — words of their own that change a variable.
+- Without `!` nothing changes: `abs`, `clamp`, `approach`, `flip`, `negate_abs` give a new number; the flat words (`set`, `add`, `sub`, `add_var`, `sub_var`, `copy`, `negate`) are refused.
+- On a game number: `+ - * / %`, comparisons, `&&`/`||`, `if`/`else`, bits; a Float makes a fraction. `estimate:` only warns.
+
+## In full
 
 - `hp = 10` — **plain assignment makes a game variable**, named `hp`, when game code (a `game_loop`, a `scene`, a `func` …) changes it later. It can start as a number, a Float, `true` or `false`, a symbol, `nil`, or a constant or a sum of them (`state = PLAYING`, `x = WIDTH / 2`); set up outside game code it can start from anything (`plain-ruby.md`). A number nothing changes stays a plain Ruby number and costs nothing. A name first set inside game code is set again each time that code runs, so it starts afresh every pass, and the same name in two routines is two variables. `old = hp` in game code keeps hp's number as it is at that line.
   - A number changed by game code outside its reach (`count = 0`, then a pool's `each` above the game loop doing `count += 1`) is a friendly error: start it with `count = var :count, 0`.

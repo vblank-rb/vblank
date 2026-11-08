@@ -1,6 +1,17 @@
 # DSL reference: Sound & music
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `enable_sound`; `define_sound :name, …` + `beep :name`; `noise`, `wave` / `stop_wave`.
+- `song(:name) { … }` + `play_song`, `stop_music`; `hold_music` / `release_music`; `music_volume`, `fade_music_out` / `fade_music_in`.
+- `sample :name, from: "clip.wav"` → `Sample`, recorded sound, mixed.
+- `songs :music, [score, …]`, `sound_effects :sfx, {…}` — music and effects as `Audio::Score` data.
+- `instrument :piano, from:, note:` → `Instrument`.
+
+## In full
 
 - `enable_sound`, `define_sound :name, frequency:, duty:, decay:, volume:`, `beep :tone` — SFX (channel 2).
 - `noise :explosion` (also `:hit`/`:kick`/`:snare`/`:hat`/`:zap`, or `pitch:`/`decay:`/`volume:`/`metallic:`) — a percussion/explosion hit on the noise voice (channel 4).

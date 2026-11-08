@@ -1,6 +1,13 @@
 # DSL reference: Places
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `place :cube do … end` or `points:, faces:` (data), `viewer`, `draw_place` (`at:`, `facing:`), `screen_spot`, `change_picture` — 3D, lit by `shading` (`image shading:`).
+
+## In full
 
 A first-person view of a place built from flat faces, seen from a spot the game chooses. The words:
 a **place** is points in space and the faces that join them; a **point** is three numbers, across

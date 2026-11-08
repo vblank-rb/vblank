@@ -1,6 +1,13 @@
 # DSL reference: Effects a game writes
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `uses MyPack` — a module of the game's own verbs.
+
+## In full
 
 - `uses MyPack` (or `uses A, B`) — **bring in effects of the game's own, for this game alone.** A pack is a plain Ruby module whose methods are written in the game's own verbs: its public methods become verbs from the `uses` line on, its private methods are helpers its verbs call, and checks it answers with (`def self.checks = [...]`, each with `detect(program)` handing back findings) report on this build and no other. Nothing is added to every other game the process builds, so two games built side by side can each have a verb of the same name, and a game built in a Ractor can call one (a module's methods are written in the module, which a Ractor can run, where a verb made from a block at run time is not). The packs VBlank ships (`iris_out`, `fade_out`, `shake_screen` …) are every game's already; `uses` is for the ones a game writes.
   - **What a pack is for is a look one game has**: an iris drawn the way one game draws it, a menu with one game's cursor, a copy of a commercial game's effect down to its quirks. It is written in public verbs only, so it plays the same on the console, the interpreter, C and JavaScript with nothing else to do. What it cannot say is a gap in the framework, and the answer is a new verb in the framework, not a way round it.

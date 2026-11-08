@@ -1,6 +1,13 @@
 # DSL reference: The date and time
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `clock` → `Clock` (`hour` … `weekday`); ask `present?` and `set?` first; `set_to(year:, month:, day:, hour:, minute:)` sets it.
+
+## In full
 
 - `clock` → a `Clock`: **the date and time, as the clock a cartridge carries keeps them.** The console has no clock of its own: switched off it forgets, and switched on it only knows how long it has run. Some cartridges carry a clock chip with a watch battery of its own, which keeps counting while the console is off, and that is what a game asks — for berries that grow while nobody plays, or something that happens once a day. Its readings are numbers like any variable's, to draw, compare or keep: `now.hour` (0–23), `now.minute`, `now.second`, `now.year` (as written: 2026), `now.month` (1–12), `now.day` (1–31) and `now.weekday` (0 for Sunday to 6 for Saturday, as the chip counts). **Every reading in one pass of the game loop is of the same moment**, so a minute cannot turn over between reading the minute and the second. **Summer time does not move it**: a clock holds the local time it was set to and counts one second a second. There are no time zones: the chip holds whatever local time it was set to.
 

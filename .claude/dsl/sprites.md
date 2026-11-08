@@ -1,6 +1,22 @@
 # DSL reference: Images & sprites
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `image :name, "#" => :red do … end` — ASCII art, `data:`, `from: "file.png"`, or `from: list` painted at run time.
+- `sprite :name, at: [x, y]` → `Sprite` (software on bitmap, hardware on tiled): moving, facing, frames, hitbox, turning. `over_picture: true` on bitmap: the console's own, in front of all the picture.
+- `blit :name, x, y` — a picture at a run-time place, clipped.
+- `mirror(:pic)` / `upside_down(:pic)` — turned.
+- `colors :hurt, [...]` + `draw_with`; `recolor :slot, :goblin` at run time; `colors_in_use` (a hint).
+- `color_walk :city, from: :black` → the lists of a console game's fade, for `draw_with` or `recolor` with `showing:`.
+- `picture_groups :rooms, {…}` + `show` — sprite pictures by room, so only the rooms up take sprite memory.
+- `sprite_tiles :ball, count: 32, colors:` → `SpriteTileSet`; `image :spin0, tiles_from: :ball, pieces: [[dx, dy, tile], …]` — poses from one tile set; `set.copy_from :pic, at:, count:, to:` loads tiles.
+- `hide_sprites` — no sprite on the next frame drawn (tiled screens).
+- `rgb r, g, b` (0–31), `rgb8` (0–255), `color value` — a 15-bit colour.
+
+## In full
 
 - `image :name, "." => :transparent, "#" => :red do <<~ART … ART end` — ASCII art; or `image :name, width:, height:, data:` / `from: "file.png"` (file paths resolve next to your script).
 - **A picture drawn from few colours costs half the video memory, and there is nothing to write for it.** The console holds a picture's pixels one of two ways — a whole number each, out of a table of 256 colours, or HALF a number each, out of sixteen — and half a number is half the memory for the same picture drawn at exactly the same speed. Sixteen sounds crippling and is not, because they are not the same sixteen for every picture: the table is read in groups of sixteen and a picture says which group it draws from, so two pictures can have sixteen colours each and share none of them. So the framework counts the colours in each piece of art and decides. **Fifteen or fewer and it halves** (the sixteenth is the see-through one); more and it is stored the way everything was before, out of the whole table, and the two kinds sit side by side in one game. It is worth knowing only because the two budgets it spends are fixed and small — 32K holds every sprite picture a screen can show, and one block holds every background tile — so **twice as much art fits**, and `rom.profile` says how much of each is left and how much of that the halving bought back. Pac-Man's sprites more than halved, from 5K to 2.5K. On the tile side it is the difference between 256 distinct 8×8 tiles for a whole game and 512.

@@ -1,6 +1,6 @@
 # DSL reference: Game code is plain Ruby
 
-The whole story of how a game's code is written. The one-line index is `.claude/rules/dsl-reference.md`.
+How a game's code is written. The map of every page is `.claude/rules/dsl-reference.md`.
 Worked examples: `test/all/vblank/dsl/test_plain_ruby.rb` (what works) and
 `test/all/vblank/dsl/test_plain_ruby_refusals.rb` (what is refused, and what to write instead).
 

@@ -1,6 +1,15 @@
 # DSL reference: Input
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `held(:left)`, `pressed(:start)` (`:any`); low-level `if_held`, `if_pressed`. Buttons `a b select start right left up down r l`, and `x y` on the Super Nintendo.
+- `held(:left, player: 3)` (1 to 16, or `:any`); `players: 1..4` on `VBlank.game`; `most_players`; `drawing_for_local_player { |me| … }` → draw for this player alone, `mark over: hero, with: :arrow` there; `players_connected` → how many now. `vblank run --host` / `--join`: a match.
+- `rumble frames: 12, pattern: "##..##.."` — shake a cartridge with a motor (the Color's).
+
+## In full
 
 - `held(:left)` — 1 while down; `pressed(:start)` — 1 on the press edge only. Use with `if`.
 - `held(:any)` / `pressed(:any)` — **any button at all**, which is how a game leaves an attract screen, a splash or a cut scene: `mode = :title if pressed(:any)`. `pressed(:any)` is true on a frame some button went down, the same edge each button has on its own — so A pressed while LEFT is still held counts, and a button held on and on is one press. It is one test against all ten buttons, cheaper than the ten `held` tests joined with `||` it replaces, and none can be left out. `:any` is not a button: a test's `hold(...)` and the command line's held keys refuse it, since holding "any" means nothing.

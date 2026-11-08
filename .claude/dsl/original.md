@@ -1,6 +1,6 @@
 # DSL reference: Data from the original (the data pack)
 
-The whole story of `data_pack`, indexed under Tables in `.claude/rules/dsl-reference.md`.
+The whole story of `data_pack`, listed on `tables.md`. The map of every page is `.claude/rules/dsl-reference.md`.
 
 A port of a retail game may not ship that game's data. It names the original (`VBlank::Original::Game`,
 which finds the player's copy and checks its SHA-1) and reads what it needs from a **data pack** made

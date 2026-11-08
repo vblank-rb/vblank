@@ -1,6 +1,14 @@
 # DSL reference: Text & numbers
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `draw_text "HI", x, y, color`, `draw_number :var, x, y, color, digits:` (`leading_zeros:`); `:left`/`:center`/`:right`.
+- `text_width`, `text_height`; `font :name do glyph … end`; `pictures:`/`strip:`: no colour.
+
+## In full
 
 - `draw_text "HELLO", x, y, color` — fixed-origin text (`font:` picks a registered font; default `:default`). **A character the font does not have is a friendly build error** naming the character and the font, because the words are known while the game is built and a gap in a line otherwise shows only in the picture. `:default` holds the capitals (small letters fold to them), the digits, and the marks `! . : - % , ' ? / > <`; `:tiny` holds the digits and a space, so it is for `draw_number`. A space is the way to ask for a gap.
 - `draw_text "SOUND", x, y, [:gray, :white], showing: picked == 1` — **two colours, and a test saying which**: the second while it holds, the first when it does not. A label that highlights, a HUD figure that turns red when the health is low (`showing: hp < 20`). Written the long way — the same words drawn twice, under a test and its opposite — it says the same thing and paints the same pixels, and it costs twice as much on **either** screen. On a **tiled** screen the console draws each character as its own little sprite out of a table of 128: two draws are two sprites for every character with one of them always hidden, where this is **one sprite that changes colour**, because the pair becomes two poses on it and the console is already swapping which picture a sprite shows for free. That halving is what lets an eight-row `menu` fit. On a **bitmap** screen the words are painted pixel by pixel into code, so two draws are every pixel of them twice over, where this **paints them once** with the colour picked by a test just before — a handful of instructions for the second colour rather than a second copy of the words. On the jukebox, whose song list is a menu of such rows, that takes about a fifth off its code. Exactly two colours: a test is 0 or 1 and a pair has a 0 and a 1, so the choice can never land outside it. Three is a friendly error saying to draw the text under a test for each, and a pair without `showing:` (or `showing:` with one colour) is a friendly error too.

@@ -1,6 +1,15 @@
 # DSL reference: Playing a finished game with nobody at the controls
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `VBlank.playthrough "name" do … end` — scripted presses on a cartridge; `vblank compare`.
+- `vblank run game.rb --script s.rb` / `--tape t.tape` — the one command that plays a game: a person without either, nobody with one; as Ruby unless `--on js|native|logic|interpreter`. No cartridge: `--write-mgba-script`, `--write-bk2` reach a console.
+- `VBlank.bot` + `vblank bot FILE` — a script plays in a match.
+
+## In full
 
 Not verbs either — these drive a built cartridge.
 

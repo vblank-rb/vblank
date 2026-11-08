@@ -30,8 +30,8 @@ Single-context repo (this repo):
 When your output names a domain concept (in an issue title, a refactor
 proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`.
 Don't drift to synonyms the glossary explicitly avoids. The exact name of a DSL
-verb or option comes from the DSL reference (the index
-`.claude/rules/dsl-reference.md`, and each group's whole story under
+verb or option comes from the DSL reference (the map
+`.claude/rules/dsl-reference.md`, and the page it names under
 `.claude/dsl/`), and wins where the glossary disagrees. For the rules a new name
 follows, read "Naming methods" in `.claude/CLAUDE.md`.
 

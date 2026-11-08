@@ -1,6 +1,17 @@
 # DSL reference: Control flow
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `if`, `unless`, `while`, `until`, `&&`, `||`, `!`, ternary — normal Ruby; a test the game makes becomes game code. `return`, `break`, `next` under one are refused.
+- `game_loop do … end` — once a frame. `repeat(n) { |i| … }`; `every(n)`, `after(n)`; `once_a_frame`.
+- `each_pass(:name) { |job| … }` → `PassJob`; `timer :name, per_second:` → `Timer`.
+- `frames_since_power_on` — a number, real frames shown since power-on, setting up included.
+- Low-level `if_eq` `if_ne` `if_gt` `if_lt` `if_ge` `if_le` (`if_gte`, `if_lte`).
+
+## In full
 
 - `game_loop do … end` — the per-frame loop. It runs its body once per frame: the framework waits for the screen and repaints your sprites and HUD at the top of every pass, so you never write a frame sync. **The screen stays switched off until the first of those frames is set up**, so whatever the game says before its loop — a flash or a fade it opens on, sprites placed, a picture painted — is all in force on the first frame anybody sees, however long setting up takes. A console with its picture switched off shows plain white, so a game that takes a while to set up opens on a frame or two of white, where it used to open on its picture without any of that. Build with `frame_sync: :manual` (on `VBlank.game` / `VBlank.build`) to place `wait_vblank` yourself.
 - `if`, `elsif`, `else`, `unless`, `while`, `until` — **normal Ruby.** A test the game makes as it plays becomes a branch in the game, and a test on a plain value (`if screen_width > 200`) is decided while the game is built. The trailing forms (`x += 1 if x < 5`, `… unless …`) and a ternary as a statement work the same. **Truthiness is Ruby's**: `nil` and `false` are falsy and everything else is truthy, so a number is true whatever it holds, 0 included. Keep a yes or no with `true` and `false` (`alive = true`, then `draw_hero if alive`), and compare a number (`if hp > 0`).

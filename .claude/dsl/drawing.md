@@ -1,6 +1,21 @@
 # DSL reference: Drawing (Mode 3, direct color)
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `pixel`, `fill_rect` / `dma_fill_rect` (fixed place, even width), `draw_rect_at` (run-time, any width), `clear_screen`.
+- `draw_column_at :pic, slice:, x:, top:, height:` — a picture column stretched to a run-time height.
+- `inside x, y, w, h do … end` — clip to a rectangle. `camera x, y`; `camera_follows hero, across: world` (tiled).
+- `fade :black, 50`, `tint :red, 30`; over time `fade_out` / `fade_in` / `flash_screen`; `fade_level` → 0..100.
+- `pixelate 8`; over time `pixelate_out` / `pixelate_in`; `pixelate_size`.
+- `spotlight at:, radius:, dark:` → a light (tiled, one per game); `iris_out` / `iris_in` / `iris_shut?`.
+- `pulse sprite, to: 1.3`; `shake_screen intensity:, frames:`.
+- `keep_showing :name do … end` — paint only on a change, right on a two-page screen.
+- `grid :name, cols:, rows:, cell:, over:` → `Grid`.
+
+## In full
 
 A view in three dimensions, a place of flat faces seen from a spot the game chooses, is in `places.md`.
 `draw_place` draws across the whole screen, or across the `inside` area it is drawn in.

@@ -1,6 +1,14 @@
 # DSL reference: Measuring a finished game
 
-The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
+The map of every page is `.claude/rules/dsl-reference.md`. **On this page** has a line for each
+verb here; the entries after it tell each one in full.
+
+## On this page
+
+- `rom.profile` / `vblank profile game.rb` — where the frames went; `tape:, frames: 9..12` reads each (not GBA); `rom.sprite_memory`.
+- `Diagnostics::Film.make "door.mp4", sides:, parts:, keys:` — an MP4 of 1 or 2 cartridges; `FilmTasks`: rake film.
+
+## In full
 
 Not verbs — these are called on the built cartridge.
 
