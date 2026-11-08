@@ -26,6 +26,11 @@ module VBlank
         # ...and what gets round the checks whatever it is called on.
         INDIRECT_CALLS = %i[__send__ class_eval const_get instance_eval public_send send].freeze
 
+        # ...and what reads inside an object, whatever it is called on, given an argument: the calls
+        # VBlank/ReachAround (tools/rubocop/reach_around.rb) refuses in the library's own code. A
+        # `method` with no argument may be a game's own field of that name, so it is left alone.
+        REACHING_IN_CALLS = %i[instance_variable_get instance_variable_set method].freeze
+
         # What only game code calls, so a file holding one is game code. These need a block, since
         # `scene` or `func` alone could be a method of the file's own. `var` needs a name instead.
         GAME_BLOCK_VERBS = (LocalNames::GAME_VERBS - %i[every after repeat item]).freeze
@@ -166,7 +171,9 @@ module VBlank
         def refuse_call!(node)
           case node
           when Prism::XStringNode, Prism::InterpolatedXStringNode then refuse_backticks!(node)
-          when Prism::CallNode then refuse_outside_call!(node)
+          when Prism::CallNode
+            refuse_reaching_in!(node)
+            refuse_outside_call!(node)
           end
         end
 
@@ -175,6 +182,13 @@ module VBlank
 
           refuse!("`#{node.name}` reaches outside the game, so this block cannot use it. If you need " \
                   "it while building, use it above the block and keep the result in a constant.", node)
+        end
+
+        def refuse_reaching_in!(node)
+          return unless REACHING_IN_CALLS.include?(node.name) && node.arguments
+
+          refuse!("`#{node.name}` reads inside an object, so this block cannot use it. To fix this, call the " \
+                  "method by its name.", node)
         end
 
         def refuse_backticks!(node)

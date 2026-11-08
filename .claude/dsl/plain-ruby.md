@@ -110,6 +110,7 @@ Each is a friendly error naming the line.
 | `.then` on a test | `if` |
 | a number worked out and not kept (`hp + 1` alone, `hp.abs` alone) | `hp += 1`; `hp.abs!` |
 | a constant from outside the game, or `system`, `eval`, `require`, `send` and the like | work it out above the block into a constant; `allow:` a library that is safe |
+| `instance_variable_get`, `instance_variable_set`, `method(:name)` | call the method by its name |
 | game code in a file loaded with `require_relative` | `VBlank.require_game_file` |
 
 ## What builds without a word and means something else

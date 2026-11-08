@@ -215,6 +215,14 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_refused("Backticks") { `ls` }
   end
 
+  # They reach around an object the way `send` does, and a game written in plain Ruby has no use for them.
+  def test_calls_that_reach_into_an_object_are_refused
+    assert_refused("`instance_variable_get`") { game_loop { instance_variable_get(:@hp) } }
+    assert_refused("`instance_variable_set`") { game_loop { instance_variable_set(:@hp, 1) } }
+    assert_refused("`method`") { game_loop { method(:halt) } }
+    assert_refused("`method`") { 1.method(:+) }
+  end
+
   def test_a_game_verb_named_like_one_of_rubys_outside_calls_is_allowed
     builder = built do
       sparks = pool(:spark, x: 0, capacity: 2)
