@@ -70,6 +70,55 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
+  def test_case_in_with_a_pattern_a_game_cannot_answer_is_refused
+    assert_refused("`case ... when`") do
+      hp = 5
+      game_loop do
+        case hp
+        in Integer => left if left > 3 then wait_vblank
+        end
+        hp -= 1
+      end
+    end
+  end
+
+  def test_for_up_to_a_number_the_game_keeps_is_refused
+    assert_refused("`while`") do
+      n = 3
+      total = 0
+      game_loop do
+        for each_number in 0...n
+          total += each_number
+        end
+        n += 1
+      end
+    end
+  end
+
+  def test_for_from_a_number_the_game_keeps_is_refused
+    assert_refused("`while`") do
+      n = 0
+      game_loop do
+        for each_number in n..3
+          wait_vblank
+        end
+        n += 1
+      end
+    end
+  end
+
+  def test_for_over_a_list_the_game_keeps_is_refused
+    assert_refused("`.each`") do
+      things = list(:things, capacity: 4)
+      total = 0
+      game_loop do
+        for thing in things
+          total += thing
+        end
+      end
+    end
+  end
+
   def test_case_asking_what_a_game_cannot_answer_is_refused
     assert_refused("`when String`") do
       hp = var :hp, 5

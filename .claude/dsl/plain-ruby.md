@@ -63,7 +63,9 @@ plays.
 - `== != < <= > >=`, and `zero?`, `positive?` and `negative?`, ask about a number.
 - `x = test ? a : b`, `x = if … else … end` and `x = case … else … end` pick a value on every pass.
 - `case` on a game number takes `when` with a number, a symbol, a range, a comma list, a variable, or
-  `true`/`false`. A `case` with no subject asks each `when` in turn.
+  `true`/`false`. A `case` with no subject asks each `when` in turn. `case … in` takes the same
+  values, with `a | b` between them; any other pattern (a binding, an array, a guard) is Ruby's, on
+  a plain value only.
 - `nil` is Ruby's: `target = nil`, then `if target`, `target.nil?`, `target || 7`. Read as a number, nil
   is 0.
 
@@ -77,6 +79,8 @@ plays.
   block, `3.times { x += 1 }` adds 3 on every pass. That is right for laying out a row of sprites, and
   wrong for a count the game works out.
 - `.each` on a name is taken as game code, since it may be a pool's.
+- `for x in 1..3` runs while building, as `(1..3).each` does. A `for` from or to a game number is
+  refused (write a `while` loop), and so is one over a list or a pool (write `.each`).
 
 ## Splitting a game into files
 
@@ -98,6 +102,9 @@ Each is a friendly error naming the line.
 | a number name given `nil` later | start it with `n = nil` |
 | `x = if …` with no `else`; a pick of something other than a number or `true`/`false` (a symbol picks only into a variable that already holds names) | an `else`; a number to pick with |
 | `case` asking about a game test, or `when String` of a number | `if` |
+| `case … in` on a game number with a pattern other than values and ranges | values, ranges and `\|`; or `case` with no subject and `when hp > 3` |
+| `for` from or to a game number | `i = 0`, `while i < n`, `i += 1` at the end of its body |
+| `for` over a list or a pool | `things.each do \|thing\|` |
 | `even?`, `odd?`, `nonzero?`, `between?` on a game number | the comparison: `hp % 2 == 0` |
 | `.then` on a test | `if` |
 | a number worked out and not kept (`hp + 1` alone, `hp.abs` alone) | `hp += 1`; `hp.abs!` |
@@ -108,7 +115,6 @@ Some refusals give the wrong reason. Write it another way, and report the messag
 
 | written | the build says | write instead |
 |---|---|---|
-| `case … in` (pattern matching), `for i in 0...n` | "This line is in code that VBlank does not read as a game" | `case … when`; `repeat` or a Ruby iterator |
 | `"HP #{hp}"` in `draw_text` | the font has no `#` | `draw_number` beside the text |
 | `t == nil` | "can't use nil as a value" | `t.nil?` |
 

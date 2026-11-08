@@ -689,6 +689,48 @@ class TestPlainRuby < Minitest::Test
     assert_equal 2, player[:seen]
   end
 
+  def test_case_in_takes_a_number_a_range_and_a_choice_of_either
+    arms = proc do |n|
+      picked = case n
+               in 0..2 then 1
+               in 5 | 7 then 2
+               in 9 then 3
+               else 4
+               end
+      picked
+    end
+
+    assert_equal [1, 2, 3, 4], [1, 7, 9, 3].map { |start| case_on(start, &arms) }
+  end
+
+  def test_case_in_on_a_plain_value_stays_ruby
+    player = played do
+      point = { x: 3, y: 4 }
+      seen = 0
+      case point
+      in { x: Integer => across } then seen = across
+      end
+      shown = 0
+      game_loop { shown = seen }
+    end
+
+    assert_equal 3, player[:shown]
+  end
+
+  def test_for_over_a_range_written_out_goes_round_while_building
+    player = played do
+      total = 0
+      game_loop do
+        total = 0
+        for each_number in 1..3
+          total += each_number
+        end
+      end
+    end
+
+    assert_equal 6, player[:total]
+  end
+
   def test_case_on_a_plain_value_stays_ruby
     player = played do
       kind = "text"

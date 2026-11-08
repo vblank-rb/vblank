@@ -79,6 +79,36 @@ module VBlank
           right ? condition.discard! || right : condition
         end
 
+        # The subject of a `case ... in` whose patterns Ruby matches while building. See
+        # Rewriter#case_match_text.
+        def plain_pattern_subject(subject)
+          return subject unless subject.is_a?(Value) || subject.is_a?(Condition)
+
+          refuse_game_code!("This `case ... in` asks about a number the game keeps. The game can match that number " \
+                            "only against numbers, ranges, symbols and constants, with `|` between them. To fix " \
+                            "this, write one of those after `in`. Or write tests with `case ... when`: `case` with " \
+                            "no subject, then `when hp > 3 then`.")
+        end
+
+        # The range of `for x in a..b`, which Ruby runs while building. See Rewriter#for_text.
+        def for_range(from, upto, exclusive)
+          if [from, upto].any?(Value)
+            refuse_game_code!("A `for` loop cannot count from or to a number the game keeps. Ruby runs a `for` loop " \
+                              "while it builds the game. To fix this, use a `while` loop. Write `i = 0`, then " \
+                              "`while i < n`, and end the loop's body with `i += 1`.")
+          end
+          Range.new(from, upto, exclusive)
+        end
+
+        # What `for x in things` goes over, which Ruby runs while building. See Rewriter#for_text.
+        def for_collection(collection)
+          return collection unless collection.is_a?(List) || collection.is_a?(Pool)
+
+          refuse_game_code!("A `for` loop cannot go over a list or a pool. Ruby runs a `for` loop while it builds " \
+                            "the game, and the game holds the items. To fix this, use `.each`: write " \
+                            "`things.each do |thing|`.")
+        end
+
         # One `when`: does +subject+ match any of +choices+? A plain subject is Ruby's to answer. A
         # number the game keeps becomes a test, one choice at a time.
         def when_test(subject, *choices)

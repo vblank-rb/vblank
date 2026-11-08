@@ -26,6 +26,11 @@ module VBlank
       # What opens a scope of its own, whose jumps and locals stay in it.
       OWN_SCOPES = [Prism::BlockNode, Prism::LambdaNode, Prism::DefNode].freeze
 
+      # What a `case ... in` pattern can hold and still be asked as a `when` is.
+      WHEN_VALUES = [Prism::IntegerNode, Prism::FloatNode, Prism::RangeNode, Prism::SymbolNode, Prism::StringNode,
+                     Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::NilNode, Prism::TrueNode,
+                     Prism::FalseNode].freeze
+
       # The verbs that use what their block's last line gives back as a number the game works out.
       ANSWERING_BLOCK_VERBS = %i[scroll_each_row].freeze
 
@@ -179,6 +184,10 @@ module VBlank
           @lone_joins = {}.compare_by_identity
           @tail_ternaries = {}.compare_by_identity
           @block_tests = []
+          # The patterns of a `case ... in` left to Ruby, which are Ruby's own syntax and not
+          # expressions to rewrite, and the subjects such a `case` asks about.
+          @written_as_is = {}.compare_by_identity
+          @pattern_subjects = {}.compare_by_identity
         end
 
         def rewritten_block = rewritten(@block_node)
@@ -198,9 +207,14 @@ module VBlank
         def line_ends_between(from, upto) = "\n" * between(from, upto).count("\n")
 
         def rewritten_text(node)
+          return between(node.location.start_offset, node.location.end_offset) if @written_as_is.key?(node)
+          return "#{STEPS}.plain_pattern_subject(#{argument(node)})" if @pattern_subjects.delete(node)
+
           case node
           when Prism::IfNode, Prism::UnlessNode then conditional_text(node)
           when Prism::CaseNode then case_text(node)
+          when Prism::CaseMatchNode then case_match_text(node)
+          when Prism::ForNode then for_text(node)
           when Prism::WhileNode then loop_text(node, "loop_while")
           when Prism::UntilNode then loop_text(node, "loop_until")
           when Prism::AndNode then joined_text(node, "join_both")
@@ -232,9 +246,9 @@ module VBlank
 
         # The node's text, with what is inside it rewritten. A heredoc's lines sit past the end
         # of the node that opened them, and the text around the node carries them, so they
-        # are left out here.
-        def copied_text(node)
-          at = node.location.start_offset
+        # are left out here. +from+ starts the copy further in, the children before it left out.
+        def copied_text(node, from: node.location.start_offset)
+          at = from
           ends = node.location.end_offset
           pieces = node.compact_child_nodes.sort_by { |child| child.location.start_offset }.map do |child|
             start = child.location.start_offset
@@ -454,7 +468,7 @@ module VBlank
 
         def value_text(value)
           return "(#{value_text(lone_statement(value))})" if lone_statement(value)
-          return case_text(value, kept: true) if value.is_a?(Prism::CaseNode)
+          return case_text(value, kept: true) if asked_arm_by_arm?(value)
 
           conditional = value.is_a?(Prism::IfNode) || value.is_a?(Prism::UnlessNode)
           conditional ? conditional_text(value, kept: true) : rewritten_text(value)
@@ -743,8 +757,60 @@ module VBlank
         end
 
         def arm_body_text(arm, ends)
-          opened = arm.conditions.last.location.end_offset
+          opened = (arm.is_a?(Prism::InNode) ? arm.pattern : arm.conditions.last).location.end_offset
           arm.statements ? side_text(opened, arm.statements, ends) : line_ends_between(opened, ends)
+        end
+
+        # What an arm is asked about: a `when`'s values, or the choices of an `in`'s pattern.
+        def arm_choices(arm) = arm.is_a?(Prism::InNode) ? pattern_choices(arm.pattern) : arm.conditions
+
+        # A pattern a `when` could have been written with: values, ranges and constants, and
+        # `a | b` between them. Anything else (a binding, an array or hash pattern, a guard) is
+        # nil, and the `case` is Ruby's own.
+        def pattern_choices(pattern)
+          return [pattern] if WHEN_VALUES.any? { |kind| pattern.is_a?(kind) }
+          return unless pattern.is_a?(Prism::AlternationPatternNode)
+
+          sides = [pattern_choices(pattern.left), pattern_choices(pattern.right)]
+          sides.flatten if sides.all?
+        end
+
+        # Is this a `case` the rewrite asks arm by arm: one with `when`, or one with `in` written as
+        # a `when` would be?
+        def asked_arm_by_arm?(node)
+          return true if node.is_a?(Prism::CaseNode)
+
+          node.is_a?(Prism::CaseMatchNode) && !node.predicate.nil? && node.conditions.all? { |arm| pattern_choices(arm.pattern) }
+        end
+
+        # `case ... in`. Written as a `when` would be, it is one, and a number the game keeps can
+        # be asked about it. Any other pattern is Ruby's, which matches it while the game is built,
+        # so only a plain value can be its subject: Steps.plain_pattern_subject refuses a number the
+        # game keeps.
+        def case_match_text(node)
+          return case_text(node) if asked_arm_by_arm?(node)
+
+          node.conditions.each { |arm| @written_as_is[arm.pattern] = true }
+          @pattern_subjects[node.predicate] = true if node.predicate
+          copied_text(node)
+        end
+
+        # `for x in list`. Ruby runs it while the game is built, as it runs `each`. A range with a
+        # number the game keeps at an end has no length yet, so Steps.for_range refuses it, and
+        # Steps.for_collection refuses a game's own list or pool, whose items the game holds.
+        def for_text(node)
+          collection = node.collection
+          unless collection.is_a?(Prism::RangeNode)
+            return between(node.location.start_offset, collection.location.start_offset) +
+                   "#{STEPS}.for_collection(#{argument(collection)})" +
+                   copied_text(node, from: collection.location.end_offset)
+          end
+
+          from = collection.left ? argument(collection.left) : "nil"
+          upto = collection.right ? argument(collection.right) : "nil"
+          range = "#{STEPS}.for_range(#{from}, #{upto}, #{collection.exclude_end?})"
+          between(node.location.start_offset, collection.location.start_offset) + range +
+            copied_text(node, from: collection.location.end_offset)
         end
 
         def else_arm_text(node)
@@ -755,7 +821,7 @@ module VBlank
         end
 
         def when_test_text(node, arm, subject)
-          choices = arm.conditions
+          choices = arm_choices(arm)
           return "#{STEPS}.when_test(#{subject}, #{choices.map { |choice| rewritten_text(choice) }.join(', ')})" if node.predicate
 
           *others, last = choices
@@ -829,7 +895,7 @@ module VBlank
 
         def answers_on_every_side?(value)
           case value
-          when Prism::CaseNode then !value.else_clause.nil?
+          when Prism::CaseNode, Prism::CaseMatchNode then asked_arm_by_arm?(value) && !value.else_clause.nil?
           when Prism::IfNode
             value.subsequent.is_a?(Prism::ElseNode) || (value.subsequent && answers_on_every_side?(value.subsequent))
           when Prism::UnlessNode then !value.else_clause.nil?
@@ -851,7 +917,7 @@ module VBlank
 
         def picked_into_text(write)
           name = write.name.to_s
-          text = write.value.is_a?(Prism::CaseNode) ? case_text(write.value, kept: name) : conditional_text(write.value, kept: name)
+          text = asked_arm_by_arm?(write.value) ? case_text(write.value, kept: name) : conditional_text(write.value, kept: name)
           "#{name} = (#{text}; #{name})"
         end
 
