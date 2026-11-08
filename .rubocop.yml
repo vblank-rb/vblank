@@ -1,6 +1,10 @@
 plugins:
   - rubocop-performance
 
+# The project's own cops (tools/rubocop/).
+require:
+  - ./tools/rubocop/reach_around
+
 AllCops:
   DisabledByDefault: true
   NewCops: enable
@@ -16,3 +20,23 @@ AllCops:
 
 Performance:
   Enabled: true
+
+# A call made around an object (send, public_send, __send__, method(:x), instance_variable_get or
+# _set) cannot be found by its name. The pre-commit hook runs this on the files being committed.
+VBlank/ReachAround:
+  Enabled: true
+  Include:
+    - "lib/**/*.rb"
+    - "test/**/*.rb"
+  Exclude:
+    # The plain-Ruby rewriter applies the operator, verb or attribute a game wrote, handed to it as a
+    # Symbol, the way Ruby applies it; and calls the `var` of whatever the game's block ran on.
+    - "lib/vblank/dsl/plain_ruby_steps.rb"
+    - "lib/vblank/dsl/plain_ruby_writes.rb"
+    # Saves and puts back everything a lowering holds, whatever a later change adds to it.
+    - "lib/vblank/ir/backends/lowering_state.rb"
+    # Its subject is game code calling `send`, which the rewriter refuses.
+    - "test/all/vblank/dsl/test_plain_ruby_refusals.rb"
+    # Each swaps a module method for a stand-in and puts it back: nothing hands either one in yet.
+    - "test/interpreter/vblank/testing/test_pictures_interpreter.rb"
+    - "test/lowering/gba/vblank/diagnostics/test_full_collections_cost.rb"

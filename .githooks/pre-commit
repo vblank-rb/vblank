@@ -10,6 +10,12 @@
 #    fall back on the hardware's own words; comments may, and are exempt. See
 #    tools/plain_words_scan.rb, which explains why it reads the source through Ruby's
 #    lexer rather than grepping it.
+#
+# 2. No call made around an object: send, public_send, __send__, method(:x),
+#    instance_variable_get or _set, in a Ruby file under lib/ or test/ being committed.
+#    tools/rubocop/reach_around.rb says why, and .rubocop.yml holds the files allowed
+#    and the reason for each. Only that cop runs here, and only on the files committed,
+#    so the check costs a second, not a lint of the whole tree.
 
 set -e
 
@@ -18,6 +24,16 @@ if git diff --cached --name-only --diff-filter=ACM | grep -q '^lib/.*\.rb$'; the
   bundle exec ruby tools/plain_words_scan.rb || {
     echo
     echo "Commit stopped. Run 'rake plain_words' to see it again."
+    exit 1
+  }
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(lib|test)/.*\.rb$' || true)
+if [ -n "$staged" ]; then
+  # --force-exclusion: a file named here that .rubocop.yml allows is still left alone.
+  echo "$staged" | xargs bundle exec rubocop --only VBlank/ReachAround --force-exclusion --format quiet || {
+    echo
+    echo "Commit stopped: a call made around an object. See the lines above."
     exit 1
   }
 fi
