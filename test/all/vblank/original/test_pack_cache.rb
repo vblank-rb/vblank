@@ -97,6 +97,63 @@ class TestPackCache < Minitest::Test
     end
   end
 
+  # Builds on threads of one process that miss together each store the bytes they made, and none
+  # takes the half-written entry of another from under it. Each thread waits for every other to
+  # have missed before it stores, so they store together; the race is tried for several copies,
+  # each a key of its own, since one try can pass by luck.
+  def test_builds_on_threads_that_miss_together_keep_one_entry_and_say_nothing
+    Dir.mktmpdir do |folder|
+      cache = VBlank::Original::PackCache.new(folder)
+      unpacking = Data.define(:program).new(program: halting_program)
+      said = warnings_from do
+        COPIES_TRIED.times { |copy| store_on_threads_at_once(cache, unpacking, "copy-#{copy}") }
+      end
+
+      assert_empty said
+      assert_equal COPIES_TRIED, Dir.glob(File.join(folder, "*")).size, "one entry for each copy, and nothing half-written"
+    end
+  end
+
+  COPIES_TRIED = 10
+  THREADS_STORING = 8
+
+  # THREADS_STORING builds of one copy on threads, every one missing before any stores.
+  private def store_on_threads_at_once(cache, unpacking, copy_sha1)
+    missed = Queue.new
+    go = Queue.new
+    threads = Array.new(THREADS_STORING) do
+      Thread.new do
+        cache.slot_bytes(unpacking, copy_sha1) do
+          missed << true
+          go.pop
+          { walls: "\1".b * 65_536 }
+        end
+      end
+    end
+    THREADS_STORING.times { missed.pop }
+    THREADS_STORING.times { go << true }
+    threads.each(&:join)
+  end
+
+  # What the block warns. Minitest's capture_io takes a lock no test in a Ractor can read, and
+  # $stderr is this Ractor's own, so it is swapped here, for the block's threads too.
+  private def warnings_from
+    said = StringIO.new
+    before = $stderr
+    $stderr = said
+    yield
+    said.string
+  ensure
+    $stderr = before
+  end
+
+  private def halting_program
+    builder = VBlank::Builder.new
+    builder.halt
+    builder.finalize_program
+    builder.program
+  end
+
   def test_a_build_with_no_cache_keeps_nothing
     Dir.mktmpdir do |folder|
       picture(game_program(->(builder) { unpacked_pack(builder, folder).then { |pack| [pack[:palette], pack[:walls].tile(0), pack[:walls].tile(1), builder.table(:speeds, pack[:heights])] } }))

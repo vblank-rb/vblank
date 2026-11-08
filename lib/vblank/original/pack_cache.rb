@@ -22,7 +22,7 @@ module VBlank
     #
     # Each change to the library misses once and writes a new entry, so entries are pruned: one no
     # build has read for EXPIRE_DAYS goes when the next is stored, and so does a half-written one
-    # left by a build that stopped. Two builds at once, in two processes or Ractors, may each miss
+    # left by a build that stopped. Two builds at once, in two processes, Ractors or threads, may each miss
     # and each store the same bytes: an entry is written under a name of its own and then renamed,
     # so neither reads half of one, and an entry that cannot be read is made again. A PackCache
     # holds nothing that changes, so it is made for each build.
@@ -80,7 +80,9 @@ module VBlank
       # its bytes are handed on, with one line saying the next build will run it again.
       def store(path, slots)
         FileUtils.mkdir_p(@folder)
-        temporary = "#{path}.#{Process.pid}.#{Ractor.current.object_id}#{PARTIAL_EXTENSION}"
+        # Named for the thread, which tells apart builds in other processes, other Ractors (each has
+        # threads of its own) and other threads of this one, so no build renames another's file.
+        temporary = "#{path}.#{Process.pid}.#{Thread.current.object_id}#{PARTIAL_EXTENSION}"
         File.binwrite(temporary, Marshal.dump(slots))
         File.rename(temporary, path)
         prune
