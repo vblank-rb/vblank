@@ -282,26 +282,27 @@ module VBlank
                             "keep a number and pick with it.")
         end
 
-        # A number changed from a block only running can place (a pool's `each`, or a Ruby list's).
-        # Changed while game code is recorded, it would change once, while building, and the game
-        # would never see it, so the name becomes a game variable holding the number it has now:
-        # the variable starts with that number as the game powers on, where the name had it.
-        # Anything else stays what it is. See Rewriter#guarded_write_text.
-        def number_kept_by_game(owner, current, name, recording)
-          return current unless recording && kept_number?(current)
+        # A number changed from a block that is a pool's `each` or a Ruby list's, which only running
+        # it can tell apart. Changed while game code is recorded, a plain number would change once,
+        # while building, and the game would never see it, so it becomes a game variable that starts
+        # at power-on with the number the name holds. While setting up, it is returned unchanged.
+        # See Rewriter#guarded_write_text.
+        def variable_while_recording(owner, current, name, recording)
+          return current unless recording && whole_or_fraction?(current)
 
           variable_with_no_var_line(owner, name, current)
         end
 
-        # ...and that name's first line. Run while game code is recorded (in a method a game loop
+        # The first line of such a name. Run while game code is recorded (in a method a game loop
         # calls), it sets the variable there, so each pass starts it afresh as Ruby's line would.
-        def start_kept_by_game(owner, value, name, recording)
-          return value unless recording && kept_number?(value)
+        def start_variable_while_recording(owner, value, name, recording)
+          return value unless recording && whole_or_fraction?(value)
 
           give_variable(variable_with_no_var_line(owner, name, value.is_a?(Float) ? 0.0 : 0), value)
         end
 
-        def kept_number?(value) = value.is_a?(Integer) || value.is_a?(Float)
+        # A Ruby whole number or fraction, unlike #number_kept?, which takes anything a game keeps.
+        def whole_or_fraction?(value) = value.is_a?(Integer) || value.is_a?(Float)
 
         # A variable the author never wrote `var` for, which the out-of-memory error names.
         #

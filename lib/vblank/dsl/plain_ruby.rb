@@ -398,15 +398,17 @@ module VBlank
           name = @names.variable_name_of(node)
           if @names.first_write?(node)
             prefix = between(node.location.start_offset, node.value.location.start_offset)
-            return "#{prefix}#{WRITES}.start_kept_by_game(self, (#{value_text(node.value)}), :#{name}, #{RECORDING_TEXT})"
+            return "#{prefix}#{WRITES}.start_variable_while_recording(self, (#{value_text(node.value)}), :#{name}, " \
+                   "#{RECORDING_TEST_SOURCE})"
           end
 
-          "(#{node.name} = #{WRITES}.number_kept_by_game(self, #{node.name}, :#{name}, #{RECORDING_TEXT}); " \
+          "(#{node.name} = #{WRITES}.variable_while_recording(self, #{node.name}, :#{name}, #{RECORDING_TEST_SOURCE}); " \
             "#{variable_write_text(node)})"
         end
 
-        # Is the builder recording game code where this line runs? A part of a game runs on no builder.
-        RECORDING_TEXT = "(respond_to?(:recording_game_code?) && recording_game_code?)"
+        # The Ruby a rewritten line asks with: true where the builder records game code as the line
+        # runs. A part of a game runs on no builder, so it answers false there.
+        RECORDING_TEST_SOURCE = "(respond_to?(:recording_game_code?) && recording_game_code?)"
 
         def promoted_in_block?(node)
           !@block_tests.empty? && node.depth.positive? && @names.plain_name_write?(node) && @names.promoted?(node)
