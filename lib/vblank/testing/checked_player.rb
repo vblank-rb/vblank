@@ -107,15 +107,6 @@ module VBlank
         raise MissingFeature, gap_reason(e)
       end
 
-      # What the runtime cannot do yet a test asks of the run before or after it, a skip too.
-      def method_missing(name, ...)
-        super
-      rescue IR::Backends::Ruby::RuntimeGap => e
-        raise MissingFeature, gap_reason(e)
-      end
-
-      def respond_to_missing?(name, include_private = false) = super
-
       private
 
       def gap_reason(gap) = "Ruby's runtime does not have yet: #{gap.part}"
@@ -165,20 +156,14 @@ module VBlank
         raise MissingFeature, "#{kit.title} build does not make yet: #{e.part}"
       end
 
-      # What the cartridge cannot answer yet a test asks of it after its run, a skip too.
-      def method_missing(name, ...)
-        super
-      rescue IR::Backends::RunComparison::CannotAnswer => e
-        raise MissingFeature, cannot_answer_reason(e)
-      end
-
-      def respond_to_missing?(name, include_private = false) = super
-
       private
 
-      def kit = Console.for(self.class.console)
+      # What the cartridge cannot answer yet, asked by a test before, during or after its run, a skip
+      # too (CartridgeHeadlessRun#refuse_question!).
+      def refuse_question!(message) = raise(MissingFeature, cannot_answer_words(message))
 
-      def cannot_answer_reason(error) = "#{kit.title} cannot answer: #{error.message[/`(\w+\??)`/, 1] || error.message}"
+      def cannot_answer_reason(error) = cannot_answer_words(error.message)
+      def cannot_answer_words(message) = "#{kit.title} cannot answer: #{message[/`(\w+\??)`/, 1] || message}"
 
       # One player class for each console whose kit names a checked run, made once as the library
       # loads.

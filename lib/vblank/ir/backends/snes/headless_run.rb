@@ -172,8 +172,8 @@ module VBlank
           # The Advance's mix, a stream of sound its processor makes from every recording: a Super
           # Nintendo plays each recording on a voice of its sound chip, and makes no such stream.
           def mixed_sound
-            raise CannotAnswer, "a Super Nintendo plays each recording on a voice of its own sound chip, so it has no " \
-                                "mixed sound to read."
+            refuse_question!("a Super Nintendo plays each recording on a voice of its own sound chip, so it has no " \
+                             "mixed sound to read.")
           end
 
           # The rest of what the interpreter answers, each refused by name.

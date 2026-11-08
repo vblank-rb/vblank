@@ -523,12 +523,19 @@ module VBlank
               @moments << Moment.new(frame: frame, variables: @vars, picture: check, sounds: @audio_played.size, sprites: @sprites,
                                      collections: game_state.except(:vars), sounding: active_samples, motor: motor_on?)
             end
-            buttons =@input_script ? @input_script.call(frame) : @held
+            buttons = buttons_sent(frame)
             @on_vblank&.call(frame)
             stdin.puts(@pass_buttons.headless_input_line(buttons))
             stdin.flush
             expect_next_frame
           end
+
+          # The buttons the test's input script gives for +frame+, or the ones held for the whole run.
+          def scripted_buttons(frame) = @input_script ? Array(@input_script.call(frame)) : @held
+
+          # The buttons sent to the program for +frame+. A checked run keeps a note of each, to play
+          # the same ones on the interpreter (Native::Check).
+          def buttons_sent(frame) = scripted_buttons(frame)
 
           # The program has just been started, or handed a frame's buttons: from now it has
           # LONGEST_FRAME_SECONDS to reach the next frame. However long a test's input script

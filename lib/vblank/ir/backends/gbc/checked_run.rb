@@ -23,38 +23,29 @@ module VBlank
         # compared over the Color's screen, the top-left 160×144 of it: what is past that the
         # cartridge cannot show. (Whether a test of a program built for the Advance is played here at
         # all is VBlank::Testing's decision.)
-        class CheckedRun < CartridgeCheckedRun
-          def initialize(save: SaveImage.new)
-            super(HeadlessRun, save: save)
-          end
-
-          # The same clock on both sides, started at the same moment: the Color's chip, which keeps
-          # no date, whichever console the program was built for.
-          def clock_at(time, set: true)
-            @cartridge.clock_at(time, set: set)
-            @clock_started = time
-            @clock_set = set
-            self
-          end
+        class CheckedRun < HeadlessRun
+          include CartridgeCheck
 
           private
 
           # A log that grew differently says which entry it first differs at, read to the end.
-          def moments_difference(moments)
+          def moments_difference(interpreted)
             difference = super
             return difference unless difference&.include?("sound log")
 
-            [difference, self.class.sounds_difference(@interpreter_sounds, @cartridge.whole_audio)].compact.join(", and ")
+            [difference, self.class.sounds_difference(@interpreter_sounds, whole_audio)].compact.join(", and ")
           end
 
           def further_difference(program, before)
-            difference = self.class.sounds_difference(@interpreter_sounds, @cartridge.audio_played)
+            difference = self.class.sounds_difference(@interpreter_sounds, audio_played)
             difference || (self.class.save_difference(before, @save) if SaveLayout.named_by?(program))
           end
 
+          # The same clock on both sides, started at the same moment (#clock_at): the Color's chip,
+          # which keeps no date, whichever console the program was built for.
           def prepare_interpreter(interpreter)
             interpreter.clock_at(@clock_started, set: @clock_set, keeps_date: false) if @clock_started
-            interpreter.frames_setting_up(@cartridge.dark_frames_counted)
+            interpreter.frames_setting_up(dark_frames_counted)
           end
 
           def sounding_levels(run) = run.active_samples.dup

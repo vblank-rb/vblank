@@ -4,18 +4,21 @@ require "test_helper"
 
 # WHAT A CHECKED RUN SAYS WHEN TWO SIDES DISAGREE, with no emulator: a stand-in for a console's run that
 # plays the program on the interpreter too, and changes what the test tells it to.
-class TestCartridgeCheckedRun < Minitest::Test
+class TestCartridgeCheck < Minitest::Test
   Comparison = VBlank::IR::Backends::RunComparison
-  CartridgeCheckedRun = VBlank::IR::Backends::CartridgeCheckedRun
 
-  # Everything CartridgeCheckedRun asks of a console's run.
+  # Everything CartridgeCheck asks of a console's run.
   class StandIn
     attr_reader :screen, :moments
 
-    def initialize(save:) = @save = save
+    def initialize(save:)
+      @save = save
+      @held = []
+    end
+
     def input_each_frame(&script) = tap { @script = script }
     def each_vblank = self
-    def hold(*) = self
+    def hold(*buttons) = tap { @held = buttons }
     def build(_program) = nil
     def frames_took(_pass) = 1
     def [](name) = @run[name]
@@ -24,7 +27,7 @@ class TestCartridgeCheckedRun < Minitest::Test
     def run(program, frames:)
       @moments = []
       @run = VBlank::IR::Backends::Reference.new
-      @run.input_each_frame { |frame| @script.call(frame) }
+      @run.input_each_frame { |frame| buttons_sent(frame) }
           .each_vblank { |frame| @moments << moment(frame) }
           .run(program, frames: frames)
       @moments << moment(:end)
@@ -37,6 +40,8 @@ class TestCartridgeCheckedRun < Minitest::Test
     private
 
     def kit = VBlank::Console.for(:snes)
+    def scripted_buttons(frame) = @script ? Array(@script.call(frame)) : @held
+    def buttons_sent(frame) = scripted_buttons(frame)
 
     def moment(frame)
       shown = Comparison.pixels_over(@run.screen, @run.screen.width, @run.screen.height)
@@ -49,7 +54,13 @@ class TestCartridgeCheckedRun < Minitest::Test
     end
   end
 
-  class WrongFromPassThree < StandIn
+  # The stand-in checked against the interpreter.
+  class CheckedStandIn < StandIn
+    include VBlank::IR::Backends::CartridgeCheck
+  end
+
+  # The same, with :n one bigger on the stand-in's side from pass three on.
+  class WrongFromPassThree < CheckedStandIn
     def self.wrong_from = 3
   end
 
@@ -64,13 +75,13 @@ class TestCartridgeCheckedRun < Minitest::Test
   end
 
   def test_two_sides_that_agree_say_nothing
-    run = CartridgeCheckedRun.new(StandIn).run(counting, frames: 6)
+    run = CheckedStandIn.new(save: SaveImage.new).run(counting, frames: 6)
 
     assert_equal 6, run[:n]
   end
 
   def test_two_sides_that_differ_stop_saying_the_console_and_the_frame
-    error = assert_raises(Comparison::Disagreement) { CartridgeCheckedRun.new(WrongFromPassThree).run(counting, frames: 6) }
+    error = assert_raises(Comparison::Disagreement) { WrongFromPassThree.new(save: SaveImage.new).run(counting, frames: 6) }
 
     assert_match(/Super Nintendo lowering and the interpreter disagree at frame 3/, error.message)
     assert_match(/n: cartridge has 3, Reference 2/, error.message)

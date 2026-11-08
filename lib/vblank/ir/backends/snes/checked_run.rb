@@ -18,20 +18,13 @@ module VBlank
         #
         # The interpreter plays the program on the screen of the console it was built for, and the
         # two pictures are compared over the Super Nintendo's screen, the top-left 256×224 of it.
-        class CheckedRun < CartridgeCheckedRun
-          def initialize(save: SaveImage.new)
-            super(HeadlessRun, save: save)
-          end
-
-          def run(program, max_steps: nil, frames: nil)
-            @near = HeadlessRun.near_pictures?(program)
-            super
-          end
+        class CheckedRun < HeadlessRun
+          include CartridgeCheck
 
           private
 
           def further_difference(program, before)
-            difference = self.class.sounds_difference(@interpreter_sounds, @cartridge.audio_played)
+            difference = self.class.sounds_difference(@interpreter_sounds, audio_played)
             difference ||= dsp_difference
             difference || (self.class.save_difference(before, @save) if SaveLayout.named_by?(program))
           end
@@ -56,15 +49,15 @@ module VBlank
           # registers are not held to it, nor their bits of the key-on and key-off registers, which
           # they share. Which recordings sound is held instead, at every moment (HeadlessRun#active_samples).
           def dsp_difference
-            voicing = @cartridge.rom.built.sound_voicing
-            recordings = !@cartridge.rom.built.recording_names.empty?
-            console_bits = @cartridge.rom.built.console_voice_bits
+            voicing = rom.built.sound_voicing
+            recordings = !rom.built.recording_names.empty?
+            console_bits = rom.built.console_voice_bits
             # Only as far as the interpreter's log goes: past it, nothing held the cartridge's entries.
-            logged_entries = @cartridge.audio_as_logged.take(@interpreter_sounds.size)
+            logged_entries = audio_as_logged.take(@interpreter_sounds.size)
             stop = DSPWrites.misnamed_stop(logged_entries, voicing)
             return "entry #{stop + 1} of the sound log: the cartridge stopped #{logged_entries[stop][1].inspect}, not the tune playing" if stop
 
-            @cartridge.dsp_reads.each_with_index do |(logged, held), i|
+            dsp_reads.each_with_index do |(logged, held), i|
               expected = DSPWrites.after(logged_entries.take(logged), voicing)
               expected = DSPWrites.console_voices_only(expected, console_bits) if recordings
               wrong = expected.filter_map do |register, value|

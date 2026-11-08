@@ -11,8 +11,10 @@ module VBlank
         # sounds a full mixer lost. A game that saves is played both ways from the same save
         # memory, and the two have to end the run with the same bytes in it.
         #
-        # It takes the interpreter's calls, so a test written against Reference.new can be handed
-        # one of these instead and play its game as C with nothing else changed:
+        # A checked run is a kind of its headless run with this check included, so it takes the
+        # interpreter's calls and answers every question the headless run answers, and a test
+        # written against Reference.new can be handed one of these instead and play its game as C
+        # with nothing else changed:
         #
         #   run = VBlank::IR::Backends::Native::CheckedRun.new
         #   run.input_each_frame { |frame| frame < 30 ? [:right] : [] }.run(game.program, frames: 60)
@@ -35,61 +37,22 @@ module VBlank
         # Pictures are compared by a check number for each frame (see HeadlessRun::Moment), which
         # is what keeps a long run cheap; only a run that fails is played again in full, to say
         # where.
-        class CheckedRun
-          include Differences
-          extend Differences
-
-          Moment = HeadlessRun::Moment
-
+        #
+        # The JavaScript and Ruby checked runs include it in their own headless runs (JS::CheckedRun,
+        # Ruby::CheckedRun), so every lowering of these statements is held to the interpreter by one
+        # check.
+        module Check
           # The game as C and the interpreter disagreed. The message says the frame and everything
           # that differs there.
           Disagreement = RunComparison::Disagreement
 
-          # Every frame's buttons reach the native run through one script, which keeps them for
-          # the replay: the test's own script when it gave one, else whatever it held for the
-          # whole run. +save+ is the save memory the game starts with, as the interpreter takes
-          # it, and it holds what the game as C left in it once the run is over.
+          # Every frame's buttons are kept as they are sent (#buttons_sent), for the replay: the
+          # test's own script's when it gave one, else whatever it held for the whole run. +save+ is
+          # the save memory the game starts with, as the interpreter takes it, and it holds what the
+          # game as C left in it once the run is over.
           def initialize(save: SaveImage.new)
-            @save = save
-            @native = headless_run(save)
+            super
             @played = {}
-            @held = []
-            @native.input_each_frame { |frame| @played[frame] = buttons_for(frame) }
-          end
-
-          # Held from power-on too, before the game's first statement, on both sides.
-          def hold(*buttons)
-            @held = buttons
-            @native.hold(*buttons)
-            self
-          end
-
-          def input_each_frame(&script)
-            @script = script
-            self
-          end
-
-          # The same clock on both sides, started at the same moment.
-          def clock_at(time, set: true)
-            @native.clock_at(time, set: set)
-            @clock_started = time
-            @clock_set = set
-            self
-          end
-
-          # The same file handed to both sides as the game starts.
-          def hand_file(bytes)
-            @native.hand_file(bytes)
-            @handed_file = bytes
-            self
-          end
-
-          # The native run does the watching, so the block reads the game as C at each frame
-          # boundary. This is what comes back, and not the native run: the run a test goes on to
-          # make from here has to be the checked one.
-          def each_vblank(&block)
-            @native.each_vblank(&block)
-            self
           end
 
           # +frames+ as the interpreter counts them. A step budget alone (+max_steps+) is the
@@ -100,40 +63,29 @@ module VBlank
             frames ||= max_steps ? frames_within(program, max_steps) : Reference::DEFAULT_FRAMES
             refuse_endless_game_without_frames!(program, max_steps)
             interpreters_save = save_as_handed_over
-            @native.run(program, frames: frames)
-            interpreter, moments = play_on_interpreter(program, frames, interpreters_save)
-            difference = self.class.first_difference(moments, @native.moments) ||
-                         self.class.sounds_difference(interpreter.audio, @native.audio_played) ||
-                         self.class.mix_difference(interpreter.mixed_sound, @native.mixed_sound) ||
-                         self.class.drops_difference(interpreter.sound_drops, @native.sound_drops) ||
+            super(program, frames: frames)
+            interpreter, interpreted = play_on_interpreter(program, frames, interpreters_save)
+            difference = self.class.first_difference(interpreted, moments) ||
+                         self.class.sounds_difference(interpreter.audio, audio_played) ||
+                         self.class.mix_difference(interpreter.mixed_sound, mixed_sound) ||
+                         self.class.drops_difference(interpreter.sound_drops, sound_drops) ||
                          self.class.save_difference(interpreters_save, @save)
             raise Disagreement, disagreement_message(difference, program, frames) if difference
 
             self
           end
 
-          def [](name) = @native[name]
-          def screen = @native.screen
-
-          # Everything else is the native run's to answer, or to say it cannot yet.
-          def method_missing(name, ...) = @native.public_send(name, ...)
-          def respond_to_missing?(name, include_private = false) = @native.respond_to?(name, include_private)
-
           private
 
-          # The run of the game this checks: the game as C with no window. JS::CheckedRun checks
-          # the game as JavaScript, by the same moments, and makes its own run here.
-          def headless_run(save) = HeadlessRun.new(save: save)
-
-          # What a disagreement calls the lowering it found.
-          def lowering_name = "the native lowering"
+          # Each frame's buttons as they are sent, kept to play the same ones on the interpreter.
+          def buttons_sent(frame) = (@played[frame] = super)
 
           # How many frames the interpreter plays in +max_steps+ steps: it stops a game on the
           # frame boundary after the budget runs out, so a run by budget is a run of that many
           # whole frames. The buttons are asked of the test's own script here and again on the
           # native run, so a script that reads the game sees it as it stood before this run.
           def frames_within(program, max_steps)
-            lead = interpreter_from(save_as_handed_over).input_each_frame { |frame| buttons_for(frame) }
+            lead = interpreter_from(save_as_handed_over).input_each_frame { |frame| scripted_buttons(frame) }
                                                         .run(program, max_steps: max_steps)
             return lead.frame unless lead.frame.zero? && lead.stopped_at_budget?
 
@@ -159,13 +111,11 @@ module VBlank
 
           # The interpreter starting from +save+, with the buttons held for the whole run down
           # from power-on, the clock started where it was and the file handed over, as the game as
-          # C has them.
+          # C has them (#hold, #clock_at, #hand_file).
           def interpreter_from(save)
             interpreter = Reference.new(save: save).hold(*@held).hand_file(@handed_file)
             @clock_started ? interpreter.clock_at(@clock_started, set: @clock_set) : interpreter
           end
-
-          def buttons_for(frame) = @script ? Array(@script.call(frame)) : @held
 
           # A save memory of the interpreter's own holding what this run's holds now, and cut at
           # the same step where a cut is waiting — taken before the game as C plays, which leaves
@@ -179,18 +129,19 @@ module VBlank
           # The interpreter played on the same buttons from +save+, and its moments.
           def play_on_interpreter(program, frames, save)
             interpreter = interpreter_from(save)
-            moments = []
+            interpreted = []
             interpreter.input_each_frame { |frame| @played.fetch(frame, []) }
-                       .each_vblank { |frame| moments << moment_of(interpreter, frame) }
+                       .each_vblank { |frame| interpreted << moment_of(interpreter, frame) }
                        .run(program, frames: frames)
-            [interpreter, moments << moment_of(interpreter, :end)]
+            [interpreter, interpreted << moment_of(interpreter, :end)]
           end
 
           def moment_of(interpreter, frame)
-            Moment.new(frame: frame, variables: interpreter.vars.dup, picture: HeadlessRun.picture_check(interpreter.screen.shown),
-                       sounds: interpreter.audio.size, sprites: interpreter.sprites,
-                       collections: interpreter.game_state.except(:vars), sounding: interpreter.active_samples,
-                       motor: interpreter.motor_on?)
+            HeadlessRun::Moment.new(frame: frame, variables: interpreter.vars.dup,
+                                    picture: HeadlessRun.picture_check(interpreter.screen.shown),
+                                    sounds: interpreter.audio.size, sprites: interpreter.sprites,
+                                    collections: interpreter.game_state.except(:vars), sounding: interpreter.active_samples,
+                                    motor: interpreter.motor_on?)
           end
 
           # A picture that differs is played again with every pixel of every frame, to say where.
@@ -207,6 +158,13 @@ module VBlank
             where = picture_difference(first.first.picture, first.last.picture, program.described_console.screen_width)
             "#{message} (#{first.last.heading}: #{where})"
           end
+        end
+
+        # The game as C, checked against the interpreter on every frame (Check).
+        class CheckedRun < HeadlessRun
+          include Check
+          include Differences
+          extend Differences
         end
       end
     end

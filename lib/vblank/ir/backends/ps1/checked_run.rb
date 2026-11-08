@@ -6,7 +6,7 @@ module VBlank
       class PS1
         # A PlayStation program played in the emulator (HeadlessRun), and then the same buttons, pass for
         # pass, played on the interpreter — stopping at the first pass the two disagree on, about any
-        # variable, any list or pool, or any pixel (CartridgeCheckedRun says how).
+        # variable, any list or pool, or any pixel (CartridgeCheck says how).
         #
         # It takes the interpreter's calls, so a test written against Reference.new can be handed one of
         # these instead and play its game on a PlayStation with nothing else changed. The interpreter plays
@@ -18,9 +18,11 @@ module VBlank
         # (PolygonFill). Everything the place's drawing works out — turning, cutting at
         # the near limit, where each corner lands, `screen_spot` — is still the interpreter's own, and the
         # whole picture is still compared, every pixel with none let off.
-        class CheckedRun < CartridgeCheckedRun
+        class CheckedRun < HeadlessRun
+          include CartridgeCheck
+
           def initialize(save: SaveImage.new)
-            super(HeadlessRun, save: save)
+            super
             @faces = FacesByChip.new(PolygonFill.new)
           end
 

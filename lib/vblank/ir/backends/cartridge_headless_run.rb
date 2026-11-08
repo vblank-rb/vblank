@@ -181,9 +181,13 @@ module VBlank
         private
 
         def refuse_unanswered!(name)
-          raise CannotAnswer, "the #{kit.title} lowering cannot answer `#{name}` yet, which this test asks the " \
-                              "interpreter. Say `skip_on_#{kit.name}` in this one test."
+          refuse_question!("the #{kit.title} lowering cannot answer `#{name}` yet, which this test asks the " \
+                           "interpreter. Say `skip_on_#{kit.name}` in this one test.")
         end
+
+        # Raises CannotAnswer with +message+: every question this run cannot answer is refused here, so
+        # a test kit can make each one a skip (Testing::CartridgeCheckedPlayer).
+        def refuse_question!(message) = raise(CannotAnswer, message)
 
         # What a console's run sets up for itself as a run starts, past what every one does.
         def start_run(_program) = nil
@@ -292,8 +296,15 @@ module VBlank
           return if frame == @decided
 
           @decided = frame
-          set_buttons(@input_script ? Array(@input_script.call(frame)) : @held)
+          set_buttons(buttons_sent(frame))
         end
+
+        # The buttons the test's input script gives for +frame+, or the ones held for the whole run.
+        def scripted_buttons(frame) = @input_script ? Array(@input_script.call(frame)) : @held
+
+        # The buttons sent to the cartridge for +frame+. A checked run keeps a note of each, to play
+        # the same ones on the interpreter (CartridgeCheck).
+        def buttons_sent(frame) = scripted_buttons(frame)
 
         # The number of the screen frame the console plays next, as the runtime counts them.
         def next_screen_frame = word(runtime_place(runtime::Frame::FRAMES)) + 1

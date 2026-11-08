@@ -22,22 +22,18 @@ module VBlank
 
         # A game played as JavaScript (HeadlessRun), and then the same buttons, frame for frame,
         # played on the interpreter, stopping at the first frame the two disagree on. Everything it
-        # compares, and how, is Native::CheckedRun's: the two lowerings are held to the interpreter
-        # by one check, so neither can be held to less.
+        # compares, and how, is Native::Check's: the two lowerings are held to the interpreter by one
+        # check, so neither can be held to less.
         #
         #   run = VBlank::IR::Backends::JS::CheckedRun.new
         #   run.input_each_frame { |frame| frame < 30 ? [:right] : [] }.run(game.program, frames: 60)
         #   run[:x]
         #
         # It needs node, as every JavaScript run without a browser does.
-        class CheckedRun < Native::CheckedRun
+        class CheckedRun < HeadlessRun
+          include Native::Check
           include Differences
           extend Differences
-
-          private
-
-          def headless_run(save) = HeadlessRun.new(save: save)
-          def lowering_name = "the JavaScript lowering"
         end
       end
     end

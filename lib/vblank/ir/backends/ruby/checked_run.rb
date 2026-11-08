@@ -24,20 +24,16 @@ module VBlank
 
         # A game played as Ruby (HeadlessRun), and then the same buttons, frame for frame, played
         # on the interpreter, stopping at the first frame the two disagree on. Everything it
-        # compares, and how, is Native::CheckedRun's: every lowering is held to the interpreter by
-        # one check, so none can be held to less.
+        # compares, and how, is Native::Check's: every lowering is held to the interpreter by one
+        # check, so none can be held to less.
         #
         #   run = VBlank::IR::Backends::Ruby::CheckedRun.new
         #   run.input_each_frame { |frame| frame < 30 ? [:right] : [] }.run(game.program, frames: 60)
         #   run[:x]
-        class CheckedRun < Native::CheckedRun
+        class CheckedRun < HeadlessRun
+          include Native::Check
           include Differences
           extend Differences
-
-          private
-
-          def headless_run(save) = HeadlessRun.new(save: save)
-          def lowering_name = "the Ruby lowering"
         end
       end
     end
