@@ -81,6 +81,7 @@ module VBlank
       def sprite(name) = @run.sprite(name)
       def background(name) = @run.background(name)
       def music_volume = @run.music_volume
+      def music_playing = @run.music_playing
       def list(name) = @run.list(name)
       def pool(name, field) = @run.pool(name, field)
       def screen_width = @console.screen_width

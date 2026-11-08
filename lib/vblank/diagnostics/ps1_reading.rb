@@ -22,6 +22,10 @@ module VBlank
 
       def sprites(_name = nil) = refuse_ps1_reader!(:sprites)
 
+      # No song is ever playing: the PlayStation's build refuses a game that plays one, which
+      # Lowering::NOT_LOWERED_YET says (Reference#music_playing).
+      def music_playing = nil
+
       private
 
       def refuse_ps1_reader!(question)

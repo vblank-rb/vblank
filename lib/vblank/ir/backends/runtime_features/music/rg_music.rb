@@ -8,8 +8,9 @@
 # that file says every one of them and the layout of every table the lowering writes
 # (@rg_game_music, @rg_game_effects); this one reads them the same way.
 #
-# The sound runtime calls it through two hooks: rg_music_sound_frame as a frame begins, and
-# rg_music_voice_taken_by_game when the game's own beep or wave takes a voice.
+# The sound runtime calls it through three hooks: rg_music_sound_frame as a frame begins,
+# rg_music_voice_taken_by_game when the game's own beep or wave takes a voice, and
+# rg_music_moment_printed when a windowless run prints a moment.
 
 RG_PARTS_MOST = 20
 RG_NUMBERS_PER_NOTE = 6
@@ -98,6 +99,12 @@ end
 def rg_music_voice_taken_by_game(voice)
   rg_wobble_stop(voice)
   rg_shape_stop(voice)
+end
+
+# A windowless run prints a moment (rg_headless.rb): the tune the player is on, by the number the
+# log names it by, -1 for none (Reference#music_playing).
+def rg_music_moment_printed
+  $stdout.write("music_playing #{@rg_playing}\n")
 end
 
 def rg_full_level = @rg_game_sound_rules[4]

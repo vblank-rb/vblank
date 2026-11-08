@@ -102,6 +102,17 @@ module VBlank
         rows = @rom.built.drawn_sprite_rows(@drawn, method(:mem8))
         name ? @drawn.rows_named(rows, name) : rows
       end
+
+      # WHICH SONG IS PLAYING NOW, by its name, or nil for none (Reference#music_playing): the byte
+      # the Color's player keeps the song it is on in (GBC::Runtime::Music::PLAYING), its place in
+      # the order declared (IR::Tunes.song_numbered). It is the song as the frames played so far
+      # left it: one the game named in the frame just played starts at the player's next step, so
+      # is read from the frame after. A game with no player plays none.
+      def music_playing
+        refuse_missing_build_record!("which songs it plays")
+        place = @rom.built.runtime[IR::Backends::GBC::Runtime::Music::PLAYING] or return nil
+        IR::Tunes.song_numbered(@rom.source_program, mem8(place))
+      end
     end
   end
 end

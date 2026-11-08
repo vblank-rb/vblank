@@ -22,6 +22,7 @@ i.stopped_at_budget?               # true if it was still looping when cut off
 i.sprite(:hero)                    # a sprite by its name (sprite :hero, image: ...): .x .y .shown? .pose .angle .scale
 i.background(:sky)                 # a background by name: .scroll_x .scroll_y .map (the map's name)
 i.music_volume                     # 0 to 100, as the game's own music_volume reads it
+i.music_playing                    # the song playing, by name (:title, or :"music.jingle" from a list); nil for none
 i.sprites(:hero)                   # the rows it drew for that named sprite
 i.sprites                          # everything it drew, each saying whose it is
 

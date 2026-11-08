@@ -15,8 +15,8 @@
  * makes the two logs agree line for line.
  *
  * Its share of the sound runtime's hooks: the frame (sound_frame, after the mixer's slice is made
- * if the game has the mix feature), and a voice the game's own beep, wave or stop_wave took
- * (voice_taken_by_game).
+ * if the game has the mix feature), a voice the game's own beep, wave or stop_wave took
+ * (voice_taken_by_game), and a windowless run printing a moment (moment_printed).
  *
  * WHAT THE LOWERING WRITES for the player, all whole numbers. (The rules it reads from
  * rg_game_sound_rules are described atop rg_sound.c.)
@@ -1004,3 +1004,7 @@ static void rg_music_voice_taken_by_game(int32_t voice) {
   wobble_stop(voice);
   shape_stop(voice);
 }
+
+/* A windowless run prints a moment: the tune the player is on, by the number the log names it by,
+ * -1 for none (Reference#music_playing). */
+static void rg_music_moment_printed(void) { printf("music_playing %d\n", (int)playing); }

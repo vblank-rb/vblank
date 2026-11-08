@@ -201,7 +201,7 @@ module VBlank
         end
 
         def initialize(program)
-          @songs = program.walk.select { |node| node.kind == :song }.uniq(&:name)
+          @songs = IR::Tunes.declared_songs(program)
           @lists = program.walk.select { |node| node.kind == :song_list }.uniq(&:name)
           @effect_lists = program.walk.select { |node| node.kind == :sound_effect_list }.uniq(&:name)
           @effect_names = IR::Tunes.effects(program).uniq

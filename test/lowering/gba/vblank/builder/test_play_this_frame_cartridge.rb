@@ -13,11 +13,11 @@ class TestPlayThisFrameCartridge < Minitest::Test
   # song its player was on, and whether anything was heard.
   private def console_frames(program)
     backend = GBA.new
-    rom = ROM.assemble(backend.lower(program), title: "THISFRAME")
-    v = assert_emulator_loads_rom(rom, frames: 1, vars: backend.var_addresses)
+    rom = ROM.assemble(backend.lower(program), title: "THISFRAME", built: backend.build_record(program))
+    v = assert_emulator_loads_rom(rom, frames: 1)
     Array.new(30) do
       v.step
-      { pass: v.var(:pass), song: v.var(:__music_playing), loud: v.audio_energy_by_frame.last.positive? }
+      { pass: v.var(:pass), song: v.music_playing, loud: v.audio_energy_by_frame.last.positive? }
     end
   end
 
@@ -27,7 +27,7 @@ class TestPlayThisFrameCartridge < Minitest::Test
   def test_the_console_is_on_the_song_the_frame_it_is_asked_for
     %i[game named_game].product([[{ this_frame: true }, 0], [{}, 1]]).each do |maker, (options, late)|
       frames = console_frames(send(maker, **options))
-      taken_up = frames.index { |frame| frame[:song].positive? }
+      taken_up = frames.index { |frame| frame[:song] }
       heard = frames.index { |frame| frame[:loud] }
 
       assert_equal ASKED_ON + late, frames[taken_up][:pass], "#{maker} asked #{options}: the pass the song was taken up in"

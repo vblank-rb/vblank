@@ -27,6 +27,7 @@ module VBlank
       SPRITE_PLACE_OFFSET = 128
 
       def sprites(_name = nil) = refuse_genesis_reader!(:sprites)
+      def music_playing = refuse_genesis_reader!(:music_playing)
 
       # THE SPRITE TABLE AS BOXES (SpriteBox), one for each entry that reaches the screen, in the
       # order the video chip draws them: from entry 0, each entry naming the next (its link), until

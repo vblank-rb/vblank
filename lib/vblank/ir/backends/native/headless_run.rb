@@ -334,6 +334,9 @@ module VBlank
           # runtime keeps it: a desktop or web build shakes no gamepad yet, but keeps the motor.
           def motor_on? = @motor_on || false
 
+          # Which song is playing, by its name, or nil for none (Reference#music_playing).
+          attr_reader :music_playing
+
           # The rest of what the interpreter answers, each said by name, so a test asking one meets
           # a sentence saying so rather than a NoMethodError that reads like a typo in the test.
           # test_native_headless_run.rb holds this list to every public method the interpreter
@@ -551,7 +554,17 @@ module VBlank
             @sprites = @drawn_sprites.rows_in(rows)
             @camera = self.class.camera_in(rows)
             @motor_on = rows.include?("motor 1")
+            @music_playing = song_playing_in(rows)
             read_mix_from(rows)
+          end
+
+          # The tune the player is on, as the music feature printed it (rg_music_moment_printed):
+          # the number the log names it by, -1 for none. A game without the feature prints nothing,
+          # and plays none.
+          def song_playing_in(rows)
+            row = rows.find { |line| line.start_with?("music_playing ") } or return nil
+            # The log numbers songs from nought, so one more is their place counted from 1.
+            Tunes.song_numbered(@read_program, Integer(row.delete_prefix("music_playing ")) + 1)
           end
 
           # What the mixer made and is playing, for a game that mixes recordings (see print_mix in

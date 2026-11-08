@@ -54,6 +54,15 @@ module VBlank
         program.walk.select { |node| node.kind == :song && names.include?(node.name) }
       end
 
+      # Every song the program declares, once each, in the order declared: the order the C,
+      # JavaScript and Ruby runtimes and every cartridge but the Advance's number them by, which is
+      # how a reader of a running game turns the number a player keeps back into the song's name.
+      def declared_songs(program) = program.walk.select { |node| node.kind == :song }.uniq(&:name)
+
+      # The name of the song a player keeps as +number+, its place in #declared_songs counted from
+      # 1, or nil for nought (no song).
+      def song_numbered(program, number) = number.zero? ? nil : declared_songs(program).fetch(number - 1).name
+
       # Each song list the program picks from by number, with its songs in order.
       def lists_played(program)
         picked = program.walk.filter_map { |node| node.name if node.kind == :play_from_list }.uniq

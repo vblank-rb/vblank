@@ -19,12 +19,10 @@ class TestHiddenReads < Minitest::Test
   HIDDEN_READ = /\[:"?__\w|\.var\(:"?__\w|raw_var\(:"?__\w|variables\.fetch\(:"?__\w|values_at\(:"?__\w/
 
   # The files that read a hidden variable on purpose, each with why. A test of how a lowering keeps
-  # its own state is about the hidden variable itself; one waiting on a named question says which.
+  # its own state is about the hidden variable itself.
   ALLOWED = {
     "test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_clock.rb" =>
       "how the Color's lowering folds its clock's day count is the test",
-    "test/lowering/gba/vblank/builder/test_play_this_frame_cartridge.rb" =>
-      "which song is playing has no named question yet; it moves when one is added",
     "test/all/vblank/test_hidden_reads.rb" => "this file names the pattern it looks for",
   }.freeze
 

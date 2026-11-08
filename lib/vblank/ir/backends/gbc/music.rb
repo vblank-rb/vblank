@@ -102,7 +102,7 @@ module VBlank
           # +entries_in_banks+ keeps the songs' entries in a bank as well, with their notes in banks
           # (#emit_song_entries).
           def initialize(program, banked: false, effects_in_banks: false, entries_in_banks: false)
-            @songs = program.walk.select { |node| node.kind == :song }.uniq(&:name)
+            @songs = Tunes.declared_songs(program)
             @effect_names = Tunes.effects(program).uniq
             @effects_in_banks = effects_in_banks && !@effect_names.empty?
             @entries_in_banks = entries_in_banks && !@songs.empty?

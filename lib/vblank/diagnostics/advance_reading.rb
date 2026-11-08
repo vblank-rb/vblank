@@ -227,6 +227,20 @@ module VBlank
         table ? table.read { |address| mem32(address) } : SoundDrops::Reading.unmeasured
       end
 
+      # WHICH SONG IS PLAYING NOW, by its name, or nil for none (Reference#music_playing): the
+      # number the player is on (GBA::Audio::MUSIC_PLAYING) turned back into the tune it numbered,
+      # as the frames played so far left it: a song the game named in the frame just played starts
+      # at the player's next step, so is read from the frame after. A game that plays no tune keeps
+      # no number, and plays none.
+      def music_playing
+        refuse_missing_build_record!("which songs it plays")
+        playing = IR::Backends::GBA::Audio::MUSIC_PLAYING
+        return nil unless @var_addresses&.key?(playing)
+
+        number = raw_var(playing)
+        number.zero? ? nil : IR::Backends::GBA::Audio.tunes_in_order(read_program).fetch(number - 1)
+      end
+
       # HOW MANY TIMES A SPRITE WENT WITHOUT ITS COLOURS since the cartridge booted: drawn with a
       # list of its own (`draw_with`), it borrows a group of the console's colours for the frame,
       # and this counts each time every group was taken already, so it showed its own colours

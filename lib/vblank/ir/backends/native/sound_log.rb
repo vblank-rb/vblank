@@ -20,7 +20,7 @@ module VBlank
             defined = program.walk.select { |node| node.kind == :define_sound }.to_h { |node| [node.name, node.effect] }
             @effects = program.walk.select { |node| node.kind == :beep }.map { |node| effect_of(node, defined) }.uniq
             @defined = defined
-            @songs = program.walk.select { |node| node.kind == :song }.uniq(&:name)
+            @songs = Tunes.declared_songs(program)
             @sound_effects = Tunes.effects(program).uniq
             @waves = program.walk.select { |node| node.kind == :wave }.map { |node| wave_of(node) }.uniq
             @hits = program.walk.select { |node| node.kind == :noise }.map { |node| hit_of(node) }.uniq

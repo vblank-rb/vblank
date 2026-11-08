@@ -223,7 +223,7 @@ Assert the friendly error a misuse raises: its class and a key phrase, never the
 ## Gotchas
 
 - Read a running game by the names it gave (`var`, `sprite`, `background`, `list`, `pool`,
-  `music_volume`), never by a variable the framework made for itself (`__obj1_x`):
+  `music_volume`, `music_playing`), never by a variable the framework made for itself (`__obj1_x`):
   `test/all/vblank/test_hidden_reads.rb` fails on one, naming the file; a test of the framework's
   own storage goes in its `ALLOWED`, saying why.
 

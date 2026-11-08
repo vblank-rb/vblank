@@ -155,7 +155,7 @@ module VBlank
 
       # A cartridge VBlank built, read by the game's own names (Diagnostics::Verifier#var, #sprite,
       # #list, #pool): a variable's number, a sprite's place and pose, a list's items oldest first,
-      # a pool field's value per slot,
+      # a pool field's value per slot, the song playing,
       # each in the game's units, a fraction as the fraction; #raw_var is a variable's stored
       # number. A cartridge that is only its file has no build record, and is refused saying so.
       def var(name) = @reader.var(name)
@@ -163,6 +163,7 @@ module VBlank
       def sprite(name) = @reader.sprite(name)
       def background(name) = @reader.background(name)
       def music_volume = @reader.music_volume
+      def music_playing = @reader.music_playing
       def list(name) = @reader.list(name)
       def pool(name, field) = @reader.pool(name, field)
 

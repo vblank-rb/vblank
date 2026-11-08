@@ -63,6 +63,14 @@ module VBlank
 
           def kit = Console.for(:gbc)
 
+          # THE SONG THE COLOR'S PLAYER TAKES UP at its next step (CartridgeHeadlessRun#next_song_number),
+          # from its byte fields: a song the game named is taken up when START is set, and a stop
+          # quiets the music where the game asks, so PLAYING already says it.
+          def next_song_number
+            playing = music_field(Runtime::Music::PLAYING, 1) or return nil
+            music_field(Runtime::Music::START, 1).zero? ? playing : music_field(Runtime::Music::NAMED, 1)
+          end
+
           def start_run(_program)
             @sound_log = SoundLog.new(@places)
             @sounds = 0

@@ -96,6 +96,16 @@ module VBlank
         rows = @rom.built.drawn_sprite_rows(@drawn, method(:mem16))
         name ? @drawn.rows_named(rows, name) : rows
       end
+
+      # WHICH SONG IS PLAYING NOW, by its name, or nil for none (Reference#music_playing): the two
+      # bytes the player keeps the song it is on in (SNES::Runtime::Music::PLAYING), its place in the
+      # order declared (IR::Tunes.song_numbered), as the frames played so far left it. See
+      # ColorReading#music_playing.
+      def music_playing
+        refuse_missing_build_record!("which songs it plays")
+        place = @rom.built.runtime[IR::Backends::SNES::Runtime::Music::PLAYING] or return nil
+        IR::Tunes.song_numbered(@rom.source_program, mem16(place))
+      end
     end
   end
 end

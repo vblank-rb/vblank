@@ -6,7 +6,7 @@
 VBlank::IR::Backends::RuntimeFeatures.declare(
   name: :music,
   needed_by: %i[play_song play_from_list play_sound_effect stop_music hold_music],
-  hooks: %i[setup sound_frame voice_taken_by_game],
+  hooks: %i[setup sound_frame voice_taken_by_game moment_printed],
   after: %i[mix],
   joins: :sound
 )

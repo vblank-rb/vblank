@@ -183,6 +183,9 @@ module VBlank
 
           def kit = Console.for(:snes)
 
+          # The Super Nintendo's player keeps the interpreter's fields (CartridgeHeadlessRun#song_taken_up).
+          def next_song_number = song_taken_up(Runtime::Music)
+
           def start_run(program)
             @near = HeadlessRun.near_pictures?(program)
             @logged_entries = []

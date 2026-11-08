@@ -17,6 +17,16 @@ module VBlank
         class Audio
           include Console::Hardware
 
+          # EVERY TUNE THE PLAYER CAN PLAY, by name, in the order it numbers them from 1 (MUSIC_PLAYING
+          # holds that number, nought for none): the songs named on their own first, then each list's
+          # songs together and in the list's order. Together is what makes picking from a list one
+          # addition: song +which+ of a list is the list's first number plus +which+. A reader of the
+          # cartridge turns the number back into the name with it.
+          def self.tunes_in_order(program)
+            listed = IR::Tunes.lists_played(program).values.flatten
+            (IR::Tunes.played_songs(program).map(&:name) - listed) + listed
+          end
+
           #
           # Each op resolves to a short list of sound-register writes via the shared
           # Sound module, so the ROM and the interpreter play the same thing. A write
@@ -130,7 +140,7 @@ module VBlank
           # and nothing else; the rest belong to the player, which runs in the screen's
           # interrupt. That split is what makes sharing them safe — see #emit_music_tick.
           MUSIC_WANTED = :__music_wanted   # The tune the game named, by number (0 = none)
-          MUSIC_PLAYING = :__music_playing # The tune the player is on
+          MUSIC_PLAYING = :__music_playing # The tune the player is on (.tunes_in_order)
           MUSIC_FRAME = :__music_frame     # How far into it, in frames
           # How many times the game has called stop_music, and how many of those the player has
           # acted on. Counted rather than only set, so a stop and a play in one frame still
@@ -1552,9 +1562,7 @@ module VBlank
 
           private
 
-          # THE NUMBER EACH TUNE IS KNOWN BY — the songs named on their own first, then each list's
-          # songs together and in the list's order. Together is what makes picking from a list
-          # one addition: song +which+ of a list is the list's first number plus +which+.
+          # THE NUMBER EACH TUNE IS KNOWN BY — its place in .tunes_in_order, from 1.
           def assign_song_numbers!(program)
             lists = IR::Tunes.lists_played(program).reject { |_, songs| songs.empty? }
             listed = lists.values.flatten
@@ -1564,8 +1572,7 @@ module VBlank
             (listed - @songs.keys).each do |name|
               raise LoweringError, "a song list names #{name.inspect}, which is not a song"
             end
-            plain = IR::Tunes.played_songs(program).map(&:name) - listed
-            @song_numbers = (plain + listed).each.with_index(1).to_h
+            @song_numbers = Audio.tunes_in_order(program).each.with_index(1).to_h
             @list_bases = lists.transform_values { |songs| @song_numbers.fetch(songs.first) }
             @list_sizes = lists.transform_values(&:size)
           end

@@ -168,6 +168,10 @@ module VBlank
         # #exec_rumble): never on a console whose cartridge has no motor.
         def motor_on? = @motor_on
 
+        # WHICH SONG IS PLAYING, by its name, or nil for none (Player#playing). A song the pass
+        # named is playing from the next frame boundary, as the player takes it up there.
+        def music_playing = @player.playing
+
         # +save+ is the cartridge's save memory (an IR::SaveImage) — it outlives the
         # interpreter, so passing the SAME one to two Reference.new(...).run calls models
         # a power cycle (the second boot sees what the first one saved). Defaults to a

@@ -127,6 +127,7 @@ module VBlank
           @vars = {}
           @lists = {}
           @sprites = []
+          @music_playing = nil
           start_run(program)
           play(frames || Reference::DEFAULT_FRAMES)
           self
@@ -139,6 +140,10 @@ module VBlank
         private def read_program = @built_for
 
         def stopped_at_budget? = false
+
+        # Which song is playing, by its name, or nil for none (Reference#music_playing), as the
+        # console's player kept it on the frame the run's picture is.
+        attr_reader :music_playing
 
         # How many frames each pass answered for, by the pass's number, as the interpreter is told
         # it (Reference#frames_each_pass): one, for a game that keeps up.
@@ -222,18 +227,25 @@ module VBlank
             if pending && shown_pass == pending.first && moment_ready?(pending.first, frames)
               pass, variables, lists, @sprites, sounds, camera, drawn = pending
               pending = nil
+              @music_playing = @song_at_pass_end
               return record_moment(:end, variables, lists, picture_of_pass(camera, drawn), sounds) if pass > frames
 
               record_moment(pass, variables, lists, picture_of_pass(camera, drawn), sounds)
             end
             case state
-            when runtime::Frame::HALTED then return finish_after_halt
+            when runtime::Frame::HALTED
+              @music_playing = read_music_playing
+              return finish_after_halt
             when runtime::Frame::WENT_WRONG then raise_cartridge_fault!
             end
             next unless pending.nil? && waiting? && passes > @moments.size
 
             pending = [passes, read_variables, read_lists, read_sprites, read_sounds, read_camera, read_picture_drawn]
-            return end_before_first_picture(*pending[1..5]) if ends_before_first_picture?(frames)
+            @song_at_pass_end = read_music_playing
+            if ends_before_first_picture?(frames)
+              @music_playing = @song_at_pass_end
+              return end_before_first_picture(*pending[1..5])
+            end
 
             note_frames_took(passes - 1) if passes > 1
             mark_last_pass_taken if passes == frames
@@ -295,6 +307,39 @@ module VBlank
         end
 
         def read_variables = @places.variables.transform_values { |address| word(address) }
+
+        # THE SONG PLAYING AT THE FRAME BOUNDARY AFTER THE PASS, by its name, read as the game waits at
+        # the pass's end: the player has not yet taken its step there, so this is the song that step
+        # takes up (#next_song_number), which is what the interpreter's player is on at the boundary.
+        def read_music_playing
+          number = next_song_number or return nil
+          IR::Tunes.song_numbered(@built_for, number)
+        end
+
+        # The number of the song the player takes up at its next step, in the order declared
+        # (IR::Tunes.declared_songs) counted from 1, nought for none; nil for a game with no player.
+        # A console whose build plays songs says how its player decides.
+        def next_song_number = nil
+
+        # A field of the player's, +bytes+ wide, or nil for a game whose build has no player.
+        def music_field(name, bytes)
+          place = @places.runtime[name] or return nil
+          number_at(place, bytes)
+        end
+
+        # The step of a player that keeps the interpreter's fields (Reference::Player#switch_to_wanted_song),
+        # each two bytes: the song it named and the one on, how many stops it was asked and has acted
+        # on, and a song that played once and ended. One that ended stays quiet while the game names
+        # it and has not stopped since; otherwise a song named, or a stop, is taken up.
+        def song_taken_up(music)
+          playing = music_field(music::PLAYING, 2) or return nil
+          named = music_field(music::NAMED, 2)
+          stopped = music_field(music::STOPS, 2) != music_field(music::STOPS_SEEN, 2)
+          ended = music_field(music::ENDED, 2)
+          return 0 if ended.positive? && ended == named && !stopped
+
+          named != playing || stopped ? named : playing
+        end
 
         # Every list as the runtime keeps it: a header (each runtime's Lists sets where in it the
         # capacity, the front and the length are) and then its slots, a ring from the front.

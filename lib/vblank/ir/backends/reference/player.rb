@@ -62,6 +62,10 @@ module VBlank
             @swells = {}        # a square voice -> the song's swelling note it holds under the music volume (IR::Tunes::Swell)
           end
 
+          # The name of the tune the player is on, or nil for none. It takes up what the program
+          # named at the next frame, and drops a tune that played once on the frame after its end.
+          attr_reader :playing
+
           # A `song`, `song_list` or `sound_effect_list` declaration was reached. Gathered up
           # front, like a func body, so naming one declared later still works.
           def declare(node) = @songs[node.name] = node
