@@ -156,8 +156,8 @@ reads its pack from a file it is handed as it starts (`IR::StartFile`): the desk
 checked runs' and headless runs' `hand_file(bytes)`. The web page has no way to be handed one yet; the
 Ruby file gets its pack as a shell (below). Handed none, a pack of the wrong size, or
 one made for another build version or slot list, the game stops at once with an `IR::ProgramError` in
-plain words. A Game Boy Advance desktop program, which plays the console's start-up from the cartridge,
-cannot be built this way yet. What reads a slot that way:
+plain words. A desktop program built with `--bios`, which plays the console's start-up from the
+cartridge, cannot be built this way yet; without `--bios` it can. What reads a slot that way:
 
 - `table :speeds, pack[:speeds]` — written as its size alone and filled from the file at power-on; the
   build never looks at its entries. `table :name, DSL::StartFileEntries.new(at:, count:), width:,
