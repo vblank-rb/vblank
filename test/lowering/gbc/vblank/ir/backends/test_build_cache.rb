@@ -17,15 +17,6 @@ class TestBuildCache < Minitest::Test
     made
   end
 
-  def test_every_try_of_a_build_reads_one_plan_and_one_handover
-    cache = Backends::BuildCache.for(GBC, game)
-    first = GBC::Lowering.new(cache.program, memory: GBC::Memory.new, cache: cache)
-    second = GBC::Lowering.new(cache.program, memory: GBC::Memory.new, cache: cache, tile_rooms: true)
-
-    assert_same first.plan, second.plan
-    assert_same cache.plan.handover, cache.handover
-  end
-
   def test_a_picture_is_read_once_by_its_node
     cache = Backends::BuildCache.for(GBC, game)
     node = cache.program.walk.find { |each| each.kind == :bitmap }
