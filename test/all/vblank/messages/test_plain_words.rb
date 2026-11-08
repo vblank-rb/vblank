@@ -46,13 +46,16 @@ class TestPlainWords < Minitest::Test
   # console interrupts into as routines, so both turn up in a progress line and again in
   # `rom.profile` minutes later — two places far enough apart that only a shared name keeps
   # them saying the same thing.
+  # The progress line names the routine it is placing only while that phase runs, which is to a
+  # terminal, so the stream answers as one and every report is drawn.
   def test_the_routines_nobody_wrote_are_named_in_one_place
     said = "a routine with one name"
     progress = StringIO.new
+    def progress.tty? = true
     explained = StringIO.new
 
     while_it_says(:routine, said) do
-      rom = a_game_worth_moving(progress: VBlank::Messages::Progress.to(progress))
+      rom = a_game_worth_moving(progress: VBlank::Messages::Progress.to(progress, refresh: 0))
       VBlank::Diagnostics::BuildReport.render(rom, out: explained)
     end
 
