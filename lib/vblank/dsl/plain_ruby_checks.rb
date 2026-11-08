@@ -14,8 +14,15 @@ module VBlank
       # until the game is built, since one defined lower down the author's file is not there
       # yet, so what they need goes into the rewritten block as plain data (see #constant_check).
       class BlockChecks
-        # Pieces of Ruby that only work with numbers and lists.
-        RUBY_BASICS = %i[Array Comparable Float Hash Integer Math Range Rational String Symbol].freeze
+        # Ruby's values and the modules that work on them, which reach nothing outside the game.
+        RUBY_VALUES = %i[Array Comparable Float Hash Integer Math Range Rational String Symbol].freeze
+        # Ruby's own errors, which reach nothing outside the game either: a game raises one to stop
+        # its build with words of its own (`raise ArgumentError, "A speed is from 1 to 8."`).
+        RUBY_ERRORS = %i[ArgumentError FrozenError IndexError KeyError NameError NoMethodError
+                         NotImplementedError RangeError RuntimeError StandardError StopIteration
+                         TypeError ZeroDivisionError].freeze
+        # The constants game code may name that are not the game's own.
+        RUBY_BASICS = (RUBY_VALUES + RUBY_ERRORS).freeze
 
         # What reaches outside the game with no constant to see: Ruby's own short list. These
         # are only Ruby's when nothing stands in front of them. `sparks.spawn` is a game verb

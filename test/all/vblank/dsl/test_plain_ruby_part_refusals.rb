@@ -36,6 +36,13 @@ class TestPlainRubyPartRefusals < Minitest::Test
     assert_equal 7, PartNamingProjectConstant.value
   end
 
+  # Ruby's own errors reach nothing outside the game, so a method raising one is plain Ruby.
+  def test_a_part_raising_one_of_rubys_errors_is_brought_in
+    bring_in("raises_friendly_error")
+
+    assert_raises(ArgumentError) { PartRaisingFriendlyError.checked(9) }
+  end
+
   def test_a_part_naming_its_own_constants_and_a_later_parts_is_brought_in
     bring_in("own_constants")
 
