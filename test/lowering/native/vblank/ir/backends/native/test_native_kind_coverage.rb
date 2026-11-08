@@ -18,7 +18,7 @@ class TestNativeKindCoverage < Minitest::Test
       .reject { |kind| Portability.hardware_only?(kind) }
   end
 
-  private def handled = Lowering::STATEMENTS.keys + Lowering::VALUES.keys
+  private def handled = Lowering::STATEMENT_KINDS + Lowering::VALUE_KINDS
   private def not_yet = Lowering::NOT_LOWERED_YET.values.flatten
 
   def test_every_kind_is_written_as_c_or_listed_as_not_yet

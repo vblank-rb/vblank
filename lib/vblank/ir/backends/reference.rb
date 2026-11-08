@@ -739,99 +739,116 @@ module VBlank
             "one frame."
         end
 
-        # WHAT EACH KIND OF STATEMENT DOES, one method per kind, looked up by the kind's name —
-        # the same shape as the console's table (Backends::GBA::Lowering), and read by the
-        # coverage test that holds both backends to every kind. A declaration is gathered before
-        # the program runs, so its row is #exec_declaration, which does nothing — every kind that
-        # declares it is one gets that row, rather than a list of them kept here.
-        STATEMENTS = {
-          program: :exec_program,
-          set: :exec_set,
-          add: :exec_add,
-          sub: :exec_sub,
-          copy: :exec_copy,
-          negate: :exec_negate,
-          abs: :exec_abs,
-          negate_abs: :exec_negate_abs,
-          clamp: :exec_clamp,
-          save_init: :exec_save_init,
-          save_store: :exec_save_store,
-          save_write: :exec_save_write,
-          save_erase: :exec_save_erase,
-          if: :exec_if,
-          loop: :exec_loop,
-          inside: :exec_inside,
-          repeat: :exec_repeat,
-          every: :exec_every,
-          after: :exec_after,
-          list_new: :exec_list_new,
-          list_push: :exec_list_push,
-          list_drop: :exec_list_drop,
-          list_set: :exec_list_set,
-          list_fill: :exec_list_fill,
-          list_copy: :exec_list_copy,
-          list_sort: :exec_list_sort,
-          blit: :exec_blit,
-          blit_pose: :exec_blit_pose,
-          save_region: :exec_save_region,
-          restore_region: :exec_restore_region,
-          call: :exec_call,
-          call_one_of: :exec_call_one_of,
-          case: :exec_case,
-          halt: :exec_halt,
-          wait_vblank: :exec_wait_vblank,
-          hide_sprites: :exec_hide_sprites,
-          rumble: :exec_rumble,
-          screen: :exec_screen,
-          clear_screen: :exec_clear_screen,
-          pixel: :exec_pixel,
-          fill_rect: :exec_fill_rect,
-          dma_fill_rect: :exec_dma_fill_rect,
-          draw_rect_at: :exec_draw_rect_at,
-          draw_column_at: :exec_draw_column_at,
-          draw_place: :exec_draw_place,
-          fill_face: :exec_fill_face,
-          draw_text: :exec_draw_text,
-          draw_digit: :exec_draw_digit,
-          background: :exec_background,
-          scroll_background: :exec_scroll_background,
-          place_bar: :exec_place_bar,
-          box_background: :exec_box_background,
-          affine_background: :exec_affine_background,
-          background_colors: :exec_background_colors,
-          color_list_holds: :exec_color_list_holds,
-          show_picture_group: :exec_show_picture_group,
-          scroll_rows: :exec_scroll_rows,
-          shade_outside: :exec_shade_outside,
-          show_light_now: :exec_show_light_now,
-          camera: :exec_camera,
-          fade: :exec_fade,
-          tint: :exec_tint,
-          pixelate: :exec_pixelate,
-          see_through: :exec_see_through,
-          present_objects: :exec_present_objects,
-          set_tile: :exec_set_tile,
-          show_held_tiles: :exec_show_held_tiles,
-          show_map: :exec_show_map,
-          copy_tiles: :exec_copy_tiles, copy_owed_tiles: :exec_copy_owed_tiles,
-          load_sprite_tiles: :exec_load_sprite_tiles,
-          enable_sound: :exec_enable_sound,
-          beep: :exec_beep,
-          noise: :exec_noise,
-          wave: :exec_wave,
-          stop_wave: :exec_stop_wave,
-          play_song: :exec_play_song,
-          play_from_list: :exec_play_from_list,
-          play_sound_effect: :exec_play_sound_effect,
-          stop_music: :exec_stop_music,
-          hold_music: :exec_hold_music,
-          play_sample: :exec_play_sample,
-          stop_sample: :exec_stop_sample,
-          timer_start: :exec_timer_start,
-          timer_stop: :exec_timer_stop,
-          on_timer: :exec_on_timer,
-          set_clock: :exec_set_clock,
-        }.merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :exec_declaration] }).freeze
+        # WHAT EACH KIND OF STATEMENT DOES, one method per kind, called by name in #exec_by_kind —
+        # read by the coverage test that holds the interpreter to every kind. A declaration is
+        # gathered before the program runs, so it does nothing where it is written
+        # (#exec_declaration).
+        STATEMENT_KINDS = (%i[
+          program set add sub copy negate abs negate_abs clamp save_init save_store save_write save_erase
+          if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy
+          list_sort blit blit_pose save_region restore_region call call_one_of case halt wait_vblank
+          hide_sprites rumble screen clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
+          draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
+          affine_background background_colors color_list_holds show_picture_group scroll_rows shade_outside
+          show_light_now camera fade tint pixelate see_through present_objects set_tile show_held_tiles
+          show_map copy_tiles copy_owed_tiles load_sprite_tiles enable_sound beep noise wave stop_wave
+          play_song play_from_list play_sound_effect stop_music hold_music play_sample stop_sample
+          timer_start timer_stop on_timer set_clock
+        ] + Nodes.of_role(:declaration)).freeze
+
+        # A statement, by its kind. A `case` over literal kinds is one table lookup and a call.
+        def exec_by_kind(node)
+          case node.kind
+          when :program then exec_program(node)
+          when :set then exec_set(node)
+          when :add then exec_add(node)
+          when :sub then exec_sub(node)
+          when :copy then exec_copy(node)
+          when :negate then exec_negate(node)
+          when :abs then exec_abs(node)
+          when :negate_abs then exec_negate_abs(node)
+          when :clamp then exec_clamp(node)
+          when :save_init then exec_save_init(node)
+          when :save_store then exec_save_store(node)
+          when :save_write then exec_save_write(node)
+          when :save_erase then exec_save_erase(node)
+          when :if then exec_if(node)
+          when :loop then exec_loop(node)
+          when :inside then exec_inside(node)
+          when :repeat then exec_repeat(node)
+          when :every then exec_every(node)
+          when :after then exec_after(node)
+          when :list_new then exec_list_new(node)
+          when :list_push then exec_list_push(node)
+          when :list_drop then exec_list_drop(node)
+          when :list_set then exec_list_set(node)
+          when :list_fill then exec_list_fill(node)
+          when :list_copy then exec_list_copy(node)
+          when :list_sort then exec_list_sort(node)
+          when :blit then exec_blit(node)
+          when :blit_pose then exec_blit_pose(node)
+          when :save_region then exec_save_region(node)
+          when :restore_region then exec_restore_region(node)
+          when :call then exec_call(node)
+          when :call_one_of then exec_call_one_of(node)
+          when :case then exec_case(node)
+          when :halt then exec_halt(node)
+          when :wait_vblank then exec_wait_vblank(node)
+          when :hide_sprites then exec_hide_sprites(node)
+          when :rumble then exec_rumble(node)
+          when :screen then exec_screen(node)
+          when :clear_screen then exec_clear_screen(node)
+          when :pixel then exec_pixel(node)
+          when :fill_rect then exec_fill_rect(node)
+          when :dma_fill_rect then exec_dma_fill_rect(node)
+          when :draw_rect_at then exec_draw_rect_at(node)
+          when :draw_column_at then exec_draw_column_at(node)
+          when :draw_place then exec_draw_place(node)
+          when :fill_face then exec_fill_face(node)
+          when :draw_text then exec_draw_text(node)
+          when :draw_digit then exec_draw_digit(node)
+          when :background then exec_background(node)
+          when :scroll_background then exec_scroll_background(node)
+          when :place_bar then exec_place_bar(node)
+          when :box_background then exec_box_background(node)
+          when :affine_background then exec_affine_background(node)
+          when :background_colors then exec_background_colors(node)
+          when :color_list_holds then exec_color_list_holds(node)
+          when :show_picture_group then exec_show_picture_group(node)
+          when :scroll_rows then exec_scroll_rows(node)
+          when :shade_outside then exec_shade_outside(node)
+          when :show_light_now then exec_show_light_now(node)
+          when :camera then exec_camera(node)
+          when :fade then exec_fade(node)
+          when :tint then exec_tint(node)
+          when :pixelate then exec_pixelate(node)
+          when :see_through then exec_see_through(node)
+          when :present_objects then exec_present_objects(node)
+          when :set_tile then exec_set_tile(node)
+          when :show_held_tiles then exec_show_held_tiles(node)
+          when :show_map then exec_show_map(node)
+          when :copy_tiles then exec_copy_tiles(node)
+          when :copy_owed_tiles then exec_copy_owed_tiles(node)
+          when :load_sprite_tiles then exec_load_sprite_tiles(node)
+          when :enable_sound then exec_enable_sound(node)
+          when :beep then exec_beep(node)
+          when :noise then exec_noise(node)
+          when :wave then exec_wave(node)
+          when :stop_wave then exec_stop_wave(node)
+          when :play_song then exec_play_song(node)
+          when :play_from_list then exec_play_from_list(node)
+          when :play_sound_effect then exec_play_sound_effect(node)
+          when :stop_music then exec_stop_music(node)
+          when :hold_music then exec_hold_music(node)
+          when :play_sample then exec_play_sample(node)
+          when :stop_sample then exec_stop_sample(node)
+          when :timer_start then exec_timer_start(node)
+          when :timer_stop then exec_timer_stop(node)
+          when :on_timer then exec_on_timer(node)
+          when :set_clock then exec_set_clock(node)
+          else exec_declaration_or_refuse(node)
+          end
+        end
 
         def exec(node)
           count_step!
@@ -847,13 +864,7 @@ module VBlank
                   "interpreter can't model; keep it out of code you run headlessly"
           end
           paint_owed_repaint if @picture_owed && !defers_repaint?(node)
-
-          handler = STATEMENTS.fetch(node.kind) do
-            raise ProgramError,
-                  "the reference backend cannot execute #{node.kind.inspect} " \
-                  "(#{node.category}) yet"
-          end
-          send(handler, node)
+          exec_by_kind(node)
         end
 
         def exec_program(node)
@@ -863,6 +874,12 @@ module VBlank
         # A declaration: gathered before the program runs (see #collect_definitions), so nothing
         # happens where it is written, just as a func body runs only when something calls it.
         def exec_declaration(_node) = nil
+
+        def exec_declaration_or_refuse(node)
+          return exec_declaration(node) if STATEMENT_KINDS.include?(node.kind)
+
+          raise ProgramError, "the reference backend cannot execute #{node.kind.inspect} (#{node.category}) yet"
+        end
 
         def exec_set(node)
           @vars[node.var] = eval_value(node.value)
@@ -3893,36 +3910,47 @@ module VBlank
           raise ProgramError, Faults.index_out_of_range(name, index, list.length)
         end
 
+        # WHAT EACH KIND OF VALUE COMES TO, one method per kind, called by name in #value_by_kind —
+        # the value half of STATEMENT_KINDS.
+        VALUE_KINDS = %i[
+          int var_ref neg bit_not absolute clamped binop mul_fix div_fix shift_right held pressed
+          players_connected local_player chance pixels_overlap data_byte table_get list_get list_len
+          save_read save_sum timer_ticks clock
+        ].freeze
+
+        # A value, by its kind.
+        def value_by_kind(node)
+          case node.kind
+          when :int then value_of_int(node)
+          when :var_ref then value_of_var_ref(node)
+          when :neg then value_of_neg(node)
+          when :bit_not then value_of_bit_not(node)
+          when :absolute then value_of_absolute(node)
+          when :clamped then value_of_clamped(node)
+          when :binop then value_of_binop(node)
+          when :mul_fix then value_of_mul_fix(node)
+          when :div_fix then value_of_div_fix(node)
+          when :shift_right then value_of_shift_right(node)
+          when :held then value_of_held(node)
+          when :pressed then value_of_pressed(node)
+          when :players_connected then value_of_players_connected(node)
+          when :local_player then value_of_local_player(node)
+          when :chance then value_of_chance(node)
+          when :pixels_overlap then value_of_pixels_overlap(node)
+          when :data_byte then value_of_data_byte(node)
+          when :table_get then value_of_table_get(node)
+          when :list_get then value_of_list_get(node)
+          when :list_len then value_of_list_len(node)
+          when :save_read then value_of_save_read(node)
+          when :save_sum then value_of_save_sum(node)
+          when :timer_ticks then value_of_timer_ticks(node)
+          when :clock then value_of_clock(node)
+          else raise ProgramError, "not a value node: #{node.kind.inspect}"
+          end
+        end
+
         # Evaluate an operand to a signed 32-bit integer. Operands are normally
         # value nodes; a bare Integer or Symbol is accepted too for convenience.
-        # WHAT EACH KIND OF VALUE COMES TO, one method per kind — the value half of STATEMENTS.
-        VALUES = {
-          int: :value_of_int,
-          var_ref: :value_of_var_ref,
-          neg: :value_of_neg,
-          bit_not: :value_of_bit_not,
-          absolute: :value_of_absolute,
-          clamped: :value_of_clamped,
-          binop: :value_of_binop,
-          mul_fix: :value_of_mul_fix,
-          div_fix: :value_of_div_fix,
-          shift_right: :value_of_shift_right,
-          held: :value_of_held,
-          pressed: :value_of_pressed,
-          players_connected: :value_of_players_connected,
-          local_player: :value_of_local_player,
-          chance: :value_of_chance,
-          pixels_overlap: :value_of_pixels_overlap,
-          data_byte: :value_of_data_byte,
-          table_get: :value_of_table_get,
-          list_get: :value_of_list_get,
-          list_len: :value_of_list_len,
-          save_read: :value_of_save_read,
-          save_sum: :value_of_save_sum,
-          timer_ticks: :value_of_timer_ticks,
-          clock: :value_of_clock,
-        }.freeze
-
         def eval_value(operand)
           case operand
           when Integer then Int32.wrap(operand)
@@ -3943,10 +3971,7 @@ module VBlank
                   "interpreter can't model; it only means something on real hardware"
           end
 
-          handler = VALUES.fetch(node.kind) do
-            raise ProgramError, "not a value node: #{node.kind.inspect}"
-          end
-          send(handler, node)
+          value_by_kind(node)
         end
 
         def value_of_int(node)
@@ -4078,11 +4103,11 @@ module VBlank
           now = clock_now
           return unless now
 
-          wanted = IR::Clock::SET_PARTS.to_h { |part| [part, eval_value(node.public_send(part))] }
-          midnight = Time.utc(wanted[:year], wanted[:month], wanted[:day]) - Time.utc(now.year, now.month, now.day)
+          year, month, day, hour, minute, second = [node.year, node.month, node.day, node.hour, node.minute,
+                                                    node.second].map { |part| eval_value(part) }
+          midnight = Time.utc(year, month, day) - Time.utc(now.year, now.month, now.day)
           days = (midnight / IR::Clock::SECONDS_A_DAY).round
-          seconds = (wanted[:hour] * 3600) + (wanted[:minute] * 60) + wanted[:second] -
-                    ((now.hour * 3600) + (now.min * 60) + now.sec)
+          seconds = (hour * 3600) + (minute * 60) + second - ((now.hour * 3600) + (now.min * 60) + now.sec)
           days, seconds = days + seconds.div(IR::Clock::SECONDS_A_DAY), seconds % IR::Clock::SECONDS_A_DAY
           @vars[IR::Clock::OFFSET_DAYS] = days
           @vars[IR::Clock::OFFSET_SECONDS] = seconds

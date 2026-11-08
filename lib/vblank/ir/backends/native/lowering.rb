@@ -32,90 +32,155 @@ module VBlank
                                               and: "rg_both", or: "rg_either"
                                             })
 
-          STATEMENTS = Ractor.make_shareable({
-                                               program: :lower_children, set: :lower_set, add: :lower_add,
-                                               sub: :lower_sub, copy: :lower_copy, negate: :lower_negate,
-                                               abs: :lower_abs, negate_abs: :lower_negate_abs,
-                                               clamp: :lower_clamp, if: :lower_if, loop: :lower_loop,
-                                               repeat: :lower_repeat, every: :lower_every,
-                                               after: :lower_after, call: :lower_call,
-                                               call_one_of: :lower_call_one_of, case: :lower_case,
-                                               halt: :lower_halt, wait_vblank: :lower_wait_vblank,
-                                               timer_start: :lower_timer_start, timer_stop: :lower_timer_stop,
-                                               on_timer: :lower_nothing, set_clock: :lower_set_clock,
-                                               list_new: :lower_list_new, list_push: :lower_list_push,
-                                               list_drop: :lower_list_drop, list_set: :lower_list_set,
-                                               list_fill: :lower_list_fill, list_copy: :lower_list_copy,
-                                               list_sort: :lower_list_sort,
-                                               # the picture (Picture)
-                                               screen: :lower_screen, clear_screen: :lower_clear_screen,
-                                               fill_rect: :lower_fill_rect, dma_fill_rect: :lower_dma_fill_rect,
-                                               draw_rect_at: :lower_draw_rect_at, pixel: :lower_pixel,
-                                               draw_text: :lower_draw_text, draw_digit: :lower_draw_digit,
-                                               inside: :lower_inside, camera: :lower_camera,
-                                               blit: :lower_blit, blit_pose: :lower_blit_pose,
-                                               draw_column_at: :lower_draw_column_at,
-                                               draw_place: :lower_draw_place, fill_face: :lower_fill_face,
-                                               save_region: :lower_save_region,
-                                               restore_region: :lower_restore_region,
-                                               background: :lower_background,
-                                               affine_background: :lower_affine_background,
-                                               scroll_background: :lower_scroll_background,
-                                               place_bar: :lower_place_bar,
-                                               box_background: :lower_box_background,
-                                               scroll_rows: :lower_scroll_rows,
-                                               shade_outside: :lower_nothing,
-                                               show_light_now: :lower_show_light_now,
-                                               set_tile: :lower_set_tile, show_map: :lower_show_map,
-                                               show_held_tiles: :lower_show_held_tiles,
-                                               background_colors: :lower_background_colors,
-                                               color_list_holds: :lower_color_list_holds,
-                                               # every picture is in reach whatever is up: nothing to do
-                                               show_picture_group: :lower_nothing,
-                                               copy_tiles: :lower_copy_tiles,
-                                               copy_owed_tiles: :lower_copy_owed_tiles,
-                                               load_sprite_tiles: :lower_load_sprite_tiles,
-                                               present_objects: :lower_present_objects,
-                                               hide_sprites: :lower_hide_sprites,
-                                               rumble: :lower_rumble,
-                                               fade: :lower_fade, tint: :lower_tint,
-                                               pixelate: :lower_pixelate,
-                                               see_through: :lower_see_through,
-                                               # sound (Sound)
-                                               beep: :lower_beep, enable_sound: :lower_enable_sound,
-                                               play_song: :lower_play_song, stop_music: :lower_stop_music, hold_music: :lower_hold_music,
-                                               play_from_list: :lower_play_from_list,
-                                               play_sound_effect: :lower_play_sound_effect,
-                                               play_sample: :lower_play_sample, stop_sample: :lower_stop_sample,
-                                               wave: :lower_wave, stop_wave: :lower_stop_wave,
-                                               noise: :lower_noise,
-                                               # save memory (Saving)
-                                               save_init: :lower_save_init, save_store: :lower_save_store,
-                                               save_write: :lower_save_write, save_erase: :lower_save_erase
-                                             }.merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :lower_nothing] }))
+          # EVERY KIND THIS LOWERING WRITES, each by a method of its own called by name in #lower and
+          # #value_by_kind; read by test_native_kind_coverage.rb and #refuse_unlowered_kinds!. A
+          # declaration writes nothing where it is (#lower_nothing).
+          STATEMENT_KINDS = (%i[
+            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
+            case halt wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
+            list_set list_fill list_copy list_sort screen clear_screen fill_rect dma_fill_rect draw_rect_at
+            pixel draw_text draw_digit inside camera blit blit_pose draw_column_at draw_place fill_face
+            save_region restore_region background affine_background scroll_background place_bar box_background
+            scroll_rows shade_outside show_light_now set_tile show_map show_held_tiles background_colors
+            color_list_holds show_picture_group copy_tiles copy_owed_tiles load_sprite_tiles present_objects
+            hide_sprites rumble fade tint pixelate see_through beep enable_sound play_song stop_music
+            hold_music play_from_list play_sound_effect play_sample stop_sample wave stop_wave noise save_init
+            save_store save_write save_erase
+          ] + Nodes.of_role(:declaration)).freeze
 
-          VALUES = Ractor.make_shareable({
-                                           int: :value_of_int, var_ref: :value_of_var_ref,
-                                           binop: :value_of_binop, neg: :value_of_neg,
-                                           bit_not: :value_of_bit_not, absolute: :value_of_absolute,
-                                           clamped: :value_of_clamped, mul_fix: :value_of_mul_fix,
-                                           div_fix: :value_of_div_fix, shift_right: :value_of_shift_right,
-                                           held: :value_of_held, pressed: :value_of_pressed,
-                                           players_connected: :value_of_players_connected, local_player: :value_of_local_player,
-                                           chance: :value_of_chance, table_get: :value_of_table_get,
-                                           data_byte: :value_of_data_byte, list_get: :value_of_list_get,
-                                           list_len: :value_of_list_len, timer_ticks: :value_of_timer_ticks,
-                                           clock: :value_of_clock,
-                                           # the picture (Picture)
-                                           pixels_overlap: :value_of_pixels_overlap,
-                                           # save memory (Saving)
-                                           save_read: :value_of_save_read, save_sum: :value_of_save_sum
-                                         })
+          def lower(node)
+            case node.kind
+            when :program then lower_children(node)
+            when :set then lower_set(node)
+            when :add then lower_add(node)
+            when :sub then lower_sub(node)
+            when :copy then lower_copy(node)
+            when :negate then lower_negate(node)
+            when :abs then lower_abs(node)
+            when :negate_abs then lower_negate_abs(node)
+            when :clamp then lower_clamp(node)
+            when :if then lower_if(node)
+            when :loop then lower_loop(node)
+            when :repeat then lower_repeat(node)
+            when :every then lower_every(node)
+            when :after then lower_after(node)
+            when :call then lower_call(node)
+            when :call_one_of then lower_call_one_of(node)
+            when :case then lower_case(node)
+            when :halt then lower_halt(node)
+            when :wait_vblank then lower_wait_vblank(node)
+            when :timer_start then lower_timer_start(node)
+            when :timer_stop then lower_timer_stop(node)
+            when :on_timer then lower_nothing(node)
+            when :set_clock then lower_set_clock(node)
+            when :list_new then lower_list_new(node)
+            when :list_push then lower_list_push(node)
+            when :list_drop then lower_list_drop(node)
+            when :list_set then lower_list_set(node)
+            when :list_fill then lower_list_fill(node)
+            when :list_copy then lower_list_copy(node)
+            when :list_sort then lower_list_sort(node)
+            when :screen then lower_screen(node)
+            when :clear_screen then lower_clear_screen(node)
+            when :fill_rect then lower_fill_rect(node)
+            when :dma_fill_rect then lower_dma_fill_rect(node)
+            when :draw_rect_at then lower_draw_rect_at(node)
+            when :pixel then lower_pixel(node)
+            when :draw_text then lower_draw_text(node)
+            when :draw_digit then lower_draw_digit(node)
+            when :inside then lower_inside(node)
+            when :camera then lower_camera(node)
+            when :blit then lower_blit(node)
+            when :blit_pose then lower_blit_pose(node)
+            when :draw_column_at then lower_draw_column_at(node)
+            when :draw_place then lower_draw_place(node)
+            when :fill_face then lower_fill_face(node)
+            when :save_region then lower_save_region(node)
+            when :restore_region then lower_restore_region(node)
+            when :background then lower_background(node)
+            when :affine_background then lower_affine_background(node)
+            when :scroll_background then lower_scroll_background(node)
+            when :place_bar then lower_place_bar(node)
+            when :box_background then lower_box_background(node)
+            when :scroll_rows then lower_scroll_rows(node)
+            when :shade_outside then lower_nothing(node)
+            when :show_light_now then lower_show_light_now(node)
+            when :set_tile then lower_set_tile(node)
+            when :show_map then lower_show_map(node)
+            when :show_held_tiles then lower_show_held_tiles(node)
+            when :background_colors then lower_background_colors(node)
+            when :color_list_holds then lower_color_list_holds(node)
+            when :show_picture_group then lower_nothing(node)
+            when :copy_tiles then lower_copy_tiles(node)
+            when :copy_owed_tiles then lower_copy_owed_tiles(node)
+            when :load_sprite_tiles then lower_load_sprite_tiles(node)
+            when :present_objects then lower_present_objects(node)
+            when :hide_sprites then lower_hide_sprites(node)
+            when :rumble then lower_rumble(node)
+            when :fade then lower_fade(node)
+            when :tint then lower_tint(node)
+            when :pixelate then lower_pixelate(node)
+            when :see_through then lower_see_through(node)
+            when :beep then lower_beep(node)
+            when :enable_sound then lower_enable_sound(node)
+            when :play_song then lower_play_song(node)
+            when :stop_music then lower_stop_music(node)
+            when :hold_music then lower_hold_music(node)
+            when :play_from_list then lower_play_from_list(node)
+            when :play_sound_effect then lower_play_sound_effect(node)
+            when :play_sample then lower_play_sample(node)
+            when :stop_sample then lower_stop_sample(node)
+            when :wave then lower_wave(node)
+            when :stop_wave then lower_stop_wave(node)
+            when :noise then lower_noise(node)
+            when :save_init then lower_save_init(node)
+            when :save_store then lower_save_store(node)
+            when :save_write then lower_save_write(node)
+            when :save_erase then lower_save_erase(node)
+            else lower_declaration_or_refuse(node)
+            end
+          end
+
+          VALUE_KINDS = %i[
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed
+            players_connected local_player chance table_get data_byte list_get list_len timer_ticks clock
+            pixels_overlap save_read save_sum
+          ].freeze
+
+          def value_by_kind(node)
+            case node.kind
+            when :int then value_of_int(node)
+            when :var_ref then value_of_var_ref(node)
+            when :binop then value_of_binop(node)
+            when :neg then value_of_neg(node)
+            when :bit_not then value_of_bit_not(node)
+            when :absolute then value_of_absolute(node)
+            when :clamped then value_of_clamped(node)
+            when :mul_fix then value_of_mul_fix(node)
+            when :div_fix then value_of_div_fix(node)
+            when :shift_right then value_of_shift_right(node)
+            when :held then value_of_held(node)
+            when :pressed then value_of_pressed(node)
+            when :players_connected then value_of_players_connected(node)
+            when :local_player then value_of_local_player(node)
+            when :chance then value_of_chance(node)
+            when :table_get then value_of_table_get(node)
+            when :data_byte then value_of_data_byte(node)
+            when :list_get then value_of_list_get(node)
+            when :list_len then value_of_list_len(node)
+            when :timer_ticks then value_of_timer_ticks(node)
+            when :clock then value_of_clock(node)
+            when :pixels_overlap then value_of_pixels_overlap(node)
+            when :save_read then value_of_save_read(node)
+            when :save_sum then value_of_save_sum(node)
+            else raise LoweringError, "the native backend has no row for #{node.kind.inspect}"
+            end
+          end
 
           # EVERY KIND THIS BACKEND CANNOT WRITE YET, listed rather than found out. Native
           # trails the other two backends, so a kind may be missing here — but only on this list,
           # which test_native_kind_coverage.rb holds against every kind there is. A kind leaves
-          # the list the day it gets a row in STATEMENTS or VALUES.
+          # the list the day it joins STATEMENT_KINDS or VALUE_KINDS.
           NOT_LOWERED_YET = Ractor.make_shareable({})
 
           # How many bytes a slot of a list takes, by the width it was declared with.
@@ -349,7 +414,7 @@ module VBlank
             end
 
             missing = @reachable.map(&:kind).uniq.reject do |kind|
-              STATEMENTS.key?(kind) || VALUES.key?(kind) || %i[else].include?(kind)
+              STATEMENT_KINDS.include?(kind) || VALUE_KINDS.include?(kind) || %i[else].include?(kind)
             end
             return if missing.empty?
 
@@ -365,10 +430,6 @@ module VBlank
           end
 
           # --- statements ---
-
-          def lower(node)
-            send(STATEMENTS.fetch(node.kind), node)
-          end
 
           # Each statement of a body, after where it was written — and, before any statement the
           # interpreter paints an owed rebuild of the picture for, the same painting (see
@@ -402,6 +463,14 @@ module VBlank
           def lower_children(node) = body_of(node)
 
           def lower_nothing(_node) = []
+
+          # A declaration is gathered before the program is written, so it writes nothing where
+          # it is; any other kind with no writer is a mistake in this file.
+          def lower_declaration_or_refuse(node)
+            return lower_nothing(node) if STATEMENT_KINDS.include?(node.kind)
+
+            raise LoweringError, "the native backend has no row for #{node.kind.inspect}"
+          end
 
           # A variable set to itself changes nothing, and C's compiler refuses the statement
           # written out, so nothing is written for one. A game comes to it honestly: a helper
@@ -652,7 +721,7 @@ module VBlank
             case operand
             when Integer then C::Int.new(Int32.wrap(operand))
             when Symbol then variable(operand)
-            when Node then send(VALUES.fetch(operand.kind), operand)
+            when Node then value_by_kind(operand)
             else raise LoweringError, "cannot write #{operand.inspect} as a number"
             end
           end
@@ -694,7 +763,7 @@ module VBlank
           # SETTING THE CLOCK: the runtime works out how far the time set is from its clock's, and
           # the game keeps the two parts in its saved numbers (Reference#exec_set_clock).
           def lower_set_clock(node)
-            parts = IR::Clock::SET_PARTS.map { |part| value(node.public_send(part)) }
+            parts = [node.year, node.month, node.day, node.hour, node.minute, node.second].map { |part| value(part) }
             [eval_call("rg_clock_set_to", *parts),
              assign(IR::Clock::OFFSET_DAYS, call("rg_clock_kept_days", variable(IR::Clock::OFFSET_DAYS))),
              assign(IR::Clock::OFFSET_SECONDS, call("rg_clock_kept_seconds", variable(IR::Clock::OFFSET_SECONDS)))]

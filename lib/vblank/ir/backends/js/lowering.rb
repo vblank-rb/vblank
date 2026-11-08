@@ -12,7 +12,7 @@ module VBlank
         # function that does what IR::Int32 does. Nothing in that tree is C's alone, so the same
         # tree is printed as JavaScript here (Printer) and played by a runtime written in
         # JavaScript (runtime/), which is the native runtime's C function for function. The
-        # STATEMENTS and VALUES tables, the art worked out in Ruby, which kinds it cannot write
+        # kinds it writes and how, the art worked out in Ruby, which kinds it cannot write
         # yet, what it refuses — a console-only step the program can reach, and only that: all of
         # that is the native lowering's, so the two can never disagree about what a program does,
         # only about how a runtime does it — and each runtime is checked against the interpreter

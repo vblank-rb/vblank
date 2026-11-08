@@ -5,12 +5,12 @@ require "test_helper"
 # EVERY KIND OF NODE, HANDLED BY BOTH BACKENDS — read off what each kind says about itself
 # (IR::Nodes.of_role, and each kind's tier) rather than a list kept here.
 #
-# Both backends dispatch through a table keyed by the kind's name: the console's lowering
-# (Backends::GBA::Lowering) and the interpreter (Reference::STATEMENTS and ::VALUES). So a
-# kind added to the IR with no handler in one of them fails here by name, rather than at the
-# first program that happens to use it. And since a kind is portable unless it says it is
-# hardware-only, this is also what holds that promise: a portable kind the interpreter
-# cannot run is a failure, not a default.
+# Both backends name the kinds they handle: the console's lowering (Backends::GBA::Lowering)
+# and the interpreter (Reference::STATEMENT_KINDS and ::VALUE_KINDS). So a kind added to the IR
+# with no handler in one of them fails here by name, rather than at the first program that
+# happens to use it. And since a kind is portable unless it says it is hardware-only, this is
+# also what holds that promise: a portable kind the interpreter cannot run is a failure, not a
+# default.
 class TestKindCoverage < Minitest::Test
   Nodes = VBlank::IR::Nodes
   Portability = VBlank::IR::Portability
@@ -30,14 +30,14 @@ class TestKindCoverage < Minitest::Test
   end
 
   def test_the_interpreter_has_a_handler_for_every_portable_value_kind_and_no_other
-    assert_equal interpreter_can_run(Nodes.of_role(:value)).sort, Reference::VALUES.keys.sort
+    assert_equal interpreter_can_run(Nodes.of_role(:value)).sort, Reference::VALUE_KINDS.sort
   end
 
-  # The interpreter runs the program node through the same table, and gives each declaration
-  # a row that does nothing, as the console does.
+  # The interpreter runs the program node by its kind too, and gives each declaration a method
+  # that does nothing, as the console does.
   def test_the_interpreter_has_a_handler_for_every_portable_statement_and_no_other
     assert_equal interpreter_can_run(%i[statement declaration root].flat_map { |role| Nodes.of_role(role) }).sort,
-                 Reference::STATEMENTS.keys.sort
+                 Reference::STATEMENT_KINDS.sort
   end
 
   def test_every_kind_plays_one_known_part
