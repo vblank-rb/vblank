@@ -7,8 +7,10 @@ require "test_helper"
 class TestBlocksOnTheAdvance < Minitest::Test
   include VBlank::IR::Build
 
+  # The backdrop is there so the screen shows something, which a checked run's build checks ask
+  # for before it plays; the test is about the two pixelates.
   def test_a_program_with_one_place_is_run_by_both
-    one_place = program(screen(:tiled), layers(%i[world ui]),
+    one_place = program(screen(:tiled, backdrop: 0x7FFF), layers(%i[world ui]),
                         pixelate(size: int(4), under: :ui), pixelate(size: int(9), under: :ui), halt)
 
     game_player.run(one_place)
