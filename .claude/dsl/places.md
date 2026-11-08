@@ -9,6 +9,8 @@ order, with a **picture** on it; a face's **corners** say where on its picture e
 falls; a **viewer** is the spot the place is seen from and which way it faces (three arrows of length
 one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/builder/test_places_on_the_advance.rb`.
 
+## Declaring a place
+
 - `place :cube do … end` → `DSL::Place` — declare a place. Inside the block, `point x, y, z` makes a
   point and returns its number, and `face a, b, c, d, picture: :crate, on_picture: [[0, 0], [64, 0],
   [64, 64], [0, 64]]` joins three or four points with a picture. `on_picture:` is one `[across, down]`
@@ -63,6 +65,9 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   Color, the Super Nintendo and the Genesis change the slot as well, though they refuse to draw the
   place. Worked examples: `examples/cube3d.rb` (hold START), and `PlaceGames.changing_door` in
   `test/place_games.rb`, a door through three pictures by a worked-out number.
+
+## The viewer
+
 - `viewer :eye, at: [x, y, z], facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] }` →
   `DSL::Viewer` — the spot a place is seen from, and which way it faces. `facing:` is three arrows,
   each three numbers of length one and square to the other two (a friendly error otherwise); left out,
@@ -88,6 +93,9 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
     each; `eye.facing` gives all three arrows as `facing:` takes them.
 
   Worked example: `examples/cube3d.rb`, a crate flown round with the buttons.
+
+## Drawing a place
+
 - `draw_place :cube, seen_by: eye` — draw the place as the viewer sees it, across the screen or the
   `inside` area it is drawn in. Each point is turned to the viewer, put on the screen, and each face
   filled with its picture, a later face over an earlier one. **A face that reaches nearer than the near
@@ -158,7 +166,9 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   `screen_spot`s is the window of the room beyond (any corner behind: the whole screen; all behind: not
   seen). Worked example: `examples/two_rooms.rb`.
 
-**Lighting a place.** Each corner of a face has a light, from 0 (the darkest level) to 1 (the
+## Lighting a place
+
+Each corner of a face has a light, from 0 (the darkest level) to 1 (the
 brightest), blended smoothly across the face, and each pixel is drawn in the colour the game's own
 **shading** gives for its colour at the light it has reached. Worked example: `examples/lit_corridor.rb`,
 a corridor whose lamp flickers.
@@ -204,7 +214,9 @@ a corridor whose lamp flickers.
   made darker. Any picture can be lit there; a picture given as numbers is its colours made darker, as
   the chip shades by colour and reads no tables.
 
-**How it is drawn**, the same on every lowering: the turn, the cut and the projection are statements
+## How it is drawn
+
+The same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`
 and `div_fix`), and only the fill of a face, of three to eight corners, is written by hand for each
 (`Reference#exec_fill_face` is the rule every one follows). So the interpreter and every build draw the same pixels.
@@ -250,6 +262,8 @@ corner, and the place on the picture is found from it through one shared table (
 which every lowering reads, so all of them draw the same pixels. `rom.profile`
 names the fill "filling the faces of a place with their pictures".
 
-**Each console**: the Advance and the PlayStation draw a place, lit or not (their pages say how). The Game Boy Color, the Super
+## Each console
+
+The Advance and the PlayStation draw a place, lit or not (their pages say how). The Game Boy Color, the Super
 Nintendo and the Sega Genesis refuse `draw_place` in plain words (see their pages); `screen_spot` works
 on all four.

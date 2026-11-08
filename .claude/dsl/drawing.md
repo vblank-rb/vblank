@@ -2,6 +2,9 @@
 
 The whole story of these verbs. The one-line index is `.claude/rules/dsl-reference.md`.
 
+A view in three dimensions, a place of flat faces seen from a spot the game chooses, is in `places.md`.
+`draw_place` draws across the whole screen, or across the `inside` area it is drawn in.
+
 - `pixel x, y, color` — one pixel (fixed coords).
 - `fill_rect x, y, w, h, color` / `dma_fill_rect x, y, w, h, color` — a filled rect (fixed, even w).
 - `draw_rect_at xpos, ypos, w, h, color` — a rect whose **position and size** the game can all work out as it runs (each of `xpos`/`ypos`/`w`/`h` may be `:var`/`Value`). That's the bar-or-column shape: a health meter that empties sideways (`draw_rect_at 8, 8, health, 6, :red`), a wall column in a first-person view, a tower that grows. A width or height of 0 or less draws nothing, so a bar can empty without a test around it, and **any width works — odd included** (unlike `fill_rect`/`dma_fill_rect`, which still want an even one). A size fixed when you write it costs exactly what it always did. `estimate:` is taken and set aside with a warning; see the hint note in `.claude/dsl/variables.md`.
