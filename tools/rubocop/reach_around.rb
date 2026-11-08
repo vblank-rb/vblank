@@ -2,6 +2,10 @@
 
 require "rubocop"
 
+# Must stay defined once: a worktree lies inside the main checkout, so RuboCop reads both
+# checkouts' .rubocop.yml and loads this file from each.
+return if defined?(RuboCop::Cop::VBlank::ReachAround)
+
 module RuboCop
   module Cop
     module VBlank
