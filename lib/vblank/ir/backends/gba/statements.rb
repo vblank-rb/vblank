@@ -27,6 +27,33 @@ module VBlank
 
         # Statement lowering: variable ops and control flow.
         class Statements
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[
+            set add sub copy negate abs negate_abs clamp if loop repeat inside every after call raw
+          ].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :set then emit_set(node)
+            when :add then emit_add(node)
+            when :sub then emit_sub(node)
+            when :copy then emit_copy(node)
+            when :negate then emit_negate(node)
+            when :abs then emit_abs(node)
+            when :negate_abs then emit_negate_abs(node)
+            when :clamp then emit_clamp(node)
+            when :if then emit_if(node)
+            when :loop then emit_loop(node)
+            when :repeat then emit_repeat(node)
+            when :inside then emit_inside(node)
+            when :every then emit_every(node)
+            when :after then emit_after(node)
+            when :call then emit_call(node)
+            when :raw then emit_raw(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           def initialize(emitter:, primitives:, lowering:, expressions:, placement:, functions:)
@@ -55,16 +82,17 @@ module VBlank
           end
 
           # add/sub: new value = var (op) operand. Evaluate the operand into the
-          # accumulator, load the variable alongside it, combine, store back.
-          def emit_accumulate(node, op)
+          # accumulator, load the variable alongside it, combine with the instruction the
+          # block gives, store back.
+          def emit_accumulate(node)
             @lowering.value(node.operand)       # r0 = operand
-            @primitives.load_var(TMP, node.var)        # r1 = current value
-            @emitter.emit(ASM.send(op, ACC, TMP, ACC)) # r0 = r1 (op) r0
+            @primitives.load_var(TMP, node.var) # r1 = current value
+            @emitter.emit(yield)                # r0 = r1 (op) r0
             @primitives.store_var(ACC, node.var)
           end
 
-          def emit_add(node) = emit_accumulate(node, :add_reg)
-          def emit_sub(node) = emit_accumulate(node, :sub_reg)
+          def emit_add(node) = emit_accumulate(node) { ASM.add_reg(ACC, TMP, ACC) }
+          def emit_sub(node) = emit_accumulate(node) { ASM.sub_reg(ACC, TMP, ACC) }
 
           def emit_copy(node)
             @primitives.load_var(ACC, node.src)

@@ -95,6 +95,16 @@ module VBlank
         # this object is built (tiled backgrounds are prepared first), so only bg_number,
         # called at emission time, ever actually reads it.
         class Raster
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[show_light_now].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :show_light_now then emit_light_now(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           # The lines the picture is drawn on. The display counts on past the bottom of the

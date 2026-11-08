@@ -31,6 +31,17 @@ module VBlank
         # the mix itself. @samples / @plays_samples are this object's own state, not
         # handed in — nothing outside sampled audio ever reads them.
         class Mixer
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[play_sample stop_sample].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :play_sample then emit_play_sample(node)
+            when :stop_sample then emit_stop_sample(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           # How many samples can sound at once — read from {Sound}, where the two backends

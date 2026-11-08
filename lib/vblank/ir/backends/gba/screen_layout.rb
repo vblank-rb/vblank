@@ -2005,7 +2005,7 @@ module VBlank
 
             sets = @obj_pictures.values.group_by(&:stored).values.map { |sprites| PictureSet.new(sprites: sprites) }
             one_frame = Set.new # the names of the sprites kept to one frame at a time
-            blobs = SpriteLayout::Blobs.new(data_blobs: @blobs, keep_plain: method(:keep_unpacked!))
+            blobs = SpriteLayout::Blobs.new(data_blobs: @blobs, codecs: @codecs)
             painted = nodes.select { |node| painted_sprite?(node) }.to_h { |node| [node.name, node.poses.first] }
             sets.reject! { |set| set.names.any? { |name| painted.key?(name) } } # nothing to give back
             sets.reject! { |set| set.sprites.any?(&:tile_set?) } # ...and none for one drawn from a set's tiles
@@ -2102,7 +2102,7 @@ module VBlank
           # is kept — not its records, not its blobs.
           def least_sprite_screens(nodes, sets, painted)
             smaller = sets.select { |set| set.can_keep_to_one_frame? && set.smaller_kept_to_one_frame? }
-            blobs = SpriteLayout::Blobs.new(data_blobs: {}, keep_plain: ->(_name) {})
+            blobs = SpriteLayout::Blobs.new(data_blobs: {}, codecs: {})
             SpriteLayout.new(nodes: nodes, pictures: @obj_pictures, painted: painted, first_tile: first_sprite_tile,
                              one_frame: Set.new(smaller.flat_map(&:names)), blobs: blobs,
                              grouped: @grouped_pictures,

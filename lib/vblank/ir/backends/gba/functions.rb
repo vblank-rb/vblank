@@ -13,20 +13,26 @@ module VBlank
         # {Placement}#emit_hot_functions), because that block is copied wholesale —
         # #placement answers which, and #emit_one_function is what emits either kind.
         class Functions
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[case call_one_of].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :case then emit_case(node)
+            when :call_one_of then emit_call_one_of(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           # +modes+ is the IR::Modes result GBA#resolve_modes builds each #lower — not
           # known at construction, so it's set afterward with #modes= rather than
-          # passed in here. +scene_preamble+ is Drawing's own #emit_scene_preamble,
-          # handed in as a bound method rather than a reference to Drawing as a whole, and
-          # +scene_late_pages+ its #emit_scene_late_pages the same way.
-          def initialize(emitter:, lowering:, placement:, scene_preamble:, scene_art:, scene_arrival_pass:,
-                         scene_late_pages:)
+          # passed in here. So is +drawing+, which writes what a scene's routine starts with (its
+          # mode, its art, its late pages) and is built after this (#drawing=).
+          def initialize(emitter:, lowering:, placement:)
             @emitter = emitter
             @lowering = lowering
             @placement = placement
-            @scene_preamble = scene_preamble
-            @scene_late_pages = scene_late_pages
-            @scene_art = scene_art
-            @scene_arrival_pass = scene_arrival_pass
+            @drawing = nil
             @modes = nil
             @funcs = {}
             @minted = {}
@@ -34,7 +40,7 @@ module VBlank
             @number_tables = {}
           end
 
-          attr_writer :modes
+          attr_writer :modes, :drawing
           attr_reader :funcs, :func_ranges
 
           # Where each routine's number table is, for the routines that have one: the last
@@ -92,19 +98,19 @@ module VBlank
             @lowering.in_mode(@modes.func_mode.fetch(name, @modes.default_mode)) do
               next minted.call if minted
 
-              @scene_late_pages.call(name) # what this scene's screen does with a late page
+              @drawing.emit_scene_late_pages(name) # what this scene's screen does with a late page
               if @modes.scene_funcs.include?(name)
                 # ...a preamble: what this scene has to tell the display as it takes over.
                 # That is the screen mode, in a program that switches it per scene, and the
                 # layers this scene uses, in one whose scenes use different ones. A program
                 # that needs neither emits nothing here.
-                @scene_preamble.call(name)
+                @drawing.emit_scene_preamble(name)
                 # ...and its own sprite pictures, which scenes share the room for, so a
                 # scene taking over sends its own and one already running sends nothing.
-                @scene_art.call(name)
+                @drawing.emit_scene_art_upload(name)
                 # ...and, with its pictures up, the end of the pass it took over on, for a scene
                 # that has that pass to itself.
-                @scene_arrival_pass.call(name)
+                @drawing.emit_return_on_arrival_pass(name)
               end
               fnode.children.each { |stmt| @lowering.statement(stmt) }
             end

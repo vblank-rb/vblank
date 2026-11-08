@@ -34,10 +34,10 @@ module VBlank
           SAVE_WIDTH_BYTES = { byte: 1, half: 2, word: 4 }.freeze
 
           # The chip for +memory+ (an IR::SaveLayout::Memory). +roomy_bytes+ is called with a count
-          # of bytes of the roomy memory to keep, which only a 128K chip and the EEPROM need. +call_cold+ calls a routine in the
+          # of bytes of the roomy memory to keep, which only a 128K chip and the EEPROM need. +placement+ calls a routine in the
           # cartridge from wherever the code is (see Placement#emit_call_cold_routine).
-          def self.for(memory, emitter:, lowering:, call_cold:, roomy_bytes:)
-            parts = { emitter: emitter, lowering: lowering, call_cold: call_cold }
+          def self.for(memory, emitter:, lowering:, placement:, roomy_bytes:)
+            parts = { emitter: emitter, lowering: lowering, placement: placement }
             return EepromChip.new(area: roomy_bytes.call(EepromChip::AREA_BYTES), **parts) if memory.eeprom?
             return BatteryChip.new(**parts) unless memory.flash?
             return FlashChip.new(**parts) if memory.size <= 0x10000
@@ -45,10 +45,10 @@ module VBlank
             BankedFlashChip.new(bank_word: roomy_bytes.call(4), **parts)
           end
 
-          def initialize(emitter:, lowering:, call_cold:)
+          def initialize(emitter:, lowering:, placement:)
             @emitter = emitter
             @lowering = lowering
-            @call_cold = call_cold
+            @placement = placement
           end
 
           def flash? = false
@@ -218,7 +218,7 @@ module VBlank
               @emitter.emit(i.zero? ? ASM.mov_reg(2, ACC) : ASM.lsr_imm(2, ACC, 8 * i)) # r2 = this byte
               @emitter.emit(ASM.push(TMP))
               emit_place_to_address
-              @call_cold.call(PROGRAM_LABEL)
+              @placement.emit_call_cold_routine(PROGRAM_LABEL)
               @emitter.emit(ASM.pop(TMP))
             end
           end
@@ -228,7 +228,7 @@ module VBlank
           def emit_wipe(node)
             emit_save_place(node.at)
             emit_place_to_address
-            @call_cold.call(node.wait == false ? START_WIPE_LABEL : WIPE_LABEL)
+            @placement.emit_call_cold_routine(node.wait == false ? START_WIPE_LABEL : WIPE_LABEL)
           end
 
           def emit_routines
@@ -379,7 +379,7 @@ module VBlank
 
           private
 
-          def emit_place_to_address = @call_cold.call(SHOW_BANK_LABEL)
+          def emit_place_to_address = @placement.emit_call_cold_routine(SHOW_BANK_LABEL)
 
           # r1, a place in the chip, becomes an address in the 64K window the console sees, and
           # the bank it is in is shown first unless the bank word shows it already is. Leaves r0,
@@ -508,7 +508,7 @@ module VBlank
           end
 
           # What a pass wrote reaches the chip before the frame ends.
-          def emit_end_of_pass = @call_cold.call(WRITE_BACK_LABEL)
+          def emit_end_of_pass = @placement.emit_call_cold_routine(WRITE_BACK_LABEL)
 
           # Each byte into the copy, through the put routine: r1 the place, r2 the byte.
           def emit_write(node)
@@ -520,7 +520,7 @@ module VBlank
               @emitter.emit(ASM.add_imm(TMP, TMP, 1)) unless i.zero?
               @emitter.emit(i.zero? ? ASM.mov_reg(2, ACC) : ASM.lsr_imm(2, ACC, 8 * i)) # r2 = this byte
               @emitter.emit(ASM.push(TMP))
-              @call_cold.call(PUT_LABEL)
+              @placement.emit_call_cold_routine(PUT_LABEL)
               @emitter.emit(ASM.pop(TMP))
             end
           end
@@ -538,7 +538,7 @@ module VBlank
 
           private
 
-          def emit_place_to_address = @call_cold.call(ADDRESS_LABEL)
+          def emit_place_to_address = @placement.emit_call_cold_routine(ADDRESS_LABEL)
 
           # r1, a place, becomes the address of its byte for READING. From the copy a save writes
           # into, when it holds the block — written back first, so the byte read is the one the

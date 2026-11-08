@@ -13,6 +13,16 @@ module VBlank
         # comes up is never written over, since the two are up together and the places of
         # pictures up together never overlap (see IR::PictureGroupPlaces).
         class PictureGroupCopying
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[show_picture_group].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :show_picture_group then emit_show_picture_group(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
           include EmitterCalls
 

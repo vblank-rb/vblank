@@ -31,6 +31,26 @@ module VBlank
         # and the chip's settings read as all noughts or all ones. The chip, told to count in 24
         # hours, reads that setting back with that one bit on, which neither of those is.
         class ClockChip
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[set_clock].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :set_clock then emit_set_clock(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
+          # The values this part works out (Lowering#values_written_by), each by its own method.
+          VALUE_KINDS = %i[clock].freeze
+
+          def emit_value(node)
+            case node.kind
+            when :clock then eval_clock(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           # The pins' registers: what is on each pin, which way each one points (a 1 is the
           # console driving it), and whether the console can read them back at all.
           PINS = 0x080000C4
@@ -113,10 +133,10 @@ module VBlank
           LR = 14
           PC = 15
 
-          def initialize(emitter:, primitives:, call_cold_routine:)
+          def initialize(emitter:, primitives:, placement:)
             @emitter = emitter
             @primitives = primitives
-            @call_cold_routine = call_cold_routine
+            @placement = placement
             @used = false
             @sets = false
           end
@@ -141,7 +161,7 @@ module VBlank
           def eval_clock(node)
             if IR::Clock::TIME.include?(node.reading)
               emit_read_chip_if_not_yet
-              @call_cold_routine.call(ADD_OFFSET) if @sets
+              @placement.emit_call_cold_routine(ADD_OFFSET) if @sets
             end
             @primitives.load_var(ACC, self.class.var(node.reading))
           end
@@ -150,7 +170,7 @@ module VBlank
           def emit_call_at_power_on
             return unless @used
 
-            @call_cold_routine.call(AT_POWER_ON)
+            @placement.emit_call_cold_routine(AT_POWER_ON)
             emit_mark_copy_old
           end
 
@@ -165,11 +185,19 @@ module VBlank
           # A TIME THE GAME SETS: each part worked out into where it waits, and then the routine
           # that keeps how far it is from the chip's (see #emit_set_body).
           def emit_set_clock(node)
-            IR::Clock::SET_PARTS.each do |part|
-              @lowering.value(node.public_send(part))
-              @primitives.store_var(ACC, self.class.set_var(part))
-            end
-            @call_cold_routine.call(SET)
+            emit_set_part(:year, node.year)
+            emit_set_part(:month, node.month)
+            emit_set_part(:day, node.day)
+            emit_set_part(:hour, node.hour)
+            emit_set_part(:minute, node.minute)
+            emit_set_part(:second, node.second)
+            @placement.emit_call_cold_routine(SET)
+          end
+
+          # One part of a time the game sets, worked out into where it waits.
+          def emit_set_part(part, value)
+            @lowering.value(value)
+            @primitives.store_var(ACC, self.class.set_var(part))
           end
 
           # The routines themselves, in the cartridge: a reading is a long, slow conversation over
@@ -196,7 +224,7 @@ module VBlank
             @primitives.load_var(ACC, READ_THIS_PASS)
             @emitter.emit(ASM.cmp_imm(ACC, 0))
             @emitter.emit_branch(:bcond, read, cond: :ne)
-            @call_cold_routine.call(FIRST_READING)
+            @placement.emit_call_cold_routine(FIRST_READING)
             @emitter.place_label(read)
           end
 
@@ -291,7 +319,6 @@ module VBlank
           # each byte's two digits made one number as it comes — into the copy, or in a game that
           # sets the clock into the chip's own reading, which the copy is made from when it is read.
           def emit_after_wait_body
-            into = @sets ? self.class.method(:chip_var) : self.class.method(:var)
             skip = @emitter.gensym
             @primitives.load_var(ACC, self.class.var(:set))
             @emitter.emit(ASM.cmp_imm(ACC, 0))
@@ -306,7 +333,7 @@ module VBlank
                 @emitter.emit_number(TMP, CENTURY)
                 @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
               end
-              @primitives.store_var(ACC, into.call(reading))
+              @primitives.store_var(ACC, @sets ? self.class.chip_var(reading) : self.class.var(reading))
             end
             emit_end_conversation
             emit_pins_readable(0)

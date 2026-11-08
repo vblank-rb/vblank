@@ -102,6 +102,9 @@ module VBlank
           # sprites hold the same one, and no write ever serves two.
           def self.worked_out_fields = %i[x y active pose angle scale recolor layer_pick]
 
+          # Those sums, by field.
+          def worked_out = to_h.slice(*self.class.worked_out_fields)
+
           # The fields that are a sprite's own and that the write of its row never reads by
           # name: its place in the table, which a repeat steps along; the pictures it sends
           # to sprite memory, which only the first sprite showing a picture has; and the name

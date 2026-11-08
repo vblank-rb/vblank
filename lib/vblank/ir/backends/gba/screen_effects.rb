@@ -13,6 +13,19 @@ module VBlank
         # The fade and the tint share their arithmetic with PaletteTint and LayerBlend, which
         # reach it through the backend (#fade_steps_value and friends are public for that reason).
         class ScreenEffects
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[camera fade tint pixelate].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :camera then emit_camera(node)
+            when :fade then emit_fade(node)
+            when :tint then emit_tint(node)
+            when :pixelate then emit_pixelate(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
           include EmitterCalls
 

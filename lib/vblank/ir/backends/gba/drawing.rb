@@ -29,12 +29,38 @@ module VBlank
         # dispatch table, which would otherwise have to pick one of two handlers per
         # kind instead of one.
         class Drawing
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[
+            screen pixel fill_rect clear_screen dma_fill_rect draw_rect_at draw_column_at draw_text draw_digit
+            blit blit_pose background save_region restore_region
+          ].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :screen then emit_screen(node)
+            when :pixel then emit_pixel(node)
+            when :fill_rect then emit_fill_rect(node)
+            when :clear_screen then emit_clear_screen(node)
+            when :dma_fill_rect then emit_dma_fill_rect(node)
+            when :draw_rect_at then emit_draw_rect_at(node)
+            when :draw_column_at then emit_draw_column_at(node)
+            when :draw_text then emit_draw_text(node)
+            when :draw_digit then emit_draw_digit(node)
+            when :blit then emit_blit(node)
+            when :blit_pose then emit_blit_pose(node)
+            when :background then emit_background(node)
+            when :save_region then emit_save_region(node)
+            when :restore_region then emit_restore_region(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
           include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, divide:, framebuffer:, raster:, palette_tint:,
                           layer_blend:, effects:, buffered:, uploads:, sprite_drawing:, background_drawing:,
-                          backing_info:, call_cold_routine:, frames:)
+                          lists:, placement:, frames:)
             @emitter = emitter
             @frames = frames # how many breaks a pass took, which shows whether its page is late
             @primitives = primitives
@@ -51,8 +77,8 @@ module VBlank
             # (see {SpriteDrawing} and {BackgroundDrawing}).
             @sprite_drawing = sprite_drawing
             @background_drawing = background_drawing
-            @backing_info = backing_info
-            @call_cold_routine = call_cold_routine
+            @lists = lists # where a backing buffer is (Lists#backing_info)
+            @placement = placement
             # What a scene does once as it takes over, and the notes saying whose is up.
             @scene_entry = SceneEntry.new(emitter: emitter, primitives: primitives)
             @background_drawing.scene_entry = @scene_entry
@@ -850,9 +876,9 @@ module VBlank
           end
 
           # This file's own seams, called as bare methods like the ones in {EmitterCalls}.
-          def backing_info(name) = @backing_info.call(name)
+          def backing_info(name) = @lists.backing_info(name)
           def placed_fade = @layout.screen.placed_fade
-          def emit_call_cold_routine(label) = @call_cold_routine.call(label)
+          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
           # WHAT THE SCREEN UP NOW DOES WITH A PAGE FINISHED TOO LATE (see IR::LatePages), kept
           # where the end of a pass can read it: nothing to wait, else one more than the row a

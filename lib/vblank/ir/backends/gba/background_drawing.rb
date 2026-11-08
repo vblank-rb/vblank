@@ -15,13 +15,35 @@ module VBlank
         # Which layer each background uses and where its tiles and map sit was settled before
         # any code existed (see {ScreenLayout}); this writes the code that carries it out.
         class BackgroundDrawing
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[
+            scroll_background place_bar box_background affine_background set_tile show_map show_held_tiles
+            copy_tiles copy_owed_tiles background_colors
+          ].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :scroll_background then emit_scroll_background(node)
+            when :place_bar then emit_place_bar(node)
+            when :box_background then emit_box_background(node)
+            when :affine_background then emit_affine_background(node)
+            when :set_tile then emit_set_tile(node)
+            when :show_map then emit_show_map(node)
+            when :show_held_tiles then emit_show_held_tiles(node)
+            when :copy_tiles then emit_copy_tiles(node)
+            when :copy_owed_tiles then emit_copy_owed_tiles(node)
+            when :background_colors then emit_background_colors(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
           include EmitterCalls
           include MapStreaming
           include HeldTiles
 
           def initialize(emitter:, primitives:, lowering:, divide:, raster:, palette_tint:, uploads:, lists:,
-                         call_cold_routine:, memory:)
+                         placement:, memory:)
             @emitter = emitter
             @memory = memory
             @primitives = primitives
@@ -31,7 +53,7 @@ module VBlank
             @raster = raster
             @palette_tint = palette_tint
             @uploads = uploads
-            @call_cold_routine = call_cold_routine
+            @placement = placement
             @layout = nil
           end
 
@@ -43,7 +65,7 @@ module VBlank
 
           # Call a routine that always stays in the cartridge, from wherever this code is kept
           # (see Placement#emit_call_cold_routine).
-          def emit_call_cold_routine(label) = @call_cold_routine.call(label)
+          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
           # A LINE THAT CHANGES A BACKGROUND BY NAME, for a name declared in several scenes: each
           # scene's declaration sits in a place of its own (see ScreenLayout#declared_background),

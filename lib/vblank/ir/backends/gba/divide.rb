@@ -95,14 +95,13 @@ module VBlank
           SIGN_BIT = 1 << 31
           INT32_MAX = (1 << 31) - 1
 
-          # +scales_objects+ answers, for one :object node, whether it needs a divide —
-          # the one thing #needs_divide_routine? asks about that isn't its own to know
-          # (a sprite's own size is core object/sprite layout, not division).
-          def initialize(emitter:, memory:, primitives:, scales_objects:)
+          # Whether one :object node needs a divide is the one thing #needs_divide_routine? asks
+          # about that isn't its own to know (a sprite's own size is core object/sprite layout, not
+          # division), so it asks ScreenLayout.scales?.
+          def initialize(emitter:, memory:, primitives:)
             @emitter = emitter
             @memory = memory
             @primitives = primitives
-            @scales_objects = scales_objects
             @divide_routine_iwram = nil
             @divide_fix_routine_iwram = nil
           end
@@ -119,7 +118,7 @@ module VBlank
               case node.kind
               when :binop then %i[/ %].include?(node.op) && divisor_needs_routine?(node.rhs)
               when :div_fix then folds_to_plain_divide?(node) && divisor_needs_routine?(node.rhs)
-              when :object then @scales_objects.call(node)
+              when :object then ScreenLayout.scales?(node)
               # A stretched column divides the picture's height by the height asked for, and
               # that height is only known as the game runs.
               when :draw_column_at then true

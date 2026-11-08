@@ -56,6 +56,16 @@ module VBlank
         # this object before its own @drawing exists, so it hands in `self` and the call
         # resolves once @drawing does (see gba.rb#initialize).
         class LayerBlend
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[see_through].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :see_through then emit_see_through(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           # attr0 bits 10-11 = 1: draw this sprite through the blend rather than straight.

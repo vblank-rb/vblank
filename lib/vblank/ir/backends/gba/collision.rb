@@ -22,6 +22,16 @@ module VBlank
         # themselves value nodes, evaluated through the {Lowering} this class is handed
         # rather than through whatever else happens to own value evaluation.
         class Collision
+          # The values this part works out (Lowering#values_written_by), each by its own method.
+          VALUE_KINDS = %i[pixels_overlap].freeze
+
+          def emit_value(node)
+            case node.kind
+            when :pixels_overlap then eval_pixels_overlap(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           # The hidden variables the routine works in (IWRAM scratch, reused each call —

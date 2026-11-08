@@ -50,11 +50,11 @@ module VBlank
           # every one of them is a word the code kept there cannot have. Reaching one there costs
           # its whole address, which the collection's own items already cost.
           #
-          # +roomy_counter_test+ answers whether a name is one of those, and is handed in by
-          # whoever knows where the collections went.
-          attr_writer :roomy_counter_test
+          # +lists+ (Lists, which knows where the collections went) answers whether a name is one
+          # of those; it is built after this, and handed in then.
+          attr_writer :lists
 
-          def roomy_var?(name) = @roomy_counter_test&.call(name) || false
+          def roomy_var?(name) = @lists&.roomy_counter?(name) || false
 
           # Give +name+ a place in the roomy memory, before anything names it. The build's second
           # pass asks this for each variable its measuring pass put there, since it names them

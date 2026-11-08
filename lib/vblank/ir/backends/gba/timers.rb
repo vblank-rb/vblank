@@ -23,6 +23,27 @@ module VBlank
         class Timers
           include Console::Hardware
 
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[timer_start timer_stop].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :timer_start then emit_timer_start(node)
+            when :timer_stop then emit_timer_stop(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
+          # The values this part works out (Lowering#values_written_by), each by its own method.
+          VALUE_KINDS = %i[timer_ticks].freeze
+
+          def emit_value(node)
+            case node.kind
+            when :timer_ticks then eval_timer_ticks(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           # The GBA CPU clock: ~16.78 MHz (2**24 Hz). A timer at prescaler P ticks this
           # many times a second divided by P.
           CPU_CLOCK_HZ = Console::ADVANCE.cycles_a_second

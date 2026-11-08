@@ -38,6 +38,17 @@ module VBlank
         # PICTURE_WORDS): every value is worked out where the face is written and stored there, and
         # then the routine is called.
         class Faces
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[draw_place fill_face].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :draw_place then emit_draw_place(node)
+            when :fill_face then emit_fill_face(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
           include EmitterCalls
 

@@ -106,9 +106,8 @@ module VBlank
             def self.between(first, second, row_step:)
               return nil unless first.shared_fields == second.shared_fields && !row_step.zero?
 
-              sites = Sprite.worked_out_fields.to_h do |part|
-                [part, differing_numbers(first.public_send(part), second.public_send(part))]
-              end
+              theirs = second.worked_out
+              sites = first.worked_out.to_h { |part, ours| [part, differing_numbers(ours, theirs.fetch(part))] }
               return nil if sites.value?(nil)
 
               pairs = sites.values.flatten(1).map { |_at, ours, theirs| [ours, theirs] }.uniq
@@ -142,6 +141,7 @@ module VBlank
 
             def initialize(first, sites, first_index:, index_step:, row_step:)
               @first = first
+              @first_sums = first.worked_out
               @sites = sites
               @first_index = first_index
               @index_step = index_step
@@ -160,10 +160,13 @@ module VBlank
             # The sums compared are a handful of parts each.
             def fits?(sprite, place)
               index = @first_index + (place * @index_step)
-              sprite.shared_fields == @first.shared_fields && Sprite.worked_out_fields.all? do |part|
+              return false unless sprite.shared_fields == @first.shared_fields
+
+              declared_sums = sprite.worked_out
+              Sprite.worked_out_fields.all? do |part|
                 expected = with_entry(part) { Build.int(index) }
-                declared = sprite.public_send(part)
-                expected.nil? ? declared.nil? && @first.public_send(part).nil? : expected.same_shape?(declared)
+                declared = declared_sums.fetch(part)
+                expected.nil? ? declared.nil? && @first_sums.fetch(part).nil? : expected.same_shape?(declared)
               end
             end
 
@@ -173,7 +176,7 @@ module VBlank
             # its entry number was written. nil when there is no such sum, or when a place
             # cannot be written to — which no sprite then fits, the first included.
             def with_entry(part)
-              sum = @first.public_send(part) or return nil
+              sum = @first_sums.fetch(part) or return nil
               copy = sum.copy
               parts = copy.walk.to_a
               written = @sites.fetch(part).all? { |at| parts[at].parent&.replace_operand(parts[at], yield) }

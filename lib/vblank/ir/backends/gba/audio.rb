@@ -15,6 +15,29 @@ module VBlank
         # program facts settled elsewhere in the same lowering, read through a callable
         # since they aren't known yet when this object is built.
         class Audio
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[
+            wait_vblank enable_sound beep noise wave stop_wave play_song stop_music hold_music play_from_list
+            play_sound_effect
+          ].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :wait_vblank then emit_wait_vblank(node)
+            when :enable_sound then emit_enable_sound(node)
+            when :beep then emit_beep(node)
+            when :noise then emit_noise(node)
+            when :wave then emit_wave(node)
+            when :stop_wave then emit_stop_wave(node)
+            when :play_song then emit_play_song(node)
+            when :stop_music then emit_stop_music(node)
+            when :hold_music then emit_hold_music(node)
+            when :play_from_list then emit_play_from_list(node)
+            when :play_sound_effect then emit_play_sound_effect(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           # EVERY TUNE THE PLAYER CAN PLAY, by name, in the order it numbers them from 1 (MUSIC_PLAYING

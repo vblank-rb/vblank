@@ -23,12 +23,12 @@ module VBlank
           include Console::Hardware
           extend Console::Hardware # the screen's size, for the class-level rules the estimate asks
 
-          def initialize(emitter:, primitives:, lowering:, framebuffer:, call_cold_routine:)
+          def initialize(emitter:, primitives:, lowering:, framebuffer:, placement:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
             @framebuffer = framebuffer
-            @call_cold_routine = call_cold_routine
+            @placement = placement
             @layout = nil
           end
 
@@ -52,7 +52,7 @@ module VBlank
           def in_register(register) = Primitives::InRegister.new(register)
           def emit_row_loop(counter, &block) = @primitives.emit_row_loop(counter, &block)
           def emit_add_const(rd, rn, imm, scratch) = @primitives.emit_add_const(rd, rn, imm, scratch)
-          def emit_call_cold_routine(label) = @call_cold_routine.call(label)
+          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
           # Clear the hidden page to a solid color: one DMA that repeats the packed
           # index word across the whole page.

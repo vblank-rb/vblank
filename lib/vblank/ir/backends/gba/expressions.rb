@@ -6,6 +6,36 @@ module VBlank
       class GBA
         # Evaluating value nodes (arithmetic, comparisons, data, input reads).
         class Expressions
+          # The values this part works out (Lowering#values_written_by), each by its own method.
+          VALUE_KINDS = %i[
+            int var_ref neg binop bit_not absolute clamped mul_fix div_fix shift_right chance
+            players_connected local_player data_byte table_get read_scanline held pressed
+          ].freeze
+
+          def emit_value(node)
+            case node.kind
+            when :int then eval_int(node)
+            when :var_ref then eval_var_ref(node)
+            when :neg then eval_neg(node)
+            when :binop then eval_binop(node)
+            when :bit_not then eval_bit_not(node)
+            when :absolute then eval_absolute(node)
+            when :clamped then eval_clamped(node)
+            when :mul_fix then eval_mul_fix(node)
+            when :div_fix then eval_div_fix(node)
+            when :shift_right then eval_shift_right(node)
+            when :chance then eval_chance(node)
+            when :players_connected then eval_players_connected(node)
+            when :local_player then eval_local_player(node)
+            when :data_byte then eval_data_byte(node)
+            when :table_get then eval_table_get(node)
+            when :read_scanline then eval_read_scanline(node)
+            when :held then eval_held_node(node)
+            when :pressed then eval_pressed_node(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           def initialize(emitter:, primitives:, lowering:, divide:, tables:)

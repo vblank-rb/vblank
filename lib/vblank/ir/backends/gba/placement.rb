@@ -552,9 +552,19 @@ module VBlank
             )
           end
 
+          # A PLACEHOLDER ONLY THIS LOWERING KNOWS, filled in once everything has a place: Emit
+          # hands every kind it does not own here (Emit#resolve_fixups).
+          def resolve_fixup(fix)
+            case fix.kind
+            when :fast_addr then resolve_fast_address(fix)
+            when :hot_size then resolve_hot_size(fix)
+            when :routine_word then resolve_routine_word(fix)
+            when :quick_word then resolve_quick_word(fix)
+            else raise LoweringError, "nothing fills in a #{fix.kind.inspect} placeholder"
+            end
+          end
+
           # Patch in the transfer's size and start it: whole words, both ends advancing.
-          # A custom fixup kind #resolve_fixups doesn't know about — Emit hands it here
-          # via the resolver map GBA#lower builds (see GBA#lower).
           def resolve_hot_size(fix)
             words = @hot_bytes / 4
             @emit.patch16(fix.pos, ASM.load_immediate_fixed(fix.reg, words | DMA_32BIT | DMA_ENABLE))

@@ -26,11 +26,12 @@ module VBlank
         # compare a frame and changing scene costs a copy.
         class SpriteLayout
           # Where a sprite's frames go in the cartridge, kept as they are rather than packed
-          # (see SpriteLayout#one_frame_placement).
-          Blobs = Data.define(:data_blobs, :keep_plain) do
+          # (see SpriteLayout#one_frame_placement): +codecs+ is how each blob is packed, by name
+          # (ScreenLayout#keep_unpacked!).
+          Blobs = Data.define(:data_blobs, :codecs) do
             def store_unpacked(name, bytes)
               data_blobs[name] = bytes
-              keep_plain.call(name)
+              codecs[name] = :none
             end
           end
 

@@ -23,14 +23,38 @@ module VBlank
         # a 4-byte little-endian value in its slot. The marker tells a fresh cartridge (whose save
         # memory is uninitialized garbage) apart from one that already holds real saved data.
         class Save
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[save_init save_store save_write save_erase].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :save_init then emit_save_init(node)
+            when :save_store then emit_save_store(node)
+            when :save_write then emit_save_write(node)
+            when :save_erase then emit_save_erase(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
+          # The values this part works out (Lowering#values_written_by), each by its own method.
+          VALUE_KINDS = %i[save_read save_sum].freeze
+
+          def emit_value(node)
+            case node.kind
+            when :save_read then eval_save_read(node)
+            when :save_sum then eval_save_sum(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
-          def initialize(emitter:, primitives:, lowering:, memory:, call_cold:)
+          def initialize(emitter:, primitives:, lowering:, memory:, placement:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
             @memory = memory
-            @call_cold = call_cold
+            @placement = placement
             @save_memory = IR::SaveLayout::PACKED
             @chip = chip_for(@save_memory)
           end
@@ -117,7 +141,7 @@ module VBlank
           private
 
           def chip_for(memory)
-            SaveChip.for(memory, emitter: @emitter, lowering: @lowering, call_cold: @call_cold,
+            SaveChip.for(memory, emitter: @emitter, lowering: @lowering, placement: @placement,
                                  roomy_bytes: ->(bytes) { allocate_chip_bytes(memory, bytes) })
           end
 

@@ -31,17 +31,43 @@ module VBlank
         # IWRAM allocation story — a name registered once, a layout looked up
         # afterward — not because it's a list; see #register_backing/#backing_info.
         class Lists
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[list_new list_push list_drop list_set list_fill list_sort].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :list_new then emit_list_new(node)
+            when :list_push then emit_list_push(node)
+            when :list_drop then emit_list_drop(node)
+            when :list_set then emit_list_set(node)
+            when :list_fill then emit_list_fill(node)
+            when :list_sort then emit_list_sort(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
+          # The values this part works out (Lowering#values_written_by), each by its own method.
+          VALUE_KINDS = %i[list_get list_len].freeze
+
+          def emit_value(node)
+            case node.kind
+            when :list_get then eval_list_get(node)
+            when :list_len then eval_list_len(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
 
           # +bookkeeping+ is a checked build's (PassBookkeeping), which stops on a list read or
           # written past its end; nil for a cartridge for a player, which reads slot nought.
-          def initialize(memory:, primitives:, emitter:, lowering:, call_cold:, bookkeeping: nil)
+          def initialize(memory:, primitives:, emitter:, lowering:, placement:, bookkeeping: nil)
             @bookkeeping = bookkeeping
             @memory = memory
             @primitives = primitives
             @emitter = emitter
             @lowering = lowering
-            @call_cold = call_cold
+            @placement = placement
             @lists = {}
             @counter_owners = {} # a list's length and head variables -> the list
             @backing = {}
@@ -92,7 +118,7 @@ module VBlank
             @primitives.emit_list_base(info[:base])
             @emitter.emit(ASM.add_reg(TMP, LIST_ADDR, ACC))         # r1 = where the run starts
             emit_fill_pattern(info[:width])                         # r0 = the value in every byte place
-            @call_cold.call(FILL_ROUTINE)
+            @placement.emit_call_cold_routine(FILL_ROUTINE)
             @emitter.place_label(skip)
           end
 
@@ -136,7 +162,7 @@ module VBlank
             @primitives.emit_list_base(info[:base])
             @emitter.emit(ASM.mov_reg(TMP, LIST_ADDR))                       # r1 = the list's first slot
             @emitter.emit_number(2, node.count * table.elem_bytes) # r2 = bytes to copy
-            @call_cold.call(COPY_ROUTINE)
+            @placement.emit_call_cold_routine(COPY_ROUTINE)
             @emitter.emit_number(ACC, 0)
             @primitives.store_var(ACC, head_var(node.name)) if info[:ring]
             @emitter.emit_number(ACC, node.count)
@@ -567,7 +593,7 @@ module VBlank
             @emitter.emit_number(3, value)
             emit_fill_pattern(info[:width])                         # r0 = the value in every byte place
             @emitter.emit_number(2, info[:capacity] * info[:bytes]) # r2 = bytes to write
-            @call_cold.call(FILL_ROUTINE)
+            @placement.emit_call_cold_routine(FILL_ROUTINE)
           end
 
           # list_push: append at the tail — slot (head + length) & mask — then grow

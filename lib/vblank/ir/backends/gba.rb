@@ -404,22 +404,19 @@ module VBlank
                                roomy: EWRAM_START, roomy_ceiling: EWRAM_START + EWRAM_SIZE)
           @primitives = Primitives.new(emitter: @emit, memory: @memory)
           @primitives.claim_first_address_for_fill_scratch # before anything else names a variable
-          @divide = Divide.new(emitter: @emit, memory: @memory, primitives: @primitives,
-                               scales_objects: ScreenLayout.method(:scales?))
+          @divide = Divide.new(emitter: @emit, memory: @memory, primitives: @primitives)
           @frames = Frames.new(emitter: @emit, primitives: @primitives)
           @bookkeeping = (PassBookkeeping.new(emitter: @emit, primitives: @primitives, memory: @memory) if checked)
-          @clock_chip = ClockChip.new(emitter: @emit, primitives: @primitives,
-                                      call_cold_routine: method(:emit_call_cold_routine))
+          @clock_chip = ClockChip.new(emitter: @emit, primitives: @primitives, placement: self)
           # The kind-keyed dispatch that replaces eval_value's case. Every statement in the
           # program goes through it, which also makes it the one place that can say how far
           # this pass has got — and the one place that can count what each part of the
           # program turned into.
           @attribution = Attribution.new(@emit)
-          @lowering = Lowering.new(progress: progress, emitted: @emit.method(:pos),
-                                   attribution: @attribution)
+          @lowering = Lowering.new(progress: progress, emitter: @emit, attribution: @attribution)
           @clock_chip.lowering = @lowering
           @save = Save.new(emitter: @emit, primitives: @primitives, lowering: @lowering, memory: @memory,
-                           call_cold: method(:emit_call_cold_routine))
+                           placement: self)
           @defined_sounds = {}   # name -> musical params (from define_sound)
           @songs = {}            # name -> :song node (from song)
           @blob_codecs = {}      # name -> :lz77/:rle/:none (how a VRAM blob was packed, if at all)
@@ -434,8 +431,8 @@ module VBlank
           @expressions = Expressions.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                          divide: @divide, tables: @tables)
           @lists = Lists.new(memory: @memory, primitives: @primitives, emitter: @emit, lowering: @lowering,
-                             call_cold: method(:emit_call_cold_routine), bookkeeping: @bookkeeping)
-          @primitives.roomy_counter_test = @lists.method(:roomy_counter?) # a collection's counters go where it went
+                             placement: self, bookkeeping: @bookkeeping)
+          @primitives.lists = @lists # a collection's counters go where it went
           # `placement: self` — Placement is not its own object yet (see its class
           # comment); its methods live directly on this instance, so handing self in is
           # what makes the dependency an explicit constructor argument instead of a bare
@@ -446,11 +443,7 @@ module VBlank
           # Where each timer's on_tick body landed inside the interrupt dispatcher, filled in
           # as that routine is emitted (see #emit_irq_handler).
           @timer_handlers = {}
-          @functions = Functions.new(emitter: @emit, lowering: @lowering, placement: self,
-                                     scene_preamble: method(:emit_scene_preamble),
-                                     scene_art: method(:emit_scene_art_upload),
-                                     scene_arrival_pass: method(:emit_return_on_arrival_pass),
-                                     scene_late_pages: method(:emit_scene_late_pages))
+          @functions = Functions.new(emitter: @emit, lowering: @lowering, placement: self)
           @statements = Statements.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                        expressions: @expressions, placement: self, functions: @functions)
           @framebuffer = Framebuffer.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
@@ -470,7 +463,7 @@ module VBlank
           @layer_blend = LayerBlend.new(emitter: @emit, lowering: @lowering, primitives: @primitives,
                                         drawing: self, raster: @raster)
           @buffered = Buffered.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
-                                   framebuffer: @framebuffer, call_cold_routine: method(:emit_call_cold_routine))
+                                   framebuffer: @framebuffer, placement: self)
           @faces = Faces.new(emitter: @emit, primitives: @primitives, lowering: @lowering, divide: @divide,
                              framebuffer: @framebuffer,
                              pictures: lambda { |name|
@@ -483,114 +476,56 @@ module VBlank
           @sprite_drawing = SpriteDrawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                               divide: @divide, framebuffer: @framebuffer,
                                               palette_tint: @palette_tint, uploads: @uploads,
-                                              call_cold_routine: method(:emit_call_cold_routine))
+                                              placement: self)
           @background_drawing = BackgroundDrawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                                       divide: @divide, raster: @raster,
                                                       palette_tint: @palette_tint, uploads: @uploads, lists: @lists,
-                                                      call_cold_routine: method(:emit_call_cold_routine),
-                                                      memory: @memory)
+                                                      placement: self, memory: @memory)
           @drawing = Drawing.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                  divide: @divide, framebuffer: @framebuffer, raster: @raster,
                                  palette_tint: @palette_tint, layer_blend: @layer_blend, effects: @effects,
                                  buffered: @buffered,
                                  uploads: @uploads, sprite_drawing: @sprite_drawing,
-                                 background_drawing: @background_drawing, backing_info: method(:backing_info),
-                                 call_cold_routine: method(:emit_call_cold_routine), frames: @frames)
+                                 background_drawing: @background_drawing, lists: @lists,
+                                 placement: self, frames: @frames)
           @picture_group_copying = PictureGroupCopying.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
                                                            scene_entry: @drawing.scene_entry)
           @sprite_drawing.picture_group_copying = @picture_group_copying
           @sprite_drawing.scene_entry = @drawing.scene_entry
           @statements.scene_entry = @drawing.scene_entry
+          @functions.drawing = @drawing
           @drawing.picture_group_copying = @picture_group_copying
-          # Every value kind's handler, registered once in one place — see {Lowering}.
-          @lowering.values(
-            int: @expressions.method(:eval_int), var_ref: @expressions.method(:eval_var_ref),
-            neg: @expressions.method(:eval_neg), binop: @expressions.method(:eval_binop),
-            bit_not: @expressions.method(:eval_bit_not), absolute: @expressions.method(:eval_absolute),
-            clamped: @expressions.method(:eval_clamped),
-            mul_fix: @expressions.method(:eval_mul_fix), div_fix: @expressions.method(:eval_div_fix),
-            shift_right: @expressions.method(:eval_shift_right), held: @expressions.method(:eval_held_node),
-            pressed: @expressions.method(:eval_pressed_node), chance: @expressions.method(:eval_chance),
-            players_connected: @expressions.method(:eval_players_connected),
-            local_player: @expressions.method(:eval_local_player),
-            pixels_overlap: @collision.method(:eval_pixels_overlap),
-            data_byte: @expressions.method(:eval_data_byte), table_get: @expressions.method(:eval_table_get),
-            list_get: @lists.method(:eval_list_get), list_len: @lists.method(:eval_list_len),
-            save_read: @save.method(:eval_save_read), save_sum: @save.method(:eval_save_sum),
-            read_scanline: @expressions.method(:eval_read_scanline), timer_ticks: method(:eval_timer_ticks),
-            clock: @clock_chip.method(:eval_clock),
-          )
-          # Every statement kind's handler, registered once in one place — see {Lowering}.
-          # A declaration is collected during the definitions pass, earlier in #lower, and emits
-          # nothing where it is written — every kind that declares it is one (see Nodes.of_role)
-          # gets Lowering::NOTHING, rather than a list of them kept here. The two below that
-          # are not declarations but emit nothing here either are this backend's own business:
-          # a row bend and a timer handler are armed from the definitions pass.
-          @lowering.statements(**IR::Nodes.of_role(:declaration).to_h { |kind| [kind, Lowering::NOTHING] })
-          @lowering.statements(
-            set: @statements.method(:emit_set), add: @statements.method(:emit_add),
-            sub: @statements.method(:emit_sub), copy: @statements.method(:emit_copy),
-            negate: @statements.method(:emit_negate), abs: @statements.method(:emit_abs),
-            negate_abs: @statements.method(:emit_negate_abs), clamp: @statements.method(:emit_clamp),
-            save_init: method(:emit_save_init), save_store: method(:emit_save_store),
-            save_write: @save.method(:emit_save_write), save_erase: @save.method(:emit_save_erase),
-            if: @statements.method(:emit_if), loop: @statements.method(:emit_loop),
-            repeat: @statements.method(:emit_repeat), inside: @statements.method(:emit_inside),
-            every: @statements.method(:emit_every), after: @statements.method(:emit_after),
-            list_new: @lists.method(:emit_list_new), list_push: @lists.method(:emit_list_push),
-            list_drop: @lists.method(:emit_list_drop), list_set: @lists.method(:emit_list_set),
-            list_fill: @lists.method(:emit_list_fill), list_sort: @lists.method(:emit_list_sort),
-            list_copy: ->(node) { @lists.emit_list_copy(node, @tables.fetch(node.table)) },
-            call: @statements.method(:emit_call), case: @functions.method(:emit_case),
-            call_one_of: @functions.method(:emit_call_one_of),
-            raw: @statements.method(:emit_raw),
-            # A program that stops finishes what its pass left first, as one that waits for a
-            # frame does: an EEPROM's last block is written back rather than lost.
-            halt: lambda do |node|
-              @save.emit_chip_end_of_pass if @uses_save
-              @bookkeeping ? @bookkeeping.emit_halt : @statements.emit_halt(node)
-            end,
-            wait_vblank: @audio.method(:emit_wait_vblank), screen: @drawing.method(:emit_screen),
-            pixel: @drawing.method(:emit_pixel), fill_rect: @drawing.method(:emit_fill_rect),
-            clear_screen: @drawing.method(:emit_clear_screen), dma_fill_rect: @drawing.method(:emit_dma_fill_rect),
-            draw_rect_at: @drawing.method(:emit_draw_rect_at), draw_column_at: @drawing.method(:emit_draw_column_at),
-            draw_place: @faces.method(:emit_draw_place), fill_face: @faces.method(:emit_fill_face),
-            draw_text: @drawing.method(:emit_draw_text), draw_digit: @drawing.method(:emit_draw_digit),
-            blit: @drawing.method(:emit_blit), blit_pose: @drawing.method(:emit_blit_pose),
-            background: @drawing.method(:emit_background), scroll_background: @background_drawing.method(:emit_scroll_background),
-            place_bar: @background_drawing.method(:emit_place_bar),
-            box_background: @background_drawing.method(:emit_box_background),
-            affine_background: @background_drawing.method(:emit_affine_background),
-            scroll_rows: Lowering::NOTHING, shade_outside: Lowering::NOTHING,
-            show_light_now: @raster.method(:emit_light_now),
-            camera: @effects.method(:emit_camera), fade: @effects.method(:emit_fade),
-            tint: @effects.method(:emit_tint), pixelate: @effects.method(:emit_pixelate),
-            see_through: @layer_blend.method(:emit_see_through),
-            set_tile: @background_drawing.method(:emit_set_tile), show_map: @background_drawing.method(:emit_show_map),
-            show_held_tiles: @background_drawing.method(:emit_show_held_tiles),
-            copy_tiles: @background_drawing.method(:emit_copy_tiles),
-            copy_owed_tiles: @background_drawing.method(:emit_copy_owed_tiles),
-            load_sprite_tiles: ->(node) { @background_drawing.emit_load_sprite_tiles(node, @tables.fetch(node.table)) },
-            background_colors: @background_drawing.method(:emit_background_colors),
-            color_list_holds: @sprite_drawing.method(:emit_color_list_holds),
-            show_picture_group: @picture_group_copying.method(:emit_show_picture_group),
-            present_objects: @sprite_drawing.method(:emit_present_objects), save_region: @drawing.method(:emit_save_region),
-            hide_sprites: @sprite_drawing.method(:emit_hide_sprites),
-            # The Advance's rumble cartridges are not made yet, so a rumble is not felt (Description#rumbles).
-            rumble: Lowering::NOTHING,
-            restore_region: @drawing.method(:emit_restore_region), enable_sound: @audio.method(:emit_enable_sound),
-            beep: @audio.method(:emit_beep),
-            noise: @audio.method(:emit_noise), wave: @audio.method(:emit_wave),
-            stop_wave: @audio.method(:emit_stop_wave),
-            play_song: @audio.method(:emit_play_song), stop_music: @audio.method(:emit_stop_music),
-            hold_music: @audio.method(:emit_hold_music),
-            play_from_list: @audio.method(:emit_play_from_list),
-            play_sound_effect: @audio.method(:emit_play_sound_effect),
-            timer_start: method(:emit_timer_start), timer_stop: method(:emit_timer_stop),
-            on_timer: Lowering::NOTHING, play_sample: @mixer.method(:emit_play_sample),
-            stop_sample: @mixer.method(:emit_stop_sample),
-            set_clock: @clock_chip.method(:emit_set_clock),
-          )
+          # Every kind's writer, registered once in one place — see {Lowering}. A declaration is
+          # collected during the definitions pass, earlier in #lower, and emits nothing where it is
+          # written: every kind that is one (see Nodes.of_role) emits nothing here. So do a row bend and
+          # a timer handler, armed from the definitions pass, a light's shade worked out there, and a
+          # rumble: the Advance's rumble cartridges are not made yet, so one is not felt
+          # (Description#rumbles).
+          @lowering.values_written_by(@expressions, Expressions::VALUE_KINDS)
+          @lowering.values_written_by(@collision, Collision::VALUE_KINDS)
+          @lowering.values_written_by(@lists, Lists::VALUE_KINDS)
+          @lowering.values_written_by(@save, Save::VALUE_KINDS)
+          @lowering.values_written_by(@timers, Timers::VALUE_KINDS)
+          @lowering.values_written_by(@clock_chip, ClockChip::VALUE_KINDS)
+          @lowering.statements_written_by(Lowering::NothingEmitted,
+                                          IR::Nodes.of_role(:declaration) + %i[scroll_rows shade_outside rumble on_timer])
+          @lowering.statements_written_by(self, STATEMENT_KINDS)
+          @lowering.statements_written_by(@statements, Statements::STATEMENT_KINDS)
+          @lowering.statements_written_by(@save, Save::STATEMENT_KINDS)
+          @lowering.statements_written_by(@lists, Lists::STATEMENT_KINDS)
+          @lowering.statements_written_by(@functions, Functions::STATEMENT_KINDS)
+          @lowering.statements_written_by(@audio, Audio::STATEMENT_KINDS)
+          @lowering.statements_written_by(@drawing, Drawing::STATEMENT_KINDS)
+          @lowering.statements_written_by(@faces, Faces::STATEMENT_KINDS)
+          @lowering.statements_written_by(@background_drawing, BackgroundDrawing::STATEMENT_KINDS)
+          @lowering.statements_written_by(@raster, Raster::STATEMENT_KINDS)
+          @lowering.statements_written_by(@effects, ScreenEffects::STATEMENT_KINDS)
+          @lowering.statements_written_by(@layer_blend, LayerBlend::STATEMENT_KINDS)
+          @lowering.statements_written_by(@sprite_drawing, SpriteDrawing::STATEMENT_KINDS)
+          @lowering.statements_written_by(@picture_group_copying, PictureGroupCopying::STATEMENT_KINDS)
+          @lowering.statements_written_by(@timers, Timers::STATEMENT_KINDS)
+          @lowering.statements_written_by(@mixer, Mixer::STATEMENT_KINDS)
+          @lowering.statements_written_by(@clock_chip, ClockChip::STATEMENT_KINDS)
           @layer_stack = []      # the layers the program declared, backmost first
           @uses_pressed = false  # whether the program reads edge-detected input
           @palette = nil         # the color table, built once when any scene is buffered
@@ -1013,7 +948,7 @@ module VBlank
           # More rows than the console's table holds are kept in a bigger copy of it, in the roomy
           # memory: it is written and read once a row a frame (see SpriteDrawing::HeldTable).
           @held_sprites = SpriteDrawing.plan_held_table(@screen.sprite_table_rows,
-                                                        alloc: method(:alloc_sprite_record!), moved: !@border.nil?)
+                                                        allocator: self, moved: !@border.nil?)
           # A byte a pose for each pool whose poses are sent as they are first shown, saying
           # which are in sprite memory (see PoseSends). In the roomy memory: it is read once a
           # thing, where the quick memory is worth more to the code a frame runs.
@@ -1161,11 +1096,10 @@ module VBlank
           # Only now does every variable have a home, so only now is it known where the
           # quick memory's spare room begins — which is where the moved block goes.
           place_hot_code
-          # :fast_addr/:hot_size/:routine_word are Placement's own fixup kinds — Emit doesn't
-          # know what "the quick memory" or "a DMA transfer's size" mean, so Placement
-          # hands its own resolvers in rather than Emit reaching for them by name.
-          @emit.resolve_fixups(fast_addr: method(:resolve_fast_address), hot_size: method(:resolve_hot_size),
-                               routine_word: method(:resolve_routine_word), quick_word: method(:resolve_quick_word))
+          # :fast_addr, :hot_size, :routine_word and :quick_word are Placement's own fixup kinds —
+          # Emit doesn't know what "the quick memory" or "a DMA transfer's size" mean, so it hands
+          # them to Placement#resolve_fixup rather than reaching for them by name.
+          @emit.resolve_fixups(self)
           @emit.code
         end
 
@@ -1217,7 +1151,27 @@ module VBlank
           raise LoweringError, e.message
         end
 
+        # THE STATEMENTS THE LOWERING WRITES ITSELF (Lowering#statements_written_by): each needs
+        # what more than one part holds — a table's place, the save chip, the count of passes.
+        STATEMENT_KINDS = %i[halt list_copy load_sprite_tiles].freeze
+
+        def emit_statement(node)
+          case node.kind
+          when :halt then emit_halt(node)
+          when :list_copy then @lists.emit_list_copy(node, @tables.fetch(node.table))
+          when :load_sprite_tiles then @background_drawing.emit_load_sprite_tiles(node, @tables.fetch(node.table))
+          else raise LoweringError, "no writer here for #{node.kind.inspect}"
+          end
+        end
+
         private
+
+        # A program that stops finishes what its pass left first, as one that waits for a frame
+        # does: an EEPROM's last block is written back rather than lost.
+        def emit_halt(node)
+          @save.emit_chip_end_of_pass if @uses_save
+          @bookkeeping ? @bookkeeping.emit_halt : @statements.emit_halt(node)
+        end
 
         # Forwards to @emit — the code buffer + two-pass label/fixup collaborator built
         # in #initialize. Every other lowering concern in this class calls these as bare
@@ -1236,9 +1190,6 @@ module VBlank
         # Forwards to @timers — the hardware-timer collaborator built in #initialize.
         def register_timers(program) = @timers.register_timers(program)
         def irq_timers = @timers.irq_timers
-        def emit_timer_start(node) = @timers.emit_timer_start(node)
-        def emit_timer_stop(node) = @timers.emit_timer_stop(node)
-        def eval_timer_ticks(node) = @timers.eval_timer_ticks(node)
 
         # Forwards to @primitives — variable addressing, register stores, constant
         # folding (see {Primitives}).
@@ -1266,9 +1217,6 @@ module VBlank
         def emit_divide_fix_routine = @divide.emit_divide_fix_routine
         def emit_call_divide_routine = @divide.emit_call_divide_routine
 
-        # Forwards to @lists (see {Lists}).
-        def backing_info(name) = @lists.backing_info(name)
-
         # Forwards to @functions (see {Functions}).
         def emit_functions = @functions.emit_functions
 
@@ -1281,8 +1229,6 @@ module VBlank
         # Forwards to @frames and @save — both stateless (see {Frames}, {Save}).
         def emit_frame_count = @frames.emit_frame_count
         def emit_frame_step = @frames.emit_frame_step
-        def emit_save_init(node) = @save.emit_save_init(node)
-        def emit_save_store(node) = @save.emit_save_store(node)
         def emit_save_signature = @save.emit_save_signature
 
         # Forwards to @raster (see {Raster}).
@@ -1303,13 +1249,6 @@ module VBlank
         # Forwards to @palette_tint (see {PaletteTint}).
         def moves_color_table? = @palette_tint.moves_color_table?
         def emit_tint_state_init = @palette_tint.emit_tint_state_init
-
-        # Forwards to @drawing (see {Drawing}) — the scene entry points Functions is handed
-        # before @drawing exists, so it is given these instead.
-        def emit_scene_preamble(name) = @drawing.emit_scene_preamble(name)
-        def emit_scene_late_pages(name) = @drawing.emit_scene_late_pages(name)
-        def emit_scene_art_upload(name) = @drawing.emit_scene_art_upload(name)
-        def emit_return_on_arrival_pass(name) = @drawing.emit_return_on_arrival_pass(name)
 
         # Does the program need any interrupt at all — VBlank (for wait_vblank) or a timer
         # (for an on_tick handler)? The mixer adds none of its own: a game that plays recorded

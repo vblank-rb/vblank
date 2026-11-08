@@ -14,11 +14,23 @@ module VBlank
         # Where each sprite's pictures and rows ARE was settled before any code existed
         # (see {ScreenLayout}); this reads that plan and writes the code that carries it out.
         class SpriteDrawing
+          # The statements this part writes (Lowering#statements_written_by), each by its own method.
+          STATEMENT_KINDS = %i[color_list_holds present_objects hide_sprites].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :color_list_holds then emit_color_list_holds(node)
+            when :present_objects then emit_present_objects(node)
+            when :hide_sprites then emit_hide_sprites(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
+
           include Console::Hardware
           include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, divide:, framebuffer:, palette_tint:, uploads:,
-                         call_cold_routine:)
+                         placement:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
@@ -26,7 +38,7 @@ module VBlank
             @framebuffer = framebuffer
             @palette_tint = palette_tint
             @uploads = uploads
-            @call_cold_routine = call_cold_routine
+            @placement = placement
             @layout = nil
             @picture_group_copying = nil
           end
@@ -497,19 +509,21 @@ module VBlank
           # How many rows were left out because the console's table was full, since power-on.
           LEFT_OUT = :__sprites_left_out
 
-          # The bigger table for +rows+ rows, or nil when they fit in the console's own. +alloc+
-          # claims roomy memory, given how much and what for.
+          # The bigger table for +rows+ rows, or nil when they fit in the console's own. +allocator+
+          # claims roomy memory, given how much and what for (GBA#alloc_sprite_record!).
           #
           # +moved+ marks that every sprite stands somewhere else on the console's screen than the game put
           # it, a smaller screen shown in the middle of this one (BorderSprites): then every game has
           # the copy, however few rows it needs, since copying is where each place is moved, and
           # the console's table is written by nothing else.
-          def self.plan_held_table(rows, alloc:, moved: false)
+          def self.plan_held_table(rows, allocator:, moved: false)
             return nil if rows.zero?
             return nil if rows <= MAX_SPRITES && !moved
 
-            HeldTable.new(rows: rows, copy: alloc.call(rows * 8, "where more sprites than the console draws are kept"),
-                          came_from: alloc.call(MAX_SPRITES * 2, "which sprite each row of the console's table is"))
+            HeldTable.new(rows: rows,
+                          copy: allocator.alloc_sprite_record!(rows * 8, "where more sprites than the console draws are kept"),
+                          came_from: allocator.alloc_sprite_record!(MAX_SPRITES * 2,
+                                                                    "which sprite each row of the console's table is"))
           end
 
           # Every row of the copy hidden whenever the console's own table is cleared: at power-on,
@@ -528,7 +542,7 @@ module VBlank
           end
 
           def emit_call_held_table_copy
-            @call_cold_routine.call(HELD_TABLE_ROUTINE) if @layout.held_sprites
+            @placement.emit_call_cold_routine(HELD_TABLE_ROUTINE) if @layout.held_sprites
           end
 
           # The first row of the console's table the game's sprites are copied to: the first, or the
@@ -1456,7 +1470,7 @@ module VBlank
           # the build's own name is all a sprite they named nothing for has.
           def declared_name(name) = @layout.screen.picture.objects.find { |node| node.name == name }&.declared || name
 
-          def emit_call_cold_routine(label) = @call_cold_routine.call(label)
+          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
           # Add the room a sprite sharing rooms is drawn from to the tile number in r0, which counts
           # from its first room (see #emit_take_shared_room).

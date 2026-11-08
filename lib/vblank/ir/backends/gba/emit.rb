@@ -12,10 +12,10 @@ module VBlank
         # Two of the fixup kinds a placeholder can carry — :fast_addr, :hot_size —
         # belong to {Placement}, not here: Emit has no idea what "the quick memory" or
         # "a DMA transfer's size" mean, only how to remember a placeholder and patch it
-        # once its answer is known. #resolve_fixups takes a resolver for each one this
-        # class doesn't own, so a caller can add its own fixup kinds without this class
-        # knowing their names — the two kinds it does own (:data_addr, :label_addr) and
-        # a plain branch are resolved directly.
+        # once its answer is known. #resolve_fixups hands every kind this class doesn't
+        # own to the placement, so a caller can add its own fixup kinds without this class
+        # knowing their names — the kinds it does own (:data_addr, :label_addr, the two
+        # words) and a plain branch are resolved directly.
         class Emit
           include Console::Hardware
 
@@ -256,18 +256,20 @@ module VBlank
 
           # Second pass: every label and data-blob position is known now, so patch
           # each placeholder — a branch to a label, or a load of a blob's / label's
-          # address, or (via +extra_resolvers+) a fixup kind only the caller
-          # understands, keyed by that kind and called as resolver.call(fix).
-          def resolve_fixups(extra_resolvers = {})
+          # address, or a fixup kind only the caller understands, which +placement+
+          # fills in (Placement#resolve_fixup).
+          def resolve_fixups(placement = nil)
             @fixups.each do |fix|
               case fix.kind
               when :data_addr then resolve_data_address(fix)
               when :label_addr then resolve_label_address(fix)
               when :data_word then @code[fix.pos, 4] = [data_address(fix.target)].pack("V")
               when :label_word then @code[fix.pos, 4] = [label_address(fix.target)].pack("V")
+              when :b, :bcond, :bl then resolve_branch(fix)
               else
-                resolver = extra_resolvers[fix.kind]
-                resolver ? resolver.call(fix) : resolve_branch(fix)
+                raise LoweringError, "nothing fills in a #{fix.kind.inspect} placeholder" unless placement
+
+                placement.resolve_fixup(fix)
               end
             end
             @data_links.each do |link|

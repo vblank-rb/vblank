@@ -4,52 +4,53 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # Lowers a node by its kind: two plain kind-keyed Hashes (values, statements)
-        # rather than a case statement, so a kind's handler is data — registered once, in
-        # GBA#initialize, where every kind and its owner sit in one place — instead of a
-        # branch that only fires from inside one file. A collaborator that needs to
-        # evaluate a value node (Collision's per-pixel test needs its sprites' x/y/pose
-        # operands, which are themselves value nodes) depends on a Lowering instead of on
-        # whichever file happens to own that node kind, so two collaborators can each
+        # Lowers a node by its kind: two kind-keyed tables (values, statements) of the PART that
+        # writes each kind — Expressions, Drawing, Audio and the rest. Each part names the kinds it
+        # owns (its STATEMENT_KINDS and VALUE_KINDS) and answers #emit_statement or #emit_value
+        # with a `case` over them, so a kind's writer is a call written out, found by its name. The
+        # table is filled once, in GBA#initialize, where every part and its kinds sit in one place.
+        # A collaborator that needs to evaluate a value node (Collision's per-pixel test needs its
+        # sprites' x/y/pose operands, which are themselves value nodes) depends on a Lowering
+        # instead of on whichever file happens to own that node kind, so two collaborators can each
         # need the other's node kind without depending on each other directly.
         #
-        # Two tables, not one class each — a value node and a statement node are
-        # different contracts (a value handler leaves its answer in the accumulator; a
-        # statement handler leaves nothing live) — but they share this wiring.
+        # Two tables, not one — a value node and a statement node are different contracts (a value
+        # leaves its answer in the accumulator; a statement leaves nothing live) — but they share
+        # this wiring.
         class Lowering
-          # +progress+ is what the build says it is doing; +emitted+ answers how many bytes
-          # have been emitted so far, which is what this pass shows as it goes. There is no
-          # count to work towards — nothing knows how many instructions a program comes to
-          # until they are emitted — so the growing size is the honest thing to show. (The
-          # default never runs: with the silent progress the block below is never called.)
+          # +progress+ is what the build says it is doing; +emitter+ says how many bytes have been
+          # emitted so far, which is what this pass shows as it goes. There is no count to work
+          # towards — nothing knows how many instructions a program comes to until they are
+          # emitted — so the growing size is the honest thing to show.
           #
           # +attribution+ counts what each node turned into. Every node in the program passes
           # through the two methods below, and this is the only place that is true, so this is
           # where the counting has to happen. See {Attribution}.
-          def initialize(attribution:, progress: Messages::Progress.silent, emitted: -> { 0 })
+          def initialize(attribution:, emitter:, progress: Messages::Progress.silent)
             @values = {}
             @statements = {}
             @progress = progress
-            @emitted = emitted
+            @emitter = emitter
             @attribution = attribution
             @mode = :direct  # the mode draws currently lower in (set per func)
             @draw_area = nil # x, y, w, h while inside a clipped area; nil otherwise
           end
 
-          # Register value/statement handlers — kind => a callable taking (node). Safe to
-          # call more than once (a later call adds to the table rather than replacing it),
-          # since a handler that is itself a collaborator (Collision) isn't built until
-          # after the table's first, bulk registration.
-          def values(**handlers) = @values.merge!(handlers)
-          def statements(**handlers) = @statements.merge!(handlers)
+          # +owner+ writes every statement of +kinds+ (#emit_statement), or every value of them
+          # (#emit_value). Safe to call more than once, since a part that is itself a collaborator
+          # (Collision) is built after others; a kind two parts claim is refused.
+          def statements_written_by(owner, kinds) = claim!(@statements, owner, kinds)
+          def values_written_by(owner, kinds) = claim!(@values, owner, kinds)
 
-          # An explicit "this kind is collected during the definitions pass and emits
-          # nothing at statement time" — a real table entry, not a hole a missing kind
-          # would also leave, so the coverage lock can't mistake one for the other.
-          NOTHING = Ractor.make_shareable(->(_node) {})
+          # THE KINDS THAT EMIT NOTHING WHERE THEY ARE WRITTEN: collected during the definitions
+          # pass, or armed from it. A real owner, not a hole a missing kind would also leave, so
+          # the coverage lock can't mistake one for the other.
+          module NothingEmitted
+            def self.emit_statement(_node) = nil
+          end
 
           def value(node)
-            @attribution.measure_node(node) { @values.fetch(node.kind) { unknown_value(node) }.call(node) }
+            @attribution.measure_node(node) { @values.fetch(node.kind) { unknown_value(node) }.emit_value(node) }
           end
 
           # For a node the caller lowers its own way rather than through #value: a test branched
@@ -61,11 +62,13 @@ module VBlank
           # instruction: an instruction is what a statement turns into, and a build that
           # reported on each would spend more time saying so than emitting.
           def statement(node)
-            @progress.tick { "#{@emitted.call} bytes" }
-            @attribution.measure_statement(node) { @statements.fetch(node.kind) { unknown_statement(node) }.call(node) }
+            @progress.tick { "#{@emitter.pos} bytes" }
+            @attribution.measure_statement(node) do
+              @statements.fetch(node.kind) { unknown_statement(node) }.emit_statement(node)
+            end
           end
 
-          # Every kind with a value/statement handler — read by the coverage test that
+          # Every kind with a value/statement writer — read by the coverage test that
           # checks these tables against IR::Nodes.by_kind.
           def value_kinds = @values.keys
           def statement_kinds = @statements.keys
@@ -96,6 +99,13 @@ module VBlank
           end
 
           private
+
+          def claim!(table, owner, kinds)
+            taken = kinds.select { |kind| table.key?(kind) }
+            raise ArgumentError, "the kinds #{taken.inspect} already have a writer" if taken.any?
+
+            kinds.each { |kind| table[kind] = owner }
+          end
 
           def unknown_value(node)
             raise LoweringError, "the GBA backend cannot evaluate #{node.kind.inspect}"
