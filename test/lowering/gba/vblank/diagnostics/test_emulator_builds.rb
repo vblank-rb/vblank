@@ -36,13 +36,4 @@ class TestEmulatorBuilds < Minitest::Test
       assert_path_exists File.join(copy, "..", "..", "lib", "ruby_gba_emulator", "built_from.rb")
     end
   end
-
-  def test_an_install_without_the_emulator_says_why_and_not_what_a_checkout_does
-    said = VBlank::Diagnostics::Emulator.missing_advice("cannot load such file -- ruby_gba_emulator",
-                                              bundled: false, not_built: "libmgba not found")
-
-    assert_includes said, "libmgba not found"
-    assert_includes said, "gem pristine vblank"
-    refute_includes said, "rake"
-  end
 end

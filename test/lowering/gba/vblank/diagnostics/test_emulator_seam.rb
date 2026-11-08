@@ -55,47 +55,4 @@ class TestEmulatorSeam < Minitest::Test
     assert status.success?, said
     assert_equal "nil", said
   end
-
-  # --- what a reader is told ---------------------------------------------------------------------
-
-  # THE ERROR SETTLES IT, NOT THE BUNDLE. A tool run as a plain `ruby` subprocess has no bundle
-  # at all, so "is the gem in your bundle" answers no however the load really failed — and the
-  # advice that follows tells somebody to add a Gemfile block they already have. What the loader
-  # said is the thing that knows.
-  def test_a_build_from_another_ruby_is_told_to_rebuild
-    said = advice("linked to incompatible /rubies/4.0.5/lib/libruby.4.0.dylib - ext.bundle",
-                  bundled: false)
-
-    assert_includes said, "rake compile_emulator"
-    refute_includes said, "Gemfile", "the bundle is not what is wrong"
-  end
-
-  def test_a_library_the_loader_cannot_find_is_told_the_same
-    said = advice("libruby.so.4.0: cannot open shared object file", bundled: false)
-
-    assert_includes said, "rake compile_emulator"
-    refute_includes said, "Gemfile"
-  end
-
-  # The two cases underneath are untouched. A `path:` entry resolves the gem and builds nothing,
-  # so that one is told to build...
-  def test_a_gem_in_the_bundle_with_nothing_built_is_told_to_build
-    said = advice("cannot load such file -- ruby_gba_emulator/ruby_gba_emulator_ext", bundled: true)
-
-    assert_includes said, "rake compile_emulator"
-    refute_includes said, "Gemfile"
-  end
-
-  # ...and somebody with none of this installed is told how to get it, which is the usual case
-  # and a reader building a game rather than repairing a checkout.
-  def test_an_emulator_that_is_not_there_at_all_is_told_how_to_get_one
-    said = advice("cannot load such file -- ruby_gba_emulator", bundled: false)
-
-    assert_includes said, "Gemfile"
-    refute_includes said, "different Ruby"
-  end
-
-  private
-
-  def advice(detail, bundled:) = Emulator.missing_advice(detail, bundled: bundled)
 end

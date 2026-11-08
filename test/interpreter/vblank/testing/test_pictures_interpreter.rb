@@ -18,8 +18,8 @@ class TestPicturesInterpreter < Minitest::Test
   # A GAME WITHOUT THE EMULATOR GEM gets a failed test that says what to put in its Gemfile, not an
   # error from inside the library with a backtrace through it.
   def test_without_the_emulator_the_check_fails_saying_what_to_add
-    advice = VBlank::Diagnostics::Emulator.missing_advice("cannot load such file -- ruby_gba_emulator",
-                                                 bundled: false)
+    advice = VBlank::Diagnostics::MissingEmulator.new(detail: "cannot load such file -- ruby_gba_emulator",
+                                                      bundled: false).advice
     program = VBlank.game("NOEMU", consoles: %i[gba]) do
       screen :bitmap
       game_loop { pixel 10, 10, :red }
