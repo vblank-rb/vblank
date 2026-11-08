@@ -158,6 +158,10 @@ module VBlank
 
       private
 
+      # The kit of the console this player plays as. A player's own, not its run's, since the
+      # player says which console it is (OfConsole#console) whatever run it is made over.
+      def kit = Console.for(self.class.console)
+
       # What the cartridge cannot answer yet, asked by a test before, during or after its run, a skip
       # too (CartridgeHeadlessRun#refuse_question!).
       def refuse_question!(message) = raise(MissingFeature, cannot_answer_reason(message))
