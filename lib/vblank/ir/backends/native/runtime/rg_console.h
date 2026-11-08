@@ -72,4 +72,24 @@
 #define RG_CONSOLE_PLAYS_BIOS_START_UP 0
 #endif
 
+/* Where each number of a picture's tile and colour layouts sits in the rules a start-file fill is
+ * handed (Native::StartFileNumbers, which writes them into every build). These are the same numbers,
+ * for a file of the runtime read on its own, as an editor's checker reads it; a test holds them to
+ * StartFileNumbers::NAMES. */
+#ifndef RG_TILE_BYTES_AT
+#define RG_TILE_BYTES_AT 0
+#define RG_TILE_PLANES_AT 1
+#define RG_TILE_PLANE_BITS_AT 2
+#define RG_TILE_ROW_BITS_AT 6
+#define RG_TILE_COLUMN_BITS_AT 7
+#define RG_TILE_FORMAT_NUMBERS 15
+#define RG_COLOR_HIGH_BYTE_FIRST_AT 0
+#define RG_COLOR_RED_AT 1
+#define RG_COLOR_GREEN_AT 2
+#define RG_COLOR_BLUE_AT 3
+#define RG_COLOR_CHANNEL_BITS_AT 4
+#define RG_COLOR_FORMAT_NUMBERS 5
+#define RG_FILL_RULES_HEADER_NUMBERS 11
+#endif
+
 #endif

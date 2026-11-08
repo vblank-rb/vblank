@@ -36,6 +36,16 @@ class TestNativeCheckerFlags < Minitest::Test
     assert_empty checked.filter_map { |file| complaints_about(file) }
   end
 
+  # A file of the runtime read on its own has no build's numbers beside it, so rg_console.h gives
+  # the start file's layout numbers itself, and they must be the ones every build writes.
+  def test_the_start_file_numbers_a_file_read_alone_sees_are_the_builds
+    header = File.read(File.join(Zig::RUNTIME_DIR, "rg_console.h"))
+    defined = header.scan(/^#define (RG_\w+) (\d+)$/).to_h { |name, value| [name, Integer(value)] }
+
+    assert_equal VBlank::IR::Backends::Native::StartFileNumbers::NAMES.to_h,
+                 defined.slice(*VBlank::IR::Backends::Native::StartFileNumbers::NAMES.keys)
+  end
+
   # The C the tests compile beside the runtime (a harness that drives one header on its own) is
   # read by the checker with the flags kept beside it, which a build keeps as fresh as the others.
   def test_building_a_game_as_c_keeps_the_test_harnesses_flags_too
