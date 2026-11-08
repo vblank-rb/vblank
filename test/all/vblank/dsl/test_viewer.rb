@@ -3,9 +3,13 @@
 require "test_helper"
 
 # A viewer the game moves and turns as it runs: its spot and its three arrows, read back as the
-# numbers they are. What a moving viewer draws is in test/console/gba/examples/test_cube3d_example.rb.
+# game's numbers, fractions where they hold one. What a moving viewer draws is in
+# test/console/gba/examples/test_cube3d_example.rb.
 class TestViewer < Minitest::Test
-  ONE = 1 << 16
+  ONE = 1
+
+  # The smallest step a fraction keeps: a sixty-five-thousand-five-hundred-and-thirty-sixth.
+  STEP = Rational(1, 1 << 16)
 
   private def part(name) = VBlank::Messages::MadeNames.make(:viewer_part, viewer: :eye, part: name)
 
@@ -32,7 +36,7 @@ class TestViewer < Minitest::Test
 
     assert_equal 0, played[part(:x)]
     assert_operator played[part(:z)], :>=, ONE, "at least two passes of half a whole"
-    assert_equal 0, played[part(:z)] % (ONE / 2)
+    assert_equal 0, played[part(:z)] % Rational(1, 2)
   end
 
   def test_turning_left_a_quarter_turn_faces_where_left_was
@@ -66,10 +70,10 @@ class TestViewer < Minitest::Test
     up = numbers(played, :up_x, :up_y, :up_z)
     right = numbers(played, :right_x, :right_y, :right_z)
     [ahead, up, right].each do |arrow|
-      assert_in_delta ONE * ONE, arrow.sum { |n| n * n }, ONE * ONE / 100, "length one"
+      assert_in_delta 1, arrow.sum { |n| n * n }, Rational(1, 100), "length one"
     end
-    assert_in_delta 0, ahead.zip(up).sum { |a, b| a * b }, ONE * ONE / 100, "ahead square to up"
-    assert_in_delta 0, ahead.zip(right).sum { |a, b| a * b }, ONE * ONE / 100, "ahead square to right"
+    assert_in_delta 0, ahead.zip(up).sum { |a, b| a * b }, Rational(1, 100), "ahead square to up"
+    assert_in_delta 0, ahead.zip(right).sum { |a, b| a * b }, Rational(1, 100), "ahead square to right"
   end
 
   def test_at_and_face_set_the_viewer_from_numbers_the_game_works_out
@@ -98,7 +102,8 @@ class TestViewer < Minitest::Test
         turns.each_with_index do |(kind, direction, degrees), k|
           if_eq(:passes, k) do
             spin.store!(degrees)
-            eye.public_send(kind, direction, by: worked_out ? spin : degrees)
+            by = worked_out ? spin : degrees
+            kind == :turn ? eye.turn(direction, by: by) : eye.roll(direction, by: by)
           end
         end
         passes += 1
@@ -126,8 +131,8 @@ class TestViewer < Minitest::Test
     played = game_player.run(turning_game([[:turn, :right, 2.5]], worked_out: true, fraction: true), frames: 3)
     radians = 2.5 * Math::PI / 180
 
-    assert_in_delta Math.sin(radians) * ONE, played[part(:ahead_x)], 8
-    assert_in_delta Math.cos(radians) * ONE, played[part(:ahead_z)], 8
+    assert_in_delta Math.sin(radians), played[part(:ahead_x)], 8 * STEP
+    assert_in_delta Math.cos(radians), played[part(:ahead_z)], 8 * STEP
     assert_equal 0, played[part(:ahead_y)]
   end
 
