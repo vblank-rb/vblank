@@ -100,14 +100,6 @@ module VBlank
         @out
       end
 
-      # Asked by the test that holds this menu to what the page's menu says.
-      # What a line of keys says at its right: what it is on now, or that it is being chosen.
-      def control_text(line)
-        return @controls.capture_prompt if line.place == @controls.capture_place(line.kind)
-
-        line.kind == :button ? @controls.button_text(line.place) : @controls.hotkey_text(line.place)
-      end
-
       private
 
       def lines = WindowMenu::HEADINGS[@heading].lines
@@ -221,7 +213,7 @@ module VBlank
         case line.kind
         when :slider then size(:slider)
         when :check then size(:check)
-        when :button, :hotkey then width_of(control_text(line))
+        when :button, :hotkey then width_of(@controls.text_for(line))
         else line.shortcut ? width_of(line.shortcut) : 0
         end
       end
@@ -234,7 +226,7 @@ module VBlank
         when :check then add_words_in_row("✓", right - width_of("✓"), y, row, :text) if @settings.setting(line.setting)
         when :slider then draw_slider(line, right - size(:slider), y + pixels(2), size(:slider), row - pixels(4))
         when :button, :hotkey
-          text = control_text(line)
+          text = @controls.text_for(line)
           add_words_in_row(text, right - width_of(text), y, row, line.place == @controls.capture_place(line.kind) ? :fast : :dim)
         end
       end

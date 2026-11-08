@@ -59,7 +59,7 @@ class TestJSPageMenu < Minitest::Test
   end
 
   private def words_of(menu, line)
-    menu.control_text(line).to_s.split(" / ").first if %i[button hotkey].include?(line.kind)
+    menu.controls.text_for(line).to_s.split(" / ").first if %i[button hotkey].include?(line.kind)
   end
 
   private def page_as_ruby_says(shown)

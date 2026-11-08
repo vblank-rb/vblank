@@ -219,6 +219,14 @@ module VBlank
 
       def hotkey_text(place) = key_name(hotkey_of(HOTKEYS[place].setting))
 
+      # What a menu line of keys (a WindowMenu line of kind :button or :hotkey) says at its right:
+      # what it is on now, or that it is being chosen.
+      def text_for(line)
+        return capture_prompt if line.place == capture_place(line.kind)
+
+        line.kind == :button ? button_text(line.place) : hotkey_text(line.place)
+      end
+
       # Something has changed since the settings were last written.
       def unwritten? = @unwritten
       def mark_written = @unwritten = false
