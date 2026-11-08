@@ -222,15 +222,14 @@ module VBlank
       # process runs, and a worker Ractor may not read a global at all.
       MAIN_SCRIPT = $PROGRAM_NAME
 
+      private
+
       # Is +path+ the very script Ruby was told to run? Compared as full paths so a
-      # relative "examples/bird.rb" and an absolute run path still match. Public because
-      # a test of the guard on #write_if_main asks it directly.
+      # relative "examples/bird.rb" and an absolute run path still match.
       def main_script?(path)
         program = MAIN_SCRIPT
         !program.nil? && File.expand_path(path) == File.expand_path(program)
       end
-
-      private
 
       # The console settings this game sets, by name, to their values.
       def console_settings_said = Console.console_settings_said(code: @code, maker: @maker, **@options.to_h)

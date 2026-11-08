@@ -196,12 +196,16 @@ class TestGame < Minitest::Test
     assert_empty out
   end
 
-  def test_main_script_guard_matches_only_the_running_script
+  # Called from this file, which is not the script Ruby was run with (the test runner is), so it
+  # builds and writes nothing. The other side, the script itself, cannot be reached from a test.
+  def test_write_if_main_from_a_file_that_is_not_the_main_script_writes_nothing
     g = VBlank.game("GUARD", consoles: %i[gba], code: "BGRD", maker: "01") { screen :bitmap }
-    refute g.main_script?("/nowhere/not_the_runner.rb"), "a foreign file is not the main script"
-    # The library's own record of it, read once when it loaded — asking Ruby directly is
-    # reading a global, which a worker may not do, and these tests run in a pool.
-    assert g.main_script?(VBlank::Cartridge::Game::MAIN_SCRIPT),
-           "the running script matches itself"
+    written = File.join(__dir__, g.default_filename)
+
+    out, err = capture_io { assert_same g, g.write_if_main }
+
+    assert_empty out
+    assert_empty err
+    refute_path_exists written
   end
 end
