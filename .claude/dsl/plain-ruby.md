@@ -124,14 +124,9 @@ Some refusals give the wrong reason. Write it another way, and report the messag
 
 ## When plain Ruby is not enough
 
-`var :name, start` declares a variable directly. A game needs it only where the build's own error
-says to write it, or to keep a variable narrow:
-
-- `width: :byte` or `width: :half`, for a variable that only ever holds a small number
-  (`var :flag, 0, width: :byte`).
-- The errors that end "start it with `n = var :n, 0`": a number changed inside a Ruby block under a
-  game test, in a `begin … end while` loop, or by game code above the game loop (a pool's `each`
-  doing `count += 1`), and an `@a = @b` in game code where `@a` was only handed its variable.
+`var :name, start` declares a variable directly. A game needs it only to keep a variable narrow:
+`width: :byte` or `width: :half`, for a variable that only ever holds a small number
+(`var :flag, 0, width: :byte`).
 
 Anything else that seems to need `var`, a lower-level verb or VBlank's own classes is a gap in VBlank.
 Report it with the line that did the wrong thing; do not write around it.

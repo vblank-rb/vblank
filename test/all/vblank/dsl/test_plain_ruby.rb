@@ -2267,4 +2267,106 @@ class TestPlainRuby < Minitest::Test
 
     assert_equal 13, player[:shown]
   end
+
+  # `3.times` runs while building, inside a side of a test the game makes: the side adds three
+  # when the test holds, and the name keeps its start when it does not.
+  def test_a_number_changed_in_a_ruby_block_under_a_game_test_follows_the_test
+    game = proc do
+      def counted(a)
+        n = 0
+        if a > 3
+          3.times { n += 1 }
+        end
+        n
+      end
+      hp = 5
+      seen = 0
+      game_loop do
+        seen = counted(hp)
+        hp -= 3
+      end
+    end
+
+    assert_equal 3, played(frames: 1, &game)[:seen]
+    assert_equal 0, played(frames: 2, &game)[:seen]
+  end
+
+  # `tap` and an `each` on a list held in a name may be a pool's, so only running them can tell
+  # whether they record game code: the name starts again on each call either way.
+  def test_a_number_changed_in_any_block_under_a_game_test_in_a_method_follows_the_test
+    game = proc do
+      def counted(a)
+        n = 0
+        list = [1, 2, 3]
+        if a > 3
+          0.tap { n += 10 }
+          list.each { |each_number| n += each_number }
+        end
+        n
+      end
+      hp = 5
+      seen = 0
+      game_loop do
+        seen = counted(hp)
+        hp -= 3
+      end
+    end
+
+    assert_equal 16, played(frames: 1, &game)[:seen]
+    assert_equal 0, played(frames: 2, &game)[:seen]
+  end
+
+  # The body runs once before the test is asked, whatever the test is.
+  def test_a_number_changed_in_a_begin_while_on_a_game_test_goes_round_as_ruby_does
+    game = proc do
+      def counted(limit)
+        n = 0
+        begin
+          n += 1
+        end while n < limit
+        n
+      end
+      limit = 3
+      seen = 0
+      game_loop do
+        seen = counted(limit)
+        limit = 0
+      end
+    end
+
+    assert_equal 3, played(frames: 1, &game)[:seen]
+    assert_equal 1, played(frames: 2, &game)[:seen]
+  end
+
+  # A pool's `each` records code the game runs, here once as it starts.
+  def test_a_number_counted_by_a_pools_each_while_setting_up_is_a_variable
+    player = played(frames: 1) do
+      sparks = pool(:spark, x: 0, capacity: 3)
+      sparks.spawn(x: 1)
+      sparks.spawn(x: 2)
+      count = 0
+      sparks.each { count += 1 }
+      shown = 0
+      game_loop { shown = count }
+    end
+
+    assert_equal 2, player[:shown]
+  end
+
+  # `@shown` holds whichever number it was last given, as a Ruby name would.
+  def test_an_instance_variable_moved_to_another_number_in_game_code_takes_that_number
+    game = proc do
+      score = 5
+      lives = 3
+      @shown = score
+      game_loop do
+        @shown = lives
+        lives -= 1
+        score += 1
+      end
+    end
+
+    assert_equal 3, played(frames: 1, &game)[:shown]
+    assert_equal 2, played(frames: 2, &game)[:shown]
+  end
 end

@@ -36,17 +36,6 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_refused("`Minitest`") { game_loop { Minitest::Test } }
   end
 
-  # Copying one game number into another keeps two numbers. A name only handed its variable has
-  # no number of its own to copy into, so the line stops rather than move the name with no word.
-  def test_an_instance_variable_handed_a_variable_is_refused_a_move_in_game_code
-    assert_refused("`@shown` was handed") do
-      score = var :score, 0
-      lives = var :lives, 3
-      @shown = score
-      game_loop { @shown = lives }
-    end
-  end
-
   def test_an_instance_variable_handed_a_variable_can_move_while_setting_up
     built do
       score = var :score, 0
@@ -92,21 +81,6 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
-  def test_a_plain_number_changed_in_a_ruby_block_under_a_game_test_is_refused
-    assert_refused("inside a block") do
-      def counted(a)
-        n = 0
-        if a > 3
-          3.times { n += 1 }
-        end
-        n
-      end
-      hp = var :hp, 5
-      seen = 0
-      game_loop { seen = counted(hp) }
-    end
-  end
-
   Thing = Struct.new(:x)
 
   def test_an_object_name_changed_under_a_game_test_is_refused
@@ -148,21 +122,6 @@ class TestPlainRubyRefusals < Minitest::Test
       ok = true
       count = var :count, 0
       game_loop { ok = count }
-    end
-  end
-
-  def test_a_begin_while_changing_a_plain_number_is_refused
-    assert_refused("`begin`") do
-      def counted(limit)
-        n = 0
-        begin
-          n += 1
-        end while n < limit
-        n
-      end
-      limit = var :limit, 3
-      seen = 0
-      game_loop { seen = counted(limit) }
     end
   end
 
@@ -268,15 +227,6 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_refused("needs an `else`") do
       n = 0
       game_loop { x = if n == 0 then 1 end; n += 1 }
-    end
-  end
-
-  def test_a_plain_number_changed_by_game_code_it_cannot_reach_is_refused
-    assert_refused("`count`") do
-      sparks = pool(:spark, x: 0, capacity: 3)
-      count = 0
-      sparks.each { count += 1 }
-      game_loop { pixel count, 0, :red }
     end
   end
 

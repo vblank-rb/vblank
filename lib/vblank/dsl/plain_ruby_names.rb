@@ -25,7 +25,9 @@ module VBlank
         RUBY_ITERATORS = %i[downto each each_index each_slice each_with_index each_with_object flat_map map select
                             step times upto].freeze
 
-        Write = Struct.new(:node, :in_game_code)
+        # +from_unknown_block+: made from inside a block on something only running can tell apart
+        # (see LocalNames#from_unknown_block?).
+        Write = Struct.new(:node, :in_game_code, :from_unknown_block)
 
         CHANGES = [Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode,
                    Prism::LocalVariableTargetNode, Prism::LocalVariableOrWriteNode,
@@ -63,11 +65,22 @@ module VBlank
           # `first, second = build.var(:a, 0), build.var(:b, 0)`
           attr_accessor :unpacked_from_var
 
+          # A number changed from a block that may be a pool's `each` may be changed by game code,
+          # and a game variable is right either way: a Ruby `each` changes it while setting up.
           def auto_variable?
             return false if parameter? || !starts_variable?
 
-            @writes.drop(1).any?(&:in_game_code)
+            @writes.drop(1).any?(&:in_game_code) || variable_only_by_unknown_block?
           end
+
+          def variable_only_by_unknown_block?
+            later = @writes.drop(1)
+            later.none?(&:in_game_code) && starts_as_number? && later.any?(&:from_unknown_block)
+          end
+
+          # A number or a yes or no written out. A name started as nil is often filled in later
+          # with something no game can keep, a point of a place or a sprite.
+          def starts_as_number? = %i[other yes_or_no].include?(LocalNames.kind_written(first_write.node))
 
           # In setting up, whatever a name is given is looked at as the line runs, so any start
           # will do. In game code a worked-out start stays a working-out, which Ruby's arithmetic
@@ -152,7 +165,6 @@ module VBlank
 
         def initialize(block_node)
           @locals_by_node = {}.compare_by_identity
-          @ruby_iteration_writes = {}.compare_by_identity
           @outside_writes = []
           @promoted_writes = {}.compare_by_identity
           @first_writes_in_game_code = {}.compare_by_identity
@@ -160,6 +172,9 @@ module VBlank
           @changes_by_name = {}
           @names_used = Hash.new(0)
           @iterating_in_game_code = false
+          @scopes_placed = {}.compare_by_identity
+          @names_moved_in_game_code = {}
+          @next_block_placed = false
           read_names(block_node, [], false)
         end
 
@@ -235,15 +250,6 @@ module VBlank
         # Is this a write to a name that #names_to_promote named?
         def promoted?(write) = @promoted_writes.key?(write)
 
-        # Is this write a number, staying plain, being changed from a block inside its scope?
-        def plain_number_changed_from_block?(write)
-          local = @locals_by_node[write]
-          return false unless local && write.depth.positive? && !local.variable?
-          return false if @ruby_iteration_writes.key?(write)
-
-          LocalNames.number?(local.first_write.node)
-        end
-
         def first_write?(write) = @locals_by_node[write]&.first_write_of?(write) || false
 
         # Could the name hold something as this line writes it? An argument always does.
@@ -251,6 +257,10 @@ module VBlank
           local = @locals_by_node[write]
           !local.nil? && (local.parameter? || !local.first_write_of?(write))
         end
+
+        # Is this instance variable given another name in game code, `@shown = lives`? Ruby moves the
+        # name, so each number it is given is its own, and a variable it was handed is not changed.
+        def moved_in_game_code?(name) = @names_moved_in_game_code.key?(name)
 
         # Is this write's name a game variable?
         def variable_write?(write) = @locals_by_node[write]&.variable? || false
@@ -321,17 +331,27 @@ module VBlank
 
         def plain_receiver?(receiver) = (NAMES + [Prism::SelfNode]).any? { |kind| receiver.is_a?(kind) }
 
-        def plain_writes_in(node)
+        # A block inside a side runs while building, on that side, so a name of the scope around it
+        # that it changes is changed on that side: +blocks+ counts the blocks gone into, and a write
+        # whose depth reaches past them is one. A method or a lambda runs when it is called, which
+        # may be anywhere, so its writes are not.
+        def plain_writes_in(node, blocks = 0)
+          return plain_writes_in_children(node, blocks + 1) if node.is_a?(Prism::BlockNode)
           return [] if OWN_SCOPES.any? { |kind| node.is_a?(kind) }
 
-          own = plain_name_write?(node) && CHANGES.any? { |kind| node.is_a?(kind) } ? [node] : []
-          own + node.compact_child_nodes.flat_map { |child| plain_writes_in(child) }
+          own = plain_name_write?(node) && CHANGES.any? { |kind| node.is_a?(kind) } && node.depth >= blocks ? [node] : []
+          own + plain_writes_in_children(node, blocks)
         end
 
+        def plain_writes_in_children(node, blocks) = node.compact_child_nodes.flat_map { |child| plain_writes_in(child, blocks) }
+
+        # A name made a variable only by a block only running can place may have its first line in
+        # code that runs on every pass (a method called from game code), so that line sets it each
+        # time it runs, as Ruby's would. One game code changes too is a variable either way.
         def first_write_action(local)
           return if local.made_by_var? || !local.auto_variable?
 
-          local.first_write.in_game_code ? :start : :declare
+          local.first_write.in_game_code || local.variable_only_by_unknown_block? ? :start : :declare
         end
 
         def next_variable_name(name)
@@ -356,6 +376,7 @@ module VBlank
             note_unpacked_variables(node)
           when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode
             record_change(node.name, node, in_game_code)
+            @names_moved_in_game_code[node.name] = true if in_game_code && name_given?(node)
             read_children(node, scopes, in_game_code)
           when Prism::IndexOperatorWriteNode, Prism::CallOperatorWriteNode
             read_children(node, scopes, in_game_code)
@@ -368,6 +389,8 @@ module VBlank
           else read_children(node, scopes, in_game_code)
           end
         end
+
+        def name_given?(write) = write.is_a?(Prism::InstanceVariableWriteNode) && NAMES.any? { |kind| write.value.is_a?(kind) }
 
         def note_unpacked_variables(node)
           return unless node.value.is_a?(Prism::ArrayNode)
@@ -387,6 +410,7 @@ module VBlank
             next read_ruby_iteration(child, scopes, in_game_code) if child.is_a?(Prism::BlockNode) && ruby_iteration?(node)
 
             game_block = child.is_a?(Prism::BlockNode) && GAME_VERBS.include?(node.name)
+            @next_block_placed = true if game_block
             read_names(child, scopes, in_game_code || game_block)
           end
           read_place_change(node, in_game_code) if node.name == :[]= || node.attribute_write?
@@ -411,13 +435,19 @@ module VBlank
         def read_ruby_iteration(block, scopes, in_game_code)
           outer = @iterating_in_game_code
           @iterating_in_game_code = outer || in_game_code
+          @next_block_placed = true
           read_names(block, scopes, false)
         ensure
           @iterating_in_game_code = outer
         end
 
+        # A block of Ruby's own iteration runs while building, as the line does, and a game verb's
+        # records game code. Any other block may be either (a pool's `each`, or a Ruby list's), and
+        # only running it can tell. Each scope a block opens is noted with which it is.
         def read_block(node, scopes, in_game_code)
           scope = {}
+          @scopes_placed[scope] = true if @next_block_placed
+          @next_block_placed = false
           parameter_names(node.parameters).each { |name| scope[name] = Local.new(name, parameter: true) }
           read_children(node, scopes + [scope], in_game_code)
         end
@@ -436,6 +466,12 @@ module VBlank
           @iterating_in_game_code && !local.first_write.nil? && !local.first_write.in_game_code
         end
 
+        # Does +node+ reach its name through a block that may be game code? The scopes between the
+        # write and its name's are the last +depth+ of them.
+        def from_unknown_block?(node, scopes)
+          node.depth.positive? && scopes.last(node.depth).any? { |scope| !@scopes_placed.key?(scope) }
+        end
+
         def record_write(node, scopes, in_game_code)
           scope = scopes[-1 - node.depth]
           @outside_writes << node if scope.nil? && in_game_code
@@ -444,9 +480,8 @@ module VBlank
           local = (scope[node.name] ||= Local.new(node.name, parameter: false))
           record_change(local, node, in_game_code)
           @first_writes_in_game_code[node] = true if in_game_code
-          local.writes << Write.new(node, in_game_code || looped_from_outside?(local))
+          local.writes << Write.new(node, in_game_code || looped_from_outside?(local), from_unknown_block?(node, scopes))
           local.reads << node unless WHOLE_WRITES.any? { |kind| node.is_a?(kind) }
-          @ruby_iteration_writes[node] = true if @iterating_in_game_code && !in_game_code
           @locals_by_node[node] = local
         end
       end

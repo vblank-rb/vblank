@@ -26,10 +26,13 @@ module VBlank
         # +second_name+ is a name that holds a variable it did not make, which writes to it only under
         # a game test, after #promote has given it one of its own. +moves+ is an instance variable,
         # which goes to a variable it is given unless the one it holds is its own. +needs_slot+ is a
-        # place that must exist already, so a new one under a game test is an error.
-        def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false)
+        # place that must exist already, so a new one under a game test is an error. +copies+ is an
+        # instance variable game code gives another name (LocalNames#moved_in_game_code?), which
+        # keeps a variable of its own and copies each number into it.
+        def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false)
           game = tests.any?(&:game?)
           return yield(value) if second_name && !game
+          return yield(own_copy(label, value)) if copies && Steps.variable?(value) && !own_variable?(current)
           return write_plain_place(current, value, game, label, needs_slot) { |given| yield given } unless Steps.variable?(current)
           return current if value.equal?(current)
 
@@ -215,6 +218,18 @@ module VBlank
           own
         end
 
+        def own_variable?(current) = Steps.variable?(current) && current.own_to_its_name
+
+        # A variable of its own for the instance variable +label+, holding +value+'s number now. It
+        # is made the way `hp = 10` makes one, and named after the instance variable.
+        def own_copy(label, value)
+          name = label.to_s.delete("@").to_sym
+          own = own_variable(value) { |start| variable_for_part(name, start) }
+          own.note_made_with_no_var_line
+          store_in_variable(own, value)
+          keep_as_own(own)
+        end
+
         # `@a = @b` in code the game runs, where @a was only handed its variable. Copying into it
         # would change a variable that belongs to something else, and moving it would leave a line
         # that looks like a copy recording nothing, so the author chooses which.
@@ -242,19 +257,6 @@ module VBlank
         def handed?(variable)
           name = variable.name.to_s
           !name.empty? && !name.start_with?(IR::Build::KEPT_VARIABLE_PREFIX)
-        end
-
-        def refuse_change_in_block!(name, tests)
-          return unless tests.any?(&:game?)
-
-          Steps.refuse_game_code!("`#{name}` is changed inside a block, under a test the game makes as it plays. The " \
-                            "block runs while building, so the game cannot follow this. To fix this, start it " \
-                            "with `#{name} = var :#{name}, 0`.")
-        end
-
-        def refuse_begin_while!(name)
-          Steps.refuse_game_code!("This `begin` loop changes `#{name}`, and its test is one the game makes as it plays. " \
-                            "To fix this, start it with `#{name} = var :#{name}, 0`.")
         end
 
         def refuse_number_in_boolean!(target)
@@ -340,15 +342,6 @@ module VBlank
           Steps.refuse_game_code!("This Hash holds game variables and has no key #{key.inspect}, so the game would never " \
                   "see this number. The keys are #{collection.keys.map(&:inspect).join(', ')}. To fix " \
                   "this, use one of those keys.")
-        end
-
-        # A plain number changed by code the game runs would change once, while building, and the
-        # game would never see it. See Rewriter#guarded_write_text.
-        def refuse_lost_number!(name, recording_game_code)
-          return unless recording_game_code
-
-          Steps.refuse_game_code!("`#{name}` is a plain number, and this line runs as the game plays, so the game " \
-                  "will never see the change. To fix this, start it with `#{name} = var :#{name}, 0`.")
         end
       end
     end

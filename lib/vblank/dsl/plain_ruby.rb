@@ -365,15 +365,19 @@ module VBlank
         # A plain number changed from inside a block no one can place: `each` may be Ruby's, which
         # runs now, or a pool's, which records game code. Only running it can tell, so the step
         # looks, using the question the block's builder answers.
+        #
+        # A name of the scope around a block, changed in it under a test the game makes, was given a
+        # variable before the test if anything reads it after (LocalNames#plain_writes_in), and the
+        # write goes to that under the tests open around the block. One nothing reads after is
+        # Ruby's, since only code on that side reads it.
         def guarded_write_text(node, written)
-          if !@block_tests.empty? && node.depth.positive? && @names.plain_name_write?(node)
-            return "(#{WRITES}.refuse_change_in_block!(:#{node.name}, [#{@block_tests.join(', ')}]); #{written})"
-          end
-          return written unless @names.plain_number_changed_from_block?(node)
+          return written unless !@block_tests.empty? && node.depth.positive? && @names.plain_name_write?(node)
+          return written unless @names.promoted?(node)
 
-          recording = "(respond_to?(:recording_game_code?) && recording_game_code?)"
-          "(#{WRITES}.refuse_lost_number!(:#{node.name}, #{recording}); #{written})"
+          under_open_tests(@block_tests) { write_or_change_text(node) }
         end
+
+        def write_or_change_text(node) = node.is_a?(Prism::LocalVariableOperatorWriteNode) ? change_text(node) : write_text(node)
 
         # A part of a game keeps its variables in these, so one holding a game variable is changed.
         def instance_variable_write_text(node)
@@ -381,7 +385,8 @@ module VBlank
           value = value_text(node.value)
           return "#{prefix}#{WRITES}.keep_as_own(#{value})" if LocalNames.makes_variable?(node.value)
 
-          "#{prefix}#{write_call(node.name, "(#{value})", node.name, options: ", moves: true")}"
+          copies = @names.moved_in_game_code?(node.name) ? ", copies: true" : ""
+          "#{prefix}#{write_call(node.name, "(#{value})", node.name, options: ", moves: true#{copies}")}"
         end
 
         # `@x ||= var :x, 0`, the same as `@x = var :x, 0` the first time.
@@ -666,13 +671,13 @@ module VBlank
         def argument(node) = "(#{rewritten_text(node)})"
 
         # A real `while`: a plain test goes round as usual, and a game test's body runs once,
-        # recording itself into a loop the game makes.
+        # recording itself into a loop the game makes. `begin ... end while` runs its body first,
+        # before the test is asked, so that once is plain Ruby whatever the test turns out to be,
+        # and a name it changes is given its variable as the loop opens, holding that first answer.
         def loop_text(node, step)
           test = "__plain_ruby_#{@answers += 1}"
           shut_at = node.closing_loc&.start_offset || node.location.end_offset
           promotions = promotions_text(node, [node.statements], test)
-          names = @names.names_to_promote(node, [node.statements])
-          promotions = "#{WRITES}.refuse_begin_while!(:#{names.first})" if node.begin_modifier? && !names.empty?
           body = under_open_test(test) { side_body_text(node, shut_at) }
           first = node.begin_modifier? ? "#{body}; " : ""
           "(#{test} = #{STEPS}.#{step} { #{rewritten_text(node.predicate)} }; #{first}" \
