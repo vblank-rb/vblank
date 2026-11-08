@@ -31,12 +31,17 @@ class TestGameSuite < Minitest::Test
   # Leaving the bundle puts back the settings this process STARTED with, and on a native run
   # that includes the mark a test process of the native run is started with
   # (TEST_PROCESS_CHILD), which it took away as it began. Handed down, the game's own run would
-  # take itself for one of those, and wait for tests from a parent it does not have.
+  # take itself for one of those, and wait for tests from a parent it does not have. A run of
+  # `FAIL_FAST=1 rake test:all` hands its test processes two more the same way: the record of what
+  # passed, into which the game's tests would write their own passes, so the next game rake
+  # in this run would leave them out and play nothing; and the stop at the first failure.
   private def rake(*tasks, env: {}, game: GAME)
     Dir.mktmpdir do |played|
       plain = { "RUBYLIB" => LIB, "GAME_SUITE_PLAYED" => played, "VBLANK_LOWERING" => nil, "VBLANK_CONSOLE" => nil,
                 "TESTOPTS" => nil, "TEST" => nil, "MT_CPU" => nil, "MT_RACTOR" => nil, "TEST_PROCESSES" => nil,
-                "MT_RACTOR_WORKERS" => nil, "TEST_PROCESS_CHILD" => nil }
+                "MT_RACTOR_WORKERS" => nil, "TEST_PROCESS_CHILD" => nil,
+                VBlank::Testing::Lowering::RECORD_SETTING => nil,
+                VBlank::Testing::Lowering::STOPS_AT_FAILURE_SETTING => nil }
       out, status = Bundler.with_unbundled_env do
         Open3.capture2e(plain.merge(env), RbConfig.ruby, RAKE, *tasks, chdir: game)
       end
@@ -233,7 +238,7 @@ class TestGameSuite < Minitest::Test
   def test_a_disagreement_fails_the_games_test_on_each_run
     out, passed, = rake("test:all", env: { "GAME_SUITE_DISAGREE" => "1" })
 
-    refute passed
+    refute passed, "the game's rake passed:\n#{out}"
     assert_match(/^GBA lowering\s+FAILED/, out)
     assert_match(/^native lowering\s+FAILED/, out)
     assert_match(/^JavaScript lowering\s+FAILED/, out)
@@ -283,6 +288,6 @@ class TestGameSuite < Minitest::Test
     out, passed, _, plays = rake("test:native:walking", "test:walking", game: GAME_WITH_GROUPS)
 
     assert passed, "the game's rake failed:\n#{out}"
-    assert_equal ["gba-#{WALKING}", "native-#{WALKING}"], plays
+    assert_equal ["gba-#{WALKING}", "native-#{WALKING}"], plays, "the game's rake printed:\n#{out}"
   end
 end
