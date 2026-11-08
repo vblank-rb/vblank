@@ -1161,9 +1161,7 @@ class TestCLI < Minitest::Test
     Dir.mktmpdir do |dir|
       File.write(File.join(dir, "extra_state.rb"), <<~RUBY)
         module ExtraState
-          def self.declare(builder)
-            builder.instance_eval { var :score, 0 }
-          end
+          def self.declare(builder) = builder.var(:score, 0)
         end
       RUBY
       File.write(File.join(dir, "multi.rb"), <<~RUBY)

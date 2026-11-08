@@ -86,6 +86,8 @@ plays.
 
 A file of game code is loaded with `VBlank.require_game_file "walker"`, never `require_relative`. It
 is read as game code as a whole: its locals stay its own, and its constants and methods are shared.
+Its methods and blocks are checked as a game block is (no `system`, no constant from outside the
+game); its other lines run once as it loads, as the lines above a game block do.
 
 ## What is refused, and what to write instead
 

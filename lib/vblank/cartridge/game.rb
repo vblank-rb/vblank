@@ -403,7 +403,7 @@ module VBlank
       path = File.expand_path("#{name}.rb", File.dirname(from))
       return false if $LOADED_FEATURES.include?(path)
 
-      RubyVM::InstructionSequence.compile(DSL::PlainRuby.rewritten_file(path), path, nil, 1).eval
+      RubyVM::InstructionSequence.compile(DSL::PlainRuby.rewritten_file(path, loaded_from: File.dirname(from)), path, nil, 1).eval
       $LOADED_FEATURES << path
       true
     end

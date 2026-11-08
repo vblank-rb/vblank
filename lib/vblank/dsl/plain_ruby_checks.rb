@@ -35,11 +35,14 @@ module VBlank
         # `scene` or `func` alone could be a method of the file's own. `var` needs a name instead.
         GAME_BLOCK_VERBS = (LocalNames::GAME_VERBS - %i[every after repeat item]).freeze
 
-        def self.refuse_outside_constant!(constants, nesting:, folder:, allow:, file:)
+        # +folder+ is one folder of the game's, or several. +defined_only+ leaves alone a name not
+        # defined yet, which a file of the game may name before a later one defines it.
+        def self.refuse_outside_constant!(constants, nesting:, folder:, allow:, file:, defined_only: false)
           library = library_folder
           constants.each do |name, line|
             next if RUBY_BASICS.include?(name) || allow.include?(name.to_s)
-            next if game_constant?(name, nesting, [folder, library])
+            next if defined_only && !constant_defined_in_nesting?(name, nesting)
+            next if game_constant?(name, nesting, [*Array(folder), library])
 
             raise Refused, "`#{name}` is not part of your game, so this block cannot use it. This " \
                            "block describes what the game does as it plays. If you need `#{name}` " \
@@ -61,6 +64,9 @@ module VBlank
         end
         private_class_method :game_constant?
 
+        def self.constant_defined_in_nesting?(name, nesting) = (nesting + [Object]).any? { |mod| mod.const_defined?(name) }
+        private_class_method :constant_defined_in_nesting?
+
         def initialize(block_node, file:, allow:)
           @block_node = block_node
           @file = file
@@ -70,6 +76,16 @@ module VBlank
         def refuse_outside_calls!(node = @block_node)
           refuse_call!(node)
           node.compact_child_nodes.each { |child| refuse_outside_calls!(child) }
+        end
+
+        # A WHOLE FILE OF A GAME (DSL::PlainRuby.rewritten_file). What its methods and blocks do is
+        # game code, checked as a game block is. Its other lines run once as the file is loaded,
+        # setting up as the lines above a game block do (bringing in files, making constants with
+        # `Ractor.make_shareable`), so they are plain Ruby. A plain file it loads that holds game
+        # code is the game block's check to find (#refuse_game_code_in_plain_files! follows each
+        # file the block's file brings in), as the game is built.
+        def refuse_outside_calls_in_file!
+          game_code_in(@block_node).each { |node| refuse_outside_calls!(node) }
         end
 
         # A number set above the block and changed by game code would change once, while building,
@@ -107,6 +123,21 @@ module VBlank
             "allow: #{@allow.inspect}, file: #{File.basename(@file).inspect})"
         end
 
+        # The same for a whole file of a game, to stand at its end: by then the file has defined
+        # its own constants. A file may name a constant a later file of the game defines, which
+        # is left alone, as are constants defined in its folder, in the game's project
+        # (#project_folder), or in +loaded_from+, the folder of the
+        # file that brought it in. It reads Module.nesting at the top of the file, so a name inside
+        # one of the file's modules is looked up from Object, and is left alone if not found there.
+        def file_constant_check(loaded_from:)
+          part = File.dirname(File.expand_path(@file))
+          folders = [part, File.expand_path(loaded_from), project_folder(part)].compact.uniq.map { |folder| "#{folder}/" }
+          named = game_code_in(@block_node).flat_map { |node| constants_named(node) }
+          "::VBlank::DSL::PlainRuby::BlockChecks.refuse_outside_constant!(#{named.inspect}, " \
+            "nesting: Module.nesting, folder: #{folders.inspect}, allow: [], " \
+            "file: #{File.basename(@file).inspect}, defined_only: true)"
+        end
+
         private
 
         # A file of VBlank's own library, which builds games and is never one: under the library
@@ -118,6 +149,24 @@ module VBlank
           return true if path.start_with?(self.class.library_folder)
 
           File.basename(path) == "vblank.rb" && File.file?(File.join(File.dirname(path), "vblank", "root.rb"))
+        end
+
+        # PROJECT_MARKERS are what a game's own folder holds at its top.
+        PROJECT_MARKERS = %w[Gemfile .git].freeze
+
+        # The game's own project, the nearest folder above +folder+ holding a Gemfile or a .git, so
+        # a part in a folder of its own may name a constant the game's main file defines. Nil when
+        # there is none.
+        def project_folder(folder)
+          Pathname(folder).ascend.find { |dir| PROJECT_MARKERS.any? { |marker| dir.join(marker).exist? } }&.to_s
+        end
+
+        # The outermost methods, blocks and lambdas in +node+: the code a file of a game runs as
+        # the game plays.
+        def game_code_in(node)
+          return [node] if OWN_SCOPES.any? { |kind| node.is_a?(kind) }
+
+          node.compact_child_nodes.flat_map { |child| game_code_in(child) }
         end
 
         def files_loaded_by(from, verb)

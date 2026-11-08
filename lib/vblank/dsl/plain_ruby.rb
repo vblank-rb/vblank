@@ -152,14 +152,24 @@ module VBlank
         found
       end
 
-      # A whole file of a game in normal Ruby, the file a game splits a part into, as source.
-      def rewritten_file(path)
+      # A whole file of a game in normal Ruby, the file a game splits a part into, as source,
+      # checked as a game block is: an outside call stops it here, and an outside constant as the
+      # file finishes running (BlockChecks#file_constant_check says why there). +loaded_from+ is the
+      # folder of the file that brought it in, whose constants are the game's too. A file of
+      # VBlank's own library brought in this way (DSL::Pool, Original::CopyReader) builds games and
+      # is never one, so it is not checked.
+      def rewritten_file(path, loaded_from: File.dirname(path))
         source = File.binread(path)
         root = Prism.parse(source).value
         # What stands before the first line of code stays: the magic comment that freezes the
         # file's strings is there, and so is every line the numbers after it count from.
         opening = source.byteslice(0, root.location.start_offset).force_encoding(Encoding::UTF_8)
-        "#{opening}#{Rewriter.new(source).rewritten(root)}"
+        rewritten = "#{opening}#{Rewriter.new(source).rewritten(root)}"
+        return rewritten if File.expand_path(path).start_with?(BlockChecks.library_folder)
+
+        checks = BlockChecks.new(root, file: path, allow: [])
+        checks.refuse_outside_calls_in_file!
+        "#{rewritten}\n#{checks.file_constant_check(loaded_from: loaded_from)}\n"
       end
 
       # The block's source with its constructs written out as calls. It builds new text rather
