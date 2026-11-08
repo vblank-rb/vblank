@@ -384,14 +384,42 @@ module VBlank
         # variable before the test if anything reads it after (LocalNames#plain_writes_in), and the
         # write goes to that under the tests open around the block. One nothing reads after is
         # Ruby's, since only code on that side reads it.
+        #
+        # A number changed from a block that may be a pool's `each` (LocalNames#from_unknown_block?)
+        # is decided as each line runs. While the line records game code, the name is a game
+        # variable: its first line sets it there, so a method called on every pass starts it
+        # afresh, and a change from the block makes it one holding the number it has then. While
+        # setting up it stays Ruby's, so `names.each { count += 1 }` over a Ruby list counts in Ruby.
         def guarded_write_text(node, written)
-          return written unless !@block_tests.empty? && node.depth.positive? && @names.plain_name_write?(node)
-          return written unless @names.promoted?(node)
+          return under_open_tests(@block_tests) { write_or_change_text(node) } if promoted_in_block?(node)
+          return written unless @names.changed_from_unknown_block?(node)
 
-          under_open_tests(@block_tests) { write_or_change_text(node) }
+          name = @names.variable_name_of(node)
+          if @names.first_write?(node)
+            prefix = between(node.location.start_offset, node.value.location.start_offset)
+            return "#{prefix}#{WRITES}.start_kept_by_game(self, (#{value_text(node.value)}), :#{name}, #{RECORDING_TEXT})"
+          end
+
+          "(#{node.name} = #{WRITES}.number_kept_by_game(self, #{node.name}, :#{name}, #{RECORDING_TEXT}); " \
+            "#{variable_write_text(node)})"
+        end
+
+        # Is the builder recording game code where this line runs? A part of a game runs on no builder.
+        RECORDING_TEXT = "(respond_to?(:recording_game_code?) && recording_game_code?)"
+
+        def promoted_in_block?(node)
+          !@block_tests.empty? && node.depth.positive? && @names.plain_name_write?(node) && @names.promoted?(node)
         end
 
         def write_or_change_text(node) = node.is_a?(Prism::LocalVariableOperatorWriteNode) ? change_text(node) : write_text(node)
+
+        # The write of a name that may hold a game variable by now: Writes changes the variable if
+        # it does, and leaves the write to Ruby if not.
+        def variable_write_text(node)
+          return "#{node.name} = #{change_call(node)}" if node.is_a?(Prism::LocalVariableOperatorWriteNode)
+
+          "#{node.name} = #{assign_text(node.name, "(#{value_text(node.value)})")}"
+        end
 
         # A part of a game keeps its variables in these, so one holding a game variable is changed.
         def instance_variable_write_text(node)

@@ -282,6 +282,27 @@ module VBlank
                             "keep a number and pick with it.")
         end
 
+        # A number changed from a block only running can place (a pool's `each`, or a Ruby list's).
+        # Changed while game code is recorded, it would change once, while building, and the game
+        # would never see it, so the name becomes a game variable holding the number it has now:
+        # the variable starts with that number as the game powers on, where the name had it.
+        # Anything else stays what it is. See Rewriter#guarded_write_text.
+        def number_kept_by_game(owner, current, name, recording)
+          return current unless recording && kept_number?(current)
+
+          variable_with_no_var_line(owner, name, current)
+        end
+
+        # ...and that name's first line. Run while game code is recorded (in a method a game loop
+        # calls), it sets the variable there, so each pass starts it afresh as Ruby's line would.
+        def start_kept_by_game(owner, value, name, recording)
+          return value unless recording && kept_number?(value)
+
+          give_variable(variable_with_no_var_line(owner, name, value.is_a?(Float) ? 0.0 : 0), value)
+        end
+
+        def kept_number?(value) = value.is_a?(Integer) || value.is_a?(Float)
+
         # A variable the author never wrote `var` for, which the out-of-memory error names.
         #
         # A game block runs on the builder, which has `var`. A part of a game is a plain class

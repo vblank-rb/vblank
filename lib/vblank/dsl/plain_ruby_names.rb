@@ -65,17 +65,16 @@ module VBlank
           # `first, second = build.var(:a, 0), build.var(:b, 0)`
           attr_accessor :unpacked_from_var
 
-          # A number changed from a block that may be a pool's `each` may be changed by game code,
-          # and a game variable is right either way: a Ruby `each` changes it while setting up.
           def auto_variable?
             return false if parameter? || !starts_variable?
 
-            @writes.drop(1).any?(&:in_game_code) || variable_only_by_unknown_block?
+            @writes.drop(1).any?(&:in_game_code)
           end
 
-          def variable_only_by_unknown_block?
-            later = @writes.drop(1)
-            later.none?(&:in_game_code) && starts_as_number? && later.any?(&:from_unknown_block)
+          # A number changed from a block that may be a pool's `each`, which only running it can
+          # tell from a Ruby list's: see Rewriter#guarded_write_text.
+          def changed_from_unknown_block?
+            !variable? && starts_as_number? && @writes.drop(1).any?(&:from_unknown_block)
           end
 
           # A number or a yes or no written out. A name started as nil is often filled in later
@@ -262,6 +261,9 @@ module VBlank
         # name, so each number it is given is its own, and a variable it was handed is not changed.
         def moved_in_game_code?(name) = @names_moved_in_game_code.key?(name)
 
+        # Is this write's name a number changed from a block only running can place?
+        def changed_from_unknown_block?(write) = @locals_by_node[write]&.changed_from_unknown_block? || false
+
         # Is this write's name a game variable?
         def variable_write?(write) = @locals_by_node[write]&.variable? || false
 
@@ -345,13 +347,10 @@ module VBlank
 
         def plain_writes_in_children(node, blocks) = node.compact_child_nodes.flat_map { |child| plain_writes_in(child, blocks) }
 
-        # A name made a variable only by a block only running can place may have its first line in
-        # code that runs on every pass (a method called from game code), so that line sets it each
-        # time it runs, as Ruby's would. One game code changes too is a variable either way.
         def first_write_action(local)
           return if local.made_by_var? || !local.auto_variable?
 
-          local.first_write.in_game_code || local.variable_only_by_unknown_block? ? :start : :declare
+          local.first_write.in_game_code ? :start : :declare
         end
 
         def next_variable_name(name)

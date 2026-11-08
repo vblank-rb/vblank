@@ -2395,6 +2395,21 @@ class TestPlainRuby < Minitest::Test
     assert_equal 2, player[:shown]
   end
 
+  # `each` on a list held in a name is Ruby's while setting up, so the count is a Ruby number
+  # the build can use: here as the width of a shift, which a game number cannot be.
+  def test_a_number_counted_by_a_ruby_lists_each_while_setting_up_stays_a_ruby_number
+    player = played(frames: 1) do
+      counted = 0
+      names = %i[a b c]
+      names.each { counted += 1 }
+      wide = 1 << counted
+      shown = 0
+      game_loop { shown = wide }
+    end
+
+    assert_equal 8, player[:shown]
+  end
+
   # `@shown` holds whichever number it was last given, as a Ruby name would.
   def test_an_instance_variable_moved_to_another_number_in_game_code_takes_that_number
     game = proc do
