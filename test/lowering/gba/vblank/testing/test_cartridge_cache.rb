@@ -17,17 +17,28 @@ class TestCartridgeCache < Minitest::Test
     end
   end
 
+  # Whether asking +cache+ for +game+'s cartridge read it from disk (:hit) or built it (:miss), as the
+  # report a game's run prints says. The report is read after every ask, which empties it, so it
+  # counts this ask alone.
+  private def ask(cache, game, **settings)
+    cache.cartridge(game, console: :gba, **settings)
+    said = StringIO.new
+    cache.report(said)
+    counted = said.string.match(/(\d+) hits, (\d+) misses/)&.captures&.map(&:to_i)
+    flunk "expected one ask in the report, got: #{said.string.inspect}" unless counted&.sum == 1
+    counted.first == 1 ? :hit : :miss
+  end
+
   def test_a_cartridge_is_built_once_and_read_back_by_a_later_run
     Dir.mktmpdir do |folder|
       game = dot_game(:red)
       first = VBlank::Testing::CartridgeCache.new(folder)
 
-      refute first.cached?(game, console: :gba)
-      built = first.cartridge(game, console: :gba)
+      assert_equal :miss, ask(first, game)
       later = VBlank::Testing::CartridgeCache.new(folder)
 
-      assert later.cached?(game, console: :gba)
-      assert_equal built.buffer, later.cartridge(game, console: :gba).buffer
+      assert_equal :hit, ask(later, game)
+      assert_equal first.cartridge(game, console: :gba).buffer, later.cartridge(game, console: :gba).buffer
     end
   end
 
@@ -59,25 +70,21 @@ class TestCartridgeCache < Minitest::Test
 
   def test_a_game_is_known_by_what_its_program_says_not_by_which_pieces_it_shares
     Dir.mktmpdir do |folder|
-      cache = VBlank::Testing::CartridgeCache.new(folder)
-      cache.cartridge(two_fills_game(shared: true), console: :gba, variant: nil)
+      ask(VBlank::Testing::CartridgeCache.new(folder), two_fills_game(shared: true), variant: nil)
       # A cache made afresh, so the second ask reaches the disk rather than this Ractor's own copy.
       later = VBlank::Testing::CartridgeCache.new(folder)
-      later.cartridge(two_fills_game(shared: false), console: :gba, variant: nil)
-      said = StringIO.new
-      later.report(said)
 
-      assert_match(/1 hits, 1 misses/, said.string, "the second program built again")
+      assert_equal :hit, ask(later, two_fills_game(shared: false), variant: nil), "the second program built again"
     end
   end
 
   def test_a_game_that_builds_something_else_is_built_again
     Dir.mktmpdir do |folder|
       cache = VBlank::Testing::CartridgeCache.new(folder)
-      cache.cartridge(dot_game(:red), console: :gba)
+      ask(cache, dot_game(:red))
 
-      refute cache.cached?(dot_game(:blue), console: :gba)
-      refute cache.cached?(dot_game(:red), console: :gba, settings: { floors: 2 })
+      assert_equal :miss, ask(cache, dot_game(:blue))
+      assert_equal :miss, ask(cache, dot_game(:red), settings: { floors: 2 })
     end
   end
 
@@ -85,18 +92,18 @@ class TestCartridgeCache < Minitest::Test
     Dir.mktmpdir do |folder|
       input = File.join(folder, "copy.bin")
       File.write(input, "first")
-      VBlank::Testing::CartridgeCache.new(folder, inputs: [input]).cartridge(dot_game(:red), console: :gba)
+      ask(VBlank::Testing::CartridgeCache.new(folder, inputs: [input]), dot_game(:red))
       File.write(input, "second")
 
-      refute VBlank::Testing::CartridgeCache.new(folder, inputs: [input]).cached?(dot_game(:red), console: :gba)
+      assert_equal :miss, ask(VBlank::Testing::CartridgeCache.new(folder, inputs: [input]), dot_game(:red))
     end
   end
 
   def test_a_fresh_run_builds_every_cartridge
     Dir.mktmpdir do |folder|
-      VBlank::Testing::CartridgeCache.new(folder).cartridge(dot_game(:red), console: :gba)
+      ask(VBlank::Testing::CartridgeCache.new(folder), dot_game(:red))
 
-      refute VBlank::Testing::CartridgeCache.new(folder, env: { "NO_BUILD_CACHE" => "1" }).cached?(dot_game(:red), console: :gba)
+      assert_equal :miss, ask(VBlank::Testing::CartridgeCache.new(folder, env: { "NO_BUILD_CACHE" => "1" }), dot_game(:red))
     end
   end
 
@@ -104,11 +111,11 @@ class TestCartridgeCache < Minitest::Test
     Dir.mktmpdir do |folder|
       source = File.join(folder, "rocket.rb")
       File.write(source, "first")
-      VBlank::Testing::CartridgeCache.new(folder, sources: [source]).cartridge(dot_game(:red), console: :gba)
+      ask(VBlank::Testing::CartridgeCache.new(folder, sources: [source]), dot_game(:red))
 
-      assert VBlank::Testing::CartridgeCache.new(folder, sources: [source]).cached?(dot_game(:blue), console: :gba)
+      assert_equal :hit, ask(VBlank::Testing::CartridgeCache.new(folder, sources: [source]), dot_game(:blue))
       File.write(source, "second")
-      refute VBlank::Testing::CartridgeCache.new(folder, sources: [source]).cached?(dot_game(:red), console: :gba)
+      assert_equal :miss, ask(VBlank::Testing::CartridgeCache.new(folder, sources: [source]), dot_game(:red))
     end
   end
 
@@ -119,11 +126,11 @@ class TestCartridgeCache < Minitest::Test
       source = File.join(folder, "lib", "rocket", "ship.rb")
       File.write(source, "first")
       tree = File.join(folder, "lib", "**", "*")
-      VBlank::Testing::CartridgeCache.new(folder, sources: [tree]).cartridge(dot_game(:red), console: :gba)
+      ask(VBlank::Testing::CartridgeCache.new(folder, sources: [tree]), dot_game(:red))
 
-      assert VBlank::Testing::CartridgeCache.new(folder, sources: [tree]).cached?(dot_game(:blue), console: :gba)
+      assert_equal :hit, ask(VBlank::Testing::CartridgeCache.new(folder, sources: [tree]), dot_game(:blue))
       File.write(source, "second")
-      refute VBlank::Testing::CartridgeCache.new(folder, sources: [tree]).cached?(dot_game(:red), console: :gba)
+      assert_equal :miss, ask(VBlank::Testing::CartridgeCache.new(folder, sources: [tree]), dot_game(:red))
     end
   end
 

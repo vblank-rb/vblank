@@ -146,12 +146,6 @@ module VBlank
         path
       end
 
-      # Whether a cartridge for these is kept on disk, so asking for it builds nothing. It takes no
-      # label: whether one is kept depends on the key alone.
-      def cached?(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
-        !@fresh && File.file?(entry_path(key_for(game, console, variant, settings, profile).first))
-      end
-
       private
 
       # The key and its parts, worked out once in each Ractor for each game and build: by the program,
