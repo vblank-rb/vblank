@@ -258,7 +258,7 @@ module VBlank
             colors = @tile_memo.colors_drawn(image, 64)
             palette = held || palette_for(palettes, colors, backgrounds_in_message(scene))
             bytes = @tile_memo.tiles(image, 64, held ? :held : TileMemo.places_of(colors, palettes[palette])) do
-              tile_bytes(Array.new(64) do |at|
+              TileBytes.of(Array.new(64) do |at|
                 if image.tile_see_through_at?(at) then 0
                 elsif held then place_in_list(image, at)
                 else palettes[palette].index(image.color_at(at)) + 1
@@ -288,7 +288,7 @@ module VBlank
             palette = held || palette_for(palettes, colors, backgrounds_in_message(scene))
             quarters = @tile_memo.tiles(image, 256, held ? :held : TileMemo.places_of(colors, palettes[palette])) do
               (0...4).map do |quarter|
-                tile_bytes(Array.new(64) do |at|
+                TileBytes.of(Array.new(64) do |at|
                   pixel = ((((quarter / 2) * 8) + (at / 8)) * 16) + ((quarter % 2) * 8) + (at % 8)
                   if image.tile_see_through_at?(pixel) then 0
                   elsif held then place_in_list(image, pixel)
@@ -326,7 +326,7 @@ module VBlank
             places = Array.new(64) do |at|
               image.tile_see_through_at?(at) ? 0 : @bar_palettes[palette].index(image.color_at(at)) + 1
             end
-            [bar_tile_number(tile_bytes(places).byteslice(0, BAR_TILE_BYTES)), palette]
+            [bar_tile_number(TileBytes.of(places).byteslice(0, BAR_TILE_BYTES)), palette]
           end
 
           # THE BACKGROUNDS' LISTS THE BAR'S COLOURS ARE IN, kept from the other backgrounds: one for
@@ -507,7 +507,7 @@ module VBlank
               squares = cut.to_h { |across, down, places| [[across, down], places] }
               pieces = squares_here? ? square_pieces(squares, image, palette) : []
               pieces += squares.map do |(across, down), places|
-                Piece.new(dx: across, dy: down, tile: sprite_tile_number(tile_bytes(places)), palette: palette)
+                Piece.new(dx: across, dy: down, tile: sprite_tile_number(TileBytes.of(places)), palette: palette)
               end
               SpritePicture.new(name: name, number: number, width: image.width, height: image.height, pieces: pieces)
             end
@@ -556,7 +556,7 @@ module VBlank
           # left one low), as the bytes of the console's own form.
           def in_console_form(values)
             values.each_slice(TILE_BYTES).flat_map do |tile|
-              tile_bytes(tile.flat_map { |byte| [byte & 0x0F, (byte >> 4) & 0x0F] }).bytes
+              TileBytes.of(tile.flat_map { |byte| [byte & 0x0F, (byte >> 4) & 0x0F] }).bytes
             end
           end
 
@@ -608,23 +608,6 @@ module VBlank
           # the scene the game opens on, already beside them in a game that keeps tiles by scene.
           def sprite_tile_data(scene = nil) = ((@scene_sprite_stores.dig(scene, 0) || @sprite_tiles).map { |bytes| bytes || blank_tile }.join)
           def background_tile_data(scene = nil) = ((@scene_background_stores.dig(scene, 0) || @background_tiles).map { |bytes| bytes || blank_tile }.join)
-
-          # Asked by the test that reads a tile back through the format reader.
-          # The 32 bytes of a tile whose 64 pixels are +places+ (0 to 15), row by row: each row's
-          # bits 0 and 1 as two bytes, all eight rows, then bits 2 and 3 the same way. The leftmost
-          # pixel is the top bit of each byte.
-          def tile_bytes(places)
-            low = +"".b
-            high = +"".b
-            8.times do |row|
-              planes = Array.new(4) do |plane|
-                (0...8).sum { |column| ((places[(row * 8) + column] >> plane) & 1) << (7 - column) }
-              end
-              low << planes[0].chr << planes[1].chr
-              high << planes[2].chr << planes[3].chr
-            end
-            low + high
-          end
 
           private
 
@@ -787,7 +770,7 @@ module VBlank
               parts = [[across, down], [across + 8, down], [across, down + 8], [across + 8, down + 8]]
               next if parts.count { |part| cut.key?(part) } < SQUARE_LEAST_PIECES
 
-              tile = sprite_square_number(parts.map { |part| cut[part] ? tile_bytes(cut[part]) : blank_tile })
+              tile = sprite_square_number(parts.map { |part| cut[part] ? TileBytes.of(cut[part]) : blank_tile })
               next unless tile
 
               parts.each { |part| cut.delete(part) }
@@ -823,10 +806,10 @@ module VBlank
             ours = held ? own : own.bytes.map { |place| place.zero? ? 0 : palettes[palette].index(image.colors.fetch(place) & 0x7FFF) + 1 }
                                    .pack("C*")
             if Assets::Image.side(own) == Assets::PIECE_SIZE
-              return Piece.new(dx: dx, dy: dy, tile: shared_sprite_tile_number(tile_bytes(ours.bytes)), palette: palette)
+              return Piece.new(dx: dx, dy: dy, tile: shared_sprite_tile_number(TileBytes.of(ours.bytes)), palette: palette)
             end
 
-            tile = sprite_square_number(Assets::Image.quarters(ours).map { |_, _, quarter| tile_bytes(quarter.bytes) })
+            tile = sprite_square_number(Assets::Image.quarters(ours).map { |_, _, quarter| TileBytes.of(quarter.bytes) })
             raise sprite_tiles_error, "The sprites use more squares of 16×16 than a Super Nintendo has room for." unless tile
 
             Piece.new(dx: dx, dy: dy, tile: tile, palette: palette, big: true)

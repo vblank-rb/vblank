@@ -132,7 +132,7 @@ module VBlank
             places = Array.new(64) do |at|
               image.tile_see_through_at?(at) ? 0 : @palettes[palette].index(word_of(image.color_at(at))) + 1
             end
-            [tile_number(tile_bytes(places)), palette]
+            [tile_number(TileBytes.of(places)), palette]
           end
 
           # The map +cells+ ([tile, palette] or nil, by row and column) made into a grid of +columns+ ×
@@ -172,7 +172,7 @@ module VBlank
                 end
               end
               pieces = cover.map do |block|
-                Piece.new(dx: block.across, dy: block.down, tile: tile_run_number(block.squares.map { |places| tile_bytes(places) }),
+                Piece.new(dx: block.across, dy: block.down, tile: tile_run_number(block.squares.map { |places| TileBytes.of(places) }),
                           palette: line, columns: block.columns, rows: block.rows)
               end
               SpritePicture.new(name: name, number: @sprite_pictures.length, width: image.width, height: image.height,
@@ -302,13 +302,6 @@ module VBlank
             own.drop(@tiles.length).join
           end
 
-          # Asked by the test that reads a tile back through the format reader.
-          # The 32 bytes of a tile whose 64 pixels are +places+ (0 to 15), row by row: each row's four
-          # bytes, the left pixel of a byte in its top four bits.
-          def tile_bytes(places)
-            places.each_slice(2).map { |left, right| (left << 4) | right }.pack("C*")
-          end
-
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
@@ -318,7 +311,7 @@ module VBlank
             places = Array.new(64) do |at|
               image.tile_see_through_at?(at) ? 0 : image.place_at(at) || first_place(image, image.color_at(at))
             end
-            [tile_number(tile_bytes(places)), palette]
+            [tile_number(TileBytes.of(places)), palette]
           end
 
           # The first place of the picture's own list that holds +color+, counting from place 1: place 0 is

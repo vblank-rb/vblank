@@ -800,7 +800,7 @@ module VBlank
 
               placed.index(image.place_at(i)) + (see_through ? 1 : 0)
             end
-            [tile_number_in(drawing.room, encode(places)), drawn_palette_number(colors, drawing, keeps_backdrop: see_through)]
+            [tile_number_in(drawing.room, TileBytes.of(places)), drawn_palette_number(colors, drawing, keeps_backdrop: see_through)]
           end
 
           # A TILE FROM A DATA PACK SLOT, drawn by place from a list of four colours or fewer, kept as the Color keeps one:
@@ -824,7 +824,7 @@ module VBlank
 
           def kept_tile(image, drawing)
             places = Array.new(64) { |i| image.tile_see_through_at?(i) ? 0 : image.place_at(i) }
-            [tile_number_in(drawing.room, encode(places)), drawn_palette_number(kept_colors(image) { |place| image.colors[place] }, drawing)]
+            [tile_number_in(drawing.room, TileBytes.of(places)), drawn_palette_number(kept_colors(image) { |place| image.colors[place] }, drawing)]
           end
 
           # A TILE DRAWN BY PLACE FROM A LIST OF FOUR, with no see-through pixel, the way a cartridge
@@ -856,7 +856,7 @@ module VBlank
           # cannot keep black first.
           def listed_tile(image, order, drawing)
             colors = padded(order.map { |place| image.colors[place] & 0x7FFF })
-            [tile_number_in(drawing.room, encode(Array.new(64) { |i| order.index(image.place_at(i)) })),
+            [tile_number_in(drawing.room, TileBytes.of(Array.new(64) { |i| order.index(image.place_at(i)) })),
              drawn_palette_number(colors, drawing, keeps_backdrop: !drawing.recolor_steps)]
           end
 
@@ -964,7 +964,7 @@ module VBlank
 
             colors = [@backdrop, *drawn]
             places = Array.new(64) { |i| image.tile_see_through_at?(i) ? 0 : drawn.index(image.color_at(i) & 0x7FFF) + 1 }
-            [tile_number_in(drawing.room, encode(places)), drawn_palette_number(padded(colors), drawing)]
+            [tile_number_in(drawing.room, TileBytes.of(places)), drawn_palette_number(padded(colors), drawing)]
           end
 
           # The colours a background tile draws, in the order its palette holds them after the
@@ -1094,19 +1094,6 @@ module VBlank
                  data_section("art big map #{i} row #{r}", "art_big_map_#{i}_#{r}", row, holds: BACKGROUND_MAPS)
                end
              end]
-          end
-
-          # Asked by the test that reads a tile back through the format reader.
-          # Places eight to a row as the Color keeps a tile: two bytes a row, the low bit of each
-          # place in the first and the high bit in the second, the leftmost pixel in bit 7. Sixty-four
-          # are one tile; a tall piece's 128 are its upper tile and then its lower.
-          def encode(places)
-            (0...(places.length / 8)).flat_map do |row|
-              line = places[row * 8, 8]
-              low = line.each_with_index.sum { |place, x| (place & 1) << (7 - x) }
-              high = line.each_with_index.sum { |place, x| ((place >> 1) & 1) << (7 - x) }
-              [low, high]
-            end
           end
 
           private
@@ -1460,10 +1447,10 @@ module VBlank
           # +places+ is a piece's, 8 wide and as tall as the console draws a piece (#initialize).
           def sprite_tile(places)
             turnings(places).each do |flips, version|
-              number = @sprite_tile_numbers[encode(version)]
+              number = @sprite_tile_numbers[TileBytes.of(version)]
               return [number, flips] if number
             end
-            bytes = encode(places)
+            bytes = TileBytes.of(places)
             @sprite_tile_numbers[bytes] = @sprite_tiles.length
             @sprite_tiles.concat(bytes.each_slice(16).to_a)
             refuse_sprite_tiles_past_most!
@@ -1497,14 +1484,14 @@ module VBlank
             own = @scene_tiles[scene]
             numbers = @scene_tile_numbers[scene]
             turnings(places).each do |flips, version|
-              bytes = encode(version)
+              bytes = TileBytes.of(version)
               kept = @sprite_tile_numbers[bytes]
               return [kept, flips] if kept
 
               index = numbers[bytes]
               return [SceneTile.new(scene: scene, index: index), flips] if index
             end
-            bytes = encode(places)
+            bytes = TileBytes.of(places)
             numbers[bytes] = own.length
             own.concat(bytes.each_slice(16).to_a)
             [SceneTile.new(scene: scene, index: numbers[bytes]), 0]
@@ -1517,12 +1504,12 @@ module VBlank
             own = (@grouped_tiles[name] ||= [])
             halves = @piece_height / 8
             turnings(places).each do |flips, version|
-              kept = encode(version).each_slice(16).to_a
+              kept = TileBytes.of(version).each_slice(16).to_a
               index = (0...own.length).step(halves).find { |i| own[i, halves] == kept }
               return [GroupedTile.new(picture: name, index: index), flips] if index
             end
             index = own.length
-            own.concat(encode(places).each_slice(16).to_a)
+            own.concat(TileBytes.of(places).each_slice(16).to_a)
             [GroupedTile.new(picture: name, index: index), 0]
           end
 

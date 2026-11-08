@@ -16,6 +16,7 @@ end
 require_relative "genesis/m68000"
 require_relative "genesis/linker"
 require_relative "genesis/memory"
+require_relative "genesis/tile_bytes"
 require_relative "genesis/art"
 require_relative "genesis/painted_art"
 require_relative "genesis/chip_writes"

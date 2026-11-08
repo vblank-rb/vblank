@@ -9,11 +9,10 @@ class TestSNESFormatReading < Minitest::Test
 
   private def formats = VBlank::Console.for(:snes).original_formats
 
-  # A tile of sixteen colours the lowering writes (Art#tile_bytes, which keeps no state) reads back
-  # as its places.
+  # A tile of sixteen colours the lowering writes (TileBytes) reads back as its places.
   def test_a_tile_the_lowering_writes_reads_back_as_its_places
     places = (0...64).map { |at| ((at * 7) + (at / 8)) % 16 }
-    bytes = SNES::Art.allocate.tile_bytes(places)
+    bytes = SNES::TileBytes.of(places)
 
     assert_equal [places], Reading.tiles(bytes, formats.tiles_of(16))
   end
