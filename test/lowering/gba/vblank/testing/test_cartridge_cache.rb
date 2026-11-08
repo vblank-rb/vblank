@@ -41,6 +41,7 @@ class TestCartridgeCache < Minitest::Test
   HandBuiltGame = Struct.new(:program_made, :title, :code, :maker, :options) do
     def program(**) = program_made
     def variant_for(_console) = nil
+    def build_rom(**) = ROM.assemble(GBA.new.lower(program_made), title: title)
   end
 
   # The fill steps are made by IR::Build, mixed into a module of its own so its names stay out of this
@@ -59,10 +60,14 @@ class TestCartridgeCache < Minitest::Test
   def test_a_game_is_known_by_what_its_program_says_not_by_which_pieces_it_shares
     Dir.mktmpdir do |folder|
       cache = VBlank::Testing::CartridgeCache.new(folder)
+      cache.cartridge(two_fills_game(shared: true), console: :gba, variant: nil)
+      # A cache made afresh, so the second ask reaches the disk rather than this Ractor's own copy.
+      later = VBlank::Testing::CartridgeCache.new(folder)
+      later.cartridge(two_fills_game(shared: false), console: :gba, variant: nil)
+      said = StringIO.new
+      later.report(said)
 
-      keys = [true, false].map { |shared| cache.key_of(two_fills_game(shared: shared), console: :gba, variant: nil) }
-
-      assert keys.uniq.one?, "one program gave two keys" # (a plain assert: the diff of two digests says nothing)
+      assert_match(/1 hits, 1 misses/, said.string, "the second program built again")
     end
   end
 
