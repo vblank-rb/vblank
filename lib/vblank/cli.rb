@@ -400,6 +400,12 @@ module VBlank
                                  computer. Not tested on those systems.
         --strip                  Leave the debugging data out. The file is
                                  smaller, and a crash report says much less.
+        --bios                   Use the player's own BIOS file for the
+                                 console. The program plays the console's
+                                 start-up before the game. The build is slower,
+                                 because it makes the cartridge too. If the
+                                 player has no BIOS file, the game starts at
+                                 once. Not every console can use one yet.
         Needs zig 0.17. Run the program with --help to see its keys and options.
 
       --format web, a web page:
@@ -439,6 +445,7 @@ module VBlank
     option :set, type: :array, banner: "NAME=VALUE", default: []
     option :target, banner: "COMPUTER"
     option :strip, type: :boolean, default: false
+    option :bios, type: :boolean, default: false
     option :template, banner: "FILE"
     option :js, default: "page", enum: %w[page module script]
     option :global, banner: "NAME"
@@ -1818,6 +1825,7 @@ module VBlank
       say "Building #{File.basename(path)} for #{target ? options[:target] : 'this computer'} - Please wait."
       VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
                                                                  strip: options[:strip], pack_at_start: options[:pack_at_start],
+                                                                 bios: options[:bios],
                                                                  progress: VBlank::Messages::Progress.to($stderr))
       say "Built #{path}"
     rescue VBlank::BuildError, VBlank::IR::Backends::Native::Zig::Error => e

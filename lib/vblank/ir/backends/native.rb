@@ -53,30 +53,25 @@ module VBlank
       # - It is checked by running, against Backends::Reference, and never by comparing the C
       #   it wrote against C somebody wrote down.
       class Native
-        # A game's program, checked exactly the way a cartridge build checks it — by making the
-        # cartridge, every guardrail on, and taking the program that build checked. So nothing
-        # the console would refuse can be built for a desktop instead: a desktop has room for
-        # what the console does not, and a game that only works there is not this library's.
+        # A game's program, checked the way a cartridge build checks it, every guardrail on, with no
+        # cartridge made (Cartridge::Game#checked_program). So nothing the console's answers refuse
+        # can be built for a desktop instead. What only the console's own code generator refuses (a
+        # cartridge too full, a part it does not make yet) is found by building the cartridge, which
+        # costs a big game most of a minute, so a computer's build leaves it to the cartridge build.
         # Guardrail warnings are printed to +err+, as the cartridge build prints them.
         #
-        # The cartridge is for +console+, one the game names, and the first it names when that is
-        # left out. The program is then built as that console: the runtime's screen is its size
-        # (ConsoleNumbers), and the program does what the game does on it.
-        #
-        # With +pack_at_start+ the game's data pack is left out (Cartridge::Options), and no cartridge
-        # is made, since a cartridge holds its data: the program is checked as a build checks it,
-        # every guardrail on, without one (Cartridge::Game#checked_program).
+        # The program is for +console+, one the game names, and the first it names when that is left
+        # out. It is built as that console: the runtime's screen is its size (ConsoleNumbers), and the
+        # program does what the game does on it. +pack_at_start+ leaves the game's data pack out
+        # (Cartridge::Options).
         def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent,
                             pack_at_start: false)
-          if pack_at_start
-            return game.checked_program(err: err, progress: progress, settings: settings, console: console || game.consoles.first,
-                                        pack_at_start: true)
-          end
-
-          checked_cartridge(game, console: console, settings: settings, err: err, progress: progress).source_program
+          game.checked_program(err: err, progress: progress, settings: settings, console: console || game.consoles.first,
+                               pack_at_start: pack_at_start)
         end
 
-        # The cartridge #checked_program takes its program from.
+        # The cartridge a desktop build that plays the console's start-up reads the start of
+        # (CartridgeStart), and whose checked program it is built from.
         def checked_cartridge(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent)
           game.build_rom(profile: false, out: nil, err: err, settings: settings, progress: progress,
                          console: console || game.consoles.first, for_computer: true)
@@ -132,18 +127,25 @@ module VBlank
         # names another computer to build for (see TARGETS), and left out it is this one. +console+
         # is the one it plays the game as (#checked_program). +strip+ leaves the program's debugging
         # data out: a far smaller file, and far poorer crash reports. +progress+ (a Messages::Progress)
-        # is told each step as it begins: the cartridge build's, then writing the C and compiling it.
-        def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, pack_at_start: false, err: $stderr,
-                          progress: Messages::Progress.silent)
+        # is told each step as it begins: the build's, then writing the C and compiling it.
+        #
+        # +bios+ makes a program that uses the player's own BIOS for the console where it finds one:
+        # today, to play the console's start-up before the game (runtime/rg_bios_boot.h). The BIOS
+        # reads the start of the game's cartridge, so the cartridge is built too (CartridgeStart), which
+        # is most of a big game's build; left out, the program never looks for a BIOS, starts the game
+        # at once, and no cartridge is made.
+        def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, pack_at_start: false, bios: false,
+                          err: $stderr, progress: Messages::Progress.silent)
           if File.directory?(path)
             raise LoweringError, "#{path} is a folder, so the program cannot be written there. Name a file instead."
           end
           refuse_unknown_target!(target)
+          console ||= game.consoles.first
+          refuse_unusable_bios!(console, pack_at_start) if bios
 
-          cartridge = (checked_cartridge(game, console: console, settings: settings, err: err, progress: progress) unless pack_at_start)
+          cartridge = (checked_cartridge(game, console: console, settings: settings, err: err, progress: progress) if bios)
           program = cartridge&.source_program ||
-                    checked_program(game, console: console, settings: settings, err: err, progress: progress, pack_at_start: true)
-          refuse_start_up_without_cartridge!(program) unless cartridge
+                    checked_program(game, console: console, settings: settings, err: err, progress: progress, pack_at_start: pack_at_start)
           compile_desktop(program, path, title: game.title, menu: game.menu?, cartridge: cartridge, target: target, strip: strip,
                                          progress: progress)
           FileUtils.chmod(0o755, path)
@@ -184,15 +186,17 @@ module VBlank
           progress.done
         end
 
-        # A console whose start-up the desktop build plays reads the start of the game's cartridge
-        # (CartridgeStart), and a build with its data pack left out makes no cartridge.
-        def refuse_start_up_without_cartridge!(program)
-          console = program.described_console
-          return unless console.plays_bios_start_up
+        # A BIOS is used only for a console the program can run one for, and it reads the start of the
+        # game's cartridge (CartridgeStart), which a build that leaves its data pack out does not make.
+        def refuse_unusable_bios!(console, pack_at_start)
+          described = Console.described(console)
+          unless described.plays_bios_start_up
+            raise LoweringError, "VBlank cannot use a #{described.title} BIOS yet. To build this program, leave out --bios."
+          end
+          return unless pack_at_start
 
-          raise LoweringError, "A #{console.title} program plays the console's start-up, which reads the game's cartridge. " \
-                               "A build that leaves its data pack out makes no cartridge, so it cannot make this program " \
-                               "yet. Build the program all-in-one, or as a web page or a Ruby file."
+          raise LoweringError, "The BIOS reads the game's cartridge, and a build that leaves its data pack out makes no " \
+                               "cartridge. To build this program, leave out --bios or --pack-at-start."
         end
 
         def refuse_unknown_target!(target)

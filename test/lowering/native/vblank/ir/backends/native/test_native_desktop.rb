@@ -286,8 +286,9 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # THE CONSOLE'S OWN START-UP plays before an Advance game where the player has the BIOS, and the
-  # game then plays its own frames as it would have. A scripted run plays it only when told
+  # THE CONSOLE'S OWN START-UP plays before an Advance game built to use the player's BIOS (bios:)
+  # where the player has it, and the game then plays its own frames as it would have. A scripted
+  # run plays it only when told
   # (--start-up), and says how many frames it played. Without a BIOS the game starts at once and
   # nothing is said; a file named as the BIOS that is not one is said, and the game plays anyway.
   def test_the_console_start_up_plays_first_with_the_players_bios
@@ -298,7 +299,7 @@ class TestNativeDesktop < Minitest::Test
     end
 
     Dir.mktmpdir do |dir|
-      exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)
+      exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), bios: true, err: nil)
       played = play_window(exe, dir, [], frames: 10, options: ["--start-up"], env: { "VBLANK_GBA_BIOS" => bios })
 
       assert_operator played.printed[/^start_up_frames (\d+)$/, 1].to_i, :>, 200, "about four and a half seconds of it"
@@ -307,9 +308,26 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A console the program cannot use a BIOS for yet, and a build with no cartridge for the BIOS to
+  # read, are refused before anything is built, saying what to leave out.
+  def test_a_bios_the_program_cannot_use_is_refused
+    Dir.mktmpdir do |dir|
+      color = VBlank.game("COLOR", consoles: %i[gbc]) { game_loop { wait_vblank } }
+      no_cartridge = assert_raises(VBlank::IR::Backends::Native::LoweringError) do
+        Native.new.build_desktop(game_that_counts, File.join(dir, "packless"), bios: true, pack_at_start: true, err: nil)
+      end
+      no_bios = assert_raises(VBlank::IR::Backends::Native::LoweringError) do
+        Native.new.build_desktop(color, File.join(dir, "color"), bios: true, err: nil)
+      end
+
+      assert_match(/leave out --bios or --pack-at-start/, no_cartridge.message)
+      assert_match(/cannot use a Game Boy Color BIOS yet/, no_bios.message)
+    end
+  end
+
   def test_without_a_bios_the_game_starts_at_once_and_nothing_is_said
     Dir.mktmpdir do |dir|
-      exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)
+      exe = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), bios: true, err: nil)
       none = play_window(exe, dir, [], frames: 10, options: ["--start-up"], env: { "VBLANK_GBA_BIOS" => nil })
       not_one = File.join(dir, "not_a_bios.bin")
       File.binwrite(not_one, "\0".b * 16_384)
