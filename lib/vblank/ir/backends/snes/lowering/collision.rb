@@ -9,7 +9,14 @@ module VBlank
           # Nintendo: a call into Runtime::Collide, and each picture a sprite can show made into a
           # mask of where it draws while the program is built. Mixed into Lowering.
           module Collision
-            VALUES = Ractor.make_shareable({ pixels_overlap: :value_of_pixels_overlap })
+            VALUE_KINDS = %i[pixels_overlap].freeze
+
+            def value_of_collision_kind(node)
+              case node.kind
+              when :pixels_overlap then value_of_pixels_overlap(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             def prepare_collision
               @masks = {} # a picture's name -> its number among the masks

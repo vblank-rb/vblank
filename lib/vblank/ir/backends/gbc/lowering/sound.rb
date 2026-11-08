@@ -10,16 +10,29 @@ module VBlank
           # where the game asks for it (Runtime::Sound, GBC::SoundRegisters); and the songs, which
           # the music player walks each frame (GBC::Music, Runtime::Music). Mixed into Lowering.
           module Sound
-            STATEMENTS = Ractor.make_shareable({
-                                                 enable_sound: :emit_enable_sound, beep: :emit_beep,
-                                                 noise: :emit_noise, wave: :emit_wave, stop_wave: :emit_stop_wave,
-                                                 play_song: :emit_play_song, stop_music: :emit_stop_music,
-                                                 hold_music: :emit_hold_music,
-                                                 play_from_list: :emit_play_from_list,
-                                                 play_sound_effect: :emit_play_sound_effect,
-                                                 play_sample: :emit_play_sample, stop_sample: :emit_stop_sample,
-                                                 rumble: :emit_rumble
-                                               })
+            STATEMENT_KINDS = %i[
+              enable_sound beep noise wave stop_wave play_song stop_music hold_music play_from_list
+              play_sound_effect play_sample stop_sample rumble
+            ].freeze
+
+            def emit_sound_statement(node)
+              case node.kind
+              when :enable_sound then emit_enable_sound(node)
+              when :beep then emit_beep(node)
+              when :noise then emit_noise(node)
+              when :wave then emit_wave(node)
+              when :stop_wave then emit_stop_wave(node)
+              when :play_song then emit_play_song(node)
+              when :stop_music then emit_stop_music(node)
+              when :hold_music then emit_hold_music(node)
+              when :play_from_list then emit_play_from_list(node)
+              when :play_sound_effect then emit_play_sound_effect(node)
+              when :play_sample then emit_play_sample(node)
+              when :stop_sample then emit_stop_sample(node)
+              when :rumble then emit_rumble(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # The game's songs, as the player reads them; and its recordings, as a bit a sample.
             attr_reader :music, :clips

@@ -10,9 +10,26 @@ module VBlank
           # battery-backed RAM holds the bytes the interpreter's save memory holds. Mixed into
           # Lowering.
           module Saving
-            STATEMENTS = Ractor.make_shareable({ save_init: :emit_save_init, save_store: :emit_save_store,
-                                                 save_write: :emit_save_write, save_erase: :emit_save_erase })
-            VALUES = Ractor.make_shareable({ save_read: :value_of_save_read, save_sum: :value_of_save_sum })
+            STATEMENT_KINDS = %i[save_init save_store save_write save_erase].freeze
+
+            def emit_saving_statement(node)
+              case node.kind
+              when :save_init then emit_save_init(node)
+              when :save_store then emit_save_store(node)
+              when :save_write then emit_save_write(node)
+              when :save_erase then emit_save_erase(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
+            VALUE_KINDS = %i[save_read save_sum].freeze
+
+            def value_of_saving_kind(node)
+              case node.kind
+              when :save_read then value_of_save_read(node)
+              when :save_sum then value_of_save_sum(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # How many bytes of save memory a read or a write moves, by the width it names: the
             # interpreter's own table, so the two cannot count a width differently.

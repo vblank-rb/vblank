@@ -15,16 +15,26 @@ module VBlank
           # copied onto its plane when it is put up. Each sprite is made of the console's 8×8 sprite
           # pieces, placed in the sprite table every pass the game places its sprites.
           module Picture
-            STATEMENTS = Ractor.make_shareable({
-                                                 background: :emit_background,
-                                                 scroll_background: :emit_scroll_background,
-                                                 set_tile: :emit_set_tile, show_map: :emit_show_map,
-                                                 present_objects: :emit_present_objects,
-                                                 color_list_holds: :emit_color_list_holds,
-                                                 background_colors: :emit_background_colors,
-                                                 fade: :emit_fade, tint: :emit_tint,
-                                                 hide_sprites: :emit_hide_sprites
-                                               })
+            STATEMENT_KINDS = %i[
+              background scroll_background set_tile show_map present_objects color_list_holds
+              background_colors fade tint hide_sprites
+            ].freeze
+
+            def emit_picture_statement(node)
+              case node.kind
+              when :background then emit_background(node)
+              when :scroll_background then emit_scroll_background(node)
+              when :set_tile then emit_set_tile(node)
+              when :show_map then emit_show_map(node)
+              when :present_objects then emit_present_objects(node)
+              when :color_list_holds then emit_color_list_holds(node)
+              when :background_colors then emit_background_colors(node)
+              when :fade then emit_fade(node)
+              when :tint then emit_tint(node)
+              when :hide_sprites then emit_hide_sprites(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # The Genesis::Art the game's pictures were made into.
             attr_reader :art

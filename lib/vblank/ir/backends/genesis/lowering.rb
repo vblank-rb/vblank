@@ -42,53 +42,111 @@ module VBlank
           include Sound
           include Division
 
-          STATEMENTS = Ractor.make_shareable({
-                                               program: :emit_children, set: :emit_set, add: :emit_add,
-                                               sub: :emit_sub, copy: :emit_copy, negate: :emit_negate,
-                                               abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
-                                               if: :emit_if, loop: :emit_loop, repeat: :emit_repeat,
-                                               every: :emit_beat, after: :emit_beat, call: :emit_call,
-                                               call_one_of: :emit_call_one_of, case: :emit_case,
-                                               halt: :emit_halt, wait_vblank: :emit_wait_vblank,
-                                               list_new: :emit_list_new, list_push: :emit_list_push,
-                                               list_drop: :emit_list_drop, list_set: :emit_list_set,
-                                               list_fill: :emit_list_fill, list_copy: :emit_list_copy,
-                                               list_sort: :emit_list_sort,
-                                               timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
-                                               # a timer's handler runs as its timer ticks, not where it is written
-                                               on_timer: :emit_nothing,
-                                               # no light can be made on a Genesis (its answers refuse one), and a
-                                               # game without one works nothing out again
-                                               show_light_now: :emit_nothing,
-                                               # a Genesis cartridge has no rumble motor, so nothing is felt
-                                               # (Console::Description#rumbles)
-                                               rumble: :emit_nothing,
-                                               # video memory is written only between frames here, so a
-                                               # held background's changes already show together
-                                               show_held_tiles: :emit_nothing,
-                                               # every picture is in video memory whichever group is up (the
-                                               # interpreter's own check is all that groups are for here)
-                                               show_picture_group: :emit_nothing,
-                                               # a tiled screen is the one the console is set up for at power-on
-                                               screen: :emit_nothing
-                                             }.merge(Paint::STATEMENTS).merge(Picture::STATEMENTS).merge(Sound::STATEMENTS)
-                                              .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))
+          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # #emit_statement and #value_of_kind, and each part's (Paint, Picture, Sound, Collision),
+          # which each part writes in a case of its own. A declaration writes nothing where it is.
+          # Read by test_genesis_kind_coverage.rb.
+          STATEMENT_KINDS = (%i[
+            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
+            case halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            timer_start timer_stop on_timer show_light_now rumble show_held_tiles show_picture_group screen
+          ] + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
+            Nodes.of_role(:declaration)).freeze
 
-          VALUES = Ractor.make_shareable({
-                                           int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
-                                           neg: :value_of_neg, bit_not: :value_of_bit_not,
-                                           absolute: :value_of_absolute, clamped: :value_of_clamped,
-                                           shift_right: :value_of_shift_right, held: :value_of_held,
-                                           pressed: :value_of_pressed, list_get: :value_of_list_get,
-                                           list_len: :value_of_list_len, table_get: :value_of_table_get,
-                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
-                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
-                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected,
-                                           local_player: :value_of_local_player
-                                         }.merge(Collision::VALUES))
+          def emit_statement(node)
+            case node.kind
+            when :program then emit_children(node)
+            when :set then emit_set(node)
+            when :add then emit_add(node)
+            when :sub then emit_sub(node)
+            when :copy then emit_copy(node)
+            when :negate then emit_negate(node)
+            when :abs then emit_abs(node)
+            when :negate_abs then emit_negate_abs(node)
+            when :clamp then emit_clamp(node)
+            when :if then emit_if(node)
+            when :loop then emit_loop(node)
+            when :repeat then emit_repeat(node)
+            when :every then emit_beat(node)
+            when :after then emit_beat(node)
+            when :call then emit_call(node)
+            when :call_one_of then emit_call_one_of(node)
+            when :case then emit_case(node)
+            when :halt then emit_halt(node)
+            when :wait_vblank then emit_wait_vblank(node)
+            when :list_new then emit_list_new(node)
+            when :list_push then emit_list_push(node)
+            when :list_drop then emit_list_drop(node)
+            when :list_set then emit_list_set(node)
+            when :list_fill then emit_list_fill(node)
+            when :list_copy then emit_list_copy(node)
+            when :list_sort then emit_list_sort(node)
+            when :timer_start then emit_timer_start(node)
+            when :timer_stop then emit_timer_stop(node)
+            # a timer's handler runs as its timer ticks, not where it is written
+            when :on_timer then emit_nothing(node)
+            # no light can be made on a Genesis (its answers refuse one), and a game without one
+            # works nothing out again
+            when :show_light_now then emit_nothing(node)
+            # a Genesis cartridge has no rumble motor, so nothing is felt (Console::Description#rumbles)
+            when :rumble then emit_nothing(node)
+            # video memory is written only between frames here, so a held background's changes
+            # already show together
+            when :show_held_tiles then emit_nothing(node)
+            # every picture is in video memory whichever group is up (the interpreter's own check
+            # is all that groups are for here)
+            when :show_picture_group then emit_nothing(node)
+            # a tiled screen is the one the console is set up for at power-on
+            when :screen then emit_nothing(node)
+            when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
+            when *Picture::STATEMENT_KINDS then emit_picture_statement(node)
+            when *Sound::STATEMENT_KINDS then emit_sound_statement(node)
+            else emit_declaration_or_refuse(node)
+            end
+          end
+
+          # A declaration is gathered before the program is written, so it writes nothing where it
+          # is; any other kind with no writer is a mistake in this file.
+          def emit_declaration_or_refuse(node)
+            return emit_nothing(node) if Nodes.of_role(:declaration).include?(node.kind)
+
+            raise LoweringError, "no writer here for #{node.kind.inspect}"
+          end
+
+          VALUE_KINDS = (%i[
+            int var_ref binop neg bit_not absolute clamped shift_right held pressed list_get list_len
+            table_get timer_ticks chance mul_fix div_fix data_byte players_connected local_player
+          ] + Collision::VALUE_KINDS).freeze
+
+          def value_of_kind(node)
+            case node.kind
+            when :int then value_of_int(node)
+            when :var_ref then value_of_var_ref(node)
+            when :binop then value_of_binop(node)
+            when :neg then value_of_neg(node)
+            when :bit_not then value_of_bit_not(node)
+            when :absolute then value_of_absolute(node)
+            when :clamped then value_of_clamped(node)
+            when :shift_right then value_of_shift_right(node)
+            when :held then value_of_held(node)
+            when :pressed then value_of_pressed(node)
+            when :list_get then value_of_list_get(node)
+            when :list_len then value_of_list_len(node)
+            when :table_get then value_of_table_get(node)
+            when :timer_ticks then value_of_timer_ticks(node)
+            when :chance then value_of_chance(node)
+            when :mul_fix then value_of_mul_fix(node)
+            when :div_fix then value_of_div_fix(node)
+            when :data_byte then value_of_data_byte(node)
+            when :players_connected then value_of_players_connected(node)
+            when :local_player then value_of_local_player(node)
+            when *Collision::VALUE_KINDS then value_of_collision_kind(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
-          # day the Genesis does it; test_genesis_kind_coverage.rb holds the list and the tables above
+          # day the Genesis does it; test_genesis_kind_coverage.rb holds the list and the kind lists above
           # to every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the status bar" => %i[place_bar],
@@ -109,7 +167,7 @@ module VBlank
           # The runtime's routines for a binop worked out by a call.
           CALLED_SUMS = Ractor.make_shareable({ :* => "rt_mul32", :/ => "rt_div32", :% => "rt_mod32",
                                                 :<< => "rt_shl32", :>> => "rt_shr32" })
-          IN_PLACE_SUMS = Ractor.make_shareable({ :+ => :add, :- => :sub, :& => :and, :| => :or, :^ => :eor })
+          IN_PLACE_OPS = %i[+ - & | ^].freeze
           COMPARISONS = %i[< <= > >= == !=].freeze
 
           # The condition under which a comparison does NOT hold, which is where a branch over what
@@ -241,6 +299,18 @@ module VBlank
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             [data_section, video_registers_section, *table_sections, *routines, *timers, *main,
              *paint_sections, *art_sections, *collision_sections]
+          end
+
+          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
+          # (LoweringState#on_copies).
+          def bytes_of(list)
+            LOWERING_STATE.on_copies(self) do
+              @asm = M68000.new("measuring", holds: ROUTINES)
+              @routine = "measuring"
+              @labels = 0
+              list.each { |node| statement(node) }
+              @asm.here
+            end
           end
 
           private
@@ -424,18 +494,6 @@ module VBlank
           # (RoutineCuts#children_of).
           def children_of(node) = @cuts.children_of(node)
 
-          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
-          # (LoweringState#on_copies).
-          def bytes_of(list)
-            LOWERING_STATE.on_copies(self) do
-              @asm = M68000.new("measuring", holds: ROUTINES)
-              @routine = "measuring"
-              @labels = 0
-              list.each { |node| statement(node) }
-              @asm.here
-            end
-          end
-
           # RTS, which ends every routine section: two bytes.
           RETURN_BYTES = 2
 
@@ -456,7 +514,7 @@ module VBlank
           def statement(node)
             return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
 
-            send(STATEMENTS.fetch(node.kind), node)
+            emit_statement(node)
           end
 
           def emit_nothing(_node) = nil
@@ -502,7 +560,19 @@ module VBlank
             end
 
             @asm.move(:l, var(other), @asm.d(0))
-            @asm.public_send(IN_PLACE_SUMS.fetch(op), :l, @asm.d(0), var(name))
+            emit_long_sum(op, @asm.d(0), var(name))
+          end
+
+          # +destination+ +operator+= +source+, 32 bits, for one of IN_PLACE_OPS.
+          def emit_long_sum(operator, source, destination)
+            case operator
+            when :+ then @asm.add(:l, source, destination)
+            when :- then @asm.sub(:l, source, destination)
+            when :& then @asm.and(:l, source, destination)
+            when :| then @asm.or(:l, source, destination)
+            when :^ then @asm.eor(:l, source, destination)
+            else raise LoweringError, "#{operator.inspect} is not a sum written in place"
+            end
           end
 
           def emit_sum_of_number(name, op, number)
@@ -1253,7 +1323,7 @@ module VBlank
 
             case operand
             when Symbol then load_variable(operand)
-            when Node then send(VALUES.fetch(operand.kind), operand)
+            when Node then value_of_kind(operand)
             when LabelAddress then @asm.move(:l, @asm.imm(operand.label), @asm.d(0))
             else raise LoweringError, "cannot make #{operand.inspect} a number"
             end
@@ -1299,13 +1369,13 @@ module VBlank
 
             return runtime_call(CALLED_SUMS.fetch(node.op), [node.lhs, node.rhs]) if CALLED_SUMS.key?(node.op)
 
-            op = IN_PLACE_SUMS.fetch(node.op)
             with_right_operand(node.lhs, node.rhs) do |right|
-              if op == :eor && right.mode != :dn && right.mode != :imm
+              # EOR takes only a register or a number as its source.
+              if node.op == :^ && right.mode != :dn && right.mode != :imm
                 @asm.move(:l, right, @asm.d(1))
                 right = @asm.d(1)
               end
-              @asm.public_send(op, :l, right, @asm.d(0))
+              emit_long_sum(node.op, right, @asm.d(0))
             end
           end
 
@@ -1325,7 +1395,7 @@ module VBlank
             @asm.move(:l, @asm.post(M68000::SP), @asm.d(1))
             @asm.tst(:l, @asm.d(1))
             @asm.scc(:ne, @asm.d(1))
-            @asm.public_send(node.op == :and ? :and : :or, :l, @asm.d(1), @asm.d(0))
+            node.op == :and ? @asm.and(:l, @asm.d(1), @asm.d(0)) : @asm.or(:l, @asm.d(1), @asm.d(0))
             @asm.and(:l, @asm.imm(1), @asm.d(0))
           end
 
@@ -1477,10 +1547,20 @@ module VBlank
           # register beyond.
           def emit_shift_of_d0(how, count)
             if count.between?(1, 8)
-              @asm.public_send(how, :l, count, @asm.d(0))
+              emit_long_shift(how, count)
             elsif count > 8
               @asm.moveq(count, @asm.d(1))
-              @asm.public_send(how, :l, @asm.d(1), @asm.d(0))
+              emit_long_shift(how, @asm.d(1))
+            end
+          end
+
+          # D0 shifted by +by+ (a count of 1 to 8, or a register): left (:lsl), or right keeping its
+          # sign (:asr).
+          def emit_long_shift(how, by)
+            case how
+            when :lsl then @asm.lsl(:l, by, @asm.d(0))
+            when :asr then @asm.asr(:l, by, @asm.d(0))
+            else raise LoweringError, "#{how.inspect} is not a shift written here"
             end
           end
 

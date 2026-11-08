@@ -14,26 +14,37 @@ module VBlank
           # any picture is. A digit is one of ten such pictures, picked by the number; text in a
           # colour picked as the game runs is one of two.
           module Paint
-            STATEMENTS = Ractor.make_shareable({
-                                                 clear_screen: :emit_clear_screen, fill_rect: :emit_fill_rect,
-                                                 dma_fill_rect: :emit_fill_rect, draw_rect_at: :emit_fill_rect,
-                                                 pixel: :emit_pixel, inside: :emit_inside, blit: :emit_blit,
-                                                 blit_pose: :emit_blit_pose, draw_text: :emit_draw_text,
-                                                 draw_digit: :emit_draw_digit, save_region: :emit_save_region,
-                                                 restore_region: :emit_restore_region, camera: :emit_camera
-                                               })
+            STATEMENT_KINDS = %i[
+              clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
+              draw_digit save_region restore_region camera
+            ].freeze
 
-            # The kinds that paint, which make a screen painted when the game names none. The camera
-            # only moves the view over what was painted.
-            PAINTING = STATEMENTS.keys.freeze
+            def emit_paint_statement(node)
+              case node.kind
+              when :clear_screen then emit_clear_screen(node)
+              when :fill_rect then emit_fill_rect(node)
+              when :dma_fill_rect then emit_fill_rect(node)
+              when :draw_rect_at then emit_fill_rect(node)
+              when :pixel then emit_pixel(node)
+              when :inside then emit_inside(node)
+              when :blit then emit_blit(node)
+              when :blit_pose then emit_blit_pose(node)
+              when :draw_text then emit_draw_text(node)
+              when :draw_digit then emit_draw_digit(node)
+              when :save_region then emit_save_region(node)
+              when :restore_region then emit_restore_region(node)
+              when :camera then emit_camera(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # Whether +program+'s screen is painted: it names `screen :bitmap`, or it names no screen and
-            # paints.
+            # paints (any of STATEMENT_KINDS).
             def self.painted?(program)
               modes = program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq
               return modes.include?(:bitmap) unless modes.empty?
 
-              program.walk.any? { |node| PAINTING.include?(node.kind) }
+              program.walk.any? { |node| STATEMENT_KINDS.include?(node.kind) }
             end
 
             # The Genesis::PaintedArt the game paints with.
@@ -119,7 +130,7 @@ module VBlank
 
             # Reference#exec_fill_rect, #exec_dma_fill_rect and #exec_draw_rect_at: the same rectangle.
             def emit_fill_rect(node)
-              runtime_call("rt_paint_fill", [*%i[x y w h].map { |edge| value_node(node.public_send(edge)) },
+              runtime_call("rt_paint_fill", [*[node.x, node.y, node.w, node.h].map { |edge| value_node(edge) },
                                              Build.int(place_of_color(node.color))])
             end
 
@@ -135,7 +146,7 @@ module VBlank
             def emit_inside(node)
               @asm.move(:l, runtime_at(Runtime::Paint::AREA), @asm.pre(M68000::SP))
               @asm.move(:l, runtime_at(Runtime::Paint::AREA, 4), @asm.pre(M68000::SP))
-              runtime_call("rt_paint_area", %i[x y w h].map { |edge| value_node(node.public_send(edge)) })
+              runtime_call("rt_paint_area", [node.x, node.y, node.w, node.h].map { |edge| value_node(edge) })
               emit_children(node)
               @asm.move(:l, @asm.post(M68000::SP), runtime_at(Runtime::Paint::AREA, 4))
               @asm.move(:l, @asm.post(M68000::SP), runtime_at(Runtime::Paint::AREA))

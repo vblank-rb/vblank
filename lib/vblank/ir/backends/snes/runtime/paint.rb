@@ -219,7 +219,8 @@ module VBlank
             # +turns+ keeps room for a second picture to swap with (PaintTurns).
             def reserve(memory, chip: false, text_layer: false, turns: false)
               memory.reserve_last_bank("rt paint copy", COPY_BYTES) unless chip
-              far = chip ? memory.method(:reserve_far) : memory.method(:reserve_last_bank)
+              # Far from the chip's own memory when the chip paints, else in the last bank.
+              far = ->(name, bytes) { chip ? memory.reserve_far(name, bytes) : memory.reserve_last_bank(name, bytes) }
               chip ? memory.name_place(GENERATIONS, ChipPaint::GENERATIONS) : far.call(GENERATIONS, TILES)
               far.call(MAP_COPY, MAP_BYTES)
               far.call(CLEAR_TILE_COPY, TILE_BYTES)

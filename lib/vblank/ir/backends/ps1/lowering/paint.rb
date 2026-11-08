@@ -14,13 +14,27 @@ module VBlank
           # is. A digit is one of ten such pictures, picked by the number; text in a colour picked as the
           # game runs is one of two.
           module Paint
-            STATEMENTS = Ractor.make_shareable({
-                                                 screen: :emit_screen, clear_screen: :emit_clear_screen,
-                                                 fill_rect: :emit_fill_rect, dma_fill_rect: :emit_fill_rect,
-                                                 draw_rect_at: :emit_fill_rect, pixel: :emit_pixel, inside: :emit_inside,
-                                                 blit: :emit_blit, blit_pose: :emit_blit_pose,
-                                                 draw_text: :emit_draw_text, draw_digit: :emit_draw_digit
-                                               })
+            STATEMENT_KINDS = %i[
+              screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
+              draw_digit
+            ].freeze
+
+            def emit_paint_statement(node)
+              case node.kind
+              when :screen then emit_screen(node)
+              when :clear_screen then emit_clear_screen(node)
+              when :fill_rect then emit_fill_rect(node)
+              when :dma_fill_rect then emit_fill_rect(node)
+              when :draw_rect_at then emit_fill_rect(node)
+              when :pixel then emit_pixel(node)
+              when :inside then emit_inside(node)
+              when :blit then emit_blit(node)
+              when :blit_pose then emit_blit_pose(node)
+              when :draw_text then emit_draw_text(node)
+              when :draw_digit then emit_draw_digit(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # The PS1::TextureMemory every texture the game draws is kept in.
             def texture_memory = (@texture_memory ||= TextureMemory.new)
@@ -93,7 +107,7 @@ module VBlank
 
             # Reference#exec_fill_rect, #exec_dma_fill_rect and #exec_draw_rect_at: the same rectangle.
             def emit_fill_rect(node)
-              runtime_call("rt_paint_fill", [*%i[x y w h].map { |edge| build_value_node(node.public_send(edge)) },
+              runtime_call("rt_paint_fill", [*[node.x, node.y, node.w, node.h].map { |edge| build_value_node(edge) },
                                              rectangle_command(node.color)])
             end
 
@@ -112,7 +126,7 @@ module VBlank
                 emit_load_word(:t0, area + (i * 4))
                 emit_push(:t0)
               end
-              runtime_call("rt_paint_area", %i[x y w h].map { |edge| build_value_node(node.public_send(edge)) })
+              runtime_call("rt_paint_area", [node.x, node.y, node.w, node.h].map { |edge| build_value_node(edge) })
               emit_children(node)
               3.downto(0) do |i|
                 emit_pop(:t0)

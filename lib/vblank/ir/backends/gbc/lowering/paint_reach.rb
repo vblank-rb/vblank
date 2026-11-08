@@ -17,17 +17,31 @@ module VBlank
           # place it saved it from, before the scene paints, so it puts back colours that square
           # held already and needs nothing counted of its own.
           module PaintReach
-            # Each kind that paints, and the method saying where it can and in what colours.
-            REACH = Ractor.make_shareable({
-                                            clear_screen: :clear_reach, fill_rect: :rect_reach,
-                                            dma_fill_rect: :rect_reach, draw_rect_at: :rect_reach,
-                                            pixel: :pixel_reach, draw_text: :text_reach,
-                                            draw_digit: :digit_reach, blit: :blit_reach,
-                                            blit_pose: :pose_reach, draw_column_at: :column_reach,
-                                            background: :background_reach
-                                          })
+            # Each kind that paints...
+            PAINTING_KINDS = %i[
+              clear_screen fill_rect dma_fill_rect draw_rect_at pixel draw_text draw_digit blit blit_pose
+              draw_column_at background
+            ].freeze
 
             private
+
+            # ...and where it can, and in what colours.
+            def reach_of(node)
+              case node.kind
+              when :clear_screen then clear_reach(node)
+              when :fill_rect then rect_reach(node)
+              when :dma_fill_rect then rect_reach(node)
+              when :draw_rect_at then rect_reach(node)
+              when :pixel then pixel_reach(node)
+              when :draw_text then text_reach(node)
+              when :draw_digit then digit_reach(node)
+              when :blit then blit_reach(node)
+              when :blit_pose then pose_reach(node)
+              when :draw_column_at then column_reach(node)
+              when :background then background_reach(node)
+              else raise LoweringError, "no reach for #{node.kind.inspect}"
+              end
+            end
 
             # The colour list each square of a painted screen names (GBC::SquareColors), from what
             # every drawing of the program can paint and where; nil for a program that paints nothing.
@@ -53,7 +67,9 @@ module VBlank
                                keeping: scenes_keeping_picture, most_palettes: Art::PALETTES)
             end
 
-            def paints?(node) = REACH.key?(node.kind) && (node.kind != :background || painted_screen_for?(node))
+            def paints?(node)
+              PAINTING_KINDS.include?(node.kind) && (node.kind != :background || painted_screen_for?(node))
+            end
 
             # The statements whose painting each scene's squares need (nil for outside every scene):
             # what runs outside every scene, the scene's own, and those of every scene it runs inside.
@@ -101,7 +117,7 @@ module VBlank
 
             # What +node+ paints, as drawings, held to the box of +area+ when it is inside one.
             def drawings_of(node, area)
-              send(REACH.fetch(node.kind), node).map do |colors, box|
+              reach_of(node).map do |colors, box|
                 SquareColors::Drawing.new(colors: colors.map { |color| Graphics::Color.resolve(color) },
                                           box: area ? box.held_to(area) : box, source: node.source)
               end

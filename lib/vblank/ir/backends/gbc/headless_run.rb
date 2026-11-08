@@ -209,7 +209,7 @@ module VBlank
           end
 
           # The sprites the game placed in its last pass, back to front (GBC::Places#drawn_sprite_rows).
-          def read_sprites = @places.drawn_sprite_rows(@drawn_sprites, @core.method(:bus_read8))
+          def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| @core.bus_read8(address) }
 
           # The Color's memory, read and written over its bus.
           def byte(address) = @core.bus_read8(address)

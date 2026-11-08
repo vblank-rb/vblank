@@ -35,47 +35,110 @@ module VBlank
             include Backends::NotMadeYet
           end
 
-          STATEMENTS = Ractor.make_shareable({
-                                               program: :emit_children, set: :emit_set, add: :emit_add,
-                                               sub: :emit_sub, copy: :emit_copy, negate: :emit_negate,
-                                               abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
-                                               if: :emit_if, loop: :emit_loop, repeat: :emit_repeat,
-                                               every: :emit_beat, after: :emit_beat, call: :emit_call,
-                                               call_one_of: :emit_call_one_of, case: :emit_case,
-                                               halt: :emit_halt, wait_vblank: :emit_wait_vblank,
-                                               list_new: :emit_list_new, list_push: :emit_list_push,
-                                               list_drop: :emit_list_drop, list_set: :emit_list_set,
-                                               list_fill: :emit_list_fill, list_copy: :emit_list_copy,
-                                               list_sort: :emit_list_sort,
-                                               save_init: :emit_save_init, save_store: :emit_save_store,
-                                               save_write: :emit_save_write, save_erase: :emit_save_erase,
-                                               timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
-                                               # a timer's handler runs as its timer ticks, not where it is written
-                                               on_timer: :emit_nothing,
-                                               # the light is not made yet (shade_outside), and a game
-                                               # without one works nothing out again
-                                               show_light_now: :emit_nothing,
-                                               # a pass's cell changes already wait for the gap between
-                                               # frames here, so a held background's need nothing more
-                                               # (Console::ColorAnswers, `background`)
-                                               show_held_tiles: :emit_nothing
-                                             }.merge(Picture::STATEMENTS).merge(Sound::STATEMENTS).merge(Clock::STATEMENTS)
-                                              .merge(TileRuns::STATEMENTS).merge(SpriteTiles::STATEMENTS)
-                                              .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))
+          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # #emit_statement and #value_of_kind, and each part's (Picture, Sound and the rest), which
+          # each part writes in a case of its own. A declaration writes nothing where it is. Read by
+          # test_gbc_kind_coverage.rb.
+          STATEMENT_KINDS = (%i[
+            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
+            case halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            save_init save_store save_write save_erase timer_start timer_stop on_timer show_light_now
+            show_held_tiles
+          ] + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS + TileRuns::STATEMENT_KINDS +
+            SpriteTiles::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
-          VALUES = Ractor.make_shareable({
-                                           int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
-                                           neg: :value_of_neg, bit_not: :value_of_bit_not,
-                                           absolute: :value_of_absolute, clamped: :value_of_clamped,
-                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
-                                           shift_right: :value_of_shift_right, held: :value_of_held,
-                                           pressed: :value_of_pressed, list_get: :value_of_list_get,
-                                           list_len: :value_of_list_len, table_get: :value_of_table_get,
-                                           save_read: :value_of_save_read, save_sum: :value_of_save_sum,
-                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
-                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected,
-                                           local_player: :value_of_local_player
-                                         }.merge(Picture::VALUES).merge(Clock::VALUES))
+          def emit_statement(node)
+            case node.kind
+            when :program then emit_children(node)
+            when :set then emit_set(node)
+            when :add then emit_add(node)
+            when :sub then emit_sub(node)
+            when :copy then emit_copy(node)
+            when :negate then emit_negate(node)
+            when :abs then emit_abs(node)
+            when :negate_abs then emit_negate_abs(node)
+            when :clamp then emit_clamp(node)
+            when :if then emit_if(node)
+            when :loop then emit_loop(node)
+            when :repeat then emit_repeat(node)
+            when :every then emit_beat(node)
+            when :after then emit_beat(node)
+            when :call then emit_call(node)
+            when :call_one_of then emit_call_one_of(node)
+            when :case then emit_case(node)
+            when :halt then emit_halt(node)
+            when :wait_vblank then emit_wait_vblank(node)
+            when :list_new then emit_list_new(node)
+            when :list_push then emit_list_push(node)
+            when :list_drop then emit_list_drop(node)
+            when :list_set then emit_list_set(node)
+            when :list_fill then emit_list_fill(node)
+            when :list_copy then emit_list_copy(node)
+            when :list_sort then emit_list_sort(node)
+            when :save_init then emit_save_init(node)
+            when :save_store then emit_save_store(node)
+            when :save_write then emit_save_write(node)
+            when :save_erase then emit_save_erase(node)
+            when :timer_start then emit_timer_start(node)
+            when :timer_stop then emit_timer_stop(node)
+            # a timer's handler runs as its timer ticks, not where it is written
+            when :on_timer then emit_nothing(node)
+            # the light is not made yet (shade_outside), and a game without one works nothing out again
+            when :show_light_now then emit_nothing(node)
+            # a pass's cell changes already wait for the gap between frames here, so a held
+            # background's need nothing more (Console::ColorAnswers, `background`)
+            when :show_held_tiles then emit_nothing(node)
+            when *Picture::STATEMENT_KINDS then emit_picture_statement(node)
+            when *Sound::STATEMENT_KINDS then emit_sound_statement(node)
+            when *Clock::STATEMENT_KINDS then emit_clock_statement(node)
+            when *TileRuns::STATEMENT_KINDS then emit_tile_runs_statement(node)
+            when *SpriteTiles::STATEMENT_KINDS then emit_sprite_tiles_statement(node)
+            else emit_declaration_or_refuse(node)
+            end
+          end
+
+          # A declaration is gathered before the program is written, so it writes nothing where it
+          # is; any other kind with no writer is a mistake in this file.
+          def emit_declaration_or_refuse(node)
+            return emit_nothing(node) if Nodes.of_role(:declaration).include?(node.kind)
+
+            raise LoweringError, "no writer here for #{node.kind.inspect}"
+          end
+
+          VALUE_KINDS = (%i[
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed list_get
+            list_len table_get save_read save_sum timer_ticks chance data_byte players_connected local_player
+          ] + Picture::VALUE_KINDS + Clock::VALUE_KINDS).freeze
+
+          def value_of_kind(node)
+            case node.kind
+            when :int then value_of_int(node)
+            when :var_ref then value_of_var_ref(node)
+            when :binop then value_of_binop(node)
+            when :neg then value_of_neg(node)
+            when :bit_not then value_of_bit_not(node)
+            when :absolute then value_of_absolute(node)
+            when :clamped then value_of_clamped(node)
+            when :mul_fix then value_of_mul_fix(node)
+            when :div_fix then value_of_div_fix(node)
+            when :shift_right then value_of_shift_right(node)
+            when :held then value_of_held(node)
+            when :pressed then value_of_pressed(node)
+            when :list_get then value_of_list_get(node)
+            when :list_len then value_of_list_len(node)
+            when :table_get then value_of_table_get(node)
+            when :save_read then value_of_save_read(node)
+            when :save_sum then value_of_save_sum(node)
+            when :timer_ticks then value_of_timer_ticks(node)
+            when :chance then value_of_chance(node)
+            when :data_byte then value_of_data_byte(node)
+            when :players_connected then value_of_players_connected(node)
+            when :local_player then value_of_local_player(node)
+            when *Picture::VALUE_KINDS then value_of_picture_kind(node)
+            when *Clock::VALUE_KINDS then value_of_clock_kind(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
 
           include Picture
           include PaintReach
@@ -88,7 +151,7 @@ module VBlank
           include KeptVariables
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
-          # day the Color does it; test_gbc_kind_coverage.rb holds the list and the tables above to
+          # day the Color does it; test_gbc_kind_coverage.rb holds the list and the kind lists above to
           # every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({})
 
@@ -307,6 +370,23 @@ module VBlank
             @program.walk.any? do |node|
               (node.kind == :list_push || (node.kind == :list_drop && node.from == :front)) && halves.include?(node.name)
             end
+          end
+
+          # How many bytes +list+ comes to, made on its own and thrown away.
+          def bytes_of(list)
+            saved = [@asm, @routine, @labels, @constants, @routine_data, @locals.dup, @drawing_tables.length]
+            @measuring = true
+            @measured = []
+            @asm = SM83.new("measuring", home: :banked)
+            @labels = 0
+            @constants = {}
+            @routine_data = {}
+            list.each { |node| statement(node) }
+            @asm.here + @constants.keys.sum { |value| Array(value).length * 4 } + routine_data_bytes
+          ensure
+            @measuring = false
+            @asm, @routine, @labels, @constants, @routine_data, @locals, tables = saved
+            @drawing_tables.slice!(tables..)
           end
 
           private
@@ -594,23 +674,6 @@ module VBlank
             def screen_modes = @screen_modes ||= Modes.resolve(@cache.program)
           end
 
-          # How many bytes +list+ comes to, made on its own and thrown away.
-          def bytes_of(list)
-            saved = [@asm, @routine, @labels, @constants, @routine_data, @locals.dup, @drawing_tables.length]
-            @measuring = true
-            @measured = []
-            @asm = SM83.new("measuring", home: :banked)
-            @labels = 0
-            @constants = {}
-            @routine_data = {}
-            list.each { |node| statement(node) }
-            @asm.here + @constants.keys.sum { |value| Array(value).length * 4 } + routine_data_bytes
-          ensure
-            @measuring = false
-            @asm, @routine, @labels, @constants, @routine_data, @locals, tables = saved
-            @drawing_tables.slice!(tables..)
-          end
-
           def place_of(name)
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
@@ -621,7 +684,7 @@ module VBlank
             return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
             return statement_measured(node) if @measuring
 
-            send(STATEMENTS.fetch(node.kind), node)
+            emit_statement(node)
           end
 
           # What a statement being measured has taken so far: where its code starts, and the numbers
@@ -638,7 +701,7 @@ module VBlank
           def statement_measured(node)
             measured = MeasuredStatement.new(from: @asm.here, constants: Set.new, data: Set.new)
             @measured << measured
-            send(STATEMENTS.fetch(node.kind), node)
+            emit_statement(node)
             @cuts.note_size(node, @asm.here - measured.from + measured.constants.sum { |value| Array(value).length * 4 } +
                                   measured.data.sum { |entries| entries.sum { |kind, _| ROUTINE_DATA_BYTES.fetch(kind) } })
           ensure
@@ -1819,7 +1882,7 @@ module VBlank
 
             case operand
             when Symbol then load_variable(operand)
-            when Node then send(VALUES.fetch(operand.kind), operand)
+            when Node then value_of_kind(operand)
             when Address then load_label(operand.label)
             when BankedAddress then load_banked_label(operand.label)
             when Entry then table_entry(operand)

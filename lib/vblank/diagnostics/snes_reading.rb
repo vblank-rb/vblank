@@ -93,7 +93,7 @@ module VBlank
         refuse_missing_build_record!("which of its sprites is which")
         ensure_rendered!
         @drawn ||= IR::Backends::SpriteNames.new(@rom.source_program)
-        rows = @rom.built.drawn_sprite_rows(@drawn, method(:mem16))
+        rows = @rom.built.drawn_sprite_rows(@drawn) { |address| mem16(address) }
         name ? @drawn.rows_named(rows, name) : rows
       end
 

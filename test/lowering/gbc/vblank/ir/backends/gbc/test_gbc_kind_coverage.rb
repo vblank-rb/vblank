@@ -19,7 +19,7 @@ class TestGBCKindCoverage < Minitest::Test
 
   private def not_yet = Lowering::NOT_LOWERED_YET.values.flatten
 
-  private def made = Lowering::STATEMENTS.keys + Lowering::VALUES.keys
+  private def made = Lowering::STATEMENT_KINDS + Lowering::VALUE_KINDS
 
   def test_the_not_yet_list_names_only_kinds_that_exist
     assert_empty not_yet - portable_kinds

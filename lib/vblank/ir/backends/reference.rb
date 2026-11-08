@@ -876,7 +876,7 @@ module VBlank
         def exec_declaration(_node) = nil
 
         def exec_declaration_or_refuse(node)
-          return exec_declaration(node) if STATEMENT_KINDS.include?(node.kind)
+          return exec_declaration(node) if Nodes.of_role(:declaration).include?(node.kind)
 
           raise ProgramError, "the reference backend cannot execute #{node.kind.inspect} (#{node.category}) yet"
         end

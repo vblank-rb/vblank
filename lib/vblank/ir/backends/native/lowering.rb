@@ -110,6 +110,7 @@ module VBlank
             when :show_held_tiles then lower_show_held_tiles(node)
             when :background_colors then lower_background_colors(node)
             when :color_list_holds then lower_color_list_holds(node)
+            # every picture is in reach whatever is up: nothing to do
             when :show_picture_group then lower_nothing(node)
             when :copy_tiles then lower_copy_tiles(node)
             when :copy_owed_tiles then lower_copy_owed_tiles(node)
@@ -173,7 +174,7 @@ module VBlank
             when :pixels_overlap then value_of_pixels_overlap(node)
             when :save_read then value_of_save_read(node)
             when :save_sum then value_of_save_sum(node)
-            else raise LoweringError, "the native backend has no row for #{node.kind.inspect}"
+            else raise LoweringError, "the native backend has no writer for #{node.kind.inspect}"
             end
           end
 
@@ -421,7 +422,9 @@ module VBlank
             # Every kind is either written or listed as not yet (test_native_kind_coverage.rb
             # holds that), so a kind on neither is a mistake in this file, not in the game.
             unknown = missing - NOT_LOWERED_YET.values.flatten
-            raise LoweringError, "the native backend has no row for #{unknown.map(&:inspect).join(', ')}" unless unknown.empty?
+            unless unknown.empty?
+              raise LoweringError, "the native backend has no writer for #{unknown.map(&:inspect).join(', ')}"
+            end
 
             raise LoweringError,
                   "this program uses #{missing.map(&:inspect).join(', ')}, which #{build_name} " \
@@ -467,9 +470,9 @@ module VBlank
           # A declaration is gathered before the program is written, so it writes nothing where
           # it is; any other kind with no writer is a mistake in this file.
           def lower_declaration_or_refuse(node)
-            return lower_nothing(node) if STATEMENT_KINDS.include?(node.kind)
+            return lower_nothing(node) if Nodes.of_role(:declaration).include?(node.kind)
 
-            raise LoweringError, "the native backend has no row for #{node.kind.inspect}"
+            raise LoweringError, "the native backend has no writer for #{node.kind.inspect}"
           end
 
           # A variable set to itself changes nothing, and C's compiler refuses the statement

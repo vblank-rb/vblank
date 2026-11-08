@@ -73,7 +73,7 @@ module VBlank
           # +drawn+ is the program's SpriteNames; +read16+ reads a word of the running cartridge's
           # memory, given its address. A picture copied in other colours is named as the picture
           # it copies.
-          def drawn_sprite_rows(drawn, read16)
+          def drawn_sprite_rows(drawn, &read16)
             at = runtime.fetch(Runtime::Picture::DRAWN)
             signed = ->(value) { value >= 0x8000 ? value - 0x10000 : value }
             Array.new(read16.call(at)) do |i|

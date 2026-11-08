@@ -36,33 +36,73 @@ module VBlank
             include Backends::NotMadeYet
           end
 
-          STATEMENTS =Ractor.make_shareable({
-                                               program: :emit_children, set: :emit_set, add: :emit_add,
-                                               sub: :emit_sub, copy: :emit_copy, negate: :emit_negate,
-                                               abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
-                                               if: :emit_if, loop: :emit_loop, repeat: :emit_repeat,
-                                               every: :emit_beat, after: :emit_beat, call: :emit_call,
-                                               call_one_of: :emit_call_one_of, case: :emit_case,
-                                               halt: :emit_halt, wait_vblank: :emit_wait_vblank,
-                                               list_new: :emit_list_new, list_push: :emit_list_push,
-                                               list_drop: :emit_list_drop, list_set: :emit_list_set,
-                                               list_fill: :emit_list_fill, list_copy: :emit_list_copy,
-                                               list_sort: :emit_list_sort,
-                                               timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
-                                               # a timer's handler runs as its timer ticks, not where it is written
-                                               on_timer: :emit_nothing,
-                                               # no light can be made on a Super Nintendo (its answers refuse one), and a game
-                                               # without one works nothing out again
-                                               show_light_now: :emit_nothing,
-                                               # a Super Nintendo cartridge has no rumble motor, so nothing is felt
-                                               # (Console::Description#rumbles)
-                                               rumble: :emit_nothing,
-                                               # video memory is written only between frames here, so a
-                                               # held background's changes already show together
-                                               show_held_tiles: :emit_nothing
-                                             }.merge(Picture::STATEMENTS).merge(Paint::STATEMENTS)
-                                              .merge(Saving::STATEMENTS).merge(Sound::STATEMENTS)
-                                              .merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] }))
+          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # #emit_statement and #value_of_kind, and each part's (Picture, Paint and the rest), which
+          # each part writes in a case of its own. A declaration writes nothing where it is. Read by
+          # test_snes_kind_coverage.rb.
+          STATEMENT_KINDS = (%i[
+            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
+            case halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            timer_start timer_stop on_timer show_light_now rumble show_held_tiles
+          ] + Picture::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Saving::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
+            Nodes.of_role(:declaration)).freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :program then emit_children(node)
+            when :set then emit_set(node)
+            when :add then emit_add(node)
+            when :sub then emit_sub(node)
+            when :copy then emit_copy(node)
+            when :negate then emit_negate(node)
+            when :abs then emit_abs(node)
+            when :negate_abs then emit_negate_abs(node)
+            when :clamp then emit_clamp(node)
+            when :if then emit_if(node)
+            when :loop then emit_loop(node)
+            when :repeat then emit_repeat(node)
+            when :every then emit_beat(node)
+            when :after then emit_beat(node)
+            when :call then emit_call(node)
+            when :call_one_of then emit_call_one_of(node)
+            when :case then emit_case(node)
+            when :halt then emit_halt(node)
+            when :wait_vblank then emit_wait_vblank(node)
+            when :list_new then emit_list_new(node)
+            when :list_push then emit_list_push(node)
+            when :list_drop then emit_list_drop(node)
+            when :list_set then emit_list_set(node)
+            when :list_fill then emit_list_fill(node)
+            when :list_copy then emit_list_copy(node)
+            when :list_sort then emit_list_sort(node)
+            when :timer_start then emit_timer_start(node)
+            when :timer_stop then emit_timer_stop(node)
+            # a timer's handler runs as its timer ticks, not where it is written
+            when :on_timer then emit_nothing(node)
+            # no light can be made on a Super Nintendo (its answers refuse one), and a game without
+            # one works nothing out again
+            when :show_light_now then emit_nothing(node)
+            # a Super Nintendo cartridge has no rumble motor, so nothing is felt
+            # (Console::Description#rumbles)
+            when :rumble then emit_nothing(node)
+            # video memory is written only between frames here, so a held background's changes
+            # already show together
+            when :show_held_tiles then emit_nothing(node)
+            when *Picture::STATEMENT_KINDS then emit_picture_statement(node)
+            when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
+            when *Saving::STATEMENT_KINDS then emit_saving_statement(node)
+            when *Sound::STATEMENT_KINDS then emit_sound_statement(node)
+            else emit_declaration_or_refuse(node)
+            end
+          end
+
+          # A declaration is gathered before the program is written, so it writes nothing where it
+          # is; any other kind with no writer is a mistake in this file.
+          def emit_declaration_or_refuse(node)
+            return emit_nothing(node) if Nodes.of_role(:declaration).include?(node.kind)
+
+            raise LoweringError, "no writer here for #{node.kind.inspect}"
+          end
 
           include Picture
           include Paint
@@ -71,17 +111,36 @@ module VBlank
           include Sound
           include Chip
 
-          VALUES = Ractor.make_shareable({
-                                           int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
-                                           neg: :value_of_neg, bit_not: :value_of_bit_not,
-                                           absolute: :value_of_absolute, clamped: :value_of_clamped,
-                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
-                                           shift_right: :value_of_shift_right, held: :value_of_held,
-                                           pressed: :value_of_pressed, list_get: :value_of_list_get,
-                                           list_len: :value_of_list_len, table_get: :value_of_table_get,
-                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
-                                           local_player: :value_of_local_player
-                                         }.merge(Collision::VALUES).merge(Saving::VALUES))
+          VALUE_KINDS = (%i[
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed list_get
+            list_len table_get timer_ticks chance local_player
+          ] + Collision::VALUE_KINDS + Saving::VALUE_KINDS).freeze
+
+          def value_of_kind(node)
+            case node.kind
+            when :int then value_of_int(node)
+            when :var_ref then value_of_var_ref(node)
+            when :binop then value_of_binop(node)
+            when :neg then value_of_neg(node)
+            when :bit_not then value_of_bit_not(node)
+            when :absolute then value_of_absolute(node)
+            when :clamped then value_of_clamped(node)
+            when :mul_fix then value_of_mul_fix(node)
+            when :div_fix then value_of_div_fix(node)
+            when :shift_right then value_of_shift_right(node)
+            when :held then value_of_held(node)
+            when :pressed then value_of_pressed(node)
+            when :list_get then value_of_list_get(node)
+            when :list_len then value_of_list_len(node)
+            when :table_get then value_of_table_get(node)
+            when :timer_ticks then value_of_timer_ticks(node)
+            when :chance then value_of_chance(node)
+            when :local_player then value_of_local_player(node)
+            when *Collision::VALUE_KINDS then value_of_collision_kind(node)
+            when *Saving::VALUE_KINDS then value_of_saving_kind(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
           # day the Super Nintendo does it; test_snes_kind_coverage.rb holds the list and the tables
@@ -104,14 +163,9 @@ module VBlank
           # The runtime's routines for a binop worked out by a call, and the binops written in place.
           CALLED_SUMS = Ractor.make_shareable({ :* => "rt_mul32", :/ => "rt_div32", :% => "rt_mod32",
                                                 :<< => "rt_shl32", :>> => "rt_shr32" })
-          IN_PLACE_SUMS = Ractor.make_shareable({ :+ => %i[clc adc], :- => %i[sec sbc], :& => [nil, :and_a],
-                                                  :| => [nil, :ora], :^ => [nil, :eor] })
+          IN_PLACE_OPS = %i[+ - & | ^].freeze
           COMPARISONS = %i[< <= > >= == !=].freeze
           BITWISE = %i[& | ^].freeze
-
-          # The shifts written in place when their count is a number written in the program
-          # (#emit_shift_by_written_count), by the method that writes each.
-          SHIFTS_IN_PLACE = Ractor.make_shareable({ :<< => :emit_shift_left_of_r0, :>> => :emit_shift_right_of_r0 })
 
           # What a half of a bitwise sum comes to when the other side's half is a number written in
           # the program: the other half as it was, or that number itself whatever the other half is.
@@ -266,6 +320,18 @@ module VBlank
           # Whether the game has a division only a runtime routine can do (Runtime::Int32), once
           # #sections has lowered it.
           def divides? = @divides || false
+
+          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
+          # (LoweringState#on_copies).
+          def bytes_of(list)
+            LOWERING_STATE.on_copies(self) do
+              @asm = W65816.new("measuring", holds: ROUTINES)
+              @routine = "measuring"
+              @labels = 0
+              list.each { |node| statement(node) }
+              @asm.here
+            end
+          end
 
           private
 
@@ -492,18 +558,6 @@ module VBlank
           # (RoutineCuts#children_of).
           def children_of(node) = @cuts.children_of(node)
 
-          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
-          # (LoweringState#on_copies).
-          def bytes_of(list)
-            LOWERING_STATE.on_copies(self) do
-              @asm = W65816.new("measuring", holds: ROUTINES)
-              @routine = "measuring"
-              @labels = 0
-              list.each { |node| statement(node) }
-              @asm.here
-            end
-          end
-
           # RTL, which ends every routine section: a byte.
           RETURN_BYTES = 1
 
@@ -525,7 +579,7 @@ module VBlank
           def statement(node)
             return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
 
-            send(STATEMENTS.fetch(node.kind), node)
+            emit_statement(node)
           end
 
           def emit_nothing(_node) = nil
@@ -584,6 +638,28 @@ module VBlank
             end
           end
 
+          # The carry readied for a sum written a half at a time (IN_PLACE_OPS): cleared before an add,
+          # set before a subtract; AND, OR and XOR carry nothing.
+          def emit_carry_for(operator)
+            case operator
+            when :+ then @asm.clc
+            when :- then @asm.sec
+            end
+          end
+
+          # A with +operator+ and +operand+, one half of a sum: an add or subtract goes on with the
+          # carry from the half below.
+          def emit_half_sum(operator, operand)
+            case operator
+            when :+ then @asm.adc(operand)
+            when :- then @asm.sbc(operand)
+            when :& then @asm.and_a(operand)
+            when :| then @asm.ora(operand)
+            when :^ then @asm.eor(operand)
+            else raise LoweringError, "#{operator.inspect} is not worked out a half at a time"
+            end
+          end
+
           def emit_add(node) = emit_sum(node.var, :+, node.operand)
           def emit_sub(node) = emit_sum(node.var, :-, node.operand)
 
@@ -600,11 +676,10 @@ module VBlank
             end
 
             at = place_of(name)
-            carry, sum = IN_PLACE_SUMS.fetch(op)
-            @asm.public_send(carry)
+            emit_carry_for(op)
             2.times do |i|
               @asm.lda(at_place(at + (2 * i)))
-              @asm.public_send(sum, right[i])
+              emit_half_sum(op, right[i])
               @asm.sta(at_place(at + (2 * i)))
             end
           end
@@ -1372,13 +1447,12 @@ module VBlank
             to = keyed.number(@asm, 0, x: true)
             value = node.value
             if sum_in_halves?(value) && %i[+ -].include?(value.op)
-              carry, sum = IN_PLACE_SUMS.fetch(value.op)
               return with_key_halves(without_added_nought(value.lhs), value.rhs) do |lefts, rights|
                 @asm.ldx(place)
-                @asm.public_send(carry)
+                emit_carry_for(value.op)
                 2.times do |i|
                   @asm.lda(lefts[i])
-                  @asm.public_send(sum, rights[i])
+                  emit_half_sum(value.op, rights[i])
                   @asm.sta(to[i])
                 end
               end
@@ -1910,7 +1984,7 @@ module VBlank
 
             case operand
             when Symbol then load_variable(operand)
-            when Node then send(VALUES.fetch(operand.kind), operand)
+            when Node then value_of_kind(operand)
             when LongAddress then load_long_address(operand.label)
             else raise LoweringError, "cannot make #{operand.inspect} a number"
             end
@@ -1938,7 +2012,7 @@ module VBlank
             return if node.op == :% && emit_remainder_by_power_of_two(node)
             return if node.op == :/ && emit_quotient_by_power_of_two(node)
             return if %i[/ %].include?(node.op) && emit_divide_by_written_byte(node)
-            return if SHIFTS_IN_PLACE.key?(node.op) && emit_shift_by_written_count(node)
+            return if %i[<< >>].include?(node.op) && emit_shift_by_written_count(node)
 
             if (routine = CALLED_SUMS[node.op])
               @divides ||= %i[/ %].include?(node.op)
@@ -1952,7 +2026,7 @@ module VBlank
 
           # Is +node+ a sum written a half at a time (+, -, &, | or ^), which #emit_sum_into can
           # leave anywhere?
-          def sum_in_halves?(node) = node.is_a?(Node) && node.kind == :binop && IN_PLACE_SUMS.key?(node.op)
+          def sum_in_halves?(node) = node.is_a?(Node) && node.kind == :binop && IN_PLACE_OPS.include?(node.op)
 
           # A sum written a half at a time, each half stored into +to+ (two operands) as soon as it is
           # worked out. Each half of +to+ is written only after both sides' same half are read, and the
@@ -1960,12 +2034,11 @@ module VBlank
           def emit_sum_into(node, to)
             return emit_bitwise_halves(node, to) if BITWISE.include?(node.op)
 
-            carry, sum = IN_PLACE_SUMS.fetch(node.op)
             with_both_halves(without_added_nought(node.lhs), node.rhs) do |lefts, halves|
-              @asm.public_send(carry)
+              emit_carry_for(node.op)
               2.times do |i|
                 @asm.lda(lefts[i])
-                @asm.public_send(sum, halves[i])
+                emit_half_sum(node.op, halves[i])
                 @asm.sta(to[i])
               end
             end
@@ -1999,7 +2072,7 @@ module VBlank
               emit_truth_of_halves(halves, R0 + 4)
               emit_truth_of_halves([@asm.direct(R0), @asm.direct(R0 + 2)], R0)
               @asm.lda(@asm.direct(R0))
-              @asm.public_send(node.op == :and ? :and_a : :ora, @asm.direct(R0 + 4))
+              node.op == :and ? @asm.and_a(@asm.direct(R0 + 4)) : @asm.ora(@asm.direct(R0 + 4))
               @asm.sta(@asm.direct(R0))
               @asm.stz(@asm.direct(R0 + 2))
             end
@@ -2555,7 +2628,7 @@ module VBlank
               return true if count.between?(8, 30) && emit_shift_right_from_place(lhs, count)
             end
             value(lhs)
-            send(SHIFTS_IN_PLACE.fetch(node.op), count)
+            node.op == :<< ? emit_shift_left_of_r0(count) : emit_shift_right_of_r0(count)
             true
           end
 
@@ -2663,7 +2736,6 @@ module VBlank
               value(first)
               left = r0_halves
             end
-            sum = IN_PLACE_SUMS.fetch(node.op).last
             2.times do |i|
               to = into[i]
               written = written_half(right[i])
@@ -2676,7 +2748,7 @@ module VBlank
                 @asm.sta(to)
               else
                 @asm.lda(left[i])
-                @asm.public_send(sum, right[i])
+                emit_half_sum(node.op, right[i])
                 @asm.sta(to)
               end
             end
@@ -2684,11 +2756,10 @@ module VBlank
 
           # A bitwise sum whose two sides both have to be worked out (#with_both_halves).
           def emit_bitwise_worked_out(node, into)
-            sum = IN_PLACE_SUMS.fetch(node.op).last
             with_both_halves(node.lhs, node.rhs) do |lefts, halves|
               2.times do |i|
                 @asm.lda(lefts[i])
-                @asm.public_send(sum, halves[i])
+                emit_half_sum(node.op, halves[i])
                 @asm.sta(into[i])
               end
             end

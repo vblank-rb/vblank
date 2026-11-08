@@ -11,15 +11,28 @@ module VBlank
           # to the cartridge's own sound log (rt_sound_log), which a run reads back as the
           # interpreter's words (#sound_entries). Mixed into Lowering.
           module Sound
-            STATEMENTS = Ractor.make_shareable({ enable_sound: :emit_enable_sound, beep: :emit_beep, noise: :emit_noise,
-                                                 wave: :emit_wave, stop_wave: :emit_stop_wave, play_song: :emit_play_song,
-                                                 stop_music: :emit_stop_music, hold_music: :emit_hold_music,
-                                                 play_from_list: :emit_play_from_list,
-                                                 play_sound_effect: :emit_play_sound_effect, play_sample: :emit_play_sample,
-                                                 stop_sample: :emit_stop_sample })
+            STATEMENT_KINDS = %i[
+              enable_sound beep noise wave stop_wave play_song stop_music hold_music play_from_list
+              play_sound_effect play_sample stop_sample
+            ].freeze
 
-            # The kinds that reach the sound unit: a program with none of them is built without it.
-            KINDS = STATEMENTS.keys.freeze
+            def emit_sound_statement(node)
+              case node.kind
+              when :enable_sound then emit_enable_sound(node)
+              when :beep then emit_beep(node)
+              when :noise then emit_noise(node)
+              when :wave then emit_wave(node)
+              when :stop_wave then emit_stop_wave(node)
+              when :play_song then emit_play_song(node)
+              when :stop_music then emit_stop_music(node)
+              when :hold_music then emit_hold_music(node)
+              when :play_from_list then emit_play_from_list(node)
+              when :play_sound_effect then emit_play_sound_effect(node)
+              when :play_sample then emit_play_sample(node)
+              when :stop_sample then emit_stop_sample(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # A recording's step (IR::Mixing.step: samples of it a sample of the DSP's, in 65536ths) as
             # the pitch register (fullsnes: $1000 reads one sample of a recording each of the DSP's).
@@ -28,8 +41,9 @@ module VBlank
             # What the plays are to the author, for a cartridge too full for them.
             PLAYS = W65816::Holding.new(what: "the game's recordings", fix: "play fewer different recordings")
 
-            # Whether +program+ makes any sound.
-            def self.sounds?(program) = program.walk.any? { |node| KINDS.include?(node.kind) }
+            # Whether +program+ makes any sound: a program with none of these kinds is built without
+            # the sound unit.
+            def self.sounds?(program) = program.walk.any? { |node| STATEMENT_KINDS.include?(node.kind) }
 
             # Whether +program+ plays songs, and so carries their player (Runtime::Music).
             def self.songs?(program) = program.walk.any? { |node| %i[song play_song stop_music hold_music play_from_list play_sound_effect].include?(node.kind) }
@@ -76,7 +90,7 @@ module VBlank
             # The section of the game's songs (SNES::Music), each note's sound-log entries numbered
             # among the rest.
             def music_section
-              words = @music.words(sound_voicing, recording_row: method(:recorded_note_row)) do |entry|
+              words = @music.words(sound_voicing, recordings: self) do |entry|
                 sound_entry_number(entry)
               end
               @music.section(words)

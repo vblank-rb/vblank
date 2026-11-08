@@ -168,7 +168,7 @@ module VBlank
               in [:|, 0xFF] then @asm.load(register, 0xFF)
               else
                 @asm.load(:a, register)
-                { :& => :and_a, :| => :or_a, :^ => :xor_a }.fetch(op).then { |sum| @asm.public_send(sum, byte) }
+                emit_byte_sum(op, byte)
                 @asm.load(register, :a)
               end
             end
@@ -233,7 +233,7 @@ module VBlank
               name = variable_kept_at_least(operand, 1)
               return @asm.load(:a, [place_of(name)]) if name && !folded(operand)
 
-              if operand.is_a?(Node) && operand.kind == :binop && LOW_SUMS.key?(operand.op)
+              if operand.is_a?(Node) && operand.kind == :binop && LOW_SUM_OPS.include?(operand.op)
                 left, right = operand.lhs, operand.rhs
                 left, right = right, left if operand.op != :- && folded(left)
                 number = folded(right)
@@ -242,7 +242,7 @@ module VBlank
                   byte = number & 0xFF
                   return if [[:&, 0xFF], [:|, 0], [:^, 0], [:+, 0], [:-, 0]].include?([operand.op, byte])
 
-                  return @asm.public_send(LOW_SUMS.fetch(operand.op).first, byte)
+                  return emit_byte_sum(operand.op, byte)
                 end
               end
               low_value(operand, 1)
@@ -272,16 +272,17 @@ module VBlank
               emit_low_bytes_at(place_of(name) + (count / 8), bytes)
             end
 
-            # The SM83's add and subtract, and the instructions that go on with the carry; AND, OR
-            # and XOR carry nothing, so each byte is the same instruction.
-            LOW_SUMS = Ractor.make_shareable({ :+ => %i[add_a adc_a], :- => %i[sub_a sbc_a], :& => %i[and_a and_a],
-                                               :| => %i[or_a or_a], :^ => %i[xor_a xor_a] })
+            # The operators worked out a byte at a time (Runtime::Int32.emit_byte_sum).
+            LOW_SUM_OPS = %i[+ - & | ^].freeze
+
+            def emit_byte_sum(operator, operand, carried: false)
+              Runtime::Int32.emit_byte_sum(@asm, operator, operand, carried: carried)
+            end
 
             # The low +bytes+ bytes of a sum, an AND, an OR or an XOR of two sides each worked out
             # that wide. The right-hand side is worked out first and kept on the stack, as a sum of
             # four bytes keeps it, unless it is a number or a variable, which is read where it is.
             def emit_low_sum(node, bytes)
-              first, carried = LOW_SUMS.fetch(node.op)
               left, right = node.lhs, node.rhs
               left, right = right, left if node.op != :- && folded(left)
               number = folded(right)
@@ -294,7 +295,7 @@ module VBlank
               if number
                 %i[e d].first(bytes).each_with_index do |register, i|
                   @asm.load(:a, register)
-                  @asm.public_send(i.zero? ? first : carried, (number >> (8 * i)) & 0xFF)
+                  emit_byte_sum(node.op, (number >> (8 * i)) & 0xFF, carried: !i.zero?)
                   @asm.load(register, :a)
                 end
                 return
@@ -305,9 +306,9 @@ module VBlank
                 @asm.load(:a, register)
                 if name
                   @asm.inc(:hl) unless i.zero?
-                  @asm.public_send(i.zero? ? first : carried, [:hl])
+                  emit_byte_sum(node.op, [:hl], carried: !i.zero?)
                 else
-                  @asm.public_send(i.zero? ? first : carried, i.zero? ? :l : :h)
+                  emit_byte_sum(node.op, i.zero? ? :l : :h, carried: !i.zero?)
                 end
                 @asm.load(register, :a)
               end

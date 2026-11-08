@@ -566,12 +566,12 @@ module VBlank
               asm.load_high(:a, memory[PLAYING])
               asm.and_a(:a)
               asm.ret(:z)
-              emit_lap_sum(asm, memory, A_FRAME, :sbc_a, "rt_clip_lap_frame")
+              emit_lap_sum(asm, memory, A_FRAME, :-, "rt_clip_lap_frame")
               asm.label("rt_clip_lap_check")
               asm.load(:a, [memory[TO_END] + GBC::Clips::LAP_BYTES - 1])
               asm.bit(7, :a)
               asm.ret(:z)
-              emit_lap_sum(asm, memory, BACK, :adc_a, "rt_clip_lap_back")
+              emit_lap_sum(asm, memory, BACK, :+, "rt_clip_lap_back")
               # Reported with the timer's interrupt held off: one taken just as the processor reaches
               # the label comes back to it, and the run's reader would count the lap twice. Both
               # callers run with interrupts on, so they go back on after it.
@@ -582,8 +582,9 @@ module VBlank
               asm.jump_relative("rt_clip_lap_check")
             end
 
-            # TO_END less (+sum+ :sbc_a) or plus (:adc_a) the number at +by+, five bytes.
-            def emit_lap_sum(asm, memory, by, sum, label)
+            # TO_END less (+operator+ :-) or plus (:+) the number at +by+, five bytes, every byte going
+            # on with the carry (cleared before the lowest).
+            def emit_lap_sum(asm, memory, by, operator, label)
               asm.load(:hl, memory[TO_END])
               asm.load(:de, memory[by])
               asm.load(:b, GBC::Clips::LAP_BYTES)
@@ -592,7 +593,7 @@ module VBlank
               asm.load(:a, [:de])
               asm.load(:c, :a)
               asm.load(:a, [:hl])
-              asm.public_send(sum, :c)
+              Int32.emit_byte_sum(asm, operator, :c, carried: true)
               asm.load([:hli], :a)
               asm.inc(:de)
               asm.dec(:b)

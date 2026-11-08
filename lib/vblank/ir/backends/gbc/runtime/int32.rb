@@ -39,16 +39,26 @@ module VBlank
               emit_fractions(asm, s)
             end
 
+            # A with +operator+ and +operand+ (a number, a register or [:hl]): the SM83's add and
+            # subtract, or with +carried+ the instructions that go on with the carry from the byte
+            # below; AND, OR and XOR carry nothing, so each byte is the same instruction.
+            def emit_byte_sum(asm, operator, operand, carried: false)
+              case operator
+              when :+ then carried ? asm.adc_a(operand) : asm.add_a(operand)
+              when :- then carried ? asm.sbc_a(operand) : asm.sub_a(operand)
+              when :& then asm.and_a(operand)
+              when :| then asm.or_a(operand)
+              when :^ then asm.xor_a(operand)
+              else raise LoweringError, "#{operator.inspect} is not worked out a byte at a time"
+              end
+            end
+
             # BCDE += (HL), -=, &=, |=, ^=.
             def emit_sums(asm)
-              { "rt_add32" => %i[add_a adc_a], "rt_sub32" => %i[sub_a sbc_a] }.each do |name, (first, rest)|
+              sums = { "rt_add32" => :+, "rt_sub32" => :-, "rt_and32" => :&, "rt_or32" => :|, "rt_xor32" => :^ }
+              sums.each do |name, operator|
                 asm.label(name)
-                emit_sum_bytes(asm, first, rest)
-                asm.ret
-              end
-              { "rt_and32" => :and_a, "rt_or32" => :or_a, "rt_xor32" => :xor_a }.each do |name, op|
-                asm.label(name)
-                emit_sum_bytes(asm, op, op)
+                emit_sum_bytes(asm, operator)
                 asm.ret
               end
 
@@ -92,12 +102,12 @@ module VBlank
               asm.jump("rt_neg32")
             end
 
-            # One byte of BCDE at a time against (HL), lowest first: the first with +first+, the rest
-            # with +rest+ (the carrying form of the same sum).
-            def emit_sum_bytes(asm, first, rest)
+            # One byte of BCDE at a time against (HL), lowest first, with +operator+: the bytes above
+            # the first going on with the carry (#emit_byte_sum).
+            def emit_sum_bytes(asm, operator)
               %i[e d c b].each_with_index do |reg, i|
                 asm.load(:a, reg)
-                asm.public_send(i.zero? ? first : rest, [:hl])
+                emit_byte_sum(asm, operator, [:hl], carried: !i.zero?)
                 asm.load(reg, :a)
                 asm.inc(:hl) unless reg == :b
               end

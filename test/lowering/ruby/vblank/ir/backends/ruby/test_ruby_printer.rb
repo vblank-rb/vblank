@@ -78,6 +78,7 @@ class TestRubyPrinter < Minitest::Test
     setup = text[/^def rg_game_setup\n.*?^end$/m]
     assert_match(/^  @v_which = 0$/, setup)
     assert_match(/^def f_left$/, text)
-    assert_match(/__send__\(@r_\w+\[/, text)
+    assert_match(/^  @r_\w+ = \[-> \{ f_left \}, -> \{ f_right \}\]\.freeze$/, setup)
+    assert_match(/@r_\w+\[.*\]\.call/, text)
   end
 end

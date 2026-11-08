@@ -244,11 +244,11 @@ module VBlank
         def recorded_parts? = @songs.any? { |song| song.voices.any? { |part| IR::Tunes.part_kind(part) == :recorded } }
 
         # The table, as words. +voicing+ is the game's (#song_writes' Voicing), and the block gives
-        # the number the cartridge's sound log keeps an entry as. +recording_row+ gives the row of
-        # "recording_plays" a recorded part's note plays (Lowering::Sound#recorded_note_row), for
-        # its recording, its pitch, its volume as written and its shape (the note's or the part's).
-        def words(voicing, recording_row: nil, &number_of)
-          @recording_row = recording_row
+        # the number the cartridge's sound log keeps an entry as. +recordings+ (the lowering) gives
+        # the row of "recording_plays" a recorded part's note plays (Lowering::Sound#recorded_note_row),
+        # for its recording, its pitch, its volume as written and its shape (the note's or the part's).
+        def words(voicing, recordings: nil, &number_of)
+          @recordings = recordings
           @songs.each { |song| refuse_parts!(song) }
           @groups = [] # every group's commands, each once, in the order first met
           @wobble_records = [] # every wobble's record, each once
@@ -564,7 +564,7 @@ module VBlank
 
         # A NOTE OF A PART THAT PLAYS A RECORDING (Reference::Player#play_recorded_note): its head logs
         # [:note ...] once the note has a place (Runtime::Recordings), and nothing is written to a
-        # voice of the console's own; its row of "recording_plays" (#recording_row, one up), nought
+        # voice of the console's own; its row of "recording_plays" (#words' +recordings+, one up), nought
         # for a note that sounds nothing — a rest, or one at a volume of nought — which gives the
         # part's place back as a rest does.
         def recorded_note_layout(song, part, channel, event, follows, &number_of)
@@ -573,7 +573,12 @@ module VBlank
           sounds = IR::Tunes.note_sounds?(:recorded, frequency, volume, nil)
           head = keep_group([[GROUP_LOG, number_of.call([:note, song.name, frequency]), 0]])
           walks = part.events.any? { |note| IR::Tunes.glides?(note) } ? { walks: true } : {}
-          row = sounds ? @recording_row.call(instrument || part.instrument, frequency, volume, envelope || part.envelope, **walks) + 1 : 0
+          if sounds
+            row = @recordings.recorded_note_row(instrument || part.instrument, frequency, volume,
+                                                envelope || part.envelope, **walks) + 1
+          else
+            row = 0
+          end
           row |= GLIDES if sounds && IR::Tunes.glides?(event)
           levels = recorded_level_record(channel, sounds ? IR::Tunes.mix_loudness(volume) : 0, &number_of) if follows
           [frame, head, keep_group([]), frequency.zero? ? 0 : volume, sounds, row, levels]

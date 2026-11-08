@@ -15,26 +15,55 @@ module VBlank
           # painted screen (`screen :bitmap`) is the one exception, 360 tiles the runtime paints
           # into (Runtime::Paint).
           module Picture
-            STATEMENTS = Ractor.make_shareable({
-                                                 screen: :emit_screen, clear_screen: :emit_clear_screen,
-                                                 fill_rect: :emit_fill_rect, dma_fill_rect: :emit_fill_rect,
-                                                 draw_rect_at: :emit_fill_rect, pixel: :emit_pixel,
-                                                 draw_text: :emit_draw_text, draw_digit: :emit_draw_digit,
-                                                 inside: :emit_inside, blit: :emit_blit, blit_pose: :emit_blit_pose,
-                                                 draw_column_at: :emit_draw_column_at,
-                                                 save_region: :emit_save_region, restore_region: :emit_restore_region,
-                                                 background: :emit_background, scroll_background: :emit_scroll_background,
-                                                 place_bar: :emit_place_bar,
-                                                 show_map: :emit_show_map, set_tile: :emit_set_tile,
-                                                 background_colors: :emit_background_colors,
-                                                 scroll_rows: :emit_scroll_rows, camera: :emit_camera,
-                                                 present_objects: :emit_present_objects, hide_sprites: :emit_hide_sprites,
-                                                 show_picture_group: :emit_show_picture_group,
-                                                 color_list_holds: :emit_color_list_holds,
-                                                 fade: :emit_fade, tint: :emit_tint
-                                               })
+            STATEMENT_KINDS = %i[
+              screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel draw_text draw_digit inside blit
+              blit_pose draw_column_at save_region restore_region background scroll_background place_bar
+              show_map set_tile background_colors scroll_rows camera present_objects hide_sprites
+              show_picture_group color_list_holds fade tint
+            ].freeze
 
-            VALUES = Ractor.make_shareable({ pixels_overlap: :value_of_pixels_overlap })
+            def emit_picture_statement(node)
+              case node.kind
+              when :screen then emit_screen(node)
+              when :clear_screen then emit_clear_screen(node)
+              when :fill_rect then emit_fill_rect(node)
+              when :dma_fill_rect then emit_fill_rect(node)
+              when :draw_rect_at then emit_fill_rect(node)
+              when :pixel then emit_pixel(node)
+              when :draw_text then emit_draw_text(node)
+              when :draw_digit then emit_draw_digit(node)
+              when :inside then emit_inside(node)
+              when :blit then emit_blit(node)
+              when :blit_pose then emit_blit_pose(node)
+              when :draw_column_at then emit_draw_column_at(node)
+              when :save_region then emit_save_region(node)
+              when :restore_region then emit_restore_region(node)
+              when :background then emit_background(node)
+              when :scroll_background then emit_scroll_background(node)
+              when :place_bar then emit_place_bar(node)
+              when :show_map then emit_show_map(node)
+              when :set_tile then emit_set_tile(node)
+              when :background_colors then emit_background_colors(node)
+              when :scroll_rows then emit_scroll_rows(node)
+              when :camera then emit_camera(node)
+              when :present_objects then emit_present_objects(node)
+              when :hide_sprites then emit_hide_sprites(node)
+              when :show_picture_group then emit_show_picture_group(node)
+              when :color_list_holds then emit_color_list_holds(node)
+              when :fade then emit_fade(node)
+              when :tint then emit_tint(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
+
+            VALUE_KINDS = %i[pixels_overlap].freeze
+
+            def value_of_picture_kind(node)
+              case node.kind
+              when :pixels_overlap then value_of_pixels_overlap(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # What a column of a picture is handed over in (#emit_draw_column_at), the height first.
             COLUMN = %i[height slice x top width].freeze
@@ -932,8 +961,8 @@ module VBlank
               store(column.fetch(:height))
               done = fresh("no_height")
               jump_unless(Build.binop(:>, Build.var_ref(column.fetch(:height)), Build.int(0)), done)
-              %i[slice x top].each do |what|
-                value(node.public_send(what))
+              [[node.slice, :slice], [node.x, :x], [node.top, :top]].each do |part, what|
+                value(part)
                 store(column.fetch(what))
               end
               load_constant(node.width || 1)

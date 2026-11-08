@@ -38,44 +38,99 @@ module VBlank
             include Backends::NotMadeYet
           end
 
-          STATEMENTS = Ractor.make_shareable({
-                                               program: :emit_children, set: :emit_set, add: :emit_add,
-                                               sub: :emit_sub, copy: :emit_copy, negate: :emit_negate,
-                                               abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
-                                               if: :emit_if, loop: :emit_loop, repeat: :emit_repeat,
-                                               every: :emit_beat, after: :emit_beat, call: :emit_call,
-                                               call_one_of: :emit_call_one_of, case: :emit_case,
-                                               halt: :emit_halt, wait_vblank: :emit_wait_vblank,
-                                               list_new: :emit_list_new, list_push: :emit_list_push,
-                                               list_drop: :emit_list_drop, list_set: :emit_list_set,
-                                               list_fill: :emit_list_fill, list_copy: :emit_list_copy,
-                                               list_sort: :emit_list_sort,
-                                               timer_start: :emit_timer_start, timer_stop: :emit_timer_stop,
-                                               # a timer's handler runs as its timer ticks, not where it is written
-                                               on_timer: :emit_nothing,
-                                               # no light is made on a PlayStation yet, and a game without one
-                                               # works nothing out again
-                                               show_light_now: :emit_nothing,
-                                               # the build reads a digital pad, which has no motor: nothing is felt
-                                               rumble: :emit_nothing
-                                             }.merge(Nodes.of_role(:declaration).to_h { |kind| [kind, :emit_nothing] },
-                                                     Paint::STATEMENTS, Faces::STATEMENTS))
+          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # #emit_statement and #value_of_kind, and each part's (Paint, Faces), which each part writes
+          # in a case of its own. A declaration writes nothing where it is. Read by
+          # test_ps1_kind_coverage.rb.
+          STATEMENT_KINDS = (%i[
+            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
+            case halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            timer_start timer_stop on_timer show_light_now rumble
+          ] + Paint::STATEMENT_KINDS + Faces::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
-          VALUES = Ractor.make_shareable({
-                                           int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
-                                           neg: :value_of_neg, bit_not: :value_of_bit_not,
-                                           absolute: :value_of_absolute, clamped: :value_of_clamped,
-                                           shift_right: :value_of_shift_right, held: :value_of_held,
-                                           pressed: :value_of_pressed, list_get: :value_of_list_get,
-                                           list_len: :value_of_list_len, table_get: :value_of_table_get,
-                                           timer_ticks: :value_of_timer_ticks, chance: :value_of_chance,
-                                           data_byte: :value_of_data_byte, players_connected: :value_of_players_connected,
-                                           local_player: :value_of_local_player, mul_fix: :value_of_mul_fix,
-                                           div_fix: :value_of_div_fix
-                                         })
+          def emit_statement(node)
+            case node.kind
+            when :program then emit_children(node)
+            when :set then emit_set(node)
+            when :add then emit_add(node)
+            when :sub then emit_sub(node)
+            when :copy then emit_copy(node)
+            when :negate then emit_negate(node)
+            when :abs then emit_abs(node)
+            when :negate_abs then emit_negate_abs(node)
+            when :clamp then emit_clamp(node)
+            when :if then emit_if(node)
+            when :loop then emit_loop(node)
+            when :repeat then emit_repeat(node)
+            when :every then emit_beat(node)
+            when :after then emit_beat(node)
+            when :call then emit_call(node)
+            when :call_one_of then emit_call_one_of(node)
+            when :case then emit_case(node)
+            when :halt then emit_halt(node)
+            when :wait_vblank then emit_wait_vblank(node)
+            when :list_new then emit_list_new(node)
+            when :list_push then emit_list_push(node)
+            when :list_drop then emit_list_drop(node)
+            when :list_set then emit_list_set(node)
+            when :list_fill then emit_list_fill(node)
+            when :list_copy then emit_list_copy(node)
+            when :list_sort then emit_list_sort(node)
+            when :timer_start then emit_timer_start(node)
+            when :timer_stop then emit_timer_stop(node)
+            # a timer's handler runs as its timer ticks, not where it is written
+            when :on_timer then emit_nothing(node)
+            # no light is made on a PlayStation yet, and a game without one works nothing out again
+            when :show_light_now then emit_nothing(node)
+            # the build reads a digital pad, which has no motor: nothing is felt
+            when :rumble then emit_nothing(node)
+            when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
+            when *Faces::STATEMENT_KINDS then emit_faces_statement(node)
+            else emit_declaration_or_refuse(node)
+            end
+          end
+
+          # A declaration is gathered before the program is written, so it writes nothing where it
+          # is; any other kind with no writer is a mistake in this file.
+          def emit_declaration_or_refuse(node)
+            return emit_nothing(node) if Nodes.of_role(:declaration).include?(node.kind)
+
+            raise LoweringError, "no writer here for #{node.kind.inspect}"
+          end
+
+          VALUE_KINDS = %i[
+            int var_ref binop neg bit_not absolute clamped shift_right held pressed list_get list_len
+            table_get timer_ticks chance data_byte players_connected local_player mul_fix div_fix
+          ].freeze
+
+          def value_of_kind(node)
+            case node.kind
+            when :int then value_of_int(node)
+            when :var_ref then value_of_var_ref(node)
+            when :binop then value_of_binop(node)
+            when :neg then value_of_neg(node)
+            when :bit_not then value_of_bit_not(node)
+            when :absolute then value_of_absolute(node)
+            when :clamped then value_of_clamped(node)
+            when :shift_right then value_of_shift_right(node)
+            when :held then value_of_held(node)
+            when :pressed then value_of_pressed(node)
+            when :list_get then value_of_list_get(node)
+            when :list_len then value_of_list_len(node)
+            when :table_get then value_of_table_get(node)
+            when :timer_ticks then value_of_timer_ticks(node)
+            when :chance then value_of_chance(node)
+            when :data_byte then value_of_data_byte(node)
+            when :players_connected then value_of_players_connected(node)
+            when :local_player then value_of_local_player(node)
+            when :mul_fix then value_of_mul_fix(node)
+            when :div_fix then value_of_div_fix(node)
+            else raise LoweringError, "no writer here for #{node.kind.inspect}"
+            end
+          end
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the day
-          # the PlayStation does it; test_ps1_kind_coverage.rb holds the list and the tables above to every
+          # the PlayStation does it; test_ps1_kind_coverage.rb holds the list and the kind lists above to every
           # kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the painted (bitmap) screen" => %i[draw_column_at save_region restore_region camera],
@@ -213,7 +268,7 @@ module VBlank
             # Handing over between a painted screen and one drawn from tiles wipes the picture
             # (SceneHandover.crossing?), which is made with the screens drawn from tiles.
             if @program.walk.any? { |node| tiles_screen?(node) } &&
-               @program.walk.any? { |node| node.kind != :screen && Paint::STATEMENTS.key?(node.kind) }
+               @program.walk.any? { |node| node.kind != :screen && Paint::STATEMENT_KINDS.include?(node.kind) }
               refuse_unmade!(TILED_SCREEN, "paints a picture and also shows a screen drawn from tiles")
             end
             second_pad = @program.most_players.to_i > 1 || @program.walk.any? do |node|
@@ -399,7 +454,7 @@ module VBlank
 
           # --- statements ---
 
-          def statement(node) = send(STATEMENTS.fetch(node.kind), node)
+          def statement(node) = emit_statement(node)
 
           def emit_nothing(_node) = nil
           def emit_children(node) = node.children.each { |child| statement(child) }
@@ -658,7 +713,7 @@ module VBlank
             list = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
             emit_value(node.index)
             distance, base = emit_slot_place(list)
-            @asm.public_send(Runtime::Lists::LOADS.fetch(list.slot_bytes), :v0, distance, base)
+            @asm.load(Runtime::Lists::LOADS.fetch(list.slot_bytes), :v0, distance, base)
           end
 
           # The index and the value worked out in the order rt_list_set takes them (#runtime_call): the
@@ -680,7 +735,7 @@ module VBlank
               emit_restore_temporary(:v0)
             end
             distance, base = emit_slot_place(list)
-            @asm.public_send(Runtime::Lists::STORES.fetch(list.slot_bytes), :v1, distance, base)
+            @asm.store(Runtime::Lists::STORES.fetch(list.slot_bytes), :v1, distance, base)
           end
 
           # The index in v0 checked against +list+'s length, and the slot it names put in t9: [distance,
@@ -790,23 +845,23 @@ module VBlank
             @asm.label(next_item)
             @asm.sll(:t3, :t1, item_shift)
             @asm.addu(:t3, :t3, :a0)
-            @asm.public_send(item_load, :t4, lists::HEADER, :t3)
+            @asm.load(item_load, :t4, lists::HEADER, :t3)
             @asm.sll(:t5, :t4, key_shift)
             @asm.addu(:t5, :t5, :a1)
-            @asm.public_send(key_load, :t5, lists::HEADER, :t5)
+            @asm.load(key_load, :t5, lists::HEADER, :t5)
             @asm.label(step)
             @asm.beq(:t3, :a0, place) # the first slot: nothing before it
-            @asm.public_send(item_load, :t7, lists::HEADER - list.slot_bytes, :t3)
+            @asm.load(item_load, :t7, lists::HEADER - list.slot_bytes, :t3)
             @asm.sll(:t8, :t7, key_shift)
             @asm.addu(:t8, :t8, :a1)
-            @asm.public_send(key_load, :t8, lists::HEADER, :t8)
+            @asm.load(key_load, :t8, lists::HEADER, :t8)
             # Moves back past a bigger number, or past a smaller one when the biggest comes first.
             descending ? @asm.slt(:t9, :t8, :t5) : @asm.slt(:t9, :t5, :t8)
             @asm.beq(:t9, :zero, place)
-            @asm.public_send(item_store, :t7, lists::HEADER, :t3)
+            @asm.store(item_store, :t7, lists::HEADER, :t3)
             @asm.b(step) { @asm.addiu(:t3, :t3, -list.slot_bytes) }
             @asm.label(place)
-            @asm.public_send(item_store, :t4, lists::HEADER, :t3)
+            @asm.store(item_store, :t4, lists::HEADER, :t3)
             @asm.addiu(:t1, :t1, 1)
             @asm.bne(:t1, :t0, next_item)
             @asm.label(done)
@@ -835,7 +890,7 @@ module VBlank
             @asm.sll(:v0, :v0, keeping.bytes.bit_length - 1) if keeping.bytes > 1
             @asm.la(:t0, table_label(table.name))
             @asm.addu(:t0, :t0, :v0)
-            @asm.public_send(keeping.load, :v0, 0, :t0)
+            @asm.load(keeping.load, :v0, 0, :t0)
           end
 
           # --- timers ---
@@ -1024,7 +1079,7 @@ module VBlank
 
             case operand
             when Symbol then emit_load_variable(operand)
-            when Node then send(VALUES.fetch(operand.kind), operand)
+            when Node then value_of_kind(operand)
             when LabelAddress then @asm.la(:v0, operand.label)
             else raise LoweringError, "cannot make #{operand.inspect} a number"
             end
@@ -1065,7 +1120,7 @@ module VBlank
                 @asm.mult(:v0, :v1)
                 @asm.mflo(:v0)
               else
-                @asm.public_send(IN_PLACE_SUMS.fetch(node.op), :v0, :v0, :v1)
+                @asm.three_registers(IN_PLACE_SUMS.fetch(node.op), :v0, :v0, :v1)
               end
             end
           end
@@ -1114,7 +1169,7 @@ module VBlank
 
             emit_value(node.lhs)
             # Adding nought, or putting in or turning over no bit, leaves the number as it is.
-            @asm.public_send(immediate, :v0, :v0, number) unless number.zero? && op != :&
+            @asm.immediate(immediate, :v0, :v0, number) unless number.zero? && op != :&
             true
           end
 
@@ -1163,7 +1218,7 @@ module VBlank
             with_right_operand(node.lhs, node.rhs) do
               @asm.sltu(:v0, :zero, :v0)
               @asm.sltu(:v1, :zero, :v1)
-              @asm.public_send(node.op, :v0, :v0, :v1)
+              @asm.three_registers(node.op, :v0, :v0, :v1)
             end
           end
 
@@ -1393,7 +1448,7 @@ module VBlank
             return false unless count&.between?(0, 31)
 
             emit_value(node.lhs)
-            @asm.public_send(node.op == :<< ? :sll : :sra, :v0, :v0, count)
+            node.op == :<< ? @asm.sll(:v0, :v0, count) : @asm.sra(:v0, :v0, count)
             true
           end
 

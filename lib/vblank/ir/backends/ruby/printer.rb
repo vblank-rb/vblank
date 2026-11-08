@@ -24,8 +24,8 @@ module VBlank
         # - WHERE A NAME LIVES. Everything the game keeps — its variables, lists, tables, the
         #   arrays of routines it calls by number, the art the runtime reads — is an instance
         #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals.
-        # - A ROUTINE IS A METHOD, called by name, and one picked from an array by number is
-        #   called with __send__.
+        # - A ROUTINE IS A METHOD, called by name, and one picked from an array by number is that
+        #   array's block calling it by name.
         class Printer
           C = Native::C
           INDENT = "  "
@@ -83,7 +83,7 @@ module VBlank
             when C::ConstArray then print_const_array(item)
             when C::StartFileArray then print_start_file_array(item)
             when C::Function then print_function(item)
-            when C::FunctionTable then add_starting_value("@#{item.name.text} = [#{item.functions.map { |name| ":#{name.text}" }.join(', ')}].freeze")
+            when C::FunctionTable then print_routine_table(item)
             when C::ListStorage then add_starting_value("@#{item.name.text} = RgList.new(#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)})")
             when C::Comment then nil # the tree's own heading; the file has Ruby::WRITTEN_BY
             else raise LoweringError, "the printer has no top-level form for #{item.class}"
@@ -91,6 +91,13 @@ module VBlank
           end
 
           def add_starting_value(text) = @setup << "#{INDENT}#{text}\n"
+
+          # A table of routines picked by number (`call [:a, :b], number: n`): a block for each that
+          # calls it by name, made in rg_game_setup so each calls the game's own (#call).
+          def print_routine_table(item)
+            calls = item.functions.map { |name| "-> { #{name.text} }" }
+            add_starting_value("@#{item.name.text} = [#{calls.join(', ')}].freeze")
+          end
 
           def print_function(item)
             @locals = Set.new
@@ -192,11 +199,11 @@ module VBlank
             @locals.include?(text) || text.start_with?("RG_") ? text : "@#{text}"
           end
 
-          # A routine picked from an array by its number (rg_call_routine(table[which])) is the
-          # method of that name.
+          # A routine picked from an array by its number (rg_call_routine(table[which])) is that
+          # array's block for it (#print_routine_table), called.
           def call(item)
             function = item.function.text
-            return "__send__(#{expression(item.args.first)})" if function == "rg_call_routine"
+            return "#{expression(item.args.first)}.call" if function == "rg_call_routine"
             return operator_of_two(item) if item.args.size == 2 && OPERATORS_OF_TWO.include?(function)
 
             @called << function

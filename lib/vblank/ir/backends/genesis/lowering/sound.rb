@@ -10,15 +10,31 @@ module VBlank
           # entry's number added to the cartridge's own sound log (rt_sound_log), which a run reads back as
           # the interpreter's words (#sound_entries). Mixed into Lowering.
           module Sound
-            STATEMENTS = Ractor.make_shareable({ enable_sound: :emit_enable_sound, beep: :emit_beep, noise: :emit_noise,
-                                                 wave: :emit_wave, stop_wave: :emit_stop_wave, play_song: :emit_play_song,
-                                                 stop_music: :emit_stop_music, hold_music: :emit_hold_music,
-                                                 play_from_list: :emit_play_from_list,
-                                                 play_sound_effect: :emit_play_sound_effect, play_sample: :emit_play_sample,
-                                                 stop_sample: :emit_stop_sample })
+            STATEMENT_KINDS = %i[
+              enable_sound beep noise wave stop_wave play_song stop_music hold_music play_from_list
+              play_sound_effect play_sample stop_sample
+            ].freeze
+
+            def emit_sound_statement(node)
+              case node.kind
+              when :enable_sound then emit_enable_sound(node)
+              when :beep then emit_beep(node)
+              when :noise then emit_noise(node)
+              when :wave then emit_wave(node)
+              when :stop_wave then emit_stop_wave(node)
+              when :play_song then emit_play_song(node)
+              when :stop_music then emit_stop_music(node)
+              when :hold_music then emit_hold_music(node)
+              when :play_from_list then emit_play_from_list(node)
+              when :play_sound_effect then emit_play_sound_effect(node)
+              when :play_sample then emit_play_sample(node)
+              when :stop_sample then emit_stop_sample(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # Whether +program+ makes any sound.
-            def self.sounds?(program) = program.walk.any? { |node| STATEMENTS.key?(node.kind) }
+            def self.sounds?(program) = program.walk.any? { |node| STATEMENT_KINDS.include?(node.kind) }
 
             # Whether +program+ plays songs, and so carries their player (Runtime::Music).
             def self.songs?(program)
@@ -92,7 +108,7 @@ module VBlank
             # The section of the game's songs (Genesis::Music), each note's sound-log entries numbered among
             # the rest.
             def music_section
-              words = @music.words(sound_voicing, recording_row: method(:recorded_note_row)) { |entry| sound_entry_number(entry) }
+              words = @music.words(sound_voicing, recordings: self) { |entry| sound_entry_number(entry) }
               @music.section(words)
             end
 

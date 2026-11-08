@@ -42,17 +42,54 @@ module VBlank
           RIGHT_LOW = Sums::RIGHT_LOW
           RIGHT_HIGH = Sums::RIGHT_HIGH
 
-          STATEMENTS = Ractor.make_shareable({ set: :emit_set, add: :emit_add, sub: :emit_sub, copy: :emit_copy, if: :emit_if,
-                                               repeat: :emit_repeat, call: :emit_call, negate: :emit_negate,
-                                               abs: :emit_abs, negate_abs: :emit_negate_abs, clamp: :emit_clamp,
-                                               list_set: :emit_list_set, list_push: :emit_list_push,
-                                               list_drop: :emit_list_drop, list_fill: :emit_list_fill,
-                                               list_copy: :emit_list_copy, draw_column_at: :emit_draw_column_at })
-          VALUES = Ractor.make_shareable({ int: :value_of_int, var_ref: :value_of_var_ref, binop: :value_of_binop,
-                                           neg: :value_of_neg, absolute: :value_of_absolute, clamped: :value_of_clamped,
-                                           mul_fix: :value_of_mul_fix, div_fix: :value_of_div_fix,
-                                           shift_right: :value_of_shift_right, table_get: :value_of_table_get,
-                                           list_get: :value_of_list_get, list_len: :value_of_list_len })
+          STATEMENT_KINDS = %i[
+            set add sub copy if repeat call negate abs negate_abs clamp list_set list_push list_drop list_fill
+            list_copy draw_column_at
+          ].freeze
+
+          def emit_statement(node)
+            case node.kind
+            when :set then emit_set(node)
+            when :add then emit_add(node)
+            when :sub then emit_sub(node)
+            when :copy then emit_copy(node)
+            when :if then emit_if(node)
+            when :repeat then emit_repeat(node)
+            when :call then emit_call(node)
+            when :negate then emit_negate(node)
+            when :abs then emit_abs(node)
+            when :negate_abs then emit_negate_abs(node)
+            when :clamp then emit_clamp(node)
+            when :list_set then emit_list_set(node)
+            when :list_push then emit_list_push(node)
+            when :list_drop then emit_list_drop(node)
+            when :list_fill then emit_list_fill(node)
+            when :list_copy then emit_list_copy(node)
+            when :draw_column_at then emit_draw_column_at(node)
+            else raise LoweringError, "the chip has no writer for #{node.kind.inspect}"
+            end
+          end
+          VALUE_KINDS = %i[
+            int var_ref binop neg absolute clamped mul_fix div_fix shift_right table_get list_get list_len
+          ].freeze
+
+          def value_of_kind(node)
+            case node.kind
+            when :int then value_of_int(node)
+            when :var_ref then value_of_var_ref(node)
+            when :binop then value_of_binop(node)
+            when :neg then value_of_neg(node)
+            when :absolute then value_of_absolute(node)
+            when :clamped then value_of_clamped(node)
+            when :mul_fix then value_of_mul_fix(node)
+            when :div_fix then value_of_div_fix(node)
+            when :shift_right then value_of_shift_right(node)
+            when :table_get then value_of_table_get(node)
+            when :list_get then value_of_list_get(node)
+            when :list_len then value_of_list_len(node)
+            else raise LoweringError, "the chip has no writer for #{node.kind.inspect}"
+            end
+          end
 
           # The sums called rather than written in place. A routine that makes any of them, and so
           # uses LINK, keeps its own return address safe first.
@@ -343,7 +380,7 @@ module VBlank
             number = (@branches += 1)
             return emit_far_branch(condition, label) if @far_branches[number]
 
-            @gsu.public_send(condition, label)
+            @gsu.branch(condition, label)
             @short_branches << [number, @gsu.here, label]
             @gsu.nop
           end
@@ -351,7 +388,7 @@ module VBlank
           def emit_far_branch(condition, label)
             over = fresh("over")
             unless condition == :bra
-              @gsu.public_send(OPPOSITE.fetch(condition), over)
+              @gsu.branch(OPPOSITE.fetch(condition), over)
               @gsu.nop
             end
             @gsu.iwt(15, label)
@@ -364,7 +401,7 @@ module VBlank
           def statement(node)
             return if Nodes.of_role(:declaration).include?(node.kind)
 
-            send(STATEMENTS.fetch(node.kind), node)
+            emit_statement(node)
           end
 
           def store(name, low: LOW, high: HIGH)
@@ -1026,7 +1063,7 @@ module VBlank
             return load_number(known, LOW, HIGH) if known
             return load_variable(operand, LOW, HIGH) if operand.is_a?(Symbol)
 
-            send(VALUES.fetch(operand.kind), operand)
+            value_of_kind(operand)
           end
 
           def value_of_int(node) = load_number(node.value, LOW, HIGH)
@@ -1103,9 +1140,9 @@ module VBlank
 
             low_sum, high_sum = IN_PLACE_SUMS.fetch(node.op)
             @gsu.with(LOW)
-            @gsu.public_send(low_sum, RIGHT_LOW)
+            @gsu.sum(low_sum, RIGHT_LOW)
             @gsu.with(HIGH)
-            @gsu.public_send(high_sum, RIGHT_HIGH)
+            @gsu.sum(high_sum, RIGHT_HIGH)
           end
 
           # A number up to 15 added: the chip has an instruction for that, with the number in it.

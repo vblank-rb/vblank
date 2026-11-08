@@ -81,7 +81,7 @@ module VBlank
           # the console draws them, so anything reading a running cartridge asks the same of it.
           # +drawn+ is the program's SpriteNames, which turns the table's numbers into names;
           # +read8+ reads one byte of the running cartridge's memory, given its address.
-          def drawn_sprite_rows(drawn, read8)
+          def drawn_sprite_rows(drawn, &read8)
             at = runtime.fetch(Runtime::Picture::DRAWN)
             little = ->(address, width) { (0...width).sum { |i| read8.call(address + i) << (8 * i) } }
             signed16 = ->(value) { value >= 0x8000 ? value - 0x10000 : value }

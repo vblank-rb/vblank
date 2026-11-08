@@ -24,7 +24,8 @@ module VBlank
           module Chip
             # The kinds of IR a routine on the chip can hold besides what ChipCode makes, which do
             # nothing while the game runs.
-            MADE = Ractor.make_shareable((ChipCode::STATEMENTS.keys + ChipCode::VALUES.keys + [:else]).to_h { |kind| [kind, true] })
+            MADE = Ractor.make_shareable((ChipCode::STATEMENT_KINDS + ChipCode::VALUE_KINDS + [:else])
+                                           .to_h { |kind| [kind, true] })
             LIST_STEPS = %i[list_get list_set list_len list_push list_drop list_fill list_copy].freeze
             # Where each 16-bit half of a variable is, for copying.
             HALVES = [0, 2].freeze

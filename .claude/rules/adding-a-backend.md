@@ -239,9 +239,11 @@ What a new lowering needs for this, following Native:
   program that can REACH one, before writing anything, with a plain message
   (`Native::Lowering#refuse_unlowered_kinds!`). A hardware-only step in a routine nothing calls
   is not refused: it never runs, and Reference does the same.
-- **Dispatch is one method per kind.** Reference keeps a `STATEMENTS` table and a `VALUES` table
-  (kind to method name); Native keeps the same two, so the two read side by side and a missing
-  kind is one line to find. A new backend keeps them too. A kind it cannot do yet goes on a list
+- **Dispatch is one method per kind, called by name in a `case`.** Reference lists its kinds in
+  `STATEMENT_KINDS` and `VALUE_KINDS` and calls each kind's method in a written-out `case`
+  (`#exec_by_kind`, `#value_by_kind`); every lowering does the same, a part file (Picture, Sound)
+  keeping its own kinds and its own `case`, so a missing kind is one line to find and a call is
+  found by its name. Never `send` a method name read from a table. A kind it cannot do yet goes on a list
   of its own (Native has `NOT_LOWERED_YET`, empty now), held by a coverage test
   (`test/lowering/native/vblank/ir/backends/native/test_native_kind_coverage.rb`) so every kind is either done
   or listed. `test/all/vblank/ir/test_kind_coverage.rb` holds Reference and the GBA lowering to

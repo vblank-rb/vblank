@@ -85,13 +85,14 @@ module VBlank
               # The header in the order it is kept, read once along it: the byte after the width
               # is nothing, and is stepped over.
               at = 0
-              { capacity: [CAPACITY, 2], width: [WIDTH, 1], front: [FRONT, 2], length: [LENGTH, 2] }.each do |field, (offset, bytes)|
+              header = [[CAPACITY, 2, q.capacity], [WIDTH, 1, q.width], [FRONT, 2, q.front], [LENGTH, 2, q.length]]
+              header.each do |offset, bytes, kept|
                 raise ArgumentError, "the list header's fields are read in the order they are kept" if offset < at
 
                 (offset - at).times { asm.inc(:hl) }
                 bytes.times do |i|
                   asm.load(:a, [:hli])
-                  asm.load_high(q.public_send(field) + i, :a)
+                  asm.load_high(kept + i, :a)
                 end
                 at = offset + bytes
               end
@@ -102,9 +103,9 @@ module VBlank
               asm.label("rt_list_close")
               list_address(asm, q)
               FRONT.times { asm.inc(:hl) }
-              %i[front length].each do |field|
+              [q.front, q.length].each do |kept|
                 2.times do |i|
-                  asm.load_high(:a, q.public_send(field) + i)
+                  asm.load_high(:a, kept + i)
                   asm.load([:hli], :a)
                 end
               end

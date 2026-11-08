@@ -39,7 +39,7 @@ module VBlank
         def self.for(lowering, cache)
           kind = lowering.class
           new(plan: cache.plan, most_routine_bytes: kind::MOST_ROUTINE_BYTES, most_part_bytes: kind::MOST_PART_BYTES,
-              return_bytes: kind::RETURN_BYTES, measure: lowering.method(:bytes_of),
+              return_bytes: kind::RETURN_BYTES, measure: ->(statements) { lowering.bytes_of(statements) },
               snapshot: -> { kind::LOWERING_STATE.snapshot(lowering) }, found_too_big: cache.routines_found_too_big)
         end
 

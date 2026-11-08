@@ -325,7 +325,7 @@ module VBlank
               asm.load_high(h::VBK, :a)
               asm.call("rt_bank_back")
               asm.xor_a(:a)
-              %i[generation clear clear_low clear_high].each { |name| asm.load_high(quick.public_send(name), :a) }
+              [quick.generation, quick.clear, quick.clear_low, quick.clear_high].each { |kept| asm.load_high(kept, :a) }
               [DIRTY_LIST, OWN_LIST].each do |list|
                 asm.load(:hl, memory[list])
                 asm.load([:hli], :a)

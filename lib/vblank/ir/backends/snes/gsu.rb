@@ -91,32 +91,39 @@ module VBlank
 
           SINGLES.each { |name, opcodes| define_method(name) { emit(*opcodes) } }
 
-          BRANCHES.each do |name, opcode|
-            define_method(name) do |target|
-              emit(opcode)
-              fixup(:relative, target)
-              emit(0)
-            end
+          BRANCHES.each_key do |name|
+            define_method(name) { |target| branch(name, target) }
+          end
+
+          # A branch to +target+ on +condition+, one of BRANCHES (:bra for always): for a branch the
+          # code works out rather than writes.
+          def branch(condition, target)
+            emit(BRANCHES.fetch(condition))
+            fixup(:relative, target)
+            emit(0)
           end
 
           # A sum on the source and +operand+, a register or imm(0..15), into the destination.
-          SUMS.each do |name, (base, register_prefix, number_prefix)|
-            define_method(name) do |operand|
-              if operand.is_a?(Imm)
-                raise Error, "#{name} has no number form" unless number_prefix
-                # $70 and $C0 are MERGE and HIB whatever prefix comes before them.
-                if operand.value.zero? && %i[and_ bic or_ xor].include?(name)
-                  raise Error, "#{name} cannot take #0"
-                end
+          SUMS.each_key do |name|
+            define_method(name) { |operand| sum(name, operand) }
+          end
 
-                emit(number_prefix, base | checked_nibble(operand.value, name))
-              else
-                register = checked_register(operand)
-                # MERGE, HIB and the like sit where register 0 of AND and OR would.
-                raise Error, "#{name} cannot name R0" if register.zero? && %i[and_ bic or_ xor].include?(name)
+          # The sum +name+ (one of SUMS) on the source and +operand+: for a sum the code works out
+          # rather than writes.
+          def sum(name, operand)
+            base, register_prefix, number_prefix = SUMS.fetch(name)
+            if operand.is_a?(Imm)
+              raise Error, "#{name} has no number form" unless number_prefix
+              # $70 and $C0 are MERGE and HIB whatever prefix comes before them.
+              raise Error, "#{name} cannot take #0" if operand.value.zero? && %i[and_ bic or_ xor].include?(name)
 
-                emit(*[register_prefix, base | register].compact)
-              end
+              emit(number_prefix, base | checked_nibble(operand.value, name))
+            else
+              register = checked_register(operand)
+              # MERGE, HIB and the like sit where register 0 of AND and OR would.
+              raise Error, "#{name} cannot name R0" if register.zero? && %i[and_ bic or_ xor].include?(name)
+
+              emit(*[register_prefix, base | register].compact)
             end
           end
 

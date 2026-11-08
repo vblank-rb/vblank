@@ -67,7 +67,7 @@ module VBlank
           # The sections that must be in the first bank, there in the order they came; then the rest
           # first fit (Sections::Banks), the first bank's room ending at its header.
           def place_sections
-            banks = Sections::Banks.new(first: 0, room: method(:room))
+            banks = Sections::Banks.new(first: 0, room: ->(bank) { room(bank) })
             first, rest = @sections.partition { |section| section.home == :first }
             placed = first.map do |section|
               offset = banks.take(0, section.size) || refuse_first_bank_full!(first)

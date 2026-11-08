@@ -17,18 +17,32 @@ module VBlank
           # layer, of four-colour tiles (#make_third_layer_art). Each sprite is made of the console's 8×8 sprite pieces, placed
           # in the sprite table every pass the game places its sprites.
           module Picture
-            STATEMENTS = Ractor.make_shareable({
-                                                 screen: :emit_screen, background: :emit_background,
-                                                 scroll_background: :emit_scroll_background,
-                                                 set_tile: :emit_set_tile, show_map: :emit_show_map,
-                                                 present_objects: :emit_present_objects,
-                                                 hide_sprites: :emit_hide_sprites, fade: :emit_fade, tint: :emit_tint,
-                                                 place_bar: :emit_place_bar, scroll_rows: :emit_scroll_rows,
-                                                 copy_tiles: :emit_copy_tiles, copy_owed_tiles: :emit_copy_owed_tiles,
-                                                 background_colors: :emit_background_colors,
-                                                 color_list_holds: :emit_color_list_holds,
-                                                 see_through: :emit_see_through_amount
-                                               })
+            STATEMENT_KINDS = %i[
+              screen background scroll_background set_tile show_map present_objects hide_sprites fade tint
+              place_bar scroll_rows copy_tiles copy_owed_tiles background_colors color_list_holds see_through
+            ].freeze
+
+            def emit_picture_statement(node)
+              case node.kind
+              when :screen then emit_screen(node)
+              when :background then emit_background(node)
+              when :scroll_background then emit_scroll_background(node)
+              when :set_tile then emit_set_tile(node)
+              when :show_map then emit_show_map(node)
+              when :present_objects then emit_present_objects(node)
+              when :hide_sprites then emit_hide_sprites(node)
+              when :fade then emit_fade(node)
+              when :tint then emit_tint(node)
+              when :place_bar then emit_place_bar(node)
+              when :scroll_rows then emit_scroll_rows(node)
+              when :copy_tiles then emit_copy_tiles(node)
+              when :copy_owed_tiles then emit_copy_owed_tiles(node)
+              when :background_colors then emit_background_colors(node)
+              when :color_list_holds then emit_color_list_holds(node)
+              when :see_through then emit_see_through_amount(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # Whether +program+ has a status bar, which the runtime then carries what places
             # (Runtime::Picture's rt_bar_place).

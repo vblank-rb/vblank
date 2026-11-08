@@ -19,7 +19,7 @@ class TestGenesisKindCoverage < Minitest::Test
 
   private def not_yet = Lowering::NOT_LOWERED_YET.values.flatten
 
-  private def made = Lowering::STATEMENTS.keys + Lowering::VALUES.keys
+  private def made = Lowering::STATEMENT_KINDS + Lowering::VALUE_KINDS
 
   # The kinds a Genesis cannot do at all, as its answers say of the conformance fixture,
   # which touches every kind: the build refuses them by those words, so the lowering never meets one.

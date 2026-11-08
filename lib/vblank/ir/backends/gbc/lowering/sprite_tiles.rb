@@ -22,7 +22,14 @@ module VBlank
           # stores), and the blank after the pass copies the tiles straight from the cartridge
           # (Runtime::SpriteTileLoads).
           module SpriteTiles
-            STATEMENTS = Ractor.make_shareable({ load_sprite_tiles: :emit_load_sprite_tiles })
+            STATEMENT_KINDS = %i[load_sprite_tiles].freeze
+
+            def emit_sprite_tiles_statement(node)
+              case node.kind
+              when :load_sprite_tiles then emit_load_sprite_tiles(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # Does the game load sprite tiles?
             def loads_sprite_tiles? = @reachable.any? { |node| node.kind == :load_sprite_tiles }

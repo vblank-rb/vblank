@@ -441,7 +441,7 @@ module VBlank
           # The sprites the game placed in its last pass, back to front, as the interpreter gives them
           # (Reference#sprites): the runtime keeps a row for each (Runtime::Picture::DRAWN) — whose,
           # which picture, where — and SpriteNames turns the numbers back into names.
-          def read_sprites = @places.drawn_sprite_rows(@drawn_sprites, method(:half))
+          def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| half(address) }
 
           # The game's memory, work RAM or the Super FX chip's, by the address its code uses
           # (Diagnostics::SNESMemory, which the finished-cartridge reader reads through too).

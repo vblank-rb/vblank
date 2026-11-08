@@ -46,8 +46,22 @@ module VBlank
           # four microseconds at double speed) between any two accesses, the chip halted while its
           # counters are written, and the clock and memory switched off again after.
           module Clock
-            STATEMENTS = Ractor.make_shareable({ set_clock: :emit_set_clock })
-            VALUES = Ractor.make_shareable({ clock: :value_of_clock })
+            STATEMENT_KINDS = %i[set_clock].freeze
+
+            def emit_clock_statement(node)
+              case node.kind
+              when :set_clock then emit_set_clock(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
+            VALUE_KINDS = %i[clock].freeze
+
+            def value_of_clock_kind(node)
+              case node.kind
+              when :clock then value_of_clock(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # The routines, all in one section: the read at power-on, called before the game's first
             # line, the read after each wait, the working-out of the readings, and the start of a
@@ -130,7 +144,12 @@ module VBlank
             def emit_set_clock(node)
               no_chip = fresh("no_clock")
               jump_unless(Build.var_ref(clock_kept(:present)), no_chip)
-              IR::Clock::SET_PARTS.each { |part| statement(Build.set(clock_work(part), node.public_send(part))) }
+              statement(Build.set(clock_work(:year), node.year))
+              statement(Build.set(clock_work(:month), node.month))
+              statement(Build.set(clock_work(:day), node.day))
+              statement(Build.set(clock_work(:hour), node.hour))
+              statement(Build.set(clock_work(:minute), node.minute))
+              statement(Build.set(clock_work(:second), node.second))
               offset_statements.each { |statement| statement(statement) }
               call_routine(START)
               call_routine(WORK_OUT)

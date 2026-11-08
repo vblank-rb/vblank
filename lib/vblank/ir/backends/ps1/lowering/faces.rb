@@ -15,7 +15,15 @@ module VBlank
           # chip's texture window repeats it, and a record (Runtime::Faces's RECORD_ fields) made once the
           # textures have their places; a face's list of pictures is a table of their records.
           module Faces
-            STATEMENTS = Ractor.make_shareable({ draw_place: :emit_children, fill_face: :emit_fill_face })
+            STATEMENT_KINDS = %i[draw_place fill_face].freeze
+
+            def emit_faces_statement(node)
+              case node.kind
+              when :draw_place then emit_children(node)
+              when :fill_face then emit_fill_face(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # The least side the chip's texture window repeats: a picture narrower or shorter than this is
             # kept repeated out to it.

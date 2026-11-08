@@ -230,6 +230,24 @@ module VBlank
             class_eval("def #{op}(rt, distance, base) = emit_store(:#{op}, #{opcode}, rt, distance, base)", __FILE__, __LINE__)
           end
 
+          # --- an instruction the code works out, named by its mnemonic ---
+
+          # A load or a store, +op+ one of LOADS or STORES: for a width the code works out.
+          def load(op, rt, distance, base) = emit_load(op, LOADS.fetch(op), rt, distance, base)
+          def store(op, rt, distance, base) = emit_store(op, STORES.fetch(op), rt, distance, base)
+
+          # `op rd, rs, rt`, +op+ one of THREE_REGISTERS.
+          def three_registers(op, rd, rs, rt) = r_type(THREE_REGISTERS.fetch(op), rs: rs, rt: rt, rd: rd)
+
+          # `op rt, rs, number`, +op+ one of SIGNED_IMMEDIATES or UNSIGNED_IMMEDIATES.
+          def immediate(op, rt, rs, number)
+            if SIGNED_IMMEDIATES.key?(op)
+              emit_immediate(op, SIGNED_IMMEDIATES.fetch(op), rt, rs, number, -0x8000..0x7FFF)
+            else
+              emit_immediate(op, UNSIGNED_IMMEDIATES.fetch(op), rt, rs, number, 0..0xFFFF)
+            end
+          end
+
           # --- branches and jumps ---
           #
           # Each takes a block for its delay slot: the one instruction the block emits runs whether the

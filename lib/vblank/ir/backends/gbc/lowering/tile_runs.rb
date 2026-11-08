@@ -27,7 +27,15 @@ module VBlank
           # the lowering still sees the list and the Advance's form, so the interpreter and the
           # computer builds play a group as any other painted run.
           module TileRuns
-            STATEMENTS = Ractor.make_shareable({ copy_tiles: :emit_copy_tiles, copy_owed_tiles: :emit_copy_owed_tiles })
+            STATEMENT_KINDS = %i[copy_tiles copy_owed_tiles].freeze
+
+            def emit_tile_runs_statement(node)
+              case node.kind
+              when :copy_tiles then emit_copy_tiles(node)
+              when :copy_owed_tiles then emit_copy_owed_tiles(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
 
             # Where a run's repacked tiles wait for the blank, and its flag saying they are waiting,
             # with where in picture memory each of its tiles goes — its bank and its address — for the
