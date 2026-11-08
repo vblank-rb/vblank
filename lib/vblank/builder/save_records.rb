@@ -387,9 +387,21 @@ module VBlank
         table
       end
 
-      # Each is kept where the record's word puts it (see #fast_for).
-      def declare_save_data_routines(layout, jobs = %i[scan save load erase copy reset])
-        jobs.each { |job| declare_func(layout.routine(job), fast: fast_for(layout, job)) { send(:"save_data_#{job}", layout) } }
+      # The routines +jobs+ names, each kept where the record's word puts it (see #fast_for). A record's
+      # erase and copy are never among them: those are jobs run a piece a pass (SaveJobs).
+      def declare_save_data_routines(layout, jobs)
+        jobs.each { |job| declare_func(layout.routine(job), fast: fast_for(layout, job)) { emit_save_data_routine(job, layout) } }
+      end
+
+      # The body of +layout+'s routine for +job+.
+      def emit_save_data_routine(job, layout)
+        case job
+        when :scan then save_data_scan(layout)
+        when :save then save_data_save(layout)
+        when :load then save_data_load(layout)
+        when :reset then save_data_reset(layout)
+        else raise ArgumentError, "a save_data record has no routine #{job.inspect}"
+        end
       end
 
       # --- the routines' bodies, run while the routines are built ---

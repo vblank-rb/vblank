@@ -100,7 +100,7 @@ module VBlank
       end
 
       # Ready to play on +device+. #play does this itself; a game that is stepped from outside, as a
-      # watched playthrough is (Playthroughs::WatchedGame), calls this and then #buttons_after for
+      # watched playthrough is (Playthroughs::WindowStepper), calls this and then #buttons_after for
       # each frame.
       def begin_play(device)
         @device = device

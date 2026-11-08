@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # A PLAYTHROUGH A PERSON CAN WATCH: any running game a playthrough plays on, played through a
+    # A PLAYTHROUGH A PERSON CAN WATCH: any running game a playthrough plays on, stepped through a
     # Live::Session as `vblank run` plays one, so the window does all it does there: the menu,
     # pause, a frame at a time, fast forward, scale, fullscreen, volume. Only where the buttons come
     # from differs. The script presses them, and what the window's keys and gamepads hold is
@@ -22,7 +22,9 @@ module VBlank
     # play a pass a step and never repeat, and a cartridge that cannot report its passes (one built
     # elsewhere, or one that waits for the screen in places of its own on a console that counts the
     # waits) reads as the refresh rate.
-    class WatchedGame
+    #
+    # It only steps: everything a playing asks is asked of the game.
+    class WindowStepper
       # The window was closed, which is how a person stops a playing they were watching.
       class WindowClosed < StandardError; end
 
@@ -53,15 +55,6 @@ module VBlank
           raise WindowClosed unless @session.buttons_after(@game.frame_gba, left, right)
         end
         self
-      end
-
-      def respond_to_missing?(question, include_private = false) = @game.respond_to?(question, include_private) || super
-
-      # Everything else is the game's to answer: this only watches.
-      def method_missing(question, ...)
-        return super unless @game.respond_to?(question)
-
-        @game.public_send(question, ...)
       end
 
       private

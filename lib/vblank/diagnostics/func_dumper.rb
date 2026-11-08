@@ -66,7 +66,7 @@ module VBlank
         range.step(4).map do |code_offset|
           rom_offset = Cartridge::ROM::ENTRY_OFFSET + code_offset
           inst = @rom.buffer[rom_offset, 4].unpack1("V")
-          desc, regs = @inspector.send(:disassemble, inst, regs)
+          desc, regs = @inspector.disassemble(inst, regs)
           format("  0x%04X: %s", rom_offset, desc)
         end
       end

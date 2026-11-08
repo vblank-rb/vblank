@@ -48,7 +48,7 @@ module VBlank
     # made of, so a tape is played by the same playing a script is.
     #
     # A TAPE CAN COUNT PASSES OF THE GAME LOOP IN PLACE OF FRAMES (+in_passes+, and see
-    # PassSteppedGame), and then a line's count is passes and a moment names a pass. One extra
+    # PassStepper), and then a line's count is passes and a moment names a pass. One extra
     # line of heading marks it, `counts: passes`, or `counts: variable steps` for a variable of the
     # game. Such a tape plays the same game at any speed on any way of running it, where a tape of
     # frames holds its presses to one cartridge's timing. A tape of frames does not have the line.
@@ -215,16 +215,16 @@ module VBlank
         refuse_export_from_elsewhere!
         Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
         running = Playthrough.power_on(cartridge, count_passes: in_passes == true)
-        game = PassSteppedGame.new(running, in_passes)
+        stepper = PassStepper.new(running, in_passes)
         taping = Taping.new
-        steps.each { |step| step.frames.zero? ? taping.moment(step.name) : hold_on(game, step, taping) }
+        steps.each { |step| step.frames.zero? ? taping.moment(step.name) : hold_on(stepper, step, taping) }
         Tape.recorded_on(cartridge, taping.steps, save: nil)
       end
 
-      private def hold_on(game, step, taping)
-        before = game.frames_played
-        game.step(step.frames, keys: Playthrough.key_mask(step.buttons))
-        taping.hold(step.buttons, game.frames_played - before)
+      private def hold_on(stepper, step, taping)
+        before = stepper.frames_played
+        stepper.step(step.frames, keys: Playthrough.key_mask(step.buttons))
+        taping.hold(step.buttons, stepper.frames_played - before)
       end
 
       # WRITE THE TAPE AS A SCRIPT FOR mGBA at +path+ (see TapeExport), for +cartridge+. +pictures_in+

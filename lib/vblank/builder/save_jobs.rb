@@ -113,9 +113,12 @@ module VBlank
       def lay_out(memory:, halves:, fast: nil)
         @memory = memory
         @halves = halves
-        %i[tick step_running finish await_wipe pick_slot end].each do |job|
-          declare_func(jobs_name(job), fast: fast) { send(:"save_jobs_#{job}") }
-        end
+        declare_func(jobs_name(:tick), fast: fast) { save_jobs_tick }
+        declare_func(jobs_name(:step_running), fast: fast) { save_jobs_step_running }
+        declare_func(jobs_name(:finish), fast: fast) { save_jobs_finish }
+        declare_func(jobs_name(:await_wipe), fast: fast) { save_jobs_await_wipe }
+        declare_func(jobs_name(:pick_slot), fast: fast) { save_jobs_pick_slot }
+        declare_func(jobs_name(:end), fast: fast) { save_jobs_end }
         run_each_pass(jobs_name(:tick))
       end
 

@@ -35,8 +35,7 @@ module VBlank
 
             plays.flat_map do |verb|
               played.select { |song| collides?(song, verb) }.map do |song|
-                Finding.new(check: NAME, severity: :warning, message: send(:"#{verb}_message", program, song),
-                            node: song)
+                Finding.new(check: NAME, severity: :warning, message: conflict_message(verb, program, song), node: song)
               end
             end
           end
@@ -49,6 +48,15 @@ module VBlank
             return Tunes.parts_on(song, :square) >= Audio::Music::MAX_SQUARE_PARTS if verb == :beep
 
             Tunes.parts_on(song, verb).positive?
+          end
+
+          # The words for +song+ sharing a voice with the effects +verb+ plays (a key of EFFECTS).
+          def conflict_message(verb, program, song)
+            case verb
+            when :beep then beep_message(program, song)
+            when :wave then wave_message(program, song)
+            when :noise then noise_message(program, song)
+            end
           end
 
           def beep_message(program, song)

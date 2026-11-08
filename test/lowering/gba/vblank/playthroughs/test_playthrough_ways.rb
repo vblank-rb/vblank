@@ -102,7 +102,7 @@ class TestPlaythroughWays < Minitest::Test
   end
 
   def test_closing_the_window_ends_the_playing
-    assert_raises(VBlank::Playthroughs::WatchedGame::WindowClosed) do
+    assert_raises(VBlank::Playthroughs::WindowStepper::WindowClosed) do
       steered.play(cartridge, on: "interpreter", window: Screen.new(stop_after: 3))
     end
   end
@@ -131,7 +131,7 @@ class TestPlaythroughWays < Minitest::Test
     assert_equal untouched.moments, watched.moments
   end
 
-  def test_a_watched_game_sends_the_speaker_a_frame_of_silence_where_it_has_no_sound
+  def test_a_watched_playing_sends_the_speaker_a_frame_of_silence_where_it_has_no_sound
     sound = []
     window = Screen.new
     window.define_singleton_method(:play_sound) { |left, rate, right| sound << [left.length, rate, right.length] }

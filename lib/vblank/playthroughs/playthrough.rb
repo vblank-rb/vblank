@@ -86,10 +86,10 @@ module VBlank
       # see `power_on_and_lead_in`.
       #
       # +on+ is the way to run the game (a word of LoweredGame.ways; the emulator unless set), and
-      # +window+ a device to show it on at the console's frame rate (see WatchedGame).
+      # +window+ a device to show it on at the console's frame rate (see WindowStepper).
       #
       # +in_passes+ makes every count in the script a count of passes of the game loop, or of a
-      # variable of the game named here, in place of frames (see PassSteppedGame).
+      # variable of the game named here, in place of frames (see PassStepper).
       #
       # +progress+ (a Messages::Progress) is told how far the playing has got as it goes: a phase
       # from the start and one on from each moment, and the frame each has reached.
@@ -105,9 +105,10 @@ module VBlank
       # gives up as any wait does, saying it was this script's.
       #
       # It is played by a playing that has no cartridge to say a tape was recorded on, and
-      # is never asked for what it came to: it is here for its hands on the console.
-      def play_as_lead_in(game)
-        playing = Playing.new(@name, nil, game, nil, save: nil, folder: nil)
+      # is never asked for what it came to: it is here for its hands on the console. +stepper+
+      # plays its frames (a WindowStepper, for a window).
+      def play_as_lead_in(game, stepper: game)
+        playing = Playing.new(@name, nil, game, nil, stepper: stepper, save: nil, folder: nil)
         steps_for_playing.each { |step| step.play(playing) }
         game
       end
@@ -163,6 +164,7 @@ module VBlank
       # after it.
       #
       # +on+ and +window+ are as for #play, and +count_passes+ marks that the playing will ask for them.
+      # What comes back is a Started: the game, to ask, and what steps it.
       def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false)
         refuse_unbuilt_game_on_emulator!(cartridge, on)
         game = if on && on != LoweredGame::EMULATOR
@@ -170,14 +172,22 @@ module VBlank
                else
                  power_on(cartridge, save: save, count_passes: count_passes || !window.nil?)
                end
-        if window
-          console = cartridge_from(cartridge).console
-          rate = (game.sound_rate if game.respond_to?(:sound_rate)) || Diagnostics::SoundRecording::CARTRIDGE_RATES.fetch(console)
-          game = WatchedGame.new(game, window, frame_seconds: Console.described(console).frame_seconds, sound_rate: rate)
-        end
-        lead_in&.play_as_lead_in(game)
-        game
+        stepper = window ? window_stepper(cartridge, game, window) : game
+        lead_in&.play_as_lead_in(game, stepper: stepper)
+        Started.new(game: game, stepper: stepper)
       end
+
+      # A GAME SWITCHED ON AND READY TO PLAY: +game+, the running game a playing asks, and +stepper+,
+      # what plays its frames — the game itself, or a WindowStepper showing it in a window.
+      Started = Data.define(:game, :stepper)
+
+      # What steps +game+ in +window+, at the console's frame rate and with the game's sound.
+      def self.window_stepper(cartridge, game, window)
+        console = cartridge_from(cartridge).console
+        rate = (game.sound_rate if game.respond_to?(:sound_rate)) || Diagnostics::SoundRecording::CARTRIDGE_RATES.fetch(console)
+        WindowStepper.new(game, window, frame_seconds: Console.described(console).frame_seconds, sound_rate: rate)
+      end
+      private_class_method :window_stepper
 
       # The emulator plays a cartridge's bytes, and a game that was not built into one has none.
       def self.refuse_unbuilt_game_on_emulator!(cartridge, on)
@@ -369,9 +379,11 @@ module VBlank
           folder = PictureFolder.at(pictures_in, steps.flat_map(&:names))
           cartridge = Playthrough.cartridge_from(cartridge)
           Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
-          game = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
-                                                             count_passes: in_passes == true)
-          playing = new(title, cartridge, in_passes ? PassSteppedGame.new(game, in_passes) : game, at_each_moment,
+          started = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
+                                                                count_passes: in_passes == true)
+          game = started.game
+          stepper = in_passes ? PassStepper.new(game, in_passes, stepper: started.stepper) : started.stepper
+          playing = new(title, cartridge, game, at_each_moment, stepper: stepper,
                         save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, progress: progress)
           progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
           steps.each { |step| step.play(playing) }
@@ -387,13 +399,15 @@ module VBlank
         # both are what the tape records of where it started. +folder+ is where the picture
         # at each moment is written (see PictureFolder), or nil for none to be written.
         # +in_passes+ names what the counts are counted in, for the tape to record (see Tape), and
-        # +progress+ is told the frame reached as each hold ends and a phase at each moment.
-        def initialize(title, cartridge, game, at_each_moment, save:, folder:, led_in: false, in_passes: nil,
+        # +progress+ is told the frame reached as each hold ends and a phase at each moment. +stepper+
+        # plays the frames each hold asks for: the game itself, or a WindowStepper or PassStepper over it.
+        def initialize(title, cartridge, game, at_each_moment, save:, folder:, stepper: game, led_in: false, in_passes: nil,
                        progress: Messages::Progress.silent)
           @title = title
           @progress = progress
           @cartridge = cartridge
           @game = game
+          @stepper = stepper
           @save = save
           @led_in = led_in
           @in_passes = in_passes
@@ -406,7 +420,7 @@ module VBlank
 
         # Play +frames+ frames with +buttons+ down, and write that on the tape.
         def hold(buttons, frames)
-          @game.step(frames, keys: Playthrough.key_mask(buttons))
+          @stepper.step(frames, keys: Playthrough.key_mask(buttons))
           @taping.hold(buttons, frames)
           @progress.show_detail("frame #{@taping.frames}")
         end

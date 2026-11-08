@@ -37,7 +37,7 @@ module VBlank
       class LinedUp
         # How many frames the second cartridge can play with its count standing still, short of
         # the step the first took, before the comparison stops: a minute.
-        MOST_FRAMES_STILL = PassSteppedGame::MOST_FRAMES_STILL
+        MOST_FRAMES_STILL = PassStepper::MOST_FRAMES_STILL
 
         # How many frames the second cartridge has played.
         attr_reader :second_frames

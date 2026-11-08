@@ -10,8 +10,8 @@
 require_relative "playthroughs/playthrough"                   # A game driven from a script
 require_relative "playthroughs/lowered_game"                  # A way of running a game other than the emulator
 require_relative "playthroughs/unbuilt_game"                  # A game that is checked but has no cartridge
-require_relative "playthroughs/watched_game"                  # A game shown in a window at the console's frame rate
-require_relative "playthroughs/pass_stepped_game"             # A game counted in passes of its loop, not frames
+require_relative "playthroughs/window_stepper"                # A game stepped in a window at the console's frame rate
+require_relative "playthroughs/pass_stepper"                  # A game stepped in passes of its loop, not frames
 require_relative "playthroughs/tape"                          # The presses a playthrough made, written down to play again
 require_relative "playthroughs/tape_export"                   # A tape written out for another emulator
 require_relative "playthroughs/playthrough_picture_folder"    # The folder a playthrough's pictures go in

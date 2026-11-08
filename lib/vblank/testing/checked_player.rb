@@ -151,7 +151,7 @@ module VBlank
         BuildChecks.refuse_unbuildable!(program)
         super
       rescue IR::Backends::RunComparison::CannotAnswer => e
-        raise MissingFeature, cannot_answer_reason(e)
+        raise MissingFeature, cannot_answer_reason(e.message)
       rescue IR::Backends::NotMadeYet => e
         raise MissingFeature, "#{kit.title} build does not make yet: #{e.part}"
       end
@@ -160,10 +160,10 @@ module VBlank
 
       # What the cartridge cannot answer yet, asked by a test before, during or after its run, a skip
       # too (CartridgeHeadlessRun#refuse_question!).
-      def refuse_question!(message) = raise(MissingFeature, cannot_answer_words(message))
+      def refuse_question!(message) = raise(MissingFeature, cannot_answer_reason(message))
 
-      def cannot_answer_reason(error) = cannot_answer_words(error.message)
-      def cannot_answer_words(message) = "#{kit.title} cannot answer: #{message[/`(\w+\??)`/, 1] || message}"
+      # The skip's reason for a refusal saying +message+: the question it names, or the whole message.
+      def cannot_answer_reason(message) = "#{kit.title} cannot answer: #{message[/`(\w+\??)`/, 1] || message}"
 
       # One player class for each console whose kit names a checked run, made once as the library
       # loads.

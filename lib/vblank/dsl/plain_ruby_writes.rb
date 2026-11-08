@@ -62,6 +62,10 @@ module VBlank
         end
 
         # `x += amount`, and every operator like it, on any place. See #write.
+        #
+        # The operator is the one the game wrote, which the rewritten line hands here as a Symbol, so it
+        # is applied the way Ruby applies it, by public_send: that is Ruby itself, on purpose, and the
+        # same goes for the verbs, attributes and setters below.
         def change(current, operator, amount, tests, label, second_name: false)
           game = tests.any?(&:game?)
           return current.public_send(operator, amount) if second_name && !game
@@ -280,7 +284,9 @@ module VBlank
         #
         # A game block runs on the builder, which has `var`. A part of a game is a plain class
         # that holds one, so the variable comes from the builder in use, under a name nothing has
-        # taken: two parts, or two of one part, each have a local of their own, as in Ruby.
+        # taken: two parts, or two of one part, each have a local of their own, as in Ruby. The owner is
+        # whatever the game's block ran on, whose own `var` may be private, as a method the block called
+        # bare would be: __send__ calls it as the block would have.
         def variable_with_no_var_line(owner, name, start)
           variable = owner.respond_to?(:var, true) ? owner.__send__(:var, name, start) : variable_for_part(name, start)
           variable.note_made_with_no_var_line

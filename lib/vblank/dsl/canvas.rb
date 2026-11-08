@@ -190,8 +190,9 @@ module VBlank
           left = var(:left, 0)
           right = var(:right, 0)
           place = @place
-          canvas = self
-          @builder.func(name) { canvas.send(:fill_row, row_y, left, right, place) }
+          # Made here, so the routine's block (run by the builder) calls the canvas's own #fill_row.
+          row = -> { fill_row(row_y, left, right, place) }
+          @builder.func(name) { row.call }
           name
         end
       end

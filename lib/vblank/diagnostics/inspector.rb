@@ -108,20 +108,6 @@ module VBlank
         checksum == expected
       end
 
-      private
-
-      def ror(val, amount)
-        amount &= 31
-        return val if amount == 0
-        ((val >> amount) | (val << (32 - amount))) & 0xFFFFFFFF
-      end
-
-      def decode_imm(inst)
-        imm8 = inst & 0xFF
-        rot4 = (inst >> 8) & 0xF
-        ror(imm8, rot4 * 2)
-      end
-
       COND_NAMES = {
         0x0 => "EQ", 0x1 => "NE", 0x2 => "CS", 0x3 => "CC",
         0x4 => "MI", 0x5 => "PL", 0x6 => "VS", 0x7 => "VC",
@@ -133,10 +119,8 @@ module VBlank
         13 => "sp", 14 => "lr", 15 => "pc",
       }.freeze
 
-      def reg(n)
-        REG_NAMES[n] || "r#{n}"
-      end
-
+      # The ARM instruction +inst+ in words, and the registers +regs+ as it leaves them. FuncDumper
+      # reads a routine with it, one instruction at a time.
       def disassemble(inst, regs)
         regs = regs.dup
         cond = (inst >> 28) & 0xF
@@ -296,6 +280,24 @@ module VBlank
         end
 
         ["???   0x#{inst.to_s(16).upcase.rjust(8, '0')}", regs]
+      end
+
+      private
+
+      def ror(val, amount)
+        amount &= 31
+        return val if amount == 0
+        ((val >> amount) | (val << (32 - amount))) & 0xFFFFFFFF
+      end
+
+      def decode_imm(inst)
+        imm8 = inst & 0xFF
+        rot4 = (inst >> 8) & 0xF
+        ror(imm8, rot4 * 2)
+      end
+
+      def reg(n)
+        REG_NAMES[n] || "r#{n}"
       end
     end
   end

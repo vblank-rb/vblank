@@ -124,7 +124,7 @@ module VBlank
         say window.settings_problems_message if window.settings_problems_message
         say "Press F1 or ` for the menu. Press P to pause. Hold Tab to play fast. Press Escape to stop."
         yield window
-      rescue WatchedGame::WindowClosed
+      rescue WindowStepper::WindowClosed
         say "The window was closed, so the playing stopped."
       ensure
         window&.close

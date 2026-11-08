@@ -77,9 +77,7 @@ class TestPlaythroughPasses < Minitest::Test
   end
 
   def test_a_cartridge_takes_more_frames_than_passes
-    played = recorded.play(cartridge)
-
-    assert_operator played.game.frames_played, :>, played.frames
+    assert_operator recorded.in_frames_on(cartridge).frames, :>, recorded.frames
   end
 
   def test_moments_name_passes

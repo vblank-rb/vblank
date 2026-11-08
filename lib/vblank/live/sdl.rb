@@ -246,7 +246,7 @@ module VBlank
       end
 
       # True while what is shown is the picture before, so the frame rate leaves it out, where something
-      # shows a window every screen refresh of a game slower than that (Playthroughs::WatchedGame).
+      # shows a window every screen refresh of a game slower than that (Playthroughs::WindowStepper).
       attr_writer :repeating_picture
 
       # How many new pictures went up in the last whole second, the number the menu can put up.

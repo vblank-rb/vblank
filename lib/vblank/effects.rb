@@ -131,7 +131,7 @@ module VBlank
         # private so it never becomes part of the DSL surface by accident.
         helpers.each do |name|
           VERBS.define_method(name, pack.instance_method(name))
-          VERBS.send(:private, name)
+          VERBS.module_eval { private name }
         end
 
         @verbs = @verbs.merge(verbs.to_h { |name| [name, pack] }).freeze
@@ -157,7 +157,7 @@ module VBlank
       def unregister(name)
         return false unless @verbs.key?(name)
 
-        VERBS.send(:remove_method, name)
+        VERBS.remove_method(name)
         @verbs = @verbs.except(name).freeze
         true
       end
@@ -170,7 +170,7 @@ module VBlank
           pack_checks(pack).each { |check| IR::Guardrails.unregister(check) }
           pack.public_instance_methods(false).each { |name| unregister(name) }
           pack.private_instance_methods(false).each do |name|
-            VERBS.send(:remove_method, name) if @helpers[name] == pack
+            VERBS.remove_method(name) if @helpers[name] == pack
             @helpers = @helpers.except(name).freeze
           end
         end

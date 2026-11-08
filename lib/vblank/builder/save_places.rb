@@ -75,9 +75,16 @@ module VBlank
         end
         @save_table = @table_record.call(kept, place: @memory.table_at)
         SCRATCH.each { |what| ensure_var(places_name(what)) }
-        %i[boot place_record find_room fits reclaim compact grow move clear commit].each do |job|
-          declare_func(places_name(job)) { send(:"save_places_#{job}") }
-        end
+        declare_func(places_name(:boot)) { save_places_boot }
+        declare_func(places_name(:place_record)) { save_places_place_record }
+        declare_func(places_name(:find_room)) { save_places_find_room }
+        declare_func(places_name(:fits)) { save_places_fits }
+        declare_func(places_name(:reclaim)) { save_places_reclaim }
+        declare_func(places_name(:compact)) { save_places_compact }
+        declare_func(places_name(:grow)) { save_places_grow }
+        declare_func(places_name(:move)) { save_places_move }
+        declare_func(places_name(:clear)) { save_places_clear }
+        declare_func(places_name(:commit)) { save_places_commit }
         at_boot(Build.call(places_name(:boot)))
       end
 

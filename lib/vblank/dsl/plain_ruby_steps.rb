@@ -186,7 +186,8 @@ module VBlank
         end
 
         # `a & b`, `a | b` and `a ^ b`: bits on numbers, and Ruby's own on anything else. Between
-        # tests they join, working out both sides as Ruby does for these on true and false.
+        # tests they join, working out both sides as Ruby does for these on true and false. The
+        # operator is the one the game wrote, applied as Ruby applies it (public_send, on purpose).
         def bits(left, operator, right)
           if game_test?(left) && game_test?(right)
             as_condition(left).public_send(operator, as_condition(right))

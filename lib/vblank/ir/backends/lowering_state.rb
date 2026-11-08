@@ -27,6 +27,10 @@ module VBlank
       # The lowering's own lists and tables are added to, never changed inside, so a copy of each is
       # enough. Anything else is refused, so a new kind of thing a lowering keeps is never shared with
       # a measurement by mistake.
+      #
+      # It reads and writes instance variables by name (instance_variable_get and _set) on purpose:
+      # what is saved is everything a lowering holds, whatever a later change adds to it, and a list
+      # written out by hand would let a new one go unsaved without a word.
       class LoweringState
         def initialize(copied:, shared:, unchanged:)
           @copied = copied

@@ -2,8 +2,8 @@
 
 module VBlank
   module Playthroughs
-    # A PLAYING COUNTED IN PASSES AND NOT FRAMES: a running game whose `step` plays passes of the game
-    # loop, keeping the buttons down for however many frames each one takes. A game too heavy for a
+    # A PLAYING COUNTED IN PASSES AND NOT FRAMES: a running game stepped a pass of the game loop at a
+    # time, keeping the buttons down for however many frames each one takes. A game too heavy for a
     # frame takes two or three over a pass, so a frame is a different moment of the game on each way
     # of running it, and one setting that changes the speed moves every press. The game reads its
     # buttons once a pass, so the buttons of a pass mean the same thing everywhere.
@@ -13,16 +13,20 @@ module VBlank
     #
     # +counted+ chooses what counts: true for the passes of the game loop, or the name of a variable the
     # game adds to itself, for a game with stretches that keep to the frame (a fade, a tally) around
-    # the part that counts.
-    class PassSteppedGame
+    # the part that counts. The count is read of +game+, and the frames are played by +stepper+: the
+    # game itself, or a WindowStepper showing it.
+    #
+    # It only steps: everything a playing asks is asked of the game.
+    class PassStepper
       # How many frames can go by with the count standing still before the playing stops: a minute.
       MOST_FRAMES_STILL = 3600
 
       # How many frames have been played so far.
       attr_reader :frames_played
 
-      def initialize(game, counted)
+      def initialize(game, counted, stepper: game)
         @game = game
+        @stepper = stepper
         @counted = counted
         @frames_played = 0
         count_now
@@ -33,21 +37,12 @@ module VBlank
         self
       end
 
-      def respond_to_missing?(question, include_private = false) = @game.respond_to?(question, include_private) || super
-
-      # Everything else is the game's to answer: this only changes what a step is.
-      def method_missing(question, ...)
-        return super unless @game.respond_to?(question)
-
-        @game.public_send(question, ...)
-      end
-
       private
 
       def play_one_pass(keys)
         from = count_now
         MOST_FRAMES_STILL.times do
-          @game.step(1, keys: keys)
+          @stepper.step(1, keys: keys)
           @frames_played += 1
           return if count_now > from
         end
@@ -64,7 +59,7 @@ module VBlank
       def initialize(counted, count)
         what = counted == true ? "the game loop's passes" : "the variable #{counted}"
         super("A playing counted #{what}, and the count stopped at #{count}. It did not move in " \
-              "#{PassSteppedGame::MOST_FRAMES_STILL} frames, so the playing stopped. The game ended there, or it is on " \
+              "#{PassStepper::MOST_FRAMES_STILL} frames, so the playing stopped. The game ended there, or it is on " \
               "a stretch that does not add to the count. To fix this, count something that goes on moving on that stretch.")
       end
     end

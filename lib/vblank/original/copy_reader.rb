@@ -115,20 +115,34 @@ module VBlank
       # What a person calls each format the copy offers, in the order a fault numbers them.
       def format_words = @formats.map(&:format_words)
 
-      # `unpack_<name>` for each format the copy offers.
+      # The block at +settings+' at: unpacked by the format called +format_name+, which the copy must
+      # offer: what `copy.unpack_<name>` does.
+      def unpack(format_name, **settings)
+        format = @formats.find { |offered| offered.format_name == format_name }
+        refuse_format_not_offered!(format_name) unless format
+        unpack_with(format, **settings)
+      end
+
+      # `unpack_<name>` for each format the copy offers. A verb of the game's for each format, named
+      # by the formats it is handed, so it is answered here and not written out; each one is #unpack.
       def method_missing(name, *given, **settings, &)
         asked = format_asked(name)
         return super unless asked
 
-        format = @formats.find { |offered| offered.format_name == asked }
-        refuse_format_not_offered!(asked) unless format
         refuse_positional_arguments!(name, given)
-        unpack_with(format, **settings)
+        unpack(asked, **settings)
       end
 
       def respond_to_missing?(name, include_private = false)
         asked = format_asked(name)
         (asked && @formats.any? { |offered| offered.format_name == asked }) || super
+      end
+
+      # A format's verb takes its places by name; one given +given+ in order is refused (FileReader asks too).
+      def refuse_positional_arguments!(name, given)
+        return if given.empty?
+
+        raise ArgumentError, "`copy.#{name}` takes at:, into: and start:, like `copy.#{name} at: 0x400, into: pack[:walls]`."
       end
 
       private
@@ -192,12 +206,6 @@ module VBlank
 
       def platform_title(platform) = platform == COMPUTER ? "computer" : Console.for(platform).title
 
-      def refuse_positional_arguments!(name, given)
-        return if given.empty?
-
-        raise ArgumentError, "`copy.#{name}` takes at:, into: and start:, like `copy.#{name} at: 0x400, into: pack[:walls]`."
-      end
-
       def refuse_missing_places!(verb, settings)
         missing = %i[at into] - settings.keys
         return if missing.empty?
@@ -255,12 +263,18 @@ module VBlank
 
       def copy_bytes(at:, count:, into:, start: 0) = @reader.copy_bytes(at: place(at, count.is_a?(Integer) ? count : 1), count: count, into: into, start: start)
 
-      # `unpack_<name>` for each format the copy offers, from a place in this file.
+      # The block at +settings+' at:, counted from the start of this file, unpacked by +format_name+.
+      def unpack(format_name, **settings)
+        settings[:at] = place(settings[:at]) if settings.key?(:at)
+        @reader.unpack(format_name, **settings)
+      end
+
+      # `unpack_<name>` for each format the copy offers, from a place in this file (CopyReader#method_missing).
       def method_missing(name, *given, **settings, &)
         return super unless name.to_s.start_with?("unpack_") && @reader.respond_to?(name)
 
-        settings[:at] = place(settings[:at]) if settings.key?(:at)
-        @reader.public_send(name, *given, **settings)
+        @reader.refuse_positional_arguments!(name, given)
+        unpack(name.to_s.delete_prefix("unpack_").to_sym, **settings)
       end
 
       def respond_to_missing?(name, include_private = false) = (name.to_s.start_with?("unpack_") && @reader.respond_to?(name)) || super

@@ -243,7 +243,7 @@ module VBlank
         # A console switched on with the cartridge in it, and led in.
         def console
           saying_which_cartridge do
-            Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, count_passes: count_passes)
+            Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, count_passes: count_passes).game
           end
         end
 
