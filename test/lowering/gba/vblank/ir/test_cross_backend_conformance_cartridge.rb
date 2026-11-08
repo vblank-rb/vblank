@@ -46,7 +46,7 @@ class TestCrossBackendConformanceCartridge < Minitest::Test
     gba = GBA.new
     gba.lower(program)
 
-    assert_equal registry(Reference.new.tap { |r| r.run(program) }, :@bitmaps), gba.bitmaps
+    assert_equal Reference.new.tap { |r| r.run(program) }.bitmaps, gba.bitmaps
   end
 
   def test_both_backends_describe_a_recorded_sound_the_same_way
@@ -54,12 +54,9 @@ class TestCrossBackendConformanceCartridge < Minitest::Test
     gba = GBA.new
     gba.lower(program)
 
-    # Both sides keep their samples in a mixer of their own — GBA::Mixer and Reference::Mixer —
-    # so the same reach finds them on each.
-    interpreted = Reference.new.tap { |r| r.run(program) }.instance_variable_get(:@mixer)
+    interpreter = Reference.new.tap { |r| r.run(program) }
 
-    assert_equal registry(interpreted, :@samples),
-                 registry(gba.instance_variable_get(:@mixer), :@samples)
+    assert_equal interpreter.sample_info(:clip), gba.sample_info(:clip)
   end
 
   # A program that declares one of each and then stops.
@@ -71,9 +68,5 @@ class TestCrossBackendConformanceCartridge < Minitest::Test
       b.sample(:clip, "\x00\x10\x20\x30", 8000, note: :E4),
       b.halt,
     )
-  end
-
-  private def registry(backend, name)
-    backend.instance_variable_get(name)
   end
 end

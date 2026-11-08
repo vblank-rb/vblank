@@ -219,6 +219,10 @@ module VBlank
           # of the routine the runtime runs at each frame boundary, or nil for a game with no timers.
           attr_reader :variables, :lists, :frame_begins
 
+          # What the program is before any instruction is made, shared by every try of a build; asked by
+          # the test that holds the tries to one plan.
+          attr_reader :plan
+
           # +lends_sprite_colors+ builds the game with its sprites' lists of colours borrowing the
           # console's eight as it runs (Art::TooManySpriteLists), and :by_scene with each scene numbering
           # its own lists too (Art::TooManyLentLists). +tile_rooms+ builds it with each screen

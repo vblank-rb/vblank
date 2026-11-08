@@ -123,7 +123,7 @@ class TestVideoCopies < Minitest::Test
   # Seventeen 64x64 frames are more than sprite memory holds at once, so the sprite keeps one
   # frame there and is sent the next as it changes — on every frame, at one picture a frame.
   def test_a_sprite_kept_to_one_frame_is_counted_under_its_name
-    art = method(:frame_art)
+    art = ->(number) { frame_art(number) }
     rom = build do
       screen :tiled
       names = (0...17).map do |n|

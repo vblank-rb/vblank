@@ -20,7 +20,7 @@ class TestGBCBytePaths < Minitest::Test
                held held_to_byte held_to_one times_seven times_byte times_three].freeze
 
   # The answers a number gives, set into the game's variables.
-  private def answer(answers, n)
+  def answer(answers, n)
     { below: n < 5, at_most: n <= 200, above: n > 255, at_least: n >= 250, under_nought: n < 0,
       at_most_last_byte: n <= 255 }.each do |name, holds|
       if holds
@@ -53,7 +53,7 @@ class TestGBCBytePaths < Minitest::Test
         else
           n += 9_001
         end
-        test.send(:answer, answers, n)
+        test.answer(answers, n)
         picked = steps[n]
       end
     end
@@ -72,7 +72,7 @@ class TestGBCBytePaths < Minitest::Test
       answers = ANSWERS.to_h { |name| [name, var(name, 0)] }
       game_loop do
         n = edges[at]
-        test.send(:answer, answers, n)
+        test.answer(answers, n)
         at += 1
       end
     end

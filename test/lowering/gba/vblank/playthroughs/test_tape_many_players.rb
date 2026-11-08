@@ -72,10 +72,10 @@ class TestTapeManyPlayers < Minitest::Test
   end
 
   def test_a_tape_written_out_for_another_emulator_refuses_another_players_buttons
-    %i[mgba_script bizhawk_input_log].each do |written|
-      error = assert_raises(ArgumentError, written.to_s) { VBlank::Playthroughs::TapeExport.public_send(written, tape) }
-      assert_match(/player 3/, error.message)
-    end
+    error = assert_raises(ArgumentError) { VBlank::Playthroughs::TapeExport.mgba_script(tape) }
+    assert_match(/player 3/, error.message)
+    error = assert_raises(ArgumentError) { VBlank::Playthroughs::TapeExport.bizhawk_input_log(tape) }
+    assert_match(/player 3/, error.message)
   end
 
   def test_a_tape_with_another_players_buttons_reads_back_as_written

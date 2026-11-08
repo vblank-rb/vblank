@@ -38,7 +38,13 @@ class TestLayerTwoAmounts < Minitest::Test
       layer(:glass, shows: shows, shows_behind: behind) do
         background :pane, tiles: :panes, map: Array.new(20) { ("d" * 15) + ("w" * 15) }
       end
-      game_loop { effect ? public_send(*effect) : wait_vblank }
+      game_loop do
+        case effect&.first
+        when :tint then tint(effect[1], effect[2])
+        when :fade then fade(effect[1], effect[2])
+        else wait_vblank
+        end
+      end
     end
   end
 

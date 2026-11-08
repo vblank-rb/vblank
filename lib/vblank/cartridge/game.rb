@@ -218,6 +218,18 @@ module VBlank
         self
       end
 
+      # The script Ruby was told to run, read when this file loads. It never changes while a
+      # process runs, and a worker Ractor may not read a global at all.
+      MAIN_SCRIPT = $PROGRAM_NAME
+
+      # Is +path+ the very script Ruby was told to run? Compared as full paths so a
+      # relative "examples/bird.rb" and an absolute run path still match. Public because
+      # a test of the guard on #write_if_main asks it directly.
+      def main_script?(path)
+        program = MAIN_SCRIPT
+        !program.nil? && File.expand_path(path) == File.expand_path(program)
+      end
+
       private
 
       # The console settings this game sets, by name, to their values.
@@ -305,17 +317,6 @@ module VBlank
                  "variants: { #{console}: :#{variant.name} }`."
         end
         ""
-      end
-
-      # Is +path+ the very script Ruby was told to run? Compared as full paths so a
-      # relative "examples/bird.rb" and an absolute run path still match.
-      # Read when this file loads. It never changes while a process runs, and a worker
-      # Ractor may not read a global at all.
-      MAIN_SCRIPT = $PROGRAM_NAME
-
-      def main_script?(path)
-        program = MAIN_SCRIPT
-        !program.nil? && File.expand_path(path) == File.expand_path(program)
       end
     end
   end

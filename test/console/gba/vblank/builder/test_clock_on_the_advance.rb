@@ -18,7 +18,13 @@ module ClockOnTheAdvanceGames
       now = clock
       readings = TIME.to_h { |name| [name, var(name, -1)] }
       game_loop do
-        readings.each_key { |name| readings[name] = now.public_send(name) }
+        readings[:hour] = now.hour
+        readings[:minute] = now.minute
+        readings[:second] = now.second
+        readings[:year] = now.year
+        readings[:month] = now.month
+        readings[:day] = now.day
+        readings[:weekday] = now.weekday
       end
     end
     b.finalize_program

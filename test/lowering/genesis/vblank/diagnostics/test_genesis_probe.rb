@@ -59,9 +59,12 @@ class TestGenesisProbe < Minitest::Test
       assert_equal 512, bare.sound_registers.bytesize
       assert_equal 80, bare.scroll_ram.bytesize
       assert_equal 24, bare.video_registers.bytesize
-      %i[video_ram color_ram sprite_table sound_registers scroll_ram video_registers].each do |table|
-        assert_equal recorded.public_send(table), bare.public_send(table), table
-      end
+      assert_equal recorded.video_ram, bare.video_ram, "video_ram"
+      assert_equal recorded.color_ram, bare.color_ram, "color_ram"
+      assert_equal recorded.sprite_table, bare.sprite_table, "sprite_table"
+      assert_equal recorded.sound_registers, bare.sound_registers, "sound_registers"
+      assert_equal recorded.scroll_ram, bare.scroll_ram, "scroll_ram"
+      assert_equal recorded.video_registers, bare.video_registers, "video_registers"
     end
   end
 

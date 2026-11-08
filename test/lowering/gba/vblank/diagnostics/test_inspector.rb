@@ -8,7 +8,7 @@ class TestInspector < Minitest::Test
   # Helper: disassemble a single instruction word via Inspector internals.
   private def disasm(word)
     inspector = VBlank::Diagnostics::Inspector.from_rom(minimal_rom)
-    desc, = inspector.send(:disassemble, word, Array.new(16, 0))
+    desc, = inspector.disassemble(word, Array.new(16, 0))
     desc
   end
 
@@ -371,7 +371,7 @@ class TestInspector < Minitest::Test
     words = code.unpack("V*")
 
     unknowns = words.reject { |w| w == 0 }.select do |w|
-      desc, = inspector.send(:disassemble, w, Array.new(16, 0))
+      desc, = inspector.disassemble(w, Array.new(16, 0))
       desc.start_with?("???")
     end
 

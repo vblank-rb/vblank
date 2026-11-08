@@ -116,8 +116,9 @@ module CopyReaderTests
     Dir.mktmpdir do |folder|
       from = original(folder)
       b = VBlank::Builder.new
+      made_pack = nil
       b.instance_eval do
-        @made_pack = data_pack(from: from, version: "1") do |slots|
+        made_pack = data_pack(from: from, version: "1") do |slots|
           slots.numbers :doubled, count: 8, width: :byte, signed: false
           slots.fill_from_copy do |copy, pack|
             at = 0
@@ -129,7 +130,7 @@ module CopyReaderTests
           end
         end
       end
-      unpacking = b.instance_variable_get(:@made_pack).unpacking
+      unpacking = made_pack.unpacking
 
       assert_equal SPEEDS.map { |speed| (speed * 2) & 0xFF }.pack("C*"),
                    unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 4))[:doubled]
@@ -147,8 +148,9 @@ module CopyReaderTests
     Dir.mktmpdir do |folder|
       from = copy_of(folder, (OWN_FORMAT_RUNS.flatten + [0, 0]).pack("C*"))
       b = VBlank::Builder.new
+      made_pack = nil
       b.instance_eval do
-        @made_pack = data_pack(from: from, version: "1") do |slots|
+        made_pack = data_pack(from: from, version: "1") do |slots|
           slots.numbers :runs, count: OWN_FORMAT_BYTES.bytesize, width: :byte, signed: false
           slots.fill_from_copy do |copy, pack|
             at = 0
@@ -166,7 +168,7 @@ module CopyReaderTests
           end
         end
       end
-      unpacking = b.instance_variable_get(:@made_pack).unpacking
+      unpacking = made_pack.unpacking
 
       early = unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 1))
       assert_operator early, :>, 0, "a frame in, some of the runs are counted"

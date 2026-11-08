@@ -76,7 +76,13 @@ module ClockSetToTests
       readings = TIME.to_h { |name| [name, var(name, -1)] }
       game_loop do
         now.set_to(**to) if passes == set_on_pass
-        readings.each_key { |name| readings[name] = now.public_send(name) }
+        readings[:hour] = now.hour
+        readings[:minute] = now.minute
+        readings[:second] = now.second
+        readings[:year] = now.year
+        readings[:month] = now.month
+        readings[:day] = now.day
+        readings[:weekday] = now.weekday
         set = 0
         set = 1 if now.set?
         passes += 1

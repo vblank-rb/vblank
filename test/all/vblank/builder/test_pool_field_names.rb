@@ -57,6 +57,17 @@ module PoolFieldNamesGames
   # and :sum adds up the fields of those left; :live counts them.
   private def own_words_game
     words = OWN_WORDS
+    # Each word read by name from an instance (a lookup by name is what a Hash is for).
+    reads = {
+      active: ->(t) { t.active }, free: ->(t) { t.free }, count: ->(t) { t.count }, slot: ->(t) { t.slot },
+      current: ->(t) { t.current }, next: ->(t) { t.next }, prev: ->(t) { t.prev }, retired: ->(t) { t.retired },
+      head: ->(t) { t.head }, tail: ->(t) { t.tail }, walking: ->(t) { t.walking }, tick: ->(t) { t.tick },
+      unlink: ->(t) { t.unlink }, before: ->(t) { t.before }, after: ->(t) { t.after }, release: ->(t) { t.release },
+      fill: ->(t) { t.fill }, refill: ->(t) { t.refill }, anim: ->(t) { t.anim }, stacked: ->(t) { t.stacked },
+      stackedx: ->(t) { t.stackedx }, append: ->(t) { t.append }, spawn: ->(t) { t.spawn }, each: ->(t) { t.each },
+      full: ->(t) { t.full }, func: ->(t) { t.func }, name: ->(t) { t.name }, field: ->(t) { t.field },
+      step: ->(t) { t.step }
+    }
     tiled_program do
       things = pool :thing, x: 0, y: 0, capacity: 4, frames: %i[one two], rate: 2, **words.to_h { |word| [word, 0] }
       sum = var :sum, 0
@@ -65,7 +76,7 @@ module PoolFieldNamesGames
       game_loop do
         things.each { |t| t.remove if t.x == 20 }
         sum = 0
-        things.each { |t| words.each { |word| sum += t.public_send(word) } }
+        things.each { |t| words.each { |word| sum += reads.fetch(word).call(t) } }
         live = things.count
       end
     end

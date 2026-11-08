@@ -30,13 +30,17 @@ class TestClockChip < Minitest::Test
       now = clock
       kept = READINGS.to_h { |name| [name, var(name, -1)] }
       game_loop do
-        kept.each_key do |name|
-          case name
-          when :present then kept[name] = 0; kept[name] = 1 if now.present?
-          when :set then kept[name] = 0; kept[name] = 1 if now.set?
-          else kept[name] = now.public_send(name)
-          end
-        end
+        kept[:hour] = now.hour
+        kept[:minute] = now.minute
+        kept[:second] = now.second
+        kept[:year] = now.year
+        kept[:month] = now.month
+        kept[:day] = now.day
+        kept[:weekday] = now.weekday
+        kept[:present] = 0
+        kept[:present] = 1 if now.present?
+        kept[:set] = 0
+        kept[:set] = 1 if now.set?
       end
     end
   end
@@ -109,13 +113,17 @@ class TestClockChip < Minitest::Test
       kept = READINGS.to_h { |name| [name, var(name, -1)] }
       game_loop do
         now.set_to(**SATURDAY) if passes == set_on_pass
-        kept.each_key do |name|
-          case name
-          when :present then kept[name] = 0; kept[name] = 1 if now.present?
-          when :set then kept[name] = 0; kept[name] = 1 if now.set?
-          else kept[name] = now.public_send(name)
-          end
-        end
+        kept[:hour] = now.hour
+        kept[:minute] = now.minute
+        kept[:second] = now.second
+        kept[:year] = now.year
+        kept[:month] = now.month
+        kept[:day] = now.day
+        kept[:weekday] = now.weekday
+        kept[:present] = 0
+        kept[:present] = 1 if now.present?
+        kept[:set] = 0
+        kept[:set] = 1 if now.set?
         passes += 1
       end
     end

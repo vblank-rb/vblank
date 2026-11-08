@@ -152,8 +152,15 @@ class TestFractionMath < Minitest::Test
     build = VBlank::IR::Build
     statements = sums.flat_map do |name, (kind, a, b, bits)|
       [build.set(:"#{name}_a", a), build.set(:"#{name}_b", b),
-       build.set(name, build.public_send(kind, build.var_ref(:"#{name}_a"), build.var_ref(:"#{name}_b"), bits))]
+       build.set(name, fraction_sum(kind, build.var_ref(:"#{name}_a"), build.var_ref(:"#{name}_b"), bits))]
     end
     build.program(*statements, build.halt)
+  end
+
+  def fraction_sum(kind, lhs, rhs, bits)
+    case kind
+    when :mul_fix then VBlank::IR::Build.mul_fix(lhs, rhs, bits)
+    when :div_fix then VBlank::IR::Build.div_fix(lhs, rhs, bits)
+    end
   end
 end

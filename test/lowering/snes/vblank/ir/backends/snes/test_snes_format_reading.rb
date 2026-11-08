@@ -13,7 +13,7 @@ class TestSNESFormatReading < Minitest::Test
   # as its places.
   def test_a_tile_the_lowering_writes_reads_back_as_its_places
     places = (0...64).map { |at| ((at * 7) + (at / 8)) % 16 }
-    bytes = SNES::Art.allocate.send(:tile_bytes, places)
+    bytes = SNES::Art.allocate.tile_bytes(places)
 
     assert_equal [places], Reading.tiles(bytes, formats.tiles_of(16))
   end

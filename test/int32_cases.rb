@@ -30,12 +30,22 @@ module Int32Cases
 
   def expected(name, a, b, c)
     case name
-    when "add", "sub", "mul", "div", "mod", "bit_and", "bit_or", "bit_xor", "shift_left", "shift_right"
-      Int32.public_send(name, a, b)
-    when "neg", "bit_not" then Int32.public_send(name, a)
+    when "add" then Int32.add(a, b)
+    when "sub" then Int32.sub(a, b)
+    when "mul" then Int32.mul(a, b)
+    when "div" then Int32.div(a, b)
+    when "mod" then Int32.mod(a, b)
+    when "bit_and" then Int32.bit_and(a, b)
+    when "bit_or" then Int32.bit_or(a, b)
+    when "bit_xor" then Int32.bit_xor(a, b)
+    when "shift_left" then Int32.shift_left(a, b)
+    when "shift_right" then Int32.shift_right(a, b)
+    when "neg" then Int32.neg(a)
+    when "bit_not" then Int32.bit_not(a)
     when "abs" then a.negative? ? Int32.neg(a) : a
     when "clamp" then [[a, b].max, c].min
-    when "mul_fix", "div_fix" then Int32.public_send(name, a, b, c)
+    when "mul_fix" then Int32.mul_fix(a, b, c)
+    when "div_fix" then Int32.div_fix(a, b, c)
     when "lt" then Int32.cmp(a, b) < 0 ? 1 : 0
     when "le" then Int32.cmp(a, b) <= 0 ? 1 : 0
     when "gt" then Int32.cmp(a, b) > 0 ? 1 : 0

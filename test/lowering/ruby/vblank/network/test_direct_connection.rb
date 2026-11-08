@@ -208,8 +208,9 @@ class TestDirectConnection < Minitest::Test
       raise IO::EAGAINWaitReadable
     end
 
-    def method_missing(name, ...) = @socket.respond_to?(name) ? @socket.public_send(name, ...) : super
-    def respond_to_missing?(name, include_private = false) = @socket.respond_to?(name, include_private) || super
+    def write(...) = @socket.write(...)
+    def closed? = @socket.closed?
+    def close = @socket.close
   end
 
   # The wait once read the socket a second time while deciding whether to sleep, kept the line it found,

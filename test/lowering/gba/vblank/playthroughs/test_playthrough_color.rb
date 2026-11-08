@@ -152,9 +152,13 @@ class TestPlaythroughColor < Minitest::Test
     refusals = {}
     answers = {}
     VBlank.playthrough("look") { wait frames: 20; moment :still }.play(color_cartridge) do |_, game|
-      %i[registers wave_rate pad_reads voices sounding sample_clock sound_drops].each do |question|
-        refusals[question] = assert_raises(NoMethodError) { game.public_send(question) }.message
-      end
+      refusals[:registers] = assert_raises(NoMethodError) { game.registers }.message
+      refusals[:wave_rate] = assert_raises(NoMethodError) { game.wave_rate }.message
+      refusals[:pad_reads] = assert_raises(NoMethodError) { game.pad_reads }.message
+      refusals[:voices] = assert_raises(NoMethodError) { game.voices }.message
+      refusals[:sounding] = assert_raises(NoMethodError) { game.sounding }.message
+      refusals[:sample_clock] = assert_raises(NoMethodError) { game.sample_clock }.message
+      refusals[:sound_drops] = assert_raises(NoMethodError) { game.sound_drops }.message
       refusals[:run_until] = assert_raises(NoMethodError) { game.run_until(:game) }.message
       answers[:layers] = game.layers
       answers[:alone] = game.showing(only: :sprites) { game.step.only_color }

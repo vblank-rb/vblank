@@ -35,7 +35,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
   # the screen slides: two pictures in the first room, one in the second, three in the third. A
   # pool of gulls can show any room's.
   private def harbor
-    art = TestPictureGroupsMemoryMap.method(:art)
+    art = ->(number) { TestPictureGroupsMemoryMap.art(number) }
     VBlank.build("HARBOR", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :tiled
       PICTURES.each_with_index { |name, n| image name, width: 64, height: 64, data: art.call(n) }
@@ -125,7 +125,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
   # Two rooms of ten pictures each, up together: 40K, more than the console holds. The build stops
   # and says which set of groups is the one that does not fit.
   def test_a_set_of_groups_too_big_to_be_up_together_is_named_when_the_build_stops
-    art = TestPictureGroupsMemoryMap.method(:art)
+    art = ->(number) { TestPictureGroupsMemoryMap.art(number) }
     error = assert_raises(GBA::SpriteMemoryFull) do
       VBlank.build("CROWDED", console: :gba, out: StringIO.new, err: StringIO.new) do
         screen :tiled
@@ -164,7 +164,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
   end
 
   private def full_scene_message(&block)
-    art = TestPictureGroupsMemoryMap.method(:art)
+    art = ->(number) { TestPictureGroupsMemoryMap.art(number) }
     assert_raises(GBA::SpriteMemoryFull) do
       VBlank.build("CROWDED", console: :gba, out: StringIO.new, err: StringIO.new) do
         screen :tiled

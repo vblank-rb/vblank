@@ -302,6 +302,13 @@ module VBlank
             own.drop(@tiles.length).join
           end
 
+          # Asked by the test that reads a tile back through the format reader.
+          # The 32 bytes of a tile whose 64 pixels are +places+ (0 to 15), row by row: each row's four
+          # bytes, the left pixel of a byte in its top four bits.
+          def tile_bytes(places)
+            places.each_slice(2).map { |left, right| (left << 4) | right }.pack("C*")
+          end
+
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
@@ -403,12 +410,6 @@ module VBlank
 
             @palettes[unused] = colors.dup
             unused
-          end
-
-          # The 32 bytes of a tile whose 64 pixels are +places+ (0 to 15), row by row: each row's four
-          # bytes, the left pixel of a byte in its top four bits.
-          def tile_bytes(places)
-            places.each_slice(2).map { |left, right| (left << 4) | right }.pack("C*")
           end
         end
       end

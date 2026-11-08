@@ -42,8 +42,9 @@ class TestSumsWithWrittenNumbers < Minitest::Test
        [b.binop(:<<, v, n[count]), ->(x, _) { Int32.shift_left(x, count) }]]
     end
     halves = [0, 1, 7, 8, 9, 16, 24, 31].map { |bits| [b.shift_right(v, bits), ->(x, _) { Int32.shift_right(x, bits) }] }
+    joined = { :& => ->(x, mask) { x & mask }, :| => ->(x, mask) { x | mask }, :^ => ->(x, mask) { x ^ mask } }
     masks = [0xFFFF, 0xFF, 0xFF00, 0x00FF_00FF, 0x7FFF_FFFF, -256, 0, -1].product(%i[& | ^]).map do |mask, op|
-      [b.binop(op, v, n[mask]), ->(x, _) { Int32.wrap(x.public_send(op, mask)) }]
+      [b.binop(op, v, n[mask]), ->(x, _) { Int32.wrap(joined.fetch(op).call(x, mask)) }]
     end
     within = ->(x, mask) { Int32.wrap(x) & mask }
     low = [
@@ -80,7 +81,9 @@ class TestSumsWithWrittenNumbers < Minitest::Test
     ]
     orderings = [[:<, 7], [:<=, -7], [:>, 255], [:>=, -129], [:<, 0x8000], [:>, -0x8000], [:<, 0], [:>=, 0],
                  [:>, Int32::MAX], [:<=, Int32::MAX], [:>=, Int32::MIN], [:<, Int32::MIN], [:==, 256], [:!=, -1]]
-    asked = ->(x, op, k) { Int32.cmp(x, k).public_send(op, 0) ? 1 : 0 }
+    holds = { :< => ->(c) { c < 0 }, :<= => ->(c) { c <= 0 }, :> => ->(c) { c > 0 }, :>= => ->(c) { c >= 0 },
+              :== => ->(c) { c == 0 }, :!= => ->(c) { c != 0 } }
+    asked = ->(x, op, k) { holds.fetch(op).call(Int32.cmp(x, k)) ? 1 : 0 }
     compared = orderings.flat_map do |op, k|
       [[b.binop(op, v, n[k]), ->(x, _) { asked[x, op, k] }],
        [b.binop(op, n[k], v), ->(x, _) { asked[Int32.wrap(k), op, x] }],

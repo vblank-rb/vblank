@@ -609,6 +609,23 @@ module VBlank
           def sprite_tile_data(scene = nil) = ((@scene_sprite_stores.dig(scene, 0) || @sprite_tiles).map { |bytes| bytes || blank_tile }.join)
           def background_tile_data(scene = nil) = ((@scene_background_stores.dig(scene, 0) || @background_tiles).map { |bytes| bytes || blank_tile }.join)
 
+          # Asked by the test that reads a tile back through the format reader.
+          # The 32 bytes of a tile whose 64 pixels are +places+ (0 to 15), row by row: each row's
+          # bits 0 and 1 as two bytes, all eight rows, then bits 2 and 3 the same way. The leftmost
+          # pixel is the top bit of each byte.
+          def tile_bytes(places)
+            low = +"".b
+            high = +"".b
+            8.times do |row|
+              planes = Array.new(4) do |plane|
+                (0...8).sum { |column| ((places[(row * 8) + column] >> plane) & 1) << (7 - column) }
+              end
+              low << planes[0].chr << planes[1].chr
+              high << planes[2].chr << planes[3].chr
+            end
+            low + high
+          end
+
           private
 
           def blank_tile = ("\0".b * TILE_BYTES)
@@ -909,22 +926,6 @@ module VBlank
 
             raise error, "The #{what} use more different 8×8 squares of picture than a Super Nintendo has room " \
                            "for (#{most}). To fix this, use fewer different pictures."
-          end
-
-          # The 32 bytes of a tile whose 64 pixels are +places+ (0 to 15), row by row: each row's
-          # bits 0 and 1 as two bytes, all eight rows, then bits 2 and 3 the same way. The leftmost
-          # pixel is the top bit of each byte.
-          def tile_bytes(places)
-            low = +"".b
-            high = +"".b
-            8.times do |row|
-              planes = Array.new(4) do |plane|
-                (0...8).sum { |column| ((places[(row * 8) + column] >> plane) & 1) << (7 - column) }
-              end
-              low << planes[0].chr << planes[1].chr
-              high << planes[2].chr << planes[3].chr
-            end
-            low + high
           end
         end
       end

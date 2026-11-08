@@ -142,8 +142,9 @@ class TestRulesRun < Minitest::Test
   def test_what_only_drawing_or_sound_would_say_is_refused_by_name
     run = RulesRun.new.run(game, frames: 2)
 
-    %i[sprites audio recording_sound].each do |question|
-      error = assert_raises(VBlank::IR::Backends::Native::HeadlessRun::CannotAnswer) { run.public_send(question) }
+    refused = VBlank::IR::Backends::Native::HeadlessRun::CannotAnswer
+    [-> { run.sprites }, -> { run.audio }, -> { run.recording_sound }].each do |question|
+      error = assert_raises(refused) { question.call }
       assert_match(/rules alone/, error.message)
     end
   end

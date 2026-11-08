@@ -11,7 +11,7 @@ class TestChangingNotesBesideEffects < Minitest::Test
 
   # A wobbling lead, and effect +ding+ on the same square voice, asked for on pass 10. The block
   # runs on each pass with the pass number.
-  private def shared_voice_game(ding, lead: {}, &each_pass)
+  private def shared_voice_game(ding, lead: nil, &each_pass)
     b = Builder.new
     list = nil
     b.instance_eval do
@@ -22,7 +22,7 @@ class TestChangingNotesBesideEffects < Minitest::Test
         tempo 150
         voice(:bass) { note :C3, :whole }
         voice(:lead) do
-          lead.each { |word, said| public_send(word, *Array(said)) }
+          instance_eval(&lead) if lead
           note :E4, :whole
           note :G4, :whole
         end
@@ -50,7 +50,7 @@ class TestChangingNotesBesideEffects < Minitest::Test
   def test_an_effect_taking_a_voice_stops_the_tunes_wobble_and_its_own_ends_with_it
     wobbling = effect(vibrato: { depth: 4, speed: 2 })
 
-    refute_empty logged(shared_voice_game(wobbling, lead: { vibrato: [{ depth: 2, speed: 3 }] }), :wobble)
+    refute_empty logged(shared_voice_game(wobbling, lead: proc { vibrato depth: 2, speed: 3 }), :wobble)
   end
 
   def test_an_effects_note_steps_its_shapes
@@ -117,7 +117,7 @@ class TestChangingNotesBesideEffects < Minitest::Test
   end
 
   def test_a_swelling_note_beside_effects_is_held_at_the_music_volume
-    entries = logged(shared_voice_game(effect, lead: { volume: 0, swell: :fast }) { |pass| music_volume 50 if pass == 1 }, :loudness)
+    entries = logged(shared_voice_game(effect, lead: proc { volume 0; swell :fast }) { |pass| music_volume 50 if pass == 1 }, :loudness)
 
     assert_includes entries.map(&:last), 7
   end

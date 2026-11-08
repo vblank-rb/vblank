@@ -88,7 +88,7 @@ class TestSpriteTileSharing < Minitest::Test
   private def emitted(program)
     backend = VBlank::IR::Backends::GBA.new
     backend.lower(program)
-    backend.instance_variable_get(:@emit).code.length
+    backend.code.length
   end
 
   # ---- a whole pose that repeats ----

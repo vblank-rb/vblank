@@ -181,8 +181,41 @@ class TestSceneHandoverScenarios < Minitest::Test
     RUBY
   end
 
+  private def program_named(name)
+    case name
+    when :door_opened_then_a_bare_scene then door_opened_then_a_bare_scene
+    when :second_map_then_a_bare_scene then second_map_then_a_bare_scene
+    when :sprite_then_a_bare_scene then sprite_then_a_bare_scene
+    when :sprite_then_another_scenes_sprite then sprite_then_another_scenes_sprite
+    when :scenery_then_a_bitmap_screen then scenery_then_a_bitmap_screen
+    when :scenery_across_a_bitmap_screen_then_a_bare_scene then scenery_across_a_bitmap_screen_then_a_bare_scene
+    when :bitmap_scene_clears_then_draws_scenery then bitmap_scene_clears_then_draws_scenery
+    when :sprite_then_a_bitmap_screen then sprite_then_a_bitmap_screen
+    when :painted_tiles_in_a_scene then painted_tiles_in_a_scene
+    when :painted_sprite_in_a_scene then painted_sprite_in_a_scene
+    when :always_up_background then always_up_background
+    when :always_up_door_opened then always_up_door_opened
+    when :always_up_second_map_twice then always_up_second_map_twice
+    when :always_up_painted_tiles then always_up_painted_tiles
+    when :always_up_painted_sprite then always_up_painted_sprite
+    when :always_up_sprite_over_a_bitmap_screen then always_up_sprite_over_a_bitmap_screen
+    when :painted_then_tiled_then_painted then painted_then_tiled_then_painted
+    when :tear_free_then_tiled_then_tear_free then tear_free_then_tiled_then_tear_free
+    when :tear_free_picture_beside_tiles then tear_free_picture_beside_tiles
+    when :title_painted_once_then_a_scrolling_room then title_painted_once_then_a_scrolling_room
+    when :recolored_sprite_then_another_scenes_sprite then recolored_sprite_then_another_scenes_sprite
+    when :list_recolored_while_its_scene_is_away then list_recolored_while_its_scene_is_away
+    when :recolored_sprite_then_a_bitmap_screen then recolored_sprite_then_a_bitmap_screen
+    when :always_up_recolored_sprite then always_up_recolored_sprite
+    when :scrolled_room_with_a_sprite then scrolled_room_with_a_sprite
+    when :bent_scrolled_room_with_a_sprite then bent_scrolled_room_with_a_sprite
+    when :bent_field_put_up_every_pass then bent_field_put_up_every_pass
+    when :bent_field_put_up_twice_a_pass then bent_field_put_up_twice_a_pass
+    end
+  end
+
   private def run_scenario(scenario)
-    program = send(scenario.program)
+    program = program_named(scenario.program)
     broken = scenario.broken
     screen = game_player.run(program, frames: scenario.frames).screen
     x, y = scenario.probe

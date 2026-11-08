@@ -51,12 +51,24 @@ class TestSNESInt32 < Minitest::Test
     with_cartridge do |core|
       self.class.cases.each_slice(BATCH) do |batch|
         answers(core, batch).zip(batch).each do |got, (name, a, b, c)|
-          want = Int32.public_send(name, *[a, b, c].first(name.end_with?("fix") ? 3 : 2))
+          want = expected(name, a, b, c)
           wrong << "#{name}(#{a}, #{b}#{", #{c}" if c.nonzero?}) gave #{got}, not #{want}" unless got == want
         end
       end
     end
     assert_empty wrong.first(30), "#{wrong.size} sums were wrong; the first of them are listed"
+  end
+
+  private def expected(name, a, b, c)
+    case name
+    when "mul" then Int32.mul(a, b)
+    when "div" then Int32.div(a, b)
+    when "mod" then Int32.mod(a, b)
+    when "shift_left" then Int32.shift_left(a, b)
+    when "shift_right" then Int32.shift_right(a, b)
+    when "mul_fix" then Int32.mul_fix(a, b, c)
+    when "div_fix" then Int32.div_fix(a, b, c)
+    end
   end
 
   private def answers(core, batch)

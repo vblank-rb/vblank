@@ -29,7 +29,7 @@ class TestSNESListReads < Minitest::Test
   end
 
   def test_reading_an_item_takes_a_few_instructions
-    assert_keeps_a_frame_a_pass(looping { |game, cells, at, _seen| game.send(:record, Build.set(:seen, cells[at].node)) })
+    assert_keeps_a_frame_a_pass(looping { |_game, cells, at, seen| seen.store!(cells[at]) })
   end
 
   def test_writing_an_item_takes_a_few_instructions

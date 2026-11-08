@@ -133,7 +133,7 @@ UNDRAWN_SLOTS = Ractor.make_shareable(
         slots.fill_from_copy do |copy, into|
           SLOT_ASSETS.each do |name, asset|
             fact = ASSETS.fetch(asset)
-            copy.public_send(:"unpack_#{fact.fetch('codec')}", at: fact.fetch("at"), into: into[name])
+            copy.unpack(fact.fetch("codec").to_sym, at: fact.fetch("at"), into: into[name])
           end
         end
       end

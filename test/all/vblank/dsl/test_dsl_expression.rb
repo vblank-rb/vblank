@@ -71,9 +71,11 @@ class TestDSLExpression < Minitest::Test
       [:==, 3, 3, true],  [:==, 3, 4, false],
       [:!=, 3, 4, true],  [:!=, 3, 3, false],
     ].each do |op, a, b, holds|
+      compare = { :> => ->(l, r) { l > r }, :< => ->(l, r) { l < r }, :>= => ->(l, r) { l >= r },
+                  :<= => ->(l, r) { l <= r }, :== => ->(l, r) { l == r }, :!= => ->(l, r) { l != r } }
       i = interpret do
         x = var :x, a
-        pixel 1, 1, :red if x.public_send(op, b)
+        pixel 1, 1, :red if compare.fetch(op).call(x, b)
       end
       expected = holds ? Color.resolve(:red) : UNDRAWN
       assert_equal expected, pixel_at(i, 1, 1), "#{a} #{op} #{b} should be #{holds}"
@@ -162,7 +164,7 @@ class TestDSLExpression < Minitest::Test
   [%i[set 5], %i[add 1], %i[sub 1]].each do |word, amount|
     class_eval <<~TEST, __FILE__, __LINE__ + 1
       def test_a_variables_#{word}_without_its_bang_is_a_friendly_error
-        err = assert_raises(ArgumentError) { tree { var(:v, 0).public_send(:#{word}, #{amount}) } }
+        err = assert_raises(ArgumentError) { tree { var(:v, 0).#{word}(#{amount}) } }
 
         assert_match(/`v\\.#{word}` does not change a variable/, err.message)
         assert_match(/write `v [-+]?= #{amount}`/, err.message)
@@ -211,8 +213,10 @@ class TestDSLExpression < Minitest::Test
   # A flat verb handed a number worked out on the spot has no name to write that number by,
   # so the message leaves it out. Describing it instead describes the whole build it holds.
   def test_a_flat_verb_leaves_out_a_number_it_cannot_name
+    flat_verbs = { set: ->(b, n) { b.set(:w, n) }, add: ->(b, n) { b.add(:w, n) }, sub: ->(b, n) { b.sub(:w, n) },
+                   copy: ->(b, n) { b.copy(:w, n) } }
     %i[set add sub copy].each do |verb|
-      err = assert_raises(ArgumentError) { tree { v = var(:v, 0); public_send(verb, :w, v + 1) } }
+      err = assert_raises(ArgumentError) { tree { v = var(:v, 0); flat_verbs.fetch(verb).call(self, v + 1) } }
 
       assert_match(/`#{verb} :w, \.\.\.` does not change a variable/, err.message)
       assert_match(/write `w [-+]?= 1`/, err.message)
@@ -543,9 +547,10 @@ class TestDSLExpression < Minitest::Test
   def test_held_and_pressed_reject_a_block
     # Writing held(:up) { ... } drops the block silently
     # (it attaches to `held`, not to an if). Catch it at the call site.
+    asks = { held: ->(b) { b.held(:up) { b.halt } }, pressed: ->(b) { b.pressed(:up) { b.halt } } }
     %i[held pressed].each do |verb|
       err = assert_raises(ArgumentError) do
-        tree { send(verb, :up) { halt } }
+        tree { asks.fetch(verb).call(self) }
       end
       assert_match(/if/, err.message, "#{verb} should point the dev at if")
     end

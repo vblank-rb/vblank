@@ -70,8 +70,6 @@ class TestNativeWindowMenu < Minitest::Test
 
   private
 
-  HOTKEYS = { "frame_rate" => :frame_rate, "fullscreen" => :fullscreen, "mute" => :muted }.freeze
-
   # Plays +walk+ through both copies, drawing after each step, and fails at the first line that
   # differs, saying which key it came after.
   def assert_same_drawing(walk, most_scale:, picture: [240, 160])
@@ -105,8 +103,12 @@ class TestNativeWindowMenu < Minitest::Test
     when "capture_key" then menu.controls.capture_key(name.to_i)
     when "capture_pad" then menu.controls.capture_pad(VBlank::Live::Settings::PAD_BUTTONS.fetch(name.to_i))
     when "hotkey"
-      setting = HOTKEYS.fetch(name)
-      menu.settings = menu.settings.with(setting => !menu.settings.public_send(setting))
+      now = menu.settings
+      menu.settings = case name
+                      when "frame_rate" then now.with(frame_rate: !now.frame_rate)
+                      when "fullscreen" then now.with(fullscreen: !now.fullscreen)
+                      when "mute" then now.with(muted: !now.muted)
+                      end
     end
   end
 

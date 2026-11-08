@@ -140,7 +140,11 @@ class TestNativeDesktop < Minitest::Test
         clear_screen :black
         present = 1 if now.present?
         set = 1 if now.set?
-        readings.each_key { |name| readings[name] = now.public_send(name) }
+        readings[:year] = now.year
+        readings[:month] = now.month
+        readings[:day] = now.day
+        readings[:hour] = now.hour
+        readings[:minute] = now.minute
       end
     end
   end

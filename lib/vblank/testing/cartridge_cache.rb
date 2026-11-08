@@ -152,6 +152,12 @@ module VBlank
         !@fresh && File.file?(entry_path(key_for(game, console, variant, settings, profile).first))
       end
 
+      # The key a cartridge is kept under: the same for the same program, whatever the order its pieces
+      # were made in. Asked by the test that holds the key to that.
+      def key_of(game, console:, variant: game.variant_for(console), settings: {}, profile: false)
+        key_for(game, console, variant, settings, profile).first
+      end
+
       private
 
       # The key and its parts, worked out once in each Ractor for each game and build: by the program,

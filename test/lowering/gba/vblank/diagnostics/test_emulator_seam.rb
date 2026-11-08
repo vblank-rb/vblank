@@ -97,5 +97,5 @@ class TestEmulatorSeam < Minitest::Test
 
   private
 
-  def advice(detail, bundled:) = Emulator.send(:missing_advice, detail, bundled: bundled)
+  def advice(detail, bundled:) = Emulator.missing_advice(detail, bundled: bundled)
 end

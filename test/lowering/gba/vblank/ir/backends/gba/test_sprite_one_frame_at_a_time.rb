@@ -231,7 +231,7 @@ class TestSpriteOneFrameAtATime < Minitest::Test
   # deciding what to draw next.
   def test_the_report_tells_sharing_apart_from_keeping_one_frame
     hero = (0...63).map { |n| :"hero_#{n}" }
-    art = method(:frame_art)
+    art = ->(number) { frame_art(number) }
     rom = VBlank.build("REPORT", console: :gba, code: "BRPT", maker: "01", validate: false,
                         out: StringIO.new, err: StringIO.new) do
       screen :tiled

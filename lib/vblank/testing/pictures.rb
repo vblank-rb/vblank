@@ -196,6 +196,26 @@ module VBlank
         found ? found.screen_width : SCREEN_W
       end
 
+      # A failure that says WHERE they disagree, not just how many pixels. The map is the whole
+      # screen squashed to a small grid, so a glance says "the sprite is in the wrong place" vs
+      # "the right edge is torn" vs "everything below the map". +picture+ is the interpreter's, which
+      # gives how big the screen is; left out, it is the Advance's.
+      def mismatch_message(bad, frames, console_frames, picture: nil)
+        width = picture ? picture_width(picture) : SCREEN_W
+        height = picture ? picture.length / width : SCREEN_H
+        cell_w, cell_h = difference_cell(width, height)
+        lines = ["the backends drew different screens: #{bad.length} of #{width * height} pixels differ " \
+                 "(interpreter ran #{frames} frames, console #{console_frames})"]
+        lines << "  first differences (interpreter is the oracle — it says what the program means):"
+        bad.first(8).each do |x, y, want, got|
+          lines << format("    (%3d,%3d)  interpreter %-10s  console %s", x, y, color_label(want), color_label(got))
+        end
+        lines << "  ...and #{bad.length - 8} more" if bad.length > 8
+        lines << "  where they differ ( . = agree, # = differ; each cell is #{cell_w}x#{cell_h} pixels):"
+        lines.concat(difference_map(bad, width, height))
+        lines.join("\n")
+      end
+
       private
 
       # The console's picture after +console_frames+ frames, and how many passes of the game loop it
@@ -375,26 +395,6 @@ module VBlank
 
       # The kit of the console +program+ is built for: the Advance's for one that names none.
       def console_kit(program) = Console.for(program.described_console.name)
-
-      # A failure that says WHERE they disagree, not just how many pixels. The map is the whole
-      # screen squashed to a small grid, so a glance says "the sprite is in the wrong place" vs
-      # "the right edge is torn" vs "everything below the map". +picture+ is the interpreter's, which
-      # gives how big the screen is; left out, it is the Advance's.
-      def mismatch_message(bad, frames, console_frames, picture: nil)
-        width = picture ? picture_width(picture) : SCREEN_W
-        height = picture ? picture.length / width : SCREEN_H
-        cell_w, cell_h = difference_cell(width, height)
-        lines = ["the backends drew different screens: #{bad.length} of #{width * height} pixels differ " \
-                 "(interpreter ran #{frames} frames, console #{console_frames})"]
-        lines << "  first differences (interpreter is the oracle — it says what the program means):"
-        bad.first(8).each do |x, y, want, got|
-          lines << format("    (%3d,%3d)  interpreter %-10s  console %s", x, y, color_label(want), color_label(got))
-        end
-        lines << "  ...and #{bad.length - 8} more" if bad.length > 8
-        lines << "  where they differ ( . = agree, # = differ; each cell is #{cell_w}x#{cell_h} pixels):"
-        lines.concat(difference_map(bad, width, height))
-        lines.join("\n")
-      end
 
       # How many pixels across and down one cell of the difference map is: the screen in about
       # 40 cells by 20, a cell taking in the ragged last few when the screen does not divide evenly

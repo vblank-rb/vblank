@@ -42,9 +42,10 @@ class TestConsoleTables < Minitest::Test
       assert_equal 96 * 1024, bare.video_ram.bytesize
       assert_equal 1024, bare.color_ram.bytesize
       assert_equal 72, bare.sound_registers.bytesize
-      %i[video_ram color_ram sprite_table sound_registers].each do |table|
-        assert_equal recorded.public_send(table), bare.public_send(table), table
-      end
+      assert_equal recorded.video_ram, bare.video_ram, "video_ram"
+      assert_equal recorded.color_ram, bare.color_ram, "color_ram"
+      assert_equal recorded.sprite_table, bare.sprite_table, "sprite_table"
+      assert_equal recorded.sound_registers, bare.sound_registers, "sound_registers"
     end
   end
 

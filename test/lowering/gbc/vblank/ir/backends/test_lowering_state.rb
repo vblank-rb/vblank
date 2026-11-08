@@ -19,7 +19,7 @@ class TestLoweringState < Minitest::Test
   # A lowering's state: a table of its own, a Gathered holding an inner list that the table also
   # holds, and a number.
   class Lowering
-    attr_reader :table, :gathered, :count
+    attr_reader :table, :gathered, :count, :shared_row
 
     def initialize
       @shared_row = [1, 2]
@@ -36,6 +36,11 @@ class TestLoweringState < Minitest::Test
       @count += 1
       @made_later = true
     end
+
+    def made_later? = defined?(@made_later) ? true : false
+
+    # A thing the state was not told about.
+    def hold_unknown_thing = @unknown = Object.new
   end
 
   STATE = VBlank::IR::Backends::LoweringState.new(copied: [Gathered], shared: [Integer], unchanged: [])
@@ -50,7 +55,7 @@ class TestLoweringState < Minitest::Test
     assert_equal [[1, 2]], lowering.gathered.rows
     assert_equal({ a: 1 }, lowering.gathered.named)
     assert_equal 0, lowering.count
-    refute lowering.instance_variable_defined?(:@made_later)
+    refute lowering.made_later?
   end
 
   # Nothing is swapped for a copy: a list the table and the Gathered both hold is one list after.
@@ -71,7 +76,7 @@ class TestLoweringState < Minitest::Test
     lowering = Lowering.new
     together = STATE.on_copies(lowering) do
       lowering.make_a_routine
-      lowering.instance_variable_get(:@shared_row).equal?(lowering.gathered.rows.first)
+      lowering.shared_row.equal?(lowering.gathered.rows.first)
     end
 
     assert together
@@ -81,7 +86,7 @@ class TestLoweringState < Minitest::Test
 
   def test_a_lowering_holding_what_the_state_does_not_know_is_refused
     lowering = Lowering.new
-    lowering.instance_variable_set(:@unknown, Object.new)
+    lowering.hold_unknown_thing
 
     error = assert_raises(ArgumentError) { STATE.snapshot(lowering) }
     assert_match(/neither copies nor shares/, error.message)

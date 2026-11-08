@@ -24,7 +24,7 @@ class TestColorWalk < Minitest::Test
       colors :city, own
       names = color_walk(:city, from: from, steps: steps)
     end
-    names.map { |name| b.send(:declared_colors, name) }
+    names.map { |name| b.declared_colors(name) }
   end
 
   def test_a_walk_from_black_lifts_each_channel_a_step_at_a_time

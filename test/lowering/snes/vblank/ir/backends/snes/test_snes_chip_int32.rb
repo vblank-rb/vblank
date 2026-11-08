@@ -143,7 +143,7 @@ class TestSNESChipInt32 < Minitest::Test
     routines = {}
     cases = %w[mul_fix div_fix].product(Int32Cases::FRACTION_BITS).flat_map do |name, bits|
       routine = "#{name} #{bits}"
-      routines[routine] = ->(i) { Build.set(:"answer#{i}", Build.public_send(name, left(i), right(i), bits)) }
+      routines[routine] = ->(i) { Build.set(:"answer#{i}", (name == "mul_fix" ? Build.mul_fix(left(i), right(i), bits) : Build.div_fix(left(i), right(i), bits))) }
       pairs.map { |a, b| [routine, a, b, Int32Cases.expected(name, a, b, bits)] }
     end
     assert_sums_agree(routines, cases)

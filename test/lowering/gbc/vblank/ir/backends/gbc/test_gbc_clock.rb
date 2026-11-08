@@ -25,7 +25,11 @@ class TestGBCClock < Minitest::Test
       set = -1
       game_loop do
         now.set_to(year: 2030, month: 6, day: 15, hour: 12, minute: 0, second: 0) if pressed(:a)
-        readings.each_key { |name| readings[name] = now.public_send(name) }
+        readings[:year] = now.year
+        readings[:month] = now.month
+        readings[:day] = now.day
+        readings[:hour] = now.hour
+        readings[:minute] = now.minute
         present = 0
         present = 1 if now.present?
         set = 0

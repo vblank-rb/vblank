@@ -364,6 +364,8 @@ module VBlank
         def voice_base = @mixer.voice_base
         def voice_table = @mixer.voice_table
         def drop_table = @mixer.drop_table
+        # What a declared sample is, asked by the test that holds this backend and the interpreter to describing it alike.
+        def sample_info(name) = @mixer.sample_info(name)
 
         # +fast_cartridge+ picks the cartridge timing this ROM asks for at boot. True
         # (the default) is the quick timing every real cartridge handles; false leaves

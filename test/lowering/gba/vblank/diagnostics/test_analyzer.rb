@@ -278,7 +278,7 @@ class TestAnalyzer < Minitest::Test
     program = scene_program
     before = program.to_h
 
-    Analyzer.send(:boot_into, program, :state, 1)
+    Analyzer.boot_into(program, :state, 1)
 
     assert_equal before, program.to_h
   end

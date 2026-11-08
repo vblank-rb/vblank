@@ -34,7 +34,7 @@ class TestSpriteMemoryMap < Minitest::Test
   # and a buoy showing the same picture. A menu scene: twelve statues and a hero walking through
   # eight pictures — 2K + 24K + 16K, too much, so the hero keeps one frame at a time.
   private def harbor
-    art = TestSpriteMemoryMap.method(:art)
+    art = ->(number) { TestSpriteMemoryMap.art(number) }
     VBlank.build("HARBOR", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :tiled
       PICTURES.each_with_index { |name, n| image name, width: 64, height: 64, data: art.call(n) }
@@ -96,7 +96,7 @@ class TestSpriteMemoryMap < Minitest::Test
 
   # Sprites taking turns at rooms each take a room: nothing is saved, though they draw from one run.
   def test_sprites_taking_turns_at_shared_rooms_save_nothing
-    art = TestSpriteMemoryMap.method(:art)
+    art = ->(number) { TestSpriteMemoryMap.art(number) }
     poses = PICTURES.first(20)
     rom = VBlank.build("ROOMS", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :tiled
@@ -156,7 +156,7 @@ class TestSpriteMemoryMap < Minitest::Test
   # Too many still pictures in one scene: nothing to keep to one frame, and the build stops. The
   # error carries the same map, and the fullest scene's total is the number the message gives.
   def test_a_build_that_stops_on_sprite_memory_carries_the_map
-    art = TestSpriteMemoryMap.method(:art)
+    art = ->(number) { TestSpriteMemoryMap.art(number) }
     error = assert_raises(GBA::SpriteMemoryFull) do
       VBlank.build("CROWDED", console: :gba, out: StringIO.new, err: StringIO.new) do
         screen :tiled

@@ -150,7 +150,7 @@ class TestScenesCartridge < Minitest::Test
   end
 
   def test_a_scene_that_hands_on_does_not_run_the_scene_it_hands_to_on_hardware
-    handing_on = method(:handing_on_game)
+    handing_on = ->(game) { handing_on_game(game) }
     rom = build { handing_on.call(self) }
     v = assert_emulator_loads_rom(rom, frames: 5, vars: rom.var_addresses)
 
@@ -183,7 +183,7 @@ class TestScenesCartridge < Minitest::Test
   # ========================================================================
 
   def test_a_func_declared_inside_another_func_body_is_built_on_hardware
-    declared_inside = method(:declared_inside_game)
+    declared_inside = ->(game) { declared_inside_game(game) }
     rom = build { declared_inside.call(self) }
     v = assert_emulator_loads_rom(rom, frames: 5, vars: rom.var_addresses)
 

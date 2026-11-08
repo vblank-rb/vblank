@@ -12,7 +12,7 @@ class TestGBCFormatReading < Minitest::Test
   # A tile the lowering writes (Art#encode, which keeps no state) reads back as its places.
   def test_a_tile_the_lowering_writes_reads_back_as_its_places
     places = (0...64).map { |at| ((at * 7) + (at / 8)) % 4 }
-    bytes = GBC::Art.allocate.send(:encode, places).pack("C*")
+    bytes = GBC::Art.allocate.encode(places).pack("C*")
 
     assert_equal [places], Reading.tiles(bytes, formats.tiles_of(4))
   end

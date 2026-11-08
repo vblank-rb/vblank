@@ -113,18 +113,24 @@ class TestFilm < Minitest::Test
     refute_equal shown[1], shown[3]
   end
 
-  # A side whose screen changes size as it plays is refused, naming the side and the two sizes.
-  def test_a_side_whose_screen_changes_size_is_refused
-    growing = Object.new
-    growing.instance_variable_set(:@frames, 0)
-    def growing.step(_count, keys: 0)
+  # A side that draws a 256 wide picture for its first two frames and a 320 wide one after.
+  class GrowingScreen
+    def initialize = @frames = 0
+
+    def step(_count, keys: 0)
       @frames += 1
       self
     end
-    def growing.screenshot(path)
+
+    def screenshot(path)
       width = @frames < 3 ? 256 : 320
       VBlank::Graphics::PNG.write(path, width: width, height: 240, pixels: Array.new(width * 240, 0))
     end
+  end
+
+  # A side whose screen changes size as it plays is refused, naming the side and the two sizes.
+  def test_a_side_whose_screen_changes_size_is_refused
+    growing = GrowingScreen.new
 
     error = assert_raises(ArgumentError) do
       Film.make(File.join(scratch, "never.mp4"), sides: { "program" => -> { growing } }, parts: [1..4])

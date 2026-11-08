@@ -99,7 +99,7 @@ class TestShell < Minitest::Test
   end
 
   private def two_release_port(from)
-    place_slots = method(:two_release_slots)
+    place_slots = ->(slots) { two_release_slots(slots) }
     VBlank.game("MADE UP", consoles: %i[gba]) do
       screen :bitmap
       clear_screen :black

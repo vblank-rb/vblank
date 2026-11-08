@@ -41,7 +41,7 @@ class TestLockstep < Minitest::Test
   end
 
   # One machine: a copy of the game, its window, and the end of its link to the match.
-  Copy = Data.define(:session, :device, :lockstep)
+  Copy = Data.define(:session, :device, :lockstep, :transport)
 
   private def copy_for(net, seed: 7, players: 2, delay: 2, checkpoint_every: 4, game: program, title: "WANDERERS",
                        buttons: nil, passes: PASSES)
@@ -54,7 +54,7 @@ class TestLockstep < Minitest::Test
                  Network::Lockstep.join(transport: endpoint, fingerprint: fingerprint(game, title: title))
                end
     device = Headless.new(frames: passes, buttons: buttons || walking(player, passes: passes))
-    Copy.new(session: Session.new(game, network: lockstep), device: device, lockstep: lockstep)
+    Copy.new(session: Session.new(game, network: lockstep), device: device, lockstep: lockstep, transport: endpoint)
   end
 
   private def play(net, copies)
@@ -337,8 +337,7 @@ class TestLockstep < Minitest::Test
   # Makes copy +copy+ be told other buttons than the ones sent, from pass +from+ on, as a
   # bug in a machine would.
   private def corrupt_buttons_from_pass(copy, from)
-    transport = copy.lockstep.instance_variable_get(:@transport)
-    transport.define_singleton_method(:receive_message) do
+    copy.transport.define_singleton_method(:receive_message) do
       super()&.then do |envelope|
         message = envelope.message
         next envelope unless message.is_a?(Network::Buttons) && message.pass >= from

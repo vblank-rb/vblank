@@ -100,6 +100,14 @@ module VBlank
         @out
       end
 
+      # Asked by the test that holds this menu to what the page's menu says.
+      # What a line of keys says at its right: what it is on now, or that it is being chosen.
+      def control_text(line)
+        return @controls.capture_prompt if line.place == @controls.capture_place(line.kind)
+
+        line.kind == :button ? @controls.button_text(line.place) : @controls.hotkey_text(line.place)
+      end
+
       private
 
       def lines = WindowMenu::HEADINGS[@heading].lines
@@ -140,13 +148,6 @@ module VBlank
           @controls.reset_keys if line.does == :reset_keys
           @controls.reset_hotkeys if line.does == :reset_hotkeys
         end
-      end
-
-      # What a line of keys says at its right: what it is on now, or that it is being chosen.
-      def control_text(line)
-        return @controls.capture_prompt if line.place == @controls.capture_place(line.kind)
-
-        line.kind == :button ? @controls.button_text(line.place) : @controls.hotkey_text(line.place)
       end
 
       # --- drawing ---

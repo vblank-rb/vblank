@@ -91,6 +91,8 @@ module VBlank
       # refuses; Linux names the one it cannot find.
       STALE_BUILD = /incompatible|libruby/i
 
+      # Asked by the tests of the three messages, each with the fact it depends on handed in.
+      #
       # +bundled+ is a parameter so that each branch can be asked for on its own: it is a fact
       # about the process, and a test of what the three messages say should not have to arrange one.
       #
@@ -146,7 +148,7 @@ module VBlank
         reason = VBlank.root.join("ruby-gba-emulator", "NOT_BUILT")
         reason.read if reason.file?
       end
-      private_class_method :load_from_checkout!, :raise_emulator_missing!, :missing_advice, :reason_not_built
+      private_class_method :load_from_checkout!, :raise_emulator_missing!, :reason_not_built
 
       # The emulator core class (loads the backend on first use).
       def core_class

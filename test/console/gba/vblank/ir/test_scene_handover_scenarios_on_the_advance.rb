@@ -37,7 +37,7 @@ class TestSceneHandoverScenariosOnTheAdvance < Minitest::Test
   end
 
   private def run_scenario(scenario)
-    program = send(scenario.program)
+    program = always_up_turned_background
     shown = game_player.run(program, frames: scenario.frames).screen.shown
     x, y = scenario.probe
     assert_equal VBlank::Graphics::Color.resolve(scenario.color), shown[(y * SCREEN_W) + x],

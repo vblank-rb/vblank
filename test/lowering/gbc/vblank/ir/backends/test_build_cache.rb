@@ -22,7 +22,7 @@ class TestBuildCache < Minitest::Test
     first = GBC::Lowering.new(cache.program, memory: GBC::Memory.new, cache: cache)
     second = GBC::Lowering.new(cache.program, memory: GBC::Memory.new, cache: cache, tile_rooms: true)
 
-    assert_same first.instance_variable_get(:@plan), second.instance_variable_get(:@plan)
+    assert_same first.plan, second.plan
     assert_same cache.plan.handover, cache.handover
   end
 
@@ -39,8 +39,10 @@ class TestBuildCache < Minitest::Test
   end
 
   def test_the_plan_refuses_in_the_lowerings_own_error
-    cache = Backends::BuildCache.for(GBC, game)
+    made = program(raw("\x00"), loop_(wait_vblank))
+    made.console = :gbc
+    cache = Backends::BuildCache.for(GBC, made)
 
-    assert_equal GBC::LoweringError, cache.plan.instance_variable_get(:@error)
+    assert_raises(GBC::LoweringError) { cache.plan.refuse_hardware_only_kinds! }
   end
 end

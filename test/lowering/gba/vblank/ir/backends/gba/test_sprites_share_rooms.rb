@@ -119,7 +119,7 @@ class TestSpritesShareRooms < Minitest::Test
 
   # A pool of three things that can show +poses+ 64x64 pictures, in a game built through the DSL.
   private def pool_game(poses)
-    art = method(:big_art)
+    art = ->(number) { big_art(number) }
     names = POSES.first(poses)
     VBlank.build("ROOMS", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :tiled
@@ -165,7 +165,7 @@ class TestSpritesShareRooms < Minitest::Test
   # A scene of still pictures that is the fullest, and a scene with a pool that fits whole. The
   # least is said for each scene, and the play scene's is the one a growing game needs to see.
   private def menu_and_play
-    art = method(:big_art)
+    art = ->(number) { big_art(number) }
     names = POSES.first(8)
     statues = POSES.last(12)
     VBlank.build("ROOMS", console: :gba, out: StringIO.new, err: StringIO.new) do

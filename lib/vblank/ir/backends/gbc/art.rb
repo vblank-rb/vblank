@@ -1096,6 +1096,19 @@ module VBlank
              end]
           end
 
+          # Asked by the test that reads a tile back through the format reader.
+          # Places eight to a row as the Color keeps a tile: two bytes a row, the low bit of each
+          # place in the first and the high bit in the second, the leftmost pixel in bit 7. Sixty-four
+          # are one tile; a tall piece's 128 are its upper tile and then its lower.
+          def encode(places)
+            (0...(places.length / 8)).flat_map do |row|
+              line = places[row * 8, 8]
+              low = line.each_with_index.sum { |place, x| (place & 1) << (7 - x) }
+              high = line.each_with_index.sum { |place, x| ((place >> 1) & 1) << (7 - x) }
+              [low, high]
+            end
+          end
+
           private
 
           # The palettes at power-on, in +asm+, the part always in view; and the indexes — where
@@ -1440,18 +1453,6 @@ module VBlank
             raise LoweringError, "the sprite picture #{name.inspect} has #{colors} colours, and a Game Boy Color " \
                                  "sprite holds #{OWN_COLORS} and see-through. To fix this, draw it in " \
                                  "#{OWN_COLORS} colours."
-          end
-
-          # Places eight to a row as the Color keeps a tile: two bytes a row, the low bit of each
-          # place in the first and the high bit in the second, the leftmost pixel in bit 7. Sixty-four
-          # are one tile; a tall piece's 128 are its upper tile and then its lower.
-          def encode(places)
-            (0...(places.length / 8)).flat_map do |row|
-              line = places[row * 8, 8]
-              low = line.each_with_index.sum { |place, x| (place & 1) << (7 - x) }
-              high = line.each_with_index.sum { |place, x| ((place >> 1) & 1) << (7 - x) }
-              [low, high]
-            end
           end
 
           # A sprite tile: one already kept, drawn as it is or mirrored, or a new one. The Color

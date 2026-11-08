@@ -39,7 +39,7 @@ class TestPacmanFixture < Minitest::Test
     PacmanPort::SLOT_ASSETS.each do |slot, name|
       scheme = PacmanFixture.asset(name).fetch("codec").to_sym
       unpacked = pack.bytes_of(slot)
-      repacked = Packer.with_bios_header(Packer.public_send(scheme, unpacked), { lz77: Packer::TYPE_LZ77, rle: Packer::TYPE_RLE }.fetch(scheme),
+      repacked = Packer.with_bios_header((scheme == :lz77 ? Packer.lz77(unpacked) : Packer.rle(unpacked)), { lz77: Packer::TYPE_LZ77, rle: Packer::TYPE_RLE }.fetch(scheme),
                                          unpacked.bytesize)
 
       assert_equal PacmanFixture.asset(name).fetch("unpacked_size"), unpacked.bytesize, name

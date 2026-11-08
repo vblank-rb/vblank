@@ -26,7 +26,7 @@ class TestPlayThisFrameCartridge < Minitest::Test
   # a frame later.
   def test_the_console_is_on_the_song_the_frame_it_is_asked_for
     %i[game named_game].product([[{ this_frame: true }, 0], [{}, 1]]).each do |maker, (options, late)|
-      frames = console_frames(send(maker, **options))
+      frames = console_frames(maker == :game ? game(**options) : named_game(**options))
       taken_up = frames.index { |frame| frame[:song] }
       heard = frames.index { |frame| frame[:loud] }
 

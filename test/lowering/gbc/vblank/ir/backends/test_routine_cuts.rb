@@ -30,7 +30,11 @@ class TestRoutineCuts < Minitest::Test
       Section.new(name: label, bytes: "\0" * bytes, labels: {}, fixups: [], home: :banked, holds: nil)
     end
 
+    # Runs +hook+ with each list measured, before it is counted.
+    def when_measured(&hook) = @when_measured = hook
+
     def measure(statements)
+      @when_measured&.call(statements)
       @measured << statements
       statements.sum { |node| @sizes.fetch(node) }
     end
@@ -84,10 +88,8 @@ class TestRoutineCuts < Minitest::Test
     statements = Array.new(4) { wait_vblank }
     lowering = CountingLowering.new(statements.to_h { |node| [node, 60] }.compare_by_identity)
     cuts = cuts_for(lowering)
-    noting = lowering.method(:measure)
-    lowering.define_singleton_method(:measure) do |list|
+    lowering.when_measured do |list|
       list.each { |node| cuts.note_size(node, 60) } if list.length > 1
-      noting.call(list)
     end
 
     cuts.sections("big", statements) { |label, held| lowering.section(label, held) }

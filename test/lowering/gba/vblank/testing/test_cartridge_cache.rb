@@ -60,7 +60,7 @@ class TestCartridgeCache < Minitest::Test
     Dir.mktmpdir do |folder|
       cache = VBlank::Testing::CartridgeCache.new(folder)
 
-      keys = [true, false].map { |shared| cache.send(:key_for, two_fills_game(shared: shared), :gba, nil, {}, false).first }
+      keys = [true, false].map { |shared| cache.key_of(two_fills_game(shared: shared), console: :gba, variant: nil) }
 
       assert keys.uniq.one?, "one program gave two keys" # (a plain assert: the diff of two digests says nothing)
     end
