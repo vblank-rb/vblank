@@ -127,6 +127,18 @@ module VBlank
 
         def self.ternary?(value) = value.is_a?(Prism::IfNode) && value.if_keyword_loc.nil?
 
+        # `x == nil` or `x != nil`, `nil` on either side and written out, with one other side.
+        def self.nil_comparison?(call)
+          return false unless %i[== !=].include?(call.name) && call.receiver && call.arguments&.arguments&.one?
+
+          [call.receiver, call.arguments.arguments.first].one?(Prism::NilNode)
+        end
+
+        # What a #nil_comparison? asks about: the side that is not `nil`.
+        def self.side_not_nil(call)
+          call.receiver.is_a?(Prism::NilNode) ? call.arguments.arguments.first : call.receiver
+        end
+
         def self.number?(write)
           write.is_a?(Prism::LocalVariableWriteNode) &&
             [Prism::IntegerNode, Prism::FloatNode, Prism::TrueNode, Prism::FalseNode, Prism::SymbolNode,
@@ -414,6 +426,7 @@ module VBlank
           end
           read_place_change(node, in_game_code) if node.name == :[]= || node.attribute_write?
           @locals_by_node[node.receiver]&.asked_nil = true if node.name == :nil?
+          @locals_by_node[LocalNames.side_not_nil(node)]&.asked_nil = true if LocalNames.nil_comparison?(node)
         end
 
         def ruby_iteration?(call) = RUBY_ITERATORS.include?(call.name) && written_out?(call.receiver)

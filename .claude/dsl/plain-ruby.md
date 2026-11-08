@@ -66,8 +66,8 @@ plays.
   `true`/`false`. A `case` with no subject asks each `when` in turn. `case … in` takes the same
   values, with `a | b` between them; any other pattern (a binding, an array, a guard) is Ruby's, on
   a plain value only.
-- `nil` is Ruby's: `target = nil`, then `if target`, `target.nil?`, `target || 7`. Read as a number, nil
-  is 0.
+- `nil` is Ruby's: `target = nil`, then `if target`, `target.nil?`, `target == nil`, `target != nil`,
+  `target || 7`. Read as a number, nil is 0.
 
 ## Loops
 
@@ -111,12 +111,6 @@ Each is a friendly error naming the line.
 | a number worked out and not kept (`hp + 1` alone, `hp.abs` alone) | `hp += 1`; `hp.abs!` |
 | a constant from outside the game, or `system`, `eval`, `require`, `send` and the like | work it out above the block into a constant; `allow:` a library that is safe |
 | game code in a file loaded with `require_relative` | `VBlank.require_game_file` |
-
-Some refusals give the wrong reason. Write it another way, and report the message:
-
-| written | the build says | write instead |
-|---|---|---|
-| `t == nil` | "can't use nil as a value" | `t.nil?` |
 
 ## What builds without a word and means something else
 

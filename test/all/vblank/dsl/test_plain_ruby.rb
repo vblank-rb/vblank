@@ -1304,6 +1304,28 @@ class TestPlainRuby < Minitest::Test
     assert_equal 1, notes.length
   end
 
+  # `== nil` and `!= nil` ask what `nil?` asks, on every pass, either way round.
+  def test_a_name_compared_with_nil_answers_as_nil_does
+    game = proc do
+      target = nil
+      passes = 0
+      empty = 0
+      held = 0
+      game_loop do
+        passes += 1
+        target = 5 if passes == 3
+        empty = target == nil ? 1 : 0
+        held = nil != target ? 1 : 0
+      end
+    end
+
+    before = played(frames: 2, &game)
+    after = played(frames: 4, &game)
+
+    assert_equal [1, 0], [before[:empty], before[:held]]
+    assert_equal [0, 1], [after[:empty], after[:held]]
+  end
+
   def test_a_write_on_the_right_of_a_join_under_a_game_test_follows_the_test
     player = played do
       def nudged(a)

@@ -302,6 +302,7 @@ module VBlank
           return index_write_text(node) if node.name == :[]= && node.receiver
           return attribute_write_text(node) if node.attribute_write? && node.receiver
           return "#{STEPS}.nil_test(#{argument(node.receiver)})" if node.name == :nil? && node.receiver
+          return nil_comparison_text(node) if LocalNames.nil_comparison?(node)
           return bits_text(node) if Steps::BIT_JOINS.include?(node.name) && node.receiver && node.arguments
           return "self.#{copied_text(node)}" if node.receiver.nil? && @outer_locals.include?(node.name)
 
@@ -324,6 +325,14 @@ module VBlank
 
           @tail_ternaries[node] = true
           [node.statements, node.subsequent&.statements].compact.each { |side| note_tail_ternaries(side.body.last) }
+        end
+
+        # `x == nil` and `x != nil`, either way round, are `x.nil?` and `!x.nil?`: Ruby's answer on a
+        # plain value, and on a game variable that can hold nil, the test `nil?` makes as it plays.
+        def nil_comparison_text(node)
+          operand = LocalNames.side_not_nil(node)
+          test = "#{STEPS}.nil_test(#{argument(operand)})"
+          node.name == :== ? test : "#{STEPS}.opposite(#{test})"
         end
 
         def bits_text(node)
