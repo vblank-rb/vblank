@@ -345,7 +345,7 @@ module VBlank
       # offers the routine.
       def unpacking_program(bytes, slots, routine, reading, release:)
         Builder.keeping_builder_in_use do
-          maker = bytes ? Builder.new : Builder.new(options: unpacking_options)
+          maker = Builder.new(options: unpacking_options)
           copy = if bytes
                    maker.table(Original::Unpacking::COPY, bytes.bytes, width: :byte, signed: false)
                  else
@@ -379,8 +379,9 @@ module VBlank
         end
       end
 
-      # How a shell's unpacking is built: for a computer, and for the console the game is built for,
-      # so it shows in the same window as the game.
+      # How an unpacking is built: for a computer, and for the console the game is built for. A
+      # shell's shows in the same window as the game, and an all-in-one build's is played here and
+      # by every backend, which lays a program out for the console it names and refuses one naming none.
       def unpacking_options
         Cartridge::Options.new(console: @build_options.console, variant: @build_options.variant, for_computer: true)
       end

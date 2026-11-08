@@ -721,6 +721,22 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A port with a data pack builds under `vblank run` with no --console: its unpacking is built for
+  # the console the game names. Played in a process of its own, as a person runs it, so the test
+  # kit's way of laying out a program that names no console is not there to hide a missing one.
+  def test_run_builds_a_port_whose_unpacking_names_no_console
+    Dir.mktmpdir do |dir|
+      fixture = VBlank.root.join("test/fixtures/pacman_port")
+      File.write(File.join(dir, "port.rb"), "require #{fixture.join('pacman_port').to_s.dump}\nPacmanPort.game\n")
+      File.write(File.join(dir, "idle.rb"), "VBlank.playthrough('idle') { wait frames: 2 }\n")
+      copy = { "PACMAN_ROM" => fixture.join("pacman.gba").to_s }
+      out, status = Open3.capture2e(copy, RUBY, BIN, "run", "port.rb", "--no-window", "--script", "idle.rb", chdir: dir)
+
+      assert status.success?, out
+      refute_match(/names no console/, out)
+    end
+  end
+
   # A console the game does not name is refused in words, before any window opens.
   def test_run_refuses_a_console_the_game_is_not_for
     Dir.mktmpdir do |dir|
