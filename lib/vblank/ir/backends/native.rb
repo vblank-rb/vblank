@@ -131,20 +131,25 @@ module VBlank
         # and compiles it, which takes a while once; every build after that reuses it. +target+
         # names another computer to build for (see TARGETS), and left out it is this one. +console+
         # is the one it plays the game as (#checked_program). +strip+ leaves the program's debugging
-        # data out: a far smaller file, and far poorer crash reports.
-        def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, pack_at_start: false, err: $stderr)
+        # data out: a far smaller file, and far poorer crash reports. +progress+ (a Messages::Progress)
+        # is told each step as it begins: the cartridge build's, then writing the C and compiling it.
+        def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, pack_at_start: false, err: $stderr,
+                          progress: Messages::Progress.silent)
           if File.directory?(path)
             raise LoweringError, "#{path} is a folder, so the program cannot be written there. Name a file instead."
           end
           refuse_unknown_target!(target)
 
-          cartridge = (checked_cartridge(game, console: console, settings: settings, err: err) unless pack_at_start)
+          cartridge = (checked_cartridge(game, console: console, settings: settings, err: err, progress: progress) unless pack_at_start)
           program = cartridge&.source_program ||
-                    checked_program(game, console: console, settings: settings, err: err, pack_at_start: true)
+                    checked_program(game, console: console, settings: settings, err: err, progress: progress, pack_at_start: true)
           refuse_start_up_without_cartridge!(program) unless cartridge
-          compile_desktop(program, path, title: game.title, menu: game.menu?, cartridge: cartridge, target: target, strip: strip)
+          compile_desktop(program, path, title: game.title, menu: game.menu?, cartridge: cartridge, target: target, strip: strip,
+                                         progress: progress)
           FileUtils.chmod(0o755, path)
           path
+        ensure
+          progress.done
         end
 
         # +game+ built as a SHELL (Original::Shell) for a computer, into the FOLDER +path+: the game, with
@@ -170,10 +175,13 @@ module VBlank
             game_part = part.role == :game
             file = game_part ? File.join(path, File.basename(path)) : File.join(path, ShellData::PARTS_FOLDER, ShellData.part_name(part))
             compile_desktop(part.program, "#{file}#{ending}", title: game.title, menu: part.window_menu, cartridge: nil, target: target,
-                                                               strip: strip, shell: (shell if game_part))
+                                                               strip: strip, shell: (shell if game_part), progress: progress,
+                                                               part_name: game_part ? "game" : ShellData.part_name(part))
             FileUtils.chmod(0o755, "#{file}#{ending}")
           end
           path
+        ensure
+          progress.done
         end
 
         # A console whose start-up the desktop build plays reads the start of the game's cartridge
@@ -198,8 +206,12 @@ module VBlank
 
         # +program+ compiled with the runtime and SDL into the executable +path+. The console's
         # start-up is played only where +cartridge+ holds the start of the game's cartridge to read it
-        # from. +shell+ (an Original::Shell) makes the program a shell's game.
-        def compile_desktop(program, path, title:, menu:, cartridge:, target:, strip:, shell: nil)
+        # from. +shell+ (an Original::Shell) makes the program a shell's game. +progress+ is told the two
+        # steps, each with +part_name+ beside it where a shell builds several programs.
+        def compile_desktop(program, path, title:, menu:, cartridge:, target:, strip:, shell: nil,
+                            progress: Messages::Progress.silent, part_name: nil)
+          progress.step("Writing C")
+          progress.show_detail(part_name) if part_name
           lowering = Lowering.new(program, title: title)
           source = lowering.source
           Dir.mktmpdir("vblank-native") do |dir|
@@ -217,6 +229,8 @@ module VBlank
             File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu))
             File.write(File.join(src, ShellData::FILE), Printer.new.print_file(ShellData.items(shell)))
             Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
+            progress.step("Compiling C")
+            progress.show_detail(part_name) if part_name
             exe = Zig.build_with_sdl(src, ["game.c", *DESKTOP_RUNTIME], name: "game", prefix: File.join(dir, "out"),
                                                                         target: target && TARGETS.fetch(target), strip: strip)
             FileUtils.cp(exe, path)

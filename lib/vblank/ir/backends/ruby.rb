@@ -103,16 +103,23 @@ module VBlank
         # them defines fails when it gets there (test_ruby_script.rb plays one).
         # +pack_at_start+ leaves the game's data pack out (Native#checked_program). +shell+ builds
         # the game as a shell (Original::Shell): the file holds none of the original's data, and
-        # makes the pack from the player's copy the first time it is played (Live::Shell).
-        def build_script(game, path, console:, settings: {}, err: $stderr, pack_at_start: false, shell: false)
+        # makes the pack from the player's copy the first time it is played (Live::Shell). +progress+ (a
+        # Messages::Progress) is told each step as it begins.
+        def build_script(game, path, console:, settings: {}, err: $stderr, pack_at_start: false, shell: false,
+                         progress: Messages::Progress.silent)
           if shell
-            built = Original::Shell.build(game, console: console, settings: settings, err: err)
+            built = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
+            progress.step("Writing Ruby")
             File.write(path, script(built.game, title: game.title, menu: game.menu?, shell: built))
           else
-            program = Native.new.checked_program(game, console: console, settings: settings, err: err, pack_at_start: pack_at_start)
+            program = Native.new.checked_program(game, console: console, settings: settings, err: err, progress: progress,
+                                                 pack_at_start: pack_at_start)
+            progress.step("Writing Ruby")
             File.write(path, script(program, title: game.title, menu: game.menu?))
           end
           path
+        ensure
+          progress.done
         end
 
         # ...the file's text, for +program+ in a window titled +title+, with a menu or not, and as

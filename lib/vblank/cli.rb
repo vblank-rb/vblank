@@ -1810,13 +1810,15 @@ module VBlank
       if options[:shell]
         say "Building #{File.basename(path)} as a shell for #{target ? options[:target] : 'this computer'} - Please wait."
         VBlank::IR::Backends::Native.new.build_desktop_shell(game, path, console: console, settings: given_settings, target: target,
-                                                                         strip: options[:strip])
+                                                                         strip: options[:strip],
+                                                                         progress: VBlank::Messages::Progress.to($stderr))
         say "Built #{path}, a folder. Run the program in it called #{File.basename(path)}."
         return
       end
       say "Building #{File.basename(path)} for #{target ? options[:target] : 'this computer'} - Please wait."
       VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
-                                                                 strip: options[:strip], pack_at_start: options[:pack_at_start])
+                                                                 strip: options[:strip], pack_at_start: options[:pack_at_start],
+                                                                 progress: VBlank::Messages::Progress.to($stderr))
       say "Built #{path}"
     rescue VBlank::BuildError, VBlank::IR::Backends::Native::Zig::Error => e
       raise Thor::Error, e.message
@@ -1830,8 +1832,10 @@ module VBlank
       game = load_game(game_file)
       console = console_to_play(game)
       path = options[:output] || file_beside(game, game_file, console, "-ruby.rb")
+      say "Building #{File.basename(path)} - Please wait."
       VBlank::IR::Backends::Ruby.new.build_script(game, path, console: console, settings: given_settings,
-                                                  pack_at_start: options[:pack_at_start], shell: options[:shell])
+                                                  pack_at_start: options[:pack_at_start], shell: options[:shell],
+                                                  progress: VBlank::Messages::Progress.to($stderr))
       say "Built #{path}. To play it, run: ruby #{File.basename(path)}"
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot write #{game.title} as Ruby yet. The game needs a part of VBlank " \

@@ -47,6 +47,20 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A build that takes minutes says each step as it goes, the cartridge's and then its own, so it
+  # never sits on one line looking hung. Written to a file, each step is a line once it ends.
+  def test_the_build_says_each_step_as_it_goes
+    Dir.mktmpdir do |dir|
+      said = StringIO.new
+      Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil,
+                                                                             progress: VBlank::Messages::Progress.to(said))
+      steps = said.string.lines.map { |line| line.strip[/\A\D+?(?=\s{2})/] }
+
+      assert_includes steps, "Checking for mistakes"
+      assert_equal ["Writing C", "Compiling C"], steps.last(2)
+    end
+  end
+
   # A game for both consoles, built as the Color, plays on the Color's screen as the interpreter
   # plays it there: its corner square is drawn from screen_width, so the picture says which
   # screen it had.
