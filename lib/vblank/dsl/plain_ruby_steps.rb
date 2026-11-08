@@ -90,6 +90,17 @@ module VBlank
                             "no subject, then `when hp > 3 then`.")
         end
 
+        # A piece put into a String or a Symbol with `#{...}`. See Rewriter#embedded_text.
+        def text_piece(piece)
+          return piece unless piece.is_a?(Value) || piece.is_a?(Condition)
+
+          refuse_game_code!("This text puts a game number into a String with `\#{...}`. Ruby makes the String " \
+                            "once, while it builds the game. The number changes as the game plays, so the String " \
+                            "cannot show it. To fix this, draw the words and the number apart: " \
+                            "`draw_text \"HP\", 8, 8, :white`, then `draw_number hp, 32, 8, :white`. If the text " \
+                            "is a name made in a loop, count with Ruby's `3.times { |i| ... }`, not `repeat`.")
+        end
+
         # The range of `for x in a..b`, which Ruby runs while building. See Rewriter#for_text.
         def for_range(from, upto, exclusive)
           if [from, upto].any?(Value)

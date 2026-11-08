@@ -105,6 +105,7 @@ Each is a friendly error naming the line.
 | `case … in` on a game number with a pattern other than values and ranges | values, ranges and `\|`; or `case` with no subject and `when hp > 3` |
 | `for` from or to a game number | `i = 0`, `while i < n`, `i += 1` at the end of its body |
 | `for` over a list or a pool | `things.each do \|thing\|` |
+| a game number put into a String or Symbol (`"HP #{hp}"`) | `draw_text "HP"` and `draw_number hp` beside it |
 | `even?`, `odd?`, `nonzero?`, `between?` on a game number | the comparison: `hp % 2 == 0` |
 | `.then` on a test | `if` |
 | a number worked out and not kept (`hp + 1` alone, `hp.abs` alone) | `hp += 1`; `hp.abs!` |
@@ -115,7 +116,6 @@ Some refusals give the wrong reason. Write it another way, and report the messag
 
 | written | the build says | write instead |
 |---|---|---|
-| `"HP #{hp}"` in `draw_text` | the font has no `#` | `draw_number` beside the text |
 | `t == nil` | "can't use nil as a value" | `t.nil?` |
 
 ## What builds without a word and means something else

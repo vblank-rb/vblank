@@ -37,6 +37,38 @@ class TestTextMissingCharacter < Minitest::Test
     assert_match(/1 OF 2 @ HOME/, error.message)
   end
 
+  # A String is made while the game is built, so a number the game keeps cannot go in one; the
+  # build names what was written rather than a `#` the font lacks.
+  def test_a_game_number_put_into_the_words_is_a_friendly_error
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      program do
+        screen :bitmap
+        hp = 3
+        game_loop do
+          draw_text "HP #{hp}", 0, 0, :white
+          hp -= 1
+        end
+      end
+    end
+
+    assert_match(/`\#\{\.\.\.\}`/, error.message)
+    assert_match(/draw_number/, error.message)
+  end
+
+  # A plain number put into the words in the game's own code is Ruby's, worked out while building.
+  def test_a_plain_number_put_into_the_words_is_drawn
+    game = program do
+      screen :bitmap
+      lives = 3
+      game_loop { draw_text "LIVES #{lives}", 0, 0, :white }
+    end
+    shown = game_player.run(game, frames: 2).screen
+    white = VBlank::Graphics::Color.resolve(:white)
+    drawn = Array.new(7) { |y| Array.new(40) { |x| shown.pixel(x, y) == white } }
+
+    assert_equal lit("LIVES 3", 40), drawn
+  end
+
   def test_every_character_missing_is_named_once
     error = assert_raises(ArgumentError) do
       program do

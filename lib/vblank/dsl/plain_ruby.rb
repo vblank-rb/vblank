@@ -214,6 +214,7 @@ module VBlank
           when Prism::IfNode, Prism::UnlessNode then conditional_text(node)
           when Prism::CaseNode then case_text(node)
           when Prism::CaseMatchNode then case_match_text(node)
+          when Prism::EmbeddedStatementsNode then embedded_text(node)
           when Prism::ForNode then for_text(node)
           when Prism::WhileNode then loop_text(node, "loop_while")
           when Prism::UntilNode then loop_text(node, "loop_until")
@@ -821,6 +822,14 @@ module VBlank
           node.conditions.each { |arm| @written_as_is[arm.pattern] = true }
           @pattern_subjects[node.predicate] = true if node.predicate
           copied_text(node)
+        end
+
+        # `#{...}` in a String or a Symbol. Ruby puts the piece into the text while the game is
+        # built, so Steps.text_piece refuses a number the game keeps, which has no digits yet.
+        def embedded_text(node)
+          return copied_text(node) if node.statements.nil?
+
+          "\#{#{STEPS}.text_piece((#{rewritten_text(node.statements)}))}"
         end
 
         # `for x in list`. Ruby runs it while the game is built, as it runs `each`. A range with a
