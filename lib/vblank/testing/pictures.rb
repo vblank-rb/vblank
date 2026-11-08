@@ -196,27 +196,15 @@ module VBlank
         found ? found.screen_width : SCREEN_W
       end
 
-      # A failure that says WHERE they disagree, not just how many pixels. The map is the whole
-      # screen squashed to a small grid, so a glance says "the sprite is in the wrong place" vs
-      # "the right edge is torn" vs "everything below the map". +picture+ is the interpreter's, which
-      # gives how big the screen is; left out, it is the Advance's.
-      def mismatch_message(bad, frames, console_frames, picture: nil)
-        width = picture ? picture_width(picture) : SCREEN_W
-        height = picture ? picture.length / width : SCREEN_H
-        cell_w, cell_h = difference_cell(width, height)
-        lines = ["the backends drew different screens: #{bad.length} of #{width * height} pixels differ " \
-                 "(interpreter ran #{frames} frames, console #{console_frames})"]
-        lines << "  first differences (interpreter is the oracle — it says what the program means):"
-        bad.first(8).each do |x, y, want, got|
-          lines << format("    (%3d,%3d)  interpreter %-10s  console %s", x, y, color_label(want), color_label(got))
-        end
-        lines << "  ...and #{bad.length - 8} more" if bad.length > 8
-        lines << "  where they differ ( . = agree, # = differ; each cell is #{cell_w}x#{cell_h} pixels):"
-        lines.concat(difference_map(bad, width, height))
-        lines.join("\n")
-      end
-
       private
+
+      # The failure for +bad+ differences (PictureMismatch says it), on the screen of +picture+, the
+      # interpreter's.
+      def mismatch_message(bad, frames, console_frames, picture:)
+        width = picture_width(picture)
+        PictureMismatch.new(differences: bad, frames: frames, console_frames: console_frames, width: width,
+                            height: picture.length / width).message
+      end
 
       # The console's picture after +console_frames+ frames, and how many passes of the game loop it
       # managed in them — nil for a program with no loop to count.
@@ -396,27 +384,6 @@ module VBlank
       # The kit of the console +program+ is built for: the Advance's for one that names none.
       def console_kit(program) = Console.for(program.described_console.name)
 
-      # How many pixels across and down one cell of the difference map is: the screen in about
-      # 40 cells by 20, a cell taking in the ragged last few when the screen does not divide evenly
-      # (a Game Boy Color's 144 rows do not divide by 20).
-      def difference_cell(width, height) = [width.fdiv(40).ceil, height.fdiv(20).ceil]
-
-      # The screen boiled down to a grid of about 40x20: a cell is '#' if any pixel in it differs.
-      def difference_map(bad, width, height)
-        cell_w, cell_h = difference_cell(width, height)
-        grid = Array.new(height.fdiv(cell_h).ceil) { Array.new(width.fdiv(cell_w).ceil, ".") }
-        bad.each { |x, y, _, _| grid[y / cell_h][x / cell_w] = "#" }
-        grid.map { |row| "    #{row.join}" }
-      end
-
-      # A readable name for a 15-bit color, falling back to the raw value. 0 is the backdrop —
-      # what shows where nothing was drawn.
-      def color_label(value)
-        return "backdrop" if value.zero?
-
-        name = Graphics::Color::PRESETS.key(value)
-        name ? name.to_s : format("0x%04X", value)
-      end
     end
   end
 end

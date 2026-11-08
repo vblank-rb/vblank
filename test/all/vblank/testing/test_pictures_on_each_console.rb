@@ -21,7 +21,9 @@ class TestPicturesOnEachConsole < Minitest::Test
     console = oracle.dup
     console[((COLOR.screen_height - 1) * width) + width - 1] = Color.resolve(:red)
 
-    report = mismatch_message(mismatched_pixels(oracle, console), 4, 6, picture: oracle)
+    report = VBlank::Testing::PictureMismatch.new(differences: mismatched_pixels(oracle, console), frames: 4,
+                                                  console_frames: 6, width: picture_width(oracle),
+                                                  height: oracle.length / picture_width(oracle)).message
 
     assert_match(/1 of 23040 pixels differ/, report)
     map = report.lines.grep(/^ {4}[.#]+$/)

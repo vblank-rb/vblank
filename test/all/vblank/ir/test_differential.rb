@@ -300,7 +300,8 @@ class TestDifferential < Minitest::Test
     bad = differ.mismatched_pixels(oracle, console)
     assert_equal [[120, 80, 0, Color.resolve(:red)]], bad
 
-    report = differ.mismatch_message(bad, 4, 6)
+    report = VBlank::Testing::PictureMismatch.new(differences: bad, frames: 4, console_frames: 6, width: SCREEN_W,
+                                                  height: SCREEN_H).message
     assert_match(/1 of 38400 pixels differ/, report)
     assert_match(/\(120, 80\)\s+interpreter backdrop\s+console red/, report)
     assert_match(/where they differ/, report)
