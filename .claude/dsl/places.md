@@ -11,7 +11,7 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
 
 ## Declaring a place
 
-- `place :cube do … end` → `DSL::Place` — declare a place. Inside the block, `point x, y, z` makes a
+- `place :cube do … end` → the place — declare a place. Inside the block, `point x, y, z` makes a
   point and returns its number, and `face a, b, c, d, picture: :crate, on_picture: [[0, 0], [64, 0],
   [64, 64], [0, 64]]` joins three or four points with a picture. `on_picture:` is one `[across, down]`
   for each point, in the picture's own pixels and in the same order. **The picture repeats past its
@@ -69,7 +69,7 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
 ## The viewer
 
 - `viewer :eye, at: [x, y, z], facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] }` →
-  `DSL::Viewer` — the spot a place is seen from, and which way it faces. `facing:` is three arrows,
+  the viewer — the spot a place is seen from, and which way it faces. `facing:` is three arrows,
   each three numbers of length one and square to the other two (a friendly error otherwise); left out,
   the viewer faces along the place's own arrows. A viewer is twelve variables, and the game moves and
   turns it as it runs:
@@ -215,6 +215,8 @@ a corridor whose lamp flickers.
   the chip shades by colour and reads no tables.
 
 ## How it is drawn
+
+For work on VBlank itself: the classes named here are VBlank's own, and a game reaches none of them.
 
 The same on every lowering: the turn, the cut and the projection are statements
 the lowering makes like any other (`IR::PlaceDrawing`, fractions with sixteen bits through `mul_fix`

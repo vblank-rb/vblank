@@ -1,7 +1,7 @@
 # DSL verb reference — the flat `VBlank.build` API
 
-The verbs a `VBlank.game "NAME" do … end` block calls (mixed into `Builder` from
-`lib/vblank/builder/*.rb`). **This file is the index**: a line per verb, enough to find it.
+The verbs a `VBlank.game "NAME" do … end` block calls. **Game code around them is plain Ruby**
+(`.claude/dsl/plain-ruby.md`). **This file is the index**: a line per verb, enough to find it.
 Each verb's options, friendly errors, cost and worked example are in the group file its section
 names, under `.claude/dsl/`. **Read that file before using, changing or documenting a verb**, and
 grep `.claude/dsl/` for an option or handle method not named here.
@@ -10,9 +10,8 @@ A drift test (`test/all/vblank/test_dsl_reference.rb`) fails if a builder verb i
 this index or from its section's group file. A new verb gets a line here, its story in the
 group file.
 
-Coordinates are pixels from the top left of a 240×160 screen. A `:symbol` names a variable, an
-Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`, `List`,
-`Sprite`, `Condition`…) are `VBlank::DSL::*` in `lib/vblank/dsl/`.
+Coordinates are pixels from the top left of a 240×160 screen. Where a verb takes a number, a
+number the game keeps works too.
 
 **Mistakes that raise nothing** (each in its group file):
 
@@ -86,7 +85,7 @@ Integer is a literal, a `Value` (from `var`) is an expression. Handles (`Value`,
 
 ## Variables & math — `.claude/dsl/variables.md`
 
-- `hp = 10` — a game variable, if game code changes it. `var :name, init` → `Value` (`width: :byte` or `:half` to keep it narrow); `var :mode, :title` holds a name, and `call mode` runs it.
+- `hp = 10` — a game variable, if game code changes it; `mode = :title` holds a name, and `call mode` runs it. `var :flag, 0, width: :byte` (or `:half`) keeps one narrow.
 - `save_var :name, default`; `save_data :file do keep … end` → save records; `saves_keep_everything except:`.
 - `part :play` (from here on, or a block) + `start_over :play` — a new game: that part's variables, lists and pools back as declared, on one pass; a scene's name works too.
 - `x = 5`, `x += 1`, `x -= 1`, `flags |= 4`, `x = y` — change a variable.
