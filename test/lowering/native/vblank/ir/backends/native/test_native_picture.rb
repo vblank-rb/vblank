@@ -776,8 +776,9 @@ class TestNativePicture < Minitest::Test
     last = assert_native_matches_reference(program, frames: 10)
 
     assert_operator different_pictures_in(program, frames: 10), :>=, 10, "every frame should show the scenery somewhere new"
-    assert_operator last.variables[:__bg_far_sy], :>, 256, "the far one should have gone down past where it comes round"
-    assert_operator last.variables[:__bg_near_sx], :>, 256, "and the near one right past where it does"
+    ended = last.read_with(program)
+    assert_operator ended.background(:far).scroll_y, :>, 256, "the far one should have gone down past where it comes round"
+    assert_operator ended.background(:near).scroll_x, :>, 256, "and the near one right past where it does"
   end
 
   # A turned background that is also scrolled. The builder refuses a game that says both, so the

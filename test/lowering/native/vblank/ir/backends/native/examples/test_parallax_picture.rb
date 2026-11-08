@@ -17,7 +17,8 @@ class TestParallaxPicture < Minitest::Test
 
     last = assert_recorded_run_matches_reference(program, frames: 160, buttons: SLIDE)
 
-    assert_equal [-31, -62], last.variables.values_at(:__bg_sky_sx, :__bg_ground_sx),
+    ended = last.read_with(program)
+    assert_equal [-31, -62], [ended.background(:sky).scroll_x, ended.background(:ground).scroll_x],
                  "the near layer should have gone twice as far as the far one"
   end
 end

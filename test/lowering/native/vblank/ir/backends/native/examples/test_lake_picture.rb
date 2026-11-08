@@ -31,7 +31,10 @@ class TestLakePicture < Minitest::Test
     assert_operator now.compact.uniq.length, :>=, 2 * Lake::SWAY, "the pillar should snake from side to side"
     # More rows than three jellyfish drifting over the pillar could account for.
     assert_operator rows_moved, :>=, 50, "and the snake should travel down the water"
-    across = moments.map { |moment| moment.variables.values_at(:__obj2_x, :__obj3_x) }.transpose
+    across = moments.map do |moment|
+      frame = moment.read_with(program)
+      [frame.sprite(:jelly2).x, frame.sprite(:jelly3).x]
+    end.transpose
 
     assert(across.all? { |places| places.each_cons(2).any? { |before, after| after < before } },
            "two of the jellyfish should have left at the right and come back in at the left")

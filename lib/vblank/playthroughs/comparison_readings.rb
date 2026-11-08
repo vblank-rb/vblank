@@ -49,7 +49,7 @@ module VBlank
         # A way to read that names a sprite or a background, read whole. +kind+ is :sprite or
         # :background, the question every reader answers by that name.
         Named = Data.define(:kind, :name) do
-          def call(game) = game.public_send(kind, name)
+          def call(game) = kind == :sprite ? game.sprite(name) : game.background(name)
 
           # Where +program+ keeps this sprite or background (Program#sprite_reading,
           # #background_reading), refusing one it has none of.

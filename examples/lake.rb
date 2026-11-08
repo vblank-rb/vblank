@@ -239,8 +239,11 @@ module Lake
     # sheet of glass lying still over a picture is easy to mistake for a paler picture,
     # where a jellyfish drifting across the ripples — with the wave pattern travelling
     # through its bell — cannot be mistaken for anything else.
+    # Each is named for itself, jelly1 to jelly3, and shows the one jelly image.
     jellyfish = layer(:swimmers, transparency: SEE_THROUGH) do
-      DRIFT.map { |x, depth, speed| [sprite(:jelly, at: [x, depth]), depth, speed] }
+      DRIFT.each_with_index.map do |(x, depth, speed), n|
+        [sprite(:"jelly#{n + 1}", image: :jelly, at: [x, depth]), depth, speed]
+      end
     end
 
     # They drift past one another at different speeds, so which one is in front has to be

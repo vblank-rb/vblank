@@ -28,6 +28,7 @@ require_relative "ir/reciprocals"           # How far a point on a face is, for 
 require_relative "ir/kept_widths"           # A variable kept a byte or two wide, on every backend
 require_relative "ir/sprite_reading"        # Where a named sprite's state is kept, for reading it back
 require_relative "ir/background_reading"    # Where a background's state is kept, for reading it back
+require_relative "ir/reading_by_name"       # A running game's state asked by its names, on every reader
 require_relative "ir/unchanging"            # Which values change nothing by being worked out
 require_relative "ir/reach"                 # What a run can reach: its routines and variables
 require_relative "ir/parity"

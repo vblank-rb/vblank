@@ -14,7 +14,11 @@ module VBlank
 
           # One moment of a run: its heading ("frame 3", "end"), the variables, the picture shown,
           # the sound log up to then, and the sprites last drawn, each saying whose it is.
-          Snapshot = Data.define(:heading, :variables, :picture, :sounds, :sprites)
+          Snapshot = Data.define(:heading, :variables, :picture, :sounds, :sprites) do
+            # This snapshot read as the game +program+ declared it, by its names
+            # (RunComparison::RecordedFrame).
+            def read_with(program) = RunComparison::RecordedFrame.new(variables: variables, program: program)
+          end
 
           # The snapshots the windowless program printed. +held+ is down from power-on, before
           # the game's first statement, and +buttons+ give what is held on each frame from the

@@ -19,21 +19,21 @@ module VBlank
         super
       end
 
-      # The sprite as it stands, read through +stored+ (a variable's name to its stored number).
-      def state_from(stored)
-        SpriteState.new(name: name, x: stored.call(x), y: stored.call(y), shown: stored.call(shown) != 0,
-                        pose: poses[pose_number(stored)], angle: angle ? stored.call(angle) : 0,
-                        scale: scale ? Rational(stored.call(scale), Build::SCALE_ONE) : 1)
+      # The sprite as it stands, read from +reader+'s stored numbers (IR::ReadingByName#raw_var).
+      def state_from(reader)
+        SpriteState.new(name: name, x: reader.raw_var(x), y: reader.raw_var(y), shown: reader.raw_var(shown) != 0,
+                        pose: poses[pose_number(reader)], angle: angle ? reader.raw_var(angle) : 0,
+                        scale: scale ? Rational(reader.raw_var(scale), Build::SCALE_ONE) : 1)
       end
 
       private
 
-      def pose_number(stored)
-        return stored.call(clip_start) + stored.call(frame) if clip_start
+      def pose_number(reader)
+        return reader.raw_var(clip_start) + reader.raw_var(frame) if clip_start
         return 0 unless facing
-        return stored.call(facing) unless frame
+        return reader.raw_var(facing) unless frame
 
-        (stored.call(facing) * frames_per_facing) + stored.call(frame)
+        (reader.raw_var(facing) * frames_per_facing) + reader.raw_var(frame)
       end
     end
 

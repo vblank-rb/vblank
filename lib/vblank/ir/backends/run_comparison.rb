@@ -25,6 +25,25 @@ module VBlank
                          sounding: [], motor: false)
             super
           end
+
+          # This moment read as the game +program+ declared it, by its names (RecordedFrame).
+          def read_with(program) = RecordedFrame.new(variables: variables, program: program)
+        end
+
+        # A RECORDED FRAME, READ BY THE GAME'S NAMES, as every reader of a running game answers
+        # them (IR::ReadingByName): a variable in the game's units, a sprite, a background, the
+        # music's loudness. What a checked run records of a frame (a Moment, or the native run's
+        # Differences::Snapshot) keeps only its +variables+, the stored numbers by name, so it is
+        # read through the program that made them.
+        RecordedFrame = Data.define(:variables, :program) do
+          include IR::ReadingByName
+
+          # A variable's stored number on this frame, 0 for one the game had not written yet.
+          def raw_var(name) = variables.fetch(name, 0)
+
+          private
+
+          def read_program = program
         end
 
         # Raised for something a test asks of the interpreter that a lowered run cannot answer yet:

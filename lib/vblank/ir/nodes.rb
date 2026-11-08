@@ -1362,12 +1362,12 @@ module VBlank
 
         private def in_game_units(stored, bits) = bits ? Rational(stored, 1 << bits) : stored
 
-        # Sprite +name+ as it stands (an IR::SpriteState), read through +stored+, a variable's name
-        # to its stored number; every reader asks this (Reference::ReadingBack, Bots::GameView).
-        def sprite_state(name, stored) = sprite_reading(name).state_from(stored)
+        # Sprite +name+ as it stands (an IR::SpriteState), read from +reader+'s stored numbers; every
+        # reader of a running game asks this (IR::ReadingByName#sprite).
+        def sprite_state(name, reader) = sprite_reading(name).state_from(reader)
 
         # Background +name+ as it stands (an IR::BackgroundState), read the same way.
-        def background_state(name, stored) = background_reading(name).state_from(stored)
+        def background_state(name, reader) = background_reading(name).state_from(reader)
 
         # Where background +name+ keeps its state (an IR::BackgroundReading), refusing in plain
         # words a name no background has.
@@ -1377,13 +1377,13 @@ module VBlank
             raise ArgumentError, "This game has no background :#{name}. #{names_there_are('backgrounds', readings)}"
         end
 
-        # The music's loudness, read through +stored+, as the game's own `music_volume` reads it: 0 to
-        # 100, whole and rounded down from the sixteenths it is kept in (IR::Tunes), and full for a
-        # game that never sets it.
-        def music_volume_from(stored)
+        # The music's loudness, read from +reader+'s stored numbers, as the game's own `music_volume`
+        # reads it: 0 to 100, whole and rounded down from the sixteenths it is kept in (IR::Tunes),
+        # and full for a game that never sets it.
+        def music_volume_from(reader)
           return Tunes::FULL_PERCENT unless Reach.variables(self).include?(Tunes::LEVEL)
 
-          Tunes.percent_of(stored.call(Tunes::LEVEL))
+          Tunes.percent_of(reader.raw_var(Tunes::LEVEL))
         end
 
         # The names in +readings+, said for a refusal ("Its sprites are :a, :b.").

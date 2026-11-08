@@ -222,6 +222,11 @@ Assert the friendly error a misuse raises: its class and a key phrase, never the
 
 ## Gotchas
 
+- Read a running game by the names it gave (`var`, `sprite`, `background`, `list`, `pool`,
+  `music_volume`), never by a variable the framework made for itself (`__obj1_x`):
+  `test/all/vblank/test_hidden_reads.rb` fails on one, naming the file; a test of the framework's
+  own storage goes in its `ALLOWED`, saying why.
+
 - Don't name a helper `run`: it shadows `Minitest::Test#run`.
 - `rake test:all` needs zig 0.17 on the path (`mise use zig@0.17.0`) and node 18+, or it stops at
   the start, and SDL3 (`brew install sdl3`): the tests that open a window fail without it.

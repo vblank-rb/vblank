@@ -20,7 +20,8 @@ class TestScrollPicture < Minitest::Test
 
     last = assert_recorded_run_matches_reference(program, frames: 210, buttons: PAN)
 
-    assert_equal [82, 80], last.variables.values_at(:__bg_world_sx, :__bg_world_sy),
+    world = last.read_with(program).background(:world)
+    assert_equal [82, 80], [world.scroll_x, world.scroll_y],
                  "the window should end right of and below where it started, having been left of and above it"
   end
 end

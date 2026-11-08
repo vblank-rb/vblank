@@ -11,10 +11,10 @@ module VBlank
     # +shown_map+ names the one holding which of +maps+ (the map names, in the order they were
     # declared) the game has set showing, and is nil for a background of one map.
     BackgroundReading = Data.define(:name, :scroll_x, :scroll_y, :shown_map, :maps) do
-      # The background as it stands, read through +stored+ (a variable's name to its stored number).
-      def state_from(stored)
-        BackgroundState.new(name: name, scroll_x: stored.call(scroll_x), scroll_y: stored.call(scroll_y),
-                            map: shown_map ? maps.fetch(stored.call(shown_map)) : maps.first)
+      # The background as it stands, read from +reader+'s stored numbers (IR::ReadingByName#raw_var).
+      def state_from(reader)
+        BackgroundState.new(name: name, scroll_x: reader.raw_var(scroll_x), scroll_y: reader.raw_var(scroll_y),
+                            map: shown_map ? maps.fetch(reader.raw_var(shown_map)) : maps.first)
       end
     end
 
