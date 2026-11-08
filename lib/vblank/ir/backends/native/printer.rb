@@ -8,8 +8,26 @@ module VBlank
         class Printer
           INDENT = "  "
 
+          # The most numbers a table of bytes is written out as. A bigger one is kept in a file of
+          # its own that the C embeds (#embedded): a game's recordings can be tens of millions of
+          # bytes, which as numbers in the text take long to write and far longer to compile.
+          MOST_WRITTEN_AS_NUMBERS = 4096
+
+          # The tables kept in a file of their own, by their type: how their numbers are packed into
+          # bytes, and the numbers that fit.
+          EmbeddedType = Data.define(:packing, :range)
+          EMBEDDED_TYPES = Ractor.make_shareable({ "int8_t" => EmbeddedType.new(packing: "c*", range: -128..127),
+                                                   "uint8_t" => EmbeddedType.new(packing: "C*", range: 0..255) })
+
+          # The bytes of each table kept in a file of its own, by the file's name, which the C
+          # embeds it from: written beside game.c wherever the text is (Lowering#source_files).
+          # The name is the bytes' fingerprint, so two programs that differ in a table differ in
+          # their text too.
+          attr_reader :embedded
+
           def initialize
             @out = +""
+            @embedded = {}
           end
 
           # The whole file: +items+ is the top level, in the order it is to appear.
@@ -46,13 +64,41 @@ module VBlank
             line(0, "")
           end
 
-          # Sixteen numbers a line, so a table of thousands is still a file a person can scroll.
+          # Sixteen numbers a line, so a table of thousands is still a file a person can scroll. A big
+          # table of bytes is kept in a file of its own (#print_embedded_array).
           def print_const_array(item)
+            embedded = EMBEDDED_TYPES[item.type]
+            if embedded && item.values.size > MOST_WRITTEN_AS_NUMBERS && item.values.all?(Integer)
+              return print_embedded_array(item, embedded)
+            end
+
             line(0, "#{linkage(item)}const #{item.type} #{item.name.text}[#{[item.values.size, 1].max}] = {")
             # C has no empty initializer, so an array with no values holds one zero (its size is 1).
             values = item.values.empty? ? [0] : item.values
             values.each_slice(16) { |row| line(1, "#{row.map { |value| array_value(value) }.join(', ')},") }
             line(0, "};")
+          end
+
+          # A big table of bytes, read by the compiler from a file beside game.c (C's #embed), which is
+          # far quicker to write and to compile than its numbers. #embed is C23's and the runtime is
+          # compiled as C11 with every warning an error, so the warning that says so is turned off
+          # around this table alone. A number that does not fit the type is refused, as a number
+          # written out is (#integer).
+          def print_embedded_array(item, embedded)
+            low, high = item.values.minmax
+            unless embedded.range.cover?(low) && embedded.range.cover?(high)
+              raise LoweringError, "the table #{item.name.text} holds #{low}..#{high}, which does not fit #{item.type}"
+            end
+
+            bytes = item.values.pack(embedded.packing)
+            file = "rg_embed_#{Digest::SHA256.hexdigest(bytes)[0, 16]}.bin"
+            @embedded[file] = bytes
+            line(0, "#pragma clang diagnostic push")
+            line(0, "#pragma clang diagnostic ignored \"-Wc23-extensions\"")
+            line(0, "#{linkage(item)}const #{item.type} #{item.name.text}[#{item.values.size}] = {")
+            line(0, "#embed \"#{file}\"")
+            line(0, "};")
+            line(0, "#pragma clang diagnostic pop")
           end
 
           # A number, or a Struct for an array of them.

@@ -230,11 +230,20 @@ module VBlank
             prepare_sound
           end
 
-          # The program as one C file.
-          def source
+          # The program as one C file's text. Its big tables of bytes are embedded from files beside
+          # it (#source_files), so text that is to be compiled comes from there.
+          def source = source_files.fetch(GAME_FILE)
+
+          # The program's C files, by name: game.c, and the file each big table of bytes is embedded
+          # from (Printer#embedded), all to be written in one folder.
+          def source_files
             refuse_unlowered_kinds!
-            Printer.new.print_file(top_level)
+            printer = Printer.new
+            { GAME_FILE => printer.print_file(top_level), **printer.embedded }
           end
+
+          # The name of the file the program's text is compiled from.
+          GAME_FILE = "game.c"
 
           # Every step a run of the program can reach, values inside them included: what is
           # written out, and what is refused when it cannot be. A check that has to answer the same

@@ -88,6 +88,25 @@ class TestTable < Minitest::Test
     end
   end
 
+  # A big table of signed bytes, as a recording is kept: each end and a place either side of 128
+  # read back as the game wrote them.
+  def test_a_big_table_of_signed_bytes_reads_back_below_nought_and_above
+    values = Array.new(5_000) { |n| ((n * 37) % 256) - 128 }
+    places = [0, 3, 4_096, 4_999]
+    i = interpret do
+      sound = table :sound, values, width: :byte
+      at = var :at, 0
+      places.each_with_index do |place, n|
+        out = var :"read_#{n}", 0
+        at = place
+        out = sound[at]
+      end
+      halt
+    end
+
+    places.each_with_index { |place, n| assert_equal values[place], i[:"read_#{n}"], "entry #{place}" }
+  end
+
   def test_signed_values_round_trip
     i = interpret do
       t = table :sines, [0, 127, -128, -1], width: :byte # signed is inferred (a negative present)

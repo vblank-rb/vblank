@@ -111,7 +111,7 @@ module VBlank
         # its own, with no SDL to fetch or compile, which is what keeps the tests quick.
         def build_headless(program, mode: :checked)
           lowering = Lowering.new(program, title: "VBlank")
-          game = write_source(lowering.source, ConsoleNumbers.header(program.described_console), lowering.runtime_features)
+          game = write_source(lowering.source_files, ConsoleNumbers.header(program.described_console), lowering.runtime_features)
           Zig.compile_without_sdl([game, *HEADLESS_RUNTIME.map { |file| File.join(Zig::RUNTIME_DIR, file) }],
                                   include: [File.dirname(game), RuntimeFeatures::ROOT], mode: mode)
         end
@@ -213,11 +213,11 @@ module VBlank
           progress.step("Writing C")
           progress.show_detail(part_name) if part_name
           lowering = Lowering.new(program, title: title)
-          source = lowering.source
+          files = lowering.source_files
           Dir.mktmpdir("vblank-native") do |dir|
             src = File.join(dir, "src")
             FileUtils.mkdir_p(src)
-            File.write(File.join(src, "game.c"), source)
+            files.each { |name, body| File.binwrite(File.join(src, name), body) }
             # Each feature's folder beside the runtime, where game.c and rg_screen.c include it from.
             lowering.runtime_features.each { |feature| FileUtils.cp_r(feature.folder, src) }
             File.write(File.join(src, FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features))
@@ -241,19 +241,23 @@ module VBlank
         # (ConsoleNumbers), in a folder named for what it holds so two programs never write over
         # each other. Each file is written under a name of its own and then renamed into place,
         # so two threads building the same game at once — tests run side by side — each put down a
-        # whole file and never read half of the other's. Gives back the path of game.c.
-        def write_source(text, numbers, features)
+        # whole file and never read half of the other's. +files+ are Lowering#source_files: game.c and
+        # the files its big tables are embedded from, whose names are their fingerprints, so the text
+        # alone names the folder. Gives back the path of game.c.
+        def write_source(files, numbers, features)
+          text = files.fetch(Lowering::GAME_FILE)
           screen_text = RuntimeFeatures.c_text(features)
           sound_text = RuntimeFeatures.c_text(features, joins: :sound)
           dir = File.join(Dir.tmpdir, "vblank-native", "src-#{Digest::SHA256.hexdigest(text + numbers + screen_text + sound_text)[0, 24]}")
-          path = File.join(dir, "game.c")
+          path = File.join(dir, Lowering::GAME_FILE)
           return path if File.exist?(path)
 
           FileUtils.mkdir_p(dir)
           # game.c last: a folder holding it is whole.
-          { ConsoleNumbers::FILE => numbers, FEATURES_FILE => screen_text, SOUND_FEATURES_FILE => sound_text, "game.c" => text }.each do |name, body|
+          { ConsoleNumbers::FILE => numbers, FEATURES_FILE => screen_text, SOUND_FEATURES_FILE => sound_text,
+            **files.except(Lowering::GAME_FILE), Lowering::GAME_FILE => text }.each do |name, body|
             writing = File.join(dir, "#{name}.#{Process.pid}.#{rand(1 << 30)}")
-            File.write(writing, body)
+            File.binwrite(writing, body)
             File.rename(writing, File.join(dir, name))
           end
           path
