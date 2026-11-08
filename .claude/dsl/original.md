@@ -69,6 +69,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
   as the all-in-one build is made, and the pack keeps the result. Never redo it each time the game
   plays. VBlank takes a format in only when many games use it.
 
+  **Keep what the unpacking wrote between builds** with `data_pack from: ..., version: ..., cache:
+  ".cache/packs"`, a folder git ignores. An all-in-one build runs the routine on the interpreter,
+  which for a big port takes most of a minute; with `cache:` a later build with the same copy, the
+  same routine, the same slots and the same VBlank reads the bytes back instead
+  (`Original::PackCache`). Leave it out and every build runs the routine. A build that leaves the
+  pack out never runs the routine, so it keeps nothing.
+
   **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
   `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines
   `self.routine(block)`: game code, written into the unpacking once. `block` is the `Packing::BlockKit`

@@ -76,8 +76,10 @@ module VBlank
       # made again when the game changes. Hands back a DSL::DataPack. A machine with no copy stops
       # here with Original::NotSet, saying what to set, unless the build leaves the pack out.
       # +formats+ are packed formats of the port's own (Original::Packing::Format) its unpacking
-      # routine reads, besides those of the original's platform.
-      def data_pack(from:, version: nil, formats: [], &)
+      # routine reads, besides those of the original's platform. +cache+ names a folder, which git
+      # must ignore, to keep what the unpacking routine writes in, so a later build with the same
+      # copy and routine reads it back instead of running the routine again (Original::PackCache).
+      def data_pack(from:, version: nil, formats: [], cache: nil, &)
         refuse_second_data_pack!
         refuse_missing_pack_version!(version)
         reading = copy_reading_for(from.platform, formats)
@@ -95,7 +97,7 @@ module VBlank
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
-        slot_bytes = unpacking ? unpack_on_interpreter(unpacking) : copied
+        slot_bytes = unpacking ? unpacked_slot_bytes(unpacking, copy.sha1, cache) : copied
         @data_pack_file = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes.freeze
         @data_pack_contents = Original::Pack.from_bytes(@data_pack_file)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
@@ -435,6 +437,13 @@ module VBlank
 
       def most_unpacking_steps_a_frame(unpacking)
         ((unpacking.copy_size + unpacking.byte_size) * UNPACKING_STEPS_A_BYTE) + UNPACKING_SPARE_STEPS
+      end
+
+      # The routine's slots, read back from +cache+ (a folder, or nil for none) where they are kept.
+      def unpacked_slot_bytes(unpacking, copy_sha1, cache)
+        return unpack_on_interpreter(unpacking) if cache.nil?
+
+        Original::PackCache.new(cache).slot_bytes(unpacking, copy_sha1) { unpack_on_interpreter(unpacking) }
       end
 
       # Each slot's bytes as +unpacking+ writes them on the interpreter, the answer key every other

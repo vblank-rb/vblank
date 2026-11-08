@@ -18,6 +18,7 @@ require_relative "original/decompilation"  # The decompilation, built and proven
 require_relative "original/slot"           # One piece of the original's data: name, shape, size, place
 require_relative "original/pack"           # The data pack holding every slot
 require_relative "original/unpacking"      # The routine that fills the pack, as a program of its own
+require_relative "original/pack_cache"     # What the routine wrote, kept between builds
 # Must load before original/copy_reader, which mixes in each console's packed formats.
 require_relative "original/packing"        # The packed formats an unpacking routine reads, by console
 # The unpacking routine's handles do their work in game words, so they come in as a part of a game does.
