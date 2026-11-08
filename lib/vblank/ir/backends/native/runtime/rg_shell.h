@@ -19,6 +19,13 @@
 
 #include "rg_refusal.h"
 
+/* One file of a release that is several files (Original::ReleaseFile). */
+typedef struct {
+  const char *name; /* as the original's disks spell it; a folder's may differ in case */
+  const char *sha1;
+  int32_t size;
+} rg_shell_file;
+
 typedef struct {
   const char *name;
   const char *sha1;         /* 40 lowercase hex digits */
@@ -26,6 +33,8 @@ typedef struct {
   int read;                 /* whether the game reads this release */
   const char *part;         /* the file under parts/ that unpacks it, "" for a release not read */
   const char *unread_words; /* {named}: a copy of a release not read; "" for one that is */
+  const rg_shell_file *files; /* a release that is several files: its files, in its order; NULL for one file */
+  int file_count;
 } rg_shell_release;
 
 typedef struct {
@@ -36,6 +45,13 @@ typedef struct {
   int release_count;
   const char *wrong_size_words; /* {named} and {size}: a file no release is the size of */
   const char *unknown_words;    /* {named} and {sha1}: a file that is no release the game knows */
+  const char *one_file_words;   /* {named}: one file, where every release read is a folder; "" otherwise */
+  const char *folder_words;     /* {named}: a folder, where no release read is one; "" otherwise */
+  const char *lacking_words;    /* {named} and {lacking}: a folder that holds no release whole */
+  const char *release_lacks_words; /* {release} and {missing}: one release's part of {lacking} */
+  const char *wrong_file_words; /* {named}, {release}, {want_size}, {want_sha1}, {size}, {sha1} */
+  const char *lacking_join;     /* between releases in {lacking} */
+  const char *missing_join;     /* between file names in {missing} */
   const uint8_t *pack_before_sha1; /* the pack's header before the copy's SHA-1 */
   int pack_before_sha1_size;
   const uint8_t *pack_after_sha1; /* ...and after it */

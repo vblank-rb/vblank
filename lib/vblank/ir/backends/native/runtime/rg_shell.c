@@ -60,6 +60,126 @@ static int rg_shell_digest_refusal(const char *named, const char *sha1, const rg
   return 1;
 }
 
+/* --- a copy that is a folder, as Original::Releases#match_folder takes one --- */
+
+/* Whether a release the game reads is several files, so LOAD ROM asks for a folder. */
+static int copy_is_folder(void) {
+  const rg_shell_description *shell = rg_shell_facts;
+  for (int i = 0; i < shell->release_count; i++) {
+    if (shell->releases[i].read && shell->releases[i].files) return 1;
+  }
+  return 0;
+}
+
+static int is_folder(const char *path) {
+  SDL_PathInfo info;
+  return SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+}
+
+/* +folder+ and +name+ joined, freed with SDL_free, or NULL. */
+static char *path_in_folder(const char *folder, const char *name) {
+  char *path = NULL;
+  size_t length = strlen(folder);
+  const char *between = length && (folder[length - 1] == '/' || folder[length - 1] == '\\') ? "" : "/";
+  if (SDL_asprintf(&path, "%s%s%s", folder, between, name) < 0) return NULL;
+  return path;
+}
+
+/* The name in +names+ that is +file_name+ without regard to case, or NULL. */
+static const char *file_in(char **names, int count, const char *file_name) {
+  for (int i = 0; i < count; i++) {
+    if (SDL_strcasecmp(names[i], file_name) == 0) return names[i];
+  }
+  return NULL;
+}
+
+/* The first release the game reads whose every file is among +names+, or NULL. */
+static const rg_shell_release *release_in_folder(char **names, int count) {
+  const rg_shell_description *shell = rg_shell_facts;
+  for (int i = 0; i < shell->release_count; i++) {
+    const rg_shell_release *release = &shell->releases[i];
+    if (!release->read || !release->files) continue;
+    int whole = 1;
+    for (int f = 0; f < release->file_count && whole; f++) whole = file_in(names, count, release->files[f].name) != NULL;
+    if (whole) return release;
+  }
+  return NULL;
+}
+
+/* +text+ added to the end of +out+ (room RG_WORDS_ROOM), after +join+ unless +out+ is empty. */
+static void add_joined(char *out, const char *join, const char *text) {
+  if (*out) SDL_strlcat(out, join, RG_WORDS_ROOM);
+  SDL_strlcat(out, text, RG_WORDS_ROOM);
+}
+
+/* Why the folder +named+, holding +names+, is refused when it holds no release whole, into +out+. */
+static void lacking_refusal(const char *named, char **names, int count, char *out) {
+  const rg_shell_description *shell = rg_shell_facts;
+  if (*shell->folder_words) {
+    const char *keys[] = {"named"};
+    const char *values[] = {named};
+    rg_words_fill(out, RG_WORDS_ROOM, shell->folder_words, 1, keys, values);
+    return;
+  }
+  char lacking[RG_WORDS_ROOM] = "";
+  for (int i = 0; i < shell->release_count; i++) {
+    const rg_shell_release *release = &shell->releases[i];
+    if (!release->read || !release->files) continue;
+    char missing[RG_WORDS_ROOM] = "";
+    for (int f = 0; f < release->file_count; f++) {
+      if (!file_in(names, count, release->files[f].name)) add_joined(missing, shell->missing_join, release->files[f].name);
+    }
+    char part[RG_WORDS_ROOM];
+    const char *keys[] = {"release", "missing"};
+    const char *values[] = {release->name, missing};
+    rg_words_fill(part, sizeof part, shell->release_lacks_words, 2, keys, values);
+    add_joined(lacking, shell->lacking_join, part);
+  }
+  const char *keys[] = {"named", "lacking"};
+  const char *values[] = {named, lacking};
+  rg_words_fill(out, RG_WORDS_ROOM, shell->lacking_words, 2, keys, values);
+}
+
+/* The folder's own files as SDL_EnumerateDirectory walks it: its top level only, never a folder
+ * inside it, which SDL_GlobDirectory would walk whole. */
+typedef struct {
+  char **names;
+  int count;
+  int room;
+} rg_folder_files;
+
+static SDL_EnumerationResult add_folder_file(void *userdata, const char *folder, const char *name) {
+  rg_folder_files *files = userdata;
+  char *path = path_in_folder(folder, name);
+  SDL_PathInfo info;
+  int is_file = path && SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_FILE;
+  SDL_free(path);
+  if (!is_file) return SDL_ENUM_CONTINUE;
+  if (files->count == files->room) {
+    int room = files->room ? files->room * 2 : 16;
+    char **grown = SDL_realloc(files->names, (size_t)room * sizeof *grown);
+    if (!grown) return SDL_ENUM_FAILURE;
+    files->names = grown;
+    files->room = room;
+  }
+  files->names[files->count++] = SDL_strdup(name);
+  return SDL_ENUM_CONTINUE;
+}
+
+/* The names of the files in +folder+, or NULL; how many in +count+. Free each and then the list with
+ * SDL_free. */
+static char **list_files_in(const char *folder, int *count) {
+  rg_folder_files files = {NULL, 0, 0};
+  SDL_EnumerateDirectory(folder, add_folder_file, &files);
+  *count = files.count;
+  return files.names ? files.names : SDL_calloc(1, sizeof(char *));
+}
+
+static void free_names(char **names, int count) {
+  for (int i = 0; names && i < count; i++) SDL_free(names[i]);
+  SDL_free(names);
+}
+
 /* --- telling the player --- */
 
 /* A refusal, printed, and shown in a box unless +quiet+ (a test's run). */
@@ -216,11 +336,16 @@ static void file_picked(void *user, const char *const *files, int filter) {
   picked->done = 1;
 }
 
-/* The file the player picks in the system's dialog, or NULL for none. SDL calls back from the
- * main thread's event loop, so the events are pumped here until it has. */
+/* The file the player picks in the system's dialog, or the folder where a release the game reads is
+ * several files; NULL for none. SDL calls back from the main thread's event loop, so the events are
+ * pumped here until it has. */
 static char *pick_copy(void) {
   picked_file picked = {0, NULL};
-  SDL_ShowOpenFileDialog(file_picked, &picked, NULL, NULL, 0, NULL, false);
+  if (copy_is_folder()) {
+    SDL_ShowOpenFolderDialog(file_picked, &picked, NULL, NULL, false);
+  } else {
+    SDL_ShowOpenFileDialog(file_picked, &picked, NULL, NULL, 0, NULL, false);
+  }
   while (!picked.done) {
     SDL_PumpEvents();
     SDL_Delay(10);
@@ -230,13 +355,20 @@ static char *pick_copy(void) {
 
 /* --- the flow --- */
 
-/* The last part of +path+, what the player calls the file. */
-static const char *file_name_of(const char *path) {
-  const char *name = path;
-  for (const char *c = path; *c; c++) {
+/* The last part of +path+, what the player calls the file or the folder, a separator at its end
+ * left out; freed with SDL_free. */
+static char *file_name_of(const char *path) {
+  char *trimmed = SDL_strdup(path);
+  if (!trimmed) return NULL;
+  size_t length = strlen(trimmed);
+  while (length > 1 && (trimmed[length - 1] == '/' || trimmed[length - 1] == '\\')) trimmed[--length] = '\0';
+  const char *name = trimmed;
+  for (const char *c = trimmed; *c; c++) {
     if (*c == '/' || *c == '\\') name = c + 1;
   }
-  return name;
+  char *copy = SDL_strdup(name);
+  SDL_free(trimmed);
+  return copy;
 }
 
 /* Whether the pack kept at +path+ passes the check: 1, or 0, the player told why when a file is there
@@ -258,31 +390,101 @@ static int kept_pack_passes(const char *path, int quiet) {
   return 0;
 }
 
-/* The pack made from the copy at +copy+ (a path, called +named+), read once, checked, and unpacked
- * by its release's part; written to +pack_path+. 1 when it is written, else 0, the player told why. */
+/* The bytes of the file at +path+ (called +named+), or NULL with why in +words+. */
+static uint8_t *read_picked(const char *path, const char *named, size_t *size, char *words) {
+  uint8_t *bytes = SDL_LoadFile(path, size);
+  if (bytes) return bytes;
+  const char *names[] = {"named", "why"};
+  const char *values[] = {named, SDL_GetError()};
+  rg_words_fill(words, RG_WORDS_ROOM, rg_shell_facts->unreadable_words, 2, names, values);
+  return NULL;
+}
+
+/* The copy at the file +path+ (called +named+), checked: its bytes, with the release it is in +release+
+ * and its SHA-1 in +sha1+; or NULL with why in +words+. */
+static uint8_t *copy_from_file(const char *path, const char *named, size_t *size, const rg_shell_release **release, char *sha1,
+                               char *words) {
+  const rg_shell_description *shell = rg_shell_facts;
+  if (*shell->one_file_words) {
+    const char *names[] = {"named"};
+    const char *values[] = {named};
+    rg_words_fill(words, RG_WORDS_ROOM, shell->one_file_words, 1, names, values);
+    return NULL;
+  }
+  uint8_t *bytes = read_picked(path, named, size, words);
+  if (!bytes) return NULL;
+  if (!rg_shell_size_refusal(named, (int32_t)*size, words)) {
+    rg_sha1_hex(bytes, *size, sha1);
+    if (!rg_shell_digest_refusal(named, sha1, release, words)) return bytes;
+  }
+  SDL_free(bytes);
+  return NULL;
+}
+
+/* The copy that is the folder +path+ (called +named+), of a release that is several files: each file
+ * the release names found in it without regard to case and checked, and the files joined in the
+ * release's order. Nothing else in the folder is read. Its bytes, with the release in +release+ and
+ * its SHA-1 in +sha1+; or NULL with why in +words+. */
+static uint8_t *copy_from_folder(const char *path, const char *named, size_t *size, const rg_shell_release **release, char *sha1,
+                                 char *words) {
+  int count = 0;
+  char **names = list_files_in(path, &count);
+  const rg_shell_release *found = release_in_folder(names, count);
+  if (!found) {
+    lacking_refusal(named, names, count, words);
+    free_names(names, count);
+    return NULL;
+  }
+  uint8_t *bytes = SDL_malloc(found->size > 0 ? (size_t)found->size : 1);
+  size_t at = 0;
+  for (int f = 0; bytes && f < found->file_count; f++) {
+    const rg_shell_file *wanted = &found->files[f];
+    char *file_path = path_in_folder(path, file_in(names, count, wanted->name));
+    char *file_named = path_in_folder(named, wanted->name);
+    size_t file_size = 0;
+    uint8_t *file_bytes = file_path ? read_picked(file_path, file_named, &file_size, words) : NULL;
+    char file_sha1[41] = "";
+    if (file_bytes) rg_sha1_hex(file_bytes, file_size, file_sha1);
+    int right = file_bytes && file_size == (size_t)wanted->size && strcmp(file_sha1, wanted->sha1) == 0;
+    if (file_bytes && !right) {
+      char want_size[16], got_size[16];
+      snprintf(want_size, sizeof want_size, "%d", (int)wanted->size);
+      snprintf(got_size, sizeof got_size, "%zu", file_size);
+      const char *keys[] = {"named", "release", "want_size", "want_sha1", "size", "sha1"};
+      const char *values[] = {file_named, found->name, want_size, wanted->sha1, got_size, file_sha1};
+      rg_words_fill(words, RG_WORDS_ROOM, rg_shell_facts->wrong_file_words, 6, keys, values);
+    }
+    if (right) memcpy(bytes + at, file_bytes, file_size);
+    at += file_size;
+    SDL_free(file_bytes);
+    SDL_free(file_path);
+    SDL_free(file_named);
+    if (!right) {
+      SDL_free(bytes);
+      bytes = NULL;
+    }
+  }
+  free_names(names, count);
+  if (!bytes) return NULL;
+  *size = at;
+  *release = found;
+  SDL_strlcpy(sha1, found->sha1, 41);
+  return bytes;
+}
+
+/* The pack made from the copy at +copy+ (a file, or a folder for a release that is several files,
+ * called +named+), read once, checked, and unpacked by its release's part; written to +pack_path+. 1
+ * when it is written, else 0, the player told why. */
 static int make_pack(const char *copy, const char *named, const char *pack_path, const char *result, int quiet) {
   const rg_shell_description *shell = rg_shell_facts;
   size_t size = 0;
-  uint8_t *copy_bytes = SDL_LoadFile(copy, &size);
-  char words[RG_WORDS_ROOM];
-  if (!copy_bytes) {
-    const char *names[] = {"named", "why"};
-    const char *values[] = {named, SDL_GetError()};
-    rg_words_fill(words, sizeof words, shell->unreadable_words, 2, names, values);
-    tell(words, quiet);
-    return 0;
-  }
+  char words[RG_WORDS_ROOM] = "";
   const rg_shell_release *release = NULL;
   char sha1[41];
-  if (rg_shell_size_refusal(named, (int32_t)size, words)) {
-    tell(words, quiet);
-    SDL_free(copy_bytes);
-    return 0;
-  }
-  rg_sha1_hex(copy_bytes, size, sha1);
-  if (rg_shell_digest_refusal(named, sha1, &release, words)) {
-    tell(words, quiet);
-    SDL_free(copy_bytes);
+  uint8_t *copy_bytes = is_folder(copy) ? copy_from_folder(copy, named, &size, &release, sha1, words)
+                                        : copy_from_file(copy, named, &size, &release, sha1, words);
+  if (!copy_bytes) {
+    if (*words) tell(words, quiet);
     return 0;
   }
 
@@ -362,7 +564,9 @@ char *rg_shell_pack_path(const rg_shell_asked *asked) {
 
     char *picked = asked->copy ? SDL_strdup(asked->copy) : pick_copy();
     if (!picked) continue;
-    int made = make_pack(picked, file_name_of(picked), pack_path, result, quiet);
+    char *named = file_name_of(picked);
+    int made = named && make_pack(picked, named, pack_path, result, quiet);
+    SDL_free(named);
     SDL_free(picked);
     if (made) {
       SDL_free(result);

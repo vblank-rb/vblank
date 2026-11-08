@@ -51,7 +51,8 @@
  *                       ("screen" unless named), as the console's fifteen-bit colours
  *   js CODE             runs CODE in the page, and prints "js" and what it comes to, if anything:
  *                       how a test reaches a game a page made with createGame (`games[0].pause()`)
- *   choose PATH         the file picker, if the page opened one, is given the file at PATH
+ *   choose PATH         the file picker, if the page opened one, is given the file at PATH, or the
+ *                       folder at PATH where the page asked for a folder
  *   cancel-pick         ...or closed without a file
  *   picker              prints "picker" and how many times the page opened the file picker
  *   settle              lets the page's promises run on for a while with no frame
@@ -200,6 +201,22 @@ function lift(n, type) {
 
 /* The file picker: an <input type="file"> the page makes and clicks waits here for a "choose" or "cancel-pick" step. */
 const pickers = [];
+
+/* A file as a picker gives it: its name, the path a folder picker gives it from the folder's own name,
+ * and its bytes read only when the page asks. */
+function picked_file(file_path, relative) {
+  return { name: path.basename(file_path), webkitRelativePath: relative,
+           arrayBuffer: async () => { const bytes = fs.readFileSync(file_path); return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length); } };
+}
+
+/* Every file under the folder +folder_path+, those in folders inside it too, as a browser's folder
+ * picker (webkitdirectory) gives them. */
+function folder_files(folder_path, relative = path.basename(folder_path)) {
+  return fs.readdirSync(folder_path).sort().flatMap((name) => {
+    const inside = path.join(folder_path, name);
+    return fs.statSync(inside).isDirectory() ? folder_files(inside, `${relative}/${name}`) : [picked_file(inside, `${relative}/${name}`)];
+  });
+}
 let picks_asked = 0;
 
 /* IndexedDB, as far as the shell uses it: one object store of byte strings under a key, kept in
@@ -515,8 +532,11 @@ async function steps() {
     }
     else if (step === "choose") {
       const picker = pickers.shift();
-      const file = fs.readFileSync(what);
-      picker.files = [{ name: path.basename(what), arrayBuffer: async () => file.buffer.slice(file.byteOffset, file.byteOffset + file.length) }];
+      const folder = fs.statSync(what).isDirectory();
+      if (folder !== Boolean(picker.webkitdirectory)) {
+        throw new Error(`page_harness: the page opened a ${picker.webkitdirectory ? "folder" : "file"} picker, and ${what} is not one`);
+      }
+      picker.files = folder ? folder_files(what) : [picked_file(what, path.basename(what))];
       tell(picker, "change");
       for (let i = 0; i < 20; i++) await settle();
     }

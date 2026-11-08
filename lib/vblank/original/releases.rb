@@ -136,20 +136,22 @@ module VBlank
       def one_file_refusal(named)
         return nil unless readable.all?(&:several_files?)
 
-        "#{named} is one file. A copy of #{title} is a folder that holds #{readable_words}. Name that folder."
+        one_file_message(named)
       end
 
       # Why a folder +named+ that holds the files +names+ is refused when it holds no release whole.
       def missing_files_refusal(named, names)
-        return "#{named} is a folder. A copy of #{title} is one file. Name that file." if readable.none?(&:several_files?)
+        return folder_message(named) if readable.none?(&:several_files?)
 
         lacking = readable.select(&:several_files?).map do |release|
-          missing = release.files.map(&:name).reject { |file_name| file_in(names, file_name) }
-          "the #{release.name} release lacks #{missing.join(', ')}"
+          release_lacks_message(release.name, release.files.map(&:name).reject { |file_name| file_in(names, file_name) }.join(MISSING_JOIN))
         end
-        "#{named} does not hold a whole release of #{title}: #{lacking.join('; ')}. Name the folder that holds " \
-          "every file of one release."
+        lacking_message(named, lacking.join(LACKING_JOIN))
       end
+
+      # How the lacking releases are joined in a refusal of a folder, and the names a release lacks.
+      LACKING_JOIN = "; "
+      MISSING_JOIN = ", "
 
       # The release the folder +named+ is, from the names of the files it holds, each of its files
       # measured by the block, which is given a name as the folder spells it and gives back that
@@ -171,24 +173,38 @@ module VBlank
           measured = found.fetch(file.name)
           next if measured.size == file.size && measured.sha1 == file.sha1
 
-          return "#{File.join(named, file.name)} is not the file of the #{release.name} release of #{title}. " \
-                 "It must be #{file.size} bytes with SHA-1 #{file.sha1}. It is #{measured.size} bytes with SHA-1 " \
-                 "#{measured.sha1}. A changed or damaged file has a different SHA-1. Name a folder that holds " \
-                 "the files as the release has them."
+          return wrong_file_message(File.join(named, file.name), release.name, file, measured.size, measured.sha1)
         end
         nil
       end
 
-      # The refusals as sentences with {named} for the file, {size} for its size and {sha1} for its
-      # SHA-1 (Words), for a runtime that is not Ruby to fill in (a shell's, Original::ShellFacts):
-      # the same sentences as the two methods above give.
-      Words = Data.define(:wrong_size, :unknown, :unread)
+      # The refusals as sentences for a runtime that is not Ruby to fill in (a shell's,
+      # Original::ShellFacts), the same sentences as the methods above give, with {named} for the
+      # file or folder, {size} for its size and {sha1} for its SHA-1:
+      #
+      # - +wrong_size+, +unknown+, and +unread+ by the name of each release the game knows and does
+      #   not read: a copy that is one file;
+      # - +one_file+ ("" unless every release the game reads is several files) and +folder+ ("" unless
+      #   none is): a copy of the wrong shape;
+      # - +lacking+, a folder that holds no release whole, {lacking} being +release_lacks+ for each
+      #   release the game reads that is several files ({release} its name, {missing} the files the
+      #   folder lacks, joined with +missing_join+), joined with +lacking_join+;
+      # - +wrong_file+, a file of the folder that is not the release's, {named} being the folder and
+      #   the file's name joined, {release} the release's name, and {want_size} and {want_sha1} the
+      #   file's as the release has it.
+      Words = Data.define(:wrong_size, :unknown, :unread, :one_file, :folder, :lacking, :release_lacks, :lacking_join,
+                          :missing_join, :wrong_file)
 
-      # This game's Words. +unread+ holds a sentence for each release the game knows and does not
-      # read, by the release's name.
+      # This game's Words.
       def words
         Words.new(wrong_size: wrong_size_message("{named}", "{size}"), unknown: unknown_release_message("{named}", "{sha1}"),
-                  unread: @list.reject(&:read).to_h { |release| [release.name, unread_release_message("{named}", release)] })
+                  unread: @list.reject(&:read).to_h { |release| [release.name, unread_release_message("{named}", release)] },
+                  one_file: one_file_refusal("{named}").to_s,
+                  folder: readable.none?(&:several_files?) ? folder_message("{named}") : "",
+                  lacking: lacking_message("{named}", "{lacking}"), release_lacks: release_lacks_message("{release}", "{missing}"),
+                  lacking_join: LACKING_JOIN, missing_join: MISSING_JOIN,
+                  wrong_file: wrong_file_message("{named}", "{release}", ReleaseFile.new(name: nil, sha1: "{want_sha1}", size: "{want_size}"),
+                                                 "{size}", "{sha1}"))
       end
 
       private
@@ -205,6 +221,22 @@ module VBlank
       def unknown_release_message(named, sha1)
         "#{named} is not a release of #{title} that this game knows. Its SHA-1 is #{sha1}. A changed or " \
           "damaged copy has a different SHA-1. This game reads #{readable_words}. Name a copy of one of these."
+      end
+
+      def one_file_message(named) = "#{named} is one file. A copy of #{title} is a folder that holds #{readable_words}. Name that folder."
+
+      def folder_message(named) = "#{named} is a folder. A copy of #{title} is one file. Name that file."
+
+      def lacking_message(named, lacking)
+        "#{named} does not hold a whole release of #{title}: #{lacking}. Name the folder that holds every file of one release."
+      end
+
+      def release_lacks_message(release_name, missing) = "the #{release_name} release lacks #{missing}"
+
+      def wrong_file_message(named, release_name, file, size, sha1)
+        "#{named} is not the file of the #{release_name} release of #{title}. It must be #{file.size} bytes with SHA-1 " \
+          "#{file.sha1}. It is #{size} bytes with SHA-1 #{sha1}. A changed or damaged file has a different SHA-1. Name a " \
+          "folder that holds the files as the release has them."
       end
 
       def unread_release_message(named, release)
