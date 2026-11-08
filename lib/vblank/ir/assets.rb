@@ -172,6 +172,15 @@ module VBlank
                pieces: pieces&.map { |dx, dy, own| [dx, height - dy - Image.side(own), Image.rows(own).reverse.join.b] })
         end
 
+        # The picture turned +way+, as a game names a turn: :mirrored or :upside_down.
+        def turned(way)
+          case way
+          when :mirrored then mirrored
+          when :upside_down then upside_down
+          else raise ArgumentError, "#{way.inspect} is not a way to turn a picture"
+          end
+        end
+
         # The picture's pieces, every one 8x8: a piece of 16x16 is the four of it, in its place in
         # the order, less any of the four that draws nothing.
         def small_pieces

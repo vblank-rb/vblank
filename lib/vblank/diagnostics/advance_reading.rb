@@ -338,14 +338,14 @@ module VBlank
         rooms = @rom.built.streamed_sprite_pose_vars
         # A run drawn in an order the game works out moves its sprites' rows about, so a row is
         # taken back to the sprite's own place before anything is looked up by place.
-        own = (@rom.built.sprite_runs || []).reduce({}) { |found, run| found.merge(run.own_places(method(:mem8))) }
+        own = (@rom.built.sprite_runs || []).reduce({}) { |found, run| found.merge(run.own_places { |address| mem8(address) }) }
         table = palette(:sprites) # read once for the lot, not once per row
         turns = @rom.built.sprite_turns || {}
         held = @rom.built.held_sprites
         @probe.sprites.map do |row|
           # A row of a game keeping more rows than the console's table is whichever of its own
           # rows was copied there this frame.
-          slot = held ? held.row_in_copy(row[:slot], method(:mem16)) : row[:slot]
+          slot = held ? held.row_in_copy(row[:slot]) { |address| mem16(address) } : row[:slot]
           home = own.fetch(slot, slot)
           name = whose[home]
           dx, dy = moved.dig(home, pose_key(row, rooms, home)) || [0, 0]

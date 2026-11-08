@@ -269,8 +269,10 @@ module VBlank
 
       def saves
         @saves ||= Saves.new(Saves::Port.new(
-          handle: self, record: method(:record), repeat: method(:repeat), at_boot: method(:at_boot),
-          ensure_var: method(:ensure_var), declare_func: method(:declare_func),
+          handle: self, record: ->(node) { record(node) },
+          repeat: ->(count, **settings, &body) { repeat(count, **settings, &body) },
+          at_boot: ->(node) { at_boot(node) }, ensure_var: ->(name) { ensure_var(name) },
+          declare_func: ->(name, fast: nil, &body) { declare_func(name, fast: fast, &body) },
           run_each_pass: ->(name) { @per_pass_routines << name },
           start_value: ->(name) { @boot_inits.find { |node| node.kind == :set && node.var == name }&.value },
           # A list made where it is written is in the program; one the framework makes for
@@ -279,9 +281,9 @@ module VBlank
             made = ->(node) { node.kind == :list_new && node.name == name }
             @program.walk.find(&made) || @boot_inits.flat_map { |node| node.walk.to_a }.find(&made)
           end,
-          save_var: method(:persisted?),
+          save_var: ->(name) { persisted?(name) },
           saved_vars: -> { @persisted },
-          pool_refill: method(:pool_refill_nodes),
+          pool_refill: ->(pool) { pool_refill_nodes(pool) },
           save_memory: @save_memory,
           fraction_bits: ->(name) { @fraction_vars[name] || @fraction_lists[name] },
         ))

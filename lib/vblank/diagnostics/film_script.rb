@@ -45,7 +45,7 @@ module VBlank
         # looked for (see Film.make).
         def make(path, search_path: ENV.fetch("PATH", ""))
           openers = sides.to_h { |label, side| [label, -> { open_side(label, side) }] }
-          Film.make(path, sides: openers, parts: parts, keys: method(:buttons_on), scale: scale, search_path: search_path)
+          Film.make(path, sides: openers, parts: parts, keys: ->(frame) { buttons_on(frame) }, scale: scale, search_path: search_path)
         end
 
         # The buttons down on +frame+: what `keys` gives, and every hold over that frame.

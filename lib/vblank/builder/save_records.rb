@@ -132,7 +132,7 @@ module VBlank
         @save_memory_layout = IR::SaveLayout.memory(save_memory)
         @halves = SaveHalf.new(@port, memory: @save_memory_layout)
         SavePlaces.new(@port, memory: @save_memory_layout, records: @save_data,
-                              table_record: method(:declare_table_record)).declare
+                              table_record: ->(kept, place:) { declare_table_record(kept, place: place) }).declare
         @jobs.lay_out(memory: @save_memory_layout, halves: @halves, fast: fast_for_queue)
         @save_data.each_value { |layout| declare_save_data_record(layout) }
         declare_save_var_saving
@@ -649,7 +649,7 @@ module VBlank
         holders = program.walk.select { |node| node.attrs.each_value.any? { |value| holds_peek?(value) } }
         holders.each do |node|
           node.attrs.each do |field, value|
-            node.public_send(:"#{field}=", replace_peek_stand_ins(value)) if holds_peek?(value)
+            node.set_operand(field, replace_peek_stand_ins(value)) if holds_peek?(value)
           end
         end
       end

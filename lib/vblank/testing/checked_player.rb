@@ -142,7 +142,7 @@ module VBlank
       # What the class of a player answers: the console it plays a game as, and a program as it
       # plays it.
       module OfConsole
-        attr_reader :console
+        attr_accessor :console
 
         # +program+ as this run plays it: one that names no console, as a program for this one.
         def program_played(program)
@@ -185,7 +185,7 @@ module VBlank
       PLAYERS = Ractor.make_shareable(Console.kits.grep(Console::CheckedKit).to_h do |console_kit|
         player = Class.new(console_kit.checked_run) { include CartridgeCheckedPlayer }
         player.extend(OfConsole)
-        player.instance_variable_set(:@console, console_kit.name)
+        player.console = console_kit.name
         [console_kit.name, player]
       end)
     end

@@ -491,7 +491,7 @@ module VBlank
                           "#{verb} names the picture :#{source}, which is not defined. Define it first " \
                           "with `image :#{source}, ...`.")
           name = free_name_after(source, way)
-          turned = picture.public_send(way)
+          turned = picture.turned(way)
           node = Build.bitmap(name, width: turned.width, height: turned.height,
                                     pixels: turned.pixels, transparent: turned.transparent,
                                     colors: turned.colors, places: turned.places, colors_name: turned.colors_name,

@@ -50,8 +50,9 @@ module VBlank
       def self.pool_held_full(record, pool, active)
         count = record.var_addresses[DSL::Pool.count_var(pool)]
         free = record.lists[DSL::Pool.free_list(pool)]
-        links = %i[next_list prev_list retired_list].map { |name| record.lists[DSL::Pool.public_send(name, pool)] }
-        ends = %i[head_var tail_var].map { |name| record.var_addresses[DSL::Pool.public_send(name, pool)] }
+        links = [DSL::Pool.next_list(pool), DSL::Pool.prev_list(pool), DSL::Pool.retired_list(pool)]
+                .map { |name| record.lists[name] }
+        ends = [DSL::Pool.head_var(pool), DSL::Pool.tail_var(pool)].map { |name| record.var_addresses[name] }
         return nil unless count && free && links.all? && ends.all? # a list that only looks like a pool's column
 
         slots = active.capacity

@@ -10,7 +10,7 @@ module VBlank
   # dependency, swapped for a test double so a test can assert what WOULD have run
   # without a real `less` or a real terminal.
   class Pager
-    def initialize(out: $stdout, env: ENV, runner: method(:shell_out))
+    def initialize(out: $stdout, env: ENV, runner: ->(cmd, text) { shell_out(cmd, text) })
       @out = out
       @env = env
       @runner = runner

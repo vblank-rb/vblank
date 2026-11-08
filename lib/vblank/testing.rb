@@ -187,24 +187,22 @@ module VBlank
     # the run (SkipsByReason).
     #
     # It is a plain Minitest::Skip with a mark on it, not a kind of its own: minitest counts a
-    # run's skips by the exact class of each, so one of its own would go uncounted. The mark is an
-    # instance variable, which Marshal carries from the process that played the test to the one
-    # that reports it (Testing::Processes). `raise MissingFeature, "why"` raises one.
+    # run's skips by the exact class of each, so one of its own would go uncounted. The mark is this
+    # module, extending the one skip, which Marshal carries from the process that played the test to
+    # the one that reports it (Testing::Processes). `raise MissingFeature, "why"` raises one.
     module MissingFeature
-      def self.exception(message) = Minitest::Skip.new(message).tap { |skip| skip.instance_variable_set(:@missing_feature, true) }
+      def self.exception(message) = Minitest::Skip.new(message).extend(MissingFeature)
 
       # Whether +failure+ is one.
-      def self.===(failure) = failure.is_a?(Minitest::Skip) && failure.instance_variable_get(:@missing_feature) == true
+      def self.===(failure) = failure.is_a?(Minitest::Skip) && failure.is_a?(MissingFeature)
     end
 
     # What this machine lacks, marked as MissingFeature is. `skip_on_this_machine "why"` raises one.
     module NotOnThisMachine
-      def self.exception(message)
-        Minitest::Skip.new(message).tap { |skip| skip.instance_variable_set(:@not_on_this_machine, true) }
-      end
+      def self.exception(message) = Minitest::Skip.new(message).extend(NotOnThisMachine)
 
       # Whether +failure+ is one.
-      def self.===(failure) = failure.is_a?(Minitest::Skip) && failure.instance_variable_get(:@not_on_this_machine) == true
+      def self.===(failure) = failure.is_a?(Minitest::Skip) && failure.is_a?(NotOnThisMachine)
     end
   end
 end

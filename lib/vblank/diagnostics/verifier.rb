@@ -635,10 +635,10 @@ module VBlank
       # bytes holding each one's top bit of across and its size.
       #
       # @return [String]
-      def video_ram = probe_table(:video_ram)
-      def color_ram = probe_table(:color_ram)
-      def sprite_table = probe_table(:sprite_table)
-      def sound_registers = probe_table(:sound_registers)
+      def video_ram = probe_table(:video_ram) { @probe.video_ram }
+      def color_ram = probe_table(:color_ram) { @probe.color_ram }
+      def sprite_table = probe_table(:sprite_table) { @probe.sprite_table }
+      def sound_registers = probe_table(:sound_registers) { @probe.sound_registers }
 
       # One write a cartridge made to its sound chip: the register's address, and the value written, as
       # wide as the console writes it (a byte on the Color, sixteen bits on the Advance).
@@ -695,7 +695,7 @@ module VBlank
                                "address (`mem8`, `mem16`, `mem32`) or its screen instead."
         end
 
-        @probe.public_send(table)
+        yield
       end
 
       # DRAW THE PICTURE WITHOUT SOME OF IT, so a test can ask which layer drew what.

@@ -118,7 +118,7 @@ module VBlank
 
       def slide(line, direction)
         least, most = limits(line)
-        now = @settings.public_send(line.setting)
+        now = @settings.setting(line.setting)
         @settings = @settings.with(line.setting => (now + (direction * line.step)).clamp(least, most))
       end
 
@@ -131,7 +131,7 @@ module VBlank
 
       def enter(line)
         case line.kind
-        when :check then @settings = @settings.with(line.setting => !@settings.public_send(line.setting))
+        when :check then @settings = @settings.with(line.setting => !@settings.setting(line.setting))
         when :button then @controls.capture_for_button(line.place)
         when :hotkey then @controls.capture_for_hotkey(line.place)
         when :action
@@ -230,7 +230,7 @@ module VBlank
         right = x + inner
         case line.kind
         when :action then add_words_in_row(line.shortcut, right - width_of(line.shortcut), y, row, :dim) if line.shortcut
-        when :check then add_words_in_row("✓", right - width_of("✓"), y, row, :text) if @settings.public_send(line.setting)
+        when :check then add_words_in_row("✓", right - width_of("✓"), y, row, :text) if @settings.setting(line.setting)
         when :slider then draw_slider(line, right - size(:slider), y + pixels(2), size(:slider), row - pixels(4))
         when :button, :hotkey
           text = control_text(line)
@@ -244,7 +244,7 @@ module VBlank
         add_box(x, y, wide, high, size(:frame_corner), :frame)
         inset = pixels(2)
         least, most = limits(line)
-        value = @settings.public_send(line.setting)
+        value = @settings.setting(line.setting)
         travel = wide - size(:grab) - (2 * inset)
         along = most > least ? travel * (value - least) / (most - least) : 0
         add_box(x + inset + along, y + inset, size(:grab), high - (2 * inset), pixels(2), :grab)

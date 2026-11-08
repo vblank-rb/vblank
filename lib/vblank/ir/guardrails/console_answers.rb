@@ -64,7 +64,7 @@ module VBlank
             end
           end
 
-          def fixed?(obj) = %i[x y pose].all? { |field| obj.public_send(field).kind == :int }
+          def fixed?(obj) = [obj.x, obj.y, obj.pose].all? { |part| part.kind == :int }
         end
       end
     end

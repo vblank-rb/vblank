@@ -189,7 +189,7 @@ module VBlank
         @closed = false
         @has_menu = menu
         @player_settings = Settings.new(key_names: KeyNames.new(@sdl))
-        @settings_file = settings_file && SettingsFile.new(title: title, folder_of: method(:settings_folder),
+        @settings_file = settings_file && SettingsFile.new(title: title, folder_of: ->(name) { settings_folder(name) },
                                                            asked: (settings_file unless settings_file == :usual))
         @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
         scale ||= @player_settings.window.scale
@@ -723,7 +723,7 @@ module VBlank
         @sdl.SDL_SetWindowFullscreen(@window, @settings.fullscreen ? 1 : 0) if @settings.fullscreen != was.fullscreen
         set_speaker_volume
         # Only what changed is the player's to keep: a size given with --scale is for this play.
-        changed = @settings.to_h.reject { |name, value| was.public_send(name) == value }
+        changed = @settings.to_h.reject { |name, value| was.setting(name) == value }
         @player_settings.window = @player_settings.window.with(**changed)
         write_settings_soon
       end
@@ -883,7 +883,7 @@ module VBlank
           @step = @paused # held down, it steps a frame at a time
         elsif SWITCHED.key?(hotkey) && !repeat
           switch = SWITCHED[hotkey]
-          @menu.settings = @menu.settings.with(switch => !@menu.settings.public_send(switch))
+          @menu.settings = @menu.settings.with(switch => !@menu.settings.setting(switch))
           apply_menu_settings
         end
       end

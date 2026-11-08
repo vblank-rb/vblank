@@ -137,9 +137,9 @@ module VBlank
       # Where a game keeping more rows than the console's table notes which of them each of the
       # console's rows holds, and where it counts the rows left out (see +held_sprites+).
       HeldSprites = Data.define(:came_from, :left_out_at) do
-        # Which of the copy's rows the console's row +slot+ holds, given +half_at+ to read the
-        # cartridge's memory with.
-        def row_in_copy(slot, half_at) = half_at.call(came_from + (slot * 2))
+        # Which of the copy's rows the console's row +slot+ holds, the block reading two bytes of the
+        # cartridge's memory at an address.
+        def row_in_copy(slot) = yield(came_from + (slot * 2))
       end
 
       # WHERE EACH SCENE'S OWN ROUTINES RUN, for a game whose quick memory is swapped as a scene
@@ -173,8 +173,8 @@ module VBlank
       # takes, in the order the order counts them.
       SpriteRun = Data.define(:order, :homes) do
         # Which sprite's own place each place of the run holds now, as { place => own place },
-        # given +byte_at+ to read the cartridge's memory with.
-        def own_places(byte_at)
+        # the block +byte_at+ reading a byte of the cartridge's memory at an address.
+        def own_places(&byte_at)
           at = homes.map(&:first).min
           (homes.length - 1).downto(0).each_with_object({}) do |turn, found|
             first, pieces = homes.fetch(byte_at.call(order + turn))

@@ -163,7 +163,7 @@ module VBlank
         pixels, transparent = Assets.placed_pixels(places, colors + ([0] * [PLACES - colors.length, 0].max))
         picture = Assets::Image.new(width: node.width, height: node.height, transparent: transparent, pixels: pixels, colors: colors,
                                     places: places.pack("C*"))
-        picture = where.turns.reduce(picture) { |turned, way| turned.public_send(way) }
+        picture = where.turns.reduce(picture) { |turned, way| turned.turned(way) }
         node.pixels = picture.pixels
         node.transparent = picture.transparent
         node.colors = colors

@@ -314,7 +314,7 @@ module VBlank
       # +view+ handed over, numbered +number+ among the place's views: its parts written only when the
       # routines hold another view.
       def view_handover_statements(view, number)
-        parts = VIEW_PARTS.map { |part| Build.set(view_var(part), Build.int(view.public_send(part))) }
+        parts = view.to_h.map { |part, value| Build.set(view_var(part), Build.int(value)) }
         [Build.if_(Build.binop(:!=, var(:view_number), number),
                    Build.set(name(:view_number), number), *parts, handover_changed_statement)]
       end
@@ -809,7 +809,6 @@ module VBlank
       def spot_statements
         number = var(:seen_point)
         seen = ->(at) { Build.list_get(seen_list, Build.binop(:+, Build.binop(:*, number, SEEN_STRIDE), at)) }
-        pixel = method(:pixel_of)
         [Build.set(name(:seen_point), Build.clamped(Build.var_ref(spot_point_var), 0, @points - 1)),
          count_statement,
          Build.if_(stale_point_condition(number), Build.call(point_routine)),
@@ -818,8 +817,8 @@ module VBlank
          Build.set(spot_answer_var(:y), 0),
          Build.set(spot_answer_var(:behind), 1),
          Build.if_(Build.binop(:>=, var(:at_z), Build.var_ref(view_var(:near))),
-                   Build.set(spot_answer_var(:x), pixel.call(seen.call(SEEN_ACROSS))),
-                   Build.set(spot_answer_var(:y), pixel.call(seen.call(SEEN_DOWN))),
+                   Build.set(spot_answer_var(:x), pixel_of(seen.call(SEEN_ACROSS))),
+                   Build.set(spot_answer_var(:y), pixel_of(seen.call(SEEN_DOWN))),
                    Build.set(spot_answer_var(:behind), 0))]
       end
 

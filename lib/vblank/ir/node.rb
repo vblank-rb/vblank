@@ -96,7 +96,6 @@ module VBlank
         # an author-time literal of a stated type.
         def operands(**tags)
           @tags = Ractor.make_shareable(tags)
-          @operand_ivars = Ractor.make_shareable(tags.keys.to_h { |name| [name, :"@#{name}"] })
           tags.each_key do |name|
             attr_reader name
 
@@ -116,17 +115,39 @@ module VBlank
               end
             WRITER
           end
+          write_operand_access(tags.keys)
+        end
+
+        # AN OPERAND BY ITS NAME, for code that walks every kind: #operand_named reads one, #attrs gives
+        # the ones given, and #hold_operand puts one in its instance variable. Each is a `case`
+        # over this kind's own names, written out as source for the same reason the writers are,
+        # so reading a field by name is a plain read rather than a call made by a built name.
+        def write_operand_access(names)
+          reads = names.map { |name| "when :#{name} then @#{name}\n" }.join
+          holds = names.map { |name| "when :#{name} then @#{name} = value\n" }.join
+          given = names.map { |name| "found[:#{name}] = @#{name} if defined?(@#{name})\n" }.join
+          class_eval <<~ACCESS, __FILE__, __LINE__ + 1
+            def operand_named(name)
+              case name
+              #{reads}else raise InvariantError, "\#{kind} has no \#{name.inspect} operand"
+              end
+            end
+
+            def attrs
+              found = {}
+              #{given}found
+            end
+
+            private def hold_operand(name, value)
+              case name
+              #{holds}else raise InvariantError, "\#{kind} has no \#{name.inspect} operand"
+              end
+            end
+          ACCESS
         end
 
         def tags
           @tags || {}
-        end
-
-        # Each operand's name beside the instance variable that holds it, made once when the
-        # kind is declared. Building that name from a String on every read takes a lock the
-        # whole process shares, so a build running beside others on other cores waited on it.
-        def operand_ivars
-          @operand_ivars || {}
         end
       end
 
@@ -179,12 +200,17 @@ module VBlank
 
       # The operands this node actually carries, and what each holds. Only the ones that were
       # given: a kind may declare a field that a particular node leaves alone (an `if` with
-      # no `else`), and that is not the same as carrying it empty.
-      def attrs
-        self.class.operand_ivars
-            .select { |_, ivar| instance_variable_defined?(ivar) }
-            .to_h { |name, _| [name, public_send(name)] }
-      end
+      # no `else`), and that is not the same as carrying it empty. A kind that declares operands
+      # answers this for itself (Node.write_operand_access); one with none carries none.
+      def attrs = {}
+
+      # One operand of this node, by its name (Node.write_operand_access); a kind with none has
+      # none to read.
+      def operand_named(name) = raise(InvariantError, "#{kind} has no #{name.inspect} operand")
+
+      # Put +value+ in this node's operand +name+, through the one door every operand takes
+      # (#store_operand): for a pass that rewrites what a node holds, by the operand's name.
+      def set_operand(name, value) = store_operand(name, value)
 
       # -- what a node is, for code that walks every kind --
       #
@@ -336,11 +362,11 @@ module VBlank
       # Each operand of this node that holds a name somewhere in it, with what it holds — for
       # a pass looking for where a name is used, which then never reads a game's data. Settled
       # as each operand is written, the way a walk's route is.
-      def named_operands = name_fields.map { |field| [field, public_send(field)] }
+      def named_operands = name_fields.map { |field| [field, operand_named(field)] }
 
       # The nodes held directly in this node's operands — a value it reads, an `.else` — for a
       # walk that has to carry something down to them, which #walk cannot.
-      def operand_nodes = node_fields.flat_map { |field| Array(public_send(field)).flatten.grep(Node) }
+      def operand_nodes = node_fields.flat_map { |field| Array(operand_named(field)).flatten.grep(Node) }
 
       # Put +fresh+ in the operand of this node that holds +old+ itself, and return whether there
       # was one. A node held inside a list is not such an operand, and is left where it is.
@@ -381,7 +407,7 @@ module VBlank
       # looking for names does.
       def store_operand(name, value)
         leads, named = operand_flags!(value)
-        instance_variable_set(self.class.operand_ivars.fetch(name), value)
+        hold_operand(name, value)
         value.parent = self if value.is_a?(Node)
 
         @node_fields = toggle_field(node_fields, name, leads)
@@ -460,7 +486,7 @@ module VBlank
       def walk_tree_afresh(&block)
         yield self
         @children.each { |child| child.walk(&block) }
-        node_fields.each { |name| walk_attr(public_send(name), &block) }
+        node_fields.each { |name| walk_attr(operand_named(name), &block) }
       end
 
       # Every node of a written tree, in walk order, gathered the one time.

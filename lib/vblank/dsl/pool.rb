@@ -944,7 +944,7 @@ module VBlank
         def face(direction, showing: nil)
           unless showing.nil?
             @pool.builder.write_picked_pose(direction, showing, subject: "pool :#{@pool.name}",
-                                                                row_of: @pool.method(:facing_row)) do |row|
+                                                                row_of: ->(name) { @pool.facing_row(name) }) do |row|
               @pool.set_facing(@index, row)
             end
             return self

@@ -244,7 +244,8 @@ module VBlank
                 "this sprite has no poses to face with — give it `facing: { left: :img_l, right: :img_r, ... }`"
         end
         unless showing.nil?
-          @builder.write_picked_pose(direction, showing, subject: "this sprite", row_of: @facing_dirs.method(:[])) do |row|
+          @builder.write_picked_pose(direction, showing, subject: "this sprite",
+                                                         row_of: ->(name) { @facing_dirs[name] }) do |row|
             record(Build.set(@facing_var, row))
           end
           return self

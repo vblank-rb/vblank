@@ -115,7 +115,7 @@ module VBlank
       def written_by(node)
         spared = ONLY_READ.fetch(node.kind, [])
         node.class.tags.filter_map do |name, tag|
-          node.public_send(name) if tag == :name && !spared.include?(name)
+          node.operand_named(name) if tag == :name && !spared.include?(name)
         end
       end
 

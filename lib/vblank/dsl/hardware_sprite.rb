@@ -261,7 +261,7 @@ module VBlank
         end
         unless showing.nil?
           @builder.write_picked_pose(direction, showing, subject: "sprite :#{@object_name}",
-                                                         row_of: @facing_dirs.method(:[])) do |row|
+                                                         row_of: ->(name) { @facing_dirs[name] }) do |row|
             record(Build.set(@facing_var, row))
           end
           return self

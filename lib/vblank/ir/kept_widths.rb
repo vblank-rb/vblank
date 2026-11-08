@@ -22,14 +22,12 @@ module VBlank
       def lowest(width) = -(1 << ((BYTES.fetch(width) * 8) - 1))
       def highest(width) = (1 << ((BYTES.fetch(width) * 8) - 1)) - 1
 
-      # Which operand of each kind of statement names the variable it changes.
-      WRITTEN = Ractor.make_shareable({ set: :var, add: :var, sub: :var, copy: :dest, negate: :var, abs: :var,
-                                        negate_abs: :var, clamp: :var })
-
       # The variable +node+ changes, or nil for a statement that changes none.
       def written_by(node)
-        field = WRITTEN[node.kind]
-        field && node.public_send(field)
+        case node.kind
+        when :set, :add, :sub, :negate, :abs, :negate_abs, :clamp then node.var
+        when :copy then node.dest
+        end
       end
 
       # The bits of a number above +width+'s.

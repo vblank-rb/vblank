@@ -81,7 +81,7 @@ module VBlank
           # time is a different check. Staying quiet beats blaming a valid program.
           def only_tiled?(program)
             modes = program.each.filter_map { |node| node.mode if node.kind == :screen }
-            !modes.empty? && modes.all?(:tiled.method(:==))
+            !modes.empty? && modes.all?(:tiled)
           end
 
           def paints?(program)

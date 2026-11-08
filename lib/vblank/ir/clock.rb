@@ -62,10 +62,14 @@ module VBlank
 
         case reading
         when :set then 1
-        when :weekday then time.wday
+        when :hour then time.hour
         when :minute then time.min
         when :second then time.sec
-        else time.public_send(reading)
+        when :year then time.year
+        when :month then time.month
+        when :day then time.day
+        when :weekday then time.wday
+        else raise ArgumentError, "#{reading.inspect} is not a reading of the clock"
         end
       end
 

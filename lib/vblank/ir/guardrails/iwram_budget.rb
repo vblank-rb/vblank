@@ -50,13 +50,17 @@ module VBlank
           # How many names of variables made with no `var` line to give.
           NAMES_SHOWN = 6
 
-          # The same check, knowing which variables came from no line of the author's: names
-          # normal Ruby made variables of, and how many hidden ones. A game can fill the memory
-          # with variables it never declared, and "2205 variables" would not help it look.
-          def told_of(names, hidden)
-            dup.tap { |check| check.instance_variable_set(:@made_names, names) }
-               .tap { |check| check.instance_variable_set(:@hidden_count, hidden) }
+          # +made_names+ are the variables that came from no line of the author's, names normal
+          # Ruby made variables of, and +hidden_count+ how many hidden ones (#told_of).
+          def initialize(made_names: [], hidden_count: 0)
+            @made_names = made_names
+            @hidden_count = hidden_count
           end
+
+          # The same check, knowing which variables came from no line of the author's. A game can
+          # fill the memory with variables it never declared, and "2205 variables" would not help
+          # it look.
+          def told_of(names, hidden) = self.class.new(made_names: names, hidden_count: hidden)
 
           def detect(program)
             console = program.described_console

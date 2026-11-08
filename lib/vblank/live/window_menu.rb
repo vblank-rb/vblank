@@ -15,7 +15,10 @@ module VBlank
     module WindowMenu
       # What the window does, as a player last left it. The starting values are the desktop build's
       # (rg_window.c), the frame rate shown among them.
-      Settings = Data.define(:fast_forward_speed, :scale, :fullscreen, :volume, :muted, :frame_rate)
+      Settings = Data.define(:fast_forward_speed, :scale, :fullscreen, :volume, :muted, :frame_rate) do
+        # One setting by its name, as a line of the menu names the setting it moves.
+        def setting(name) = to_h.fetch(name)
+      end
       STARTING = Settings.new(fast_forward_speed: 4, scale: 3, fullscreen: false, volume: 100, muted: false,
                               frame_rate: true)
 

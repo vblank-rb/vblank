@@ -20,7 +20,7 @@ module VBlank
         return true if known&.call(node)
 
         parts = PARTS[node.kind]
-        !parts.nil? && parts.all? { |part| value?(node.public_send(part), &known) }
+        !parts.nil? && parts.all? { |part| value?(node.operand_named(part), &known) }
       end
     end
   end

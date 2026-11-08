@@ -15,17 +15,14 @@ module VBlank
 
       attr_reader :buffer
 
-      def initialize(path)
-        @buffer = File.binread(path)
+      # A cartridge's file at +path+; or, given +buffer+, the bytes of one held in memory, which
+      # +path+ then only names.
+      def initialize(path, buffer: File.binread(path))
+        @buffer = buffer
         @path = path
       end
 
-      def self.from_rom(rom)
-        inst = allocate
-        inst.instance_variable_set(:@buffer, rom.buffer.dup)
-        inst.instance_variable_set(:@path, "(in-memory)")
-        inst
-      end
+      def self.from_rom(rom) = new("(in-memory)", buffer: rom.buffer.dup)
 
       # Print a full report of the ROM to stdout.
       def report

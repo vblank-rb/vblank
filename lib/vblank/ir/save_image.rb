@@ -174,7 +174,7 @@ module VBlank
       # +rows+ are SaveLayout::Table::Row, at most SaveLayout::TABLE_ROWS. Returns self.
       def write_table(rows, sequence: 1)
         words = SaveLayout::TABLE_COLUMNS.flat_map do |column|
-          values = rows.map { |row| row.public_send(column) }
+          values = rows.map { |row| row.to_h.fetch(column) }
           [SaveLayout::TABLE_ROWS, *values, *Array.new(SaveLayout::TABLE_ROWS - values.size, 0)]
         end
         body = words.flat_map { |word| le_bytes(word) }

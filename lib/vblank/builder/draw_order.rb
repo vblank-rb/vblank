@@ -88,8 +88,8 @@ module VBlank
         refuse_order_of_one!(things)
         refuse_thing_named_twice!(things)
         things.each { |thing| refuse_thing_in_two_orders!(thing) }
-        refuse_order_split_by!(things, :layer, "layer")
-        refuse_order_split_by!(things, :scene, "scene")
+        refuse_order_split_by!(things, "layer", &:layer)
+        refuse_order_split_by!(things, "scene", &:scene)
 
         key ||= ->(thing) { thing.bottom }
         order = Order.new(number: draw_orders.length + 1, things: things, front: front, key: key, turns: turns)
@@ -335,10 +335,10 @@ module VBlank
               "in the order. Name it once."
       end
 
-      # Things in one order must agree about +field+ — the layer, or the scene — since the
-      # order is a run of the draw list and a run is in one place in it.
-      def refuse_order_split_by!(things, field, word)
-        seen = things.to_h { |thing| [thing, order_objects_of(thing).first.public_send(field)] }
+      # Things in one order must agree about what the block reads of each one's first object — the
+      # layer, or the scene — since the order is a run of the draw list and a run is in one place in it.
+      def refuse_order_split_by!(things, word)
+        seen = things.to_h { |thing| [thing, yield(order_objects_of(thing).first)] }
         return if seen.values.uniq.length <= 1
 
         said = seen.map { |thing, value| "#{order_thing_name(thing)} is in #{value ? "#{word} :#{value}" : "no #{word}"}" }
