@@ -365,6 +365,18 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
+  # The calls the rewrite makes to record a branch step by step are the library's own. A game that
+  # writes one is told to write `if`.
+  def test_the_librarys_step_by_step_branch_is_refused_in_a_game
+    assert_refused("A game does not need `record_branch`") { game_loop { held(:a).record_branch { wait_vblank } } }
+    assert_refused("A game does not need `open_branch`") { game_loop { (var(:x, 0) > 3).open_branch } }
+    assert_refused("write `if`") { game_loop { held(:b).open_repeat(4) } }
+    assert_refused("`open_other_branch`") { game_loop { held(:a).open_other_branch(nil) } }
+    assert_refused("`close_branch`") { game_loop { held(:a).close_branch } }
+    assert_refused("`take_back_branch`") { game_loop { held(:a).take_back_branch(nil) } }
+    assert_refused("`close_repeat`") { game_loop { held(:a).close_repeat } }
+  end
+
   def test_a_game_made_by_eval_with_no_file_is_refused
     block = eval("proc { game_loop { wait_vblank } }") # rubocop:disable Security/Eval
     error = assert_raises(Refused) { VBlank::DSL::PlainRuby.game_block(block) }

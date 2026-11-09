@@ -38,6 +38,12 @@ module VBlank
         # `method` with no argument may be a game's own field of that name, so it is left alone.
         REACHING_IN_CALLS = %i[instance_variable_get instance_variable_set method].freeze
 
+        # The calls the rewrite makes to record a branch or a loop on a test a step at a time
+        # (DSL::Condition), and the library's own code makes where it records game code by hand.
+        # Refused here, in the author's own source before the rewrite, so the rewrite's calls stay free.
+        STEP_BY_STEP_BRANCH_CALLS = %i[record_branch open_branch open_other_branch close_branch take_back_branch
+                                       open_repeat close_repeat].freeze
+
         # What only game code calls, so a file holding one is game code. These need a block, since
         # `scene` or `func` alone could be a method of the file's own. `var` needs a name instead.
         GAME_BLOCK_VERBS = (LocalNames::GAME_VERBS - %i[every after repeat item]).freeze
@@ -230,7 +236,15 @@ module VBlank
           when Prism::CallNode
             refuse_reaching_in!(node)
             refuse_outside_call!(node)
+            refuse_step_by_step_branch!(node)
           end
+        end
+
+        def refuse_step_by_step_branch!(node)
+          return unless STEP_BY_STEP_BRANCH_CALLS.include?(node.name)
+
+          refuse!("A game does not need `#{node.name}`. It is how VBlank records a test step by step. To fix this, " \
+                  "write `if` around the lines instead, like `if held(:a) ... end`, or `while` for a loop.", node)
         end
 
         def refuse_outside_call!(node)
