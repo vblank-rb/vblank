@@ -198,6 +198,7 @@ module VBlank
           # expressions to rewrite, and the subjects such a `case` asks about.
           @written_as_is = {}.compare_by_identity
           @pattern_subjects = {}.compare_by_identity
+          @heredoc_parts = []
         end
 
         def rewritten_block = rewritten(@block_node)
@@ -206,18 +207,47 @@ module VBlank
 
         def rewritten(node)
           @names = LocalNames.new(node)
+          @heredoc_parts = heredoc_parts_in(node).sort_by { |part| part.location.start_offset }
           rewritten_text(node)
         end
 
         private
 
-        def between(from, upto) = @source.byteslice(from...upto).force_encoding(Encoding::UTF_8)
+        # The source from +from+ to +upto+. A heredoc's lines sit past the end of the node that
+        # opened it, so they are copied by whatever text follows that node, and only here can each
+        # `#{...}` among them be rewritten as the one-line String's is (#embedded_text). Each part
+        # of the source is copied once, so each is rewritten once, in its place.
+        def between(from, upto)
+          parts = @heredoc_parts.select { |part| part.location.start_offset >= from && part.location.end_offset <= upto }
+          return source_between(from, upto) if parts.empty?
+
+          at = from
+          text = parts.map do |part|
+            piece = source_between(at, part.location.start_offset) + embedded_text(part)
+            at = part.location.end_offset
+            piece
+          end
+          text.join + source_between(at, upto)
+        end
+
+        def source_between(from, upto) = @source.byteslice(from...upto).force_encoding(Encoding::UTF_8)
+
+        # Each `#{...}` in a heredoc's lines under +node+.
+        def heredoc_parts_in(node)
+          own = heredoc?(node) ? node.parts.grep(Prism::EmbeddedStatementsNode) : []
+          own + node.compact_child_nodes.flat_map { |child| heredoc_parts_in(child) }
+        end
+
+        def heredoc?(node)
+          [Prism::InterpolatedStringNode, Prism::InterpolatedXStringNode].any? { |kind| node.is_a?(kind) } &&
+            node.opening_loc&.slice&.start_with?("<<")
+        end
 
         # Only the line ends between two places, so what follows keeps its line number.
-        def line_ends_between(from, upto) = "\n" * between(from, upto).count("\n")
+        def line_ends_between(from, upto) = "\n" * source_between(from, upto).count("\n")
 
         def rewritten_text(node)
-          return between(node.location.start_offset, node.location.end_offset) if @written_as_is.key?(node)
+          return source_between(node.location.start_offset, node.location.end_offset) if @written_as_is.key?(node)
           return "#{STEPS}.plain_pattern_subject(#{argument(node)})" if @pattern_subjects.delete(node)
 
           case node

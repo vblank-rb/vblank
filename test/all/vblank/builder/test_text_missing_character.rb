@@ -69,6 +69,47 @@ class TestTextMissingCharacter < Minitest::Test
     assert_equal lit("LIVES 3", 40), drawn
   end
 
+  # A heredoc's lines are words too, made while the game is built, so a game number put into them
+  # is refused as a one-line String's is.
+  def test_a_game_number_put_into_a_heredoc_is_a_friendly_error
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      program do
+        screen :bitmap
+        hp = 3
+        game_loop do
+          words = <<~WORDS.chomp
+            HP #{hp} LEFT
+          WORDS
+          draw_text words, 0, 0, :white
+          hp -= 1
+        end
+      end
+    end
+
+    assert_match(/`\#\{\.\.\.\}`/, error.message)
+    assert_match(/draw_number/, error.message)
+  end
+
+  # ...and a plain number in a heredoc is Ruby's, worked out while building.
+  def test_a_plain_number_put_into_a_heredoc_is_drawn
+    game = program do
+      screen :bitmap
+      lives = 3
+      level = 2
+      game_loop do
+        words = <<~WORDS.chomp
+          LIVES #{lives} LV #{level}
+        WORDS
+        draw_text words, 0, 0, :white
+      end
+    end
+    shown = game_player.run(game, frames: 2).screen
+    white = VBlank::Graphics::Color.resolve(:white)
+    drawn = Array.new(7) { |y| Array.new(70) { |x| shown.pixel(x, y) == white } }
+
+    assert_equal lit("LIVES 3 LV 2", 70), drawn
+  end
+
   def test_every_character_missing_is_named_once
     error = assert_raises(ArgumentError) do
       program do
