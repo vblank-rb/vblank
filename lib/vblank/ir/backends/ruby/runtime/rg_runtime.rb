@@ -229,7 +229,7 @@ end
 # the first picture filled puts an unfrozen copy in their place; the picture reads them from there
 # on. The +total+ in the rules is how many there are, which the C needs.
 def rg_start_file_fill_picture(rules)
-  kind, _total, start, width, height, turn, across, places_at, colors_at, colors_count, swapped_count = rules
+  kind, _total, start, width, height, turn, across, places_at, colors_at, colors_count, swapped_count, places_by_byte, see_through = rules
   tile_format = RG_FILL_RULES_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_places = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -246,8 +246,14 @@ def rg_start_file_fill_picture(rules)
     width.times do |column|
       from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
       from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
-      place = places_at.negative? ? rules[held_places + (from_row * width) + from_column] : rg_start_file_place(places_at, rules, tile_format, across, from_row, from_column)
-      color = if place.zero?
+      place = if places_at.negative?
+                rules[held_places + (from_row * width) + from_column]
+              elsif places_by_byte == 1
+                @rg_start_file.getbyte(places_at + (from_row * width) + from_column)
+              else
+                rg_start_file_place(places_at, rules, tile_format, across, from_row, from_column)
+              end
+      color = if place == see_through
                 kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
               elsif place < swapped_count
                 rules[swapped + place]

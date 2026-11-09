@@ -270,6 +270,104 @@ module VBlank
         record_visible_bounds(name: name, width: width, height: height, cells: [], transparent: nil)
       end
 
+      # `image :walls, width: 64, height: 64, colors: [...], places: pack[:walls], see_through: 255`:
+      # A PICTURE OF UP TO 256 COLOURS, its places one byte a pixel from a slot of pixels, row by
+      # row, and its colours the game's own list (or a slot of colours). Unlike a picture of up to
+      # sixteen colours, place 0 is a colour like any other, and the place +see_through+ names, if
+      # any, is not drawn. Built all-in-one it is a picture of colours, as one given `data:` is, so
+      # every verb draws it so; with the pack left out its pixels are filled from the file as the
+      # game starts (#define_pixels_picture_from_start_file).
+      PIXELS_PICTURE_OPTIONS = %i[width height colors places see_through].freeze
+      MOST_PIXEL_PLACES = 256
+
+      def define_picture_of_pack_pixels(name, opts)
+        refuse_pixels_picture_options!(name, opts)
+        places = opts[:places]
+        width = opts[:width]
+        height = opts[:height]
+        see_through = opts[:see_through]
+        positive_dims!(name, width, height)
+        refuse_slot_from_elsewhere!(places, "image :#{name}'s places:")
+        refuse_pixels_not_its_size!(name, width, height, places)
+        refuse_bad_see_through!(name, see_through)
+        colors = pixels_picture_colors(name, opts[:colors])
+        return define_pixels_picture_from_start_file(name, width, height, places, colors, see_through) if pack_left_out?
+
+        bytes = @data_pack_contents.bytes_of(places.layout.name).byteslice(places.first_pixel, places.count).bytes
+        data = bytes.map do |place|
+          next :transparent if place == see_through
+
+          colors.fetch(place) { refuse_pixel_place_without_color!(name, place, colors.length) }
+        end
+        define_pixel_image(name, width: width, height: height, data: data, transparent: see_through ? true : nil)
+      end
+
+      # The same picture with the pack left out: its colours held in the program, its pixels zeros
+      # until they are filled from the file as the game starts (IR::StartFile::Picture, its places
+      # one byte each). Its places are held as all 1, so the build treats it as a solid box, as a
+      # picture of tiles from the file.
+      def define_pixels_picture_from_start_file(name, width, height, places, colors, see_through)
+        table = colors.map { |color| Graphics::Color.resolve(color) }
+        count = width * height
+        node = Build.bitmap(name, width: width, height: height, pixels: Array.new(count, 0).pack("v*"),
+                                  transparent: nil, colors: table, places: Array.new(count, 1).pack("C*"))
+        node.from_file = IR::StartFile::Picture.new(
+          colors_at: nil, colors_count: table.length, places_by_byte: true, see_through: see_through,
+          places_at: @pack_slot_starts.fetch(places.layout.name) + places.first_pixel
+        )
+        record_picture(node)
+        (@pictures_from_start_file ||= {})[name] = node.from_file
+        record_visible_bounds(name: name, width: width, height: height, cells: [], transparent: nil)
+      end
+
+      # The colours of a picture of pixels: a list the game gives (names or numbers), or a slot of
+      # colours of the pack, read here, which a build that leaves its pack out cannot do.
+      def pixels_picture_colors(name, colors)
+        if colors.is_a?(DSL::PackSlot) && pack_left_out?
+          raise ArgumentError, "image :#{name} takes its colors from slot :#{colors.layout.name}. This build reads its pack " \
+                               "as the game starts, so a picture of pixels must hold its own colors. To fix this, give " \
+                               "the game's own list, like `colors: [:black, :white, ...]`."
+        end
+
+        list = colors.is_a?(DSL::PackSlot) ? pack_slot_values(colors, :colors, "image :#{name}'s colors:") : colors
+        return list.to_a if list.is_a?(Array) && list.length.between?(1, MOST_PIXEL_PLACES)
+
+        raise ArgumentError, "image :#{name} takes its pixels from a slot of pixels. It needs colors: with 1 to " \
+                             "#{MOST_PIXEL_PLACES} colors, place 0 first. To fix this, give the game's own list, like " \
+                             "`colors: [:black, :white, ...]`."
+      end
+
+      def refuse_pixels_picture_options!(name, opts)
+        others = opts.keys - PIXELS_PICTURE_OPTIONS
+        return if others.empty?
+
+        raise ArgumentError, "image :#{name} takes its pixels from a slot of pixels. It was given " \
+                             "#{others.map(&:inspect).join(', ')}, which such a picture does not take. It takes width:, " \
+                             "height:, colors:, places: and see_through:. To fix this, leave the others out."
+      end
+
+      def refuse_pixels_not_its_size!(name, width, height, places)
+        return if width * height == places.count
+
+        raise ArgumentError, "image :#{name} is #{width}x#{height}, which is #{width * height} pixels. Its places: are " \
+                             "#{places.count} pixels of slot :#{places.layout.name}. To fix this, make the picture that " \
+                             "size, or give it that many pixels with `pack[:#{places.layout.name}].pixels(first, count)`."
+      end
+
+      def refuse_bad_see_through!(name, see_through)
+        return if see_through.nil? || (see_through.is_a?(Integer) && see_through.between?(0, MOST_PIXEL_PLACES - 1))
+
+        raise ArgumentError, "image :#{name} was given see_through: #{see_through.inspect}. It names the place that is not " \
+                             "drawn, 0 to #{MOST_PIXEL_PLACES - 1}. To fix this, give a place, or leave see_through: out " \
+                             "so every place is drawn."
+      end
+
+      def refuse_pixel_place_without_color!(name, place, count)
+        raise ArgumentError, "image :#{name} has a pixel of place #{place}, and its colors: list holds #{count} colors, " \
+                             "places 0 to #{count - 1}. To fix this, give a color for every place its pixels use, or name " \
+                             "the place see_through:."
+      end
+
       def refuse_pack_places_without_colors!(name)
         raise ArgumentError, "image :#{name} was given places: from the data pack and no colors:. A place is a place in a " \
                              "list of colors, so give the list too: `colors: pack[:palette]`, or `colors: [:transparent, ...]`."

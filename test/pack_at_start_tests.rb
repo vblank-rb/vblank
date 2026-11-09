@@ -405,6 +405,48 @@ module PackAtStartTests
     end
   end
 
+  # A PICTURE OF UP TO 256 COLOURS FROM A SLOT OF PIXELS, one byte a pixel: the made-up copy's
+  # sprite bytes read as 256 places of a 16x16 picture, in a list of 256 colours the game gives, the
+  # copy's first sprite byte named see-through. Drawn plain, turned, and as stretched columns.
+  PIXELS_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:art, at: SPRITES_AT, count: 256)])
+  PIXELS_COLORS = Ractor.make_shareable(Array.new(256) { |place| (place * 37) & 0x7FFF })
+
+  private def pixels_pack_file
+    VBlank::Original::Pack.holding(PIXELS_SLOTS.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: SHA1, build_version: "1").to_bytes
+  end
+
+  private def pixels_art_game(folder, options: VBlank::Cartridge::Options.new)
+    from = original(folder)
+    see_through = COPY.getbyte(SPRITES_AT)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :art, at: SPRITES_AT, count: 256 }
+      image :art, width: 16, height: 16, colors: PIXELS_COLORS, places: pack[:art], see_through: see_through
+      game_loop do
+        clear_screen :blue
+        blit :art, 20, 20
+        blit mirror(:art), 60, 20
+        blit upside_down(:art), 100, 20
+        16.times { |slice| draw_column_at :art, slice: slice, x: 20 + (slice * 2), top: 60, height: 40, width: 2 }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_picture_of_pixels_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
+    Dir.mktmpdir do |folder|
+      whole = pixels_art_game(folder)
+      left_out = pixels_art_game(folder, options: PACK_AT_START)
+
+      shown = game_player.run(whole, frames: 2).screen.to_a
+      assert_operator shown.flatten.uniq.length, :>, 10, "the all-in-one build draws the picture in many colours"
+      assert_equal shown, game_player.hand_file(pixels_pack_file).run(left_out, frames: 2).screen.to_a,
+                   "the game handed its pack shows what the all-in-one build shows"
+    end
+  end
+
   def test_a_game_handed_its_pack_as_it_starts_plays_as_its_all_in_one_build
     Dir.mktmpdir do |folder|
       left_out = pack_at_start_game(folder)

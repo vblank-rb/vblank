@@ -25,7 +25,8 @@ module VBlank
     # own unpacking routine fills it (`slots.fill_from_copy`, Builder::DataPacks), and it keeps its shape
     # and size all the same.
     #
-    # +width+ and +signed+ are a slot of numbers' alone, and nil for any other shape.
+    # +width+ and +signed+ are a slot of numbers' alone, and nil for any other shape. A slot of pixels
+    # is a byte a pixel in any layout, so its +format+ is nil.
     Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format)
 
     class Slot
@@ -47,7 +48,8 @@ module VBlank
         numbers: Shape.new(item_bytes: ->(slot) { IR::Build::ELEMENT_BYTES.fetch(slot.width) },
                            decode: lambda { |slot, bytes|
                              IR::FormatReading.numbers(bytes, slot.format, width: slot.width, signed: slot.signed)
-                           })
+                           }),
+        pixels: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.bytes })
       })
 
       # +count+ colours, in the colour layout of +layout+ (a console's name).
@@ -61,6 +63,14 @@ module VBlank
       def self.tiles(name, count:, at: nil, layout: DEFAULT_LAYOUT, colors: nil)
         new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil,
             format: tile_format_of(name, layout, colors))
+      end
+
+      # +count+ pixels, each one byte, a place 0 to 255 in a list of colours the game gives: a picture
+      # of up to 256 colours row by row, as a computer game keeps its art. A byte is a byte in every
+      # layout, so the slot names none; how the original lays its art out is the game's to undo in
+      # its unpacking routine, which writes the slot row by row.
+      def self.pixels(name, count:, at: nil)
+        new(name: name.to_sym, shape: :pixels, at: at, count: count, width: nil, signed: nil, format: nil)
       end
 
       def self.numbers(name, count:, width:, signed:, at: nil, layout: DEFAULT_LAYOUT)

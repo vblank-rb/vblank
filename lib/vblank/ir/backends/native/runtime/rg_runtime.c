@@ -447,7 +447,7 @@ static uint16_t start_file_color(int32_t colors_at, const int32_t *format, int32
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];
-  int32_t colors_count = rules[9], swapped_count = rules[10];
+  int32_t colors_count = rules[9], swapped_count = rules[10], places_by_byte = rules[11], see_through = rules[12];
   const int32_t *tile_format = rules + RG_FILL_RULES_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_places = color_format + RG_COLOR_FORMAT_NUMBERS;
@@ -459,10 +459,11 @@ void rg_start_file_fill_picture(const int32_t *rules) {
     for (int32_t column = 0; column < width; column++) {
       int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
       int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
-      int32_t place = places_at < 0 ? held_places[(from_row * width) + from_column]
-                                    : start_file_place(places_at, tile_format, across, from_row, from_column);
+      int32_t place = places_at < 0     ? held_places[(from_row * width) + from_column]
+                      : places_by_byte ? start_file[places_at + (from_row * width) + from_column]
+                                       : start_file_place(places_at, tile_format, across, from_row, from_column);
       uint16_t color = 0xFFFFu;
-      if (place != 0) {
+      if (place != see_through) {
         color = 0;
         if (place < swapped_count) {
           color = (uint16_t)swapped[place];

@@ -48,6 +48,10 @@ module VBlank
         add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed, layout: layout || @platform))
       end
 
+      # +count+ pixels, one byte each: a picture of up to 256 colours, row by row, for an image's
+      # `places:` (`image ..., colors: [...], places: pack[:art], see_through: 255`).
+      def pixels(name, count:, at: nil) = add(Original::Slot.pixels(name, at: at, count: count))
+
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
       # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it
       # takes a third argument, the name of the release it unpacks, a plain String as the game is
@@ -139,25 +143,48 @@ module VBlank
       def initialize(at:, count:, format: Console::LOW_BYTE_FIRST_NUMBERS) = super
     end
 
-    # A HANDLE ON ONE SLOT OF A DATA PACK, or on tiles of a slot of tiles: the slot's layout (an
-    # Original::Slot: its name, shape, size and place in the copy) and, for tiles, which. It never
+    # A HANDLE ON ONE SLOT OF A DATA PACK, or on tiles of a slot of tiles, or pixels of a slot of
+    # pixels: the slot's layout (an Original::Slot: its name, shape, size and place in the copy)
+    # and, for tiles or pixels, which. It never
     # holds the bytes. `image` and `table` read them (Builder::DataPacks#pack_slot_values).
     #
     # A handle on tiles is +across+ tiles wide and +down+ tiles tall, starting at +tile_index+ and
     # counting left to right and then top to bottom, as a sprite keeps its tiles: a picture of
     # 16x16 pixels is 2 across and 2 down. A handle on a bank is +color_count+ colours of a slot of
     # colours from colour +first_color+, as a console's palette keeps them in banks of 16.
-    PackSlot = Data.define(:layout, :tile_index, :across, :down, :first_color, :color_count) do
-      def initialize(layout:, tile_index: nil, across: 1, down: 1, first_color: nil, color_count: nil) = super
+    #
+    # A handle on pixels is +pixel_count+ pixels of a slot of pixels from pixel +first_pixel+, or
+    # the whole slot where neither is given: the places of one picture among several kept in one
+    # slot, as `pack[:walls].pixels(64 * 64 * 3, 64 * 64)` is the fourth picture of 64x64.
+    PackSlot = Data.define(:layout, :tile_index, :across, :down, :first_color, :color_count, :first_pixel, :pixel_count) do
+      def initialize(layout:, tile_index: nil, across: 1, down: 1, first_color: nil, color_count: nil, first_pixel: 0,
+                     pixel_count: nil) = super
 
       def shape = layout.shape
 
       # How many the handle reads: the slot's count, or the tiles of a handle on tiles, or the
-      # colours of a bank.
+      # colours of a bank, or the pixels of a handle on pixels.
       def count
         return across * down if tile_index
+        return color_count if first_color
 
-        first_color ? color_count : layout.count
+        pixel_count || layout.count
+      end
+
+      # A handle on +count+ pixels from pixel +first+ (0 first) of a slot of pixels, for an image's
+      # `places:`.
+      def pixels(first, count)
+        unless shape == :pixels && pixel_count.nil?
+          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `pixels` picks pixels of a slot of pixels. " \
+                               "To fix this, call it on a slot of pixels."
+        end
+        unless [first, count].all?(Integer) && first >= 0 && count.positive? && first + count <= layout.count
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} pixels, 0 to #{layout.count - 1}. There are no " \
+                               "#{count.inspect} pixels from pixel #{first.inspect}. To fix this, give a first pixel and " \
+                               "a count that end in the slot."
+        end
+
+        with(first_pixel: first, pixel_count: count)
       end
 
       # Whether the handle is on a bank of colours.

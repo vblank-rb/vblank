@@ -22,8 +22,9 @@ module VBlank
     #   layout of #file_number_format (a Console::NumberFormat), below zero only for a signed table (Build.elements_of);
     # - a picture given as places into a list of colours (Nodes::Bitmap#from_file, a Picture): the
     #   colours, two bytes each, and the places, in tiles of 8x8, each in the layout of the console
-    #   the original is for (FormatReading), place 0 see-through. That is what `image colors:, places:` makes
-    #   of the same numbers held in the game (Assets.placed_pixels). A picture can take only its
+    #   the original is for (FormatReading), place 0 see-through, or one byte a pixel row by row in any
+    #   layout with the place the picture names see-through. That is what `image colors:, places:` makes
+    #   of the same numbers held in the game (Assets.placed_pixels, which both use). A picture can take only its
     #   colours or only its places from the file, and hold the other list itself; and it can be
     #   turned round or upside down, as `mirror` and `upside_down` turn one.
     #
@@ -41,12 +42,17 @@ module VBlank
 
       # Where a picture's colours and places are in the file: +colors_at+, the first colour, of
       # +colors_count+, kept as +color_format+ (a Console::ColorFormat); and +places_at+, the first
-      # byte of its first tile, its tiles kept as +tile_format+ (a Console::TileFormat) and +across+
-      # wide (Assets.picture_places_of_tiles). A list the picture holds itself, the other one, has
-      # no place and no format: nil. +turns+ are the ways the picture is turned once it is read, in
-      # order, each :mirrored or :upside_down (Assets::Image).
-      Picture = Data.define(:colors_at, :colors_count, :color_format, :places_at, :tile_format, :across, :turns) do
-        def initialize(colors_at:, colors_count:, places_at:, color_format: nil, tile_format: nil, across: 1, turns: [].freeze) = super
+      # byte of its places. Those are tiles kept as +tile_format+ (a Console::TileFormat) and
+      # +across+ wide (Assets.picture_places_of_tiles), or, where +places_by_byte+, one byte a pixel
+      # row by row, a picture of up to 256 colours as a computer game keeps its art. A list the
+      # picture holds itself, the other one, has no place and no format: nil. +see_through+ is the
+      # place not drawn: 0, as a picture of tiles has it, any place a picture of bytes names, or nil
+      # for none. A place past the colours is drawn in colour 0. +turns+ are the ways the picture is
+      # turned once it is read, in order, each :mirrored or :upside_down (Assets::Image).
+      Picture = Data.define(:colors_at, :colors_count, :color_format, :places_at, :tile_format, :across, :places_by_byte,
+                            :see_through, :turns) do
+        def initialize(colors_at:, colors_count:, places_at:, color_format: nil, tile_format: nil, across: 1,
+                       places_by_byte: false, see_through: 0, turns: [].freeze) = super
 
         # The same picture turned +way+ once it is read.
         def turned(way) = with(turns: [*turns, way].freeze)
@@ -148,21 +154,15 @@ module VBlank
       # place past the colours shows colour 0, as each runtime fills it.
       def self.fill_picture(node, bytes)
         where = node.from_file
-        count = node.width * node.height
-        places = if where.places_at
-                   tiles = bytes.byteslice(where.places_at, (count / FormatReading::TILE_PIXELS) * where.tile_format.tile_bytes)
-                   Assets.picture_places_of_tiles(FormatReading.tiles(tiles, where.tile_format).flatten, across: where.across)
-                 else
-                   node.places.bytes
-                 end
+        places = picture_places(node, where, bytes)
         colors = if where.colors_at
                    FormatReading.colors(bytes.byteslice(where.colors_at, where.colors_count * 2), where.color_format)
                  else
                    node.colors
                  end
-        pixels, transparent = Assets.placed_pixels(places, colors + ([0] * [PLACES - colors.length, 0].max))
-        picture = Assets::Image.new(width: node.width, height: node.height, transparent: transparent, pixels: pixels, colors: colors,
-                                    places: places.pack("C*"))
+        pixels, transparent = Assets.placed_pixels(places, colors, see_through: where.see_through)
+        picture = Assets::Image.new(width: node.width, height: node.height, transparent: transparent, pixels: pixels,
+                                    colors: colors, places: places.pack("C*"))
         picture = where.turns.reduce(picture) { |turned, way| turned.turned(way) }
         node.pixels = picture.pixels
         node.transparent = picture.transparent
@@ -170,7 +170,18 @@ module VBlank
         node.places = picture.places
         node.from_file = nil
       end
-      private_class_method :fill_table, :fill_picture
+
+      # A picture's places row by row: one byte a pixel, or the tiles they are kept in, read from the
+      # file; or the places the picture holds itself.
+      def self.picture_places(node, where, bytes)
+        count = node.width * node.height
+        return node.places.bytes unless where.places_at
+        return bytes.byteslice(where.places_at, count).bytes if where.places_by_byte
+
+        tiles = bytes.byteslice(where.places_at, (count / FormatReading::TILE_PIXELS) * where.tile_format.tile_bytes)
+        Assets.picture_places_of_tiles(FormatReading.tiles(tiles, where.tile_format).flatten, across: where.across)
+      end
+      private_class_method :fill_table, :fill_picture, :picture_places
     end
   end
 end

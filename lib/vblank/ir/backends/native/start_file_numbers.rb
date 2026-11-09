@@ -29,9 +29,9 @@ module VBlank
           COLOR_CHANNEL_BITS_AT = 4
           COLOR_FORMAT_NUMBERS = 5
 
-          # The numbers before the tile layout: what is filled, the totals, the turn, and the places
-          # and colours counts.
-          RULES_HEADER_NUMBERS = 11
+          # The numbers before the tile layout: what is filled, the totals, the turn, the places and
+          # colours counts, whether the places are one byte each, and the see-through place.
+          RULES_HEADER_NUMBERS = 13
 
           NAMES = Ractor.make_shareable({
             "RG_TILE_BYTES_AT" => TILE_BYTES_AT, "RG_TILE_PLANES_AT" => TILE_PLANES_AT,

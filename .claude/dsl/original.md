@@ -14,8 +14,27 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `slots.tiles :walls, at: 0x1020, count: 40` — 8x8 tiles; `colors: 4` or `colors: 16` where the
     console keeps both (the Super Nintendo).
   - `slots.numbers :speeds, at: 0x2000, count: 8, width: :byte, signed: false` — numbers one, two or four bytes wide; `signed:` must be said.
+  - `slots.pixels :walls, count: 64 * 64 * 106` — **pixels, one byte each**: pictures of up to 256
+    colours, row by row, as a computer game keeps its art. A byte is a byte in every layout, so the line
+    names none. How the original lays its art out (column by column, in posts, in pages) is the game's
+    to undo in its unpacking routine, which writes the slot row by row (`pack[:walls][i] = place`);
+    VBlank reads no one original's format.
 
   Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`.
+
+- `image :walls, width: 64 * 106, height: 64, colors: WALL_COLOURS, places: pack[:walls], see_through: 255`
+  — **a picture of up to 256 colours from a slot of pixels.** `places:` is the whole slot, or
+  `pack[:walls].pixels(first, count)` for one picture of several kept in it; `width:` times `height:` must
+  be its count. `colors:` is a list of 1 to 256 colours, place 0 first, which the game gives (the
+  original's colours often live in its program, not its data), or a slot of colours of the pack.
+  **Place 0 is a colour like any other**; `see_through:` names the one place that is not drawn, or is
+  left out so every place is drawn. It draws as a picture given `data:` does, by every verb: `blit`, a
+  sprite, `draw_column_at` (stretched columns), `mirror`, `upside_down`. Friendly errors at the line: a
+  pixel of a place past the colours (unless it is the see-through place), a size that is not the slot's
+  count, a `see_through:` that is not 0 to 255, and any other option. With the pack left out (below) its
+  pixels are filled from the file as the game starts, its colours held in the program. On a console it
+  is a picture of that many colours, so what the console does with one given `data:` it does with this.
+  Worked examples: `test/all/vblank/builder/test_data_packs.rb` and `test/pack_at_start_tests.rb`.
 
   **Releases that keep the data at different places**: a slot's `at:` may be a Hash by release name,
   `slots.colors :palette, at: { "US" => 0x10, "EU" => 0x30 }, count: 16`. The keys are the release names
@@ -150,7 +169,8 @@ built for:
 
 Each console's layout is numbers in its hardware file (`Console::GBCHardware::ORIGINAL_FORMATS` and the
 rest), named by its kit (`Console::Kit#original_formats`); one reader reads any of them
-(`IR::FormatReading`, and `rg_start_file_fill_picture` in the C, JavaScript and Ruby runtimes). A
+(`IR::FormatReading`, and `rg_start_file_fill_picture` in the C, JavaScript and Ruby runtimes, which reads
+a slot of pixels, one byte each in any layout, the same way). A
 `:pc` original keeps its data in no console's layout, so each of its slots names the layout its
 unpacking routine writes (`layout: :gba`); a slot without one is refused. On the Color, a tile drawn by
 place from a list of four colours or fewer goes into the cartridge place for place, so a Color

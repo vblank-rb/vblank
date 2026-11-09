@@ -393,6 +393,70 @@ class TestDataPacks < Minitest::Test
     end
   end
 
+  # A PICTURE OF UP TO 256 COLOURS FROM THE PACK, one byte a pixel, as a computer game keeps its art:
+  # the unpacking routine writes the pixels row by row, the game gives the colours, and the place it
+  # names see-through is not drawn. Place 0 is a colour like any other.
+  PIXEL_PLACES = [0, 1, 2, 255, 1, 0, 255, 2].freeze
+
+  private def pixels_game(folder, see_through: 255, colors: %i[black red green])
+    from = copy_of(folder, ([0] * 16).pack("C*"))
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.pixels :art, count: PIXEL_PLACES.length
+        slots.fill_from_copy do |_copy, filled|
+          PIXEL_PLACES.each_with_index { |place, at| filled[:art][at] = place }
+        end
+      end
+      image :art, width: 4, height: 2, colors: colors, places: pack[:art], see_through: see_through
+      game_loop do
+        clear_screen :blue
+        blit :art, 10, 10
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_picture_of_pixels_from_the_pack_draws_place_zero_and_leaves_its_see_through_place
+    Dir.mktmpdir do |folder|
+      screen = game_player.run(pixels_game(folder), frames: 2).screen
+      drawn = Array.new(2) { |y| Array.new(4) { |x| screen.pixel(10 + x, 10 + y) } }
+
+      black, red, green, blue = %i[black red green blue].map { |name| Color.resolve(name) }
+      assert_equal [[black, red, green, blue], [red, black, blue, green]], drawn
+    end
+  end
+
+  def test_a_pixel_of_a_place_the_colors_do_not_hold_is_refused
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(ArgumentError) { pixels_game(folder, see_through: nil) }
+
+      assert_match "255", refused.message
+      assert_match "3 colors", refused.message
+    end
+  end
+
+  # With its pack read as the game starts, a picture of pixels holds its own colours: a slot of
+  # colours read as the game is built would read bytes the build does not have.
+  def test_a_picture_of_pixels_taking_pack_colors_with_the_pack_left_out_is_refused
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, ([0] * 64).pack("C*"))
+      refused = assert_raises(ArgumentError) do
+        Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)).instance_eval do
+          pack = data_pack(from: from, version: "1") do |slots|
+            slots.colors :palette, at: 0, count: 4
+            slots.pixels :art, at: 8, count: 4
+          end
+          image :art, width: 2, height: 2, colors: pack[:palette], places: pack[:art]
+        end
+      end
+
+      assert_match "own colors", refused.message
+    end
+  end
+
   # The slot says whether its numbers can be below zero; the bytes never decide it. 0xF6 is -10 in
   # a slot of signed bytes, so the marker stands ten pixels left of 100.
   def test_a_table_from_a_slot_of_signed_numbers_reads_them_below_zero
